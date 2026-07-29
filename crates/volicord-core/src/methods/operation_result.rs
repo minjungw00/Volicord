@@ -1,4 +1,5 @@
-use super::{core_error_response, validation_rejected};
+use crate::error_boundary::store::core_error_response;
+use crate::method_rejection::validation_rejected;
 use crate::pipeline::{
     read_only_branch, rejected_response, tool_error, CorePipelineError, CoreResult, CoreService,
     FreshnessPolicy, InvocationContext, MethodEffectPolicy, MethodPolicy, PipelinePreflightOutcome,

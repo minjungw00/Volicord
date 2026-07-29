@@ -10,9 +10,10 @@ producer finalization, Run commit 사이의 현재 구현 경계를 설명합니
 `volicord.prepare_evidence_capture`는 Core에서 planning되고 한도가 있는 capture
 intent를 commit합니다. CLI fulfillment 코드는 담당 source 경로를 실행하거나
 상관시키고, Store는 immutable receipt와 content-bound staging data를 씁니다.
-`record_run`은 `methods/evidence_facts.rs`를 통해 엄격한 현재 intent와 receipt fact를
-읽고 집중 evidence policy 모듈로 평가한 뒤 Run과 같은 grouped Store mutation에
-producer finalization을 포함합니다.
+`record_run`은 `evidence_facts.rs`를 통해 엄격한 현재 intent와 receipt fact를
+읽고 `artifact.rs`에 artifact source 검증을 위임하며, typed fact를 집중 evidence
+policy 모듈로 평가한 뒤 Run과 같은 grouped Store mutation에 producer finalization을
+포함합니다.
 
 Observation과 producer authority는 구분됩니다. 저장된 source observation은 현재 Core
 policy가 전체 binding을 받아들이고 Run commit이 성공하기 전까지 producer가 아닙니다.
@@ -31,10 +32,12 @@ policy가 전체 binding을 받아들이고 Run commit이 성공하기 전까지
 
 ## 책임 경계
 
-Core 메서드 코드는 요청을 검증하고 effect를 planning합니다. Core evidence policy
-모듈은 typed fact에 대한 provenance, binding, target, relevance, close-readiness
-평가를 담당합니다. CLI fulfillment는 command 또는 tool-source collection을
-담당합니다. Store는 intent, receipt, staging, producer, Run persistence를 담당합니다.
+Core 메서드 코드는 요청을 검증하고 집중 담당자를 조율하며 메서드 응답을 구성합니다.
+`evidence_facts.rs`는 재사용 가능한 typed fact 취득을 담당하고, `artifact.rs`는
+재사용 가능한 artifact source 검증을 담당하며, Core evidence policy 모듈은 typed
+fact에 대한 provenance, binding, target, relevance, close-readiness 평가를 담당합니다.
+CLI fulfillment는 command 또는 tool-source collection을 담당합니다. Store는 intent,
+receipt, staging, producer, Run persistence를 담당합니다.
 
 ## 실행 흐름
 
@@ -64,10 +67,12 @@ attestation으로 취급하지 않습니다.
 
 ## 구현 경로
 
-- [`crates/volicord-core/src/methods/prepare_evidence_capture.rs`](../../../../crates/volicord-core/src/methods/prepare_evidence_capture.rs),
-  [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs),
-  [`evidence_facts.rs`](../../../../crates/volicord-core/src/methods/evidence_facts.rs):
-  메서드 planning과 공유 fact 획득.
+- [`crates/volicord-core/src/methods/prepare_evidence_capture.rs`](../../../../crates/volicord-core/src/methods/prepare_evidence_capture.rs)와
+  [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs):
+  요청별 메서드 조율과 응답 구성.
+- [`crates/volicord-core/src/evidence_facts.rs`](../../../../crates/volicord-core/src/evidence_facts.rs)와
+  [`artifact.rs`](../../../../crates/volicord-core/src/artifact.rs):
+  공유 typed fact 취득과 artifact source 검증.
 - [`crates/volicord-core/src/policy/`](../../../../crates/volicord-core/src/policy/):
   집중 evidence provenance, binding, relevance, target, close-readiness policy.
 - [`crates/volicord-store/src/evidence_capture.rs`](../../../../crates/volicord-store/src/evidence_capture.rs)와

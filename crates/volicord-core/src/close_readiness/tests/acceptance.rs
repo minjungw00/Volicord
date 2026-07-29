@@ -1,5 +1,5 @@
 use super::*;
-use crate::methods::close_readiness::test_support;
+use crate::close_readiness::test_support;
 use volicord_types::ids::{ChangeUnitId, ProjectId, RecordId, RiskId, TaskId, UserActionOptionId};
 use volicord_types::schema::{
     CurrentCloseBasis, RequiredNullable, ResidualRisk, StateRecordRef, UserActionBasis,

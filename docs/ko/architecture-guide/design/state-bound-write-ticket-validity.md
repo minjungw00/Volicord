@@ -8,9 +8,11 @@
 ## 설계
 
 `prepare_write`는 현재 Task, Change Unit, scope, workspace, approval, workflow-policy,
-normalized path fact를 읽습니다. `policy/write_ticket.rs`의 집중 Core policy가 ticket
-basis를 구성하고 평가합니다. `core_pipeline/write_tickets.rs`는 strict ticket read와
-grouped mutation 적용을 담당합니다.
+normalized path fact를 읽습니다. 집중된 `write_ticket/` 담당자는 `facts.rs`,
+`policy.rs`, `planning.rs`, `projection.rs`에서 현재 fact를 취득하고 정규화하며,
+policy를 평가하고 issue 또는 reuse를 계획한 뒤 typed 결과를 projection합니다.
+`core_pipeline/write_tickets.rs`는 strict ticket read와 grouped mutation 적용을
+담당합니다.
 
 Ticket lookup은 structural precondition 뒤에만 실행합니다. Reuse는 관련 없는 global
 state counter에 의존하지 않고 stored basis와 current typed fact를 비교합니다. 보호된
@@ -28,13 +30,13 @@ Run mutation은 Run 및 관련 effect와 같은 Store commit에서 선택한 tic
 
 ## 책임 경계
 
-Core 메서드는 request-specific planning을 담당합니다. Core workflow, path, access,
-write-ticket policy 모듈은 typed fact에 대한 current authority evaluation을 담당합니다.
-Store는 물리 ticket row를 비공개로 유지하고 status, validity basis, attempt scope,
-Product Repository 경로 모음, timestamp, 중복 owner coordinate를 엄격하게 decode한
-뒤 typed record를 반환합니다. Store는 ticket query, invalidation persistence,
-consumption mutation도 담당합니다. Guard는 observation을 제공하지만 ticket basis를
-넓히지 않습니다.
+Core 메서드는 요청별 조율과 응답 구성을 담당합니다. 집중된 Write Ticket 담당자는
+typed fact에 대한 재사용 가능한 fact 취득, policy 평가, issue 또는 reuse 계획,
+projection을 담당합니다. Store는 물리 ticket row를 비공개로 유지하고 status,
+validity basis, attempt scope, Product Repository 경로 모음, timestamp, 중복 owner
+coordinate를 엄격하게 decode한 뒤 typed record를 반환합니다. Store는 ticket query,
+invalidation persistence, consumption mutation도 담당합니다. Guard는 observation을
+제공하지만 ticket basis를 넓히지 않습니다.
 
 ## 실행 흐름
 
@@ -63,10 +65,10 @@ actor identity나 transferable capability가 아닙니다.
 
 - [`crates/volicord-core/src/methods/prepare_write.rs`](../../../../crates/volicord-core/src/methods/prepare_write.rs)와
   [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs):
-  issue/reuse와 protected consumption planning.
-- [`crates/volicord-core/src/policy/write_ticket.rs`](../../../../crates/volicord-core/src/policy/write_ticket.rs)와
+  요청별 issue/reuse와 protected consumption 조율.
+- [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)와
   [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed current-basis 평가.
+  typed fact 취득, current-basis 평가, 계획, projection.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
   공유 typed 제품 경로 정규화와 포함 관계.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):

@@ -1,12 +1,13 @@
 //! Adapter-neutral UserAction reads and originating-result replay.
 
-use crate::methods::{decode_semantic_replay_result, state_ref};
+use crate::method_execution::decode_semantic_replay_result;
 use crate::pipeline::{
     operation_result_ref, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement,
 };
 use crate::policy::evidence::state_record_ref_identity_key;
+use crate::record_refs::state_ref;
 use volicord_store::core_pipeline::{
     CoreProjectStore, ProjectContinuityRecordRecord, StoredUserActionResolution,
     ToolInvocationRecord,

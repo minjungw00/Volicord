@@ -1,31 +1,34 @@
-use super::close_readiness::{
+use super::MethodPlan;
+use crate::artifact::{
+    artifact_ref_from_verified_record, normalize_source_refs,
+    persistent_artifact_is_verified_current,
+};
+use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities,
     facts_with_projected_acceptance_criteria, facts_with_record_run_projection,
     plan_projected_close_readiness,
 };
-use super::evidence_facts::{
+use crate::error_boundary::{
+    product_path::observe_request_product_paths,
+    store::{plan_error_response, store_error_plan},
+    user_action::user_action_service_plan_error,
+};
+use crate::evidence_facts::{
     capture_intent_from_record, capture_outcome_matches_expected, capture_verification_basis,
     stored_evidence_observation_provenance_facts, stored_evidence_observation_relevance,
     user_action_observation_resolution_authority, validate_capture_receipt_record,
 };
-use super::{
-    active_acceptance_criteria_for_task, allocate_artifact_id, allocate_evidence_observation_id,
-    allocate_evidence_producer_id, allocate_evidence_summary_id, allocate_risk_id, allocate_run_id,
-    artifact_input_validation_plan_error, artifact_input_validation_response,
-    artifact_missing_response, artifact_ref_from_verified_record, baseline_matches,
-    baseline_stale_response, build_state_summary, change_unit_ref, decision_rejected_response,
-    dry_run_summary, evidence_summary_for_display, first_product_write_duration_micros,
-    guarantee_display_for_invocation, mutation_method_policy, no_active_change_unit_response,
-    no_active_task_response, normalize_source_refs, object_from_value,
-    observe_request_product_paths, persistent_artifact_is_verified_current, plan_error_response,
-    prepare_or_response, project_state_projection, projected_evidence_summary_for_criteria,
-    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
-    rejected_pipeline_response, response_committed_fresh_effect, sorted_unique, state_ref,
-    state_ref_from_stored, store_error_plan, task_lifecycle_mutation,
-    user_action_service_plan_error, validation_plan_error, validation_rejected,
-    workspace_context_matches, workspace_stale_response, write_ticket_invalid_response,
-    write_ticket_ref, write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
-    PlanError, SummaryBuild,
+use crate::identity::{
+    allocate_artifact_id, allocate_evidence_observation_id, allocate_evidence_producer_id,
+    allocate_evidence_summary_id, allocate_risk_id, allocate_run_id,
+};
+use crate::json_object::object_from_value;
+use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
+use crate::method_rejection::{
+    baseline_stale_response, decision_rejected_response, dry_run_summary,
+    infallible_rejected_pipeline_response, no_active_change_unit_response, no_active_task_response,
+    rejected_pipeline_response, validation_plan_error, validation_rejected,
+    workspace_stale_response,
 };
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
@@ -39,10 +42,6 @@ use crate::policy::evidence::{
 use crate::policy::workflow::{
     project_workflow_policy, resolve_task_control_authority, ProjectWorkflowPolicy,
 };
-use crate::policy::write_ticket::{
-    normalized_string_set, run_write_ticket_mismatch, write_ticket_is_idle_expired,
-    RunWriteTicketAttempt,
-};
 use crate::policy::{
     close_readiness_evidence::evidence_summary_with_required_criteria,
     evidence_provenance::{
@@ -55,8 +54,25 @@ use crate::policy::{
         EvidenceObservationBasis,
     },
 };
+use crate::projection::{
+    active_acceptance_criteria_for_task, build_state_summary, evidence_summary_for_display,
+    guarantee_display_for_invocation, project_state_projection,
+    projected_evidence_summary_for_criteria, task_lifecycle_mutation, SummaryBuild,
+};
+use crate::record_refs::{
+    change_unit_ref, sorted_unique, state_ref, state_ref_from_stored, write_ticket_ref,
+};
+use crate::workflow_diagnostics::{
+    first_product_write_duration_micros, record_core_workflow_metric_best_effort,
+    response_committed_fresh_effect,
+};
+use crate::write_ticket::{baseline_matches, workspace_context_matches};
+use crate::write_ticket::{
+    normalized_string_set, projected_write_ticket_summary, run_write_ticket_mismatch,
+    write_ticket_is_idle_expired, write_ticket_summary_for_record, RunWriteTicketAttempt,
+};
 use chrono::{DateTime, Utc};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, ArtifactStagingStatus,
@@ -87,8 +103,8 @@ use volicord_types::schema::{
     EvidenceRelevanceAssessment, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance,
     JsonObject, ObservedChanges, PersistedArtifactProducer, PersistedArtifactProvenanceMetadata,
     PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority, ResidualRisk, RunSummary,
-    SensitiveActionRequirement, StagedArtifactHandle, StateRecordRef, WriteTicketAttemptScope,
-    WriteTicketValidityBasis,
+    SensitiveActionRequirement, StagedArtifactHandle, StateRecordRef, ToolEnvelope,
+    WriteTicketAttemptScope, WriteTicketValidityBasis,
 };
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
@@ -300,6 +316,100 @@ impl RecordRunResponseProjection {
             next_actions: Vec::new(),
         }
     }
+}
+
+fn artifact_input_validation_plan_error<T>(
+    request: &RecordRunRequest,
+    project_state: &ProjectStateHeader,
+    input: &ArtifactInput,
+    reason: &'static str,
+    message: &'static str,
+) -> Result<T, PlanError> {
+    Err(PlanError::Response(Box::new(
+        artifact_input_validation_response(request, project_state, input, reason, message),
+    )))
+}
+
+fn artifact_input_validation_response(
+    request: &RecordRunRequest,
+    project_state: &ProjectStateHeader,
+    input: &ArtifactInput,
+    reason: &'static str,
+    message: &'static str,
+) -> PipelineResponse {
+    let details = object_from_value(json!({
+        "artifact_input_error": {
+            "artifact_input_id": input.artifact_input_id.as_str(),
+            "reason": reason
+        }
+    }))
+    .expect("artifact input error details should be an object");
+    infallible_rejected_pipeline_response(
+        request.envelope.dry_run,
+        Some(project_state.state_version),
+        vec![tool_error(
+            ErrorCode::ValidationFailed,
+            message,
+            false,
+            Some(details),
+        )],
+    )
+}
+
+fn artifact_missing_response(
+    request: &RecordRunRequest,
+    project_state: &ProjectStateHeader,
+    message: &'static str,
+) -> PipelineResponse {
+    infallible_rejected_pipeline_response(
+        request.envelope.dry_run,
+        Some(project_state.state_version),
+        vec![tool_error(ErrorCode::ArtifactMissing, message, false, None)],
+    )
+}
+
+fn write_ticket_required_response(
+    envelope: &ToolEnvelope,
+    state_version: Option<u64>,
+) -> PipelineResponse {
+    let mut details = Map::new();
+    details.insert(
+        "write_ticket_reason".to_owned(),
+        Value::String("missing".to_owned()),
+    );
+    infallible_rejected_pipeline_response(
+        envelope.dry_run,
+        state_version,
+        vec![tool_error(
+            ErrorCode::WriteTicketRequired,
+            "product-file write observations require a compatible active write ticket",
+            false,
+            Some(details),
+        )],
+    )
+}
+
+fn write_ticket_invalid_response(
+    envelope: &ToolEnvelope,
+    state_version: Option<u64>,
+    reason: &'static str,
+    message: &'static str,
+) -> PipelineResponse {
+    let mut details = Map::new();
+    details.insert(
+        "write_ticket_reason".to_owned(),
+        Value::String(reason.to_owned()),
+    );
+    infallible_rejected_pipeline_response(
+        envelope.dry_run,
+        state_version,
+        vec![tool_error(
+            ErrorCode::WriteTicketInvalid,
+            message,
+            false,
+            Some(details),
+        )],
+    )
 }
 
 struct RecordRunMutationAssembly<'a> {
@@ -886,7 +996,8 @@ fn decide_record_run_policy(
         project_state.state_version,
         plan_now,
         &operation_context,
-    )?
+    )
+    .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?
     .is_empty()
     {
         return Err(PlanError::Response(Box::new(decision_rejected_response(
@@ -898,7 +1009,7 @@ fn decide_record_run_policy(
 
     let run_id = match request.run_id.clone().into_option() {
         Some(run_id) => run_id,
-        None => allocate_run_id(service, store).map_err(PlanError::Core)?,
+        None => allocate_run_id(service.durable_id_generator(), store).map_err(PlanError::Core)?,
     };
     if request.run_id.is_some()
         && store
@@ -1028,7 +1139,10 @@ fn plan_record_run_mutations(
         &observation_refs_by_target,
     )?;
     let evidence_summary_id = if recorded_evidence_summary.is_some() {
-        Some(allocate_evidence_summary_id(service, store).map_err(PlanError::Core)?)
+        Some(
+            allocate_evidence_summary_id(service.durable_id_generator(), store)
+                .map_err(PlanError::Core)?,
+        )
     } else {
         None
     };
@@ -1477,7 +1591,14 @@ fn project_record_run_response(
             ),
             pending_authorities,
         ),
-    )?;
+    )
+    .map_err(|error| {
+        crate::error_boundary::close_readiness::close_readiness_plan_error(
+            &request.envelope,
+            &projected_project_state,
+            error,
+        )
+    })?;
     let state = build_state_summary(SummaryBuild {
         store,
         project_id: &request.envelope.project_id,
@@ -2051,7 +2172,14 @@ fn plan_record_run_observation(
             &context.request.task_id,
             "evidence_observations[].source_refs",
             &input.source_refs,
-        )?
+        )
+        .map_err(|error| {
+            crate::error_boundary::artifact::artifact_policy_plan_error(
+                &context.request.envelope,
+                context.project_state,
+                error,
+            )
+        })?
     };
     let canonical_output_artifact_refs = if let Some(capture) = capture_authority {
         vec![capture.receipt_artifact_ref.clone()]
@@ -2115,8 +2243,9 @@ fn plan_record_run_observation(
         );
     }
 
-    let observation_id = allocate_evidence_observation_id(context.service, context.store)
-        .map_err(PlanError::Core)?;
+    let observation_id =
+        allocate_evidence_observation_id(context.service.durable_id_generator(), context.store)
+            .map_err(PlanError::Core)?;
     let observation_ref = state_ref(
         StateRecordKind::EvidenceObservation,
         observation_id.as_str(),
@@ -2324,8 +2453,9 @@ fn derive_record_run_observation_authority(
                 .get(record_ref.record_id.as_str())
         });
     if let Some(capture) = canonical_capture {
-        let producer_id = allocate_evidence_producer_id(context.service, context.store)
-            .map_err(PlanError::Core)?;
+        let producer_id =
+            allocate_evidence_producer_id(context.service.durable_id_generator(), context.store)
+                .map_err(PlanError::Core)?;
         let producer_ref = state_ref(
             StateRecordKind::EvidenceProducer,
             producer_id.as_str(),
@@ -2517,7 +2647,14 @@ fn validate_record_run_evidence_update(
             &context.request.task_id,
             "evidence_updates[].provenance.source_refs",
             &provenance.source_refs,
-        )?;
+        )
+        .map_err(|error| {
+            crate::error_boundary::artifact::artifact_policy_plan_error(
+                &context.request.envelope,
+                context.project_state,
+                error,
+            )
+        })?;
         if provenance
             .tool_invocation_id
             .as_ref()
@@ -3063,7 +3200,8 @@ fn build_record_run_close_basis(
             },
             risk,
         )?;
-        let risk_id = allocate_risk_id(service, &allocated_risk_ids).map_err(PlanError::Core)?;
+        let risk_id = allocate_risk_id(service.durable_id_generator(), &allocated_risk_ids)
+            .map_err(PlanError::Core)?;
         allocated_risk_ids.insert(risk_id.as_str().to_owned());
         residual_risks.push(ResidualRisk {
             risk_id,
@@ -3696,7 +3834,8 @@ fn plan_staged_artifact_input(
         context.now,
     )?;
 
-    let artifact_id = allocate_artifact_id(service, store).map_err(PlanError::Core)?;
+    let artifact_id =
+        allocate_artifact_id(service.durable_id_generator(), store).map_err(PlanError::Core)?;
     let uri = format!(
         "volicord-artifact://{}/{}",
         request.envelope.project_id.as_str(),
@@ -4130,7 +4269,7 @@ fn validate_write_ticket_for_run(
             ),
         )));
     }
-    if !super::workspace_context_matches(change_unit, verified_invocation)? {
+    if !workspace_context_matches(change_unit, verified_invocation)? {
         return write_ticket_mismatch(
             request,
             project_state,
@@ -4291,7 +4430,9 @@ fn write_ticket_approval_basis_is_current(
         .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let mut current_resolution_ids = BTreeSet::new();
     for record in records {
-        let authority = user_action_authority_from_record(&record)?;
+        let authority = user_action_authority_from_record(&record).map_err(|error| {
+            user_action_service_plan_error(&request.envelope, project_state, error)
+        })?;
         if current_sensitive_approval(&authority, &requirement) {
             if let Some(resolution_id) = authority.user_action_resolution_id {
                 current_resolution_ids.insert(resolution_id);

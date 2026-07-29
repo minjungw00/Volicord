@@ -1,5 +1,5 @@
 use super::*;
-use crate::methods::close_readiness::test_support;
+use crate::close_readiness::test_support;
 use volicord_types::values::CloseReadinessBlockerCategory;
 
 #[test]

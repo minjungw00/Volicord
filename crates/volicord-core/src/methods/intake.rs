@@ -1,17 +1,16 @@
-use super::close_readiness::{
+use super::MethodPlan;
+use crate::artifact::{normalize_source_refs, normalize_source_refs_with_carried_artifact_task};
+use crate::close_readiness::{
     facts_from_projection, facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
-use super::{
-    active_acceptance_criteria_for_task, allocate_acceptance_criterion_id, allocate_task_id,
-    build_state_summary, decision_rejected_response, dry_run_summary,
-    guarantee_display_for_invocation, initial_work_phase, mutation_method_policy,
-    next_actions_for_state, normalize_display_text, normalize_source_refs,
-    normalize_source_refs_with_carried_artifact_task, object_from_value, plan_error_response,
-    prepare_or_response, project_continuity_ref, project_state_projection, projected_blocker_refs,
-    projected_close_basis, projected_evidence_summary_for_criteria, projected_write_ticket_summary,
-    resolve_requested_mode, state_ref, validation_rejected, MethodPlan, PlanError, StoredScope,
-    SummaryBuild,
+use crate::continuity::project_continuity_ref;
+use crate::error_boundary::{
+    store::plan_error_response, user_action::user_action_service_plan_error,
 };
+use crate::identity::{allocate_acceptance_criterion_id, allocate_task_id};
+use crate::json_object::object_from_value;
+use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
+use crate::method_rejection::{decision_rejected_response, dry_run_summary, validation_rejected};
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, CommitMutationBranch, CorePipelineError,
     CoreResult, CoreService, InvocationContext, PipelineResponse, TaskRequirement,
@@ -22,7 +21,16 @@ use crate::policy::workflow::{
     acceptance_policy_for_control, effective_control_level, project_workflow_policy,
     resolve_task_control_authority, ProjectWorkflowPolicy,
 };
-use crate::policy::write_ticket::normalized_string_set;
+use crate::projection::{
+    active_acceptance_criteria_for_task, build_state_summary, guarantee_display_for_invocation,
+    next_actions_for_state, project_state_projection, projected_blocker_refs,
+    projected_close_basis, projected_evidence_summary_for_criteria, SummaryBuild,
+};
+use crate::record_refs::state_ref;
+use crate::task_policy::{initial_work_phase, resolve_requested_mode};
+use crate::task_state::{normalize_display_text, StoredScope};
+use crate::write_ticket::normalized_string_set;
+use crate::write_ticket::{projected_write_ticket_summary, workspace_context_matches};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
@@ -330,7 +338,7 @@ fn plan_intake_mutations(
     let task_id = if create_new {
         match request.envelope.task_id.as_ref().cloned() {
             Some(task_id) => task_id,
-            None => allocate_task_id(service, store)?,
+            None => allocate_task_id(service.durable_id_generator(), store)?,
         }
     } else {
         TaskId::new(
@@ -361,7 +369,14 @@ fn plan_intake_mutations(
             &task_id,
             "initial_source_refs",
             &request.initial_source_refs,
-        )?
+        )
+        .map_err(|error| {
+            crate::error_boundary::artifact::artifact_policy_plan_error(
+                &request.envelope,
+                project_state,
+                error,
+            )
+        })?
     } else {
         Vec::new()
     };
@@ -375,7 +390,14 @@ fn plan_intake_mutations(
             "lineage.carry_forward.source_refs",
             &lineage.carried_source_refs,
             Some(&predecessor_task_id),
-        )?;
+        )
+        .map_err(|error| {
+            crate::error_boundary::artifact::artifact_policy_plan_error(
+                &request.envelope,
+                project_state,
+                error,
+            )
+        })?;
         for source_ref in carried_source_refs {
             if !initial_source_refs.contains(&source_ref) {
                 initial_source_refs.push(source_ref);
@@ -426,9 +448,12 @@ fn plan_intake_mutations(
                     "acceptance criterion statements must not be empty",
                 );
             }
-            let acceptance_criterion_id =
-                allocate_acceptance_criterion_id(service, store, &reserved_ids)
-                    .map_err(PlanError::Core)?;
+            let acceptance_criterion_id = allocate_acceptance_criterion_id(
+                service.durable_id_generator(),
+                store,
+                &reserved_ids,
+            )
+            .map_err(PlanError::Core)?;
             reserved_ids.insert(acceptance_criterion_id.as_str().to_owned());
             criteria.push(AcceptanceCriterion {
                 acceptance_criterion_id,
@@ -663,12 +688,10 @@ fn project_intake_response(
     let pending_refs = if create_new {
         Vec::new()
     } else {
-        projected_pending_user_action_refs(
-            store,
-            &task_id,
-            planned_state_version,
-            &user_action_now,
-        )?
+        projected_pending_user_action_refs(store, &task_id, planned_state_version, &user_action_now)
+            .map_err(|error| {
+                user_action_service_plan_error(&request.envelope, project_state, error)
+            })?
     };
     let blocker_refs = if create_new {
         Vec::new()
@@ -714,7 +737,14 @@ fn project_intake_response(
             ),
             &acceptance_criteria,
         ),
-    )?;
+    )
+    .map_err(|error| {
+        crate::error_boundary::close_readiness::close_readiness_plan_error(
+            &request.envelope,
+            &projected_project_state,
+            error,
+        )
+    })?;
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
     let write_ticket_summary = if create_new {
@@ -992,7 +1022,7 @@ fn plan_task_lineage(
                 "baseline carry-forward requires matching predecessor Task and Change Unit baselines",
             );
         }
-        if !super::workspace_context_matches(&change_unit, verified_invocation)? {
+        if !workspace_context_matches(&change_unit, verified_invocation)? {
             return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),

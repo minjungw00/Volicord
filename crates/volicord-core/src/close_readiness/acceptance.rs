@@ -3,15 +3,13 @@ use super::change_control::task_ref_for_close;
 use super::facts::{workflow_policy_for_close_context, CloseReadinessFacts};
 use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
-use crate::methods::{
-    change_unit_ref, state_ref, store_error_plan, stored_refs_to_state_refs,
-    user_action_service_plan_error, PlanError,
-};
+use super::CloseReadinessError;
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness::{
     current_final_acceptance, current_residual_risk_acceptance_coverage,
     final_acceptance_requirement,
 };
+use crate::record_refs::{change_unit_ref, state_ref, stored_refs_to_state_refs};
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::{BaselineRef, ChangeUnitId};
 use volicord_types::product_path::{path_is_within, paths_are_authorized};
@@ -35,7 +33,7 @@ pub(super) fn terminal_blockers(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     now: &UtcTimestamp,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     match request.intent {
         CloseIntent::Cancel => {
             Ok(
@@ -77,7 +75,7 @@ pub(super) fn completion_authority_blockers(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     now: &UtcTimestamp,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
@@ -160,7 +158,7 @@ pub(super) fn completion_acceptance_blockers(
     context: &mut CloseReadinessFacts,
     risk_acceptance_coverage: &[RiskAcceptanceCoverage],
     has_evidence_blockers: bool,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
 
@@ -233,7 +231,7 @@ fn pending_user_action_refs_for_close_operation(
     context: &mut CloseReadinessFacts,
     operation: UserActionOperation,
     now: &UtcTimestamp,
-) -> Result<Vec<StateRecordRef>, PlanError> {
+) -> Result<Vec<StateRecordRef>, CloseReadinessError> {
     let authorities =
         pending_user_action_authorities_for_context(store, project_state, request, context)?;
     let current_change_unit_id = context
@@ -281,26 +279,25 @@ fn pending_user_action_refs_for_close_operation(
 
 fn pending_user_action_authorities_for_context(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
+    _project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
-) -> Result<Vec<UserActionAuthority>, PlanError> {
+) -> Result<Vec<UserActionAuthority>, CloseReadinessError> {
     if let Some(authorities) = &context.pending_user_action_authorities {
         return Ok(authorities.clone());
     }
-    let authorities = pending_user_action_authorities(store, &request.task_id, &context.now)
-        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
+    let authorities = pending_user_action_authorities(store, &request.task_id, &context.now)?;
     context.pending_user_action_authorities = Some(authorities.clone());
     Ok(authorities)
 }
 
 fn resolved_judgment_authorities_for_context(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
+    _project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     judgment_kind: JudgmentKind,
-) -> Result<Vec<UserActionAuthority>, PlanError> {
+) -> Result<Vec<UserActionAuthority>, CloseReadinessError> {
     if let Some(authorities) = &context.resolved_judgment_authorities {
         return Ok(authorities
             .iter()
@@ -315,10 +312,7 @@ fn resolved_judgment_authorities_for_context(
         return Ok(authorities.clone());
     }
     let authorities =
-        resolved_user_action_authorities(store, &request.task_id, judgment_kind, &context.now)
-            .map_err(|error| {
-                user_action_service_plan_error(&request.envelope, project_state, error)
-            })?;
+        resolved_user_action_authorities(store, &request.task_id, judgment_kind, &context.now)?;
     context
         .stored_resolved_judgment_authorities
         .insert(judgment_kind, authorities.clone());
@@ -395,7 +389,7 @@ fn cancellation_authority_blocker(
     project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
-) -> Result<Option<CloseReadinessBlocker>, PlanError> {
+) -> Result<Option<CloseReadinessBlocker>, CloseReadinessError> {
     let current_change_unit_id = context
         .current_change_unit
         .as_ref()
@@ -495,7 +489,7 @@ fn final_acceptance_blocker(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     has_evidence_blockers: bool,
-) -> Result<Option<CloseReadinessBlocker>, PlanError> {
+) -> Result<Option<CloseReadinessBlocker>, CloseReadinessError> {
     let acceptance_policy = context.task.acceptance_policy;
     let control = context.task.effective_control_level;
     let acceptance_required = match control {
@@ -581,7 +575,7 @@ fn light_completion_without_acceptance_allowed(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     has_evidence_blockers: bool,
-) -> Result<bool, PlanError> {
+) -> Result<bool, CloseReadinessError> {
     if context.task.effective_control_level != TaskControlLevel::Light {
         return Ok(false);
     }
@@ -712,7 +706,7 @@ fn has_current_sensitive_approval_for_close(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     now: &UtcTimestamp,
-) -> Result<bool, PlanError> {
+) -> Result<bool, CloseReadinessError> {
     let Some(close_basis) = context.current_close_basis.clone() else {
         return Ok(false);
     };
@@ -755,7 +749,7 @@ pub(super) fn risk_acceptance_coverage(
     project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
-) -> Result<Vec<RiskAcceptanceCoverage>, PlanError> {
+) -> Result<Vec<RiskAcceptanceCoverage>, CloseReadinessError> {
     let Some(basis) = context.current_close_basis.clone() else {
         return Ok(Vec::new());
     };
@@ -794,7 +788,7 @@ fn non_current_judgment_refs_for_plan(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     judgment_kind: JudgmentKind,
-) -> Result<Vec<StateRecordRef>, PlanError> {
+) -> Result<Vec<StateRecordRef>, CloseReadinessError> {
     if let Some(refs) = context.non_current_judgment_refs.get(&judgment_kind) {
         return Ok(refs.clone());
     }
@@ -805,7 +799,7 @@ fn non_current_judgment_refs_for_plan(
             project_state.state_version,
             &context.now,
         )
-        .map_err(|error| store_error_plan(&request.envelope, project_state, error))
+        .map_err(CorePipelineError::from)
         .map(stored_refs_to_state_refs)?;
     context
         .non_current_judgment_refs

@@ -1,22 +1,28 @@
-use super::close_readiness::{close_next_action, plan_close_readiness, CloseReadinessRequest};
-use super::{
-    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
-    close_state_summary_text, core_error_response, evidence_gate_summary_text,
-    evidence_summary_for_display, guarantee_display_from_profile, next_actions_for_state,
-    normalize_next_action_collection, plan_error_response, prepare_or_response,
-    primary_next_action, profile_summary_text, project_continuity_summary_from_record,
-    projected_blocker_refs, projected_evidence_summary, projected_write_ticket_summary, state_ref,
-    summary_card_for_core, validation_plan_error, write_ticket_summary_text, PlanError,
-    SummaryBuild, SummaryCardBuild,
+use crate::close_readiness::{close_next_action, plan_close_readiness, CloseReadinessRequest};
+use crate::continuity::project_continuity_summary_from_record;
+use crate::error_boundary::{
+    store::{core_error_response, plan_error_response},
+    user_action::user_action_service_plan_error,
 };
+use crate::method_execution::{prepare_or_response, PlanError};
+use crate::method_rejection::validation_plan_error;
 use crate::pipeline::{
     read_only_branch, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::close_readiness::is_terminal_lifecycle;
-use crate::policy::evidence::{state_record_ref_identity_key, unique_state_record_refs};
 use crate::policy::workflow::{project_workflow_policy, resolve_task_control_authority};
+use crate::projection::{
+    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
+    close_state_summary_text, evidence_gate_summary_text, evidence_summary_for_display,
+    guarantee_display_from_profile, next_actions_for_state, normalize_next_action_collection,
+    primary_next_action, profile_summary_text, projected_blocker_refs, projected_evidence_summary,
+    summary_card_for_core, unique_next_actions, write_ticket_summary_text, SummaryBuild,
+    SummaryCardBuild,
+};
+use crate::record_refs::state_ref;
+use crate::write_ticket::projected_write_ticket_summary;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader, TaskRecord};
@@ -280,7 +286,8 @@ fn status_result_fields(
             )
         };
         let all_pending_user_actions =
-            projected_pending_user_action_refs(store, &task_id, state_version, &user_action_now)?;
+            projected_pending_user_action_refs(store, &task_id, state_version, &user_action_now)
+                .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
         card_pending_user_action_count = all_pending_user_actions.len();
         if include.pending_user_actions {
             pending_user_action_summaries =
@@ -304,7 +311,14 @@ fn status_result_fields(
             project_state,
             CloseReadinessRequest::check(envelope.clone(), task_id.clone()),
             &user_action_now,
-        )?;
+        )
+        .map_err(|error| {
+            crate::error_boundary::close_readiness::close_readiness_plan_error(
+                envelope,
+                project_state,
+                error,
+            )
+        })?;
         let lifecycle_phase = task.lifecycle_phase;
         let terminal_close_state = match lifecycle_phase {
             TaskLifecyclePhase::Completed => Some(CloseState::Closed),
@@ -655,31 +669,5 @@ fn close_next_actions(blockers: &[CloseReadinessBlocker]) -> Vec<NextActionSumma
     blockers
         .iter()
         .flat_map(|blocker| blocker.next_actions.clone())
-        .collect()
-}
-
-pub(super) fn unique_next_actions(actions: Vec<NextActionSummary>) -> Vec<NextActionSummary> {
-    let mut seen = BTreeSet::new();
-    actions
-        .into_iter()
-        .filter_map(|mut action| {
-            action.required_refs = unique_state_record_refs(action.required_refs);
-            let mut required_ref_keys = action
-                .required_refs
-                .iter()
-                .map(state_record_ref_identity_key)
-                .collect::<Vec<_>>();
-            required_ref_keys.sort();
-            let key = serde_json::to_string(&(
-                &action.action_kind,
-                &action.owner_method,
-                &action.allowed_operation_categories,
-                &action.label,
-                &action.blocking_question,
-                required_ref_keys,
-            ))
-            .expect("serializing the closed action identity tuple cannot fail");
-            seen.insert(key).then_some(action)
-        })
         .collect()
 }

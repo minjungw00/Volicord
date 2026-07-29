@@ -1,26 +1,36 @@
-use super::close_readiness::{
+use super::MethodPlan;
+use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_authorities,
     plan_projected_close_readiness,
 };
-use super::user_action_continuity::plan_user_action_continuity_records;
-use super::{
-    active_acceptance_criteria_for_task, allocate_user_action_request_id,
-    allocate_user_action_resolution_id, build_state_summary, decision_rejected_response,
-    dry_run_summary, evidence_summary_for_display, guarantee_display_for_invocation,
-    mutation_method_policy, next_actions_for_state, no_active_task_response, object_from_value,
-    observe_request_product_paths, plan_error_response, prepare_or_response,
-    project_state_projection, projected_blocker_refs, projected_close_basis,
-    projected_evidence_summary, projected_write_ticket_summary,
-    record_core_workflow_metric_best_effort, rejected_pipeline_response,
-    response_committed_fresh_effect, state_ref, state_ref_from_stored, task_lifecycle_mutation,
-    user_action_service_plan_error, validation_plan_error, validation_rejected, MethodPlan,
-    PlanError, SummaryBuild,
+use crate::continuity::{plan_user_action_continuity_records, ContinuityPlanningError};
+use crate::error_boundary::{
+    product_path::observe_request_product_paths, store::plan_error_response,
+    user_action::user_action_service_plan_error,
+};
+use crate::identity::{allocate_user_action_request_id, allocate_user_action_resolution_id};
+use crate::json_object::object_from_value;
+use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
+use crate::method_rejection::{
+    decision_rejected_response, dry_run_summary, no_active_task_response,
+    rejected_pipeline_response, validation_plan_error, validation_rejected,
 };
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
     CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
     TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
 };
+use crate::projection::{
+    active_acceptance_criteria_for_task, build_state_summary, evidence_summary_for_display,
+    guarantee_display_for_invocation, next_actions_for_state, project_state_projection,
+    projected_blocker_refs, projected_close_basis, projected_evidence_summary,
+    task_lifecycle_mutation, SummaryBuild,
+};
+use crate::record_refs::{state_ref, state_ref_from_stored};
+use crate::workflow_diagnostics::{
+    record_core_workflow_metric_best_effort, response_committed_fresh_effect,
+};
+use crate::write_ticket::projected_write_ticket_summary;
 use serde_json::json;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, TaskRecord,
@@ -225,7 +235,8 @@ fn plan_request_user_action(
         );
     };
     let user_action_request_id =
-        allocate_user_action_request_id(service, store).map_err(PlanError::Core)?;
+        allocate_user_action_request_id(service.durable_id_generator(), store)
+            .map_err(PlanError::Core)?;
     let materialized = materialize_user_action_request(UserActionMaterializationInput {
         context: UserActionPersistenceContext {
             project_id: request.envelope.project_id.clone(),
@@ -419,7 +430,14 @@ fn projected_user_action_state(
         envelope,
         &task_id,
         close_context,
-    )?;
+    )
+    .map_err(|error| {
+        crate::error_boundary::close_readiness::close_readiness_plan_error(
+            envelope,
+            &projected_project_state,
+            error,
+        )
+    })?;
     let state = build_state_summary(SummaryBuild {
         store,
         project_id: &envelope.project_id,
@@ -685,8 +703,8 @@ fn plan_resolve_user_action(
         basis,
     )
     .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
-    let resolution_id =
-        allocate_user_action_resolution_id(service, store).map_err(PlanError::Core)?;
+    let resolution_id = allocate_user_action_resolution_id(service.durable_id_generator(), store)
+        .map_err(PlanError::Core)?;
     let (resolution_body, mut derived_refs) = construct_domain_user_action_resolution(
         store,
         &UserActionConstructionContext {
@@ -753,7 +771,7 @@ fn plan_resolve_user_action(
         Some(planned_state_version),
     );
     let continuity_plans = plan_user_action_continuity_records(
-        service,
+        service.durable_id_generator(),
         store,
         project_state,
         &request.envelope,
@@ -764,7 +782,13 @@ fn plan_resolve_user_action(
         &resolution_body,
         &resolution_ref,
         &now,
-    )?;
+    )
+    .map_err(|error| match error {
+        ContinuityPlanningError::Core(error) => PlanError::Core(error),
+        ContinuityPlanningError::UserAction(error) => {
+            user_action_service_plan_error(&request.envelope, project_state, error)
+        }
+    })?;
     derived_refs.extend(continuity_plans.iter().map(|plan| plan.record_ref.clone()));
     let mut pending_authorities = pending_user_action_authorities(store, &task_id, &now)
         .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;

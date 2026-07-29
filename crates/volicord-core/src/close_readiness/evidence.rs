@@ -3,13 +3,11 @@ use super::change_control::task_ref_for_close;
 use super::facts::{required_criteria_for_close_context, CloseReadinessFacts};
 use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
-use crate::methods::evidence_facts::{
+use super::CloseReadinessError;
+use crate::artifact::persistent_artifact_is_verified_current;
+use crate::evidence_facts::{
     projected_evidence_observation_provenance_facts, stored_evidence_observation_capture_relevance,
     stored_evidence_observation_provenance_facts,
-};
-use crate::methods::{
-    change_unit_ref, persistent_artifact_is_verified_current, state_ref, store_error_plan,
-    PlanError,
 };
 use crate::pipeline::CorePipelineError;
 use crate::policy::close_readiness_evidence::{
@@ -24,6 +22,7 @@ use crate::policy::evidence_target::{
     projected_observation_matches_close_basis, stored_observation_matches_close_basis,
     EvidenceObservationBasis,
 };
+use crate::record_refs::{change_unit_ref, state_ref};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::BaselineRef;
@@ -40,7 +39,7 @@ pub(super) fn completion_blockers(
     project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &CloseReadinessFacts,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
         change_unit_ref(
             &request.envelope.project_id,
@@ -90,7 +89,7 @@ fn close_evidence_blockers(
     request: &CloseReadinessRequest,
     context: &CloseReadinessFacts,
     change_unit_ref: Option<StateRecordRef>,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let Some(summary) = context.evidence_summary.as_ref() else {
         return Ok(Vec::new());
     };
@@ -166,11 +165,11 @@ fn close_evidence_blockers(
 
 fn close_evidence_issue_for_item(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
+    _project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &CloseReadinessFacts,
     item: &EvidenceCoverageItem,
-) -> Result<Option<CloseEvidenceIssue>, PlanError> {
+) -> Result<Option<CloseEvidenceIssue>, CloseReadinessError> {
     let EvidenceTarget::AcceptanceCriterion {
         acceptance_criterion_id,
     } = &item.target
@@ -270,7 +269,7 @@ fn close_evidence_issue_for_item(
         }
         let record = store
             .evidence_observation_record(observation_ref.record_id.as_str())
-            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+            .map_err(CorePipelineError::from)?;
         let Some(record) = record else {
             dispositions.push(CloseEvidenceObservationDisposition::Weak);
             continue;
@@ -325,7 +324,7 @@ fn unavailable_close_artifact_refs(
     project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &CloseReadinessFacts,
-) -> Result<Vec<StateRecordRef>, PlanError> {
+) -> Result<Vec<StateRecordRef>, CloseReadinessError> {
     let mut seen = BTreeSet::new();
     let mut unavailable = Vec::new();
     let required_criteria = required_criteria_for_close_context(context)?;
@@ -358,7 +357,7 @@ fn unavailable_close_artifact_refs(
             }
             let stored = store
                 .artifact_record(artifact_ref.artifact_id.as_str())
-                .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+                .map_err(CorePipelineError::from)?;
             let Some(stored) = stored else {
                 unavailable.push(state_ref);
                 continue;
@@ -368,7 +367,7 @@ fn unavailable_close_artifact_refs(
                     artifact_ref.artifact_id.as_str(),
                     request.task_id.as_str(),
                 )
-                .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+                .map_err(CorePipelineError::from)?;
             let stored_available = persistent_artifact_is_verified_current(store, &stored)?;
             let stored_redaction_state = stored.redaction_state;
             let artifact_sha256 = artifact_ref.sha256.as_ref();
@@ -419,9 +418,9 @@ fn close_basis_artifact_ref_unavailable(
     store: &CoreProjectStore,
     request: &CloseReadinessRequest,
     record_ref: &StateRecordRef,
-    project_state: &ProjectStateHeader,
+    _project_state: &ProjectStateHeader,
     context: &CloseReadinessFacts,
-) -> Result<bool, PlanError> {
+) -> Result<bool, CloseReadinessError> {
     if let Some(artifact_ref) = context
         .projected_artifacts
         .iter()
@@ -436,10 +435,10 @@ fn close_basis_artifact_ref_unavailable(
     }
     let stored = store
         .artifact_record(record_ref.record_id.as_str())
-        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+        .map_err(CorePipelineError::from)?;
     let owner_link_exists = store
         .artifact_has_task_owner_link(record_ref.record_id.as_str(), request.task_id.as_str())
-        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+        .map_err(CorePipelineError::from)?;
     Ok(stored
         .as_ref()
         .map(|record| {

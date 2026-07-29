@@ -30,6 +30,14 @@ decoder를 반복하거나 Store 손상을 구성하지 않습니다. 이 구분
 Write Ticket, replay identity, reconciliation observation, UserAction과 그 밖의
 Core 지향 record family 모두에 적용됩니다.
 
+`volicord-core`에서는 재사용 가능한 의미 담당자 테스트를 그 테스트가 보호하는
+`identity.rs`, `artifact.rs`, `projection.rs`, `continuity/`, `write_ticket/`,
+`close_readiness/`, 집중 `error_boundary/` 모듈 옆에 둡니다. 이 테스트는 typed
+입력을 사용하고 typed fact, policy 판단, retry 동작, 정확한 경계 매핑 하나를
+검증합니다. 공개 메서드 조율, 응답 계열, replay, 커밋 효과 matrix는
+`methods/tests/`에 둡니다. 메서드 통합 테스트가 재사용 담당자 로직의 유일한
+coverage가 되면 안 됩니다.
+
 `volicord-user-action-service`에서는 의미 검증, 정규 body와 identity 구성,
 authority, lifecycle, materialization, 영속화 매핑, resolution, continuity,
 neutral projection 동작을 unit test가 담당합니다. Core 테스트는 요청 조율,

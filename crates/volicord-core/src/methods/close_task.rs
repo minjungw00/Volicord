@@ -1,24 +1,32 @@
-use super::close_readiness::{
+use crate::close_readiness::{
     assess_close_readiness, close_next_action, CloseReadinessAssessment, CloseReadinessFacts,
     CloseReadinessRequest,
 };
-use super::{
-    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
-    close_state_text, dry_run_summary, elapsed_micros, evidence_gate_summary_text,
-    evidence_summary_for_display, guarantee_display_from_profile, mutation_method_policy,
-    object_from_value, plan_error_response, plan_project_continuity_record, prepare_or_response,
-    primary_next_action, profile_summary_text, projected_write_ticket_summary,
-    record_core_workflow_metric_best_effort, response_committed_fresh_effect, state_ref,
-    summary_card_for_core, validation_rejected, write_ticket_summary_text, CloseTaskPlan,
-    PlanError, PlannedProjectContinuityRecord, ProjectContinuityDraft,
-    ProjectContinuityPlanContext, SummaryBuild, SummaryCardBuild,
+use crate::continuity::{
+    plan_project_continuity_record, PlannedProjectContinuityRecord, ProjectContinuityDraft,
+    ProjectContinuityPlanContext,
 };
+use crate::error_boundary::store::plan_error_response;
+use crate::json_object::object_from_value;
+use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
+use crate::method_rejection::{dry_run_summary, validation_rejected};
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, no_effect_result_branch, read_only_branch,
     CommitMutationBranch, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
+use crate::projection::{
+    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
+    close_state_text, evidence_gate_summary_text, evidence_summary_for_display,
+    guarantee_display_from_profile, primary_next_action, profile_summary_text,
+    summary_card_for_core, write_ticket_summary_text, SummaryBuild, SummaryCardBuild,
+};
+use crate::record_refs::state_ref;
+use crate::workflow_diagnostics::{
+    elapsed_micros, record_core_workflow_metric_best_effort, response_committed_fresh_effect,
+};
+use crate::write_ticket::projected_write_ticket_summary;
 use serde_json::json;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
@@ -41,6 +49,17 @@ use volicord_types::values::{
     TaskLifecyclePhase, TaskMode, TaskResult, UtcTimestamp, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::agent_safe_pending_user_action_summaries;
+
+struct CloseTaskPlan {
+    task_id: TaskId,
+    change_unit_id: Option<ChangeUnitId>,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_kind: String,
+    event_payload: JsonObject,
+    result_fields: CloseAssessmentResultFields,
+    current_close_basis: Option<CurrentCloseBasis>,
+    blockers: Vec<CloseReadinessBlocker>,
+}
 
 /// Canonical close-method request after request-local identity and intent validation.
 #[derive(Debug, Clone, PartialEq)]
@@ -530,8 +549,14 @@ fn plan_close_task(
     request: CloseTaskPlanRequest,
     now: &UtcTimestamp,
 ) -> Result<CloseTaskPlan, PlanError> {
-    let assessment =
-        assess_close_readiness(store, project_state, request.readiness_request(), now)?;
+    let assessment = assess_close_readiness(store, project_state, request.readiness_request(), now)
+        .map_err(|error| {
+            crate::error_boundary::close_readiness::close_readiness_plan_error(
+                &request.envelope,
+                project_state,
+                error,
+            )
+        })?;
     let mutations = plan_close_task_mutations(now, request, assessment)?;
     Ok(project_close_task_response(
         store,
@@ -861,7 +886,7 @@ fn plan_close_completion_continuity_records(
     };
     let source_change_unit_id = Some(close_basis.change_unit_id.clone());
     let continuity_context = ProjectContinuityPlanContext {
-        service,
+        id_generator: service.durable_id_generator(),
         store,
         project_id: &request.envelope.project_id,
         source_task_id: &request.task_id,

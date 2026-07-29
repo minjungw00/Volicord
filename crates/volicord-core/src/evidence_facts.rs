@@ -1,7 +1,5 @@
-use super::{
-    artifact_ref_from_verified_record, object_from_value, persistent_artifact_is_verified_current,
-    state_ref,
-};
+use crate::artifact::{artifact_ref_from_verified_record, persistent_artifact_is_verified_current};
+use crate::json_object::object_from_value;
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::{
     close_readiness_evidence::{CloseEvidenceRunFacts, CloseEvidenceSummaryFacts},
@@ -16,6 +14,7 @@ use crate::policy::{
         EvidenceObservationBasis,
     },
 };
+use crate::record_refs::state_ref;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     CoreProjectStore, EvidenceObservationRecord, EvidenceSummaryRecord, StoredUserActionRecordSet,

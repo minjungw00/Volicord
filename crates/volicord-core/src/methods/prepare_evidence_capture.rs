@@ -1,10 +1,13 @@
-use super::{
-    allocate_evidence_capture_intent_id, artifact_sha256_is_lowercase_hex, baseline_matches,
-    baseline_stale_response, checked_derived_expiration, dry_run_summary, mutation_method_policy,
-    no_active_change_unit_response, no_active_task_response, normalize_display_text,
-    object_from_value, plan_error_response, prepare_or_response, rejected_pipeline_response,
-    state_ref, validation_plan_error, validation_rejected, workspace_context_matches,
-    workspace_stale_response, MethodPlan, PlanError,
+use super::MethodPlan;
+use crate::artifact::artifact_sha256_is_lowercase_hex;
+use crate::error_boundary::store::plan_error_response;
+use crate::identity::allocate_evidence_capture_intent_id;
+use crate::json_object::object_from_value;
+use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
+use crate::method_rejection::{
+    baseline_stale_response, checked_derived_expiration, dry_run_summary,
+    no_active_change_unit_response, no_active_task_response, rejected_pipeline_response,
+    validation_plan_error, validation_rejected, workspace_stale_response,
 };
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
@@ -14,6 +17,9 @@ use crate::pipeline::{
 use crate::policy::evidence_target::{
     acceptance_criterion_target_is_current, supplemental_claim_target_matches,
 };
+use crate::record_refs::state_ref;
+use crate::task_state::normalize_display_text;
+use crate::write_ticket::{baseline_matches, workspace_context_matches};
 use chrono::Duration;
 use serde_json::json;
 use volicord_store::core_pipeline::{
@@ -244,7 +250,8 @@ fn plan_prepare_evidence_capture(
     }
 
     let capture_intent_id =
-        allocate_evidence_capture_intent_id(service, store).map_err(PlanError::Core)?;
+        allocate_evidence_capture_intent_id(service.durable_id_generator(), store)
+            .map_err(PlanError::Core)?;
     let created_at = operation_now.clone();
     let expires_at = checked_derived_expiration(
         &created_at,

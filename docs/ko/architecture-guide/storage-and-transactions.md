@@ -166,8 +166,20 @@ context에서 Runtime Home을 파생합니다.
    요구사항, 요청 해시, 프로젝트 상태, 검증된 연결 맥락, 재실행 가능성,
    Task 요구사항, 최신성, `operation_category`를 검증합니다.
 2. [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)의
-   메서드 모듈이 메서드별 계획을 수행하고 `OwnerPipelineBranch`를
-   반환합니다.
+   메서드 모듈이 요청별 분기와 응답을 조율합니다.
+   [`identity.rs`](../../../crates/volicord-core/src/identity.rs),
+   [`artifact.rs`](../../../crates/volicord-core/src/artifact.rs),
+   [`continuity/`](../../../crates/volicord-core/src/continuity/),
+   [`write_ticket/`](../../../crates/volicord-core/src/write_ticket/),
+   [`close_readiness/`](../../../crates/volicord-core/src/close_readiness/) 같은
+   집중 Core 담당자가 typed fact에 대한 재사용 가능한 의미 계획을 수행합니다.
+   그 뒤 메서드가 `OwnerPipelineBranch`를 반환합니다.
+
+의미 담당자는 공개 메서드 응답을 구성하거나 Store 실패를 매핑하지 않습니다.
+[`method_execution.rs`](../../../crates/volicord-core/src/method_execution.rs)는 공유
+실행 메커니즘을 담당하고,
+[`error_boundary/`](../../../crates/volicord-core/src/error_boundary/) 아래의 집중
+모듈은 메서드 응답 경계에서 typed Store 또는 의미 담당자 실패를 변환합니다.
 
 공통 preflight 뒤 계획까지 진행하는 요청은 프로젝트 범위 정규 Core UTC 시계에서
 `operation_now`를 정확히 하나 얻습니다. `SystemClock`에서 Store는 SQLite 실시간 UTC,

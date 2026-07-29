@@ -24,6 +24,18 @@
 - 표시 문구만: [템플릿 본문](../template-bodies.md).
 - 제품 전체 실패 범주 의미와 선택 경계: [실패 모델](../failure-model.md).
 
+구현은 이 경로 경계를 명시적으로 유지합니다.
+[`method_rejection.rs`](../../../../crates/volicord-core/src/method_rejection.rs)는
+메서드 중립적인 거부 응답과 dry-run 응답 구성을 담당하고,
+[`error_boundary/`](../../../../crates/volicord-core/src/error_boundary/) 아래의 집중
+모듈은 Store 또는 의미 담당자의 typed 실패를 변환합니다.
+[`artifact.rs`](../../../../crates/volicord-core/src/artifact.rs),
+[`continuity/`](../../../../crates/volicord-core/src/continuity/),
+[`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/) 같은 의미
+담당자는 typed fact 또는 오류를 반환하며 공개 응답 분기를 구성하지 않습니다.
+메서드 모듈은 메서드별 차단 결과와 최종 응답 구성을 유지합니다. 이 소스 경로는 이
+문서가 담당하는 공개 경로 규칙을 구현하지만 다시 정의하지 않습니다.
+
 ## 오류와 차단 사유
 
 | 개념 | 공개 형태 | 세부 항목 |

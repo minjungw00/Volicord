@@ -1,5 +1,5 @@
 use super::*;
-use crate::methods::close_readiness::test_support;
+use crate::close_readiness::test_support;
 use volicord_types::ids::AcceptanceCriterionId;
 use volicord_types::schema::AcceptanceCriterion;
 use volicord_types::values::EvidenceRequirement;

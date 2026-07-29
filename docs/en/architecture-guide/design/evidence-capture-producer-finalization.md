@@ -12,9 +12,9 @@ producer finalization, and the Run commit.
 capture intent. CLI fulfillment code executes or correlates the owned source
 path, while Store writes the immutable receipt and its content-bound staging
 data. `record_run` loads strict current intent and receipt facts through
-`methods/evidence_facts.rs`, evaluates them with the focused evidence policy
-modules, and includes producer finalization in the same grouped Store mutation
-as the Run.
+`evidence_facts.rs`, delegates artifact-source verification to `artifact.rs`,
+evaluates the typed facts with the focused evidence policy modules, and
+includes producer finalization in the same grouped Store mutation as the Run.
 
 Observation and producer authority remain distinct. A stored source
 observation is not a producer until the current Core policy accepts the full
@@ -34,10 +34,13 @@ binding and the Run commit succeeds.
 
 ## Responsibility boundaries
 
-Core method code validates the request and plans effects. Core evidence policy
-modules own provenance, binding, target, relevance, and close-readiness
-evaluation over typed facts. CLI fulfillment owns command or tool-source
-collection. Store owns intent, receipt, staging, producer, and Run persistence.
+Core method code validates the request, coordinates focused owners, and
+composes the method response. `evidence_facts.rs` owns reusable typed fact
+acquisition, `artifact.rs` owns reusable artifact-source verification, and
+Core evidence policy modules own provenance, binding, target, relevance, and
+close-readiness evaluation over typed facts. CLI fulfillment owns command or
+tool-source collection. Store owns intent, receipt, staging, producer, and Run
+persistence.
 
 ## Execution flow
 
@@ -68,10 +71,12 @@ attestation.
 
 ## Implementation routes
 
-- [`crates/volicord-core/src/methods/prepare_evidence_capture.rs`](../../../../crates/volicord-core/src/methods/prepare_evidence_capture.rs),
-  [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs), and
-  [`evidence_facts.rs`](../../../../crates/volicord-core/src/methods/evidence_facts.rs):
-  method planning and shared fact acquisition.
+- [`crates/volicord-core/src/methods/prepare_evidence_capture.rs`](../../../../crates/volicord-core/src/methods/prepare_evidence_capture.rs)
+  and [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs):
+  request-specific method orchestration and response composition.
+- [`crates/volicord-core/src/evidence_facts.rs`](../../../../crates/volicord-core/src/evidence_facts.rs)
+  and [`artifact.rs`](../../../../crates/volicord-core/src/artifact.rs):
+  shared typed fact acquisition and artifact-source verification.
 - [`crates/volicord-core/src/policy/`](../../../../crates/volicord-core/src/policy/):
   focused evidence provenance, binding, relevance, target, and close-readiness
   policy.

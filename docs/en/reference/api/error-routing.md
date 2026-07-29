@@ -26,6 +26,20 @@ Adjacent owners:
 - Product-wide failure-category meanings and selection boundaries; see the
   [Failure Model](../failure-model.md).
 
+Implementation keeps this routing boundary explicit:
+[`method_rejection.rs`](../../../../crates/volicord-core/src/method_rejection.rs)
+owns method-neutral rejected and dry-run response construction, and focused
+modules under
+[`error_boundary/`](../../../../crates/volicord-core/src/error_boundary/)
+translate Store or semantic-owner typed failures. Semantic owners such as
+[`artifact.rs`](../../../../crates/volicord-core/src/artifact.rs),
+[`continuity/`](../../../../crates/volicord-core/src/continuity/), and
+[`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/)
+return typed facts or errors and do not construct public response branches.
+Method modules retain method-specific blocked results and final response
+composition. These source routes implement, but do not redefine, the public
+routing rules owned by this document.
+
 ## Error vs blocker
 
 | Concept | Public shape | Detail section |

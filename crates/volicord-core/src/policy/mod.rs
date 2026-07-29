@@ -9,4 +9,3 @@ pub(crate) mod evidence_relevance;
 pub(crate) mod evidence_target;
 pub(crate) mod replay;
 pub(crate) mod workflow;
-pub(crate) mod write_ticket;

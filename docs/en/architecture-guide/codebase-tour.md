@@ -86,8 +86,9 @@ for the reusable semantic model, validation, canonical body and identity,
 Store-backed typed fact acquisition, materialization, persistence mapping,
 resolution, continuity, and projections. Core request orchestration remains in
 [`methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs),
-with User Channel reads and continuity persistence in the adjacent
-`user_action_read.rs` and `user_action_continuity.rs` modules;
+with User Channel reads in the adjacent `user_action_read.rs` module and
+continuity persistence in
+[`continuity/user_action.rs`](../../../crates/volicord-core/src/continuity/user_action.rs);
 reconciliation supplies semantic intent from
 [`methods/reconcile_changes.rs`](../../../crates/volicord-core/src/methods/reconcile_changes.rs).
 

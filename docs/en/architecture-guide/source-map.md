@@ -135,20 +135,29 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, commit orchestration, Store-error detail projection, and neutral typed operational projection of platform-owned Product Repository observation failures. |
+| `crates/volicord-core/src/method_execution.rs` | Method-generic request preparation, mutation policy selection, replay decoding, storage scalar conversion, and the generic method-plan error carrier. It owns no aggregate policy or source-specific error mapping. |
+| `crates/volicord-core/src/method_rejection.rs` | Shared validation and rejection response construction plus method-neutral dry-run summaries. |
+| `crates/volicord-core/src/error_boundary/` | Focused Store, UserAction, close-readiness, artifact-policy, and Product Repository path error mappings at the boundary between each source error model and public method planning. |
 | `crates/volicord-core/src/product_path.rs` | Coordination of shared lexical parsing for caller-supplied paths with platform-owned live Product Repository observations. Store-returned paths arrive as typed values and do not pass through this module. |
-| `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. Production method modules import shared helpers, pipeline and policy functions, Store services, and shared types from their explicit owners; the parent module is not an import prelude. |
-| `crates/volicord-core/src/methods/evidence_facts.rs` | Shared typed Store reads and semantic consistency checks that acquire facts for stored and projected evidence without repeating physical row decoding or owning evidence-policy classification. |
-| `crates/volicord-core/src/methods/close_readiness/mod.rs` | Narrow package surface for close-readiness services, projections, and blocker helpers consumed by method planners. |
-| `crates/volicord-core/src/methods/close_readiness/facts.rs` | Typed current-fact acquisition and projected-fact assembly, including one acceptance-criteria snapshot, one workflow-policy snapshot, and current-handle unresolved-change reads; owns no readiness decision. |
-| `crates/volicord-core/src/methods/close_readiness/change_control.rs` | Task, Change Unit, close-basis, baseline, recovery, unresolved-change, and Write Ticket condition evaluation. |
-| `crates/volicord-core/src/methods/close_readiness/evidence.rs` | Close evidence and artifact availability evaluation through the focused evidence fact and pure policy owners. |
-| `crates/volicord-core/src/methods/close_readiness/acceptance.rs` | Pending close authority, cancellation, sensitive approval, final acceptance, and residual-risk acceptance evaluation. |
-| `crates/volicord-core/src/methods/close_readiness/policy.rs` | Store-independent effective-control resolution and ordered pure combination of typed readiness evaluations into the close state. |
-| `crates/volicord-core/src/methods/close_readiness/blockers.rs` | Canonical typed close blocker construction, Write Ticket blocker projection, and cross-blocker action normalization. |
-| `crates/volicord-core/src/methods/close_readiness/guidance.rs` | Adapter-neutral semantic continuation selection with typed owner methods and operation categories; owns no CLI syntax, capture path, Markdown, rendering, or credentials. |
-| `crates/volicord-core/src/methods/close_readiness/summary.rs` | Full close-operation assessment and deliberate smaller method-neutral readiness projection. |
-| `crates/volicord-core/src/methods/close_readiness/service.rs` | Narrow coordination of fact acquisition, responsibility-owned evaluation, pure policy combination, full close assessment, and method-neutral summary projection. |
-| `crates/volicord-core/src/methods/close_readiness/tests/` | Responsibility-local fact, change-control, evidence, acceptance, policy, blocker, and guidance tests plus close-readiness service integration coverage. |
+| `crates/volicord-core/src/identity.rs` | Generic bounded durable-ID allocation and record-family collision checks over an injected `DurableIdGenerator`; callers do not expose `CoreService` for identity allocation. |
+| `crates/volicord-core/src/artifact.rs` | Artifact verification, integrity and availability facts, and source-reference normalization over typed Store records. |
+| `crates/volicord-core/src/continuity/` | Core continuity planning, projection, Store fact acquisition, durable identity allocation, and UserAction-derived continuity materialization. |
+| `crates/volicord-core/src/evidence_facts.rs` | Shared typed Store reads and semantic consistency checks that acquire facts for stored and projected evidence without repeating physical row decoding or owning evidence-policy classification. |
+| `crates/volicord-core/src/projection.rs` | Adapter-neutral state summaries, semantic next-action normalization and selection, evidence display projection, and shared state-record projections. |
+| `crates/volicord-core/src/record_refs.rs`, `task_state.rs`, `task_policy.rs` | Focused state-record reference conversion, typed Task-state interpretation, and reusable Task policy. |
+| `crates/volicord-core/src/write_ticket/` | Canonical Write Ticket facts, validity and attempt-scope policy, prepare-write semantic planning, and adapter-neutral ticket projection. Public response composition remains in the calling method. |
+| `crates/volicord-core/src/methods/` | Public-method entry points and request-specific orchestration. Production modules import shared responsibilities from their explicit owners; `methods/mod.rs` provides only module wiring and the small method-generic plan carrier. |
+| `crates/volicord-core/src/close_readiness/mod.rs` | Narrow package surface for close-readiness services, projections, and blocker helpers consumed by method planners. |
+| `crates/volicord-core/src/close_readiness/facts.rs` | Typed current-fact acquisition and projected-fact assembly, including one acceptance-criteria snapshot, one workflow-policy snapshot, and current-handle unresolved-change reads; owns no readiness decision. |
+| `crates/volicord-core/src/close_readiness/change_control.rs` | Task, Change Unit, close-basis, baseline, recovery, unresolved-change, and Write Ticket condition evaluation. |
+| `crates/volicord-core/src/close_readiness/evidence.rs` | Close evidence and artifact availability evaluation through the focused evidence fact and pure policy owners. |
+| `crates/volicord-core/src/close_readiness/acceptance.rs` | Pending close authority, cancellation, sensitive approval, final acceptance, and residual-risk acceptance evaluation. |
+| `crates/volicord-core/src/close_readiness/policy.rs` | Store-independent effective-control resolution and ordered pure combination of typed readiness evaluations into the close state. |
+| `crates/volicord-core/src/close_readiness/blockers.rs` | Canonical typed close blocker construction, Write Ticket blocker projection, and cross-blocker action normalization. |
+| `crates/volicord-core/src/close_readiness/guidance.rs` | Adapter-neutral semantic continuation selection with typed owner methods and operation categories; owns no CLI syntax, capture path, Markdown, rendering, or credentials. |
+| `crates/volicord-core/src/close_readiness/summary.rs` | Full close-operation assessment and deliberate smaller method-neutral readiness projection. |
+| `crates/volicord-core/src/close_readiness/service.rs` | Narrow coordination of fact acquisition, responsibility-owned evaluation, pure policy combination, full close assessment, and method-neutral summary projection. |
+| `crates/volicord-core/src/close_readiness/tests/` | Responsibility-local fact, change-control, evidence, acceptance, policy, blocker, and guidance tests plus close-readiness service integration coverage. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | Evidence-capture request validation and planning; consumes target policy for acceptance-criterion and supplemental-claim matching. |
 | `crates/volicord-core/src/methods/record_run.rs` | Run and evidence-update validation and planning; consumes provenance, relevance, target, binding, and close-readiness evidence policy. |
 | `crates/volicord-core/src/methods/close_task.rs` | Request-specific close orchestration: request validation, close-readiness service invocation, terminal mutation planning, and typed result assembly. |
@@ -156,7 +165,6 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/methods/status.rs` | Read-only status projection, including consumption of shared close-readiness evidence policy through Core projection paths. |
 | `crates/volicord-core/src/methods/user_action.rs` | Direct request and resolution method orchestration; consumes shared typed UserAction services and maps their results into method plans and responses. |
 | `crates/volicord-core/src/methods/user_action_read.rs` | User Channel authorization, coherent Store snapshots, originating-result replay, and public method-result projection. |
-| `crates/volicord-core/src/methods/user_action_continuity.rs` | Store fact acquisition, Core-owned continuity identifiers and timestamps, service draft consumption, and persistence sequencing. |
 | `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation-specific planning, including direct consumption of the UserAction service when unresolved changes require typed pending actions. |
 | `crates/volicord-core/src/policy/` | Responsibility-owned reusable policy. Method implementations consume these owners directly rather than obtaining shared policy from sibling method modules. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Pure evidence provenance and assurance classification over typed facts. |

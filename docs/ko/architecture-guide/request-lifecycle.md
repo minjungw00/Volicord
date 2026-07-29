@@ -21,8 +21,10 @@ Codex -> stdio MCP -> public argument DTO -> Core request -> plan
 4. Core 공통 preflight가 typed Agent Session, actor, operation category, project,
    replay identity, expected state, 현재 Task context, 구조 입력을 검증합니다.
 5. 메서드 계획 코드는 일관된 snapshot 하나를 읽고 메서드별 결과 필드를 담은
-   typed 값과 정확한 제안 효과를 만듭니다. 공통 결과 base는 이 단계에서 만들지
-   않습니다.
+   typed 값과 정확한 제안 효과를 만듭니다. 공유 의미 작업은 집중된 identity,
+   artifact, continuity, evidence, Write Ticket, 닫기 준비 상태, projection 담당
+   모듈에 위임합니다. 이 담당 모듈은 typed fact나 plan을 반환하고 메서드 응답을
+   구성하지 않습니다.
 6. 공유 파이프라인이 typed 읽기 전용, 효과 없음, dry-run, 커밋 분기를 선택합니다.
    Mutation 분기는 commit 전제 조건을 다시 검증하고 Store transaction 하나를
    원자적으로 적용합니다.
@@ -78,8 +80,9 @@ Rejected, dry-run, unavailable, corrupt, unsupported-contract, conflict 분기�
 
 ## 쓰기 티켓 흐름
 
-`prepare_write`는 현재 Task, Change Unit, scope, baseline, policy, 민감 승인, 정규
-path, 현재 write-authority fingerprint를 평가합니다. 기존 ticket은 담당 문서의 모든
+`prepare_write`는 `crates/volicord-core/src/write_ticket/`를 통해 현재 Task,
+Change Unit, scope, baseline, policy, 민감 승인, 정규 path, 현재 write-authority
+fingerprint를 평가합니다. 기존 ticket은 담당 문서의 모든
 좌표가 계속 유효할 때만 재사용할 수 있습니다. `record_run`은 ticket을 다시 검증하고
 Run과 같은 commit 안에서 정확히 일치하는 효과만 소비합니다.
 

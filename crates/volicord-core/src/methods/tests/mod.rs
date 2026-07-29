@@ -55,7 +55,12 @@ use volicord_user_action_service::{
     PendingUserActionFactsRequest, UserActionResolutionFactsBody,
 };
 
-use super::*;
+use super::stage_artifact::MAX_STAGED_BODY_BYTES;
+use crate::pipeline::{
+    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
+};
+use crate::record_refs::state_ref;
+use std::collections::BTreeSet;
 
 const PROJECT_ID: &str = "project_methods";
 const CONNECTION_ID: &str = "connection_methods";
@@ -568,7 +573,7 @@ fn test_state_record_ref(
     }
 }
 
-#[path = "../close_readiness/tests/integration.rs"]
+#[path = "../../close_readiness/tests/integration.rs"]
 mod close_readiness;
 mod close_task;
 mod intake;

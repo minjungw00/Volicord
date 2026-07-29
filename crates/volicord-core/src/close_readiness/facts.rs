@@ -1,13 +1,12 @@
-use crate::methods::evidence_facts::load_close_evidence_summary_facts;
-use crate::methods::{
-    active_acceptance_criteria_for_task, no_active_task_response, state_ref_from_stored,
-    store_error_plan, PlanError,
-};
+use super::CloseReadinessError;
+use crate::evidence_facts::load_close_evidence_summary_facts;
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness_evidence::{
     project_close_evidence_summary, required_acceptance_criterion_ids,
 };
 use crate::policy::workflow::{project_workflow_policy, ProjectWorkflowPolicy};
+use crate::projection::active_acceptance_criteria_for_task;
+use crate::record_refs::state_ref_from_stored;
 use std::collections::{BTreeSet, HashMap};
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, TaskRecord, WriteTicketRecord,
@@ -138,32 +137,28 @@ pub(super) fn acquire_close_readiness_facts(
     envelope: &ToolEnvelope,
     task_id: &TaskId,
     now: &UtcTimestamp,
-) -> Result<CloseReadinessFacts, PlanError> {
+) -> Result<CloseReadinessFacts, CloseReadinessError> {
     let task = store
         .task_record(task_id)
-        .map_err(|error| store_error_plan(envelope, project_state, error))?
-        .ok_or_else(|| {
-            PlanError::Response(Box::new(no_active_task_response(envelope, project_state)))
-        })?;
+        .map_err(CorePipelineError::from)?
+        .ok_or(CloseReadinessError::NoActiveTask)?;
     let current_change_unit = store
         .current_change_unit(task_id)
-        .map_err(|error| store_error_plan(envelope, project_state, error))?;
+        .map_err(CorePipelineError::from)?;
     let task_revision = store
         .task_revision_record(task_id)
-        .map_err(|error| store_error_plan(envelope, project_state, error))?
-        .ok_or_else(|| {
-            PlanError::Response(Box::new(no_active_task_response(envelope, project_state)))
-        })?;
+        .map_err(CorePipelineError::from)?
+        .ok_or(CloseReadinessError::NoActiveTask)?;
     let current_close_basis = task_revision.current_close_basis;
     let pending_user_action_refs = store
         .pending_user_action_refs(task_id, project_state.state_version, now)
-        .map_err(|error| store_error_plan(envelope, project_state, error))?
+        .map_err(CorePipelineError::from)?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
     let blocker_refs = store
         .active_blocker_refs(task_id, project_state.state_version)
-        .map_err(|error| store_error_plan(envelope, project_state, error))?
+        .map_err(CorePipelineError::from)?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
@@ -173,7 +168,7 @@ pub(super) fn acquire_close_readiness_facts(
         .map(|evidence_ref| {
             store
                 .evidence_summary_record(evidence_ref.record_id.as_str())
-                .map_err(|error| store_error_plan(envelope, project_state, error))
+                .map_err(CorePipelineError::from)
         })
         .transpose()?
         .flatten();
@@ -224,11 +219,11 @@ pub(super) fn acquire_close_readiness_facts(
 pub(super) fn acquire_unrecorded_change_facts(
     store: &CoreProjectStore,
     facts: &mut CloseReadinessFacts,
-) -> Result<(), PlanError> {
+) -> Result<(), CloseReadinessError> {
     let unresolved = store
         .unresolved_unrecorded_changes(None)
         .map_err(CorePipelineError::from)
-        .map_err(PlanError::Core)?;
+        .map_err(CloseReadinessError::Core)?;
     facts.unresolved_unrecorded_changes = unresolved
         .into_iter()
         .filter(|record| {
@@ -244,7 +239,7 @@ pub(super) fn acquire_projected_store_facts(
     store: &CoreProjectStore,
     task_id: &TaskId,
     facts: &mut CloseReadinessFacts,
-) -> Result<(), PlanError> {
+) -> Result<(), CloseReadinessError> {
     acquire_unrecorded_change_facts(store, facts)?;
     if facts.acceptance_criteria.is_none() {
         let acceptance_criteria = active_acceptance_criteria_for_task(store, task_id)?;

@@ -1,18 +1,19 @@
-use super::close_readiness::{
+use super::MethodPlan;
+use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities,
     facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
-use super::{
-    active_acceptance_criteria_for_task, allocate_acceptance_criterion_id, allocate_change_unit_id,
-    build_state_summary, change_unit_insert, change_unit_ref, decision_rejected_response,
-    dry_run_summary, evidence_summary_for_display, guarantee_display_for_invocation,
-    mutation_method_policy, next_actions_for_state, no_active_task_response,
-    normalize_display_text, object_from_value, observe_request_product_paths, plan_error_response,
-    prepare_or_response, project_state_projection, projected_close_basis,
-    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
-    rejected_pipeline_response, state_ref, state_ref_from_stored, store_error_plan,
-    synthetic_change_unit_record, task_lifecycle_mutation, validation_rejected, write_ticket_ref,
-    MethodPlan, PlanError, StoredScope, SummaryBuild,
+use crate::error_boundary::{
+    product_path::observe_request_product_paths,
+    store::{plan_error_response, store_error_plan},
+    user_action::user_action_service_plan_error,
+};
+use crate::identity::{allocate_acceptance_criterion_id, allocate_change_unit_id};
+use crate::json_object::object_from_value;
+use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
+use crate::method_rejection::{
+    decision_rejected_response, dry_run_summary, no_active_task_response,
+    rejected_pipeline_response, validation_rejected,
 };
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
@@ -28,6 +29,15 @@ use crate::policy::workflow::{
     acceptance_policy_for_control, project_workflow_policy, resolve_task_control_authority,
     ProjectWorkflowPolicy,
 };
+use crate::projection::{
+    active_acceptance_criteria_for_task, build_state_summary, change_unit_insert,
+    evidence_summary_for_display, guarantee_display_for_invocation, next_actions_for_state,
+    project_state_projection, projected_close_basis, projected_evidence_summary_for_criteria,
+    synthetic_change_unit_record, task_lifecycle_mutation, SummaryBuild,
+};
+use crate::record_refs::{change_unit_ref, state_ref, state_ref_from_stored, write_ticket_ref};
+use crate::task_state::{normalize_display_text, StoredScope};
+use crate::write_ticket::projected_write_ticket_summary;
 use serde_json::json;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
@@ -318,7 +328,8 @@ fn decide_update_scope_policy(
         project_state.state_version,
         &plan_now,
         &operation_context,
-    )?
+    )
+    .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?
     .is_empty()
     {
         return Err(PlanError::Response(Box::new(decision_rejected_response(
@@ -550,8 +561,8 @@ fn plan_update_scope_mutations(
                         "create_current requires no current Change Unit",
                     );
                 }
-                let change_unit_id =
-                    allocate_change_unit_id(service, store).map_err(PlanError::Core)?;
+                let change_unit_id = allocate_change_unit_id(service.durable_id_generator(), store)
+                    .map_err(PlanError::Core)?;
                 let insert = change_unit_insert(&request, &change_unit_id, verified_invocation)?;
                 let record = synthetic_change_unit_record(
                     &request.envelope.project_id,
@@ -589,8 +600,8 @@ fn plan_update_scope_mutations(
                     .map_err(PlanError::Core)?;
                     return Err(PlanError::Response(Box::new(response)));
                 }
-                let change_unit_id =
-                    allocate_change_unit_id(service, store).map_err(PlanError::Core)?;
+                let change_unit_id = allocate_change_unit_id(service.durable_id_generator(), store)
+                    .map_err(PlanError::Core)?;
                 let insert = change_unit_insert(&request, &change_unit_id, verified_invocation)?;
                 let record = synthetic_change_unit_record(
                     &request.envelope.project_id,
@@ -825,7 +836,14 @@ fn project_update_scope_response(
         &request.envelope,
         &request.task_id,
         close_context,
-    )?;
+    )
+    .map_err(|error| {
+        crate::error_boundary::close_readiness::close_readiness_plan_error(
+            &request.envelope,
+            &projected_project_state,
+            error,
+        )
+    })?;
     let state = build_state_summary(SummaryBuild {
         store,
         project_id: &request.envelope.project_id,
@@ -959,8 +977,12 @@ fn plan_acceptance_criteria_replacement(
                 id.clone()
             }
             None => {
-                let id = allocate_acceptance_criterion_id(service, store, &seen_ids)
-                    .map_err(PlanError::Core)?;
+                let id = allocate_acceptance_criterion_id(
+                    service.durable_id_generator(),
+                    store,
+                    &seen_ids,
+                )
+                .map_err(PlanError::Core)?;
                 seen_ids.insert(id.as_str().to_owned());
                 id
             }
@@ -1095,7 +1117,9 @@ fn validate_related_scope_decisions(
                     "related scope decision request is missing",
                 )))
             })?;
-        let authority = user_action_authority_from_record(&record)?;
+        let authority = user_action_authority_from_record(&record).map_err(|error| {
+            user_action_service_plan_error(&request.envelope, project_state, error)
+        })?;
         if !accepted_current_scope_decision_authority(&authority, &requirement) {
             return Err(PlanError::Response(Box::new(decision_rejected_response(
                 &request.envelope,

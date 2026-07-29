@@ -1,8 +1,7 @@
-use super::{
-    allocate_staged_artifact_handle_id, core_error_response, dry_run_summary, prepare_or_response,
-    rejected_pipeline_response, validation_rejected, ValidatedStageArtifactInput,
-    MAX_STAGED_BODY_BYTES,
-};
+use crate::error_boundary::store::core_error_response;
+use crate::identity::allocate_staged_artifact_handle_id;
+use crate::method_execution::prepare_or_response;
+use crate::method_rejection::{dry_run_summary, rejected_pipeline_response, validation_rejected};
 use crate::pipeline::{
     dry_run_response, tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
@@ -21,6 +20,14 @@ use volicord_types::schema::{StagedArtifactHandle, ToolEnvelope};
 use volicord_types::values::{ErrorCode, EvidenceDisplayState, MethodName, RedactionState};
 
 pub(super) const MAX_STAGE_ARTIFACT_RESULT_BYTES: usize = 24 * 1024;
+pub(super) const MAX_STAGED_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+struct ValidatedStageArtifactInput {
+    safe_bytes: Vec<u8>,
+    sha256: String,
+    size_bytes: u64,
+    payload_kind: StagedPayloadKind,
+}
 
 impl CoreService {
     /// Executes `volicord.stage_artifact` as storage-owned transient staging.
@@ -104,7 +111,10 @@ impl CoreService {
             });
         }
 
-        let handle_id = match allocate_staged_artifact_handle_id(self, &prepared.store) {
+        let handle_id = match allocate_staged_artifact_handle_id(
+            self.durable_id_generator(),
+            &prepared.store,
+        ) {
             Ok(handle_id) => handle_id,
             Err(error) => {
                 return core_error_response(

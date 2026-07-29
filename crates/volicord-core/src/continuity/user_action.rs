@@ -1,11 +1,11 @@
-use crate::methods::{
-    plan_project_continuity_record, user_action_service_plan_error, PlanError,
-    PlannedProjectContinuityRecord, ProjectContinuityDraft, ProjectContinuityPlanContext,
+use super::{
+    plan_project_continuity_record, ContinuityPlanningError, PlannedProjectContinuityRecord,
+    ProjectContinuityDraft, ProjectContinuityPlanContext,
 };
-use crate::pipeline::{CorePipelineError, CoreService};
+use crate::pipeline::CorePipelineError;
 use volicord_store::core_pipeline::{ChangeUnitRecord, CoreProjectStore, ProjectStateHeader};
 use volicord_types::{
-    ids::TaskId,
+    ids::{DurableIdGenerator, TaskId},
     schema::{
         StateRecordRef, ToolEnvelope, UserActionBasis, UserActionRequestBody,
         UserActionResolutionBody,
@@ -16,7 +16,7 @@ use volicord_user_action_service::{derive_user_action_continuity, UserActionCont
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn plan_user_action_continuity_records(
-    service: &CoreService,
+    id_generator: &dyn DurableIdGenerator,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     envelope: &ToolEnvelope,
@@ -27,7 +27,7 @@ pub(crate) fn plan_user_action_continuity_records(
     resolution: &UserActionResolutionBody,
     resolution_ref: &StateRecordRef,
     now: &UtcTimestamp,
-) -> Result<Vec<PlannedProjectContinuityRecord>, PlanError> {
+) -> Result<Vec<PlannedProjectContinuityRecord>, ContinuityPlanningError> {
     let applies_to_paths = current_change_unit
         .map(|record| record.bounded_paths.clone())
         .unwrap_or_default();
@@ -42,10 +42,9 @@ pub(crate) fn plan_user_action_continuity_records(
         resolution_ref,
         applies_to_paths,
         current_close_basis: current_close_basis.as_ref(),
-    })
-    .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
+    })?;
     let continuity_context = ProjectContinuityPlanContext {
-        service,
+        id_generator,
         store,
         project_id: &envelope.project_id,
         source_task_id: task_id,
@@ -72,7 +71,7 @@ pub(crate) fn plan_user_action_continuity_records(
                     metadata: draft.metadata,
                 },
             )
-            .map_err(PlanError::Core)
+            .map_err(ContinuityPlanningError::Core)
         })
         .collect()
 }

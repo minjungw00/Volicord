@@ -8,8 +8,10 @@ invalidates, and consumes Write Tickets against current Core and Store facts.
 ## Design
 
 `prepare_write` loads the current Task, Change Unit, scope, workspace,
-approval, workflow-policy, and normalized path facts. Focused Core policy in
-`policy/write_ticket.rs` constructs and evaluates the ticket basis.
+approval, workflow-policy, and normalized path facts. The focused
+`write_ticket/` owner acquires and normalizes current facts, evaluates policy,
+plans issue or reuse, and projects the typed outcome through its `facts.rs`,
+`policy.rs`, `planning.rs`, and `projection.rs` modules.
 `core_pipeline/write_tickets.rs` owns strict ticket reads and grouped mutation
 application.
 
@@ -30,13 +32,14 @@ the same Store commit as the Run and its associated effects.
 
 ## Responsibility boundaries
 
-Core methods own request-specific planning. Core workflow, path, access, and
-write-ticket policy modules own current authority evaluation over typed facts.
-Store keeps the physical ticket row private and strictly decodes status,
-validity basis, attempt scope, Product Repository path collections, timestamps,
-and redundant owner coordinates before returning a typed record. Store also
-owns ticket queries, invalidation persistence, and consumption mutation. Guard
-supplies observations but does not widen the ticket basis.
+Core methods own request-specific orchestration and response composition. The
+focused Write Ticket owner owns reusable fact acquisition, policy evaluation,
+issuance or reuse planning, and projection over typed facts. Store keeps the
+physical ticket row private and strictly decodes status, validity basis,
+attempt scope, Product Repository path collections, timestamps, and redundant
+owner coordinates before returning a typed record. Store also owns ticket
+queries, invalidation persistence, and consumption mutation. Guard supplies
+observations but does not widen the ticket basis.
 
 ## Execution flow
 
@@ -68,10 +71,10 @@ capability.
 
 - [`crates/volicord-core/src/methods/prepare_write.rs`](../../../../crates/volicord-core/src/methods/prepare_write.rs)
   and [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs):
-  issue/reuse and protected consumption planning.
-- [`crates/volicord-core/src/policy/write_ticket.rs`](../../../../crates/volicord-core/src/policy/write_ticket.rs)
+  request-specific issue/reuse and protected-consumption orchestration.
+- [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)
   and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed current-basis evaluation.
+  typed fact acquisition, current-basis evaluation, planning, and projection.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
   shared typed product-path normalization and containment.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):

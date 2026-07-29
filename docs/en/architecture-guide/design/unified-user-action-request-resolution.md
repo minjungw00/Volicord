@@ -20,7 +20,10 @@ pipeline, response, CLI, MCP, command-model, or presentation machinery.
 
 `methods/user_action.rs` owns public request and resolution orchestration.
 `methods/user_action_read.rs` owns Core admission checks and originating-result
-replay around service-owned neutral facts. Other Core methods, including
+replay around service-owned neutral facts. `continuity/user_action.rs` owns
+reusable continuity planning and persistence drafts, while
+`error_boundary/user_action.rs` maps service-owned typed errors only at the
+method-response boundary. Other Core methods, including
 `reconcile_changes.rs`, invoke the same service crate and decide how its typed
 results participate in their own method plans and responses.
 
@@ -138,11 +141,13 @@ It does not make prompt capture or MCP transport a resolution channel.
   identity, Store-aware service, persistence planning, materialization,
   authority and lifecycle interpretation, resolution, continuity facts,
   neutral projections, and summaries.
-- [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs),
-  [`user_action_read.rs`](../../../../crates/volicord-core/src/methods/user_action_read.rs),
-  and [`user_action_continuity.rs`](../../../../crates/volicord-core/src/methods/user_action_continuity.rs):
-  public-method orchestration, Core-owned admission and replay, error mapping,
-  and persistence of service-derived continuity drafts.
+- [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs)
+  and [`user_action_read.rs`](../../../../crates/volicord-core/src/methods/user_action_read.rs):
+  public-method orchestration and Core-owned admission and replay.
+- [`crates/volicord-core/src/continuity/user_action.rs`](../../../../crates/volicord-core/src/continuity/user_action.rs)
+  and [`error_boundary/user_action.rs`](../../../../crates/volicord-core/src/error_boundary/user_action.rs):
+  service-derived continuity planning and focused method-boundary error
+  mapping.
 - [`crates/volicord-core/src/methods/reconcile_changes.rs`](../../../../crates/volicord-core/src/methods/reconcile_changes.rs):
   reconciliation-specific orchestration that consumes the UserAction service.
 - [`crates/volicord-store/src/core_pipeline/user_actions.rs`](../../../../crates/volicord-store/src/core_pipeline/user_actions.rs):

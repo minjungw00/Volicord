@@ -135,20 +135,29 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, Store 오류 세부사항 projection, 플랫폼 소유 Product Repository 관찰 실패의 중립 typed 운영 projection. |
+| `crates/volicord-core/src/method_execution.rs` | 메서드 공통 요청 준비, mutation policy 선택, replay decoding, 저장 scalar 변환, generic method-plan 오류 carrier를 담당합니다. Aggregate policy나 source별 오류 매핑은 담당하지 않습니다. |
+| `crates/volicord-core/src/method_rejection.rs` | 공유 validation 및 rejection 응답 구성과 메서드 중립 dry-run summary를 담당합니다. |
+| `crates/volicord-core/src/error_boundary/` | Store, UserAction, 닫기 준비 상태, artifact policy, Product Repository path의 source 오류 모델을 공개 메서드 계획 오류로 바꾸는 집중 경계 매핑. |
 | `crates/volicord-core/src/product_path.rs` | 호출자가 제공한 경로의 공유 어휘 parsing과 플랫폼 소유 활성 Product Repository 관찰을 조율합니다. Store가 반환한 경로는 typed 값으로 도착하며 이 모듈을 거치지 않습니다. |
-| `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. 프로덕션 메서드 모듈은 공유 helper, pipeline과 정책 함수, Store 서비스, 공유 타입을 각 담당 모듈에서 명시적으로 가져오며 상위 모듈을 import prelude로 사용하지 않습니다. |
-| `crates/volicord-core/src/methods/evidence_facts.rs` | 물리 row decoding을 반복하거나 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 사실을 취득하는 공유 typed Store 조회와 의미 일관성 검사. |
-| `crates/volicord-core/src/methods/close_readiness/mod.rs` | 메서드 plan이 사용하는 닫기 준비 상태 서비스, projection, 차단 사유 helper의 좁은 패키지 표면. |
-| `crates/volicord-core/src/methods/close_readiness/facts.rs` | 하나의 수락 기준 snapshot, 하나의 workflow policy snapshot, 현재 handle 기반 미조정 변경 읽기를 포함한 typed 현재 사실 취득 및 투영 사실 조립. 준비 상태 판단은 담당하지 않습니다. |
-| `crates/volicord-core/src/methods/close_readiness/change_control.rs` | Task, Change Unit, 닫기 근거, baseline, 복구, 미조정 변경, Write Ticket 조건 평가. |
-| `crates/volicord-core/src/methods/close_readiness/evidence.rs` | 집중 증거 사실 및 순수 정책 담당 모듈을 통한 닫기 증거와 아티팩트 가용성 평가. |
-| `crates/volicord-core/src/methods/close_readiness/acceptance.rs` | 대기 중인 닫기 권한, 취소, 민감 작업 승인, 최종 수락, 잔여 위험 수락 평가. |
-| `crates/volicord-core/src/methods/close_readiness/policy.rs` | Store와 독립적인 유효 control 해석 및 typed 준비 상태 평가를 닫기 상태로 만드는 순수한 순서 결합. |
-| `crates/volicord-core/src/methods/close_readiness/blockers.rs` | 정규 typed 닫기 차단 사유 구성, Write Ticket 차단 사유 projection, 여러 차단 사유에 걸친 action 정규화. |
-| `crates/volicord-core/src/methods/close_readiness/guidance.rs` | Typed 담당 메서드와 연산 범주를 포함하는 adapter-neutral 의미 기반 후속 행위 선택. CLI 문법, 캡처 경로, Markdown, rendering, credential은 담당하지 않습니다. |
-| `crates/volicord-core/src/methods/close_readiness/summary.rs` | 전체 닫기 연산 평가와 의도적으로 더 작은 메서드 중립 준비 상태 projection. |
-| `crates/volicord-core/src/methods/close_readiness/service.rs` | 사실 취득, 책임별 평가, 순수 정책 결합, 전체 닫기 평가, 메서드 중립 요약 projection의 좁은 조율. |
-| `crates/volicord-core/src/methods/close_readiness/tests/` | 책임별 사실, 변경 제어, 증거, 수락, 정책, 차단 사유, guidance 테스트와 닫기 준비 상태 서비스 통합 coverage. |
+| `crates/volicord-core/src/identity.rs` | 주입된 `DurableIdGenerator`를 사용하는 generic bounded durable ID 할당과 record family별 충돌 검사를 담당합니다. 호출자는 ID 할당을 위해 `CoreService`를 노출하지 않습니다. |
+| `crates/volicord-core/src/artifact.rs` | Typed Store record에 대한 artifact 검증, 무결성 및 가용성 fact, source-reference 정규화를 담당합니다. |
+| `crates/volicord-core/src/continuity/` | Core continuity 계획과 projection, Store fact 취득, durable ID 할당, UserAction 유래 continuity 구체화를 담당합니다. |
+| `crates/volicord-core/src/evidence_facts.rs` | 물리 row decoding을 반복하거나 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 사실을 취득하는 공유 typed Store 조회와 의미 일관성 검사. |
+| `crates/volicord-core/src/projection.rs` | Adapter-neutral 상태 summary, 의미 기반 next-action 정규화와 선택, 증거 표시 projection, 공유 state-record projection을 담당합니다. |
+| `crates/volicord-core/src/record_refs.rs`, `task_state.rs`, `task_policy.rs` | 집중된 state-record 참조 변환, typed Task 상태 해석, 재사용 가능한 Task policy를 각각 담당합니다. |
+| `crates/volicord-core/src/write_ticket/` | Write Ticket fact, validity와 attempt-scope policy, prepare-write 의미 계획, adapter-neutral ticket projection의 정규 담당 모듈입니다. 공개 응답 구성은 호출 메서드에 남습니다. |
+| `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하며, `methods/mod.rs`는 모듈 wiring과 작은 메서드 공통 plan carrier만 제공합니다. |
+| `crates/volicord-core/src/close_readiness/mod.rs` | 메서드 plan이 사용하는 닫기 준비 상태 서비스, projection, 차단 사유 helper의 좁은 패키지 표면. |
+| `crates/volicord-core/src/close_readiness/facts.rs` | 하나의 수락 기준 snapshot, 하나의 workflow policy snapshot, 현재 handle 기반 미조정 변경 읽기를 포함한 typed 현재 사실 취득 및 투영 사실 조립. 준비 상태 판단은 담당하지 않습니다. |
+| `crates/volicord-core/src/close_readiness/change_control.rs` | Task, Change Unit, 닫기 근거, baseline, 복구, 미조정 변경, Write Ticket 조건 평가. |
+| `crates/volicord-core/src/close_readiness/evidence.rs` | 집중 증거 사실 및 순수 정책 담당 모듈을 통한 닫기 증거와 아티팩트 가용성 평가. |
+| `crates/volicord-core/src/close_readiness/acceptance.rs` | 대기 중인 닫기 권한, 취소, 민감 작업 승인, 최종 수락, 잔여 위험 수락 평가. |
+| `crates/volicord-core/src/close_readiness/policy.rs` | Store와 독립적인 유효 control 해석 및 typed 준비 상태 평가를 닫기 상태로 만드는 순수한 순서 결합. |
+| `crates/volicord-core/src/close_readiness/blockers.rs` | 정규 typed 닫기 차단 사유 구성, Write Ticket 차단 사유 projection, 여러 차단 사유에 걸친 action 정규화. |
+| `crates/volicord-core/src/close_readiness/guidance.rs` | Typed 담당 메서드와 연산 범주를 포함하는 adapter-neutral 의미 기반 후속 행위 선택. CLI 문법, 캡처 경로, Markdown, rendering, credential은 담당하지 않습니다. |
+| `crates/volicord-core/src/close_readiness/summary.rs` | 전체 닫기 연산 평가와 의도적으로 더 작은 메서드 중립 준비 상태 projection. |
+| `crates/volicord-core/src/close_readiness/service.rs` | 사실 취득, 책임별 평가, 순수 정책 결합, 전체 닫기 평가, 메서드 중립 요약 projection의 좁은 조율. |
+| `crates/volicord-core/src/close_readiness/tests/` | 책임별 사실, 변경 제어, 증거, 수락, 정책, 차단 사유, guidance 테스트와 닫기 준비 상태 서비스 통합 coverage. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | 증거 캡처 요청 검증과 계획. 수락 기준 및 보충 주장 일치에는 대상 정책을 사용합니다. |
 | `crates/volicord-core/src/methods/record_run.rs` | 실행 및 증거 갱신 검증과 계획. 출처, 관련성, 대상, 결속, 닫기 준비 상태 증거 정책을 사용합니다. |
 | `crates/volicord-core/src/methods/close_task.rs` | 요청별 닫기 조율. 요청 검증, 닫기 준비 상태 서비스 호출, 종료 변경 계획, typed 결과 구성을 담당합니다. |
@@ -156,7 +165,6 @@
 | `crates/volicord-core/src/methods/status.rs` | 공유 Core 투영 경로를 통해 닫기 준비 상태 증거 정책을 사용하는 읽기 전용 상태 투영. |
 | `crates/volicord-core/src/methods/user_action.rs` | 직접 request와 resolution 메서드 조율. 공유 typed UserAction 서비스를 사용하고 결과를 메서드 plan과 response로 매핑합니다. |
 | `crates/volicord-core/src/methods/user_action_read.rs` | User Channel 권한 검사, 일관된 Store snapshot, 원래 결과 replay, 공개 메서드 결과 projection. |
-| `crates/volicord-core/src/methods/user_action_continuity.rs` | Store fact 취득, Core 소유 continuity 식별자와 timestamp, 서비스 draft 사용, 영속화 순서 조율. |
 | `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation별 계획. 해결되지 않은 변경에 typed pending action이 필요할 때 UserAction 서비스를 직접 사용합니다. |
 | `crates/volicord-core/src/policy/` | 책임별 재사용 정책. 메서드 구현은 형제 메서드 모듈에서 공유 정책을 얻지 않고 이 담당 모듈을 직접 사용합니다. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Typed 사실에 대한 순수 증거 출처 및 보증 수준 분류. |

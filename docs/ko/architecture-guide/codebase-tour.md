@@ -77,8 +77,9 @@ MCP 호출은 다음 순서로 추적합니다.
 취득, materialization, 영속화 매핑, resolution, continuity, projection으로
 이어집니다. Core 요청 조율은
 [`methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs)에
-있고 User Channel 읽기와 continuity 영속화는 인접한 `user_action_read.rs`,
-`user_action_continuity.rs`에 있습니다. Reconciliation은
+있고 User Channel 읽기는 인접한 `user_action_read.rs`, continuity 영속화는
+[`continuity/user_action.rs`](../../../crates/volicord-core/src/continuity/user_action.rs)에
+있습니다. Reconciliation은
 [`methods/reconcile_changes.rs`](../../../crates/volicord-core/src/methods/reconcile_changes.rs)에서
 의미 의도를 제공합니다.
 

@@ -33,6 +33,15 @@ This split applies to workflow policy, Write Ticket, replay identity,
 reconciliation observations, UserAction, and the other Core-facing record
 families.
 
+Within `volicord-core`, reusable semantic-owner tests stay beside
+`identity.rs`, `artifact.rs`, `projection.rs`, `continuity/`,
+`write_ticket/`, `close_readiness/`, and the focused `error_boundary/` module
+they protect. They use typed inputs and assert typed facts, policy decisions,
+retry behavior, or one precise boundary mapping. Public method orchestration,
+response-family, replay, and committed-effect matrices remain under
+`methods/tests/`. A method integration test does not become the sole coverage
+for reusable owner logic.
+
 Within `volicord-user-action-service`, unit tests own semantic validation,
 canonical body and identity construction, authority, lifecycle,
 materialization, persistence mapping, resolution, continuity, and neutral

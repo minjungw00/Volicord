@@ -8,6 +8,28 @@ mod policy;
 mod service;
 mod summary;
 
+use crate::pipeline::CorePipelineError;
+use volicord_user_action_service::UserActionServiceError;
+
+#[derive(Debug)]
+pub(crate) enum CloseReadinessError {
+    Core(CorePipelineError),
+    UserAction(UserActionServiceError),
+    NoActiveTask,
+}
+
+impl From<CorePipelineError> for CloseReadinessError {
+    fn from(error: CorePipelineError) -> Self {
+        Self::Core(error)
+    }
+}
+
+impl From<UserActionServiceError> for CloseReadinessError {
+    fn from(error: UserActionServiceError) -> Self {
+        Self::UserAction(error)
+    }
+}
+
 #[cfg(test)]
 #[path = "tests/support.rs"]
 mod test_support;

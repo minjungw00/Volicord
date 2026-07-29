@@ -172,7 +172,20 @@ Normal public method execution has two implementation phases before persistence:
    requirements, request hash, project state, verified connection context, replay
    eligibility, Task requirement, freshness, and operation category.
 2. The method module in [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)
-   performs method-specific planning and returns an `OwnerPipelineBranch`.
+   orchestrates the request-specific branch and response. Focused Core owners
+   such as [`identity.rs`](../../../crates/volicord-core/src/identity.rs),
+   [`artifact.rs`](../../../crates/volicord-core/src/artifact.rs),
+   [`continuity/`](../../../crates/volicord-core/src/continuity/),
+   [`write_ticket/`](../../../crates/volicord-core/src/write_ticket/), and
+   [`close_readiness/`](../../../crates/volicord-core/src/close_readiness/)
+   perform reusable semantic planning over typed facts. The method then returns
+   an `OwnerPipelineBranch`.
+
+Semantic owners do not construct public method responses or map Store failures.
+[`method_execution.rs`](../../../crates/volicord-core/src/method_execution.rs)
+owns shared execution mechanics, while focused modules under
+[`error_boundary/`](../../../crates/volicord-core/src/error_boundary/) translate
+typed Store or semantic-owner failures at the method-response boundary.
 
 After common preflight, a request that reaches planning obtains exactly one
 `operation_now` from the project-scoped canonical Core UTC clock. For

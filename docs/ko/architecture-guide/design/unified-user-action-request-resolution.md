@@ -19,8 +19,11 @@ Core 메서드, pipeline, 응답, CLI, MCP, command model, presentation 구현�
 
 `methods/user_action.rs`는 공개 요청과 해결 조율을 담당합니다.
 `methods/user_action_read.rs`는 서비스 소유 중립 사실을 둘러싼 Core 승인 검사와
-원래 결과 replay를 담당합니다. `reconcile_changes.rs`를 포함한 다른 Core 메서드는
-같은 서비스 크레이트를 호출하고 typed 결과를 각자 메서드 계획과 응답에 반영합니다.
+원래 결과 replay를 담당합니다. `continuity/user_action.rs`는 재사용 가능한 continuity
+계획과 영속화 draft를 담당하고, `error_boundary/user_action.rs`는 메서드 응답
+경계에서만 서비스 소유 typed 오류를 매핑합니다. `reconcile_changes.rs`를 포함한
+다른 Core 메서드는 같은 서비스 크레이트를 호출하고 typed 결과를 각자 메서드 계획과
+응답에 반영합니다.
 
 Store의 `core_pipeline/user_actions.rs`는 유효 상태 읽기, 일관된 받은 편지함 해결
 snapshot, 변경 불가능한 resolution 삽입, grouped mutation 적용, 물리 JSON과 저장
@@ -123,11 +126,12 @@ resolution channel로 만들지 않습니다.
   의미 model, typed 오류, 검증, 정규 본문 구성, identity, Store-aware service,
   영속화 계획, 구체화, 권한과 lifecycle 해석, 해결, continuity 사실, 중립
   projection, summary.
-- [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs),
-  [`user_action_read.rs`](../../../../crates/volicord-core/src/methods/user_action_read.rs),
-  [`user_action_continuity.rs`](../../../../crates/volicord-core/src/methods/user_action_continuity.rs):
-  공개 메서드 조율, Core 소유 승인 및 replay, 오류 매핑, 서비스가 도출한 continuity
-  draft의 영속화.
+- [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs)와
+  [`user_action_read.rs`](../../../../crates/volicord-core/src/methods/user_action_read.rs):
+  공개 메서드 조율, Core 소유 승인 및 replay.
+- [`crates/volicord-core/src/continuity/user_action.rs`](../../../../crates/volicord-core/src/continuity/user_action.rs)와
+  [`error_boundary/user_action.rs`](../../../../crates/volicord-core/src/error_boundary/user_action.rs):
+  서비스가 도출한 continuity 계획과 집중된 메서드 경계 오류 매핑.
 - [`crates/volicord-core/src/methods/reconcile_changes.rs`](../../../../crates/volicord-core/src/methods/reconcile_changes.rs):
   UserAction 서비스를 사용하는 reconciliation별 조율.
 - [`crates/volicord-store/src/core_pipeline/user_actions.rs`](../../../../crates/volicord-store/src/core_pipeline/user_actions.rs):

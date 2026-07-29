@@ -8,12 +8,26 @@
 //! crates.
 
 mod agent_session;
+mod artifact;
 mod authority_status;
-
+mod close_readiness;
+mod continuity;
+mod error_boundary;
+mod evidence_facts;
+mod identity;
+mod json_object;
+mod method_execution;
+mod method_rejection;
 mod methods;
 pub mod pipeline;
 mod policy;
 mod product_path;
+mod projection;
+mod record_refs;
+mod task_policy;
+mod task_state;
+mod workflow_diagnostics;
+mod write_ticket;
 
 pub use agent_session::{AgentSessionValidationError, ValidatedAgentSession};
 pub use authority_status::{

@@ -22,8 +22,10 @@ Codex -> stdio MCP -> public argument DTO -> Core request -> plan
    category, project, replay identity, expected state, current Task context,
    and structural input.
 5. The method planner reads one coherent snapshot and produces typed
-   method-specific result fields plus exact proposed effects. It does not
-   construct the common result base.
+   method-specific result fields plus exact proposed effects. Shared semantic
+   work is delegated to focused identity, artifact, continuity, evidence,
+   Write Ticket, close-readiness, and projection owners. Those owners return
+   typed facts or plans and do not construct method responses.
 6. The shared pipeline selects the typed read-only, no-effect, dry-run, or
    committed branch. Mutation branches revalidate commit preconditions and
    apply one atomic Store transaction.
@@ -86,7 +88,8 @@ borrow effects from a nearby success branch.
 ## Write Ticket Flow
 
 `prepare_write` evaluates current Task, Change Unit, scope, baseline, policy,
-sensitive approval, normalized paths, and current write-authority fingerprint.
+sensitive approval, normalized paths, and current write-authority fingerprint
+through `crates/volicord-core/src/write_ticket/`.
 An existing ticket is reusable only when every owner-defined coordinate remains
 valid. `record_run` revalidates the ticket and consumes only exact matched
 effects inside the same commit as the Run.

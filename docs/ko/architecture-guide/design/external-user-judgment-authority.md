@@ -82,9 +82,10 @@ User Channel로 만들지 않습니다.
   typed request 구성과 구체화, 현재 권한 해석, lifecycle 및 relevance 의미,
   영속화 매핑, continuity 파생, neutral semantic fact.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
-  직접 request 및 resolution 메서드 조율. 인접한 `user_action_read.rs`와
-  `user_action_continuity.rs`는 User Channel read/replay와 continuity 영속화
-  조율을 담당합니다.
+  직접 request 및 resolution 메서드 조율. 인접한 `user_action_read.rs`는 User
+  Channel read/replay를 담당하고,
+  [`continuity/user_action.rs`](../../../../crates/volicord-core/src/continuity/user_action.rs)는
+  continuity 영속화 계획을 담당합니다.
 - [`crates/volicord-cli/src/user_command.rs`](../../../../crates/volicord-cli/src/user_command.rs):
   local User Channel 조율과 terminal rendering.
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs)와

@@ -1,11 +1,13 @@
 use super::blockers::normalize_close_blockers;
 use super::facts::{workflow_policy_for_close_context, CloseReadinessFacts};
 use super::summary::CloseReadinessAssessment;
-use crate::methods::{change_unit_effect_contract, evidence_summary_for_display, PlanError};
+use super::CloseReadinessError;
 use crate::pipeline::CorePipelineError;
 use crate::policy::close_readiness::close_acceptance_policy_rank;
 use crate::policy::close_readiness_evidence::evaluate_evidence_gate;
 use crate::policy::workflow::{acceptance_policy_for_control, resolve_task_control_authority};
+use crate::projection::evidence_summary_for_display;
+use crate::write_ticket::change_unit_effect_contract;
 use volicord_store::core_pipeline::TaskControlLevelUpdate;
 use volicord_types::schema::{CloseReadinessBlocker, RiskAcceptanceCoverage};
 use volicord_types::values::{ChangeUnitEffectKind, CloseIntent, CloseState, TaskControlLevel};
@@ -26,7 +28,7 @@ pub(super) struct CloseReadinessEvaluations {
 /// Resolves the current control floor from already-acquired typed facts.
 pub(super) fn resolve_control(
     context: &mut CloseReadinessFacts,
-) -> Result<Option<TaskControlLevelUpdate>, PlanError> {
+) -> Result<Option<TaskControlLevelUpdate>, CloseReadinessError> {
     let workflow_policy = workflow_policy_for_close_context(context)?.clone();
     let current_control = context.task.effective_control_level;
     let resolved_control = resolve_task_control_authority(&context.task, &workflow_policy)
@@ -108,7 +110,7 @@ pub(super) fn combine(
     context: CloseReadinessFacts,
     control_update: Option<TaskControlLevelUpdate>,
     evaluations: CloseReadinessEvaluations,
-) -> Result<CloseReadinessAssessment, PlanError> {
+) -> Result<CloseReadinessAssessment, CloseReadinessError> {
     let CloseReadinessEvaluations {
         risk_acceptance_coverage,
         terminal_change_control,
@@ -144,7 +146,7 @@ pub(super) fn combine(
         .clone()
         .map(|summary| evidence_summary_for_display(summary, context.current_close_basis.as_ref()));
     let acceptance_criteria = context.acceptance_criteria.as_deref().ok_or_else(|| {
-        PlanError::Core(CorePipelineError::InvalidDispatch {
+        CloseReadinessError::Core(CorePipelineError::InvalidDispatch {
             detail: "close-readiness acceptance criteria were not acquired".to_owned(),
         })
     })?;

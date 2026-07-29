@@ -6,7 +6,7 @@ use super::facts::{
 };
 use super::policy::{self, CloseReadinessEvaluations};
 use super::summary::{CloseReadinessAssessment, CloseReadinessSummary};
-use crate::methods::PlanError;
+use super::CloseReadinessError;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::TaskId;
 use volicord_types::schema::ToolEnvelope;
@@ -55,7 +55,7 @@ pub(crate) fn plan_projected_close_readiness(
     envelope: &ToolEnvelope,
     task_id: &TaskId,
     mut facts: CloseReadinessFacts,
-) -> Result<CloseReadinessSummary, PlanError> {
+) -> Result<CloseReadinessSummary, CloseReadinessError> {
     acquire_projected_store_facts(store, task_id, &mut facts)?;
     let now = facts.now.clone();
     plan_close_readiness_with_facts(
@@ -73,7 +73,7 @@ pub(crate) fn plan_close_readiness(
     project_state: &ProjectStateHeader,
     request: CloseReadinessRequest,
     now: &UtcTimestamp,
-) -> Result<CloseReadinessSummary, PlanError> {
+) -> Result<CloseReadinessSummary, CloseReadinessError> {
     let facts = acquire_close_readiness_facts(
         store,
         project_state,
@@ -90,7 +90,7 @@ fn plan_close_readiness_with_facts(
     request: CloseReadinessRequest,
     now: &UtcTimestamp,
     facts: CloseReadinessFacts,
-) -> Result<CloseReadinessSummary, PlanError> {
+) -> Result<CloseReadinessSummary, CloseReadinessError> {
     evaluate_close_readiness_with_facts(store, project_state, request, now, facts)
         .map(CloseReadinessSummary::from)
 }
@@ -101,7 +101,7 @@ fn evaluate_close_readiness_with_facts(
     request: CloseReadinessRequest,
     now: &UtcTimestamp,
     mut facts: CloseReadinessFacts,
-) -> Result<CloseReadinessAssessment, PlanError> {
+) -> Result<CloseReadinessAssessment, CloseReadinessError> {
     let control_update = policy::resolve_control(&mut facts)?;
     let risk_acceptance_coverage =
         acceptance::risk_acceptance_coverage(store, project_state, &request, &mut facts)?;
@@ -169,7 +169,7 @@ pub(crate) fn assess_close_readiness(
     project_state: &ProjectStateHeader,
     request: CloseReadinessRequest,
     now: &UtcTimestamp,
-) -> Result<CloseReadinessAssessment, PlanError> {
+) -> Result<CloseReadinessAssessment, CloseReadinessError> {
     let facts = acquire_close_readiness_facts(
         store,
         project_state,

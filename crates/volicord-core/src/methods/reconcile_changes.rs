@@ -1,25 +1,35 @@
-use super::close_readiness::{
+use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_unrecorded_changes,
     plan_projected_close_readiness, CloseReadinessSummary,
 };
-use super::{
-    active_acceptance_criteria_for_task, allocate_user_action_request_id, build_state_summary,
-    changes_summary_text, close_state_text, core_error_response, evidence_gate_summary_text,
-    evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
-    no_active_task_response, normalize_next_action_collection, object_from_value,
-    prepare_or_response, primary_next_action, profile_summary_text, project_state_projection,
-    projected_close_basis, projected_evidence_summary, projected_write_ticket_summary,
-    record_core_workflow_metric_best_effort, response_committed_fresh_effect, state_ref,
-    state_ref_from_stored, storage_value, store_error_plan, summary_card_for_core,
-    user_action_service_plan_error, utc_timestamp, validation_rejected, write_ticket_summary_text,
-    PlanError, SummaryBuild, SummaryCardBuild,
+use crate::error_boundary::{
+    store::{core_error_response, store_error_plan},
+    user_action::user_action_service_plan_error,
 };
+use crate::identity::allocate_user_action_request_id;
+use crate::json_object::object_from_value;
+use crate::method_execution::{
+    mutation_method_policy, prepare_or_response, storage_value, utc_timestamp, PlanError,
+};
+use crate::method_rejection::{no_active_task_response, validation_rejected};
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, read_only_branch, CommitMutationBranch,
     CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::policy::write_ticket::write_ticket_is_idle_expired;
+use crate::projection::{
+    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
+    close_state_text, evidence_gate_summary_text, evidence_summary_for_display,
+    guarantee_display_for_invocation, normalize_next_action_collection, primary_next_action,
+    profile_summary_text, project_state_projection, projected_close_basis,
+    projected_evidence_summary, summary_card_for_core, write_ticket_summary_text, SummaryBuild,
+    SummaryCardBuild,
+};
+use crate::record_refs::{state_ref, state_ref_from_stored};
+use crate::workflow_diagnostics::{
+    record_core_workflow_metric_best_effort, response_committed_fresh_effect,
+};
+use crate::write_ticket::{projected_write_ticket_summary, write_ticket_is_idle_expired};
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -883,7 +893,8 @@ fn plan_reconciliation_user_action(
             )?)));
         };
         let user_action_request_id =
-            allocate_user_action_request_id(service, store).map_err(PlanError::Core)?;
+            allocate_user_action_request_id(service.durable_id_generator(), store)
+                .map_err(PlanError::Core)?;
         let materialized = materialize_user_action_request(UserActionMaterializationInput {
             context: UserActionPersistenceContext {
                 project_id: request.envelope.project_id.clone(),
@@ -991,6 +1002,13 @@ fn plan_projected_close_readiness_with_resolutions(
         &request.task_id,
         context,
     )
+    .map_err(|error| {
+        crate::error_boundary::close_readiness::close_readiness_plan_error(
+            &request.envelope,
+            &projected_project_state,
+            error,
+        )
+    })
 }
 
 fn resolution_mutation(resolution: &PlannedResolution) -> CoreResult<CoreStorageMutation> {

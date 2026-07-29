@@ -2,16 +2,17 @@ use super::blockers::{close_blocker, open_write_ticket_close_blocker};
 use super::facts::CloseReadinessFacts;
 use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
-use crate::methods::{
-    change_unit_ref, effective_write_ticket_status, state_ref, store_error_plan,
-    write_ticket_is_current_for_projection, write_ticket_ref, PlanError, StoredScope,
-};
+use super::CloseReadinessError;
+use crate::pipeline::CorePipelineError;
 use crate::pipeline::CoreResult;
 use crate::policy::close_readiness::is_terminal_lifecycle;
 use crate::policy::evidence::state_record_ref_identity_key;
 use crate::policy::evidence_target::{
     close_basis_is_current, close_basis_run_refs, run_record_matches_close_basis_context,
 };
+use crate::record_refs::{change_unit_ref, state_ref, write_ticket_ref};
+use crate::task_state::StoredScope;
+use crate::write_ticket::{effective_write_ticket_status, write_ticket_is_current_for_projection};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::BaselineRef;
@@ -26,7 +27,7 @@ pub(super) fn terminal_blockers(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     now: &UtcTimestamp,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     if is_terminal_lifecycle(&context.task.lifecycle_phase)
@@ -60,11 +61,7 @@ pub(super) fn terminal_blockers(
         let replacement = request
             .superseding_task_id
             .as_ref()
-            .map(|task_id| {
-                store
-                    .task_record(task_id)
-                    .map_err(|error| store_error_plan(&request.envelope, project_state, error))
-            })
+            .map(|task_id| store.task_record(task_id).map_err(CorePipelineError::from))
             .transpose()?
             .flatten();
         if replacement
@@ -113,7 +110,7 @@ pub(super) fn completion_scope_blockers(
     project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &CloseReadinessFacts,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     if context
@@ -148,7 +145,7 @@ pub(super) fn completion_basis_blockers(
     project_state: &ProjectStateHeader,
     request: &CloseReadinessRequest,
     context: &CloseReadinessFacts,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
@@ -221,13 +218,13 @@ fn unresolved_write_ticket_blockers(
     request: &CloseReadinessRequest,
     context: &mut CloseReadinessFacts,
     now: &UtcTimestamp,
-) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     if context.write_tickets.is_none() {
         let records = store
             .write_tickets_for_task(&request.task_id)
-            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+            .map_err(CorePipelineError::from)?;
         context.write_tickets = Some(records);
     }
     for record in context
@@ -240,7 +237,7 @@ fn unresolved_write_ticket_blockers(
             project_state.state_version,
             Some(*now.as_datetime()),
         )
-        .map_err(PlanError::Core)?;
+        .map_err(CloseReadinessError::Core)?;
         if status == WriteTicketStatus::Active
             && !write_ticket_is_current_for_projection(store, record, *now.as_datetime())?
         {
@@ -264,7 +261,7 @@ fn current_close_basis_blocker(
     request: &CloseReadinessRequest,
     project_state: &ProjectStateHeader,
     context: &CloseReadinessFacts,
-) -> Result<Option<CloseReadinessBlocker>, PlanError> {
+) -> Result<Option<CloseReadinessBlocker>, CloseReadinessError> {
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let Some(basis) = context.current_close_basis.as_ref() else {
         return Ok(Some(close_blocker(
@@ -322,7 +319,7 @@ fn incompatible_close_basis_run_refs_blocker(
     context: &CloseReadinessFacts,
     basis: &CurrentCloseBasis,
     current_baseline: Option<&str>,
-) -> Result<Option<CloseReadinessBlocker>, PlanError> {
+) -> Result<Option<CloseReadinessBlocker>, CloseReadinessError> {
     let Some(current_change_unit) = context.current_change_unit.as_ref() else {
         return Ok(None);
     };
@@ -348,7 +345,7 @@ fn incompatible_close_basis_run_refs_blocker(
         }
         let record = store
             .run_record(record_id)
-            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+            .map_err(CorePipelineError::from)?;
         if record.as_ref().is_none_or(|record| {
             !run_record_matches_close_basis_context(
                 record,

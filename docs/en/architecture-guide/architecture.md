@@ -174,6 +174,23 @@ external crate from calling the internal opens or constructing a detached
 mutation context. Compile-fail coverage protects both inaccessible Store entry
 points and the permit-bound context lifetime.
 
+## Core method ownership
+
+`crates/volicord-core/src/methods/` owns public-method entry points and
+request-specific orchestration. `methods/mod.rs` contains module wiring and the
+small generic plan carrier; it is not a helper prelude or a service locator.
+Method modules import durable identity, artifact policy, continuity planning,
+evidence facts, Write Ticket planning, close readiness, state projection, and
+record-reference conversion from their focused Core owners.
+
+`method_execution.rs` contains only method-generic request preparation and plan
+support. `method_rejection.rs` constructs method-neutral validation and
+rejection responses. The focused modules under `error_boundary/` translate
+Store, UserAction, close-readiness, artifact-policy, and Product Repository path
+failures where those source and destination error models meet. Semantic owners
+return typed facts, plans, or service errors and do not depend on public-method
+response composition.
+
 ## UserAction ownership
 
 `crates/volicord-user-action-service/` owns reusable UserAction semantics.
@@ -192,13 +209,13 @@ persisted corruption diagnostics remain private to Store. The service
 evaluates semantic policy from those records and reports service-owned
 invariant failures for inconsistent valid typed facts.
 
-`crates/volicord-core/src/methods/user_action.rs`,
-`user_action_read.rs`, and `user_action_continuity.rs` own request
-orchestration: invocation authority, generated identifiers and timestamps,
-Store transaction sequencing, originating-result replay, method-result
-composition, and translation of service errors into Core outcomes. Callers
-supply semantic intent to the service; neither Core consumers nor adapters
-construct canonical stored action JSON.
+`crates/volicord-core/src/methods/user_action.rs` and `user_action_read.rs` own
+request-specific invocation authority, Store transaction sequencing,
+originating-result replay, method-result composition, and service-error
+projection. `crates/volicord-core/src/continuity/` acquires typed continuity
+facts and returns typed continuity plans using an injected durable-ID generator.
+Callers supply semantic intent to the service; neither Core consumers nor
+adapters construct canonical stored action JSON.
 
 `volicord-types` derives the adapter-neutral `UserActionResolutionForm` from the
 stored semantic request body. `volicord-user-action-presentation` projects
@@ -223,7 +240,7 @@ effects remain with the focused [storage owners](../reference/storage.md).
 
 Core separates evidence fact acquisition from evidence policy evaluation.
 Store performs strict owner-row decoding.
-`crates/volicord-core/src/methods/evidence_facts.rs` performs shared reads of
+`crates/volicord-core/src/evidence_facts.rs` performs shared reads of
 those typed records and constructs policy inputs for stored and projected
 evidence. The responsibility-owned modules under
 `crates/volicord-core/src/policy/` evaluate provenance, relevance and support,
@@ -232,7 +249,7 @@ close-readiness evidence interpretation. These evaluations are pure where
 their inputs are already available.
 
 Close readiness is owned by the responsibility package at
-`crates/volicord-core/src/methods/close_readiness/`. `mod.rs` exposes the
+`crates/volicord-core/src/close_readiness/`. `mod.rs` exposes the
 narrow typed surface used by method planners. `facts.rs` acquires one typed
 current fact set, including acceptance criteria, workflow policy, and
 unresolved-change reads through the current `CoreProjectStore`, and assembles

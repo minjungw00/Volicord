@@ -7,6 +7,7 @@ use std::{
     time::SystemTime,
 };
 
+use crate::identity::allocate_durable_id;
 use chrono::{DateTime, Timelike, Utc};
 use serde::{
     de::{self, MapAccess, SeqAccess, Visitor},
@@ -26,7 +27,7 @@ use volicord_store::{
 use volicord_types::canonical::canonical_request_hash;
 use volicord_types::ids::{
     ChangeUnitId, DurableIdError, DurableIdGenerator, DurableIdKind, EventId, IdempotencyKey,
-    ProjectId, RandomDurableIdGenerator, RequestHash, TaskId, DURABLE_ID_RETRY_LIMIT,
+    ProjectId, RandomDurableIdGenerator, RequestHash, TaskId,
 };
 use volicord_types::methods::{
     public_method_contract, AssembleMethodResult, DryRunRequestRoute, MethodResponseBranch,
@@ -910,22 +911,8 @@ impl CoreService {
         }
     }
 
-    pub(crate) fn allocate_generated_id(
-        &self,
-        kind: DurableIdKind,
-        mut exists: impl FnMut(&str) -> CoreResult<bool>,
-    ) -> CoreResult<String> {
-        for _ in 0..DURABLE_ID_RETRY_LIMIT {
-            let candidate = self.id_generator.generate(kind)?;
-            if !exists(&candidate)? {
-                return Ok(candidate);
-            }
-        }
-
-        Err(CorePipelineError::GeneratedIdCollision {
-            kind,
-            attempts: DURABLE_ID_RETRY_LIMIT,
-        })
+    pub(crate) fn durable_id_generator(&self) -> &dyn DurableIdGenerator {
+        self.id_generator.as_ref()
     }
 
     /// Runs the shared envelope, context, freshness, replay, and effect pipeline.
@@ -1224,12 +1211,16 @@ impl CoreService {
                         );
                     }
                 };
-                let event_id = match self.allocate_generated_id(DurableIdKind::Event, |candidate| {
-                    prepared
-                        .store
-                        .event_id_exists(candidate)
-                        .map_err(CorePipelineError::from)
-                }) {
+                let event_id = match allocate_durable_id(
+                    self.durable_id_generator(),
+                    DurableIdKind::Event,
+                    |candidate| {
+                        prepared
+                            .store
+                            .event_id_exists(candidate)
+                            .map_err(CorePipelineError::from)
+                    },
+                ) {
                     Ok(event_id) => event_id,
                     Err(CorePipelineError::Store(error)) => {
                         return response_from_rejected(

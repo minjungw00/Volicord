@@ -1,5 +1,5 @@
 use super::guidance::{close_guidance, CloseGuidance};
-use crate::methods::{allowed_operation_categories, next_action_expected_state_version};
+use crate::projection::{allowed_operation_categories, next_action_expected_state_version};
 use volicord_types::schema::{CloseReadinessBlocker, NextActionSummary, StateRecordRef};
 use volicord_types::values::{CloseReadinessBlockerCategory, NextActionPresentationRole};
 

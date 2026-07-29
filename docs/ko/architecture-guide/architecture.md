@@ -164,6 +164,22 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 호출 및 분리된 변경 context 구성을 막습니다. Compile-fail coverage는 접근할 수
 없는 Store 진입점과 permit에 결속된 context 수명을 함께 보호합니다.
 
+## Core 메서드 담당 경계
+
+`crates/volicord-core/src/methods/`는 공개 메서드 진입점과 요청별 조율을
+담당합니다. `methods/mod.rs`에는 모듈 wiring과 작은 generic plan carrier만 있으며,
+helper prelude나 service locator로 사용하지 않습니다. 메서드 모듈은 durable
+identity, artifact policy, continuity planning, evidence fact, Write Ticket planning,
+닫기 준비 상태, 상태 projection, record-reference 변환을 각각 집중된 Core 담당
+모듈에서 가져옵니다.
+
+`method_execution.rs`는 메서드 공통 요청 준비와 plan 지원만 담당합니다.
+`method_rejection.rs`는 메서드 중립 validation 및 rejection 응답을 구성합니다.
+`error_boundary/` 아래의 집중 모듈은 Store, UserAction, 닫기 준비 상태, artifact
+policy, Product Repository path의 source 오류 모델이 공개 메서드 plan 오류 모델과
+만나는 경계에서만 변환합니다. 의미 담당 모듈은 typed fact, plan, service 오류를
+반환하며 공개 메서드 응답 구성에 의존하지 않습니다.
+
 ## UserAction 담당 경계
 
 `crates/volicord-user-action-service/`는 재사용 가능한 UserAction 의미를
@@ -179,10 +195,11 @@ row와 직렬화된 값 표현, 중복 column 검사, 요청-resolution pairing,
 진단은 Store 내부에만 둡니다. 서비스는 이 record에서 의미 policy를 평가하고,
 일관되지 않은 유효 typed fact에는 서비스 담당 invariant failure를 보고합니다.
 
-`crates/volicord-core/src/methods/user_action.rs`,
-`user_action_read.rs`, `user_action_continuity.rs`는 invocation authority, 생성한
-식별자와 timestamp, Store transaction 순서, 원래 result replay, 메서드 결과
-구성, 서비스 오류의 Core 결과 변환을 포함하는 요청 조율을 담당합니다. Caller는
+`crates/volicord-core/src/methods/user_action.rs`와 `user_action_read.rs`는 요청별
+invocation authority, Store transaction 순서, 원래 result replay, 메서드 결과
+구성, 서비스 오류 projection을 담당합니다.
+`crates/volicord-core/src/continuity/`는 typed continuity fact를 취득하고 주입된
+durable ID generator를 사용해 typed continuity plan을 반환합니다. Caller는
 서비스에 의미 의도를 제공하며 Core consumer와 어댑터는 정규 저장 action JSON을
 직접 구성하지 않습니다.
 
@@ -208,7 +225,7 @@ plan과 응답에 반영하는 방식을 결정합니다. 프로덕션 메서드
 
 Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 담당 레코드의 엄격한 디코딩은 Store가 수행합니다.
-`crates/volicord-core/src/methods/evidence_facts.rs`는 디코딩된 typed 레코드를
+`crates/volicord-core/src/evidence_facts.rs`는 디코딩된 typed 레코드를
 공유 조회하고 저장된 증거와 투영된 증거의 정책 입력을 구성합니다.
 `crates/volicord-core/src/policy/` 아래의 책임별 모듈은 출처,
 관련성과 뒷받침 여부, 대상과 `CurrentCloseBasis` 일치, 생산자와 아티팩트 결속,
@@ -216,7 +233,7 @@ Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 순수 함수로 수행됩니다.
 
 닫기 준비 상태는
-`crates/volicord-core/src/methods/close_readiness/`의 책임별 패키지가
+`crates/volicord-core/src/close_readiness/`의 책임별 패키지가
 담당합니다. `mod.rs`는 메서드 plan이 사용하는 좁은 typed 표면을 노출합니다.
 `facts.rs`는 수락 기준, workflow policy, 현재 `CoreProjectStore`를 통한
 미조정 변경 조회를 포함해 현재 사실 집합을 한 번 취득하고, 준비 상태를

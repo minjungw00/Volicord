@@ -89,8 +89,9 @@ require one UI for every host and does not make ordinary chat a User Channel.
   continuity derivation, and neutral semantic facts.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
   direct request and resolution method orchestration. Adjacent
-  `user_action_read.rs` and `user_action_continuity.rs` own User Channel
-  reads/replay and continuity persistence orchestration.
+  `user_action_read.rs` owns User Channel reads and replay;
+  [`continuity/user_action.rs`](../../../../crates/volicord-core/src/continuity/user_action.rs)
+  owns continuity persistence planning.
 - [`crates/volicord-cli/src/user_command.rs`](../../../../crates/volicord-cli/src/user_command.rs):
   local User Channel orchestration and terminal rendering.
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs)
