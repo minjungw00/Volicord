@@ -413,7 +413,7 @@ fn projected_user_action_state(
         .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
     if let Some(resolved_request_id) = resolved_request_id {
         pending_authorities
-            .retain(|authority| authority.user_action_request_id != resolved_request_id.as_str());
+            .retain(|authority| &authority.user_action_request_id != resolved_request_id);
     }
     let mut resolved_authorities =
         resolved_user_action_authorities_for_all_kinds(store, &task_id, now)
@@ -832,9 +832,8 @@ fn plan_resolve_user_action(
     derived_refs.extend(continuity_plans.iter().map(|plan| plan.record_ref.clone()));
     let mut pending_authorities = pending_user_action_authorities(store, &task_id, &now)
         .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
-    pending_authorities.retain(|authority| {
-        authority.user_action_request_id != request.user_action_request_id.as_str()
-    });
+    pending_authorities
+        .retain(|authority| authority.user_action_request_id != request.user_action_request_id);
     let lifecycle_phase = projected_user_action_lifecycle_phase(
         project_state,
         &task,

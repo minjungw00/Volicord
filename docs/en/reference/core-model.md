@@ -55,8 +55,13 @@ User-owned judgment stays user-owned.
 
 Write ticket is narrow.
 
-- A write ticket records authorized write intent for one state-bound product-file change or one exact approval-bound non-product action under effective `sensitive` control. Repeating `prepare_write` may reuse the same compatible unconsumed ticket; sensitive reuse also requires the exact operation and approval-resolution identity, and reuse does not widen paths, approvals, or authority.
+- A write ticket records authorized write intent for one state-bound product-file change or one exact approval-bound non-product action under effective `sensitive` control. Repeating `prepare_write` may reuse the same compatible unconsumed ticket; sensitive reuse also requires the exact operation and full approval-resolution identity made of project, `Task`, and UserAction resolution IDs, and reuse does not widen paths, approvals, or authority.
 - Ticket validity depends on the current Task, Change Unit, `scope_revision`, baseline, workspace binding, normalized current project write-authority fingerprint, approval basis, explicit revocation state, and an optional policy-selected idle timeout. An active ticket with a missing or different policy binding is unusable and must be reissued; consumed historical tickets remain inspectable. An unrelated `state_version` change is not an invalidation condition.
+- Every approval-basis reference belongs to the ticket's project and `Task`.
+  Duplicate full resolution identities or owner disagreement are persisted
+  Write Ticket corruption. A well-formed referenced approval that expires or
+  otherwise ceases to satisfy current semantic policy invalidates the approval
+  basis without becoming persisted corruption.
 - It is not reusable scope, ordinary write approval, command approval, shell permission, sensitive-action approval, user-owned judgment, OS permission, deployment approval, final acceptance, residual-risk acceptance, evidence, or proof that the write occurred.
 
 Runs and evidence record support, not authority substitutes.

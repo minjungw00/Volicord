@@ -122,7 +122,7 @@ pub(crate) fn current_residual_risk_acceptance_coverage(
                             .map(|resolution_id| StateRecordRef {
                                 record_kind: StateRecordKind::UserActionResolution,
                                 record_id: volicord_types::ids::RecordId::new(
-                                    resolution_id.clone(),
+                                    resolution_id.as_str(),
                                 ),
                                 project_id: project_id.clone(),
                                 task_id: Some(task_id.clone()).into(),

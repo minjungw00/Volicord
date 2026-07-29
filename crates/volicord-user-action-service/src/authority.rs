@@ -1,7 +1,7 @@
 use crate::{error::UserActionServiceError, model::UserActionAuthority};
 use volicord_store::core_pipeline::StoredUserActionRecordSet;
 use volicord_types::{
-    ids::{ChangeUnitId, ProjectId, TaskId, UserActionRequestId},
+    ids::{ChangeUnitId, ProjectId, TaskId, UserActionRequestId, UserActionResolutionId},
     schema::{StateRecordRef, UserActionRequest, UserActionResolutionBody},
     values::StateRecordKind,
 };
@@ -23,10 +23,11 @@ pub fn user_action_authority_from_record(
         _ => (None, None),
     };
     Ok(UserActionAuthority {
-        user_action_request_id: request.user_action_request_id().to_owned(),
+        project_id: ProjectId::new(request.project_id()),
+        user_action_request_id: UserActionRequestId::new(request.user_action_request_id()),
         user_action_resolution_id: record
             .resolution()
-            .map(|resolution| resolution.user_action_resolution_id().to_owned()),
+            .map(|resolution| UserActionResolutionId::new(resolution.user_action_resolution_id())),
         task_id: TaskId::new(request.task_id()),
         action_kind: request.action_kind(),
         status: record.status(),
@@ -53,7 +54,8 @@ pub fn user_action_authority_from_record(
 /// Projects a newly constructed pending request into method-neutral authority facts.
 pub fn user_action_authority_from_state(request: &UserActionRequest) -> UserActionAuthority {
     UserActionAuthority {
-        user_action_request_id: request.user_action_request_id.as_str().to_owned(),
+        project_id: request.project_id.clone(),
+        user_action_request_id: request.user_action_request_id.clone(),
         user_action_resolution_id: None,
         task_id: request.task_id.clone(),
         action_kind: request.action_kind,

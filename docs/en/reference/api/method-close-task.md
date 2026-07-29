@@ -86,7 +86,7 @@ Mutation conditions:
 
 - `dry_run=false` mutating `intent` values require a non-null `idempotency_key` and current `expected_state_version`.
 - Stale `expected_state_version` or an idempotency request-hash conflict is rejected before close readiness evaluation.
-- A close-relevant write ticket is checked against its explicit validity basis: current Task, Change Unit, scope revision, baseline, workspace context, current normalized project write-authority binding, approval basis, task state, and an optional configured idle timeout. Its audit-only `basis_state_version` is not compared with the global state version.
+- A close-relevant write ticket is checked against its explicit validity basis: current Task, Change Unit, scope revision, baseline, workspace context, current normalized project write-authority binding, full project/`Task`/UserAction-resolution approval identities, task state, and an optional configured idle timeout. Its audit-only `basis_state_version` is not compared with the global state version. Persisted approval-reference owner disagreement or duplicate identity is Store corruption; expiry of an otherwise valid approval is a semantic currentness outcome.
 - A write-ticket validity check does not record final acceptance, residual-risk acceptance, user-owned judgment, sensitive-action approval, or broad approval.
 
 Close condition:

@@ -1271,6 +1271,127 @@ impl StateRecordRef {
     }
 }
 
+/// Full semantic identity of one UserAction resolution.
+///
+/// Projection state version is intentionally absent because it is reference
+/// metadata rather than resolution identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct UserActionResolutionIdentity {
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub resolution_id: UserActionResolutionId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum UserActionResolutionRefRecordKind {
+    UserActionResolution,
+}
+
+/// Dedicated public reference to one Task-owned UserAction resolution.
+///
+/// ```
+/// use volicord_types::{
+///     ids::{ProjectId, TaskId, UserActionResolutionId},
+///     schema::UserActionResolutionRef,
+/// };
+///
+/// let reference = UserActionResolutionRef::new(
+///     ProjectId::new("project"),
+///     TaskId::new("task"),
+///     UserActionResolutionId::new("resolution"),
+///     Some(7),
+/// );
+/// assert_eq!(reference.resolution_id().as_str(), "resolution");
+/// ```
+///
+/// External callers cannot select another record kind or omit Task ownership:
+///
+/// ```compile_fail,E0451
+/// use volicord_types::{
+///     ids::{ProjectId, TaskId, UserActionResolutionId},
+///     schema::UserActionResolutionRef,
+///     values::StateRecordKind,
+/// };
+///
+/// let _ = UserActionResolutionRef {
+///     record_kind: StateRecordKind::Task,
+///     record_id: UserActionResolutionId::new("resolution"),
+///     project_id: ProjectId::new("project"),
+///     task_id: TaskId::new("task"),
+///     produced_at_state_version: Some(7).into(),
+/// };
+/// ```
+///
+/// ```compile_fail,E0451
+/// use volicord_types::{
+///     ids::{ProjectId, UserActionResolutionId},
+///     schema::UserActionResolutionRef,
+/// };
+///
+/// let _ = UserActionResolutionRef {
+///     record_id: UserActionResolutionId::new("resolution"),
+///     project_id: ProjectId::new("project"),
+///     produced_at_state_version: Some(7).into(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionResolutionRef {
+    record_kind: UserActionResolutionRefRecordKind,
+    record_id: UserActionResolutionId,
+    project_id: ProjectId,
+    task_id: TaskId,
+    produced_at_state_version: RequiredNullable<u64>,
+}
+
+impl UserActionResolutionRef {
+    /// Constructs one resolution reference with its complete owner identity.
+    pub fn new(
+        project_id: ProjectId,
+        task_id: TaskId,
+        resolution_id: UserActionResolutionId,
+        produced_at_state_version: Option<u64>,
+    ) -> Self {
+        Self {
+            record_kind: UserActionResolutionRefRecordKind::UserActionResolution,
+            record_id: resolution_id,
+            project_id,
+            task_id,
+            produced_at_state_version: produced_at_state_version.into(),
+        }
+    }
+
+    /// Returns the owning project identity.
+    pub fn project_id(&self) -> &ProjectId {
+        &self.project_id
+    }
+
+    /// Returns the owning Task identity.
+    pub fn task_id(&self) -> &TaskId {
+        &self.task_id
+    }
+
+    /// Returns the typed UserAction resolution identifier.
+    pub fn resolution_id(&self) -> &UserActionResolutionId {
+        &self.record_id
+    }
+
+    /// Returns projection-freshness metadata, which is not identity.
+    pub fn produced_at_state_version(&self) -> Option<u64> {
+        self.produced_at_state_version.as_ref().copied()
+    }
+
+    /// Returns the immutable semantic resolution identity.
+    pub fn identity(&self) -> UserActionResolutionIdentity {
+        UserActionResolutionIdentity {
+            project_id: self.project_id.clone(),
+            task_id: self.task_id.clone(),
+            resolution_id: self.record_id.clone(),
+        }
+    }
+}
+
 /// One-based inclusive line range within a repository-file source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -1879,7 +2000,7 @@ pub struct WriteTicketValidityBasis {
     pub baseline_ref: Option<BaselineRef>,
     pub workspace_context_sha256: Option<String>,
     pub write_authority_fingerprint: String,
-    pub approval_basis_refs: Vec<StateRecordRef>,
+    pub approval_basis_refs: Vec<UserActionResolutionRef>,
 }
 
 /// One-attempt boundary captured by a write ticket.

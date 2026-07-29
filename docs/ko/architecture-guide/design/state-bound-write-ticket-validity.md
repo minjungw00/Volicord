@@ -20,7 +20,8 @@ ticket과 제공된 증거를 adapter-neutral summary로 변환합니다. `servi
 관련 record identity, 후보 mutation, 별도의 비영속 `PlannedWriteTicketDraft`를
 반환합니다. 공개 request envelope, dry-run intent, 응답 state version, durable ID
 generator는 받지 않습니다. 커밋되는 새 발급에서는 공개 메서드가 영속 ticket ID,
-state-version이 있는 approval reference, basis state version을 제공해 검증된
+state-version이 있는 `UserActionResolutionRef` approval reference, basis state
+version을 제공해 검증된
 `PlannedWriteTicket` 하나를 구체화합니다. 이 값이 응답 projection과 완전한 typed
 Store insertion을 함께 제공합니다. Dry run은 구체화 전에 메서드 경계에서
 끝납니다.
@@ -47,6 +48,8 @@ Run mutation은 Run 및 관련 effect와 같은 Store commit에서 선택한 tic
 - Ticket ID, stored status, age만으로 current validity를 성립시키지 않습니다.
 - Structural request와 current Change Unit validation이 lookup보다 먼저입니다.
 - Reuse는 path, approval, operation, authority를 넓히지 않습니다.
+- Approval 현재성은 타입이 있는 프로젝트, `Task`, UserAction resolution
+  identity를 비교하며 produced state version은 참조 metadata로 남습니다.
 - 관련 mismatch는 active ticket을 사용할 수 없게 하지만 관련 없는 state change는
   그렇지 않습니다.
 - Successful consumption은 보호 대상 committed mutation과 atomic하게 일어납니다.
@@ -65,7 +68,8 @@ JSON을 해석하거나 ticket 정책을 독립적으로 구성하지 않습니�
 ticket row를 비공개로 유지하고 status, validity basis, attempt scope, Product
 Repository 경로 모음, timestamp, 중복 owner coordinate를 엄격하게 decode한 뒤
 `StoredWriteTicket`을 반환합니다. 물리 field 사이 관계는 폐쇄형 Write Ticket
-aggregate invariant로 검증합니다. Core는 ID 없는 draft를 구성할 때 의미 planning
+aggregate invariant로 검증하며, 여기에는 approval reference owner 일치와 완전한
+resolution identity 고유성이 포함됩니다. Core는 ID 없는 draft를 구성할 때 의미 planning
 invariant를 검증하고, 메서드가 `PlannedWriteTicket`을 구체화할 때 identity와
 state-version 의존 invariant를 검증합니다. 이 검증은 Store가 담당하는 영속 물리
 검증과 구분됩니다. Planned 발급, stored 상태, projected post-consumption 상태는 의미

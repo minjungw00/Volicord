@@ -13,13 +13,14 @@ use volicord_store::{
     RuntimeHomeMutationContext,
 };
 use volicord_types::canonical::canonical_json_bare_sha256;
-use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
+use volicord_types::ids::{BaselineRef, ProjectId, TaskId, UserActionResolutionId};
 use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{
-    UserActionBasis, UserActionResolutionBody, WriteTicketAttemptScope, WriteTicketValidityBasis,
+    UserActionBasis, UserActionResolutionBody, UserActionResolutionIdentity,
+    WriteTicketAttemptScope, WriteTicketValidityBasis,
 };
 use volicord_types::values::{
-    AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, PromptCaptureStatus, StateRecordKind,
+    AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, PromptCaptureStatus,
     TaskControlLevel, UnrecordedChangeConfidence, UserActionBasisStatus, UserActionKind,
     UserActionOptionAction, UserActionRequiredFor, UtcTimestamp, WriteTicketStatus,
 };
@@ -316,11 +317,9 @@ const fn acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
     }
 }
 
-type StableApprovalIdentity = (String, String, String);
-
 #[derive(Debug, Clone)]
 struct CurrentSensitiveApproval {
-    identity: StableApprovalIdentity,
+    identity: UserActionResolutionIdentity,
     basis: UserActionBasis,
     required_for: Vec<UserActionRequiredFor>,
 }
@@ -363,11 +362,13 @@ fn current_sensitive_approvals(
             && scope_current
         {
             approvals.push(CurrentSensitiveApproval {
-                identity: (
-                    resolution.project_id().to_owned(),
-                    record.request().task_id().to_owned(),
-                    resolution.user_action_resolution_id().to_owned(),
-                ),
+                identity: UserActionResolutionIdentity {
+                    project_id: ProjectId::new(resolution.project_id()),
+                    task_id: TaskId::new(record.request().task_id()),
+                    resolution_id: UserActionResolutionId::new(
+                        resolution.user_action_resolution_id(),
+                    ),
+                },
                 basis: basis.clone(),
                 required_for: request.required_for.clone(),
             });
@@ -387,17 +388,10 @@ fn write_ticket_approval_basis_is_current(
     }
 
     validity_basis.approval_basis_refs.iter().all(|reference| {
-        reference.record_kind == StateRecordKind::UserActionResolution
-            && reference.task_id.as_ref() == Some(&validity_basis.task_id)
-            && current_sensitive_approvals.iter().any(|approval| {
-                approval.identity
-                    == (
-                        reference.project_id.as_str().to_owned(),
-                        validity_basis.task_id.as_str().to_owned(),
-                        reference.record_id.as_str().to_owned(),
-                    )
-                    && sensitive_approval_matches_ticket(approval, validity_basis, attempt_scope)
-            })
+        current_sensitive_approvals.iter().any(|approval| {
+            approval.identity == reference.identity()
+                && sensitive_approval_matches_ticket(approval, validity_basis, attempt_scope)
+        })
     })
 }
 

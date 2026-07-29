@@ -182,6 +182,11 @@ Typed record가 공개 경계를 건너기 전에 Store가 영속 row decode와 
 column이 아니라 담당 aggregate와 폐쇄형 invariant code를 식별합니다. Write Ticket
 aggregate는 일반 읽기와 transaction 범위 읽기에 정규 decoder 하나를 적용하며, 이에
 의존하는 Store 모듈은 검증된 typed record 또는 집중된 typed view만 사용합니다.
+따라서 Write Ticket 승인 근거에서 다른 프로젝트나 `Task`가 소유한 참조, 필수
+영속 참조 metadata 누락, 완전한 UserAction resolution identity 중복은
+`Corrupt`입니다. 올바르게 decode되고 소유자가 일치하는 승인이 만료되거나 현재
+승인 policy를 더 이상 만족하지 않는 경우에는 손상이 아니라 의미 기반 현재성
+결과입니다.
 각각 유효한 typed fact에서 파생된 의미 불변 조건
 위반은 집중 담당 문서가 정한 서비스 또는 Core invariant, validation, availability
 failure입니다. 그 fact가 저장소에서 왔다는 이유만으로 영속 데이터 `Corrupt`가

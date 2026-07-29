@@ -4,7 +4,10 @@ use crate::relevance::{
     current_cancellation_authority, user_action_blocks_operation, CancellationAuthorityRequirement,
     UserActionOperation, UserActionOperationContext,
 };
-use volicord_types::ids::{ChangeUnitId, TaskId, UserActionOptionId};
+use volicord_types::ids::{
+    ChangeUnitId, ProjectId, TaskId, UserActionOptionId, UserActionRequestId,
+    UserActionResolutionId,
+};
 use volicord_types::schema::{RequiredNullable, UserActionBasis, UserActionResolutionBody};
 use volicord_types::values::{
     ActorSource, JudgmentResolutionOutcome, UserActionBasisStatus, UserActionKind,
@@ -17,7 +20,8 @@ fn authority(
     required_for: UserActionRequiredFor,
 ) -> UserActionAuthority {
     UserActionAuthority {
-        user_action_request_id: "action-test".to_owned(),
+        project_id: ProjectId::new("project-test"),
+        user_action_request_id: UserActionRequestId::new("action-test"),
         user_action_resolution_id: None,
         task_id: TaskId::new("task-test"),
         action_kind,
@@ -42,7 +46,7 @@ fn accepted_cancellation() -> UserActionAuthority {
         UserActionStatus::Resolved,
         UserActionRequiredFor::CloseCancel,
     );
-    authority.user_action_resolution_id = Some("resolution-test".to_owned());
+    authority.user_action_resolution_id = Some(UserActionResolutionId::new("resolution-test"));
     authority.machine_action = Some(UserActionOptionAction::Accept);
     authority.resolution_outcome = Some(JudgmentResolutionOutcome::Accepted);
     authority.resolved_by_actor_source = Some(ActorSource::LocalUser);

@@ -22,7 +22,8 @@ semantic decision reasons, related record identities, candidate mutations,
 and the distinct, unpersisted `PlannedWriteTicketDraft`. It does not receive a
 public request envelope, dry-run intent, response state version, or durable ID
 generator. For committed new issuance, the public method supplies the durable
-ticket ID, state-versioned approval references, and basis state version to
+ticket ID, state-versioned `UserActionResolutionRef` approval references, and
+basis state version to
 materialize one validated `PlannedWriteTicket`; that value supplies both the
 response projection and fully typed Store insertion. Dry run ends at the
 method boundary before materialization.
@@ -51,6 +52,8 @@ the same Store commit as the Run and its associated effects.
 - Ticket IDs, stored status, or age alone do not establish current validity.
 - Structural request and current Change Unit validation precede lookup.
 - Reuse does not widen paths, approvals, operations, or authority.
+- Approval currentness compares typed project, `Task`, and UserAction
+  resolution identities; produced state version remains reference metadata.
 - Relevant mismatch makes an active ticket unusable; unrelated state changes
   do not.
 - Successful consumption is atomic with the protected committed mutation.
@@ -72,7 +75,8 @@ independently. Store keeps the physical ticket row private and strictly
 decodes status, validity basis, attempt scope, Product Repository path
 collections, timestamps, and redundant owner coordinates before returning a
 `StoredWriteTicket`. Relationships among physical fields are validated as
-closed Write Ticket aggregate invariants. Core validates semantic planning
+closed Write Ticket aggregate invariants, including approval-reference owner
+agreement and unique full resolution identities. Core validates semantic planning
 invariants while constructing an identity-free draft, then validates identity
 and state-version-dependent invariants during method-owned
 `PlannedWriteTicket` materialization. Those checks are separate from

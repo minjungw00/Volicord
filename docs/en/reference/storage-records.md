@@ -595,6 +595,13 @@ selected row has become a validated `StoredWriteTicket`. All
 read-only semantic accessors and cannot construct, update, or destructure a
 persisted record. No public compatibility alias exists.
 
+The decoded `WriteTicketValidityBasis.approval_basis_refs` collection uses the
+dedicated `UserActionResolutionRef` contract. Store rejects a missing or
+non-`user_action_resolution` kind during typed JSON decoding. Aggregate
+validation then requires every reference's project and `Task` to equal the
+physical ticket owner, requires non-null produced-state metadata for persisted
+refs, and rejects duplicate full project/`Task`/resolution identities.
+
 Other Store modules receive a complete typed Write Ticket or a focused typed
 view produced from that record. In particular, workflow-policy persistence
 uses a typed authority-binding view and does not query `write_tickets`, parse
@@ -615,7 +622,9 @@ Corruption local to one physical Write Ticket field identifies that exact
 field. A relationship among fields, including owner identity, scope revision,
 baseline, timestamp ordering, path-set, path-coverage, write-intent, or status
 lifecycle disagreement, identifies the Write Ticket aggregate and a closed
-invariant code. Expiry relative to an operation time, incompatibility with the
+invariant code. Approval-owner disagreement and duplicate approval-resolution
+identity are aggregate invariant failures rather than JSON-column
+attribution. Expiry relative to an operation time, incompatibility with the
 current policy, or lack of coverage for a requested operation remains a
 semantic rejection when the persisted ticket itself is internally valid.
 

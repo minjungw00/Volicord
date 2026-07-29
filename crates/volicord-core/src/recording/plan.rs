@@ -174,7 +174,6 @@ pub(super) fn decide_record_run_policy(
             &record,
             RecordRunWriteAdmission {
                 store,
-                project_id: &request.project_id,
                 task_id: &request.task_id,
                 change_unit_id: &request.change_unit_id,
                 baseline_ref: &request.baseline_ref,

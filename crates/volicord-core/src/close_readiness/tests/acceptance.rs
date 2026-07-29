@@ -155,8 +155,11 @@ fn close_basis() -> CurrentCloseBasis {
 fn accepted_authority(kind: UserActionKind, risk_ids: Vec<RiskId>) -> UserActionAuthority {
     let basis = close_basis();
     UserActionAuthority {
-        user_action_request_id: "action-acceptance".to_owned(),
-        user_action_resolution_id: Some("resolution-acceptance".to_owned()),
+        project_id: ProjectId::new("project-acceptance"),
+        user_action_request_id: volicord_types::ids::UserActionRequestId::new("action-acceptance"),
+        user_action_resolution_id: Some(volicord_types::ids::UserActionResolutionId::new(
+            "resolution-acceptance",
+        )),
         task_id: basis.task_id.clone(),
         action_kind: kind,
         status: UserActionStatus::Resolved,

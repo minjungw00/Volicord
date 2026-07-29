@@ -36,8 +36,9 @@ use crate::schema::{
     UserActionEvidenceObservationRequestBody, UserActionOption, UserActionOptionInput,
     UserActionRequest, UserActionRequestBody, UserActionResolution, UserActionResolutionBody,
     UserActionResolutionChoice, UserActionResolutionForm, UserActionResolutionInput,
-    ValidatorResult, WorkspaceContext, WriteDecisionReason, WriteTicket, WriteTicketAttemptScope,
-    WriteTicketPathPatterns, WriteTicketScope, WriteTicketStateSummary, WriteTicketValidityBasis,
+    UserActionResolutionRef, ValidatorResult, WorkspaceContext, WriteDecisionReason, WriteTicket,
+    WriteTicketAttemptScope, WriteTicketPathPatterns, WriteTicketScope, WriteTicketStateSummary,
+    WriteTicketValidityBasis,
 };
 use crate::values::{MethodName, UserActionStatus};
 
@@ -470,6 +471,7 @@ fn schema_family_descriptors() -> Vec<JsonContractDescriptor> {
             "api.schema.state",
             [
                 schema::<StateRecordRef>(),
+                schema::<UserActionResolutionRef>(),
                 schema::<SourceRef>(),
                 schema::<GuardInstallation>(),
                 schema::<AgentSession>(),

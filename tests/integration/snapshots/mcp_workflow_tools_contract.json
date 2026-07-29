@@ -177,6 +177,8 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -188,7 +190,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:68f90a5d343c466fafb117ac84606d319c52a46c93818216cb28696f497054a6"
+        "sha256": "sha256:549d44dfeb4c30132297e84612c8154e07ae3b4ab3ebbcfd1315339038427c6e"
       }
     },
     {
@@ -328,6 +330,8 @@
           "ToolRejectedResponse",
           "UpdateScopeResult",
           "UpdateScopeResultBase",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -339,7 +343,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:271dd5e275268a53f55403a3245efe641153af4218d00b72ca685c91017d3338"
+        "sha256": "sha256:fcd3d16a52a5b3208c354106ba01f6f781d73d7d255aaefa66bc218c4416e87a"
       }
     },
     {
@@ -455,6 +459,8 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultOrRejected_for_StatusResult",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -466,7 +472,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:76de067e36456ccca5f003036123da009c291cbbd2d214c0daeb7d3f87f87160"
+        "sha256": "sha256:35196c3bc20e3bbd535d9f0d507f69087ca35c08a90476b33c84ce454e1a3334"
       }
     },
     {
@@ -763,6 +769,8 @@
           "UserActionContext",
           "UserActionDraft",
           "UserActionOptionInput",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -781,7 +789,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:eb7ae62a4d1c9f625603b5b329038e5d49bb97e176e4ed89bc029098275b62b6"
+        "sha256": "sha256:0844ac318cba51e63739a9381590125bcc55aa5ac1e3f9c7744b894de892cb79"
       }
     },
     {
@@ -1075,6 +1083,8 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UserContextSource",
           "UtcTimestamp",
           "WorkPhase",
@@ -1087,7 +1097,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:05ee73c7f063d37406be8ddabf45d7ee4e6c0304fd3b0abc2e1d7efcd4898a7b"
+        "sha256": "sha256:5e7fd4cf56aba33b3414e1e0870864e90b1c74001307dd31a0d6ba893998a31a"
       }
     },
     {
@@ -1235,6 +1245,8 @@
           "UserActionChannelKind",
           "UserActionKind",
           "UserActionOptionAction",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
@@ -1247,7 +1259,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:82be98cca4cdc23ba65e2cb33cddd4473daf80c22e4eb1b51abf173a17893ba5"
+        "sha256": "sha256:073e6cd8dfad0c644c499790815fc80efa25fa6f20195561eb1a6743c6add7b2"
       }
     },
     {
@@ -1380,6 +1392,8 @@
           "UnrecordedChangeResolutionBasis",
           "UnrecordedChangeResolutionSummary",
           "UnrecordedChangeStatus",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1391,7 +1405,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d183dc06ccace02ac1d04918bf195db89473e58aee3292ad7cb7992e017b8947"
+        "sha256": "sha256:b8c97f49afdb5eb061b99b97649896a3da45a06dad6ca9e2ce6a1017427ffbe6"
       }
     },
     {
@@ -1498,6 +1512,8 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultOrRejected_for_CheckCloseResult",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1509,7 +1525,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:04c48753eb319508cdcc9ab21d0321f51988750fa4e6547806b3183e3a51af06"
+        "sha256": "sha256:9529ab3b7cdd4cf03b4ceddd3d370de3ff739e2ed78de05f2f2c4283f88472e0"
       }
     },
     {
@@ -1646,6 +1662,8 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1657,7 +1675,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:86b2495a8852c6b8fc95b2bf471c46688133b2793d34bf25301237578a3a6390"
+        "sha256": "sha256:c408001903b88802d0b95dcb38cc7412a90f6198e38e3562244bd8b014bac067"
       }
     },
     {

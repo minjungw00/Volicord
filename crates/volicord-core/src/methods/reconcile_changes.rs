@@ -309,7 +309,7 @@ fn plan_reconcile_changes(
                         |resolution_id| {
                             state_ref(
                                 StateRecordKind::UserActionResolution,
-                                resolution_id,
+                                resolution_id.as_str(),
                                 &request.envelope.project_id,
                                 Some(&request.task_id),
                                 Some(project_state.state_version),
@@ -752,7 +752,7 @@ fn accepted_resolution_candidate(
                 |resolution_id| {
                     state_ref(
                         StateRecordKind::UserActionResolution,
-                        resolution_id,
+                        resolution_id.as_str(),
                         &unrecorded_ref.project_id,
                         Some(task_id),
                         unrecorded_ref.produced_at_state_version.as_ref().copied(),
@@ -769,7 +769,10 @@ fn accepted_authority_for_request<'a>(
     task_id: &TaskId,
 ) -> Option<&'a UserActionAuthority> {
     resolved_authorities.iter().find(|authority| {
-        authority.user_action_resolution_id.as_deref() == Some(user_action_resolution_id.as_str())
+        authority
+            .user_action_resolution_id
+            .as_ref()
+            .is_some_and(|candidate| candidate == user_action_resolution_id)
             && accepted_authority_for_unrecorded(authority, unrecorded_ref, task_id)
     })
 }

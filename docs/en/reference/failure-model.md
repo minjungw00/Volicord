@@ -207,6 +207,11 @@ its closed invariant codes; it does not attribute the contradiction to a
 convenient column. The Write Ticket aggregate applies this rule through one
 canonical decoder for normal and transaction-scoped reads, and dependent Store
 modules consume only its validated typed records or focused typed views.
+For a Write Ticket approval basis, a reference owned by another project or
+`Task`, missing required persisted reference metadata, or a duplicate full
+UserAction-resolution identity is therefore `Corrupt`. A correctly decoded
+and owner-consistent approval that has expired or no longer satisfies current
+approval policy is a semantic currentness result, not corruption.
 A semantic invariant failure derived from individually valid typed facts is a
 service or Core invariant, validation, or availability failure under its
 focused owner; it is not persisted-data `Corrupt` merely because the facts

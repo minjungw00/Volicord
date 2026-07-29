@@ -62,7 +62,20 @@ StateRecordRef:
   project_id: string
   task_id: string | null
   produced_at_state_version: integer | null
+
+UserActionResolutionRef:
+  record_kind: user_action_resolution
+  record_id: string
+  project_id: string
+  task_id: string
+  produced_at_state_version: integer | null
 ```
+
+`UserActionResolutionRef` is the dedicated approval-reference shape. Its
+`record_kind` is fixed to `user_action_resolution`, and its required
+`project_id`, `task_id`, and `record_id` form the full resolution identity.
+`produced_at_state_version` remains required nullable projection metadata and
+does not participate in that identity.
 
 Owner links:
 - `record_kind` values: [record and reference values](schema-value-sets.md#record-and-reference-values)
@@ -549,7 +562,7 @@ WriteTicketValidityBasis:
   baseline_ref: string | null
   workspace_context_sha256: string | null
   write_authority_fingerprint: string
-  approval_basis_refs: StateRecordRef[]
+  approval_basis_refs: UserActionResolutionRef[]
 
 WriteTicketScope:
   task_id: string
@@ -628,6 +641,12 @@ Meaning:
 - `WriteTicket.validity_basis`, consumption state, optional idle timeout, and
   invalidation reason determine validity. `basis_state_version` records audit
   order only; an unrelated state-version increment never invalidates a ticket.
+- `WriteTicketValidityBasis.approval_basis_refs` contains only
+  `UserActionResolutionRef` values. Each value names one full project, `Task`,
+  and UserAction-resolution identity owned by the ticket, and duplicate
+  identities are invalid. Currentness compares that full identity; it never
+  compares an unscoped resolution ID. The reference's
+  `produced_at_state_version` is metadata rather than identity.
 - `WriteTicketValidityBasis.write_authority_fingerprint` is canonical-JSON
   SHA-256 with the `sha256:` prefix over the exact normalized object
   `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.

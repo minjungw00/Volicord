@@ -331,7 +331,9 @@ Capture-backed 관찰 규칙:
 
 - 티켓이 `status=active`이고 이미 소비되거나 철회되지 않았습니다.
 - `WriteTicketValidityBasis`가 현재 `task_id`, `change_unit_id`,
-  `scope_revision`, 기준선, workspace digest, 승인 근거 참조와 계속 일치합니다.
+  `scope_revision`, 기준선, workspace digest, 승인 근거 참조와 계속 일치합니다. 각
+  승인 참조는 범위가 없는 resolution ID가 아니라 완전한 프로젝트, `Task`,
+  UserAction resolution identity로 현재 해결 권한과 일치해야 합니다.
 - null이 아닌 `write_authority_fingerprint`가 현재 권위 프로젝트 정책에서 독립적으로
   다시 읽어 계산한 fingerprint와 정확히 일치합니다. Store는 티켓 소비 트랜잭션
   안에서 같은 결속을 다시 확인합니다.
@@ -352,6 +354,11 @@ Capture-backed 관찰 규칙:
 티켓은 상태/닫기 확인, 증거 기록, 진단, 과거 operation 결과 조회, 관련 없는
 사용자 행동, 커밋된 비허용 쓰기 준비 결정을 포함한 관련 없는 `state_version`
 변경 뒤에도 유효합니다. `WriteTicket.basis_state_version`은 발급 순서만 기록합니다.
+
+형식이 올바른 승인이 만료되거나 더 이상 현재 상태가 아니면 의미 기반
+`approval_basis_changed` 결과가 됩니다. 영속 승인 참조의 소유자 불일치, 필수
+참조 metadata 누락, 완전한 resolution identity 중복은 Store 손상이며 이 승인
+policy까지 도달할 수 없습니다.
 
 오래된 `expected_state_version`은 일반 요청 충돌 우선순위에 따라 거절합니다.
 티켓 근거는 별도로 검증하며 전역 상태 버전 차이만으로 티켓에

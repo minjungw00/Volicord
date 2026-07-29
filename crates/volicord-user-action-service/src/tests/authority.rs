@@ -24,7 +24,8 @@ fn pending_public_request_projects_to_neutral_current_authority() {
 
     let authority = user_action_authority_from_state(&request);
 
-    assert_eq!(authority.user_action_request_id, "action-test");
+    assert_eq!(authority.project_id.as_str(), "project-test");
+    assert_eq!(authority.user_action_request_id.as_str(), "action-test");
     assert_eq!(authority.task_id.as_str(), "task-test");
     assert_eq!(authority.status, UserActionStatus::Pending);
     assert_eq!(authority.action_kind, UserActionKind::ProductDecision);

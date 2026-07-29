@@ -352,7 +352,9 @@ Ticket-backed recording consumes the write ticket only when:
 - the ticket has `status=active` and has not already been consumed or revoked
 - its `WriteTicketValidityBasis` still matches the current `task_id`,
   `change_unit_id`, `scope_revision`, baseline, workspace digest, and approval
-  basis refs
+  basis refs; every approval ref matches a current resolved authority by its
+  full project, `Task`, and UserAction resolution identity rather than an
+  unscoped resolution ID
 - its non-null `write_authority_fingerprint` exactly matches the fingerprint
   independently reloaded from the current authoritative project policy; the
   Store rechecks the same binding inside the ticket-consumption transaction
@@ -379,6 +381,12 @@ A ticket remains valid across unrelated `state_version` changes, including
 status or close checks, evidence recording, diagnostics, operation-result
 retrieval, unrelated user actions, and committed non-allow prepare-write
 decisions. `WriteTicket.basis_state_version` records issuance order only.
+
+An expired or otherwise no-longer-current well-formed approval produces the
+semantic `approval_basis_changed` outcome. Persisted approval-reference owner
+disagreement, missing required reference metadata, or duplicate full
+resolution identity is Store corruption and cannot reach this admission
+policy.
 
 The method rejects stale `expected_state_version` according to normal request
 conflict precedence. It independently validates the ticket basis; a different

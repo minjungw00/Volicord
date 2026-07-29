@@ -2515,6 +2515,61 @@ mod tests {
     }
 
     #[test]
+    fn user_action_resolution_ref_has_strict_typed_owner_identity() {
+        let valid = json!({
+            "record_kind": "user_action_resolution",
+            "record_id": "resolution-shared",
+            "project_id": "project-a",
+            "task_id": "task-a",
+            "produced_at_state_version": 7
+        });
+        let schema = serde_json::to_value(schema_for!(UserActionResolutionRef))
+            .expect("resolution reference schema should serialize");
+        assert!(validate_json_schema(&schema, &valid).is_ok());
+
+        let decoded: UserActionResolutionRef =
+            serde_json::from_value(valid).expect("canonical resolution reference should decode");
+        assert_eq!(decoded.project_id().as_str(), "project-a");
+        assert_eq!(decoded.task_id().as_str(), "task-a");
+        assert_eq!(decoded.resolution_id().as_str(), "resolution-shared");
+        assert_eq!(decoded.produced_at_state_version(), Some(7));
+
+        let other_project = UserActionResolutionRef::new(
+            ProjectId::new("project-b"),
+            TaskId::new("task-a"),
+            UserActionResolutionId::new("resolution-shared"),
+            Some(8),
+        );
+        let other_task = UserActionResolutionRef::new(
+            ProjectId::new("project-a"),
+            TaskId::new("task-b"),
+            UserActionResolutionId::new("resolution-shared"),
+            Some(9),
+        );
+        assert_ne!(decoded.identity(), other_project.identity());
+        assert_ne!(decoded.identity(), other_task.identity());
+
+        for invalid in [
+            json!({
+                "record_kind": "task",
+                "record_id": "resolution-shared",
+                "project_id": "project-a",
+                "task_id": "task-a",
+                "produced_at_state_version": 7
+            }),
+            json!({
+                "record_kind": "user_action_resolution",
+                "record_id": "resolution-shared",
+                "project_id": "project-a",
+                "produced_at_state_version": 7
+            }),
+        ] {
+            assert!(validate_json_schema(&schema, &invalid).is_err());
+            assert!(serde_json::from_value::<UserActionResolutionRef>(invalid).is_err());
+        }
+    }
+
+    #[test]
     fn typed_request_hash_ignores_raw_order_and_preserves_semantic_differences() {
         let first_json = r#"{
             "safe_bytes_or_notice": "Local trace sample.",

@@ -213,6 +213,11 @@ enclosing `UserActionResolution`. The nested observation contains only the
 selected target, artifact refs, relevance, and summary; it does not duplicate
 coordinates or create an orphan observation identity.
 
+The semantic UserAction resolution identity is the typed tuple
+(`project_id`, `task_id`, `user_action_resolution_id`). Authority consumers
+obtain that full identity from the resolved UserAction facts instead of
+reconstructing it from an unscoped resolution ID and ambient owner state.
+
 ```schema
 UserActionResolution:
   user_action_resolution_id: string

@@ -9,11 +9,11 @@ use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, StoredWriteTicket, TaskRecord,
 };
 use volicord_store::error::StoreError;
-use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, TaskId};
+use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
 use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{ObservedChanges, WriteTicketAttemptScope, WriteTicketValidityBasis};
 use volicord_types::values::{
-    StateRecordKind, TaskControlLevel, UserActionKind, UserActionRequiredFor, UtcTimestamp,
+    TaskControlLevel, UserActionKind, UserActionRequiredFor, UtcTimestamp,
     WriteTicketInvalidationReason, WriteTicketStatus,
 };
 use volicord_user_action_service::{
@@ -61,7 +61,6 @@ impl From<UserActionServiceError> for WriteTicketAdmissionError {
 
 pub(crate) struct RecordRunWriteAdmission<'a> {
     pub(crate) store: &'a CoreProjectStore<'a>,
-    pub(crate) project_id: &'a ProjectId,
     pub(crate) task_id: &'a TaskId,
     pub(crate) change_unit_id: &'a ChangeUnitId,
     pub(crate) baseline_ref: &'a BaselineRef,
@@ -80,7 +79,6 @@ pub(crate) fn admit_record_run(
 ) -> Result<WriteTicketAttemptScope, WriteTicketAdmissionError> {
     let RecordRunWriteAdmission {
         store,
-        project_id,
         task_id,
         change_unit_id,
         baseline_ref,
@@ -193,7 +191,6 @@ pub(crate) fn admit_record_run(
     }
     if !write_ticket_approval_basis_is_current(WriteTicketApprovalBasisContext {
         store,
-        project_id,
         task_id,
         change_unit_id,
         task,
@@ -211,7 +208,6 @@ pub(crate) fn admit_record_run(
 
 struct WriteTicketApprovalBasisContext<'a> {
     store: &'a CoreProjectStore<'a>,
-    project_id: &'a ProjectId,
     task_id: &'a TaskId,
     change_unit_id: &'a ChangeUnitId,
     task: &'a TaskRecord,
@@ -225,7 +221,6 @@ fn write_ticket_approval_basis_is_current(
 ) -> Result<bool, WriteTicketAdmissionError> {
     let WriteTicketApprovalBasisContext {
         store,
-        project_id,
         task_id,
         change_unit_id,
         task,
@@ -256,23 +251,21 @@ fn write_ticket_approval_basis_is_current(
     };
     let records =
         store.resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)?;
-    let mut current_resolution_ids = BTreeSet::new();
+    let mut current_resolution_identities = BTreeSet::new();
     for record in records {
         let authority = user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
-            if let Some(resolution_id) = authority.user_action_resolution_id {
-                current_resolution_ids.insert(resolution_id);
+            if let Some(identity) = authority.resolution_identity() {
+                current_resolution_identities.insert(identity);
             }
         }
     }
 
-    Ok(!current_resolution_ids.is_empty()
-        && validity_basis.approval_basis_refs.iter().all(|reference| {
-            reference.record_kind == StateRecordKind::UserActionResolution
-                && &reference.project_id == project_id
-                && reference.task_id.as_ref() == Some(task_id)
-                && current_resolution_ids.contains(reference.record_id.as_str())
-        }))
+    Ok(!current_resolution_identities.is_empty()
+        && validity_basis
+            .approval_basis_refs
+            .iter()
+            .all(|reference| current_resolution_identities.contains(&reference.identity())))
 }
 
 fn write_ticket_mismatch(

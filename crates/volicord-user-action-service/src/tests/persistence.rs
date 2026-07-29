@@ -8,10 +8,11 @@ use crate::{
 use volicord_store::core_pipeline::{
     CoreStorageMutation, UserActionMutation, UserActionResolutionInsert,
 };
-use volicord_types::ids::UserActionOptionId;
+use volicord_types::ids::{ProjectId, TaskId, UserActionOptionId, UserActionResolutionId};
 use volicord_types::schema::{
     PersistedUserActionDirectRequestMetadata, PersistedUserActionRequest,
     PersistedUserActionRequestMetadata, RequiredNullable, UserActionResolutionBody,
+    UserActionResolutionIdentity,
 };
 use volicord_types::values::{
     ActorSource, JudgmentResolutionOutcome, MethodName, UserActionChannelKind, UserActionKind,
@@ -70,8 +71,46 @@ fn request_mapping_produces_consumable_effective_record_and_store_input() {
 
     let authority = user_action_authority_from_record(&effective)
         .expect("service must consume the validated Store record");
-    assert_eq!(authority.user_action_request_id, "action-test");
+    assert_eq!(authority.project_id.as_str(), "project-test");
+    assert_eq!(authority.user_action_request_id.as_str(), "action-test");
     assert_eq!(authority.status, UserActionStatus::Pending);
+    assert!(authority.resolution_identity().is_none());
+
+    let resolved_at =
+        UtcTimestamp::parse("2026-07-27T00:01:00Z").expect("test timestamp must parse");
+    let resolved = effective
+        .with_resolution(
+            &UserActionResolutionInsert {
+                user_action_resolution_id: "resolution-test".to_owned(),
+                user_action_request_id: "action-test".to_owned(),
+                action_kind: UserActionKind::ProductDecision,
+                channel_kind: UserActionChannelKind::Cli,
+                channel_submission_id: "submission-test".to_owned(),
+                resolution: UserActionResolutionBody::Choice {
+                    selected_option_id: UserActionOptionId::new("keep"),
+                    machine_action: UserActionOptionAction::Accept,
+                    resolution_outcome: JudgmentResolutionOutcome::Accepted,
+                    note: RequiredNullable::null(),
+                    accepted_risk_ids: Vec::new(),
+                },
+                resolved_by_actor_source: ActorSource::LocalUser,
+                resolved_verification_basis: UserActionVerificationBasis::CliDirectUserChannel,
+                resolved_assurance_level: "local_verified".to_owned(),
+                resolved_at: resolved_at.clone(),
+            },
+            &resolved_at,
+        )
+        .expect("matching resolution should project");
+    let resolved_authority = user_action_authority_from_record(&resolved)
+        .expect("resolved Store record must preserve authority identity");
+    assert_eq!(
+        resolved_authority.resolution_identity(),
+        Some(UserActionResolutionIdentity {
+            project_id: ProjectId::new("project-test"),
+            task_id: TaskId::new("task-test"),
+            resolution_id: UserActionResolutionId::new("resolution-test"),
+        })
+    );
 
     let public_request = user_action_from_record(&effective, 11)
         .expect("service must project the validated Store record");

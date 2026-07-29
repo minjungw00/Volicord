@@ -62,7 +62,20 @@ StateRecordRef:
   project_id: string
   task_id: string | null
   produced_at_state_version: integer | null
+
+UserActionResolutionRef:
+  record_kind: user_action_resolution
+  record_id: string
+  project_id: string
+  task_id: string
+  produced_at_state_version: integer | null
 ```
+
+`UserActionResolutionRef`는 승인 참조 전용 형태입니다. `record_kind`는
+`user_action_resolution`으로 고정되며, 필수 `project_id`, `task_id`,
+`record_id`가 완전한 resolution identity를 이룹니다.
+`produced_at_state_version`은 필수 null 허용 projection metadata로 남고 이
+identity에는 참여하지 않습니다.
 
 담당 문서 링크:
 - `record_kind` 값: [기록과 참조 값](schema-value-sets.md#record-and-reference-values)
@@ -546,7 +559,7 @@ WriteTicketValidityBasis:
   baseline_ref: string | null
   workspace_context_sha256: string | null
   write_authority_fingerprint: string
-  approval_basis_refs: StateRecordRef[]
+  approval_basis_refs: UserActionResolutionRef[]
 
 WriteTicketScope:
   task_id: string
@@ -620,6 +633,12 @@ WriteDecisionReason:
 - `WriteTicket.validity_basis`, 소비 상태, 선택적 idle timeout, 무효화 사유가
   유효성을 결정합니다. `basis_state_version`은 감사 순서만 기록하며 관련 없는 상태
   버전 증가는 티켓을 무효화하지 않습니다.
+- `WriteTicketValidityBasis.approval_basis_refs`에는
+  `UserActionResolutionRef` 값만 들어갑니다. 각 값은 티켓이 소유한 완전한
+  프로젝트, `Task`, UserAction resolution identity 하나를 나타내며 중복
+  identity는 유효하지 않습니다. 현재성 비교는 이 완전한 identity를 사용하며
+  범위가 없는 resolution ID만 비교하지 않습니다. 참조의
+  `produced_at_state_version`은 identity가 아니라 metadata입니다.
 - `WriteTicketValidityBasis.write_authority_fingerprint`는 정확한 정규화 객체
   `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
   canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 각 값은 대응하는

@@ -34,7 +34,8 @@ use volicord_types::ids::{
 };
 use volicord_types::product_path::{path_is_within, ProductRelativePath};
 use volicord_types::schema::{
-    JsonObject, StateRecordRef, WriteTicketAttemptScope, WriteTicketValidityBasis,
+    JsonObject, UserActionResolutionIdentity, UserActionResolutionRef, WriteTicketAttemptScope,
+    WriteTicketValidityBasis,
 };
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, MethodName, PrepareWriteDecision, StateRecordKind,
@@ -198,7 +199,7 @@ pub(crate) struct PlannedWriteTicketDraft {
     baseline_ref: BaselineRef,
     workspace_context_sha256: Option<String>,
     write_authority_fingerprint: String,
-    approval_resolution_ids: Vec<UserActionResolutionId>,
+    approval_resolution_identities: Vec<UserActionResolutionIdentity>,
     allowed_path_prefixes: Vec<ProductRelativePath>,
     denied_path_prefixes: Vec<ProductRelativePath>,
     attempt_scope: WriteTicketAttemptScope,
@@ -405,16 +406,16 @@ pub(crate) fn materialize_planned_write_ticket(
     draft: PlannedWriteTicketDraft,
     write_ticket_id: WriteTicketId,
     basis_state_version: u64,
-    approval_basis_refs: Vec<StateRecordRef>,
+    approval_basis_refs: Vec<UserActionResolutionRef>,
 ) -> Result<PlannedWriteTicket, WriteTicketPlanningError> {
-    let approval_refs_match = draft.approval_resolution_ids.len() == approval_basis_refs.len()
-        && draft.approval_resolution_ids.iter().all(|resolution_id| {
-            approval_basis_refs.iter().any(|reference| {
-                reference.record_kind == StateRecordKind::UserActionResolution
-                    && reference.record_id.as_str() == resolution_id.as_str()
-                    && reference.project_id == draft.project_id
-                    && reference.task_id.as_ref() == Some(&draft.task_id)
-            })
+    let approval_refs_match = draft.approval_resolution_identities.len()
+        == approval_basis_refs.len()
+        && draft.approval_resolution_identities.iter().all(|identity| {
+            identity.project_id == draft.project_id
+                && identity.task_id == draft.task_id
+                && approval_basis_refs
+                    .iter()
+                    .any(|reference| reference.identity() == *identity)
         });
     if !approval_refs_match {
         return Err(WriteTicketPlanningError::Invariant {
@@ -459,7 +460,7 @@ pub(crate) struct PrepareWritePlanningOutcome {
     pub(crate) decision: PrepareWriteDecision,
     pub(crate) allowed: bool,
     pub(crate) pending_user_action_request_ids: Vec<UserActionRequestId>,
-    pub(crate) active_user_action_resolution_ids: Vec<UserActionResolutionId>,
+    pub(crate) active_user_action_resolution_identities: Vec<UserActionResolutionIdentity>,
     pub(crate) planned_write_ticket: Option<PlannedWriteTicketDraft>,
     pub(crate) reused_write_ticket: Option<StoredWriteTicket>,
     pub(crate) allowed_path_patterns: Vec<String>,
@@ -803,7 +804,7 @@ fn plan_prepare_write_mutations(
     let pending_user_action_request_ids = pending_authorities
         .iter()
         .filter(|authority| user_action_blocks_operation(authority, &operation_context))
-        .map(|authority| UserActionRequestId::new(authority.user_action_request_id.clone()))
+        .map(|authority| authority.user_action_request_id.clone())
         .collect::<Vec<_>>();
     if !pending_user_action_request_ids.is_empty() {
         reasons.push(write_decision_reason(
@@ -821,7 +822,7 @@ fn plan_prepare_write_mutations(
         ));
     }
 
-    let mut active_user_action_resolution_ids = Vec::new();
+    let mut active_user_action_resolution_identities = Vec::new();
     let mut created_by_user_action_resolution_id = None;
     if sensitive_approval_required {
         let matching_sensitive_approval = matching_sensitive_approval(SensitiveApprovalSearch {
@@ -836,11 +837,10 @@ fn plan_prepare_write_mutations(
             now: &plan_now,
         })?;
         if let Some(record) = matching_sensitive_approval {
-            if let Some(resolution) = record.resolution() {
-                let resolution_id =
-                    UserActionResolutionId::new(resolution.user_action_resolution_id());
-                created_by_user_action_resolution_id = Some(resolution_id.clone());
-                active_user_action_resolution_ids.push(resolution_id);
+            let authority = user_action_authority_from_record(&record)?;
+            if let Some(identity) = authority.resolution_identity() {
+                created_by_user_action_resolution_id = Some(identity.resolution_id.clone());
+                active_user_action_resolution_identities.push(identity);
             }
         } else {
             reasons.push(write_decision_reason(
@@ -863,14 +863,13 @@ fn plan_prepare_write_mutations(
         baseline_ref: Some(input.baseline_ref.clone()),
     };
     let created_at = plan_now.clone();
-    let semantic_approval_basis_refs = active_user_action_resolution_ids
+    let semantic_approval_basis_refs = active_user_action_resolution_identities
         .iter()
-        .map(|resolution_id| {
-            state_ref(
-                StateRecordKind::UserActionResolution,
-                resolution_id.as_str(),
-                &input.project_id,
-                Some(&task_id),
+        .map(|identity| {
+            UserActionResolutionRef::new(
+                identity.project_id.clone(),
+                identity.task_id.clone(),
+                identity.resolution_id.clone(),
                 None,
             )
         })
@@ -960,7 +959,7 @@ fn plan_prepare_write_mutations(
         baseline_ref: input.baseline_ref.clone(),
         workspace_context_sha256: validity_basis_for_selection.workspace_context_sha256,
         write_authority_fingerprint: workflow_policy.write_authority_fingerprint,
-        approval_resolution_ids: active_user_action_resolution_ids.clone(),
+        approval_resolution_identities: active_user_action_resolution_identities.clone(),
         allowed_path_prefixes: typed_allowed_path_patterns,
         denied_path_prefixes: typed_denied_path_patterns,
         attempt_scope,
@@ -1003,7 +1002,7 @@ fn plan_prepare_write_mutations(
         decision,
         allowed,
         pending_user_action_request_ids,
-        active_user_action_resolution_ids,
+        active_user_action_resolution_identities,
         planned_write_ticket,
         reused_write_ticket: compatible_ticket,
         allowed_path_patterns,
@@ -1163,41 +1162,34 @@ fn write_ticket_approval_basis_is_current_for_prepare(
             now,
         )
         .map_err(CorePipelineError::from)?;
-    let mut current_resolution_ids = Vec::new();
+    let mut current_resolution_identities = BTreeSet::new();
     for record in records {
         let authority = user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
-            if let Some(resolution_id) = authority.user_action_resolution_id {
-                current_resolution_ids.push(UserActionResolutionId::new(resolution_id));
+            if let Some(identity) = authority.resolution_identity() {
+                current_resolution_identities.insert(identity);
             }
         }
     }
 
-    Ok(!current_resolution_ids.is_empty()
+    Ok(!current_resolution_identities.is_empty()
         && validity_basis.approval_basis_refs.iter().all(|stored| {
-            stored.record_kind == StateRecordKind::UserActionResolution
-                && stored.project_id == *project_id
-                && stored.task_id.as_ref() == Some(&validity_basis.task_id)
-                && current_resolution_ids
-                    .iter()
-                    .any(|current| current.as_str() == stored.record_id.as_str())
+            stored.project_id() == project_id
+                && stored.task_id() == &validity_basis.task_id
+                && current_resolution_identities.contains(&stored.identity())
         }))
 }
 
-fn approval_basis_identity_matches(left: &[StateRecordRef], right: &[StateRecordRef]) -> bool {
+fn approval_basis_identity_matches(
+    left: &[UserActionResolutionRef],
+    right: &[UserActionResolutionRef],
+) -> bool {
     left.len() == right.len()
         && left.iter().all(|reference| {
             right
                 .iter()
-                .any(|candidate| state_ref_identity_matches(reference, candidate))
+                .any(|candidate| reference.identity() == candidate.identity())
         })
-}
-
-fn state_ref_identity_matches(left: &StateRecordRef, right: &StateRecordRef) -> bool {
-    left.record_kind == right.record_kind
-        && left.record_id == right.record_id
-        && left.project_id == right.project_id
-        && left.task_id == right.task_id
 }
 
 fn write_ticket_path_prefix_strings(record: &StoredWriteTicket, allowed: bool) -> Vec<String> {
@@ -1424,7 +1416,7 @@ mod tests {
                 .expect("valid basis has baseline"),
             workspace_context_sha256: input.validity_basis.workspace_context_sha256,
             write_authority_fingerprint: input.validity_basis.write_authority_fingerprint,
-            approval_resolution_ids: Vec::new(),
+            approval_resolution_identities: Vec::new(),
             allowed_path_prefixes: input.allowed_path_prefixes,
             denied_path_prefixes: input.denied_path_prefixes,
             attempt_scope: input.attempt_scope,

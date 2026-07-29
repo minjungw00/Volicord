@@ -756,6 +756,45 @@ fn validate_write_ticket_record(
             WriteTicketInvariant::TaskIdentityAgreement,
         ));
     }
+    if record
+        .validity_basis
+        .approval_basis_refs
+        .iter()
+        .any(|reference| {
+            reference.project_id().as_str() != record.project_id.as_str()
+                || reference.task_id().as_str() != record.task_id.as_str()
+        })
+    {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::ApprovalOwnerAgreement,
+        ));
+    }
+    if record
+        .validity_basis
+        .approval_basis_refs
+        .iter()
+        .any(|reference| {
+            nonempty_stored_identifier(reference.project_id().as_str()).is_none()
+                || nonempty_stored_identifier(reference.task_id().as_str()).is_none()
+                || nonempty_stored_identifier(reference.resolution_id().as_str()).is_none()
+                || reference.produced_at_state_version().is_none()
+        })
+    {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::ApprovalReferenceMetadata,
+        ));
+    }
+    let approval_identities = record
+        .validity_basis
+        .approval_basis_refs
+        .iter()
+        .map(|reference| reference.identity())
+        .collect::<BTreeSet<_>>();
+    if approval_identities.len() != record.validity_basis.approval_basis_refs.len() {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::DuplicateApprovalResolutionIdentity,
+        ));
+    }
     let change_unit_id = record.change_unit_id.as_str();
     if record.validity_basis.change_unit_id.as_str() != change_unit_id
         || record.attempt_scope.change_unit_id.as_str() != change_unit_id
@@ -1146,12 +1185,41 @@ mod tests {
     use super::*;
     use crate::core_pipeline::mutations::with_empty_mutation_context;
     use crate::StoreAggregateInvariant;
+    use serde_json::{json, Value};
 
     #[derive(Debug, Clone, Copy)]
     enum ExpectedCorruption {
         Json(&'static str),
         Value(&'static str),
         Invariant(WriteTicketInvariant),
+    }
+
+    fn validity_basis_with_approval_refs(approval_basis_refs: Value) -> String {
+        serde_json::to_string(&json!({
+            "task_id": "task",
+            "change_unit_id": "change",
+            "scope_revision": 2,
+            "baseline_ref": "baseline",
+            "workspace_context_sha256": "a".repeat(64),
+            "write_authority_fingerprint": format!("sha256:{}", "b".repeat(64)),
+            "approval_basis_refs": approval_basis_refs,
+        }))
+        .expect("validity basis fixture should serialize")
+    }
+
+    fn approval_ref(
+        project_id: &str,
+        task_id: &str,
+        resolution_id: &str,
+        produced_at_state_version: Value,
+    ) -> Value {
+        json!({
+            "record_kind": "user_action_resolution",
+            "record_id": resolution_id,
+            "project_id": project_id,
+            "task_id": task_id,
+            "produced_at_state_version": produced_at_state_version,
+        })
     }
 
     fn valid_raw_write_ticket() -> WriteTicketRecordRaw {
@@ -1162,11 +1230,12 @@ mod tests {
             change_unit_id: Some("change".to_owned()),
             basis_state_version: 3,
             status: "active".to_owned(),
-            validity_basis_json: format!(
-                r#"{{"task_id":"task","change_unit_id":"change","scope_revision":2,"baseline_ref":"baseline","workspace_context_sha256":"{}","write_authority_fingerprint":"sha256:{}","approval_basis_refs":[]}}"#,
-                "a".repeat(64),
-                "b".repeat(64),
-            ),
+            validity_basis_json: validity_basis_with_approval_refs(json!([approval_ref(
+                "project",
+                "task",
+                "resolution",
+                json!(6),
+            )])),
             allowed_path_prefixes_json: r#"["src"]"#.to_owned(),
             denied_path_prefixes_json: r#"["tests"]"#.to_owned(),
             attempt_scope_json: r#"{"task_id":"task","change_unit_id":"change","intended_operation":"edit","intended_paths":["src/lib.rs"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline"}"#.to_owned(),
@@ -1217,6 +1286,15 @@ mod tests {
 
         assert_eq!(record.write_ticket_id, "ticket");
         assert_eq!(record.validity_basis.scope_revision, 2);
+        let approval_ref = record
+            .validity_basis
+            .approval_basis_refs
+            .first()
+            .expect("valid row must preserve its approval reference");
+        assert_eq!(approval_ref.project_id().as_str(), "project");
+        assert_eq!(approval_ref.task_id().as_str(), "task");
+        assert_eq!(approval_ref.resolution_id().as_str(), "resolution");
+        assert_eq!(approval_ref.produced_at_state_version(), Some(6));
         assert_eq!(
             record.created_by_user_action_resolution_id.as_deref(),
             Some("resolution")
@@ -1243,6 +1321,91 @@ mod tests {
                 "malformed validity basis",
                 Box::new(|raw| raw.validity_basis_json = "{".to_owned()),
                 ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "wrong approval record kind",
+                Box::new(|raw| {
+                    let mut reference = approval_ref("project", "task", "resolution", json!(6));
+                    reference["record_kind"] = json!("task");
+                    raw.validity_basis_json = validity_basis_with_approval_refs(json!([reference]));
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "missing approval task owner",
+                Box::new(|raw| {
+                    let mut reference = approval_ref("project", "task", "resolution", json!(6));
+                    reference
+                        .as_object_mut()
+                        .expect("approval fixture should be an object")
+                        .remove("task_id");
+                    raw.validity_basis_json = validity_basis_with_approval_refs(json!([reference]));
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "approval project owner disagreement",
+                Box::new(|raw| {
+                    raw.validity_basis_json =
+                        validity_basis_with_approval_refs(json!([approval_ref(
+                            "other-project",
+                            "task",
+                            "resolution",
+                            json!(6),
+                        )]));
+                }),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalOwnerAgreement),
+            ),
+            (
+                "approval task owner disagreement",
+                Box::new(|raw| {
+                    raw.validity_basis_json =
+                        validity_basis_with_approval_refs(json!([approval_ref(
+                            "project",
+                            "other-task",
+                            "resolution",
+                            json!(6),
+                        )]));
+                }),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalOwnerAgreement),
+            ),
+            (
+                "missing approval projection metadata",
+                Box::new(|raw| {
+                    raw.validity_basis_json =
+                        validity_basis_with_approval_refs(json!([approval_ref(
+                            "project",
+                            "task",
+                            "resolution",
+                            Value::Null,
+                        )]));
+                }),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalReferenceMetadata),
+            ),
+            (
+                "empty approval resolution identity",
+                Box::new(|raw| {
+                    raw.validity_basis_json =
+                        validity_basis_with_approval_refs(json!([approval_ref(
+                            "project",
+                            "task",
+                            "",
+                            json!(6),
+                        )]));
+                }),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalReferenceMetadata),
+            ),
+            (
+                "duplicate approval resolution identity",
+                Box::new(|raw| {
+                    raw.validity_basis_json = validity_basis_with_approval_refs(json!([
+                        approval_ref("project", "task", "resolution", json!(6)),
+                        approval_ref("project", "task", "resolution", json!(7)),
+                    ]));
+                }),
+                ExpectedCorruption::Invariant(
+                    WriteTicketInvariant::DuplicateApprovalResolutionIdentity,
+                ),
             ),
             (
                 "malformed attempt scope",

@@ -49,6 +49,9 @@ capture-path 상태, CLI JSON Schema, recovery instruction으로 투영합니다
 - 정규 request body, basis, UserAction에서 파생한 continuity metadata는 Store
   경계까지 typed 상태를 유지합니다.
 - Effective status는 stored resolution과 current basis에서 파생합니다.
+- 정규화된 authority는 타입이 있는 완전한 프로젝트, `Task`, resolution
+  identity를 노출하며 consumer는 문자열이나 주변 프로젝트 상태에서 이를 다시
+  만들지 않습니다.
 - Agent-facing projection은 complete resolving form이나 user-only resolution body를
   포함하지 않습니다.
 - 서비스 fact 결과는 의미 좌표, lifecycle status, availability, safe resolution
@@ -64,7 +67,8 @@ capture-path 상태, CLI JSON Schema, recovery instruction으로 투영합니다
 
 ## 책임 경계
 
-`volicord-types`는 dependency-safe request, 불변 resolution, adapter-neutral
+`volicord-types`는 dependency-safe request, 불변 resolution,
+`UserActionResolutionIdentity`, `UserActionResolutionRef`, adapter-neutral
 resolution form, basis, summary shape, 제품 경로, 의미 기반 `StateRecordRef`
 생성자를 담당하며 CLI presentation helper는 담당하지 않습니다.
 `volicord-user-action-service`는 재사용 UserAction 의미를 담당하고 공유 타입,

@@ -8,7 +8,7 @@ use volicord_types::ids::{
 use volicord_types::schema::{
     ArtifactRef, EvidenceTarget, RequiredNullable, StateRecordRef, UserActionBasis,
     UserActionBasisCoordinates, UserActionDraft, UserActionRequest, UserActionRequestBody,
-    UserActionResolutionBody,
+    UserActionResolutionBody, UserActionResolutionIdentity,
 };
 use volicord_types::values::{
     ActorSource, EvidenceRelevanceStatus, JudgmentResolutionOutcome, UserActionBasisStatus,
@@ -107,8 +107,9 @@ pub struct ValidatedUserAction {
 /// Normalized authority facts decoded from one current UserAction record.
 #[derive(Debug, Clone)]
 pub struct UserActionAuthority {
-    pub user_action_request_id: String,
-    pub user_action_resolution_id: Option<String>,
+    pub project_id: ProjectId,
+    pub user_action_request_id: UserActionRequestId,
+    pub user_action_resolution_id: Option<UserActionResolutionId>,
     pub task_id: TaskId,
     pub action_kind: UserActionKind,
     pub status: UserActionStatus,
@@ -123,6 +124,19 @@ pub struct UserActionAuthority {
     pub basis: Option<UserActionBasis>,
     pub resolution: Option<UserActionResolutionBody>,
     pub expires_at: Option<UtcTimestamp>,
+}
+
+impl UserActionAuthority {
+    /// Returns the full typed resolution identity when this authority is resolved.
+    pub fn resolution_identity(&self) -> Option<UserActionResolutionIdentity> {
+        self.user_action_resolution_id
+            .as_ref()
+            .map(|resolution_id| UserActionResolutionIdentity {
+                project_id: self.project_id.clone(),
+                task_id: self.task_id.clone(),
+                resolution_id: resolution_id.clone(),
+            })
+    }
 }
 
 /// Current adapter-neutral semantic facts for one user-action request.

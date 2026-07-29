@@ -268,7 +268,7 @@ fn pending_user_action_refs_for_close_operation(
         if blocks {
             refs.push(state_ref(
                 StateRecordKind::UserActionRequest,
-                &authority.user_action_request_id,
+                authority.user_action_request_id.as_str(),
                 &request.project_id,
                 Some(&request.task_id),
                 Some(project_state.state_version),
@@ -422,7 +422,7 @@ fn cancellation_authority_blocker(
         }
         let user_action_request_ref = state_ref(
             StateRecordKind::UserActionRequest,
-            &authority.user_action_request_id,
+            authority.user_action_request_id.as_str(),
             &request.project_id,
             Some(&request.task_id),
             Some(project_state.state_version),

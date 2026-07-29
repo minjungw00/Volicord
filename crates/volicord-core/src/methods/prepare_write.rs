@@ -387,7 +387,7 @@ fn project_prepare_write_response(
         decision,
         allowed,
         pending_user_action_request_ids,
-        active_user_action_resolution_ids,
+        active_user_action_resolution_identities,
         planned_write_ticket: planned_write_ticket_draft,
         reused_write_ticket,
         allowed_path_patterns,
@@ -408,14 +408,25 @@ fn project_prepare_write_response(
             )
         })
         .collect::<Vec<_>>();
-    let active_user_action_refs = active_user_action_resolution_ids
+    let active_user_action_refs = active_user_action_resolution_identities
         .iter()
-        .map(|resolution_id| {
+        .map(|identity| {
             state_ref(
                 StateRecordKind::UserActionResolution,
-                resolution_id.as_str(),
-                &request.envelope.project_id,
-                Some(&task_id),
+                identity.resolution_id.as_str(),
+                &identity.project_id,
+                Some(&identity.task_id),
+                Some(project_state.state_version),
+            )
+        })
+        .collect::<Vec<_>>();
+    let approval_basis_refs = active_user_action_resolution_identities
+        .iter()
+        .map(|identity| {
+            volicord_types::schema::UserActionResolutionRef::new(
+                identity.project_id.clone(),
+                identity.task_id.clone(),
+                identity.resolution_id.clone(),
                 Some(project_state.state_version),
             )
         })
@@ -427,7 +438,7 @@ fn project_prepare_write_response(
                 draft,
                 write_ticket_id.clone(),
                 planned_state_version,
-                active_user_action_refs.clone(),
+                approval_basis_refs,
             )
             .map_err(|error| prepare_write_planning_error(request, project_state, error))?;
             storage_mutations.push(planned_write_ticket_mutation(&plan));

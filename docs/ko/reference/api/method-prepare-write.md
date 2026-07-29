@@ -42,7 +42,8 @@ Unit, `scope_revision`, 기준선, workspace, 승인 근거가 현재 상태이�
 정규화 프로젝트 쓰기 권한 결속이 현재 값과 일치하며, 허용 경로가 새 intended path를
 모두 포함하고, 민감 근거가 같거나 더 강하고, 아직 소비되지 않았으면 재사용합니다.
 민감 티켓을 재사용하려면 정규화된 `intended_operation`이
-정확히 같고 일치하는 승인 resolution 정체성도 같아야 합니다. 표현을 바꾼 동작은
+정확히 같고 프로젝트, `Task`, UserAction resolution ID를 포함한 승인 resolution
+identity도 같아야 합니다. 표현을 바꾼 동작이나 범위가 없는 동일 resolution ID는
 이전 승인이나 티켓을 빌려 쓸 수 없습니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
 `Task`와 Change Unit 안에서 경계가 정해진 제품 쓰기 또는 민감 동작 의도를 나타내는
 Volicord 권한 기록입니다. 비제품 민감 티켓은
@@ -182,8 +183,10 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 고정 수명은 없으며 기본 유휴 제한 시간은 `null`입니다. 프로젝트 정책이 유휴
 제한 시간을 선택하면 Core는 파생된 `idle_expires_at`을 저장하고 의미상 UTC
 경계에서 `idle_timeout` 사유로 티켓을 무효화합니다. 민감 승인은 자체 만료를
-유지할 수 있습니다. 승인 만료는 단순 티켓 시간 경과가 아니라
-`approval_basis_changed`로 종속 티켓을 무효화합니다. `basis_state_version`은
+유지할 수 있습니다. 승인 만료는 단순 티켓 시간 경과나 영속 손상이 아니라
+`approval_basis_changed`로 종속 티켓을 무효화합니다. 영속 승인 참조의 소유자
+불일치나 완전한 resolution identity 중복은 손상이며 의미 기반 현재성 평가에
+들어가지 않습니다. `basis_state_version`은
 발급 순서 감사와 참조에만 쓰며 최신성 조건이 아닙니다.
 
 새로 허용되어 커밋된 호출은 발급 mutation이 커밋될 때만 영속

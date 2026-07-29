@@ -2,8 +2,7 @@ use std::collections::BTreeSet;
 
 use volicord_types::ids::RunId;
 use volicord_types::values::{
-    StateRecordKind, TaskControlLevel, UserActionRequiredFor, WriteTicketInvalidationReason,
-    WriteTicketStatus,
+    TaskControlLevel, UserActionRequiredFor, WriteTicketInvalidationReason, WriteTicketStatus,
 };
 use volicord_user_action_service::{current_sensitive_approval, SensitiveApprovalRequirement};
 
@@ -224,17 +223,17 @@ fn evaluate_approval(
         required_for: UserActionRequiredFor::PrepareWrite,
         now: &current.observed_at,
     };
-    let current_resolution_ids = current
+    let current_resolution_identities = current
         .sensitive_approvals
         .iter()
         .filter(|authority| current_sensitive_approval(authority, &requirement))
-        .filter_map(|authority| authority.user_action_resolution_id.as_deref())
+        .filter_map(|authority| authority.resolution_identity())
         .collect::<BTreeSet<_>>();
-    let approval_basis_is_current = !current_resolution_ids.is_empty()
-        && basis.approval_basis_refs.iter().all(|reference| {
-            reference.record_kind == StateRecordKind::UserActionResolution
-                && current_resolution_ids.contains(reference.record_id.as_str())
-        });
+    let approval_basis_is_current = !current_resolution_identities.is_empty()
+        && basis
+            .approval_basis_refs
+            .iter()
+            .all(|reference| current_resolution_identities.contains(&reference.identity()));
     if approval_basis_is_current {
         WriteTicketApprovalState::Current
     } else {
@@ -264,16 +263,18 @@ fn evaluated_stored_ticket(
 
 #[cfg(test)]
 mod tests {
-    use volicord_types::ids::{BaselineRef, TaskId, UserActionOptionId};
+    use volicord_types::ids::{
+        BaselineRef, ProjectId, TaskId, UserActionOptionId, UserActionRequestId,
+        UserActionResolutionId,
+    };
     use volicord_types::schema::{
         RequiredNullable, SensitiveActionScope, UserActionBasis, UserActionBasisCoordinates,
-        UserActionChoiceBasis, UserActionResolutionBody,
+        UserActionChoiceBasis, UserActionResolutionBody, UserActionResolutionRef,
     };
     use volicord_types::values::{
-        ActorSource, JudgmentResolutionOutcome, StateRecordKind, TaskControlLevel,
-        UserActionBasisStatus, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-        UserActionStatus, UserActionVerificationBasis, WriteTicketInvalidationReason,
-        WriteTicketStatus,
+        ActorSource, JudgmentResolutionOutcome, TaskControlLevel, UserActionBasisStatus,
+        UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus,
+        UserActionVerificationBasis, WriteTicketInvalidationReason, WriteTicketStatus,
     };
     use volicord_user_action_service::UserActionAuthority;
 
@@ -281,7 +282,6 @@ mod tests {
         evaluate_current_write_ticket, evaluate_terminal_write_ticket,
         requires_sensitive_approval_facts, WriteTicketApprovalState, WriteTicketAuthorityState,
     };
-    use crate::record_refs::state_ref;
     use crate::write_ticket::read_model::{
         WriteTicketCurrentFacts, WriteTicketTaskFacts, WriteTicketWorkflowFacts,
     };
@@ -322,8 +322,9 @@ mod tests {
             compatibility_status: UserActionBasisStatus::Current,
         };
         UserActionAuthority {
-            user_action_request_id: "request-approval".to_owned(),
-            user_action_resolution_id: Some("resolution-approval".to_owned()),
+            project_id: ProjectId::new("project-test"),
+            user_action_request_id: UserActionRequestId::new("request-approval"),
+            user_action_resolution_id: Some(UserActionResolutionId::new("resolution-approval")),
             task_id: TaskId::new("task-test"),
             action_kind: UserActionKind::SensitiveApproval,
             status: UserActionStatus::Resolved,
@@ -419,11 +420,10 @@ mod tests {
     fn sensitive_approval_basis_must_resolve_to_the_current_exact_scope() {
         let mut ticket = stored_facts("ticket-sensitive", WriteTicketStatus::Active, 7);
         ticket.ticket.attempt_scope.sensitive_categories = vec!["network".to_owned()];
-        ticket.ticket.validity_basis.approval_basis_refs = vec![state_ref(
-            StateRecordKind::UserActionResolution,
-            "resolution-approval",
-            &ticket.ticket.project_id,
-            Some(&ticket.ticket.validity_basis.task_id),
+        ticket.ticket.validity_basis.approval_basis_refs = vec![UserActionResolutionRef::new(
+            ticket.ticket.project_id.clone(),
+            ticket.ticket.validity_basis.task_id.clone(),
+            UserActionResolutionId::new("resolution-approval"),
             Some(6),
         )];
 
@@ -441,6 +441,18 @@ mod tests {
             Some(WriteTicketInvalidationReason::ApprovalBasisChanged)
         );
 
+        let mut other_project = accepted_sensitive_approval();
+        other_project.project_id = ProjectId::new("project-other");
+        let changed =
+            evaluate_current_write_ticket(ticket.clone(), &current_facts(vec![other_project]));
+        assert_eq!(changed.approval, WriteTicketApprovalState::Changed);
+
+        let mut other_task = accepted_sensitive_approval();
+        other_task.task_id = TaskId::new("task-other");
+        let changed =
+            evaluate_current_write_ticket(ticket.clone(), &current_facts(vec![other_task]));
+        assert_eq!(changed.approval, WriteTicketApprovalState::Changed);
+
         let current = evaluate_current_write_ticket(
             ticket,
             &current_facts(vec![accepted_sensitive_approval()]),
@@ -453,11 +465,10 @@ mod tests {
     #[test]
     fn authority_invalidation_short_circuits_sensitive_approval_acquisition() {
         let mut ticket = stored_facts("ticket-sensitive", WriteTicketStatus::Active, 7);
-        ticket.ticket.validity_basis.approval_basis_refs = vec![state_ref(
-            StateRecordKind::UserActionResolution,
-            "resolution-approval",
-            &ticket.ticket.project_id,
-            Some(&ticket.ticket.validity_basis.task_id),
+        ticket.ticket.validity_basis.approval_basis_refs = vec![UserActionResolutionRef::new(
+            ticket.ticket.project_id.clone(),
+            ticket.ticket.validity_basis.task_id.clone(),
+            UserActionResolutionId::new("resolution-approval"),
             Some(6),
         )];
         let changed_workflow = WriteTicketWorkflowFacts {

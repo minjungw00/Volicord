@@ -30,6 +30,9 @@ impl StoreAggregate {
 pub enum WriteTicketInvariant {
     TaskIdentityAgreement,
     ChangeUnitIdentityAgreement,
+    ApprovalOwnerAgreement,
+    ApprovalReferenceMetadata,
+    DuplicateApprovalResolutionIdentity,
     ScopeRevisionAgreement,
     BaselineAgreement,
     TimestampOrder,
@@ -48,6 +51,9 @@ impl WriteTicketInvariant {
         match self {
             Self::TaskIdentityAgreement => "task_identity_agreement",
             Self::ChangeUnitIdentityAgreement => "change_unit_identity_agreement",
+            Self::ApprovalOwnerAgreement => "approval_owner_agreement",
+            Self::ApprovalReferenceMetadata => "approval_reference_metadata",
+            Self::DuplicateApprovalResolutionIdentity => "duplicate_approval_resolution_identity",
             Self::ScopeRevisionAgreement => "scope_revision_agreement",
             Self::BaselineAgreement => "baseline_agreement",
             Self::TimestampOrder => "timestamp_order",

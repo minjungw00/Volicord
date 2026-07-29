@@ -54,6 +54,9 @@ Schema, and recovery instruction. Its commands come from a typed
 - Canonical request bodies, bases, and UserAction-derived continuity metadata
   remain typed until the Store boundary.
 - Effective status is derived from the stored resolution and current basis.
+- Normalized authority exposes the full typed project, `Task`, and resolution
+  identity; consumers do not reconstruct it from strings or ambient project
+  state.
 - Agent-facing projections never include the complete resolving form or
   user-only resolution body.
 - Service fact results contain semantic coordinates, lifecycle status,
@@ -73,7 +76,8 @@ Schema, and recovery instruction. Its commands come from a typed
 ## Responsibility boundaries
 
 `volicord-types` owns dependency-safe request, immutable resolution,
-adapter-neutral resolution form, basis, summary shapes, product paths, and the
+`UserActionResolutionIdentity`, `UserActionResolutionRef`, adapter-neutral
+resolution form, basis, summary shapes, product paths, and the
 semantic `StateRecordRef` constructor, with no CLI presentation helpers.
 `volicord-user-action-service` owns reusable UserAction semantics and depends
 only on shared types, Store, and focused utility libraries. Core allocates

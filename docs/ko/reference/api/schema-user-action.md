@@ -199,6 +199,11 @@ channel, actor provenance, assurance, verification basis, 캡처 시각은 바�
 `UserActionResolution`에만 있습니다. 중첩 관찰은 선택 대상, artifact ref, relevance,
 summary만 담으며 좌표를 중복하거나 고아 observation identity를 만들지 않습니다.
 
+의미 기반 UserAction resolution identity는 타입이 있는 (`project_id`,
+`task_id`, `user_action_resolution_id`) 튜플입니다. 권한 소비자는 범위가 없는
+resolution ID와 주변 소유자 상태에서 identity를 다시 만들지 않고 해결된
+UserAction fact에서 완전한 identity를 얻습니다.
+
 ```schema
 UserActionResolution:
   user_action_resolution_id: string

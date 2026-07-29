@@ -43,8 +43,10 @@ baseline, workspace, approval basis, and non-null normalized project
 write-authority binding are current, its allowed paths cover all newly intended
 paths, its sensitive basis is equal or stronger, and it remains unconsumed.
 Sensitive reuse additionally requires the exact normalized
-`intended_operation` and the same matching approval-resolution identity; a
-reworded operation cannot borrow an earlier approval or ticket. Otherwise it
+`intended_operation` and the same matching approval-resolution identity,
+including project, `Task`, and UserAction resolution IDs; a reworded operation
+or an unscoped matching resolution ID cannot borrow an earlier approval or
+ticket. Otherwise it
 issues one open ticket. A ticket is a Volicord
 authority record for the bounded product-write or sensitive-action intent within
 the current Task and Change Unit. A non-product sensitive ticket has
@@ -195,7 +197,10 @@ policy may select an idle timeout; when it does, Core stores the derived
 `idle_expires_at` and invalidates the ticket with reason `idle_timeout` at the
 semantic UTC boundary. A sensitive approval can retain its own expiration;
 approval expiry invalidates a dependent ticket as `approval_basis_changed`, not
-as ordinary elapsed ticket time. `basis_state_version` records issuance order
+as ordinary elapsed ticket time or persisted corruption. Persisted
+approval-reference owner disagreement or duplicate full resolution identity is
+corruption and does not enter semantic currentness evaluation.
+`basis_state_version` records issuance order
 for audit and references only; it is never a freshness condition.
 
 A newly allowed committed call receives a durable `write_ticket_id` only when

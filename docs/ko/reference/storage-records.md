@@ -522,6 +522,13 @@ transaction 안의 읽기는 정규 row projection, decoder, invariant validator
 비공개입니다. Consumer는 읽기 전용 의미 accessor만 사용하며 영속 record를 구성,
 갱신, destructure할 수 없습니다. 공개 호환 alias도 없습니다.
 
+Decode된 `WriteTicketValidityBasis.approval_basis_refs` 모음은 전용
+`UserActionResolutionRef` 계약을 사용합니다. Store는 type이 있는 JSON decoding
+중에 누락됐거나 `user_action_resolution`이 아닌 kind를 거부합니다. 이어지는
+aggregate 검증은 모든 참조의 프로젝트와 `Task`가 물리 ticket 소유자와 같은지,
+영속 참조의 produced-state metadata가 null이 아닌지 확인하고, 완전한
+프로젝트/`Task`/resolution identity 중복을 거부합니다.
+
 다른 Store 모듈은 완전한 typed Write Ticket 또는 그 record에서 만든 집중된 typed
 view를 받습니다. 특히 workflow policy 영속화는 typed authority-binding view를
 사용하며 `write_tickets`를 query하거나 `validity_basis_json`을 parse하거나 ticket
@@ -539,7 +546,9 @@ identity가 없고 Store 삽입 입력을 만들 수 없습니다. 재사용은 
 한 물리 Write Ticket field에 국한된 corruption은 그 정확한 field를 식별합니다.
 Owner identity, scope revision, baseline, timestamp 순서, path set, path coverage,
 write intent, status lifecycle처럼 여러 field 사이 관계가 어긋나면 Write Ticket
-aggregate와 폐쇄형 invariant code를 식별합니다. 영속 ticket 자체가 내부적으로
+aggregate와 폐쇄형 invariant code를 식별합니다. 승인 소유자 불일치와 승인
+resolution identity 중복은 JSON column에 귀속하지 않고 aggregate invariant
+failure로 처리합니다. 영속 ticket 자체가 내부적으로
 유효하다면 operation 시각을 기준으로 한 expiry, 현재 policy와의 incompatibility,
 요청 operation coverage 부족은 의미 거절로 유지됩니다.
 
