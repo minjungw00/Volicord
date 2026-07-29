@@ -10,18 +10,14 @@ use crate::write_ticket::{
     baseline_matches, load_prepare_write_task, paths_match_current_change_unit,
     validate_prepare_write_change_unit, workspace_context_matches,
 };
-use crate::write_ticket::{
-    normalized_string_set, prepare_write_decision, write_decision_reason,
-    write_ticket_is_idle_expired,
-};
+use crate::write_ticket::{normalized_string_set, prepare_write_decision, write_decision_reason};
 use chrono::Duration;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use volicord_platform_fs::PlatformDiagnosticClass;
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, StoredWriteTicket,
-    TaskControlLevelUpdate, TaskMutation, TaskRecord, WriteTicketByIdInvalidation,
-    WriteTicketInsert, WriteTicketMutation,
+    ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, TaskControlLevelUpdate, TaskMutation,
+    TaskRecord, WriteTicketByIdInvalidation, WriteTicketInsert, WriteTicketMutation,
 };
 use volicord_store::diagnostics::{
     record_core_rejection_diagnostic, CoreRejectionDiagnostic, CoreRejectionReason,
@@ -45,9 +41,19 @@ use volicord_user_action_service::{
 };
 
 use super::approval::{
-    assess_write_ticket_approval, ApprovalBasisChangeReason, CurrentSensitiveApprovals,
-    NonEmptyApprovalBasis, WriteTicketApprovalAssessment, WriteTicketApprovalRequirement,
+    assess_write_ticket_approval, CurrentSensitiveApprovals, NonEmptyApprovalBasis,
+    WriteTicketApprovalRequirement,
 };
+use super::current_validity::{
+    evaluate_active_candidate, pre_evaluate_stored_write_ticket, ActiveStoredWriteTicketEvaluation,
+    ReusableStoredWriteTicket, StoredTicketPreEvaluation, StoredWriteTicketStateError,
+    WriteTicketAuthorityState,
+};
+use super::read_model::{
+    stored_write_ticket_facts, WriteTicketCurrentFacts, WriteTicketTaskFacts,
+    WriteTicketWorkflowFacts,
+};
+use super::semantic::WriteTicketSemanticFacts;
 use super::{
     WriteTicketDecisionCode, WriteTicketDecisionReason, WriteTicketField, WriteTicketPlanningError,
     WriteTicketRelatedRecord,
@@ -135,7 +141,6 @@ struct PrepareWritePolicyDecision {
     change_unit: ChangeUnitRecord,
     reasons: Vec<WriteTicketDecisionReason>,
     workflow_policy: ProjectWorkflowPolicy,
-    sensitive_approval_required: bool,
     control_mutations: Vec<CoreStorageMutation>,
 }
 
@@ -452,7 +457,7 @@ pub(crate) struct PrepareWritePlanningOutcome {
     pub(crate) pending_user_action_request_ids: Vec<UserActionRequestId>,
     pub(crate) approval_basis: Option<NonEmptyApprovalBasis>,
     pub(crate) planned_write_ticket: Option<PlannedWriteTicketDraft>,
-    pub(crate) reused_write_ticket: Option<StoredWriteTicket>,
+    pub(crate) reused_write_ticket: Option<ReusableStoredWriteTicket>,
     pub(crate) allowed_path_patterns: Vec<String>,
     pub(crate) denied_path_patterns: Vec<String>,
     pub(crate) storage_mutations: Vec<CoreStorageMutation>,
@@ -480,18 +485,18 @@ fn resolve_prepare_write_context(
     let change_unit = match store.current_change_unit(task_id)? {
         Some(change_unit) => change_unit,
         None => {
-            let _ = record_core_rejection_diagnostic(
-                store
-                    .mutation_context()
-                    .expect("prepare_write planning retains a mutation context"),
-                CoreRejectionDiagnostic {
-                    project_id: input.project_id.as_str(),
-                    task_id: task_id.as_str(),
-                    method_name: MethodName::PrepareWrite,
-                    reason: CoreRejectionReason::CurrentChangeUnitRequired,
-                    occurred_at: &normalized.raw.plan_now,
-                },
-            );
+            if let Some(context) = store.mutation_context() {
+                let _ = record_core_rejection_diagnostic(
+                    context,
+                    CoreRejectionDiagnostic {
+                        project_id: input.project_id.as_str(),
+                        task_id: task_id.as_str(),
+                        method_name: MethodName::PrepareWrite,
+                        reason: CoreRejectionReason::CurrentChangeUnitRequired,
+                        occurred_at: &normalized.raw.plan_now,
+                    },
+                );
+            }
             return Err(WriteTicketPlanningError::CurrentChangeUnitRequired {
                 task_id: task_id.clone(),
             });
@@ -663,7 +668,6 @@ fn decide_prepare_write_policy(
         change_unit,
         reasons,
         workflow_policy,
-        sensitive_approval_required: next_control == TaskControlLevel::Sensitive,
         control_mutations,
     })
 }
@@ -678,7 +682,6 @@ fn plan_prepare_write_mutations(
         change_unit,
         mut reasons,
         workflow_policy,
-        sensitive_approval_required,
         control_mutations,
     } = policy;
     let PrepareWriteNormalizedInput {
@@ -783,10 +786,6 @@ fn plan_prepare_write_mutations(
         task.effective_control_level,
         &attempt_scope,
         &plan_now,
-    );
-    debug_assert_eq!(
-        approval_requirement.is_required(),
-        sensitive_approval_required
     );
     let sensitive_requirement = approval_requirement
         .is_required()
@@ -895,15 +894,15 @@ fn plan_prepare_write_mutations(
     } else {
         compatible_ticket
             .as_ref()
-            .and_then(|record| record.idle_expires_at().cloned())
+            .and_then(|record| record.semantic_facts().idle_expires_at.clone())
     };
     let denied_path_patterns = if let Some(record) = compatible_ticket.as_ref() {
-        write_ticket_path_prefix_strings(record, false)
+        write_ticket_path_prefix_strings(record.semantic_facts(), false)
     } else {
         denied_write_ticket_paths(&reasons, &normalized_paths)
     };
     let allowed_path_patterns = if let Some(record) = compatible_ticket.as_ref() {
-        write_ticket_path_prefix_strings(record, true)
+        write_ticket_path_prefix_strings(record.semantic_facts(), true)
     } else {
         normalized_paths
             .iter()
@@ -993,7 +992,7 @@ fn acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
 
 #[derive(Debug, Default)]
 struct ActiveWriteTicketSelection {
-    compatible: Option<StoredWriteTicket>,
+    compatible: Option<ReusableStoredWriteTicket>,
     stale_approval_ticket_ids: Vec<String>,
     stale_workspace_ticket_ids: Vec<String>,
     stale_policy_ticket_ids: Vec<String>,
@@ -1004,24 +1003,6 @@ struct ActiveWriteTicketRequirements<'a> {
     attempt_scope: &'a WriteTicketAttemptScope,
     approval_requirement: &'a WriteTicketApprovalRequirement<'a>,
     approval_authorities: &'a [UserActionAuthority],
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum WriteTicketReuseApproval {
-    Reusable,
-    Changed(ApprovalBasisChangeReason),
-}
-
-pub(crate) fn reuse_approval_assessment(
-    assessment: WriteTicketApprovalAssessment,
-) -> WriteTicketReuseApproval {
-    match assessment {
-        WriteTicketApprovalAssessment::Current { .. }
-        | WriteTicketApprovalAssessment::NotRequired => WriteTicketReuseApproval::Reusable,
-        WriteTicketApprovalAssessment::Changed { reason } => {
-            WriteTicketReuseApproval::Changed(reason)
-        }
-    }
 }
 
 fn select_active_write_tickets(
@@ -1036,17 +1017,58 @@ fn select_active_write_tickets(
     let required_scope = requirements.attempt_scope;
     let mut selection = ActiveWriteTicketSelection::default();
     for record in store.active_write_tickets(&required_basis.task_id)? {
-        if write_ticket_is_idle_expired(record.idle_expires_at(), now) {
+        let candidate =
+            match pre_evaluate_stored_write_ticket(stored_write_ticket_facts(&record), now)
+                .map_err(stored_ticket_state_error)?
+            {
+                StoredTicketPreEvaluation::Complete(_) => continue,
+                StoredTicketPreEvaluation::NeedsCurrentFacts(candidate) => candidate,
+            };
+        let candidate_id = candidate.write_ticket_id().as_str().to_owned();
+        let candidate_ticket = candidate.semantic_facts();
+        let candidate_requirement = WriteTicketApprovalRequirement::new(
+            project_id,
+            task.scope_revision,
+            task.effective_control_level,
+            &candidate_ticket.attempt_scope,
+            now,
+        );
+        let candidate_approvals = CurrentSensitiveApprovals::new(
+            requirements.approval_authorities,
+            &candidate_requirement,
+        );
+        let candidate_approval = assess_write_ticket_approval(
+            &candidate_requirement,
+            &candidate_approvals,
+            &candidate_ticket.validity_basis.approval_basis_refs,
+        );
+        let current = WriteTicketCurrentFacts {
+            task: WriteTicketTaskFacts {
+                scope_revision: task.scope_revision,
+                effective_control_level: task.effective_control_level,
+                pending_policy_reevaluation: false,
+            },
+            workflow: WriteTicketWorkflowFacts {
+                write_authority_fingerprint: required_write_authority_fingerprint.clone(),
+            },
+            sensitive_approvals: requirements.approval_authorities.to_vec(),
+            observed_at: now.clone(),
+        };
+        let evaluated = evaluate_active_candidate(candidate, &current, candidate_approval);
+        if matches!(
+            &evaluated,
+            ActiveStoredWriteTicketEvaluation::Invalidated(ticket)
+                if matches!(
+                    ticket.authority(),
+                    WriteTicketAuthorityState::WriteAuthorityChanged
+                        | WriteTicketAuthorityState::PendingPolicyReevaluation
+                )
+        ) {
+            selection.stale_policy_ticket_ids.push(candidate_id);
             continue;
         }
-        let basis = record.validity_basis();
-        if basis.write_authority_fingerprint != *required_write_authority_fingerprint {
-            selection
-                .stale_policy_ticket_ids
-                .push(record.write_ticket_id().to_owned());
-            continue;
-        }
-        let scope = record.attempt_scope();
+        let basis = &evaluated.semantic_facts().validity_basis;
+        let scope = &evaluated.semantic_facts().attempt_scope;
         if requirements.approval_requirement.is_required()
             && scope.intended_operation != required_scope.intended_operation
         {
@@ -1068,8 +1090,8 @@ fn select_active_write_tickets(
         {
             continue;
         }
-        let allowed = write_ticket_path_prefix_strings(&record, true);
-        let denied = write_ticket_path_prefix_strings(&record, false);
+        let allowed = write_ticket_path_prefix_strings(evaluated.semantic_facts(), true);
+        let denied = write_ticket_path_prefix_strings(evaluated.semantic_facts(), false);
         if !required_scope.intended_paths.iter().all(|path| {
             allowed
                 .iter()
@@ -1081,38 +1103,27 @@ fn select_active_write_tickets(
             continue;
         }
         if basis.workspace_context_sha256 != required_basis.workspace_context_sha256 {
-            selection
-                .stale_workspace_ticket_ids
-                .push(record.write_ticket_id().to_owned());
+            selection.stale_workspace_ticket_ids.push(candidate_id);
             continue;
         }
-        let approval_requirement = WriteTicketApprovalRequirement::new(
-            project_id,
-            task.scope_revision,
-            task.effective_control_level,
-            scope,
-            now,
-        );
-        let current_approvals = CurrentSensitiveApprovals::new(
-            requirements.approval_authorities,
-            &approval_requirement,
-        );
-        let assessment = assess_write_ticket_approval(
-            &approval_requirement,
-            &current_approvals,
-            &basis.approval_basis_refs,
-        );
-        match reuse_approval_assessment(assessment) {
-            WriteTicketReuseApproval::Reusable => {}
-            WriteTicketReuseApproval::Changed(_) => {
+        match evaluated {
+            ActiveStoredWriteTicketEvaluation::Reusable(ticket) => {
+                if selection.compatible.is_none() {
+                    selection.compatible = Some(ticket);
+                }
+            }
+            ActiveStoredWriteTicketEvaluation::Invalidated(ticket)
+                if ticket.invalidation() == WriteTicketInvalidationReason::ApprovalBasisChanged =>
+            {
                 selection
                     .stale_approval_ticket_ids
-                    .push(record.write_ticket_id().to_owned());
-                continue;
+                    .push(ticket.write_ticket_id().as_str().to_owned());
             }
-        }
-        if selection.compatible.is_none() {
-            selection.compatible = Some(record);
+            ActiveStoredWriteTicketEvaluation::Invalidated(ticket) => {
+                selection
+                    .stale_policy_ticket_ids
+                    .push(ticket.write_ticket_id().as_str().to_owned());
+            }
         }
     }
     Ok(selection)
@@ -1133,13 +1144,24 @@ fn resolved_sensitive_approval_authorities(
         .map_err(WriteTicketPlanningError::from)
 }
 
-fn write_ticket_path_prefix_strings(record: &StoredWriteTicket, allowed: bool) -> Vec<String> {
+fn write_ticket_path_prefix_strings(
+    ticket: &WriteTicketSemanticFacts,
+    allowed: bool,
+) -> Vec<String> {
     let paths = if allowed {
-        record.allowed_path_prefixes()
+        &ticket.allowed_path_prefixes
     } else {
-        record.denied_path_prefixes()
+        &ticket.denied_path_prefixes
     };
     paths.iter().map(|path| path.as_str().to_owned()).collect()
+}
+
+fn stored_ticket_state_error(error: StoredWriteTicketStateError) -> WriteTicketPlanningError {
+    WriteTicketPlanningError::Core(CorePipelineError::Invariant {
+        detail: format!(
+            "Store-validated Write Ticket could not enter the Core stored type-state family: {error:?}"
+        ),
+    })
 }
 
 fn typed_product_paths(
@@ -1248,6 +1270,13 @@ mod tests {
             valid_plan(WriteTicketId::new("write_ticket_planned")).expect("valid planned ticket");
 
         let insert = plan.persistence_input();
+        let summary = crate::write_ticket::summary::project_planned_write_ticket_summary(
+            crate::write_ticket::summary::PlannedWriteTicketSummaryInput {
+                planned: &plan,
+                state_version: 8,
+                guarantee_display: None,
+            },
+        );
 
         assert_eq!(insert.write_ticket_id.as_str(), "write_ticket_planned");
         assert_eq!(insert.task_id, plan.validity_basis().task_id);
@@ -1256,6 +1285,16 @@ mod tests {
         assert_eq!(insert.allowed_path_prefixes, plan.allowed_path_prefixes());
         assert_eq!(insert.denied_path_prefixes, plan.denied_path_prefixes());
         assert_eq!(insert.attempt_scope, *plan.attempt_scope());
+        assert_eq!(summary.status, WriteTicketStatus::Active);
+        assert_eq!(
+            summary
+                .write_ticket_ref
+                .as_ref()
+                .map(|reference| reference.record_id.as_str()),
+            Some("write_ticket_planned")
+        );
+        assert_eq!(summary.basis_state_version, Some(7));
+        assert!(summary.observation_refs.is_empty());
     }
 
     #[test]
@@ -1293,23 +1332,20 @@ mod tests {
     }
 
     #[test]
-    fn planned_and_reused_tickets_share_policy_meaning_without_sharing_identity() {
+    fn planned_and_stored_tickets_share_only_immutable_semantic_facts() {
         let plan =
             valid_plan(WriteTicketId::new("write_ticket_shared")).expect("valid planned ticket");
-        let planned = crate::write_ticket::current_validity::evaluate_planned_write_ticket(&plan);
+        let planned = crate::write_ticket::semantic::planned_write_ticket_semantic_facts(&plan);
         let stored = crate::write_ticket::semantic::StoredWriteTicketFacts {
             write_ticket_id: WriteTicketId::new("write_ticket_shared"),
-            ticket: crate::write_ticket::semantic::planned_write_ticket_semantic_facts(&plan),
+            ticket: planned.clone(),
             status: WriteTicketStatus::Active,
             invalidation_reason: None,
             consumed_by_run_id: None,
         };
-        let reused = crate::write_ticket::current_validity::evaluate_reused_write_ticket(stored);
 
-        assert_eq!(planned.ticket, reused.ticket);
-        assert_eq!(planned.effective_status, reused.effective_status);
-        assert_eq!(planned.authority, reused.authority);
-        assert_ne!(planned.identity, reused.identity);
+        assert_eq!(planned, stored.ticket);
+        assert_eq!(plan.write_ticket_id(), &stored.write_ticket_id);
     }
 
     #[test]

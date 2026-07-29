@@ -40,15 +40,19 @@ Current Record Run implementation responsibilities route as follows:
 - [`crates/volicord-core/src/write_ticket/approval.rs`](../../../../crates/volicord-core/src/write_ticket/approval.rs)
   owns the canonical Write Ticket approval requirement, typed current
   sensitive-approval set, and semantic basis assessment;
+  [`current_validity.rs`](../../../../crates/volicord-core/src/write_ticket/current_validity.rs)
+  converts an active stored candidate into `ReusableStoredWriteTicket`, while
   [`admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)
-  consumes that assessment before applying Record Run-specific admission
-  checks.
+  combines that reusable type with the matching exact-attempt compatibility
+  proof before returning `AdmissibleStoredWriteTicket`. Terminal stored states
+  cannot enter this admission path.
 - [`crates/volicord-core/src/close_readiness/recording.rs`](../../../../crates/volicord-core/src/close_readiness/recording.rs)
   constructs the typed current close basis and residual-risk facts used by the
   shared close-readiness service.
 - [`crates/volicord-core/src/recording/plan.rs`](../../../../crates/volicord-core/src/recording/plan.rs)
   coordinates those owners, assembles the typed mutation plan, and returns the
-  closed `RecordRunOperationPlan` with effect and result facts;
+  closed `RecordRunOperationPlan` with effect and result facts. It carries only
+  `AdmissibleStoredWriteTicket` into protected mutation planning;
   [`state.rs`](../../../../crates/volicord-core/src/recording/state.rs) acquires
   the Store-aware post-operation state facts. The public entry point converts
   the returned facts to the neutral Core operation carrier and

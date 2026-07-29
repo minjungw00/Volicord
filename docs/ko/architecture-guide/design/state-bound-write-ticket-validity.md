@@ -9,16 +9,20 @@
 
 `prepare_write`는 현재 Task, Change Unit, scope, workspace, approval, workflow-policy,
 normalized path fact를 읽습니다. 집중된 `write_ticket/` 담당자는 이 책임을
-명시적으로 구분합니다. `read_model.rs`는 typed ticket, Task, 정규화된 workflow
-policy, 현재 UserAction resolution, 증거 fact를 취득합니다. `selection.rs`는
-typed candidate 중 하나를 선택합니다. `approval.rs`는 정규 Write Ticket 승인
-요구사항을 구성하고, 불변 조건을 지키는 현재 민감 승인 집합을 파생하며, Store가
-검증한 영속 승인 근거를 typed 사유가 있는 `NotRequired`, `Current`, `Changed`로
-평가하는 단일 담당자입니다. `current_validity.rs`는 Store 접근 없이 제공받은
-평가와 현재 권한 fact를 effective status와 invalidation으로 변환합니다.
-`summary.rs`는 candidate를 선택하거나 policy를 다시 평가하지 않고 이미 평가된
-ticket과 제공된 증거를 adapter-neutral summary로 변환합니다. `service.rs`는 이
-완전한 영속 평가 use case만 좁게 조율합니다.
+명시적으로 구분합니다. `read_model.rs`는 typed stored ticket, Task, 정규화된
+workflow policy, 현재 UserAction resolution, 증거 fact를 취득합니다.
+`current_validity.rs`는 Store가 검증한 각 record를 먼저 terminal stored 평가 또는
+active stored candidate로 변환합니다. Invalidated, consumed, revoked record는 이
+경계에서 평가를 끝내며 active candidate만 현재 authority와 approval fact를 요청할
+수 있습니다. 이후 active candidate를 `ReusableStoredWriteTicket` 또는 invalidated
+stored 상태로 변환합니다. `approval.rs`는 정규 Write Ticket 승인 요구사항을
+구성하고, 불변 조건을 지키는 현재 민감 승인 집합을 파생하며, Store가 검증한 영속
+승인 근거를 typed 사유가 있는 `NotRequired`, `Current`, `Changed`로 평가하는 단일
+담당자입니다. `selection.rs`는 완결된 `StoredWriteTicketEvaluation` 값만 선택합니다.
+`summary.rs`는 planned 입력과 stored 입력을 구분하므로 발급 예정 ticket이 stored
+평가처럼 가장할 수 없습니다. `service.rs`는 현재 fact를 읽기 전에 terminal record와
+active record를 나누고, stored 결과 하나를 선택한 뒤 그 결과의 증거만 읽는 영속
+흐름을 조율합니다.
 `planning.rs`는 집중된 `PrepareWriteInput`을 평가하고 typed 의미 판단 사유,
 관련 record identity, 후보 mutation, 별도의 비영속 `PlannedWriteTicketDraft`를
 반환합니다. 공개 request envelope, dry-run intent, 응답 state version, durable ID
@@ -28,13 +32,16 @@ generator는 받지 않습니다. 커밋되는 새 발급에서는 공개 메서
 `UserActionResolutionRef` 값을 구성하면서 검증된 `PlannedWriteTicket` 하나를
 구체화합니다. 이 값이 응답 projection과 완전한 typed Store insertion을 함께
 제공합니다. Dry run은 구체화 전에 메서드 경계에서 끝납니다.
-`semantic.rs`는 planned와 stored 형태가 공유하는 불변 ticket 의미를 노출하지만,
-`WriteTicketEvaluationIdentity`는 발급 예정 identity와 영속 identity를 명시적으로
-구분합니다.
-보호 대상 Record Run에서는 `write_ticket/admission.rs`가 실제 평가하는 정확한
-typed operation, Task, Change Unit, Git workspace, 관찰 시각, observed-change,
-현재 policy fact를 받아 승인된 attempt scope 또는 typed 의미 승인 오류를
-반환합니다.
+`semantic.rs`는 planned와 stored 형태가 공유하는 불변 ticket 의미만 노출합니다.
+Planned lifecycle identity와 stored lifecycle identity는 각자 타입에 남고, 평가된
+모든 stored 상태는 필수 `WriteTicketId`를 가집니다.
+보호 대상 Record Run에서 planner는 선택한 물리 active record를 active candidate로
+먼저 변환합니다. Record Run 평가는 해당 시도의 정확한 typed operation, Task,
+Change Unit, Git workspace, observed-change, 현재 policy fact를 검사해 정확한
+attempt 호환성 증명을 만들고, 현재 유효성 평가는
+`ReusableStoredWriteTicket`임을 증명합니다. `write_ticket/admission.rs`는 서로
+일치하는 두 증명을 `AdmissibleStoredWriteTicket`으로 결합하며, mutation
+planning과 consumption에는 이 ticket 타입만 전달됩니다.
 `core_pipeline/write_tickets.rs`만 물리 ticket 테이블, column, row projection,
 정규 decoder, 영속 불변 조건, 엄격한 일반 및 transaction 범위 읽기, 집중된 typed
 authority view, grouped mutation 적용을 담당합니다. Decoder는 opaque
@@ -49,6 +56,11 @@ Run mutation은 Run 및 관련 effect와 같은 Store commit에서 선택한 tic
 
 - Ticket은 현재 work 및 write-authority basis 하나에 결속됩니다.
 - Ticket ID, stored status, age만으로 current validity를 성립시키지 않습니다.
+- 모든 stored 평가는 null이 아닌 영속 `WriteTicketId`를 가집니다.
+- Planned 발급은 stored lifecycle 평가의 variant가 아닙니다.
+- Terminal stored 상태는 active currentness 또는 admission 로직에 들어갈 수 없습니다.
+- Reuse는 `ReusableStoredWriteTicket`만 받고 보호 대상 mutation은
+  `AdmissibleStoredWriteTicket`만 받습니다.
 - Structural request와 current Change Unit validation이 lookup보다 먼저입니다.
 - Reuse는 path, approval, operation, authority를 넓히지 않습니다.
 - `approval.rs`만 현재 민감 승인 identity 집합, Write Ticket 승인 요구사항, 의미
@@ -69,12 +81,15 @@ Core 메서드는 요청별 조율과 응답 구성을 담당합니다. Prepare 
 분기 선택, 영속 ID 할당, state-version이 있는 reference, 보장 표시, typed
 planning·Store·UserAction 실패를 공개 `PlanError` 분기로 바꾸는 작업도 여기에
 포함됩니다. 집중된 Write Ticket 읽기 경계는 typed fact 취득만 담당합니다. 승인
-구성과 평가, 선택, 현재 유효성은 집중된 순수 의미 policy입니다. Summary
-projection은 평가된 typed 상태, state-version 및 display fact, 증거 fact만 받으며
-Store를 읽거나 workflow, UserAction, 승인 policy를 다시 계산할 수 없습니다. 좁은
-service는 이 담당자들을 조율하고 평가 완료 ticket 상태를 소비자에게 제공합니다.
-Record Run planner는 의미 fact를 제공하며 저장된 path JSON을 해석하거나 ticket
-승인 정책을 독립적으로 구성하지 않습니다. Store는 물리
+구성과 평가, stored 전용 선택, 현재 유효성은 집중된 순수 의미 policy입니다.
+Planned summary projection은 `PlannedWriteTicket`을 받고 stored summary projection은
+`StoredWriteTicketEvaluation`과 제공된 증거를 받습니다. 어느 쪽도 Store를 읽거나
+workflow, UserAction, 승인 policy를 다시 계산할 수 없습니다. 좁은 service는
+terminal 사전 평가, active에 한정한 현재 fact 읽기, 선택, 증거 읽기, stored
+projection을 조율합니다. Record Run planner는 typed reusable ticket과 일치하는
+정확한 attempt 호환성 증명을 admission에 전달하고 반환된 admissible ticket만
+유지합니다. 저장된 path JSON을 해석하거나 ticket 승인 policy를 독립적으로
+구성하지 않습니다. Store는 물리
 ticket row를 비공개로 유지하고 status, validity basis, attempt scope, Product
 Repository 경로 모음, timestamp, 중복 owner coordinate를 엄격하게 decode한 뒤
 `StoredWriteTicket`을 반환합니다. 물리 field 사이 관계는 폐쇄형 Write Ticket
@@ -82,8 +97,9 @@ aggregate invariant로 검증하며, 여기에는 approval reference owner 일�
 resolution identity 고유성이 포함됩니다. Core는 ID 없는 draft를 구성할 때 의미 planning
 invariant를 검증하고, 메서드가 `PlannedWriteTicket`을 구체화할 때 identity와
 state-version 의존 invariant를 검증합니다. 이 검증은 Store가 담당하는 영속 물리
-검증과 구분됩니다. Planned 발급, stored 상태, projected post-consumption 상태는 의미
-view만 공유하며 실제 identity는 그대로 구분합니다. Store는 ticket query,
+검증과 구분됩니다. Planned 발급과 각 stored lifecycle 상태는 불변 의미 fact만
+공유합니다. Stored 평가, 선택, currentness, reuse, admission, consumption, summary
+projection은 실제 영속 identity를 유지합니다. Store는 ticket query,
 invalidation persistence, consumption mutation도 담당합니다. Workflow policy
 영속화는 검증된 record에서 만든 집중된 typed authority view만 받으며 ticket row를
 query하거나 decode하지 않습니다. Guard는 observation을 제공하지만 ticket basis를
@@ -94,25 +110,28 @@ query하거나 decode하지 않습니다. Guard는 observation을 제공하지�
 1. 공통 preflight가 actor, operation category, project, request shape를 검증합니다.
 2. `prepare_write`가 현재 work, policy, workspace, path, approval fact를 읽습니다.
 3. Core policy가 normalized current write-authority basis를 계산합니다.
-4. Write Ticket 읽기 경계가 typed candidate와 각 active candidate에 필요한 현재
-   fact를 읽습니다.
-5. `approval.rs`가 각 candidate의 현재 typed 승인 집합과 요구사항을 구성하고 단일
-   의미 평가를 만듭니다. 현재 유효성 policy가 이를 소비한 뒤 순수 선택 policy가
-   현재 우선순위와 동률 해소 규칙을 적용합니다.
-6. 상태 summary projection, 닫기 준비 상태, CLI guard context는 이 평가에서 파생된
-   평가 완료 ticket 상태를 받습니다. Summary는 선택된 ticket과 제공된 증거 fact를
-   Store 또는 policy 접근 없이 변환하며, 닫기 준비 상태와 CLI guard는 승인
-   현재성을 다시 계산하지 않습니다.
+4. Write Ticket 읽기 경계가 모든 stored record를 사전 평가합니다. Terminal record는
+   즉시 완결된 typed 결과가 되고 active record는
+   `ActiveStoredWriteTicketCandidate`가 됩니다.
+5. Active candidate가 있을 때만 service가 현재 Task, workflow policy, UserAction
+   fact를 읽습니다. `approval.rs`가 각 active candidate의 의미 평가를 만들고 현재
+   유효성 policy가 reusable 또는 invalidated active 결과를 만듭니다.
+6. 순수 선택은 완성된 stored 평가만 대상으로 합니다. Service는 선택 뒤 해당
+   ticket의 증거를 읽고 stored summary를 투영합니다. 닫기 준비 상태와 CLI guard는
+   같은 평가 완료 stored 상태를 받으며 승인 현재성을 다시 계산하지 않습니다.
 7. Write Ticket planning은 dry-run intent를 보거나 공개 ref를 구성하지 않고
    reuse 또는 ID 없는 새 발급 draft, typed 판단 사유, 관련 의미 identity, 후보
    mutation을 반환합니다.
 8. `dry-run`이면 `prepare_write`가 미리보기를 투영하고 끝냅니다. 커밋되는 새
    발급이면 영속 ID를 할당하고 `PlannedWriteTicket` 하나를 구체화하며, 그 값에서
-   응답 projection과 `WriteTicketInsert`를 파생합니다. Reuse는
-   `StoredWriteTicket`을 읽습니다.
-9. Record Run에서는 `write_ticket/admission.rs`가 같은 승인 평가를 소비한 뒤
-   operation별 호환성 검사를 적용하고 승인된 scope를 반환합니다.
-10. Store가 보호 대상 mutation과 함께 ticket consumption을 commit합니다.
+   planned summary와 `WriteTicketInsert`를 파생합니다. Reuse는
+   `ReusableStoredWriteTicket`을 반환하고 stored summary 경로를 사용합니다.
+9. Record Run에서는 현재 유효성 평가가 `ReusableStoredWriteTicket`임을 증명하는
+   동안 평가가 정확한 attempt 호환성 증명을 만듭니다.
+   `write_ticket/admission.rs`는 서로 일치하는 두 증명을 결합해
+   `AdmissibleStoredWriteTicket`을 반환합니다.
+10. Store가 이 admissible ticket의 consumption을 보호 대상 mutation과 함께
+    commit합니다.
 
 ## 실패 동작
 
@@ -122,9 +141,10 @@ ticket selection은 partial protected effect 없이 reuse 또는 consumption을
 막습니다. 평가는 새로 필요해진 승인, 현재 resolution 부재, 승인 범위 변경, 더
 이상 현재 상태가 아닌 근거 resolution을 구분합니다. Exact replay는 ticket을 다시
 소비하지 않습니다.
-형식이 잘못된 물리 field와 영속 필드 간 불일치는 Store corruption입니다. 내부적으로
-유효한 typed ticket을 기준으로 판단한 expiry, path, operation, current-policy
-mismatch는 의미 policy 결과이며 영속 corruption이 아닙니다.
+형식이 잘못된 물리 field와 영속 필드 간 불일치는 Store corruption입니다. 확인된
+Core 상태 변환 실패는 panic 기반 narrowing 경로가 아니라 invariant failure입니다.
+내부적으로 유효한 typed ticket을 기준으로 판단한 expiry, path, operation,
+current-policy mismatch는 의미 policy 결과이며 영속 corruption이 아닙니다.
 
 ## 범위 제외
 
@@ -139,10 +159,11 @@ actor identity나 transferable capability가 아닙니다.
   요청별 issue/reuse와 protected consumption 조율.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)와
   [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed fact 취득, 정규 승인 요구사항과 현재 집합 구성, typed 승인 평가, 순수
-  candidate 선택 및 현재 유효성 평가, 의미 발급 draft 계획, 검증된
-  `PlannedWriteTicket` 구체화, 순수 summary projection, 좁은 영속 summary 조율,
-  보호 대상 Record Run 승인.
+  typed fact 취득, 정규 승인 요구사항과 현재 집합 구성, typed 승인 평가, terminal
+  사전 평가, active에 한정한 현재 유효성 평가, stored 전용 선택, 의미 발급 draft
+  계획, 검증된 `PlannedWriteTicket` 구체화, planned와 stored summary의 분리된
+  projection, 좁은 영속 summary 조율, reusable에서 admissible로 이어지는 보호 대상
+  Record Run 승인.
 - [`crates/volicord-core/src/write_ticket/tests/read_model_service.rs`](../../../../crates/volicord-core/src/write_ticket/tests/read_model_service.rs):
   집중된 Store 기반 fact 취득 및 영속 summary service coverage.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):

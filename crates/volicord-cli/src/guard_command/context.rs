@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, path::Path};
 
-use volicord_core::{load_evaluated_write_tickets, GitWorkspaceContext};
+use volicord_core::{load_evaluated_stored_write_tickets, GitWorkspaceContext};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::{
     bootstrap::ProjectRecord,
@@ -131,12 +131,9 @@ pub(super) fn guard_state_summary(
             })
             .transpose()?;
         let evaluated_write_tickets =
-            load_evaluated_write_tickets(&store, &task_id, &now_timestamp)?
+            load_evaluated_stored_write_tickets(&store, &task_id, &now_timestamp)?
                 .into_iter()
-                .filter_map(|evaluated| {
-                    let write_ticket_id = evaluated.stored_write_ticket_id()?.as_str().to_owned();
-                    Some((write_ticket_id, evaluated))
-                })
+                .map(|evaluated| (evaluated.write_ticket_id().as_str().to_owned(), evaluated))
                 .collect::<BTreeMap<_, _>>();
         for record in store.write_tickets_for_task(&task_id)? {
             let validity_basis = record.validity_basis();

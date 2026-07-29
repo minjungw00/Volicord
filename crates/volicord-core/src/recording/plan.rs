@@ -15,7 +15,9 @@ use crate::record_refs::{change_unit_ref, state_ref, state_ref_from_stored};
 use crate::task_facts::active_blocker_refs;
 use crate::task_policy::{plan_user_action_lifecycle_transition, TaskLifecycleFacts};
 use crate::write_ticket::{
-    admit_record_run, RecordRunWriteAdmission, WriteTicketAdmissionError, WriteTicketInvalidReason,
+    active_record_run_candidate, admit_record_run, evaluate_record_run_candidate,
+    RecordRunTicketCurrentness, RecordRunWriteAdmission, WriteTicketAdmissionError,
+    WriteTicketInvalidReason,
 };
 use serde_json::json;
 use volicord_store::core_pipeline::{
@@ -170,24 +172,33 @@ pub(super) fn decide_record_run_policy(
                     "write_ticket_id does not identify a write ticket",
                 )
             })?;
-        let scope = admit_record_run(
-            &record,
-            RecordRunWriteAdmission {
+        let candidate = active_record_run_candidate(&record, plan_now)
+            .map_err(record_run_write_admission_error)?;
+        let admission = RecordRunWriteAdmission {
+            task_id: &request.task_id,
+            change_unit_id: &request.change_unit_id,
+            baseline_ref: &request.baseline_ref,
+            performed_operation: request.performed_operation.as_deref(),
+            task: &task,
+            change_unit: &change_unit,
+            git_workspace_context: verified_invocation.git_workspace_context.as_ref(),
+            observed_changes: normalized_observed_changes,
+        };
+        let (reusable, compatible_attempt) = evaluate_record_run_candidate(
+            candidate,
+            RecordRunTicketCurrentness {
                 store,
                 task_id: &request.task_id,
-                change_unit_id: &request.change_unit_id,
-                baseline_ref: &request.baseline_ref,
-                performed_operation: request.performed_operation.as_deref(),
                 task: &task,
-                change_unit: &change_unit,
-                git_workspace_context: verified_invocation.git_workspace_context.as_ref(),
-                observed_changes: normalized_observed_changes,
                 write_authority_fingerprint: &workflow_policy.write_authority_fingerprint,
                 observed_at: plan_now,
             },
+            &admission,
         )
         .map_err(record_run_write_admission_error)?;
-        Some((record, scope))
+        let admitted = admit_record_run(reusable, compatible_attempt)
+            .map_err(record_run_write_admission_error)?;
+        Some(admitted)
     } else {
         if request.write_ticket_id.is_some() {
             return Err(write_ticket_invalid(
@@ -219,16 +230,19 @@ pub(super) fn decide_record_run_policy(
             task_control == TaskControlLevel::Sensitive
                 || !normalized_observed_changes.sensitive_categories.is_empty()
         })
-        .map(|(_, scope)| SensitiveApprovalRequirement {
-            task_id: &request.task_id,
-            change_unit_id: &request.change_unit_id,
-            scope_revision: task.scope_revision,
-            operation: &scope.intended_operation,
-            normalized_paths: normalized_changed_paths,
-            sensitive_categories: &normalized_observed_changes.sensitive_categories,
-            baseline_ref: Some(&request.baseline_ref),
-            required_for: UserActionRequiredFor::RecordRun,
-            now: plan_now,
+        .map(|ticket| {
+            let scope = &ticket.semantic_facts().attempt_scope;
+            SensitiveApprovalRequirement {
+                task_id: &request.task_id,
+                change_unit_id: &request.change_unit_id,
+                scope_revision: task.scope_revision,
+                operation: &scope.intended_operation,
+                normalized_paths: normalized_changed_paths,
+                sensitive_categories: &normalized_observed_changes.sensitive_categories,
+                baseline_ref: Some(&request.baseline_ref),
+                required_for: UserActionRequiredFor::RecordRun,
+                now: plan_now,
+            }
         });
     let operation_context = UserActionOperationContext {
         operation: UserActionOperation::RecordRun,
@@ -556,7 +570,7 @@ pub(super) fn plan_record_run_mutations(
         "product_file_write_observed": normalized_observed_changes.product_file_write_observed,
         "write_ticket_id": write_ticket_scope
             .as_ref()
-            .map(|(record, _scope)| record.write_ticket_id().to_owned()),
+            .map(|ticket| ticket.write_ticket_id().as_str().to_owned()),
         "artifact_ids": registered_artifacts
             .iter()
             .map(|artifact| artifact.artifact_id.as_str().to_owned())
@@ -676,12 +690,13 @@ pub(super) fn assemble_record_run_mutation_plan(
             steps.push(RecordRunMutation::Task(transition.task_mutation()));
         }
     }
-    if let Some((record, _scope)) = write_ticket_scope {
+    if let Some(ticket) = write_ticket_scope {
+        let semantic = ticket.semantic_facts();
         steps.push(RecordRunMutation::WriteTicket(
             WriteTicketMutation::Consume(WriteTicketConsumption {
-                write_ticket_id: record.write_ticket_id().to_owned(),
+                write_ticket_id: ticket.write_ticket_id().as_str().to_owned(),
                 run_id: run_id.as_str().to_owned(),
-                expected_basis_state_version: record.basis_state_version(),
+                expected_basis_state_version: semantic.basis_state_version,
                 expected_write_authority_fingerprint: workflow_policy
                     .write_authority_fingerprint
                     .clone(),

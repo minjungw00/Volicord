@@ -37,14 +37,20 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
   artifact plan을 만듭니다.
 - [`crates/volicord-core/src/write_ticket/approval.rs`](../../../../crates/volicord-core/src/write_ticket/approval.rs)는
   정규 Write Ticket 승인 요구사항, typed 현재 민감 승인 집합, 의미 근거 평가를
-  담당합니다. [`admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)는
-  그 평가를 소비한 뒤 Record Run 전용 승인 검사를 적용합니다.
+  담당합니다.
+  [`current_validity.rs`](../../../../crates/volicord-core/src/write_ticket/current_validity.rs)는
+  active stored candidate를 `ReusableStoredWriteTicket`으로 변환하고,
+  [`admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)는 이
+  reusable 타입과 일치하는 정확한 attempt 호환성 증명을 결합해
+  `AdmissibleStoredWriteTicket`을 반환합니다. Terminal stored 상태는 이 admission
+  경로에 들어갈 수 없습니다.
 - [`crates/volicord-core/src/close_readiness/recording.rs`](../../../../crates/volicord-core/src/close_readiness/recording.rs)는
   공유 닫기 준비 상태 서비스가 사용할 typed 현재 닫기 근거와 잔여 위험 fact를
   구성합니다.
 - [`crates/volicord-core/src/recording/plan.rs`](../../../../crates/volicord-core/src/recording/plan.rs)는
   이 담당 모듈을 조율하고 typed mutation plan을 조립하며 effect와 결과 fact를
-  담은 폐쇄형 `RecordRunOperationPlan`을 반환합니다.
+  담은 폐쇄형 `RecordRunOperationPlan`을 반환합니다. 보호 대상 mutation
+  planning에는 `AdmissibleStoredWriteTicket`만 전달합니다.
   [`state.rs`](../../../../crates/volicord-core/src/recording/state.rs)는 Store를
   사용하는 연산 후 상태 fact를 취득합니다. 공개 진입점은 반환된 fact를 중립
   Core 연산 carrier와 `RecordRunResultFields`로 변환합니다.

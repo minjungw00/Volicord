@@ -120,22 +120,27 @@ dry-run intent, or a response state version. The public method projects those
 facts to public references and errors. Dry run returns its preview before
 durable identity allocation or ticket materialization; the committed path
 allocates an ID and materializes one validated `PlannedWriteTicket` for Store
-insertion and response projection. Planned and opaque stored tickets expose
-the same immutable semantic view but retain distinct evaluation identities.
+insertion and planned-summary projection. Planned and opaque stored tickets
+share immutable semantic facts only; their lifecycle states and identities
+remain distinct.
 For a persisted state summary, `read_model.rs` acquires typed ticket, Task,
 workflow-policy, current UserAction-resolution, and selected-run evidence
-facts. `selection.rs` chooses among evaluated candidates, and
-`current_validity.rs` derives effective status, invalidation, authority, and
-approval from typed facts. `summary.rs` only maps that evaluated state to the
-adapter-neutral summary. Methods that need this complete read use the narrow
-`service.rs` coordinator.
+facts. `current_validity.rs` pre-evaluates terminal records without current
+facts and sends only active candidates through authority and approval
+evaluation. `selection.rs` chooses among complete stored evaluations.
+`summary.rs` has separate planned and stored inputs and only maps the selected
+state to the adapter-neutral summary. Methods that need this complete stored
+read use the narrow `service.rs` coordinator, which loads evidence after
+selection.
 An existing ticket is reusable only when every owner-defined coordinate remains
-valid. For `record_run`, `write_ticket/admission.rs` receives the exact typed
-Task, Change Unit, Git workspace, observation time, observed-change,
-policy-fingerprint, and operation facts it evaluates. It applies the same
-validity and attempt-scope policy without decoding physical rows or
-constructing a method response. The recording plan consumes only an exactly
-matched admitted ticket inside the same commit as the Run.
+valid. For `record_run`, evaluation checks the exact Task, Change Unit, Git
+workspace, observed-change, policy-fingerprint, and operation facts for an
+active candidate while current-validity evaluation proves a
+`ReusableStoredWriteTicket`. `write_ticket/admission.rs` combines that reusable
+state with the matching exact-attempt compatibility proof and returns
+`AdmissibleStoredWriteTicket`, without decoding physical rows or constructing a
+method response. The recording plan consumes only that admitted ticket inside
+the same commit as the Run.
 
 ## UserAction Separation
 

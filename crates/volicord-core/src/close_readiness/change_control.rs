@@ -12,7 +12,7 @@ use crate::policy::evidence_target::{
 };
 use crate::record_refs::{change_unit_ref, state_ref};
 use crate::task_state::StoredScope;
-use crate::write_ticket::service::load_evaluated_write_tickets;
+use crate::write_ticket::service::load_evaluated_stored_write_tickets;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::BaselineRef;
@@ -222,26 +222,24 @@ fn unresolved_write_ticket_blockers(
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     if context.write_tickets.is_none() {
-        let records = load_evaluated_write_tickets(store, &request.task_id, now)
+        let records = load_evaluated_stored_write_tickets(store, &request.task_id, now)
             .map_err(CloseReadinessError::Core)?;
         context.write_tickets = Some(records);
     }
-    for record in context
-        .write_tickets
-        .as_ref()
-        .expect("write-ticket facts are acquired before evaluation")
-    {
-        match record.effective_status {
+    let Some(write_tickets) = context.write_tickets.as_ref() else {
+        return Err(CloseReadinessError::Core(CorePipelineError::Invariant {
+            detail: "close-readiness Write Ticket facts were not acquired".to_owned(),
+        }));
+    };
+    for record in write_tickets {
+        match record.status() {
             WriteTicketStatus::Active => blockers.push(open_write_ticket_close_blocker(
                 task_ref.clone(),
                 state_ref(
                     StateRecordKind::WriteTicket,
-                    record
-                        .stored_write_ticket_id()
-                        .expect("Store-acquired evaluated ticket has stored identity")
-                        .as_str(),
-                    &record.ticket.project_id,
-                    Some(&record.ticket.validity_basis.task_id),
+                    record.write_ticket_id().as_str(),
+                    &record.semantic_facts().project_id,
+                    Some(&record.semantic_facts().validity_basis.task_id),
                     Some(project_state.state_version),
                 ),
             )),

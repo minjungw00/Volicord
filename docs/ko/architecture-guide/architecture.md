@@ -185,18 +185,24 @@ identity, artifact policy, continuity planning, Write Ticket planning, 닫기 �
 오류-응답 매핑, 삽입과 응답 projection에 쓰는 검증된 `PlannedWriteTicket`
 구체화를 담당합니다.
 `write_ticket/semantic.rs`는 plan과 Store가 검증한 opaque record가 공유하는
-불변 의미 view를 제공하면서 planned identity와 stored identity를 구분합니다.
-`write_ticket/read_model.rs`는 typed ticket, Task, workflow policy, 현재
-UserAction resolution, 증거 fact를 취득합니다. `write_ticket/approval.rs`만 정규
+불변 의미 view를 제공하며 planned lifecycle identity와 stored lifecycle identity는
+서로 다른 타입에 남습니다. `write_ticket/read_model.rs`는 typed stored ticket,
+Task, workflow policy, 현재 UserAction resolution, 증거 fact를 취득합니다.
+`write_ticket/approval.rs`만 정규
 승인 요구사항과 현재 민감 승인 identity 집합을 구성하고, summary 평가, reuse,
 Record Run 승인, 닫기 준비 상태, CLI guard context가 소비하는 typed 현재성 평가를
 반환합니다.
-`write_ticket/selection.rs`와 `write_ticket/current_validity.rs`는 이 fact와 평가에
-순수한 선택 및 현재 유효성 정책을 적용합니다. `write_ticket/summary.rs`는 Store
-handle이나 정책 평가 없이 이미 평가된 값을 adapter-neutral 상태 summary로
-변환합니다.
-`write_ticket/service.rs`는 영속 평가가 필요한 Core 및 adapter 소비자를 위해 이
-담당자들만 좁게 조율합니다. Store는 계속 Core에 의존하지 않습니다.
+`write_ticket/current_validity.rs`는 terminal stored 상태를 먼저 완결한 뒤 active
+candidate만 reusable 또는 invalidated stored 상태로 평가합니다. 그 결과인 모든
+`StoredWriteTicketEvaluation`은 필수 영속 identity를 가집니다.
+`write_ticket/selection.rs`는 이 stored 평가만 선택합니다. `write_ticket/summary.rs`는
+Store handle이나 정책 평가 없이 planned projection과 stored projection 경로를
+구분합니다. `write_ticket/service.rs`는 현재 fact를 읽기 전에 terminal record와
+active record를 나누고, active partition을 평가하고, stored 결과를 선택한 뒤
+증거를 읽습니다. `write_ticket/admission.rs`는
+`ReusableStoredWriteTicket`과 일치하는 정확한 attempt 호환성 증명을 결합해 보호
+대상 mutation planning에 쓰는 `AdmissibleStoredWriteTicket`을 반환합니다. Store는
+계속 Core에 의존하지 않습니다.
 
 `ChangeUnitUpdate` schema accessor는 정확한 메서드 field 추출을 담당하고,
 `change_unit_planning.rs`는 Change Unit mutation 계획을 담당합니다.

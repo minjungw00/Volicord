@@ -31,11 +31,12 @@ use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
-use crate::write_ticket::current_validity::{
-    evaluate_planned_write_ticket, evaluate_reused_write_ticket,
+use crate::write_ticket::current_validity::StoredWriteTicketEvaluation;
+use crate::write_ticket::read_model::WriteTicketEvidenceFacts;
+use crate::write_ticket::summary::{
+    project_planned_write_ticket_summary, project_stored_write_ticket_summary,
+    PlannedWriteTicketSummaryInput, StoredWriteTicketSummaryInput,
 };
-use crate::write_ticket::read_model::{stored_write_ticket_facts, WriteTicketEvidenceFacts};
-use crate::write_ticket::summary::{project_write_ticket_summary, WriteTicketSummaryInput};
 use crate::write_ticket::{
     materialize_planned_write_ticket, plan_prepare_write as plan_write_ticket,
     planned_write_ticket_mutation, PrepareWriteInput, PrepareWritePlanningOutcome,
@@ -45,7 +46,7 @@ use serde_json::{json, Map, Value};
 use volicord_store::core_pipeline::{CoreProjectStore, CoreStorageMutation, ProjectStateHeader};
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
-use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, WriteTicketId};
+use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId};
 use volicord_types::methods::{
     MethodOperationCategory, PrepareWriteRequest, PrepareWriteResultFields,
 };
@@ -426,7 +427,7 @@ fn project_prepare_write_response(
             (Some(write_ticket_id), Some(plan), WriteTicketEffect::Issued)
         } else if let Some(record) = reused_write_ticket.as_ref() {
             (
-                Some(WriteTicketId::new(record.write_ticket_id())),
+                Some(record.write_ticket_id().clone()),
                 None,
                 WriteTicketEffect::Reused,
             )
@@ -541,7 +542,8 @@ fn project_prepare_write_response(
             })
         }
         (Some(write_ticket_id), Some(write_ticket_ref), None, Some(record)) => {
-            let selected_scope = record.attempt_scope();
+            let semantic = record.semantic_facts();
+            let selected_scope = &semantic.attempt_scope;
             Some(WriteTicket {
                 write_ticket_id: write_ticket_id.clone(),
                 write_ticket_ref: write_ticket_ref.clone(),
@@ -559,10 +561,10 @@ fn project_prepare_write_response(
                     denied: denied_path_patterns.clone(),
                 },
                 observed_paths: Vec::new(),
-                basis_state_version: record.basis_state_version(),
-                validity_basis: record.validity_basis().clone(),
+                basis_state_version: semantic.basis_state_version,
+                validity_basis: semantic.validity_basis.clone(),
                 invalidation_reason: None,
-                idle_expires_at: record.idle_expires_at().cloned(),
+                idle_expires_at: semantic.idle_expires_at.clone(),
                 guarantee_display: guarantee_display.clone(),
             })
         }
@@ -581,17 +583,17 @@ fn project_prepare_write_response(
         pending_user_action_refs,
         blocker_refs,
         write_ticket_summary: if let Some(plan) = planned_write_ticket.as_ref() {
-            let evaluated = evaluate_planned_write_ticket(plan);
-            Some(project_write_ticket_summary(WriteTicketSummaryInput {
-                evaluated: &evaluated,
-                state_version: planned_state_version,
-                evidence: &WriteTicketEvidenceFacts::default(),
-                guarantee_display: guarantee_display.clone(),
-            }))
+            Some(project_planned_write_ticket_summary(
+                PlannedWriteTicketSummaryInput {
+                    planned: plan,
+                    state_version: planned_state_version,
+                    guarantee_display: guarantee_display.clone(),
+                },
+            ))
         } else {
             reused_write_ticket.as_ref().map(|record| {
-                let evaluated = evaluate_reused_write_ticket(stored_write_ticket_facts(record));
-                project_write_ticket_summary(WriteTicketSummaryInput {
+                let evaluated = StoredWriteTicketEvaluation::Reusable(record.clone());
+                project_stored_write_ticket_summary(StoredWriteTicketSummaryInput {
                     evaluated: &evaluated,
                     state_version: planned_state_version,
                     evidence: &WriteTicketEvidenceFacts::default(),

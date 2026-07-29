@@ -1,3 +1,8 @@
+#![cfg_attr(
+    not(test),
+    deny(clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
+
 mod admission;
 pub(crate) mod approval;
 pub(crate) mod current_validity;
@@ -172,7 +177,11 @@ impl WriteTicketInvalidReason {
     }
 }
 
-pub(crate) use admission::{admit_record_run, RecordRunWriteAdmission, WriteTicketAdmissionError};
+pub(crate) use admission::{
+    active_record_run_candidate, admit_record_run, evaluate_record_run_candidate,
+    AdmissibleStoredWriteTicket, RecordRunTicketCurrentness, RecordRunWriteAdmission,
+    WriteTicketAdmissionError,
+};
 pub(crate) use facts::{
     baseline_matches, load_prepare_write_task, paths_match_current_change_unit,
     validate_prepare_write_change_unit, workspace_context_matches,
@@ -183,5 +192,5 @@ pub(crate) use planning::{
 };
 pub(crate) use policy::{
     normalized_string_set, prepare_write_decision, run_write_ticket_mismatch,
-    write_decision_reason, write_ticket_is_idle_expired, RunWriteTicketAttempt,
+    write_decision_reason, RunWriteTicketAttempt,
 };

@@ -3,17 +3,14 @@ use crate::identity::allocate_risk_id;
 use crate::pipeline::{CorePipelineError, CoreService};
 use crate::policy::evidence::state_record_ref_identity_key;
 use crate::policy::evidence_target::run_record_matches_close_basis_context;
-use crate::record_refs::{state_ref, write_ticket_ref};
+use crate::record_refs::state_ref;
 use crate::recording::RecordRunInput;
 use crate::task_state::{normalize_display_string_list, normalize_display_text};
-use crate::write_ticket::normalized_string_set;
+use crate::write_ticket::{normalized_string_set, AdmissibleStoredWriteTicket};
 use std::collections::{BTreeMap, BTreeSet};
-use volicord_store::core_pipeline::{
-    ChangeUnitStatus, CoreProjectStore, RunRecord, StoredWriteTicket, TaskRecord,
-};
+use volicord_store::core_pipeline::{ChangeUnitStatus, CoreProjectStore, RunRecord, TaskRecord};
 use volicord_types::schema::{
     ArtifactRef, CurrentCloseBasis, ResidualRisk, SensitiveActionRequirement, StateRecordRef,
-    WriteTicketAttemptScope,
 };
 use volicord_types::values::{StateRecordKind, UtcTimestamp};
 #[derive(Debug)]
@@ -54,7 +51,7 @@ pub(crate) struct RecordRunCloseBasisContext<'a> {
     pub(crate) request: &'a RecordRunInput,
     pub(crate) task: &'a TaskRecord,
     pub(crate) run_ref: &'a StateRecordRef,
-    pub(crate) write_ticket_scope: Option<&'a (StoredWriteTicket, WriteTicketAttemptScope)>,
+    pub(crate) write_ticket_scope: Option<&'a AdmissibleStoredWriteTicket>,
     pub(crate) evidence_summary_ref: Option<StateRecordRef>,
     pub(crate) registered_artifacts: &'a [ArtifactRef],
     pub(crate) close_basis_revision: u64,
@@ -205,12 +202,11 @@ pub(super) fn current_sensitive_action_requirements(
     request: &RecordRunInput,
     task: &TaskRecord,
     run_ref: &StateRecordRef,
-    write_ticket_scope: Option<&(StoredWriteTicket, WriteTicketAttemptScope)>,
+    write_ticket_scope: Option<&AdmissibleStoredWriteTicket>,
 ) -> Result<Vec<SensitiveActionRequirement>, RecordRunCloseBasisError> {
     let mut requirements = previous_current_sensitive_action_requirements(store, request, task)?;
-    if let Some((record, scope)) = write_ticket_scope {
-        if let Some(requirement) =
-            sensitive_action_requirement_from_write_ticket(run_ref, record, scope)?
+    if let Some(ticket) = write_ticket_scope {
+        if let Some(requirement) = sensitive_action_requirement_from_write_ticket(run_ref, ticket)?
         {
             requirements.push(requirement);
         }
@@ -243,11 +239,12 @@ pub(super) fn previous_current_sensitive_action_requirements(
 
 pub(super) fn sensitive_action_requirement_from_write_ticket(
     run_ref: &StateRecordRef,
-    record: &StoredWriteTicket,
-    scope: &WriteTicketAttemptScope,
+    ticket: &AdmissibleStoredWriteTicket,
 ) -> Result<Option<SensitiveActionRequirement>, RecordRunCloseBasisError> {
+    let semantic = ticket.semantic_facts();
+    let scope = &semantic.attempt_scope;
     let sensitive_categories = normalized_string_set(&scope.sensitive_categories);
-    let validity_basis = record.validity_basis();
+    let validity_basis = &semantic.validity_basis;
     if sensitive_categories.is_empty() && validity_basis.approval_basis_refs.is_empty() {
         return Ok(None);
     }
@@ -257,7 +254,7 @@ pub(super) fn sensitive_action_requirement_from_write_ticket(
             CorePipelineError::Invariant {
                 detail: format!(
                     "write ticket `{}` has an empty intended operation after Store decoding",
-                    record.write_ticket_id()
+                    ticket.write_ticket_id()
                 ),
             },
         ));
@@ -274,13 +271,18 @@ pub(super) fn sensitive_action_requirement_from_write_ticket(
         baseline_ref: scope.baseline_ref.clone().into(),
         change_unit_id: scope.change_unit_id.clone(),
         source_run_ref: run_ref.clone(),
-        source_write_ticket_ref: write_ticket_ref(
-            record,
-            run_ref
-                .produced_at_state_version
-                .as_ref()
-                .copied()
-                .unwrap_or(record.basis_state_version()),
+        source_write_ticket_ref: state_ref(
+            StateRecordKind::WriteTicket,
+            ticket.write_ticket_id().as_str(),
+            &semantic.project_id,
+            Some(&validity_basis.task_id),
+            Some(
+                run_ref
+                    .produced_at_state_version
+                    .as_ref()
+                    .copied()
+                    .unwrap_or(semantic.basis_state_version),
+            ),
         ),
     }))
 }

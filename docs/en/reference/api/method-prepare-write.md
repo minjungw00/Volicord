@@ -222,8 +222,12 @@ For a committed issuance, the method supplies the durable ID and
 approval-reference projection state version; the typed non-empty approval basis
 constructs the state-versioned references while materializing one validated
 `PlannedWriteTicket`. That materialized value is the single source for response
-projection and the typed Store insertion input. Reuse instead projects the
-Store-validated `StoredWriteTicket` that already exists.
+projection and the typed Store insertion input. Reuse instead passes
+Store-validated active records through current-validity evaluation, selects
+only complete stored evaluations, and returns a
+`ReusableStoredWriteTicket`. Planned issuance and stored reuse use distinct
+summary projection inputs; neither path represents a planned ticket as stored
+state.
 
 ## Method result fields
 

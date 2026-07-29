@@ -10,17 +10,23 @@ invalidates, and consumes Write Tickets against current Core and Store facts.
 `prepare_write` loads the current Task, Change Unit, scope, workspace,
 approval, workflow-policy, and normalized path facts. The focused
 `write_ticket/` owner keeps those responsibilities explicit.
-`read_model.rs` acquires typed ticket, Task, normalized workflow-policy,
-current UserAction-resolution, and evidence facts. `approval.rs` is the single
-owner that constructs the canonical Write Ticket approval requirement, derives
-the invariant-bearing current sensitive-approval set, and assesses a
-Store-valid persisted approval basis as `NotRequired`, `Current`, or `Changed`
-with a typed reason. `selection.rs` chooses among typed candidates, while
-`current_validity.rs` converts the supplied assessment and current authority
-facts into effective status and invalidation without Store access.
-`summary.rs` maps an already evaluated ticket and supplied evidence to the
-adapter-neutral summary without selecting a candidate or reevaluating policy.
-`service.rs` narrowly coordinates the complete persisted-evaluation use case.
+`read_model.rs` acquires typed stored-ticket, Task, normalized
+workflow-policy, current UserAction-resolution, and evidence facts.
+`current_validity.rs` first converts each Store-validated record into either a
+terminal stored evaluation or an active stored candidate. Invalidated,
+consumed, and revoked records finish at that boundary; only an active
+candidate can request current authority and approval facts. It then converts
+that candidate into either `ReusableStoredWriteTicket` or an invalidated
+stored state. `approval.rs` is the single owner that constructs the canonical
+Write Ticket approval requirement, derives the invariant-bearing current
+sensitive-approval set, and assesses a Store-valid persisted approval basis as
+`NotRequired`, `Current`, or `Changed` with a typed reason.
+`selection.rs` chooses only among complete `StoredWriteTicketEvaluation`
+values. `summary.rs` has distinct planned and stored projection inputs, so a
+planned issuance never impersonates a stored evaluation. `service.rs`
+coordinates this persisted flow, partitions terminal and active records before
+loading current facts, selects one stored result, and loads evidence only for
+the selection.
 `planning.rs` evaluates a focused `PrepareWriteInput` and returns typed
 semantic decision reasons, related record identities, candidate mutations,
 and the distinct, unpersisted `PlannedWriteTicketDraft`. It does not receive a
@@ -32,13 +38,17 @@ state-versioned `UserActionResolutionRef` values while materializing one
 validated `PlannedWriteTicket`; that value supplies both the response
 projection and fully typed Store insertion. Dry run ends at the method
 boundary before materialization.
-`semantic.rs` exposes the immutable ticket meaning shared by planned and
-stored forms, but `WriteTicketEvaluationIdentity` keeps prospective and
-persisted identity explicit.
-For a protected Record Run, `write_ticket/admission.rs` accepts the exact typed
-operation, Task, Change Unit, Git workspace, observation time,
-observed-change, and current-policy facts it evaluates and returns the
-admitted attempt scope or a typed semantic admission error.
+`semantic.rs` exposes only the immutable ticket meaning shared by planned and
+stored forms. Planned and stored lifecycle identities remain in their own
+types; every evaluated stored state has a mandatory `WriteTicketId`.
+For a protected Record Run, the planner first converts the selected physical
+active record into an active candidate. Record Run evaluation checks the exact
+typed operation, Task, Change Unit, Git workspace, observed-change, and
+current-policy facts to produce an exact-attempt compatibility proof while
+current-validity evaluation proves a `ReusableStoredWriteTicket`.
+`write_ticket/admission.rs` combines those matching proofs into
+`AdmissibleStoredWriteTicket`, which is the only ticket type carried into
+mutation planning and consumption.
 `core_pipeline/write_tickets.rs` solely owns the physical ticket table,
 columns, row projection, canonical decoder, persisted invariants, strict
 normal and transaction-scoped reads, focused typed authority views, and
@@ -55,6 +65,11 @@ the same Store commit as the Run and its associated effects.
 
 - A ticket is bound to one current work and write-authority basis.
 - Ticket IDs, stored status, or age alone do not establish current validity.
+- Every stored evaluation has a non-optional persisted `WriteTicketId`.
+- Planned issuance is never a variant of a stored lifecycle evaluation.
+- Terminal stored states cannot enter active currentness or admission logic.
+- Reuse accepts only `ReusableStoredWriteTicket`; protected mutation accepts
+  only `AdmissibleStoredWriteTicket`.
 - Structural request and current Change Unit validation precede lookup.
 - Reuse does not widen paths, approvals, operations, or authority.
 - `approval.rs` alone constructs the current sensitive-approval identity set,
@@ -76,14 +91,17 @@ Prepare Write, that includes dry-run selection, durable ID allocation,
 state-versioned references, guarantee display, and conversion of typed
 planning, Store, and UserAction failures to public `PlanError` branches. The
 focused Write Ticket read boundary owns only typed fact acquisition. Approval
-construction and assessment, selection, and current validity are focused pure
-semantic policies. Summary projection accepts only evaluated typed state,
-state-version and display facts, and evidence facts; it cannot read Store or
-recompute workflow, UserAction, or approval policy. The narrow service
-coordinates those owners and exposes evaluated ticket state to its consumers.
-The Record Run planner supplies semantic facts and does not interpret stored
-path JSON or construct ticket approval policy independently. Store keeps the
-physical ticket row private and strictly
+construction and assessment, stored-only selection, and current validity are
+focused pure semantic policies. Planned summary projection accepts a
+`PlannedWriteTicket`; stored summary projection accepts a
+`StoredWriteTicketEvaluation` plus supplied evidence. Neither can read Store
+or recompute workflow, UserAction, or approval policy. The narrow service
+coordinates terminal pre-evaluation, active-only current fact loading,
+selection, evidence loading, and stored projection. The Record Run planner
+passes a typed reusable ticket and the matching exact-attempt compatibility
+proof to admission and retains only the returned admissible ticket; it does not
+interpret stored path JSON or construct ticket approval policy independently.
+Store keeps the physical ticket row private and strictly
 decodes status, validity basis, attempt scope, Product Repository path
 collections, timestamps, and redundant owner coordinates before returning a
 `StoredWriteTicket`. Relationships among physical fields are validated as
@@ -92,9 +110,10 @@ agreement and unique full resolution identities. Core validates semantic plannin
 invariants while constructing an identity-free draft, then validates identity
 and state-version-dependent invariants during method-owned
 `PlannedWriteTicket` materialization. Those checks are separate from
-Store-owned persisted physical validation. Planned issuance,
-stored state, and projected post-consumption state share a semantic view but
-retain their actual identities.
+Store-owned persisted physical validation. Planned issuance and each stored
+lifecycle state share immutable semantic facts only. Stored evaluation,
+selection, currentness, reuse, admission, consumption, and summary projection
+retain their actual persisted identity.
 Store also owns ticket queries, invalidation persistence, and consumption
 mutation. Workflow-policy persistence receives only a focused typed authority
 view produced from the validated record; it never queries or decodes a ticket
@@ -107,27 +126,31 @@ row. Guard supplies observations but does not widen the ticket basis.
 2. `prepare_write` loads the current work, policy, workspace, path, and
    approval facts.
 3. Core policy computes the normalized current write-authority basis.
-4. The Write Ticket read boundary loads typed candidates and the current facts
-   required by each active candidate.
-5. `approval.rs` constructs each candidate's current typed approval set and
-   requirement, then produces the one semantic assessment. Current-validity
-   policy consumes it, and pure selection policy applies the current precedence
-   and tie-breaking rules.
-6. State-summary projection, close readiness, and the CLI guard context receive
-   evaluated ticket state derived from that assessment. Summary maps the
-   selected ticket and supplied evidence facts without Store or policy access;
-   close readiness and the CLI guard do not recompute approval currentness.
+4. The Write Ticket read boundary pre-evaluates every stored record. Terminal
+   records become complete typed outcomes immediately; active records become
+   `ActiveStoredWriteTicketCandidate` values.
+5. Only when active candidates exist does the service load current Task,
+   workflow-policy, and UserAction facts. `approval.rs` produces the semantic
+   assessment for each active candidate, and current-validity policy produces a
+   reusable or invalidated active outcome.
+6. Pure selection considers only the resulting stored evaluations. After
+   selection the service loads its evidence and projects the stored summary.
+   Close readiness and the CLI guard receive the same evaluated stored state
+   and do not recompute approval currentness.
 7. Write Ticket planning returns reuse or a new identity-free issuance draft,
    typed decision reasons, related semantic identities, and candidate
    mutations without inspecting dry-run intent or constructing public refs.
 8. For dry run, `prepare_write` projects a preview and stops. For committed
    new issuance it allocates the durable ID, materializes one
-   `PlannedWriteTicket`, and derives response projection and
-   `WriteTicketInsert` from that value. Reuse reads a `StoredWriteTicket`.
-9. For Record Run, `write_ticket/admission.rs` consumes the same approval
-   assessment before applying operation-specific compatibility checks and
-   returning the admitted scope.
-10. Store commits ticket consumption with the protected mutation.
+   `PlannedWriteTicket`, and derives the planned summary and
+   `WriteTicketInsert` from that value. Reuse returns a
+   `ReusableStoredWriteTicket` and uses the stored-summary path.
+9. For Record Run, evaluation produces an exact-attempt compatibility proof
+   while current-validity evaluation proves a `ReusableStoredWriteTicket`.
+   `write_ticket/admission.rs` combines those matching proofs and returns
+   `AdmissibleStoredWriteTicket`.
+10. Store commits consumption of that admissible ticket with the protected
+    mutation.
 
 ## Failure behavior
 
@@ -139,9 +162,10 @@ approval, absent current resolution, changed approval scope, and a basis
 resolution that is no longer current. Exact replay does not consume the ticket
 again.
 Malformed physical fields and persisted cross-field disagreement are Store
-corruption. Expiry, path, operation, or current-policy mismatch evaluated from
-an internally valid typed ticket is a semantic policy outcome, not persisted
-corruption.
+corruption. A checked Core state-conversion failure is an invariant failure,
+not a panic-based narrowing path. Expiry, path, operation, or current-policy
+mismatch evaluated from an internally valid typed ticket is a semantic policy
+outcome, not persisted corruption.
 
 ## Scope exclusions
 
@@ -158,10 +182,11 @@ capability.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)
   and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
   typed fact acquisition, canonical approval requirement and current-set
-  construction, typed approval assessment, pure candidate selection and
-  current-validity evaluation, semantic issuance-draft planning, validated
-  `PlannedWriteTicket` materialization, pure summary projection, narrow
-  persisted-summary coordination, and protected Record Run admission.
+  construction, typed approval assessment, terminal pre-evaluation,
+  active-only current-validity evaluation, stored-only selection, semantic
+  issuance-draft planning, validated `PlannedWriteTicket` materialization,
+  separate planned and stored summary projection, narrow persisted-summary
+  coordination, and reusable-to-admissible Record Run admission.
 - [`crates/volicord-core/src/write_ticket/tests/read_model_service.rs`](../../../../crates/volicord-core/src/write_ticket/tests/read_model_service.rs):
   focused Store-backed fact acquisition and persisted-summary service coverage.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):

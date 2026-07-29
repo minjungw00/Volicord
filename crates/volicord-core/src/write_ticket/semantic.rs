@@ -18,13 +18,6 @@ pub(crate) struct WriteTicketSemanticFacts {
     pub(crate) idle_expires_at: Option<UtcTimestamp>,
 }
 
-/// Explicit identity of a value evaluated for summary projection.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum WriteTicketEvaluationIdentity {
-    Planned { write_ticket_id: WriteTicketId },
-    Stored { write_ticket_id: WriteTicketId },
-}
-
 /// Store-validated ticket facts after physical representation has been removed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StoredWriteTicketFacts {
@@ -76,8 +69,7 @@ pub(crate) mod test_support {
     use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
     use volicord_types::values::{UtcTimestamp, WriteTicketStatus};
 
-    use super::{StoredWriteTicketFacts, WriteTicketEvaluationIdentity, WriteTicketSemanticFacts};
-    use crate::write_ticket::current_validity::{EvaluatedWriteTicket, WriteTicketAuthorityState};
+    use super::{StoredWriteTicketFacts, WriteTicketSemanticFacts};
 
     pub(crate) fn timestamp(value: &str) -> UtcTimestamp {
         UtcTimestamp::parse(value).expect("test timestamp should be valid")
@@ -128,54 +120,20 @@ pub(crate) mod test_support {
             consumed_by_run_id: None,
         }
     }
-
-    pub(crate) fn evaluated_ticket(
-        write_ticket_id: &str,
-        status: WriteTicketStatus,
-        basis_state_version: u64,
-    ) -> EvaluatedWriteTicket {
-        EvaluatedWriteTicket {
-            identity: WriteTicketEvaluationIdentity::Stored {
-                write_ticket_id: WriteTicketId::new(write_ticket_id),
-            },
-            ticket: semantic_facts(basis_state_version),
-            effective_status: status,
-            invalidation: None,
-            authority: WriteTicketAuthorityState::NotApplicable,
-            consumed_by_run_id: None,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use volicord_types::ids::WriteTicketId;
     use volicord_types::values::WriteTicketStatus;
 
     use super::test_support::stored_facts;
-    use super::WriteTicketEvaluationIdentity;
 
     #[test]
-    fn stored_identity_is_distinct_from_shared_ticket_meaning() {
+    fn stored_identity_is_mandatory_and_distinct_from_shared_ticket_meaning() {
         let stored = stored_facts("ticket-stored", WriteTicketStatus::Active, 7);
         let shared_meaning = stored.ticket.clone();
 
         assert_eq!(stored.ticket, shared_meaning);
-        assert_eq!(
-            WriteTicketEvaluationIdentity::Stored {
-                write_ticket_id: stored.write_ticket_id
-            },
-            WriteTicketEvaluationIdentity::Stored {
-                write_ticket_id: WriteTicketId::new("ticket-stored")
-            }
-        );
-        assert_ne!(
-            WriteTicketEvaluationIdentity::Planned {
-                write_ticket_id: WriteTicketId::new("ticket-stored")
-            },
-            WriteTicketEvaluationIdentity::Stored {
-                write_ticket_id: WriteTicketId::new("ticket-stored")
-            }
-        );
+        assert_eq!(stored.write_ticket_id.as_str(), "ticket-stored");
     }
 }

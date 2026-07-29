@@ -62,30 +62,31 @@ impl CurrentSensitiveApprovals {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NonEmptyApprovalBasis {
     identities: BTreeSet<UserActionResolutionIdentity>,
+    primary: UserActionResolutionIdentity,
 }
 
 impl NonEmptyApprovalBasis {
     fn one(identity: UserActionResolutionIdentity) -> Self {
         Self {
-            identities: BTreeSet::from([identity]),
+            identities: BTreeSet::from([identity.clone()]),
+            primary: identity,
         }
     }
 
     fn from_store_valid_refs(refs: &[UserActionResolutionRef]) -> Option<Self> {
-        if refs.is_empty() {
-            return None;
-        }
+        let identities = refs
+            .iter()
+            .map(UserActionResolutionRef::identity)
+            .collect::<BTreeSet<_>>();
+        let primary = identities.first()?.clone();
         Some(Self {
-            identities: refs.iter().map(UserActionResolutionRef::identity).collect(),
+            identities,
+            primary,
         })
     }
 
     pub(crate) fn first_resolution_id(&self) -> &UserActionResolutionId {
-        &self
-            .identities
-            .first()
-            .expect("non-empty approval basis retains an identity")
-            .resolution_id
+        &self.primary.resolution_id
     }
 
     pub(crate) fn resolution_refs(
@@ -226,12 +227,14 @@ pub(crate) fn assess_write_ticket_approval(
         return WriteTicketApprovalAssessment::Current { basis };
     }
 
-    let missing = basis
+    let Some(missing) = basis
         .identities
         .iter()
         .find(|identity| !current.identities.contains(*identity))
-        .expect("a non-current basis has a missing identity")
-        .clone();
+        .cloned()
+    else {
+        return WriteTicketApprovalAssessment::Current { basis };
+    };
     if current.scope_candidate_identities.contains(&missing) {
         WriteTicketApprovalAssessment::Changed {
             reason: ApprovalBasisChangeReason::ApprovalScopeChanged {
@@ -274,17 +277,18 @@ mod tests {
         assess_write_ticket_approval, ApprovalBasisChangeReason, CurrentSensitiveApprovals,
         WriteTicketApprovalAssessment, WriteTicketApprovalRequirement,
     };
-    use crate::write_ticket::admission::{
-        record_run_approval_admission, RecordRunApprovalAdmission,
+    use crate::write_ticket::current_validity::{
+        evaluate_active_candidate, pre_evaluate_stored_write_ticket,
+        ActiveStoredWriteTicketEvaluation, StoredTicketPreEvaluation, StoredWriteTicketEvaluation,
     };
-    use crate::write_ticket::current_validity::evaluate_current_write_ticket;
-    use crate::write_ticket::planning::{reuse_approval_assessment, WriteTicketReuseApproval};
     use crate::write_ticket::read_model::{
         WriteTicketCurrentFacts, WriteTicketEvidenceFacts, WriteTicketTaskFacts,
         WriteTicketWorkflowFacts,
     };
     use crate::write_ticket::semantic::test_support::{stored_facts, timestamp};
-    use crate::write_ticket::summary::{project_write_ticket_summary, WriteTicketSummaryInput};
+    use crate::write_ticket::summary::{
+        project_stored_write_ticket_summary, StoredWriteTicketSummaryInput,
+    };
 
     fn scope() -> WriteTicketAttemptScope {
         WriteTicketAttemptScope {
@@ -645,24 +649,32 @@ mod tests {
                 sensitive_approvals: Vec::new(),
                 observed_at: timestamp("2026-07-29T00:05:00Z"),
             };
-            let evaluated = evaluate_current_write_ticket(
+            let pre_evaluated = pre_evaluate_stored_write_ticket(
                 stored_facts("ticket-conformance", WriteTicketStatus::Active, 7),
-                &current,
-                assessment.clone(),
+                &current.observed_at,
             );
-            let summary = project_write_ticket_summary(WriteTicketSummaryInput {
-                evaluated: &evaluated,
+            let Ok(StoredTicketPreEvaluation::NeedsCurrentFacts(candidate)) = pre_evaluated else {
+                panic!("active conformance ticket should require current facts");
+            };
+            let evaluated = evaluate_active_candidate(candidate, &current, assessment.clone());
+            let stored: StoredWriteTicketEvaluation = evaluated.clone().into();
+            let summary = project_stored_write_ticket_summary(StoredWriteTicketSummaryInput {
+                evaluated: &stored,
                 state_version: 8,
                 evidence: &WriteTicketEvidenceFacts::default(),
                 guarantee_display: None,
             });
             assert_eq!(summary.status, case.expected_status);
             assert_eq!(
-                reuse_approval_assessment(assessment.clone()) == WriteTicketReuseApproval::Reusable,
+                matches!(evaluated, ActiveStoredWriteTicketEvaluation::Reusable(_)),
                 case.expected_reuse
             );
             assert_eq!(
-                record_run_approval_admission(assessment) == RecordRunApprovalAdmission::Admitted,
+                matches!(
+                    assessment,
+                    WriteTicketApprovalAssessment::Current { .. }
+                        | WriteTicketApprovalAssessment::NotRequired
+                ),
                 case.expected_admission
             );
         }

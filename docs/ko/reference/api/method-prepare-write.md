@@ -205,8 +205,11 @@ Core 의미 planning은 발급 예정 값을 ID 없는 `PlannedWriteTicketDraft`
 멈추고 미리보기만 투영합니다. 커밋되는 발급에서는 메서드가 영속 ID와 승인 참조
 projection state version을 제공하고, typed 비어 있지 않은 승인 근거가 state-version이
 있는 reference를 구성하면서 검증된 `PlannedWriteTicket` 하나를 구체화합니다. 이
-구체화된 값이 응답 projection과 typed Store 삽입 입력의 단일 원본입니다. 재사용은 이미 존재하는 Store 검증
-`StoredWriteTicket`을 projection합니다.
+구체화된 값이 응답 projection과 typed Store 삽입 입력의 단일 원본입니다. 재사용
+경로는 Store가 검증한 active record를 현재 유효성 평가에 통과시키고 완결된 stored
+평가만 선택한 뒤 `ReusableStoredWriteTicket`을 반환합니다. 새 발급과 stored
+재사용은 서로 다른 summary projection 입력을 사용하며, 어느 경로도 planned
+ticket을 stored 상태로 표현하지 않습니다.
 
 ## 메서드 결과 필드
 

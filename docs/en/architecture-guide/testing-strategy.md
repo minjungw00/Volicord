@@ -43,16 +43,24 @@ text, Change Unit planning, and Task policy modules, `continuity/`,
 they protect. Pure projection tests use typed facts and no Store handle.
 Write Ticket read-model tests cover typed ticket, Task, workflow-policy,
 UserAction-resolution, and evidence acquisition plus Store-error propagation
-without asserting policy. Selection tests own candidate precedence and
+without asserting policy. Current-validity tests cover active, invalidated,
+consumed, revoked, and effective-expiry transitions; they also prove that
+terminal records complete before current-fact loading and every evaluated
+stored state retains a mandatory ticket ID. Selection tests accept only
+`StoredWriteTicketEvaluation` values and own stored-state precedence and
 tie-breaking. Approval-owner tests cover the complete typed requirement,
 current-set, persisted-basis, and semantic change-reason matrix using
 Store-valid references. One shared semantic fixture table verifies that
 `Current`, `NotRequired`, and `Changed` drive summary, reuse, and Record Run
-admission consistently. Current-validity tests own effective status,
-expiration, workflow authority, and typed invalidation outcomes. Summary tests
-map already evaluated planned or stored identities without a Store fixture or
-policy reevaluation. Focused service tests keep only representative persisted,
-invalidated, approval-dependent, dry-run, and failure paths.
+admission consistently. Summary tests separately map `PlannedWriteTicket` and
+evaluated stored state without a Store fixture or policy reevaluation. Focused
+service tests verify terminal pre-evaluation, active-only current fact
+acquisition, post-selection evidence loading, and representative persisted,
+invalidated, approval-dependent, dry-run, and failure paths. Ordinary
+compilation and function signatures are the primary proof that reuse requires
+`ReusableStoredWriteTicket`, admission returns
+`AdmissibleStoredWriteTicket`, and terminal states cannot enter those paths.
+The production Write Ticket module lint rejects panic-based domain narrowing.
 Mutation-planning tests assert typed plans and exact schema-owned field
 accessors. The other owner tests assert typed facts, policy decisions, retry
 behavior, or one precise boundary mapping. Public method orchestration,
@@ -75,7 +83,10 @@ and `RecordRunResultFacts` projection live under
 coverage lives in `close_readiness/tests/recording.rs`; ticket compatibility,
 admission, consumption, and no-effect rejection coverage lives in
 `write_ticket/tests/record_run_admission.rs`. The focused typed mutation plan is
-exercised through these owner scenarios and the Store commit boundary. The
+exercised through these owner scenarios and the Store commit boundary. These
+tests enter admission with a typed reusable ticket and matching exact-attempt
+compatibility proof, then carry only an admissible ticket into mutation
+planning and consumption. The
 small `methods/tests/record_run.rs` suite retains representative request
 orchestration, conversion to the neutral execution carrier and public result
 fields, semantic-error routing with dry-run and state-version metadata,

@@ -1,16 +1,17 @@
 use crate::pipeline::VerifiedInvocationContext;
 use crate::policy::workflow::ProjectWorkflowPolicy;
+use crate::write_ticket::AdmissibleStoredWriteTicket;
 use volicord_store::core_pipeline::{
     ArtifactMutation, ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, EvidenceMutation,
-    ProjectStateHeader, RunMutation, StoredWriteTicket, TaskMutation, TaskRecord,
-    UserActionMutation, WriteTicketMutation,
+    ProjectStateHeader, RunMutation, TaskMutation, TaskRecord, UserActionMutation,
+    WriteTicketMutation,
 };
 use volicord_store::evidence_capture::EvidenceCaptureReceiptRecord;
 use volicord_types::ids::{AgentConnectionId, RunId};
 use volicord_types::schema::{
     AcceptanceCriterion, ArtifactRef, CurrentCloseBasis, EvidenceCaptureIntent,
     EvidenceObservation, EvidenceProducer, EvidenceSummary, EvidenceTarget, JsonObject,
-    ObservedChanges, StateRecordRef, WriteTicketAttemptScope,
+    ObservedChanges, StateRecordRef,
 };
 use volicord_types::values::{
     ActorSource, EvidenceAssuranceLevel, EvidenceProducerKind, EvidenceRelevanceStatus,
@@ -51,7 +52,7 @@ pub(super) struct RecordRunFacts {
 
 pub(super) struct RecordRunPolicyDecision {
     pub(super) facts: RecordRunFacts,
-    pub(super) write_ticket_scope: Option<(StoredWriteTicket, WriteTicketAttemptScope)>,
+    pub(super) write_ticket_scope: Option<AdmissibleStoredWriteTicket>,
     pub(super) run_id: RunId,
     pub(super) run_ref: StateRecordRef,
 }
@@ -61,7 +62,7 @@ pub(super) struct RecordRunPlannedMutations {
     pub(super) plan_now: UtcTimestamp,
     pub(super) planned_state_version: u64,
     pub(super) change_unit: ChangeUnitRecord,
-    pub(super) write_ticket_scope: Option<(StoredWriteTicket, WriteTicketAttemptScope)>,
+    pub(super) write_ticket_scope: Option<AdmissibleStoredWriteTicket>,
     pub(super) run_id: RunId,
     pub(super) run_ref: StateRecordRef,
     pub(super) normalized_observed_changes: ObservedChanges,
@@ -86,7 +87,7 @@ pub(super) struct RecordRunMutationAssembly<'a> {
     pub(super) request: &'a RecordRunInput,
     pub(super) task: &'a TaskRecord,
     pub(super) workflow_policy: &'a ProjectWorkflowPolicy,
-    pub(super) write_ticket_scope: Option<&'a (StoredWriteTicket, WriteTicketAttemptScope)>,
+    pub(super) write_ticket_scope: Option<&'a AdmissibleStoredWriteTicket>,
     pub(super) run_id: &'a RunId,
     pub(super) normalized_observed_changes: &'a ObservedChanges,
     pub(super) close_basis_revision: u64,

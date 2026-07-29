@@ -198,20 +198,26 @@ durable ID allocation, state-versioned record references, guarantee display,
 error-to-response mapping, and materialization of the validated
 `PlannedWriteTicket` used for insertion and response projection.
 `write_ticket/semantic.rs` provides the immutable semantic view shared by a
-plan and an opaque Store-validated record while keeping their planned and
-stored identities distinct. `write_ticket/read_model.rs` acquires typed ticket,
-Task, workflow-policy, current UserAction-resolution, and evidence facts.
+plan and an opaque Store-validated record; planned and stored lifecycle
+identities remain in distinct types. `write_ticket/read_model.rs` acquires
+typed stored-ticket, Task, workflow-policy, current UserAction-resolution, and
+evidence facts.
 `write_ticket/approval.rs` uniquely constructs the canonical approval
 requirement and current sensitive-approval identity set, then returns the typed
 currentness assessment consumed by summary evaluation, reuse, Record Run
 admission, close readiness, and the CLI guard context.
-`write_ticket/selection.rs` and
-`write_ticket/current_validity.rs` apply pure selection and current-validity
-policy to those facts and that assessment. `write_ticket/summary.rs` maps an
-already evaluated value to the adapter-neutral state summary without a Store
-handle or policy evaluation. `write_ticket/service.rs` narrowly coordinates
-these owners for Core and adapter consumers that need persisted evaluation. The
-Store remains independent of Core.
+`write_ticket/current_validity.rs` first closes terminal stored states, then
+evaluates only active candidates into reusable or invalidated stored states.
+Every resulting `StoredWriteTicketEvaluation` has a mandatory persisted
+identity. `write_ticket/selection.rs` selects only among those stored
+evaluations. `write_ticket/summary.rs` exposes separate planned and stored
+projection paths without a Store handle or policy evaluation.
+`write_ticket/service.rs` partitions terminal and active records before current
+fact loading, evaluates the active partition, selects a stored result, and
+loads evidence after selection. `write_ticket/admission.rs` combines a
+`ReusableStoredWriteTicket` with the matching exact-attempt compatibility proof
+and returns an `AdmissibleStoredWriteTicket` for protected mutation planning.
+The Store remains independent of Core.
 
 `ChangeUnitUpdate` schema accessors own exact method-field extraction, and
 `change_unit_planning.rs` owns Change Unit mutation planning. `task_policy.rs`
