@@ -199,16 +199,23 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 `write_ticket_id`를 받습니다. 재사용 결과는 기존 ID와 참조를 반환합니다. 차단,
 승인 필요, 판단 필요, 거절, `dry_run` 경로는 영속 ID를 할당하지 않습니다.
 
-Core 의미 planning은 발급 예정 값을 ID 없는 `PlannedWriteTicketDraft`로
-표현합니다. `dry_run`을 검사하거나 영속 ID를 할당하거나 응답 state version을
-붙이거나 공개 결과를 구성하지 않습니다. `dry_run` 요청은 메서드 경계에서
-멈추고 미리보기만 투영합니다. 커밋되는 발급에서는 메서드가 영속 ID와 승인 참조
-projection state version을 제공하고, typed 비어 있지 않은 승인 근거가 state-version이
-있는 reference를 구성하면서 검증된 `PlannedWriteTicket` 하나를 구체화합니다. 이
-구체화된 값이 응답 projection과 typed Store 삽입 입력의 단일 원본입니다. 재사용
-경로는 Store가 검증한 active record를 현재 유효성 평가에 통과시키고 완결된 stored
-평가만 선택한 뒤 `ReusableStoredWriteTicket`을 반환합니다. 새 발급과 stored
-재사용은 서로 다른 summary projection 입력을 사용하며, 어느 경로도 planned
+Core 의미 계획은 `Issue(PlannedWriteTicketDraft)`,
+`Reuse(ReusableStoredWriteTicket)`, `NoTicket(WriteDecisionPathFacts)` 가운데
+정확히 하나인 폐쇄형 `PrepareWriteTicketPlan` 분기를 반환합니다. 공통 연산 사실과
+후보 변경은 이 티켓 분기 밖에 둡니다. 발급과 재사용 분기에서는
+`WriteTicketPathScope` 하나가 정규 typed 허용 경로와 거부 경로를 소유하고,
+판단 경로는 `NoTicket` 분기에만 별도로 존재합니다. 계획은 `dry_run`을 검사하거나
+영속 ID를 할당하거나 응답 state version을 붙이거나 공개 결과를 구성하지 않습니다.
+
+`dry_run` 요청은 폐쇄형 계획 분기에서 미리보기를 직접 투영하고 메서드 경계에서
+끝납니다. 커밋 호출은 이 분기를 정확히 하나의
+`MaterializedPrepareWriteTicket` 분기로 바꿉니다. 발급에서는 메서드가 영속 ID와
+승인 참조 projection state version을 제공하면서 검증된 `PlannedWriteTicket` 하나를
+구체화합니다. 이 계획 값 하나가 중첩 및 최상위 응답 사실과 typed Store 삽입
+입력의 단일 원본입니다. 재사용은 선택된 `ReusableStoredWriteTicket`에서 identity,
+경로, 유효성, 만료를 투영하며 삽입을 만들지 않습니다. `None`은 판단 경로 사실만
+투영하며 티켓 identity, stored lifecycle, 삽입을 노출할 수 없습니다. 새 발급과
+stored 재사용은 서로 다른 summary projection 입력을 사용하며, 어느 경로도 planned
 ticket을 stored 상태로 표현하지 않습니다.
 
 ## 메서드 결과 필드
@@ -277,6 +284,8 @@ ticket을 stored 상태로 표현하지 않습니다.
   `reused`입니다.
 - `write_ticket.path_patterns.allowed`와 최상위 `allowed_path_patterns`는 이 티켓에 허용된 정규화 저장소 상대 `intended_paths`를 담습니다.
 - `write_ticket.path_patterns.denied`와 최상위 `denied_path_patterns`는 허용 결과에서 `[]`입니다.
+- 이 중첩 및 최상위 경로 모음은 선택된 발급 또는 재사용 ticket의 단일 typed path
+  scope를 동일하게 투영한 값입니다.
 - `write_ticket.observed_paths`는 관찰 경로가 티켓에 포함되지 않을 때 `[]`입니다.
 - 최상위와 티켓 내부 `guarantee_display`는 협력적 권한 기록 경계를 공개하며 OS 수준 집행을 주장하지 않습니다.
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.

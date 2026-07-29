@@ -114,15 +114,16 @@ transaction, replay, and response-envelope ownership.
 sensitive approval, normalized paths, and current write-authority fingerprint
 through `crates/volicord-core/src/write_ticket/`.
 `planning.rs` receives only the semantic facts it evaluates and returns typed
-decision reasons, semantic record identities, candidate mutations, and an
-identity-free issuance draft. It does not receive the request envelope,
-dry-run intent, or a response state version. The public method projects those
-facts to public references and errors. Dry run returns its preview before
-durable identity allocation or ticket materialization; the committed path
-allocates an ID and materializes one validated `PlannedWriteTicket` for Store
-insertion and planned-summary projection. Planned and opaque stored tickets
-share immutable semantic facts only; their lifecycle states and identities
-remain distinct.
+decision reasons, semantic record identities, candidate mutations, and one
+closed issue, reuse, or no-ticket branch. An issue draft and a reusable stored
+ticket each own one `WriteTicketPathScope`; no-ticket decision paths live only
+in that branch. It does not receive the request envelope, dry-run intent, or a
+response state version. The public method projects dry run directly from the
+planning branch. The committed path converts it to one materialized issued,
+reused, or none branch. Only issued allocates an ID, materializes one validated
+`PlannedWriteTicket`, and derives both Store insertion and public projection
+from it. Planned and opaque stored tickets share immutable semantic facts only;
+their lifecycle states and identities remain distinct.
 For a persisted state summary, `read_model.rs` acquires typed ticket, Task,
 workflow-policy, current UserAction-resolution, and selected-run evidence
 facts. `current_validity.rs` pre-evaluates terminal records without current

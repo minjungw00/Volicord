@@ -27,12 +27,14 @@ use volicord_types::ids::{
     BaselineRef, ChangeUnitId, ProjectId, TaskId, UserActionRequestId, UserActionResolutionId,
     WriteTicketId,
 };
-use volicord_types::product_path::{path_is_within, ProductRelativePath};
+use volicord_types::product_path::{
+    ProductRelativePath, WriteTicketPathScope, WriteTicketPathScopeError,
+};
 use volicord_types::schema::{JsonObject, WriteTicketAttemptScope, WriteTicketValidityBasis};
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, MethodName, PrepareWriteDecision, StateRecordKind,
     TaskControlLevel, TaskMode, UserActionKind, UtcTimestamp, WorkPhase, WriteDecisionCategory,
-    WriteTicketInvalidationReason,
+    WriteTicketEffect, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
     pending_user_action_authorities, user_action_authority_from_record,
@@ -53,7 +55,6 @@ use super::read_model::{
     stored_write_ticket_facts, WriteTicketCurrentFacts, WriteTicketTaskFacts,
     WriteTicketWorkflowFacts,
 };
-use super::semantic::WriteTicketSemanticFacts;
 use super::{
     WriteTicketDecisionCode, WriteTicketDecisionReason, WriteTicketField, WriteTicketPlanningError,
     WriteTicketRelatedRecord,
@@ -150,8 +151,7 @@ pub(crate) struct PlannedWriteTicket {
     write_ticket_id: WriteTicketId,
     basis_state_version: u64,
     validity_basis: WriteTicketValidityBasis,
-    allowed_path_prefixes: Vec<ProductRelativePath>,
-    denied_path_prefixes: Vec<ProductRelativePath>,
+    path_scope: WriteTicketPathScope,
     attempt_scope: WriteTicketAttemptScope,
     created_by_actor_source: ActorSource,
     created_by_user_action_resolution_id: Option<UserActionResolutionId>,
@@ -174,9 +174,6 @@ enum PlannedWriteTicketError {
     BaselineMismatch,
     TimestampOrder,
     DuplicateIntendedPaths,
-    DuplicateAllowedPaths,
-    DuplicateDeniedPaths,
-    AllowedDeniedPathOverlap,
     IntendedPathNotAuthorized,
     ProductWriteIntentMismatch,
 }
@@ -186,8 +183,7 @@ struct PlannedWriteTicketInput {
     write_ticket_id: WriteTicketId,
     basis_state_version: u64,
     validity_basis: WriteTicketValidityBasis,
-    allowed_path_prefixes: Vec<ProductRelativePath>,
-    denied_path_prefixes: Vec<ProductRelativePath>,
+    path_scope: WriteTicketPathScope,
     attempt_scope: WriteTicketAttemptScope,
     created_by_actor_source: ActorSource,
     created_by_user_action_resolution_id: Option<UserActionResolutionId>,
@@ -196,6 +192,7 @@ struct PlannedWriteTicketInput {
     metadata: JsonObject,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlannedWriteTicketDraft {
     project_id: ProjectId,
     task_id: TaskId,
@@ -205,8 +202,7 @@ pub(crate) struct PlannedWriteTicketDraft {
     workspace_context_sha256: Option<String>,
     write_authority_fingerprint: String,
     approval_basis: Option<NonEmptyApprovalBasis>,
-    allowed_path_prefixes: Vec<ProductRelativePath>,
-    denied_path_prefixes: Vec<ProductRelativePath>,
+    path_scope: WriteTicketPathScope,
     attempt_scope: WriteTicketAttemptScope,
     created_by_actor_source: ActorSource,
     created_by_user_action_resolution_id: Option<UserActionResolutionId>,
@@ -222,8 +218,7 @@ impl PlannedWriteTicket {
             write_ticket_id: input.write_ticket_id,
             basis_state_version: input.basis_state_version,
             validity_basis: input.validity_basis,
-            allowed_path_prefixes: input.allowed_path_prefixes,
-            denied_path_prefixes: input.denied_path_prefixes,
+            path_scope: input.path_scope,
             attempt_scope: input.attempt_scope,
             created_by_actor_source: input.created_by_actor_source,
             created_by_user_action_resolution_id: input.created_by_user_action_resolution_id,
@@ -312,34 +307,20 @@ impl PlannedWriteTicket {
             .intended_paths
             .iter()
             .collect::<BTreeSet<_>>();
-        let allowed_paths = self.allowed_path_prefixes.iter().collect::<BTreeSet<_>>();
-        let denied_paths = self.denied_path_prefixes.iter().collect::<BTreeSet<_>>();
         if intended_paths.len() != self.attempt_scope.intended_paths.len() {
             return Err(PlannedWriteTicketError::DuplicateIntendedPaths);
         }
-        if allowed_paths.len() != self.allowed_path_prefixes.len() {
-            return Err(PlannedWriteTicketError::DuplicateAllowedPaths);
-        }
-        if denied_paths.len() != self.denied_path_prefixes.len() {
-            return Err(PlannedWriteTicketError::DuplicateDeniedPaths);
-        }
-        if self.allowed_path_prefixes.iter().any(|allowed| {
-            self.denied_path_prefixes.iter().any(|denied| {
-                path_is_within(allowed.as_str(), denied.as_str())
-                    || path_is_within(denied.as_str(), allowed.as_str())
-            })
-        }) {
-            return Err(PlannedWriteTicketError::AllowedDeniedPathOverlap);
-        }
         if self.attempt_scope.intended_paths.iter().any(|intended| {
             !self
-                .allowed_path_prefixes
+                .path_scope
+                .allowed()
                 .iter()
-                .any(|allowed| path_is_within(intended.as_str(), allowed.as_str()))
+                .any(|allowed| intended.is_within(allowed))
                 || self
-                    .denied_path_prefixes
+                    .path_scope
+                    .denied()
                     .iter()
-                    .any(|denied| path_is_within(intended.as_str(), denied.as_str()))
+                    .any(|denied| intended.is_within(denied))
         }) {
             return Err(PlannedWriteTicketError::IntendedPathNotAuthorized);
         }
@@ -357,8 +338,7 @@ impl PlannedWriteTicket {
             task_id: self.validity_basis.task_id.clone(),
             change_unit_id: self.validity_basis.change_unit_id.clone(),
             validity_basis: self.validity_basis.clone(),
-            allowed_path_prefixes: self.allowed_path_prefixes.clone(),
-            denied_path_prefixes: self.denied_path_prefixes.clone(),
+            path_scope: self.path_scope.clone(),
             attempt_scope: self.attempt_scope.clone(),
             created_by_actor_source: self.created_by_actor_source.clone(),
             created_by_user_action_resolution_id: self.created_by_user_action_resolution_id.clone(),
@@ -384,12 +364,8 @@ impl PlannedWriteTicket {
         &self.validity_basis
     }
 
-    pub(crate) fn allowed_path_prefixes(&self) -> &[ProductRelativePath] {
-        &self.allowed_path_prefixes
-    }
-
-    pub(crate) fn denied_path_prefixes(&self) -> &[ProductRelativePath] {
-        &self.denied_path_prefixes
+    pub(crate) fn path_scope(&self) -> &WriteTicketPathScope {
+        &self.path_scope
     }
 
     pub(crate) fn attempt_scope(&self) -> &WriteTicketAttemptScope {
@@ -431,8 +407,7 @@ pub(crate) fn materialize_planned_write_ticket(
             write_authority_fingerprint: draft.write_authority_fingerprint,
             approval_basis_refs,
         },
-        allowed_path_prefixes: draft.allowed_path_prefixes,
-        denied_path_prefixes: draft.denied_path_prefixes,
+        path_scope: draft.path_scope,
         attempt_scope: draft.attempt_scope,
         created_by_actor_source: draft.created_by_actor_source,
         created_by_user_action_resolution_id: draft.created_by_user_action_resolution_id,
@@ -447,20 +422,88 @@ pub(crate) fn planned_write_ticket_mutation(plan: &PlannedWriteTicket) -> CoreSt
     CoreStorageMutation::WriteTicket(WriteTicketMutation::insert(plan.persistence_input()))
 }
 
-pub(crate) struct PrepareWritePlanningOutcome {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WriteDecisionPathFacts {
+    path_scope: WriteTicketPathScope,
+}
+
+impl WriteDecisionPathFacts {
+    fn new(path_scope: WriteTicketPathScope) -> Self {
+        Self { path_scope }
+    }
+
+    pub(crate) fn path_scope(&self) -> &WriteTicketPathScope {
+        &self.path_scope
+    }
+}
+
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PrepareWriteTicketPlan {
+    Issue(PlannedWriteTicketDraft),
+    Reuse(ReusableStoredWriteTicket),
+    NoTicket(WriteDecisionPathFacts),
+}
+
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MaterializedPrepareWriteTicket {
+    Issued(PlannedWriteTicket),
+    Reused(ReusableStoredWriteTicket),
+    None(WriteDecisionPathFacts),
+}
+
+impl MaterializedPrepareWriteTicket {
+    pub(crate) fn write_ticket_effect(&self) -> WriteTicketEffect {
+        match self {
+            Self::Issued(_) => WriteTicketEffect::Issued,
+            Self::Reused(_) => WriteTicketEffect::Reused,
+            Self::None(_) => WriteTicketEffect::None,
+        }
+    }
+
+    pub(crate) fn write_ticket_id(&self) -> Option<&WriteTicketId> {
+        match self {
+            Self::Issued(ticket) => Some(ticket.write_ticket_id()),
+            Self::Reused(ticket) => Some(ticket.write_ticket_id()),
+            Self::None(_) => None,
+        }
+    }
+
+    pub(crate) fn path_scope(&self) -> &WriteTicketPathScope {
+        match self {
+            Self::Issued(ticket) => ticket.path_scope(),
+            Self::Reused(ticket) => ticket.path_scope(),
+            Self::None(facts) => facts.path_scope(),
+        }
+    }
+
+    pub(crate) fn persistence_mutation(&self) -> Option<CoreStorageMutation> {
+        match self {
+            Self::Issued(ticket) => Some(planned_write_ticket_mutation(ticket)),
+            Self::Reused(_) | Self::None(_) => None,
+        }
+    }
+}
+
+pub(crate) struct PrepareWriteCommonFacts {
     pub(crate) task_id: TaskId,
     pub(crate) task: TaskRecord,
     pub(crate) change_unit: ChangeUnitRecord,
     pub(crate) reasons: Vec<WriteTicketDecisionReason>,
     pub(crate) decision: PrepareWriteDecision,
-    pub(crate) allowed: bool,
     pub(crate) pending_user_action_request_ids: Vec<UserActionRequestId>,
     pub(crate) approval_basis: Option<NonEmptyApprovalBasis>,
-    pub(crate) planned_write_ticket: Option<PlannedWriteTicketDraft>,
-    pub(crate) reused_write_ticket: Option<ReusableStoredWriteTicket>,
-    pub(crate) allowed_path_patterns: Vec<String>,
-    pub(crate) denied_path_patterns: Vec<String>,
+}
+
+pub(crate) struct PrepareWriteMutationFacts {
     pub(crate) storage_mutations: Vec<CoreStorageMutation>,
+}
+
+pub(crate) struct PrepareWritePlanningOutcome {
+    pub(crate) common: PrepareWriteCommonFacts,
+    pub(crate) ticket: PrepareWriteTicketPlan,
+    pub(crate) mutations: PrepareWriteMutationFacts,
 }
 
 pub(crate) fn plan_prepare_write(
@@ -871,68 +914,61 @@ fn plan_prepare_write_mutations(
     let compatible_ticket = allowed
         .then_some(active_ticket_selection.compatible)
         .flatten();
-    let plan_new_write_ticket = allowed && compatible_ticket.is_none();
-    let idle_expires_at_timestamp = if plan_new_write_ticket {
-        workflow_policy
-            .write_ticket_idle_timeout_minutes
-            .map(|minutes| {
-                let minutes = i64::try_from(minutes).map_err(|_| {
-                    CorePipelineError::Store(StoreError::InvalidInput {
-                        detail: "workflow write-ticket idle timeout is outside the supported range"
-                            .to_owned(),
-                    })
-                })?;
-                plan_now.checked_add(Duration::minutes(minutes)).map_err(|_| {
-                    CorePipelineError::Store(StoreError::InvalidInput {
-                        detail: "derived write-ticket idle timeout exceeds the supported timestamp range"
-                            .to_owned(),
+    let ticket = if let Some(reusable) = compatible_ticket {
+        PrepareWriteTicketPlan::Reuse(reusable)
+    } else {
+        let denied_paths = denied_write_ticket_paths(&reasons, &attempt_scope.intended_paths);
+        let allowed_paths = attempt_scope
+            .intended_paths
+            .iter()
+            .filter(|path| !denied_paths.contains(path))
+            .cloned()
+            .collect::<Vec<_>>();
+        let path_scope = write_ticket_path_scope(allowed_paths, denied_paths)?;
+        if allowed {
+            let idle_expires_at = workflow_policy
+                .write_ticket_idle_timeout_minutes
+                .map(|minutes| {
+                    let minutes = i64::try_from(minutes).map_err(|_| {
+                        CorePipelineError::Store(StoreError::InvalidInput {
+                            detail:
+                                "workflow write-ticket idle timeout is outside the supported range"
+                                    .to_owned(),
+                        })
+                    })?;
+                    plan_now.checked_add(Duration::minutes(minutes)).map_err(|_| {
+                        CorePipelineError::Store(StoreError::InvalidInput {
+                            detail: "derived write-ticket idle timeout exceeds the supported timestamp range"
+                                .to_owned(),
+                        })
                     })
                 })
+                .transpose()
+                .map_err(WriteTicketPlanningError::Core)?;
+            let metadata = json_object(json!({
+                "verification_basis": input.verification_basis.clone()
+            }))?;
+            PrepareWriteTicketPlan::Issue(PlannedWriteTicketDraft {
+                project_id: input.project_id.clone(),
+                task_id: task_id.clone(),
+                change_unit_id,
+                scope_revision: task.scope_revision,
+                baseline_ref: input.baseline_ref.clone(),
+                workspace_context_sha256: validity_basis_for_selection.workspace_context_sha256,
+                write_authority_fingerprint: workflow_policy.write_authority_fingerprint,
+                approval_basis: approval_basis.clone(),
+                path_scope,
+                attempt_scope,
+                created_by_actor_source: input.actor_source,
+                created_by_user_action_resolution_id,
+                idle_expires_at,
+                created_at,
+                metadata,
             })
-            .transpose()
-            .map_err(WriteTicketPlanningError::Core)?
-    } else {
-        compatible_ticket
-            .as_ref()
-            .and_then(|record| record.semantic_facts().idle_expires_at.clone())
+        } else {
+            PrepareWriteTicketPlan::NoTicket(WriteDecisionPathFacts::new(path_scope))
+        }
     };
-    let denied_path_patterns = if let Some(record) = compatible_ticket.as_ref() {
-        write_ticket_path_prefix_strings(record.semantic_facts(), false)
-    } else {
-        denied_write_ticket_paths(&reasons, &normalized_paths)
-    };
-    let allowed_path_patterns = if let Some(record) = compatible_ticket.as_ref() {
-        write_ticket_path_prefix_strings(record.semantic_facts(), true)
-    } else {
-        normalized_paths
-            .iter()
-            .filter(|path| !denied_path_patterns.iter().any(|denied| denied == *path))
-            .cloned()
-            .collect::<Vec<_>>()
-    };
-    let typed_allowed_path_patterns = typed_product_paths(&allowed_path_patterns)?;
-    let typed_denied_path_patterns = typed_product_paths(&denied_path_patterns)?;
-    let write_ticket_metadata = json_object(json!({
-        "verification_basis": input.verification_basis.clone()
-    }))?;
-    let planned_write_ticket = plan_new_write_ticket.then(|| PlannedWriteTicketDraft {
-        project_id: input.project_id.clone(),
-        task_id: task_id.clone(),
-        change_unit_id,
-        scope_revision: task.scope_revision,
-        baseline_ref: input.baseline_ref.clone(),
-        workspace_context_sha256: validity_basis_for_selection.workspace_context_sha256,
-        write_authority_fingerprint: workflow_policy.write_authority_fingerprint,
-        approval_basis: approval_basis.clone(),
-        allowed_path_prefixes: typed_allowed_path_patterns,
-        denied_path_prefixes: typed_denied_path_patterns,
-        attempt_scope,
-        created_by_actor_source: input.actor_source,
-        created_by_user_action_resolution_id,
-        idle_expires_at: idle_expires_at_timestamp,
-        created_at,
-        metadata: write_ticket_metadata,
-    });
     let mut storage_mutations = control_mutations;
     for write_ticket_id in active_ticket_selection.stale_approval_ticket_ids {
         storage_mutations.push(CoreStorageMutation::WriteTicket(
@@ -959,19 +995,17 @@ fn plan_prepare_write_mutations(
         ));
     }
     Ok(PrepareWritePlanningOutcome {
-        task_id,
-        task,
-        change_unit,
-        reasons,
-        decision,
-        allowed,
-        pending_user_action_request_ids,
-        approval_basis,
-        planned_write_ticket,
-        reused_write_ticket: compatible_ticket,
-        allowed_path_patterns,
-        denied_path_patterns,
-        storage_mutations,
+        common: PrepareWriteCommonFacts {
+            task_id,
+            task,
+            change_unit,
+            reasons,
+            decision,
+            pending_user_action_request_ids,
+            approval_basis,
+        },
+        ticket,
+        mutations: PrepareWriteMutationFacts { storage_mutations },
     })
 }
 
@@ -1090,15 +1124,16 @@ fn select_active_write_tickets(
         {
             continue;
         }
-        let allowed = write_ticket_path_prefix_strings(evaluated.semantic_facts(), true);
-        let denied = write_ticket_path_prefix_strings(evaluated.semantic_facts(), false);
+        let path_scope = &evaluated.semantic_facts().path_scope;
         if !required_scope.intended_paths.iter().all(|path| {
-            allowed
+            path_scope
+                .allowed()
                 .iter()
-                .any(|prefix| path_is_within(path.as_str(), prefix))
-                && !denied
+                .any(|prefix| path.is_within(prefix))
+                && !path_scope
+                    .denied()
                     .iter()
-                    .any(|prefix| path_is_within(path.as_str(), prefix))
+                    .any(|prefix| path.is_within(prefix))
         }) {
             continue;
         }
@@ -1142,18 +1177,6 @@ fn resolved_sensitive_approval_authorities(
         .map(user_action_authority_from_record)
         .collect::<Result<Vec<_>, _>>()
         .map_err(WriteTicketPlanningError::from)
-}
-
-fn write_ticket_path_prefix_strings(
-    ticket: &WriteTicketSemanticFacts,
-    allowed: bool,
-) -> Vec<String> {
-    let paths = if allowed {
-        &ticket.allowed_path_prefixes
-    } else {
-        &ticket.denied_path_prefixes
-    };
-    paths.iter().map(|path| path.as_str().to_owned()).collect()
 }
 
 fn stored_ticket_state_error(error: StoredWriteTicketStateError) -> WriteTicketPlanningError {
@@ -1238,8 +1261,8 @@ fn effect_contract_reason(
 
 fn denied_write_ticket_paths(
     reasons: &[WriteTicketDecisionReason],
-    normalized_paths: &[String],
-) -> Vec<String> {
+    normalized_paths: &[ProductRelativePath],
+) -> Vec<ProductRelativePath> {
     let path_denied = reasons.iter().any(|reason| {
         matches!(
             reason.code,
@@ -1256,9 +1279,34 @@ fn denied_write_ticket_paths(
     }
 }
 
+fn write_ticket_path_scope(
+    allowed: Vec<ProductRelativePath>,
+    denied: Vec<ProductRelativePath>,
+) -> Result<WriteTicketPathScope, WriteTicketPlanningError> {
+    WriteTicketPathScope::new(allowed, denied).map_err(|error| {
+        WriteTicketPlanningError::Invariant {
+            detail: format!(
+                "prepare-write path facts are internally inconsistent: {}",
+                write_ticket_path_scope_error(error)
+            ),
+        }
+    })
+}
+
+fn write_ticket_path_scope_error(error: WriteTicketPathScopeError) -> &'static str {
+    match error {
+        WriteTicketPathScopeError::DuplicateAllowedPath => "duplicate allowed path",
+        WriteTicketPathScopeError::DuplicateDeniedPath => "duplicate denied path",
+        WriteTicketPathScopeError::AllowedDeniedOverlap => "allowed/denied path overlap",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::write_ticket::current_validity::{
+        test_support::stored_evaluation, StoredWriteTicketEvaluation,
+    };
     use volicord_types::{
         ids::BaselineRef,
         values::{ActorSource, WriteTicketStatus},
@@ -1282,8 +1330,7 @@ mod tests {
         assert_eq!(insert.task_id, plan.validity_basis().task_id);
         assert_eq!(insert.change_unit_id, plan.validity_basis().change_unit_id);
         assert_eq!(insert.validity_basis, *plan.validity_basis());
-        assert_eq!(insert.allowed_path_prefixes, plan.allowed_path_prefixes());
-        assert_eq!(insert.denied_path_prefixes, plan.denied_path_prefixes());
+        assert_eq!(insert.path_scope, *plan.path_scope());
         assert_eq!(insert.attempt_scope, *plan.attempt_scope());
         assert_eq!(summary.status, WriteTicketStatus::Active);
         assert_eq!(
@@ -1373,6 +1420,69 @@ mod tests {
         );
     }
 
+    #[test]
+    fn planning_ticket_behavior_is_one_closed_branch() {
+        let reusable = match stored_evaluation("write_ticket_reused", WriteTicketStatus::Active, 6)
+        {
+            StoredWriteTicketEvaluation::Reusable(ticket) => ticket,
+            _ => unreachable!("active test evaluation is reusable"),
+        };
+        let no_ticket_scope =
+            WriteTicketPathScope::new(Vec::new(), Vec::new()).expect("empty decision scope");
+        let branches = [
+            PrepareWriteTicketPlan::Issue(valid_draft()),
+            PrepareWriteTicketPlan::Reuse(reusable),
+            PrepareWriteTicketPlan::NoTicket(WriteDecisionPathFacts::new(no_ticket_scope)),
+        ];
+
+        assert!(matches!(branches[0], PrepareWriteTicketPlan::Issue(_)));
+        assert!(matches!(branches[1], PrepareWriteTicketPlan::Reuse(_)));
+        assert!(matches!(branches[2], PrepareWriteTicketPlan::NoTicket(_)));
+    }
+
+    #[test]
+    fn materialized_ticket_branches_preserve_identity_scope_and_persistence_effect() {
+        let issued_plan =
+            valid_plan(WriteTicketId::new("write_ticket_issued")).expect("issued plan");
+        let issued_scope = issued_plan.path_scope().clone();
+        let issued = MaterializedPrepareWriteTicket::Issued(issued_plan);
+
+        let reusable = match stored_evaluation("write_ticket_reused", WriteTicketStatus::Active, 6)
+        {
+            StoredWriteTicketEvaluation::Reusable(ticket) => ticket,
+            _ => unreachable!("active test evaluation is reusable"),
+        };
+        let reused_scope = reusable.path_scope().clone();
+        let reused = MaterializedPrepareWriteTicket::Reused(reusable);
+
+        let decision_scope =
+            WriteTicketPathScope::new(Vec::new(), Vec::new()).expect("empty decision scope");
+        let none = MaterializedPrepareWriteTicket::None(WriteDecisionPathFacts::new(
+            decision_scope.clone(),
+        ));
+
+        assert_eq!(issued.write_ticket_effect(), WriteTicketEffect::Issued);
+        assert_eq!(
+            issued.write_ticket_id().map(WriteTicketId::as_str),
+            Some("write_ticket_issued")
+        );
+        assert_eq!(issued.path_scope(), &issued_scope);
+        assert!(issued.persistence_mutation().is_some());
+
+        assert_eq!(reused.write_ticket_effect(), WriteTicketEffect::Reused);
+        assert_eq!(
+            reused.write_ticket_id().map(WriteTicketId::as_str),
+            Some("write_ticket_reused")
+        );
+        assert_eq!(reused.path_scope(), &reused_scope);
+        assert!(reused.persistence_mutation().is_none());
+
+        assert_eq!(none.write_ticket_effect(), WriteTicketEffect::None);
+        assert!(none.write_ticket_id().is_none());
+        assert_eq!(none.path_scope(), &decision_scope);
+        assert!(none.persistence_mutation().is_none());
+    }
+
     fn valid_plan(
         write_ticket_id: WriteTicketId,
     ) -> Result<PlannedWriteTicket, PlannedWriteTicketError> {
@@ -1393,8 +1503,7 @@ mod tests {
             workspace_context_sha256: input.validity_basis.workspace_context_sha256,
             write_authority_fingerprint: input.validity_basis.write_authority_fingerprint,
             approval_basis: None,
-            allowed_path_prefixes: input.allowed_path_prefixes,
-            denied_path_prefixes: input.denied_path_prefixes,
+            path_scope: input.path_scope,
             attempt_scope: input.attempt_scope,
             created_by_actor_source: input.created_by_actor_source,
             created_by_user_action_resolution_id: input.created_by_user_action_resolution_id,
@@ -1422,8 +1531,8 @@ mod tests {
                 write_authority_fingerprint: format!("sha256:{}", "0".repeat(64)),
                 approval_basis_refs: Vec::new(),
             },
-            allowed_path_prefixes: vec![intended_path.clone()],
-            denied_path_prefixes: Vec::new(),
+            path_scope: WriteTicketPathScope::new(vec![intended_path.clone()], Vec::new())
+                .expect("valid path scope"),
             attempt_scope: WriteTicketAttemptScope {
                 task_id,
                 change_unit_id,

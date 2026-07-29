@@ -10,7 +10,7 @@
 | `crates/volicord-types/src/lib.rs` | 공개 담당 모듈 경로. 공유 정의는 각 담당 모듈을 통해 공개됩니다. |
 | `crates/volicord-types/src/schema.rs` | 공유 요청, 응답, 저장 레코드 형태. |
 | `crates/volicord-types/src/methods.rs` | 공개 메서드 요청 및 결과 schema, 메서드-연산 매핑, 메서드 소유 `ChangeUnitUpdate` object member의 정확한 typed accessor. |
-| `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계. 파일시스템은 관찰하지 않습니다. |
+| `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계, 불변 `WriteTicketPathScope`의 고유성과 분리 조건. 파일시스템은 관찰하지 않습니다. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
@@ -88,7 +88,7 @@
 | `crates/volicord-store/src/core_pipeline/clock.rs` | Store handle clock sample, 프로젝트 UTC floor 읽기, transaction floor 전진. |
 | `crates/volicord-store/src/core_pipeline/tasks.rs` | Task와 수락 mutation 입력, 저장 검증과 SQL 적용, Task·수락 기준·증거 주장·Task revision projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/change_units.rs` | Change Unit mutation 입력, 저장 검증과 SQL 적용, projection, 엄격한 row 및 JSON decoding, facade 읽기, 집중 테스트. |
-| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | 물리 Write Ticket 테이블과 column의 유일한 담당 모듈, 완전한 typed insertion 직렬화, 비공개 row projection 하나와 물리 표현에서 opaque `StoredWriteTicket`으로 이어지는 일반/transaction 정규 decoder, 의미 accessor로 제공하는 비공개 field, 폐쇄형 값·구조화 field·typed 필드 간 영속 invariant 검증, 집중된 authority view, facade 읽기, aggregate 테스트. |
+| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | 물리 Write Ticket 테이블과 column의 유일한 담당 모듈, `WriteTicketPathScope` 하나에서 완전한 typed insertion 직렬화, 불변 scope를 다시 구성하며 물리 표현에서 opaque `StoredWriteTicket`으로 이어지는 비공개 row projection 하나와 일반/transaction 정규 decoder, 의미 accessor로 제공하는 비공개 field, 폐쇄형 값·구조화 field·typed 필드 간 영속 invariant 검증, 집중된 authority view, facade 읽기, aggregate 테스트. |
 | `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation 입력, 저장 검증과 SQL 적용, Run 및 observed-change projection, 엄격한 decoding, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/evidence.rs` | 증거 mutation 입력, 저장 검증과 SQL 적용, 증거 요약 및 관찰 projection, 엄격한 row decoding, record reference projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact mutation 입력, 저장 검증과 SQL 적용, staging 및 영속 artifact projection, 엄격한 decoding, link 읽기, 영속 본문 검증, facade 읽기, 집중 테스트. |
@@ -151,7 +151,7 @@
 | `crates/volicord-core/src/summary_text.rs` | CLI 문법, transport framing, Markdown, terminal rendering이 없는 adapter-neutral 공개 `SummaryCard` text projection을 담당합니다. |
 | `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | 집중된 state-record 참조 변환과 typed Task 상태 해석을 담당합니다. |
 | `crates/volicord-core/src/task_policy.rs` | Typed lifecycle 해석과 lifecycle mutation 계획을 포함하는 재사용 가능한 Task policy를 담당합니다. |
-| `crates/volicord-core/src/write_ticket/` | 정규 Write Ticket 담당 경계입니다. `planning.rs`는 집중된 `PrepareWriteInput` fact를 평가해 typed 판단 사유, 의미 record identity, 후보 mutation, ID 없는 발급 draft를 반환하고, 메서드가 제공한 identity와 basis fact로 `PlannedWriteTicket`을 구체화할 때도 검증합니다. `semantic.rs`는 planned와 stored 형태가 공유하는 불변 의미만 제공합니다. `read_model.rs`는 typed stored ticket, Task, workflow policy, 현재 UserAction resolution, 증거 fact를 취득합니다. `current_validity.rs`는 terminal stored 상태를 사전 평가하고 active candidate를 reusable 또는 invalidated 상태로 평가하며 stored identity를 필수로 유지합니다. `selection.rs`는 순수한 stored 평가 우선순위와 동률 해소를 담당합니다. `summary.rs`는 planned projection과 stored projection을 구분합니다. `service.rs`는 현재 fact를 읽기 전에 terminal record와 active record를 나누고, stored 평가를 선택한 뒤 증거를 읽습니다. `policy.rs`는 typed prepare-write 및 attempt-scope 판단을 담당합니다. `admission.rs`는 `ReusableStoredWriteTicket`과 일치하는 정확한 attempt 호환성 증명을 결합해 `AdmissibleStoredWriteTicket` 또는 admission 오류를 반환합니다. 공개 요청 metadata와 응답 구성은 호출 메서드에 남습니다. |
+| `crates/volicord-core/src/write_ticket/` | 정규 Write Ticket 담당 경계입니다. `planning.rs`는 집중된 `PrepareWriteInput` fact를 평가해 공통 fact, mutation fact, 발급·재사용·ticket 없음 가운데 하나인 폐쇄형 `PrepareWriteTicketPlan` 분기를 반환합니다. 발급 분기는 검증된 `PlannedWriteTicket`으로 구체화되고 `MaterializedPrepareWriteTicket`은 발급됨·재사용됨·없음의 identity와 효과를 폐쇄형으로 유지합니다. Planned ticket과 stored ticket은 불변 `WriteTicketPathScope` 하나를 노출하고, ticket 없음만 별도 판단 경로를 소유합니다. `semantic.rs`는 planned와 stored 형태가 공유하는 불변 의미만 제공합니다. `read_model.rs`는 typed stored ticket, Task, workflow policy, 현재 UserAction resolution, 증거 fact를 취득합니다. `current_validity.rs`는 terminal stored 상태를 사전 평가하고 active candidate를 reusable 또는 invalidated 상태로 평가하며 stored identity를 필수로 유지합니다. `selection.rs`는 순수한 stored 평가 우선순위와 동률 해소를 담당합니다. `summary.rs`는 planned projection과 stored projection을 구분합니다. `service.rs`는 현재 fact를 읽기 전에 terminal record와 active record를 나누고, stored 평가를 선택한 뒤 증거를 읽습니다. `policy.rs`는 typed prepare-write 및 attempt-scope 판단을 담당합니다. `admission.rs`는 `ReusableStoredWriteTicket`과 일치하는 정확한 attempt 호환성 증명을 결합해 `AdmissibleStoredWriteTicket` 또는 admission 오류를 반환합니다. 공개 요청 metadata와 응답 구성은 호출 메서드에 남습니다. |
 | `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하고, `methods/mod.rs`는 모듈 wiring만 제공하며 메서드별 plan wrapper는 해당 메서드 모듈에 둡니다. |
 | `crates/volicord-core/src/recording/mod.rs`, `context.rs`, `model.rs` | 좁은 의미 `RecordRunInput` 및 `RecordRunOperationPlan` 경계, 입력 정규화, Store 기반 typed fact 취득, 기록 패키지 내부에서만 공유하는 폐쇄형 fact, 권한, 관찰, artifact, mutation plan 모델. |
 | `crates/volicord-core/src/recording/authority.rs` | 공개 응답을 구성하지 않으면서 증거 fact, artifact, 관련성, UserAction 담당 모듈을 재사용해 Store의 캡처 intent와 receipt를 typed 캡처 권한으로 해석합니다. |
@@ -172,7 +172,7 @@
 | `crates/volicord-core/src/close_readiness/recording.rs` | 공유 닫기 준비 상태 및 증거 정책을 통한 Record Run 닫기 근거 참조 해석, 현재 민감 행동 근거 구성, 잔여 위험 검증, typed `CurrentCloseBasis` 계획. |
 | `crates/volicord-core/src/close_readiness/tests/` | 책임별 사실, 변경 제어, 증거, 수락, 정책, 차단 사유, guidance 테스트와 닫기 준비 상태 서비스 통합 coverage. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | 증거 캡처 요청 검증과 계획. 수락 기준 및 보충 주장 일치에는 대상 정책을 사용합니다. |
-| `crates/volicord-core/src/methods/prepare_write.rs` | 공개 Prepare Write 요청을 의미 입력으로 변환하고, typed planning·Store·UserAction 오류를 매핑하며, dry-run 분기 선택, 영속 ticket ID 할당, state-version이 있는 reference와 보장 표시 projection, `PlannedWriteTicket` 구체화, 응답 조립, commit plan 제출을 담당합니다. |
+| `crates/volicord-core/src/methods/prepare_write.rs` | 공개 Prepare Write 요청을 의미 입력으로 변환하고, typed planning·Store·UserAction 오류를 매핑하며, 폐쇄형 계획 분기에서 dry-run을 투영하고, 발급에서만 영속 ticket ID를 할당하고, 폐쇄형 ticket 구체화와 분기별 공개 ticket projection을 수행하고, 같은 발급 plan에서 Store 삽입을 파생하고, 응답 조립과 commit plan 제출을 담당합니다. |
 | `crates/volicord-core/src/methods/record_run.rs` | 공개 Record Run 요청을 의미 입력으로 변환하고, 의미 오류를 응답으로 매핑하며, `RecordRunOperationPlan`을 중립 실행 입력과 공개 결과 field로 변환하고, Core plan 제출 및 메서드별 metric 기록을 담당합니다. |
 | `crates/volicord-core/src/methods/tests/record_run.rs` | 대표 공개 Record Run 조율, commit, 거절, artifact 및 증거, rollback, replay 통합 coverage. 도메인 정책 행렬은 각 담당 경로에 둡니다. |
 | `crates/volicord-core/src/methods/close_task.rs` | 요청별 닫기 조율. 요청 검증, 닫기 준비 상태 서비스 호출, 종료 변경 계획, typed 결과 구성을 담당합니다. |

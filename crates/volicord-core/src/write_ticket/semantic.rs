@@ -1,6 +1,6 @@
 use volicord_store::core_pipeline::StoredWriteTicket;
 use volicord_types::ids::{ProjectId, RunId, WriteTicketId};
-use volicord_types::product_path::ProductRelativePath;
+use volicord_types::product_path::WriteTicketPathScope;
 use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
 use volicord_types::values::{UtcTimestamp, WriteTicketInvalidationReason, WriteTicketStatus};
 
@@ -12,8 +12,7 @@ pub(crate) struct WriteTicketSemanticFacts {
     pub(crate) project_id: ProjectId,
     pub(crate) basis_state_version: u64,
     pub(crate) validity_basis: WriteTicketValidityBasis,
-    pub(crate) allowed_path_prefixes: Vec<ProductRelativePath>,
-    pub(crate) denied_path_prefixes: Vec<ProductRelativePath>,
+    pub(crate) path_scope: WriteTicketPathScope,
     pub(crate) attempt_scope: WriteTicketAttemptScope,
     pub(crate) idle_expires_at: Option<UtcTimestamp>,
 }
@@ -36,8 +35,7 @@ impl StoredWriteTicketFacts {
                 project_id: ProjectId::new(record.project_id()),
                 basis_state_version: record.basis_state_version(),
                 validity_basis: record.validity_basis().clone(),
-                allowed_path_prefixes: record.allowed_path_prefixes().to_vec(),
-                denied_path_prefixes: record.denied_path_prefixes().to_vec(),
+                path_scope: record.path_scope().clone(),
                 attempt_scope: record.attempt_scope().clone(),
                 idle_expires_at: record.idle_expires_at().cloned(),
             },
@@ -55,8 +53,7 @@ pub(crate) fn planned_write_ticket_semantic_facts(
         project_id: plan.project_id().clone(),
         basis_state_version: plan.basis_state_version(),
         validity_basis: plan.validity_basis().clone(),
-        allowed_path_prefixes: plan.allowed_path_prefixes().to_vec(),
-        denied_path_prefixes: plan.denied_path_prefixes().to_vec(),
+        path_scope: plan.path_scope().clone(),
         attempt_scope: plan.attempt_scope().clone(),
         idle_expires_at: plan.idle_expires_at().cloned(),
     }
@@ -65,7 +62,7 @@ pub(crate) fn planned_write_ticket_semantic_facts(
 #[cfg(test)]
 pub(crate) mod test_support {
     use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, TaskId, WriteTicketId};
-    use volicord_types::product_path::ProductRelativePath;
+    use volicord_types::product_path::{ProductRelativePath, WriteTicketPathScope};
     use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
     use volicord_types::values::{UtcTimestamp, WriteTicketStatus};
 
@@ -92,8 +89,8 @@ pub(crate) mod test_support {
                 write_authority_fingerprint: format!("sha256:{}", "0".repeat(64)),
                 approval_basis_refs: Vec::new(),
             },
-            allowed_path_prefixes: vec![intended_path.clone()],
-            denied_path_prefixes: Vec::new(),
+            path_scope: WriteTicketPathScope::new(vec![intended_path.clone()], Vec::new())
+                .expect("test scope should be valid"),
             attempt_scope: WriteTicketAttemptScope {
                 task_id,
                 change_unit_id,

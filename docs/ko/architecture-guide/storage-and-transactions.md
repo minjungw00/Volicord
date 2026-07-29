@@ -234,10 +234,12 @@ typed 메서드 필드 담당 타입을 유지합니다. 커밋 분기는 이벤
 사실을 정의하는 aggregate 담당 모듈의 정적 enum입니다. `mutations.rs`는 활성
 transaction 안에서 순서 있는 목록을 각 담당 모듈에 위임합니다.
 
-새 Write Ticket을 발급할 때 Core는 `PlannedWriteTicket` 하나를 검증하고 그
-plan에서 응답 projection과 완전한 typed `WriteTicketInsert`를 함께
-파생합니다. Store는 insertion을 직렬화하고 영속 읽기에서 opaque
-`StoredWriteTicket`을 만듭니다. 메서드 dispatcher와 projection 코드는 영속
+새 Write Ticket 발급에서는 Core의 폐쇄형 구체화 결과가 검증된
+`PlannedWriteTicket` 하나를 담습니다. 응답 projection과 완전히 typed인
+`WriteTicketInsert`는 모두 이 plan과 그 `WriteTicketPathScope`에서 파생됩니다.
+재사용 및 없음 결과는 삽입을 만들 수 없습니다. Store는 발급 insertion을
+직렬화하고 영속 row를 opaque `StoredWriteTicket`으로 바꿀 때 같은 불변
+path-scope 값을 다시 구성합니다. 메서드 dispatcher와 projection 코드는 영속
 ticket을 구성하지 않습니다.
 
 이 구조는 구현을 명확히 나눕니다.

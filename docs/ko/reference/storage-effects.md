@@ -227,10 +227,12 @@ observation을 만들지 않습니다. 배타 setup lease가 해제된 뒤 새�
 - `CloseReadinessBlocker` 저장.
 - `project_state.state_version` 증가.
 
-Write Ticket 발급 예정 값의 미리보기는 커밋 응답 projection에 쓰는 것과 같은
-검증된 의미 계획을 사용하지만, 이 계획에는 영속 ticket ID가 없으며 Store 삽입으로
-변환할 수 없습니다. 호환되는 기존 ticket을 읽어 `would_reuse`를 projection할 수
-있지만 그 읽기는 영속 ticket을 바꾸지 않습니다.
+Prepare Write 미리보기 동작은 커밋 구체화에 사용하는 것과 같은 폐쇄형 계획 분기를
+소비합니다. `Issue`는 검증된 ID 없는 draft에서 `would_issue`를 투영하고,
+`Reuse`는 재사용 가능한 stored ticket에서 `would_reuse`를 투영하며,
+`NoTicket`은 ticket identity 없이 판단 차단 사유를 투영합니다. 발급 draft에는
+영속 ticket ID가 없고 Store 삽입을 만들 수 없습니다. 호환되는 기존 ticket을
+읽어도 그 ticket은 바뀌지 않습니다.
 
 ## 읽기 전용 효과
 
@@ -584,7 +586,9 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 
 `decision=allowed`인 재실행이 아닌 원래 커밋된 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 물리 `write_tickets` 테이블에 활성 쓰기 티켓 하나를 발급하거나 호환되는 활성 미소비 티켓 하나를 재사용합니다.
+- 구체화된 `Issued` 분기에서 활성 쓰기 티켓 하나를 발급하거나 `Reused` 분기에서
+  호환되는 활성 미소비 티켓 하나를 재사용합니다. Typed Store 삽입은 `Issued`만
+  제공합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -593,10 +597,10 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 이벤트/재실행/상태 버전 효과는 정확히 한 번 발생합니다. 이 증가나 관련 없는 Core
 변경은 티켓을 무효화하지 않습니다. 비허용 판단은 관련 없는 활성 티켓을 철회하지 않습니다.
 
-발급 시 Core는 검증된 planned-ticket 값 하나에서 projection할 ticket fact와 완전히
-typed인 Store mutation 입력을 모두 파생합니다. Store는 이 typed 입력을 받아 물리
-row로 직렬화하는 유일한 담당자입니다. Core는 commit 전에 영속 ticket record를
-구성하지 않습니다.
+발급 시 Core는 검증된 planned-ticket 값 하나와 그 `WriteTicketPathScope`에서
+중첩 결과 ticket, 최상위 identity와 경로 fact, 완전히 typed인 Store mutation 입력을
+모두 파생합니다. Store는 이 typed 입력을 받아 물리 row로 직렬화하는 유일한
+담당자입니다. Core는 commit 전에 영속 ticket record를 구성하지 않습니다.
 
 발급은 현재 정규화된 프로젝트 쓰기 권한 fingerprint를 `validity_basis_json`에
 저장합니다. 재사용에는 null이 아닌 현재 fingerprint의 정확한 일치가 필요합니다.

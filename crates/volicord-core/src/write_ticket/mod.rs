@@ -187,8 +187,8 @@ pub(crate) use facts::{
     validate_prepare_write_change_unit, workspace_context_matches,
 };
 pub(crate) use planning::{
-    materialize_planned_write_ticket, plan_prepare_write, planned_write_ticket_mutation,
-    PrepareWriteInput, PrepareWritePlanningOutcome,
+    materialize_planned_write_ticket, plan_prepare_write, MaterializedPrepareWriteTicket,
+    PlannedWriteTicket, PrepareWriteInput, PrepareWritePlanningOutcome, PrepareWriteTicketPlan,
 };
 pub(crate) use policy::{
     normalized_string_set, prepare_write_decision, run_write_ticket_mismatch,

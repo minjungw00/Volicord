@@ -192,11 +192,15 @@ typed-fact-to-view projections.
 
 Within the focused Write Ticket owner, `write_ticket/planning.rs` evaluates
 focused semantic input and returns typed decision reasons, semantic record
-identities, mutations, and an identity-free `PlannedWriteTicketDraft` for a
-prospective issuance. The public `prepare_write` method owns dry-run selection,
-durable ID allocation, state-versioned record references, guarantee display,
-error-to-response mapping, and materialization of the validated
-`PlannedWriteTicket` used for insertion and response projection.
+identities, mutation facts, and one closed `PrepareWriteTicketPlan` branch:
+identity-free issuance draft, reusable stored ticket, or no-ticket decision
+paths. `WriteTicketPathScope` is the dependency-safe immutable path owner for
+planned and stored tickets. The public `prepare_write` method owns dry-run
+selection, durable ID allocation, state-versioned record references, guarantee
+display, error-to-response mapping, and conversion to one closed
+`MaterializedPrepareWriteTicket`. Its issued branch carries the validated
+`PlannedWriteTicket` used for both insertion and response projection; its
+reused and none branches cannot create an insertion.
 `write_ticket/semantic.rs` provides the immutable semantic view shared by a
 plan and an opaque Store-validated record; planned and stored lifecycle
 identities remain in distinct types. `write_ticket/read_model.rs` acquires

@@ -1153,7 +1153,7 @@ mod tests {
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::canonical::canonical_json_sha256;
     use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, WriteTicketId};
-    use volicord_types::product_path::ProductRelativePath;
+    use volicord_types::product_path::{ProductRelativePath, WriteTicketPathScope};
     use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
     use volicord_types::values::{WriteTicketInvalidationReason, WriteTicketStatus};
 
@@ -1332,8 +1332,7 @@ mod tests {
                     write_authority_fingerprint: input.write_authority_fingerprint,
                     approval_basis_refs: Vec::new(),
                 },
-                allowed_path_prefixes: intended_paths.clone(),
-                denied_path_prefixes: Vec::new(),
+                path_scope: WriteTicketPathScope::new(intended_paths.clone(), Vec::new())?,
                 attempt_scope: WriteTicketAttemptScope {
                     task_id: TaskId::new(input.task_id),
                     change_unit_id: ChangeUnitId::new(input.change_unit_id),

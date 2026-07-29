@@ -103,13 +103,15 @@ mutation variant와 Store 적용 순서를 보존합니다. `recording/state.rs`
 `prepare_write`는 `crates/volicord-core/src/write_ticket/`를 통해 현재 Task,
 Change Unit, scope, baseline, policy, 민감 승인, 정규 path, 현재 write-authority
 fingerprint를 평가합니다. `planning.rs`는 실제로 평가하는 의미 fact만 받고 typed
-판단 사유, 의미 record identity, 후보 mutation, ID 없는 발급 draft를 반환합니다.
-요청 envelope, dry-run intent, 응답 state version은 받지 않습니다. 공개 메서드가
-이 fact를 공개 reference와 오류로 투영합니다. Dry run은 영속 identity를
-할당하거나 ticket을 구체화하기 전에 미리보기를 반환합니다. 커밋 경로는 ID를
-할당하고 Store 삽입과 응답 projection에 사용할 검증된 `PlannedWriteTicket`
-하나를 구체화합니다. Planned ticket과 opaque stored ticket은 불변 의미 fact만
-공유하며 lifecycle 상태와 identity는 서로 구분합니다.
+판단 사유, 의미 record identity, 후보 mutation과 발급, 재사용, ticket 없음 가운데
+하나인 폐쇄형 분기를 반환합니다. 발급 draft와 재사용 가능한 stored ticket은 각각
+`WriteTicketPathScope` 하나를 소유하고, ticket 없는 판단 경로는 해당 분기에만
+있습니다. 요청 envelope, dry-run intent, 응답 state version은 받지 않습니다. 공개
+메서드는 계획 분기에서 dry run을 직접 투영합니다. 커밋 경로는 이 분기를 발급됨,
+재사용됨, 없음 가운데 하나인 구체화 분기로 바꿉니다. 발급됨 분기만 ID를 할당하고
+검증된 `PlannedWriteTicket` 하나를 구체화하며, 이 값에서 Store 삽입과 공개
+projection을 함께 파생합니다. Planned ticket과 opaque stored ticket은 불변 의미
+fact만 공유하며 lifecycle 상태와 identity는 서로 구분합니다.
 영속 상태 summary에서는 `read_model.rs`가 typed ticket, Task, workflow policy,
 현재 UserAction resolution, 선택된 Run의 증거 fact를 취득합니다.
 `current_validity.rs`는 terminal record를 현재 fact 없이 사전 평가하고 active

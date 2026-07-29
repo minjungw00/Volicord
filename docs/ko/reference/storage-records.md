@@ -536,12 +536,15 @@ corruption을 구성하지 않습니다. 검증된 binding과 현재 workflow po
 비교는 의미 policy 판단입니다.
 
 영속화 전 ticket 제안은 합성 `StoredWriteTicket`이 아니라 Core가 소유하는 별도
-`PlannedWriteTicket`입니다. Core는 projection 전에 identity, scope, path,
-authority, timestamp 관계를 의미 수준에서 검증합니다. 같은 planned 값이 projection
-대상 ticket fact와 완전히 typed인 `WriteTicketInsert`를 모두 제공하며, Store만 해당
-삽입 입력을 물리 column과 JSON으로 매핑합니다. Dry-run 제안에는 영속 ticket
-identity가 없고 Store 삽입 입력을 만들 수 없습니다. 재사용은 이미 검증된
-`StoredWriteTicket`을 읽습니다.
+`PlannedWriteTicket`입니다. Core는 projection 전에 의미 identity, scope,
+authority, timestamp 관계와 불변 조건을 지키는 `WriteTicketPathScope` 하나를
+검증합니다. 같은 planned 값이 그 정확한 path scope를 포함한 projection 대상 ticket
+fact와 완전히 typed인 `WriteTicketInsert`를 모두 제공하며, Store만 해당 삽입 입력을
+물리 column과 JSON으로 매핑합니다. Store는 물리 허용 및 거부 column에서 검증된
+`WriteTicketPathScope` 하나를 다시 구성한 뒤 opaque stored ticket을 반환합니다.
+Dry-run 발급 분기에는 영속 ticket identity가 없고 Store 삽입 입력을 만들 수
+없습니다. 재사용은 이미 검증된 stored ticket을 읽고 불변 path-scope view를
+노출합니다.
 
 한 물리 Write Ticket field에 국한된 corruption은 그 정확한 field를 식별합니다.
 Owner identity, scope revision, baseline, timestamp 순서, path set, path coverage,

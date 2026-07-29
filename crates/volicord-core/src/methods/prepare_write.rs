@@ -31,7 +31,9 @@ use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
-use crate::write_ticket::current_validity::StoredWriteTicketEvaluation;
+use crate::write_ticket::current_validity::{
+    ReusableStoredWriteTicket, StoredWriteTicketEvaluation,
+};
 use crate::write_ticket::read_model::WriteTicketEvidenceFacts;
 use crate::write_ticket::summary::{
     project_planned_write_ticket_summary, project_stored_write_ticket_summary,
@@ -39,8 +41,9 @@ use crate::write_ticket::summary::{
 };
 use crate::write_ticket::{
     materialize_planned_write_ticket, plan_prepare_write as plan_write_ticket,
-    planned_write_ticket_mutation, PrepareWriteInput, PrepareWritePlanningOutcome,
-    WriteTicketDecisionReason, WriteTicketPlanningError, WriteTicketRelatedRecord,
+    MaterializedPrepareWriteTicket, PlannedWriteTicket, PrepareWriteInput,
+    PrepareWritePlanningOutcome, PrepareWriteTicketPlan, WriteTicketDecisionReason,
+    WriteTicketPlanningError, WriteTicketRelatedRecord,
 };
 use serde_json::{json, Map, Value};
 use volicord_store::core_pipeline::{CoreProjectStore, CoreStorageMutation, ProjectStateHeader};
@@ -50,14 +53,15 @@ use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId};
 use volicord_types::methods::{
     MethodOperationCategory, PrepareWriteRequest, PrepareWriteResultFields,
 };
+use volicord_types::product_path::WriteTicketPathScope;
 use volicord_types::schema::{
-    DryRunSummary, JsonObject, PlannedBlocker, PlannedEffect,
-    WriteDecisionReason as PublicWriteDecisionReason, WriteTicket, WriteTicketPathPatterns,
-    WriteTicketScope,
+    DryRunSummary, GuaranteeDisplay, JsonObject, PlannedBlocker, PlannedEffect, StateRecordRef,
+    StateSummary, WriteDecisionReason as PublicWriteDecisionReason, WriteTicket,
+    WriteTicketPathPatterns, WriteTicketScope, WriteTicketStateSummary,
 };
 use volicord_types::values::{
-    CloseState, ErrorCode, MethodName, PlannedBlockerSourceKind, StateRecordKind, UtcTimestamp,
-    WriteDecisionCategory, WriteTicketEffect, WriteTicketState,
+    CloseState, ErrorCode, MethodName, PlannedBlockerSourceKind, PrepareWriteDecision,
+    StateRecordKind, UtcTimestamp, WriteDecisionCategory, WriteTicketEffect, WriteTicketState,
 };
 
 struct PrepareWritePlan {
@@ -76,6 +80,106 @@ struct PrepareWriteProjectionContext<'a, 'store> {
     request: &'a PrepareWriteRequest,
     verified_invocation: &'a VerifiedInvocationContext,
     operation_now: &'a UtcTimestamp,
+}
+
+enum PrepareWriteTicketProjection {
+    Issued {
+        write_ticket: WriteTicket,
+        summary: WriteTicketStateSummary,
+    },
+    Reused {
+        write_ticket: WriteTicket,
+        summary: WriteTicketStateSummary,
+    },
+    None {
+        path_patterns: WriteTicketPathPatterns,
+    },
+}
+
+impl PrepareWriteTicketProjection {
+    fn write_ticket_effect(&self) -> WriteTicketEffect {
+        match self {
+            Self::Issued { .. } => WriteTicketEffect::Issued,
+            Self::Reused { .. } => WriteTicketEffect::Reused,
+            Self::None { .. } => WriteTicketEffect::None,
+        }
+    }
+
+    fn write_ticket_ref(&self) -> Option<&StateRecordRef> {
+        match self {
+            Self::Issued { write_ticket, .. } | Self::Reused { write_ticket, .. } => {
+                Some(&write_ticket.write_ticket_ref)
+            }
+            Self::None { .. } => None,
+        }
+    }
+
+    fn summary(&self) -> Option<WriteTicketStateSummary> {
+        match self {
+            Self::Issued { summary, .. } | Self::Reused { summary, .. } => Some(summary.clone()),
+            Self::None { .. } => None,
+        }
+    }
+
+    fn into_result_fields(
+        self,
+        decision: PrepareWriteDecision,
+        state: StateSummary,
+        active_user_action_refs: Vec<StateRecordRef>,
+        write_decision_reasons: Vec<PublicWriteDecisionReason>,
+        guarantee_display: Option<GuaranteeDisplay>,
+    ) -> PrepareWriteResultFields {
+        match self {
+            Self::Issued { write_ticket, .. } => {
+                let path_patterns = write_ticket.path_patterns.clone();
+                PrepareWriteResultFields {
+                    decision,
+                    state: Some(state),
+                    write_ticket_id: Some(write_ticket.write_ticket_id.clone()),
+                    write_ticket_ref: Some(write_ticket.write_ticket_ref.clone()),
+                    write_ticket: Some(write_ticket),
+                    write_ticket_effect: WriteTicketEffect::Issued,
+                    allowed_path_patterns: path_patterns.allowed,
+                    denied_path_patterns: path_patterns.denied,
+                    active_user_action_refs,
+                    write_decision_reasons,
+                    user_action_draft: None,
+                    guarantee_display,
+                }
+            }
+            Self::Reused { write_ticket, .. } => {
+                let path_patterns = write_ticket.path_patterns.clone();
+                PrepareWriteResultFields {
+                    decision,
+                    state: Some(state),
+                    write_ticket_id: Some(write_ticket.write_ticket_id.clone()),
+                    write_ticket_ref: Some(write_ticket.write_ticket_ref.clone()),
+                    write_ticket: Some(write_ticket),
+                    write_ticket_effect: WriteTicketEffect::Reused,
+                    allowed_path_patterns: path_patterns.allowed,
+                    denied_path_patterns: path_patterns.denied,
+                    active_user_action_refs,
+                    write_decision_reasons,
+                    user_action_draft: None,
+                    guarantee_display,
+                }
+            }
+            Self::None { path_patterns } => PrepareWriteResultFields {
+                decision,
+                state: Some(state),
+                write_ticket_id: None,
+                write_ticket_ref: None,
+                write_ticket: None,
+                write_ticket_effect: WriteTicketEffect::None,
+                allowed_path_patterns: path_patterns.allowed,
+                denied_path_patterns: path_patterns.denied,
+                active_user_action_refs,
+                write_decision_reasons,
+                user_action_draft: None,
+                guarantee_display,
+            },
+        }
+    }
 }
 
 impl CoreService {
@@ -141,15 +245,12 @@ impl CoreService {
         let write_decision_reasons = project_write_decision_reasons(
             &request.envelope.project_id,
             prepared.context.project_state.state_version,
-            &planned.reasons,
+            &planned.common.reasons,
         );
 
         if request.envelope.dry_run.is_requested() {
-            let dry_run_summary = prepare_write_dry_run_summary(
-                planned.allowed,
-                planned.reused_write_ticket.is_some(),
-                &write_decision_reasons,
-            );
+            let dry_run_summary =
+                prepare_write_dry_run_summary(&planned.ticket, &write_decision_reasons);
             return self.execute_prepared_request(
                 prepared,
                 dry_run_preview_branch::<PrepareWriteRequest>(dry_run_summary),
@@ -368,6 +469,157 @@ fn prepare_write_planning_error(
     }
 }
 
+fn materialize_prepare_write_ticket(
+    service: &CoreService,
+    store: &CoreProjectStore<'_>,
+    project_state: &ProjectStateHeader,
+    request: &PrepareWriteRequest,
+    ticket: PrepareWriteTicketPlan,
+    planned_state_version: u64,
+) -> Result<MaterializedPrepareWriteTicket, PlanError> {
+    match ticket {
+        PrepareWriteTicketPlan::Issue(draft) => {
+            let write_ticket_id = allocate_write_ticket_id(service.durable_id_generator(), store)?;
+            let planned = materialize_planned_write_ticket(
+                draft,
+                write_ticket_id,
+                planned_state_version,
+                project_state.state_version,
+            )
+            .map_err(|error| prepare_write_planning_error(request, project_state, error))?;
+            Ok(MaterializedPrepareWriteTicket::Issued(planned))
+        }
+        PrepareWriteTicketPlan::Reuse(ticket) => Ok(MaterializedPrepareWriteTicket::Reused(ticket)),
+        PrepareWriteTicketPlan::NoTicket(facts) => Ok(MaterializedPrepareWriteTicket::None(facts)),
+    }
+}
+
+fn project_materialized_prepare_write_ticket(
+    materialized: &MaterializedPrepareWriteTicket,
+    state_version: u64,
+    guarantee_display: Option<GuaranteeDisplay>,
+) -> PrepareWriteTicketProjection {
+    match materialized {
+        MaterializedPrepareWriteTicket::Issued(planned) => {
+            let write_ticket =
+                project_issued_write_ticket(planned, state_version, guarantee_display.clone());
+            let summary = project_planned_write_ticket_summary(PlannedWriteTicketSummaryInput {
+                planned,
+                state_version,
+                guarantee_display: guarantee_display.clone(),
+            });
+            PrepareWriteTicketProjection::Issued {
+                write_ticket,
+                summary,
+            }
+        }
+        MaterializedPrepareWriteTicket::Reused(reusable) => {
+            let write_ticket =
+                project_reused_write_ticket(reusable, state_version, guarantee_display.clone());
+            let evaluated = StoredWriteTicketEvaluation::Reusable(reusable.clone());
+            let summary = project_stored_write_ticket_summary(StoredWriteTicketSummaryInput {
+                evaluated: &evaluated,
+                state_version,
+                evidence: &WriteTicketEvidenceFacts::default(),
+                guarantee_display: guarantee_display.clone(),
+            });
+            PrepareWriteTicketProjection::Reused {
+                write_ticket,
+                summary,
+            }
+        }
+        MaterializedPrepareWriteTicket::None(_) => PrepareWriteTicketProjection::None {
+            path_patterns: project_write_ticket_path_scope(materialized.path_scope()),
+        },
+    }
+}
+
+fn project_issued_write_ticket(
+    planned: &PlannedWriteTicket,
+    state_version: u64,
+    guarantee_display: Option<GuaranteeDisplay>,
+) -> WriteTicket {
+    let write_ticket_ref = state_ref(
+        StateRecordKind::WriteTicket,
+        planned.write_ticket_id().as_str(),
+        planned.project_id(),
+        Some(&planned.validity_basis().task_id),
+        Some(state_version),
+    );
+    let attempt_scope = planned.attempt_scope();
+    WriteTicket {
+        write_ticket_id: planned.write_ticket_id().clone(),
+        write_ticket_ref,
+        state: WriteTicketState::Open,
+        scope: WriteTicketScope {
+            task_id: attempt_scope.task_id.clone(),
+            change_unit_id: attempt_scope.change_unit_id.clone(),
+            intended_operation: attempt_scope.intended_operation.clone(),
+            product_file_write_intended: attempt_scope.product_file_write_intended,
+            sensitive_categories: attempt_scope.sensitive_categories.clone(),
+            baseline_ref: attempt_scope.baseline_ref.clone(),
+        },
+        path_patterns: project_write_ticket_path_scope(planned.path_scope()),
+        observed_paths: Vec::new(),
+        basis_state_version: planned.basis_state_version(),
+        validity_basis: planned.validity_basis().clone(),
+        invalidation_reason: None,
+        idle_expires_at: planned.idle_expires_at().cloned(),
+        guarantee_display,
+    }
+}
+
+fn project_reused_write_ticket(
+    reusable: &ReusableStoredWriteTicket,
+    state_version: u64,
+    guarantee_display: Option<GuaranteeDisplay>,
+) -> WriteTicket {
+    let semantic = reusable.semantic_facts();
+    let write_ticket_ref = state_ref(
+        StateRecordKind::WriteTicket,
+        reusable.write_ticket_id().as_str(),
+        &semantic.project_id,
+        Some(&semantic.validity_basis.task_id),
+        Some(state_version),
+    );
+    let attempt_scope = &semantic.attempt_scope;
+    WriteTicket {
+        write_ticket_id: reusable.write_ticket_id().clone(),
+        write_ticket_ref,
+        state: WriteTicketState::Open,
+        scope: WriteTicketScope {
+            task_id: attempt_scope.task_id.clone(),
+            change_unit_id: attempt_scope.change_unit_id.clone(),
+            intended_operation: attempt_scope.intended_operation.clone(),
+            product_file_write_intended: attempt_scope.product_file_write_intended,
+            sensitive_categories: attempt_scope.sensitive_categories.clone(),
+            baseline_ref: attempt_scope.baseline_ref.clone(),
+        },
+        path_patterns: project_write_ticket_path_scope(reusable.path_scope()),
+        observed_paths: Vec::new(),
+        basis_state_version: semantic.basis_state_version,
+        validity_basis: semantic.validity_basis.clone(),
+        invalidation_reason: None,
+        idle_expires_at: semantic.idle_expires_at.clone(),
+        guarantee_display,
+    }
+}
+
+fn project_write_ticket_path_scope(path_scope: &WriteTicketPathScope) -> WriteTicketPathPatterns {
+    WriteTicketPathPatterns {
+        allowed: path_scope
+            .allowed()
+            .iter()
+            .map(|path| path.as_str().to_owned())
+            .collect(),
+        denied: path_scope
+            .denied()
+            .iter()
+            .map(|path| path.as_str().to_owned())
+            .collect(),
+    }
+}
+
 fn project_prepare_write_response(
     context: PrepareWriteProjectionContext<'_, '_>,
     planned: PrepareWritePlanningOutcome,
@@ -382,20 +634,17 @@ fn project_prepare_write_response(
         operation_now,
     } = context;
     let PrepareWritePlanningOutcome {
-        task_id,
-        task,
-        change_unit,
-        decision,
-        allowed,
-        pending_user_action_request_ids,
-        approval_basis,
-        planned_write_ticket: planned_write_ticket_draft,
-        reused_write_ticket,
-        allowed_path_patterns,
-        denied_path_patterns,
-        mut storage_mutations,
-        ..
+        common,
+        ticket,
+        mutations,
     } = planned;
+    let task_id = common.task_id;
+    let task = common.task;
+    let change_unit = common.change_unit;
+    let decision = common.decision;
+    let pending_user_action_request_ids = common.pending_user_action_request_ids;
+    let approval_basis = common.approval_basis;
+    let mut storage_mutations = mutations.storage_mutations;
     let planned_state_version = project_state.state_version + 1;
     let pending_user_action_refs = pending_user_action_request_ids
         .iter()
@@ -413,36 +662,17 @@ fn project_prepare_write_response(
         .as_ref()
         .map(|basis| basis.state_refs(project_state.state_version))
         .unwrap_or_default();
-    let (write_ticket_id, planned_write_ticket, write_ticket_effect) =
-        if let Some(draft) = planned_write_ticket_draft {
-            let write_ticket_id = allocate_write_ticket_id(service.durable_id_generator(), store)?;
-            let plan = materialize_planned_write_ticket(
-                draft,
-                write_ticket_id.clone(),
-                planned_state_version,
-                project_state.state_version,
-            )
-            .map_err(|error| prepare_write_planning_error(request, project_state, error))?;
-            storage_mutations.push(planned_write_ticket_mutation(&plan));
-            (Some(write_ticket_id), Some(plan), WriteTicketEffect::Issued)
-        } else if let Some(record) = reused_write_ticket.as_ref() {
-            (
-                Some(record.write_ticket_id().clone()),
-                None,
-                WriteTicketEffect::Reused,
-            )
-        } else {
-            (None, None, WriteTicketEffect::None)
-        };
-    let write_ticket_ref = write_ticket_id.as_ref().map(|write_ticket_id| {
-        state_ref(
-            StateRecordKind::WriteTicket,
-            write_ticket_id.as_str(),
-            &request.envelope.project_id,
-            Some(&task_id),
-            Some(planned_state_version),
-        )
-    });
+    let materialized_ticket = materialize_prepare_write_ticket(
+        service,
+        store,
+        project_state,
+        request,
+        ticket,
+        planned_state_version,
+    )?;
+    if let Some(mutation) = materialized_ticket.persistence_mutation() {
+        storage_mutations.push(mutation);
+    }
     let enforcement_profile = project_enforcement_profile(store)?;
     let guarantee_display = Some(guarantee_display(
         &enforcement_profile,
@@ -450,6 +680,11 @@ fn project_prepare_write_response(
         planned_state_version,
     ));
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
+    let ticket_projection = project_materialized_prepare_write_ticket(
+        &materialized_ticket,
+        planned_state_version,
+        guarantee_display.clone(),
+    );
     let blocker_refs = active_blocker_refs(store, &task_id, planned_state_version)?;
     let evidence_facts = load_current_evidence_summary_facts(
         store,
@@ -492,8 +727,8 @@ fn project_prepare_write_response(
     })?;
     let mut close_state = close_plan.close_state;
     let mut close_blockers = close_plan.blockers;
-    if write_ticket_effect == WriteTicketEffect::Issued {
-        if let Some(write_ticket_ref) = write_ticket_ref.as_ref() {
+    if ticket_projection.write_ticket_effect() == WriteTicketEffect::Issued {
+        if let Some(write_ticket_ref) = ticket_projection.write_ticket_ref() {
             let planned_task_ref = state_ref(
                 StateRecordKind::Task,
                 task_id.as_str(),
@@ -509,67 +744,6 @@ fn project_prepare_write_response(
         }
     }
     normalize_close_blockers(&mut close_blockers, planned_state_version);
-    let write_ticket = match (
-        write_ticket_id.as_ref(),
-        write_ticket_ref.as_ref(),
-        planned_write_ticket.as_ref(),
-        reused_write_ticket.as_ref(),
-    ) {
-        (Some(write_ticket_id), Some(write_ticket_ref), Some(plan), None) => {
-            let selected_scope = plan.attempt_scope();
-            Some(WriteTicket {
-                write_ticket_id: write_ticket_id.clone(),
-                write_ticket_ref: write_ticket_ref.clone(),
-                state: WriteTicketState::Open,
-                scope: WriteTicketScope {
-                    task_id: task_id.clone(),
-                    change_unit_id: change_unit_id.clone(),
-                    intended_operation: selected_scope.intended_operation.clone(),
-                    product_file_write_intended: selected_scope.product_file_write_intended,
-                    sensitive_categories: selected_scope.sensitive_categories.clone(),
-                    baseline_ref: selected_scope.baseline_ref.clone(),
-                },
-                path_patterns: WriteTicketPathPatterns {
-                    allowed: allowed_path_patterns.clone(),
-                    denied: denied_path_patterns.clone(),
-                },
-                observed_paths: Vec::new(),
-                basis_state_version: plan.basis_state_version(),
-                validity_basis: plan.validity_basis().clone(),
-                invalidation_reason: None,
-                idle_expires_at: plan.idle_expires_at().cloned(),
-                guarantee_display: guarantee_display.clone(),
-            })
-        }
-        (Some(write_ticket_id), Some(write_ticket_ref), None, Some(record)) => {
-            let semantic = record.semantic_facts();
-            let selected_scope = &semantic.attempt_scope;
-            Some(WriteTicket {
-                write_ticket_id: write_ticket_id.clone(),
-                write_ticket_ref: write_ticket_ref.clone(),
-                state: WriteTicketState::Open,
-                scope: WriteTicketScope {
-                    task_id: task_id.clone(),
-                    change_unit_id: change_unit_id.clone(),
-                    intended_operation: selected_scope.intended_operation.clone(),
-                    product_file_write_intended: selected_scope.product_file_write_intended,
-                    sensitive_categories: selected_scope.sensitive_categories.clone(),
-                    baseline_ref: selected_scope.baseline_ref.clone(),
-                },
-                path_patterns: WriteTicketPathPatterns {
-                    allowed: allowed_path_patterns.clone(),
-                    denied: denied_path_patterns.clone(),
-                },
-                observed_paths: Vec::new(),
-                basis_state_version: semantic.basis_state_version,
-                validity_basis: semantic.validity_basis.clone(),
-                invalidation_reason: None,
-                idle_expires_at: semantic.idle_expires_at.clone(),
-                guarantee_display: guarantee_display.clone(),
-            })
-        }
-        _ => None,
-    };
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
         .summary;
@@ -582,50 +756,18 @@ fn project_prepare_write_response(
         acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs,
         blocker_refs,
-        write_ticket_summary: if let Some(plan) = planned_write_ticket.as_ref() {
-            Some(project_planned_write_ticket_summary(
-                PlannedWriteTicketSummaryInput {
-                    planned: plan,
-                    state_version: planned_state_version,
-                    guarantee_display: guarantee_display.clone(),
-                },
-            ))
-        } else {
-            reused_write_ticket.as_ref().map(|record| {
-                let evaluated = StoredWriteTicketEvaluation::Reusable(record.clone());
-                project_stored_write_ticket_summary(StoredWriteTicketSummaryInput {
-                    evaluated: &evaluated,
-                    state_version: planned_state_version,
-                    evidence: &WriteTicketEvidenceFacts::default(),
-                    guarantee_display: guarantee_display.clone(),
-                })
-            })
-        },
+        write_ticket_summary: ticket_projection.summary(),
         evidence_summary,
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_state),
         close_blockers,
         guarantee_display: guarantee_display.clone(),
     })?;
-    let result_fields = PrepareWriteResultFields {
-        decision,
-        state: Some(state),
-        write_ticket_id: write_ticket_id.clone(),
-        write_ticket_ref: write_ticket_ref.clone(),
-        write_ticket,
-        write_ticket_effect,
-        allowed_path_patterns: allowed_path_patterns.clone(),
-        denied_path_patterns: denied_path_patterns.clone(),
-        active_user_action_refs,
-        write_decision_reasons: reasons.clone(),
-        user_action_draft: None,
-        guarantee_display: guarantee_display.clone(),
-    };
-
-    let event_kind = if write_ticket_effect == WriteTicketEffect::Reused {
-        "write_ticket_reused"
-    } else if allowed {
+    let materialized_effect = materialized_ticket.write_ticket_effect();
+    let event_kind = if materialized_effect == WriteTicketEffect::Issued {
         "write_ticket_issued"
+    } else if materialized_effect == WriteTicketEffect::Reused {
+        "write_ticket_reused"
     } else {
         "write_decision_recorded"
     }
@@ -634,16 +776,23 @@ fn project_prepare_write_response(
         "task_id": task_id.clone(),
         "change_unit_id": change_unit_id.clone(),
         "decision": decision,
-        "write_ticket_id": write_ticket_id
-            .as_ref()
+        "write_ticket_id": materialized_ticket
+            .write_ticket_id()
             .map(|id| id.as_str().to_owned())
     }))?;
-    if !allowed {
+    if materialized_effect == WriteTicketEffect::None {
         event_payload.insert(
             "write_decision_reasons".to_owned(),
             serde_json::to_value(&reasons)?,
         );
     }
+    let result_fields = ticket_projection.into_result_fields(
+        decision,
+        state,
+        active_user_action_refs,
+        reasons.clone(),
+        guarantee_display,
+    );
 
     Ok(PrepareWritePlan {
         task_id,
@@ -704,30 +853,24 @@ fn project_write_decision_reasons(
 }
 
 fn prepare_write_dry_run_summary(
-    allowed: bool,
-    would_reuse_write_ticket: bool,
+    ticket: &PrepareWriteTicketPlan,
     reasons: &[PublicWriteDecisionReason],
 ) -> DryRunSummary {
+    let planned_effect = match ticket {
+        PrepareWriteTicketPlan::Issue(_) => Some(PlannedEffect {
+            target_kind: "write_ticket".to_owned(),
+            action: "would_issue".to_owned(),
+            description: "Prepare write would issue one open write ticket.".to_owned(),
+        }),
+        PrepareWriteTicketPlan::Reuse(_) => Some(PlannedEffect {
+            target_kind: "write_ticket".to_owned(),
+            action: "would_reuse".to_owned(),
+            description: "Prepare write would reuse the compatible open write ticket.".to_owned(),
+        }),
+        PrepareWriteTicketPlan::NoTicket(_) => None,
+    };
     DryRunSummary {
-        planned_effects: if allowed {
-            vec![PlannedEffect {
-                target_kind: "write_ticket".to_owned(),
-                action: if would_reuse_write_ticket {
-                    "would_reuse"
-                } else {
-                    "would_issue"
-                }
-                .to_owned(),
-                description: if would_reuse_write_ticket {
-                    "Prepare write would reuse the compatible open write ticket."
-                } else {
-                    "Prepare write would issue one open write ticket."
-                }
-                .to_owned(),
-            }]
-        } else {
-            Vec::new()
-        },
+        planned_effects: planned_effect.into_iter().collect(),
         would_blockers: reasons
             .iter()
             .map(|reason| PlannedBlocker {

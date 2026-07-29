@@ -179,11 +179,15 @@ identity, artifact policy, continuity planning, Write Ticket planning, 닫기 �
 독립적으로 typed fact를 view로 투영합니다.
 
 집중된 Write Ticket 담당자 안에서 `write_ticket/planning.rs`는 필요한 의미 입력만
-평가하고 typed 판단 사유, 의미 record identity, mutation, 발급 예정용 ID 없는
-`PlannedWriteTicketDraft`를 반환합니다. 공개 `prepare_write` 메서드는 dry-run
-분기 선택, 영속 ID 할당, state-version이 있는 record reference, 보장 표시,
-오류-응답 매핑, 삽입과 응답 projection에 쓰는 검증된 `PlannedWriteTicket`
-구체화를 담당합니다.
+평가하고 typed 판단 사유, 의미 record identity, mutation fact와 폐쇄형
+`PrepareWriteTicketPlan` 분기 하나를 반환합니다. 이 분기는 ID 없는 발급 draft,
+재사용 가능한 stored ticket, ticket 없는 판단 경로 가운데 하나입니다.
+`WriteTicketPathScope`는 planned ticket과 stored ticket의 경로를 소유하는
+dependency-safe 불변 값입니다. 공개 `prepare_write` 메서드는 dry-run 분기 선택,
+영속 ID 할당, state-version이 있는 record reference, 보장 표시, 오류-응답 매핑,
+폐쇄형 `MaterializedPrepareWriteTicket` 하나로의 변환을 담당합니다. 그중 발급
+분기는 삽입과 응답 projection에 함께 쓰는 검증된 `PlannedWriteTicket`을 담고,
+재사용 및 없음 분기는 삽입을 만들 수 없습니다.
 `write_ticket/semantic.rs`는 plan과 Store가 검증한 opaque record가 공유하는
 불변 의미 view를 제공하며 planned lifecycle identity와 stored lifecycle identity는
 서로 다른 타입에 남습니다. `write_ticket/read_model.rs`는 typed stored ticket,

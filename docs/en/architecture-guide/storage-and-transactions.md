@@ -245,11 +245,14 @@ SQL application, and any typed result facts required by commit coordination.
 `mutations.rs` delegates the ordered list to those owners inside the active
 transaction.
 
-For new Write Ticket issuance, Core validates one `PlannedWriteTicket` and
-derives both the response projection and the fully typed `WriteTicketInsert`
-from that plan. Store serializes the insertion and creates the opaque
-`StoredWriteTicket` on persisted reads. The method dispatcher and projection
-code do not construct a persisted ticket.
+For new Write Ticket issuance, Core's closed materialized outcome carries one
+validated `PlannedWriteTicket`. Both the response projection and the fully
+typed `WriteTicketInsert` derive from that plan and its
+`WriteTicketPathScope`. Reused and none outcomes cannot create an insertion.
+Store serializes the issued insertion and reconstructs the same
+invariant-bearing path-scope value when persisted rows become opaque
+`StoredWriteTicket` values. The method dispatcher and projection code do not
+construct a persisted ticket.
 
 This structure gives the implementation a clear split:
 

@@ -1,4 +1,5 @@
 use volicord_types::ids::{RunId, WriteTicketId};
+use volicord_types::product_path::WriteTicketPathScope;
 use volicord_types::values::{WriteTicketInvalidationReason, WriteTicketStatus};
 
 use super::approval::WriteTicketApprovalAssessment;
@@ -49,6 +50,10 @@ impl ReusableStoredWriteTicket {
 
     pub(crate) fn semantic_facts(&self) -> &WriteTicketSemanticFacts {
         &self.stored.ticket
+    }
+
+    pub(crate) fn path_scope(&self) -> &WriteTicketPathScope {
+        &self.stored.ticket.path_scope
     }
 }
 

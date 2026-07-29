@@ -214,18 +214,25 @@ the issuance mutation commits. A reuse result returns the existing ID and ref.
 Blocked, approval-required, decision-required, rejected, and `dry_run` paths do
 not allocate a durable ID.
 
-Core semantic planning represents a prospective issuance as an identity-free
-`PlannedWriteTicketDraft`; it does not inspect `dry_run`, allocate a durable
-ID, attach response state versions, or construct the public result. A
-`dry_run` request stops at the method boundary and projects only the preview.
-For a committed issuance, the method supplies the durable ID and
-approval-reference projection state version; the typed non-empty approval basis
-constructs the state-versioned references while materializing one validated
-`PlannedWriteTicket`. That materialized value is the single source for response
-projection and the typed Store insertion input. Reuse instead passes
-Store-validated active records through current-validity evaluation, selects
-only complete stored evaluations, and returns a
-`ReusableStoredWriteTicket`. Planned issuance and stored reuse use distinct
+Core semantic planning returns one closed `PrepareWriteTicketPlan` branch:
+`Issue(PlannedWriteTicketDraft)`, `Reuse(ReusableStoredWriteTicket)`, or
+`NoTicket(WriteDecisionPathFacts)`. Common operation facts and candidate
+mutations remain outside that ticket branch. A `WriteTicketPathScope` owns the
+canonical typed allowed and denied paths for each issue or reuse branch;
+decision paths exist separately only in `NoTicket`. Planning does not inspect
+`dry_run`, allocate a durable ID, attach response state versions, or construct
+the public result.
+
+A `dry_run` request projects its preview directly from the closed planning
+branch and stops at the method boundary. A committed call converts that branch
+to exactly one `MaterializedPrepareWriteTicket` branch. For issuance, the
+method supplies the durable ID and approval-reference projection state version
+while materializing one validated `PlannedWriteTicket`. That planned value is
+the single source for the nested and top-level response facts and the typed
+Store insertion input. Reuse projects identity, paths, validity, and expiry
+from the selected `ReusableStoredWriteTicket` and creates no insertion.
+`None` projects only decision-path facts and cannot expose ticket identity,
+stored lifecycle, or insertion. Planned issuance and stored reuse use distinct
 summary projection inputs; neither path represents a planned ticket as stored
 state.
 
@@ -295,6 +302,8 @@ For `decision=allowed`:
   existing compatible active ticket is selected
 - `write_ticket.path_patterns.allowed` and top-level `allowed_path_patterns` contain the normalized repo-relative `intended_paths` allowed for this ticket
 - `write_ticket.path_patterns.denied` and top-level `denied_path_patterns` are `[]` for an allowed result
+- those nested and top-level path collections are equal projections of the
+  selected issued or reused ticket's single typed path scope
 - `write_ticket.observed_paths` is `[]` when no observed path is part of the ticket
 - top-level and ticket-local `guarantee_display` values disclose the cooperative authority-record boundary and do not claim OS-level enforcement
 - idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect

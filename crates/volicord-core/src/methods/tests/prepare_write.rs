@@ -167,6 +167,11 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         response.response_value["write_ticket"]["path_patterns"]["denied"],
         json!([])
     );
+    assert_prepare_write_paths_match_stored_scope(
+        &harness,
+        &response.response_value,
+        &write_ticket_id,
+    )?;
     assert_eq!(
         response.response_value["allowed_path_patterns"],
         json!(["src/export.rs"])
@@ -289,6 +294,11 @@ fn prepare_write_reuses_compatible_ticket_across_unrelated_state_increment(
         response_record_id(&reused.response_value, "write_ticket_ref"),
         first_ticket_id
     );
+    assert_prepare_write_paths_match_stored_scope(
+        &harness,
+        &reused.response_value,
+        &first_ticket_id,
+    )?;
     assert_eq!(write_ticket_count(&harness)?, 1);
     assert_eq!(write_ticket_status(&harness, &first_ticket_id)?, "active");
     Ok(())
@@ -2470,6 +2480,47 @@ fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Resul
     assert_eq!(
         write_ticket_invalidation_reason(&harness, &original_ticket_id)?,
         Some("workspace_changed".to_owned())
+    );
+    Ok(())
+}
+
+fn assert_prepare_write_paths_match_stored_scope(
+    harness: &MethodHarness,
+    response: &Value,
+    write_ticket_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let store = harness.store()?;
+    let stored = store
+        .write_ticket_record(write_ticket_id)?
+        .ok_or_else(|| format!("missing Write Ticket {write_ticket_id}"))?;
+    let allowed = stored
+        .path_scope()
+        .allowed()
+        .iter()
+        .map(|path| path.as_str())
+        .collect::<Vec<_>>();
+    let denied = stored
+        .path_scope()
+        .denied()
+        .iter()
+        .map(|path| path.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        response["write_ticket"]["path_patterns"]["allowed"],
+        response["allowed_path_patterns"]
+    );
+    assert_eq!(
+        response["write_ticket"]["path_patterns"]["denied"],
+        response["denied_path_patterns"]
+    );
+    assert_eq!(
+        response["allowed_path_patterns"],
+        serde_json::to_value(allowed)?
+    );
+    assert_eq!(
+        response["denied_path_patterns"],
+        serde_json::to_value(denied)?
     );
     Ok(())
 }

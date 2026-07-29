@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use volicord_types::{
     ids::{ChangeUnitId, TaskId, UserActionResolutionId, WriteTicketId},
-    product_path::{path_is_within, ProductRelativePath},
+    product_path::{ProductRelativePath, WriteTicketPathScope, WriteTicketPathScopeError},
     schema::{JsonObject, WriteTicketAttemptScope, WriteTicketValidityBasis},
     values::{ActorSource, UtcTimestamp, WriteTicketInvalidationReason, WriteTicketStatus},
 };
@@ -40,8 +40,7 @@ pub struct WriteTicketInsert {
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub validity_basis: WriteTicketValidityBasis,
-    pub allowed_path_prefixes: Vec<ProductRelativePath>,
-    pub denied_path_prefixes: Vec<ProductRelativePath>,
+    pub path_scope: WriteTicketPathScope,
     pub attempt_scope: WriteTicketAttemptScope,
     pub created_by_actor_source: ActorSource,
     pub created_by_user_action_resolution_id: Option<UserActionResolutionId>,
@@ -142,8 +141,7 @@ pub struct StoredWriteTicket {
     basis_state_version: u64,
     status: WriteTicketStatus,
     validity_basis: WriteTicketValidityBasis,
-    allowed_path_prefixes: Vec<ProductRelativePath>,
-    denied_path_prefixes: Vec<ProductRelativePath>,
+    path_scope: WriteTicketPathScope,
     attempt_scope: WriteTicketAttemptScope,
     created_by_actor_source: ActorSource,
     created_by_user_action_resolution_id: Option<String>,
@@ -185,12 +183,8 @@ impl StoredWriteTicket {
         &self.validity_basis
     }
 
-    pub fn allowed_path_prefixes(&self) -> &[ProductRelativePath] {
-        &self.allowed_path_prefixes
-    }
-
-    pub fn denied_path_prefixes(&self) -> &[ProductRelativePath] {
-        &self.denied_path_prefixes
+    pub fn path_scope(&self) -> &WriteTicketPathScope {
+        &self.path_scope
     }
 
     pub fn attempt_scope(&self) -> &WriteTicketAttemptScope {
@@ -610,6 +604,13 @@ fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<StoredWr
         "denied_path_prefixes_json",
         &raw.denied_path_prefixes_json,
     )?;
+    let path_scope = WriteTicketPathScope::new(allowed_path_prefixes, denied_path_prefixes)
+        .map_err(|error| {
+            StoreError::corrupt_write_ticket_invariant(
+                record_ref.clone(),
+                write_ticket_path_scope_invariant(error),
+            )
+        })?;
     let attempt_scope: WriteTicketAttemptScope = decode_owner_json_text(
         "write_tickets",
         &record_ref,
@@ -674,8 +675,7 @@ fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<StoredWr
         basis_state_version,
         status,
         validity_basis,
-        allowed_path_prefixes,
-        denied_path_prefixes,
+        path_scope,
         attempt_scope,
         created_by_actor_source,
         created_by_user_action_resolution_id,
@@ -705,6 +705,20 @@ fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<StoredWr
 
 fn nonempty_stored_identifier(value: &str) -> Option<&str> {
     (!value.trim().is_empty()).then_some(value)
+}
+
+fn write_ticket_path_scope_invariant(error: WriteTicketPathScopeError) -> WriteTicketInvariant {
+    match error {
+        WriteTicketPathScopeError::DuplicateAllowedPath => {
+            WriteTicketInvariant::DuplicateAllowedPaths
+        }
+        WriteTicketPathScopeError::DuplicateDeniedPath => {
+            WriteTicketInvariant::DuplicateDeniedPaths
+        }
+        WriteTicketPathScopeError::AllowedDeniedOverlap => {
+            WriteTicketInvariant::AllowedDeniedPathDisjointness
+        }
+    }
 }
 
 fn validate_write_ticket_record(
@@ -835,42 +849,22 @@ fn validate_write_ticket_record(
         .intended_paths
         .iter()
         .collect::<BTreeSet<_>>();
-    let allowed_paths = record.allowed_path_prefixes.iter().collect::<BTreeSet<_>>();
-    let denied_paths = record.denied_path_prefixes.iter().collect::<BTreeSet<_>>();
     if intended_paths.len() != record.attempt_scope.intended_paths.len() {
         return Err(WriteTicketValidationFailure::Invariant(
             WriteTicketInvariant::DuplicateIntendedPaths,
         ));
     }
-    if allowed_paths.len() != record.allowed_path_prefixes.len() {
-        return Err(WriteTicketValidationFailure::Invariant(
-            WriteTicketInvariant::DuplicateAllowedPaths,
-        ));
-    }
-    if denied_paths.len() != record.denied_path_prefixes.len() {
-        return Err(WriteTicketValidationFailure::Invariant(
-            WriteTicketInvariant::DuplicateDeniedPaths,
-        ));
-    }
-    if record.allowed_path_prefixes.iter().any(|allowed| {
-        record.denied_path_prefixes.iter().any(|denied| {
-            path_is_within(allowed.as_str(), denied.as_str())
-                || path_is_within(denied.as_str(), allowed.as_str())
-        })
-    }) {
-        return Err(WriteTicketValidationFailure::Invariant(
-            WriteTicketInvariant::AllowedDeniedPathDisjointness,
-        ));
-    }
     if record.attempt_scope.intended_paths.iter().any(|intended| {
         !record
-            .allowed_path_prefixes
+            .path_scope
+            .allowed()
             .iter()
-            .any(|allowed| path_is_within(intended.as_str(), allowed.as_str()))
+            .any(|allowed| intended.is_within(allowed))
             || record
-                .denied_path_prefixes
+                .path_scope
+                .denied()
                 .iter()
-                .any(|denied| path_is_within(intended.as_str(), denied.as_str()))
+                .any(|denied| intended.is_within(denied))
     }) {
         return Err(WriteTicketValidationFailure::Invariant(
             WriteTicketInvariant::IntendedPathCoverage,
@@ -945,8 +939,7 @@ fn active_write_ticket_record(
         basis_state_version,
         status: WriteTicketStatus::Active,
         validity_basis: input.validity_basis.clone(),
-        allowed_path_prefixes: input.allowed_path_prefixes.clone(),
-        denied_path_prefixes: input.denied_path_prefixes.clone(),
+        path_scope: input.path_scope.clone(),
         attempt_scope: input.attempt_scope.clone(),
         created_by_actor_source: input.created_by_actor_source.clone(),
         created_by_user_action_resolution_id: input
@@ -971,13 +964,13 @@ fn insert_write_ticket_record(conn: &Connection, record: &StoredWriteTicket) -> 
         detail: format!("write-ticket validity basis cannot be serialized: {error}"),
     })?;
     let allowed_path_prefixes_json = volicord_types::canonical::canonical_json_string(
-        &record.allowed_path_prefixes,
+        &record.path_scope.allowed(),
     )
     .map_err(|error| StoreError::InvalidInput {
         detail: format!("write-ticket allowed paths cannot be serialized: {error}"),
     })?;
     let denied_path_prefixes_json = volicord_types::canonical::canonical_json_string(
-        &record.denied_path_prefixes,
+        &record.path_scope.denied(),
     )
     .map_err(|error| StoreError::InvalidInput {
         detail: format!("write-ticket denied paths cannot be serialized: {error}"),

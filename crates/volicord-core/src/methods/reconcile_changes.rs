@@ -679,11 +679,12 @@ fn deterministic_resolution(
         let semantic = write_ticket.semantic_facts();
         let attempt_scope = &semantic.attempt_scope;
         let allowed_paths = semantic
-            .allowed_path_prefixes
+            .path_scope
+            .allowed()
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied_paths = &semantic.denied_path_prefixes;
+        let denied_paths = semantic.path_scope.denied();
         if attempt_scope.product_file_write_intended
             && paths_are_authorized(&observed_paths, &allowed_paths)
             && !observed_paths.iter().any(|path| {

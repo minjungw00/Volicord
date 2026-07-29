@@ -28,16 +28,24 @@ coordinates this persisted flow, partitions terminal and active records before
 loading current facts, selects one stored result, and loads evidence only for
 the selection.
 `planning.rs` evaluates a focused `PrepareWriteInput` and returns typed
-semantic decision reasons, related record identities, candidate mutations,
-and the distinct, unpersisted `PlannedWriteTicketDraft`. It does not receive a
-public request envelope, dry-run intent, response state version, or durable ID
-generator. For committed new issuance, the public method supplies the durable
-ticket ID, approval-reference projection state version, and basis state
-version. The typed non-empty approval basis from `approval.rs` constructs the
-state-versioned `UserActionResolutionRef` values while materializing one
-validated `PlannedWriteTicket`; that value supplies both the response
-projection and fully typed Store insertion. Dry run ends at the method
-boundary before materialization.
+semantic decision reasons, related record identities, common facts, candidate
+mutation facts, and exactly one `PrepareWriteTicketPlan` branch:
+`Issue(PlannedWriteTicketDraft)`, `Reuse(ReusableStoredWriteTicket)`, or
+`NoTicket(WriteDecisionPathFacts)`. The issue draft and reusable stored ticket
+each expose one immutable `WriteTicketPathScope`; only no-ticket carries
+decision paths not attached to a ticket. The planner does not receive a public
+request envelope, dry-run intent, response state version, or durable ID
+generator.
+
+The public method projects dry run from that closed planning branch. A
+committed call converts it to one `MaterializedPrepareWriteTicket`: issued,
+reused, or none. For issuance, the method supplies the durable ticket ID,
+approval-reference projection state version, and basis state version. The
+typed non-empty approval basis from `approval.rs` constructs the state-versioned
+`UserActionResolutionRef` values while materializing one validated
+`PlannedWriteTicket`. The issued plan supplies nested and top-level response
+facts and the fully typed Store insertion. Reused response facts come from the
+reusable stored ticket, while none carries no ticket identity or insertion.
 `semantic.rs` exposes only the immutable ticket meaning shared by planned and
 stored forms. Planned and stored lifecycle identities remain in their own
 types; every evaluated stored state has a mandatory `WriteTicketId`.
@@ -67,6 +75,13 @@ the same Store commit as the Run and its associated effects.
 - Ticket IDs, stored status, or age alone do not establish current validity.
 - Every stored evaluation has a non-optional persisted `WriteTicketId`.
 - Planned issuance is never a variant of a stored lifecycle evaluation.
+- Prepare Write ticket planning and materialization each select exactly one
+  closed issue/reuse/no-ticket branch.
+- Planned and stored tickets each own one invariant-bearing
+  `WriteTicketPathScope`; no parallel ticket path arrays accompany the branch.
+- The issued plan is the one source for response and persistence, reuse is the
+  one source for its response, and only no-ticket owns unattached decision
+  paths.
 - Terminal stored states cannot enter active currentness or admission logic.
 - Reuse accepts only `ReusableStoredWriteTicket`; protected mutation accepts
   only `AdmissibleStoredWriteTicket`.
@@ -110,8 +125,11 @@ agreement and unique full resolution identities. Core validates semantic plannin
 invariants while constructing an identity-free draft, then validates identity
 and state-version-dependent invariants during method-owned
 `PlannedWriteTicket` materialization. Those checks are separate from
-Store-owned persisted physical validation. Planned issuance and each stored
-lifecycle state share immutable semantic facts only. Stored evaluation,
+Store-owned persisted physical validation. `WriteTicketPathScope` validates
+typed path uniqueness and allowed/denied disjointness before either form is
+exposed, while Core and Store retain their lifecycle-specific cross-field
+checks. Planned issuance and each stored lifecycle state share immutable
+semantic facts only. Stored evaluation,
 selection, currentness, reuse, admission, consumption, and summary projection
 retain their actual persisted identity.
 Store also owns ticket queries, invalidation persistence, and consumption
@@ -137,14 +155,15 @@ row. Guard supplies observations but does not widen the ticket basis.
    selection the service loads its evidence and projects the stored summary.
    Close readiness and the CLI guard receive the same evaluated stored state
    and do not recompute approval currentness.
-7. Write Ticket planning returns reuse or a new identity-free issuance draft,
-   typed decision reasons, related semantic identities, and candidate
-   mutations without inspecting dry-run intent or constructing public refs.
-8. For dry run, `prepare_write` projects a preview and stops. For committed
-   new issuance it allocates the durable ID, materializes one
-   `PlannedWriteTicket`, and derives the planned summary and
-   `WriteTicketInsert` from that value. Reuse returns a
-   `ReusableStoredWriteTicket` and uses the stored-summary path.
+7. Write Ticket planning returns common facts, mutation facts, and one closed
+   issue, reuse, or no-ticket branch without inspecting dry-run intent or
+   constructing public refs.
+8. For dry run, `prepare_write` projects a preview from that branch and stops.
+   For commit it preserves the branch as issued, reused, or none. Issued
+   allocates the durable ID, materializes one `PlannedWriteTicket`, and derives
+   nested result, top-level identity and paths, planned summary, and
+   `WriteTicketInsert` from that value. Reused derives its result and stored
+   summary from `ReusableStoredWriteTicket`; none derives only decision paths.
 9. For Record Run, evaluation produces an exact-attempt compatibility proof
    while current-validity evaluation proves a `ReusableStoredWriteTicket`.
    `write_ticket/admission.rs` combines those matching proofs and returns
@@ -192,7 +211,8 @@ capability.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):
   focused Record Run ticket admission and no-effect rejection coverage.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
-  shared typed product-path normalization and containment.
+  shared typed product-path normalization and containment plus immutable
+  `WriteTicketPathScope` uniqueness and disjointness.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):
   physical ownership, canonical decoding into opaque `StoredWriteTicket`
   values, typed insertion serialization, authority views, queries, and grouped

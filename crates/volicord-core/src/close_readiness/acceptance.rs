@@ -660,11 +660,12 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         }
         let allowed = semantic
-            .allowed_path_prefixes
+            .path_scope
+            .allowed()
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied = &semantic.denied_path_prefixes;
+        let denied = semantic.path_scope.denied();
         if !paths_are_authorized(&observed.observed_changes.changed_paths, &allowed)
             || observed.observed_changes.changed_paths.iter().any(|path| {
                 denied

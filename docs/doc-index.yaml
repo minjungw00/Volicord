@@ -836,8 +836,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-29'
-  last_verified_on: '2026-07-29'
+  last_updated_on: '2026-07-30'
+  last_verified_on: '2026-07-30'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -2784,8 +2784,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-29'
-  last_verified_on: '2026-07-29'
+  last_updated_on: '2026-07-30'
+  last_verified_on: '2026-07-30'
   primary_audience:
   - storage implementers
   - maintainers
@@ -2856,8 +2856,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-29'
-  last_verified_on: '2026-07-29'
+  last_updated_on: '2026-07-30'
+  last_verified_on: '2026-07-30'
   primary_audience:
   - storage implementers
   - API implementers

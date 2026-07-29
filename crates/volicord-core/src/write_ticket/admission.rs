@@ -173,7 +173,8 @@ fn validate_record_run_attempt(
     }
     let scope = &ticket.attempt_scope;
     let scope_paths = ticket
-        .allowed_path_prefixes
+        .path_scope
+        .allowed()
         .iter()
         .map(|path| path.as_str().to_owned())
         .collect::<Vec<_>>();
@@ -194,7 +195,8 @@ fn validate_record_run_attempt(
     }
     if observed_changes.changed_paths.iter().any(|path| {
         ticket
-            .denied_path_prefixes
+            .path_scope
+            .denied()
             .iter()
             .any(|denied| path_is_within(path, denied.as_str()))
     }) {

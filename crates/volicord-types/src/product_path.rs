@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, str::FromStr};
+use std::{collections::BTreeSet, error::Error, fmt, str::FromStr};
 
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -40,6 +40,71 @@ impl ProductRelativePath {
                 .is_some_and(|rest| rest.starts_with('/'))
     }
 }
+
+/// Immutable allowed and denied path scope for one Write Ticket.
+///
+/// Every path is already a canonical [`ProductRelativePath`]. Construction
+/// additionally guarantees set uniqueness and allowed/denied disjointness.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteTicketPathScope {
+    allowed: Vec<ProductRelativePath>,
+    denied: Vec<ProductRelativePath>,
+}
+
+impl WriteTicketPathScope {
+    /// Constructs one invariant-bearing Write Ticket path scope.
+    pub fn new(
+        allowed: Vec<ProductRelativePath>,
+        denied: Vec<ProductRelativePath>,
+    ) -> Result<Self, WriteTicketPathScopeError> {
+        let allowed_set = allowed.iter().collect::<BTreeSet<_>>();
+        if allowed_set.len() != allowed.len() {
+            return Err(WriteTicketPathScopeError::DuplicateAllowedPath);
+        }
+        let denied_set = denied.iter().collect::<BTreeSet<_>>();
+        if denied_set.len() != denied.len() {
+            return Err(WriteTicketPathScopeError::DuplicateDeniedPath);
+        }
+        if allowed.iter().any(|allowed_path| {
+            denied.iter().any(|denied_path| {
+                allowed_path.is_within(denied_path) || denied_path.is_within(allowed_path)
+            })
+        }) {
+            return Err(WriteTicketPathScopeError::AllowedDeniedOverlap);
+        }
+        Ok(Self { allowed, denied })
+    }
+
+    /// Returns the canonical paths allowed by this scope.
+    pub fn allowed(&self) -> &[ProductRelativePath] {
+        &self.allowed
+    }
+
+    /// Returns the canonical paths denied by this scope.
+    pub fn denied(&self) -> &[ProductRelativePath] {
+        &self.denied
+    }
+}
+
+/// Construction failures for an immutable Write Ticket path scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteTicketPathScopeError {
+    DuplicateAllowedPath,
+    DuplicateDeniedPath,
+    AllowedDeniedOverlap,
+}
+
+impl fmt::Display for WriteTicketPathScopeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::DuplicateAllowedPath => "duplicate allowed Write Ticket path",
+            Self::DuplicateDeniedPath => "duplicate denied Write Ticket path",
+            Self::AllowedDeniedOverlap => "overlapping allowed and denied Write Ticket paths",
+        })
+    }
+}
+
+impl Error for WriteTicketPathScopeError {}
 
 impl fmt::Display for ProductRelativePath {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -209,5 +274,35 @@ mod tests {
         assert!(path.is_within(&scope));
         assert!(!path.is_within(&sibling));
         assert!(!path_is_within("src/./domain/model.rs", "src/domain"));
+    }
+
+    #[test]
+    fn write_ticket_path_scope_preserves_unique_disjoint_typed_paths() {
+        let allowed = ProductRelativePath::parse("src").expect("allowed path");
+        let denied = ProductRelativePath::parse("tests").expect("denied path");
+        let scope = WriteTicketPathScope::new(vec![allowed.clone()], vec![denied.clone()])
+            .expect("disjoint scope");
+
+        assert_eq!(scope.allowed(), &[allowed]);
+        assert_eq!(scope.denied(), &[denied]);
+    }
+
+    #[test]
+    fn write_ticket_path_scope_rejects_duplicates_and_containment_overlap() {
+        let src = ProductRelativePath::parse("src").expect("source path");
+        let nested = ProductRelativePath::parse("src/private").expect("nested path");
+
+        assert_eq!(
+            WriteTicketPathScope::new(vec![src.clone(), src.clone()], Vec::new()),
+            Err(WriteTicketPathScopeError::DuplicateAllowedPath)
+        );
+        assert_eq!(
+            WriteTicketPathScope::new(Vec::new(), vec![src.clone(), src.clone()]),
+            Err(WriteTicketPathScopeError::DuplicateDeniedPath)
+        );
+        assert_eq!(
+            WriteTicketPathScope::new(vec![src], vec![nested]),
+            Err(WriteTicketPathScopeError::AllowedDeniedOverlap)
+        );
     }
 }

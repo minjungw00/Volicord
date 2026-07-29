@@ -143,12 +143,14 @@ pub(super) fn guard_state_summary(
                 stale_write_ticket_ids.push(record.write_ticket_id().to_owned());
                 if record.status() != WriteTicketStatus::Consumed {
                     let intended_paths = record
-                        .allowed_path_prefixes()
+                        .path_scope()
+                        .allowed()
                         .iter()
                         .map(|path| path.as_str().to_owned())
                         .collect::<Vec<_>>();
                     let denied_paths = record
-                        .denied_path_prefixes()
+                        .path_scope()
+                        .denied()
                         .iter()
                         .map(|path| path.as_str().to_owned())
                         .collect::<Vec<_>>();
@@ -201,12 +203,14 @@ pub(super) fn guard_state_summary(
                     uncertain_write_ticket_ids.push(write_ticket_id.clone());
                 }
                 let intended_paths = record
-                    .allowed_path_prefixes()
+                    .path_scope()
+                    .allowed()
                     .iter()
                     .map(|path| path.as_str().to_owned())
                     .collect::<Vec<_>>();
                 let denied_paths = record
-                    .denied_path_prefixes()
+                    .path_scope()
+                    .denied()
                     .iter()
                     .map(|path| path.as_str().to_owned())
                     .collect::<Vec<_>>();

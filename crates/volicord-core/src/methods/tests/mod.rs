@@ -39,7 +39,7 @@ use volicord_types::ids::{
     RequestId, SequenceDurableIdGenerator,
 };
 use volicord_types::methods::{ChangeUnitUpdate, InitialScope, ScopeUpdate};
-use volicord_types::product_path::ProductRelativePath;
+use volicord_types::product_path::{ProductRelativePath, WriteTicketPathScope};
 use volicord_types::schema::{
     ChangeUnitEffectContract, EvidenceUpdateProvenance, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
 };
@@ -2795,8 +2795,7 @@ fn insert_active_write_ticket_with_scope(
                 write_authority_fingerprint,
                 approval_basis_refs: Vec::new(),
             },
-            allowed_path_prefixes: intended_paths.clone(),
-            denied_path_prefixes: Vec::new(),
+            path_scope: WriteTicketPathScope::new(intended_paths.clone(), Vec::new())?,
             attempt_scope: WriteTicketAttemptScope {
                 task_id: TaskId::new(input.task_id),
                 change_unit_id: ChangeUnitId::new(input.change_unit_id),

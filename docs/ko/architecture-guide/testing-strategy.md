@@ -62,12 +62,16 @@ accessor를 검증합니다. 그
 검증합니다. 공개 메서드 조율, 응답 계열, replay, 커밋 효과 matrix는
 `methods/tests/`에 둡니다. 메서드 통합 테스트가 재사용 담당자 로직의 유일한
 coverage가 되면 안 됩니다. Write Ticket planning 테스트는 응답 metadata가 없는
-typed 의미 validation 오류, ID 없는 발급 draft, `PlannedWriteTicket` 구체화
-invariant, 완전한 typed `WriteTicketInsert` 파생을 검증합니다. 공개 응답을
-구성하거나 dry-run intent를 의미 planning fact로 취급하지 않습니다. Prepare
-Write 메서드 테스트는 공개 오류 metadata, state-version이 있는 reference
-projection, durable ID 할당, 영속 ticket 구성이나 할당 없는 대표 dry-run issue
-및 reuse 결과를 담당합니다.
+typed 의미 validation 오류, 폐쇄형 발급·재사용·ticket 없음 계획 family, ID 없는
+발급 draft, 불변 조건을 지키는 `WriteTicketPathScope`, 폐쇄형 구체화, 발급
+plan에서 완전히 typed인 `WriteTicketInsert`를 파생하는 과정을 검증합니다. 재사용과
+ticket 없음이 삽입을 만들 수 없음도 검증합니다. 공개 응답을 구성하거나 dry-run
+intent를 의미 planning fact로 취급하지 않습니다. Prepare Write 메서드 테스트는
+공개 오류 metadata, state-version이 있는 reference projection, durable ID 할당,
+dry-run 발급 및 재사용 결과, ticket 없음 결과, 발급 또는 재사용된 중첩 경로와
+최상위 경로 및 원본 planned 또는 stored scope의 동등성을 담당합니다. 커밋 발급
+테스트는 영속 scope도 같은 응답 원본과 비교하며 replay는 정확한 응답 coverage를
+유지합니다.
 
 Record Run도 소스 책임에 따라 이 구분을 적용합니다. 요청 및 fact 취득, 캡처 권한,
 증거 관찰과 재사용, artifact 검증과 승격, typed mutation 계획, 의미 오류

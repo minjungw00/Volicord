@@ -611,12 +611,15 @@ decision.
 
 An unpersisted ticket proposal is a distinct Core-owned
 `PlannedWriteTicket`, not a synthetic `StoredWriteTicket`. Core validates its
-semantic identity, scope, path, authority, and timestamp relationships before
-projection. The same planned value supplies both the projected ticket facts
-and the fully typed `WriteTicketInsert`; only Store maps that insertion input
-to physical columns and JSON. A dry-run proposal has no persisted ticket
-identity and cannot produce a Store insertion input. Reuse instead reads an
-already validated `StoredWriteTicket`.
+semantic identity, scope, authority, timestamp relationships, and one
+invariant-bearing `WriteTicketPathScope` before projection. The same planned
+value supplies both the projected ticket facts and the fully typed
+`WriteTicketInsert`, including that exact path scope; only Store maps the
+insertion input to physical columns and JSON. Store reconstructs one validated
+`WriteTicketPathScope` from the physical allowed and denied columns before
+returning an opaque stored ticket. A dry-run issue branch has no persisted
+ticket identity and cannot produce a Store insertion input. Reuse reads an
+already validated stored ticket and exposes its immutable path-scope view.
 
 Corruption local to one physical Write Ticket field identifies that exact
 field. A relationship among fields, including owner identity, scope revision,

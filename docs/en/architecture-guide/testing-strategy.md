@@ -67,13 +67,17 @@ behavior, or one precise boundary mapping. Public method orchestration,
 response-family, replay, and committed-effect matrices remain under
 `methods/tests/`. A method integration test does not become the sole coverage
 for reusable owner logic. Write Ticket planning tests cover typed semantic
-validation errors without response metadata, identity-free issuance drafts,
-`PlannedWriteTicket` materialization invariants, and derivation of a fully
-typed `WriteTicketInsert`. They do not construct public responses or treat
+validation errors without response metadata, the closed issue/reuse/no-ticket
+planning family, identity-free issuance drafts, invariant-bearing
+`WriteTicketPathScope`, closed materialization, and derivation of a fully typed
+`WriteTicketInsert` from the issued plan. They prove that reuse and no-ticket
+cannot produce an insertion. They do not construct public responses or treat
 dry-run intent as a semantic planning fact. Prepare Write method tests own
 public error metadata, state-versioned reference projection, durable-ID
-allocation, and representative dry-run issue and reuse outcomes without
-persisted ticket construction or allocation.
+allocation, dry-run issue and reuse outcomes, no-ticket results, and equality
+among issued or reused nested paths, top-level paths, and the source planned or
+stored scope. Committed issue tests also compare the persisted scope with that
+same response source, while replay retains exact response coverage.
 
 Record Run follows this split by source responsibility. Request and fact
 acquisition, capture authority, evidence observation and reuse, artifact
