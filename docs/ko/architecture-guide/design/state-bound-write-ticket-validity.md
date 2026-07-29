@@ -16,16 +16,21 @@ effective status, invalidation, authority, approval을 평가합니다.
 `summary.rs`는 candidate를 선택하거나 policy를 다시 평가하지 않고 이미 평가된
 ticket과 제공된 증거를 adapter-neutral summary로 변환합니다. `service.rs`는 이
 완전한 영속 summary use case만 좁게 조율합니다.
-`planning.rs`는 별도의 비영속 `PlannedWriteTicket`을 담당합니다. 새 발급에서는
-검증된 같은 plan이 응답 projection과 완전한 typed Store insertion을 함께
-제공합니다. `dry-run` plan에는 영속 ticket ID가 없으며 insertion을 제공할 수
-없습니다.
+`planning.rs`는 집중된 `PrepareWriteInput`을 평가하고 typed 의미 판단 사유,
+관련 record identity, 후보 mutation, 별도의 비영속 `PlannedWriteTicketDraft`를
+반환합니다. 공개 request envelope, dry-run intent, 응답 state version, durable ID
+generator는 받지 않습니다. 커밋되는 새 발급에서는 공개 메서드가 영속 ticket ID,
+state-version이 있는 approval reference, basis state version을 제공해 검증된
+`PlannedWriteTicket` 하나를 구체화합니다. 이 값이 응답 projection과 완전한 typed
+Store insertion을 함께 제공합니다. Dry run은 구체화 전에 메서드 경계에서
+끝납니다.
 `semantic.rs`는 planned와 stored 형태가 공유하는 불변 ticket 의미를 노출하지만,
 `WriteTicketEvaluationIdentity`는 발급 예정 identity와 영속 identity를 명시적으로
 구분합니다.
-보호 대상 Record Run에서는 `write_ticket/admission.rs`가 typed operation, Task,
-Change Unit, invocation, observed-change, 현재 policy fact를 받아 승인된 attempt
-scope 또는 의미 승인 오류를 반환합니다.
+보호 대상 Record Run에서는 `write_ticket/admission.rs`가 실제 평가하는 정확한
+typed operation, Task, Change Unit, Git workspace, 관찰 시각, observed-change,
+현재 policy fact를 받아 승인된 attempt scope 또는 typed 의미 승인 오류를
+반환합니다.
 `core_pipeline/write_tickets.rs`만 물리 ticket 테이블, column, row projection,
 정규 decoder, 영속 불변 조건, 엄격한 일반 및 transaction 범위 읽기, 집중된 typed
 authority view, grouped mutation 적용을 담당합니다. Decoder는 opaque
@@ -48,8 +53,10 @@ Run mutation은 Run 및 관련 effect와 같은 Store commit에서 선택한 tic
 
 ## 책임 경계
 
-Core 메서드는 요청별 조율과 응답 구성을 담당합니다. 집중된 Write Ticket 읽기
-경계는 typed fact 취득만 담당합니다. 선택과 현재 유효성은 순수한 의미
+Core 메서드는 요청별 조율과 응답 구성을 담당합니다. Prepare Write에서는 dry-run
+분기 선택, 영속 ID 할당, state-version이 있는 reference, 보장 표시, typed
+planning·Store·UserAction 실패를 공개 `PlanError` 분기로 바꾸는 작업도 여기에
+포함됩니다. 집중된 Write Ticket 읽기 경계는 typed fact 취득만 담당합니다. 선택과 현재 유효성은 순수한 의미
 policy입니다. Summary projection은 평가된 typed 상태, state-version 및 display
 fact, 증거 fact만 받으며 Store를 읽거나 workflow 또는 UserAction policy를 다시
 계산할 수 없습니다. 좁은 service는 내부 연산을 facade로 노출하지 않고 이
@@ -58,9 +65,10 @@ JSON을 해석하거나 ticket 정책을 독립적으로 구성하지 않습니�
 ticket row를 비공개로 유지하고 status, validity basis, attempt scope, Product
 Repository 경로 모음, timestamp, 중복 owner coordinate를 엄격하게 decode한 뒤
 `StoredWriteTicket`을 반환합니다. 물리 field 사이 관계는 폐쇄형 Write Ticket
-aggregate invariant로 검증합니다. Core는 `PlannedWriteTicket`을 구성할 때 의미
-planning invariant를 검증하며, 이 검증은 Store가 담당하는 영속 물리 검증과
-구분됩니다. Planned 발급, stored 상태, projected post-consumption 상태는 의미
+aggregate invariant로 검증합니다. Core는 ID 없는 draft를 구성할 때 의미 planning
+invariant를 검증하고, 메서드가 `PlannedWriteTicket`을 구체화할 때 identity와
+state-version 의존 invariant를 검증합니다. 이 검증은 Store가 담당하는 영속 물리
+검증과 구분됩니다. Planned 발급, stored 상태, projected post-consumption 상태는 의미
 view만 공유하며 실제 identity는 그대로 구분합니다. Store는 ticket query,
 invalidation persistence, consumption mutation도 담당합니다. Workflow policy
 영속화는 검증된 record에서 만든 집중된 typed authority view만 받으며 ticket row를
@@ -78,11 +86,13 @@ query하거나 decode하지 않습니다. Guard는 observation을 제공하지�
    우선순위와 동률 해소 규칙을 적용합니다.
 6. 상태 summary projection은 선택된 평가 ticket과 제공된 증거 fact를 받아 Store
    또는 policy 접근 없이 변환합니다.
-7. `prepare_write`는 의미 fact에서 reuse 또는 new issuance를 계획합니다.
-8. 새 발급은 `PlannedWriteTicket` 하나를 만들며 응답 projection과
-   `WriteTicketInsert`를 여기서 파생합니다. `dry-run`에서는 ID 없는 plan을
-   유지하고 Store insertion을 수행하지 않으며 reuse는 `StoredWriteTicket`을
-   읽습니다.
+7. Write Ticket planning은 dry-run intent를 보거나 공개 ref를 구성하지 않고
+   reuse 또는 ID 없는 새 발급 draft, typed 판단 사유, 관련 의미 identity, 후보
+   mutation을 반환합니다.
+8. `dry-run`이면 `prepare_write`가 미리보기를 투영하고 끝냅니다. 커밋되는 새
+   발급이면 영속 ID를 할당하고 `PlannedWriteTicket` 하나를 구체화하며, 그 값에서
+   응답 projection과 `WriteTicketInsert`를 파생합니다. Reuse는
+   `StoredWriteTicket`을 읽습니다.
 9. Record Run에서는 `write_ticket/admission.rs`가 typed operation fact로 current
    compatibility evaluation을 반복하고 승인된 scope를 반환합니다.
 10. Store가 보호 대상 mutation과 함께 ticket consumption을 commit합니다.
@@ -111,8 +121,8 @@ actor identity나 transferable capability가 아닙니다.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)와
   [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
   typed fact 취득, 순수 candidate 선택 및 현재 유효성 평가,
-  `PlannedWriteTicket` 구성, 순수 summary projection, 좁은 영속 summary 조율,
-  보호 대상 Record Run 승인.
+  의미 발급 draft 계획, 검증된 `PlannedWriteTicket` 구체화, 순수 summary
+  projection, 좁은 영속 summary 조율, 보호 대상 Record Run 승인.
 - [`crates/volicord-core/src/write_ticket/tests/read_model_service.rs`](../../../../crates/volicord-core/src/write_ticket/tests/read_model_service.rs):
   집중된 Store 기반 fact 취득 및 영속 summary service coverage.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):

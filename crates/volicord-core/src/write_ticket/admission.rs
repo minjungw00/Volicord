@@ -1,13 +1,14 @@
-use crate::pipeline::{CorePipelineError, VerifiedInvocationContext};
+use crate::pipeline::{CorePipelineError, GitWorkspaceContext};
 use crate::write_ticket::workspace_context_matches;
 use crate::write_ticket::{
     run_write_ticket_mismatch, write_ticket_is_idle_expired, RunWriteTicketAttempt,
+    WriteTicketInvalidReason,
 };
-use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, StoredWriteTicket, TaskRecord,
 };
+use volicord_store::error::StoreError;
 use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, TaskId};
 use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{ObservedChanges, WriteTicketAttemptScope, WriteTicketValidityBasis};
@@ -23,16 +24,26 @@ use volicord_user_action_service::{
 #[derive(Debug)]
 pub(crate) enum WriteTicketAdmissionError {
     Core(CorePipelineError),
+    Store(StoreError),
     UserAction(UserActionServiceError),
     Invalid {
-        reason: &'static str,
+        reason: WriteTicketInvalidReason,
         message: &'static str,
     },
 }
 
 impl From<CorePipelineError> for WriteTicketAdmissionError {
     fn from(error: CorePipelineError) -> Self {
-        Self::Core(error)
+        match error {
+            CorePipelineError::Store(error) => Self::Store(error),
+            error => Self::Core(error),
+        }
+    }
+}
+
+impl From<StoreError> for WriteTicketAdmissionError {
+    fn from(error: StoreError) -> Self {
+        Self::Store(error)
     }
 }
 
@@ -57,10 +68,10 @@ pub(crate) struct RecordRunWriteAdmission<'a> {
     pub(crate) performed_operation: Option<&'a str>,
     pub(crate) task: &'a TaskRecord,
     pub(crate) change_unit: &'a ChangeUnitRecord,
-    pub(crate) verified_invocation: &'a VerifiedInvocationContext,
+    pub(crate) git_workspace_context: Option<&'a GitWorkspaceContext>,
     pub(crate) observed_changes: &'a ObservedChanges,
     pub(crate) write_authority_fingerprint: &'a str,
-    pub(crate) now: DateTime<Utc>,
+    pub(crate) observed_at: &'a UtcTimestamp,
 }
 
 pub(crate) fn admit_record_run(
@@ -76,77 +87,75 @@ pub(crate) fn admit_record_run(
         performed_operation,
         task,
         change_unit,
-        verified_invocation,
+        git_workspace_context,
         observed_changes,
         write_authority_fingerprint,
-        now,
+        observed_at,
     } = context;
     if record.status() != WriteTicketStatus::Active {
         let reason = match record.status() {
-            WriteTicketStatus::Consumed => "consumed",
+            WriteTicketStatus::Consumed => WriteTicketInvalidReason::Consumed,
             WriteTicketStatus::Invalidated => record
                 .invalidation_reason()
-                .map(WriteTicketInvalidationReason::as_str)
+                .map(WriteTicketInvalidReason::Invalidated)
                 .ok_or_else(|| CorePipelineError::Invariant {
                     detail: "typed invalidated write ticket lacks an invalidation reason"
                         .to_owned(),
                 })?,
-            WriteTicketStatus::Revoked => "revoked",
-            WriteTicketStatus::Active => "incompatible",
+            WriteTicketStatus::Revoked => WriteTicketInvalidReason::Revoked,
+            WriteTicketStatus::Active => unreachable!("active status was matched above"),
         };
         return Err(write_ticket_invalid(reason, "write ticket is not active"));
     }
-    if write_ticket_is_idle_expired(record, now).map_err(CorePipelineError::from)? {
+    if write_ticket_is_idle_expired(record.idle_expires_at(), observed_at) {
         return Err(write_ticket_invalid(
-            "idle_timeout",
+            WriteTicketInvalidReason::Invalidated(WriteTicketInvalidationReason::IdleTimeout),
             "write ticket crossed its configured idle-timeout boundary",
         ));
     }
-    if !workspace_context_matches(change_unit, verified_invocation)? {
+    if !workspace_context_matches(change_unit, git_workspace_context) {
         return write_ticket_mismatch(
-            "workspace_context_mismatch",
+            WriteTicketInvalidReason::WorkspaceContextMismatch,
             "current Git workspace context differs from the write ticket Change Unit basis",
         );
     }
     let validity_basis = record.validity_basis();
     if validity_basis.write_authority_fingerprint != write_authority_fingerprint {
         return write_ticket_mismatch(
-            "policy_authority_mismatch",
+            WriteTicketInvalidReason::PolicyAuthorityMismatch,
             "write ticket policy authority is no longer current",
         );
     }
-    let current_workspace_sha256 = verified_invocation
-        .git_workspace_context
-        .as_ref()
+    let current_workspace_sha256 = git_workspace_context
         .map(volicord_types::canonical::canonical_json_bare_sha256)
         .transpose()?;
     if &validity_basis.task_id != task_id {
         return write_ticket_mismatch(
-            "task_mismatch",
+            WriteTicketInvalidReason::TaskMismatch,
             "write ticket validity basis names another Task",
         );
     }
     if &validity_basis.change_unit_id != change_unit_id {
         return write_ticket_mismatch(
-            "change_unit_mismatch",
+            WriteTicketInvalidReason::ChangeUnitMismatch,
             "write ticket validity basis names another Change Unit",
         );
     }
     if validity_basis.scope_revision != task.scope_revision {
         return write_ticket_mismatch(
-            "scope_revision_changed",
+            WriteTicketInvalidReason::ScopeRevisionChanged,
             "write ticket scope revision is no longer current",
         );
     }
     if validity_basis.baseline_ref.as_ref() != Some(baseline_ref) {
         return write_ticket_mismatch(
-            "baseline_mismatch",
+            WriteTicketInvalidReason::BaselineMismatch,
             "write ticket baseline is no longer current",
         );
     }
     if validity_basis.workspace_context_sha256 != current_workspace_sha256 {
         return write_ticket_mismatch(
-            "workspace_context_mismatch",
+            WriteTicketInvalidReason::WorkspaceContextMismatch,
             "write ticket workspace context is no longer current",
         );
     }
@@ -178,11 +187,10 @@ pub(crate) fn admit_record_run(
             .any(|denied| path_is_within(path, denied.as_str()))
     }) {
         return write_ticket_mismatch(
-            "path_mismatch",
+            WriteTicketInvalidReason::PathMismatch,
             "write ticket denied path prefixes do not cover the recorded run",
         );
     }
-    let authority_now = UtcTimestamp::from_datetime(now);
     if !write_ticket_approval_basis_is_current(WriteTicketApprovalBasisContext {
         store,
         project_id,
@@ -191,10 +199,10 @@ pub(crate) fn admit_record_run(
         task,
         scope,
         validity_basis,
-        now: &authority_now,
+        now: observed_at,
     })? {
         return write_ticket_mismatch(
-            "approval_basis_changed",
+            WriteTicketInvalidReason::ApprovalBasisChanged,
             "write ticket approval basis is no longer current",
         );
     }
@@ -246,9 +254,8 @@ fn write_ticket_approval_basis_is_current(
         required_for: UserActionRequiredFor::PrepareWrite,
         now,
     };
-    let records = store
-        .resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)
-        .map_err(CorePipelineError::from)?;
+    let records =
+        store.resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)?;
     let mut current_resolution_ids = BTreeSet::new();
     for record in records {
         let authority = user_action_authority_from_record(&record)?;
@@ -269,12 +276,15 @@ fn write_ticket_approval_basis_is_current(
 }
 
 fn write_ticket_mismatch(
-    reason: &'static str,
+    reason: WriteTicketInvalidReason,
     message: &'static str,
 ) -> Result<WriteTicketAttemptScope, WriteTicketAdmissionError> {
     Err(write_ticket_invalid(reason, message))
 }
 
-fn write_ticket_invalid(reason: &'static str, message: &'static str) -> WriteTicketAdmissionError {
+fn write_ticket_invalid(
+    reason: WriteTicketInvalidReason,
+    message: &'static str,
+) -> WriteTicketAdmissionError {
     WriteTicketAdmissionError::Invalid { reason, message }
 }

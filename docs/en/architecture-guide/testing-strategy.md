@@ -54,11 +54,14 @@ accessors. The other owner tests assert typed facts, policy decisions, retry
 behavior, or one precise boundary mapping. Public method orchestration,
 response-family, replay, and committed-effect matrices remain under
 `methods/tests/`. A method integration test does not become the sole coverage
-for reusable owner logic. Write Ticket planning tests cover
-`PlannedWriteTicket` semantic construction errors, an ID-less dry-run plan,
-and derivation of response projection and a fully typed `WriteTicketInsert`
-from the same plan. Prepare Write method tests retain representative dry-run
-issue and reuse outcomes without persisted ticket construction or allocation.
+for reusable owner logic. Write Ticket planning tests cover typed semantic
+validation errors without response metadata, identity-free issuance drafts,
+`PlannedWriteTicket` materialization invariants, and derivation of a fully
+typed `WriteTicketInsert`. They do not construct public responses or treat
+dry-run intent as a semantic planning fact. Prepare Write method tests own
+public error metadata, state-versioned reference projection, durable-ID
+allocation, and representative dry-run issue and reuse outcomes without
+persisted ticket construction or allocation.
 
 Record Run follows this split by source responsibility. Request and fact
 acquisition, capture authority, evidence observation and reuse, artifact

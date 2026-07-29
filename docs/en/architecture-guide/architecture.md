@@ -190,8 +190,13 @@ evidence reads live in `acceptance_facts.rs`, `task_facts.rs`,
 `evidence_projection.rs`, and `guarantee_projection.rs` are Store-independent
 typed-fact-to-view projections.
 
-Within the focused Write Ticket owner, `write_ticket/planning.rs` constructs
-and validates `PlannedWriteTicket` as the only prospective issuance value.
+Within the focused Write Ticket owner, `write_ticket/planning.rs` evaluates
+focused semantic input and returns typed decision reasons, semantic record
+identities, mutations, and an identity-free `PlannedWriteTicketDraft` for a
+prospective issuance. The public `prepare_write` method owns dry-run selection,
+durable ID allocation, state-versioned record references, guarantee display,
+error-to-response mapping, and materialization of the validated
+`PlannedWriteTicket` used for insertion and response projection.
 `write_ticket/semantic.rs` provides the immutable semantic view shared by a
 plan and an opaque Store-validated record while keeping their planned and
 stored identities distinct. `write_ticket/read_model.rs` acquires typed ticket,

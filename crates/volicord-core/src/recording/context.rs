@@ -193,7 +193,10 @@ pub(super) fn acquire_record_run_facts(
         return Err(RecordingError::Rejected(RecordingRejection::BaselineStale));
     }
     if !request.observed_changes.product_file_write_observed
-        && !workspace_context_matches(&change_unit, verified_invocation)?
+        && !workspace_context_matches(
+            &change_unit,
+            verified_invocation.git_workspace_context.as_ref(),
+        )
     {
         return Err(RecordingError::Rejected(RecordingRejection::WorkspaceStale));
     }

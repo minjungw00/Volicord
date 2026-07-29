@@ -25,19 +25,15 @@ pub(crate) fn project_write_ticket_summary(
         guarantee_display,
     } = input;
     let task_id = &evaluated.ticket.validity_basis.task_id;
-    let write_ticket_ref = match &evaluated.identity {
-        WriteTicketEvaluationIdentity::Planned { write_ticket_id } => {
-            write_ticket_id.as_ref().map(|write_ticket_id| {
-                write_ticket_state_ref(write_ticket_id.as_str(), evaluated, task_id, state_version)
-            })
-        }
-        WriteTicketEvaluationIdentity::Stored { write_ticket_id } => Some(write_ticket_state_ref(
-            write_ticket_id.as_str(),
-            evaluated,
-            task_id,
-            state_version,
-        )),
-    };
+    let write_ticket_ref =
+        match &evaluated.identity {
+            WriteTicketEvaluationIdentity::Planned { write_ticket_id } => Some(
+                write_ticket_state_ref(write_ticket_id.as_str(), evaluated, task_id, state_version),
+            ),
+            WriteTicketEvaluationIdentity::Stored { write_ticket_id } => Some(
+                write_ticket_state_ref(write_ticket_id.as_str(), evaluated, task_id, state_version),
+            ),
+        };
     let consumed_by_run_ref = evaluated.consumed_by_run_id.as_ref().map(|run_id| {
         state_ref(
             StateRecordKind::Run,
@@ -160,10 +156,10 @@ mod tests {
     }
 
     #[test]
-    fn identityless_planned_ticket_has_no_persisted_record_reference() {
+    fn planned_ticket_uses_its_materialized_record_identity() {
         let mut evaluated = evaluated_ticket("unused", WriteTicketStatus::Active, 7);
         evaluated.identity = WriteTicketEvaluationIdentity::Planned {
-            write_ticket_id: None,
+            write_ticket_id: WriteTicketId::new("ticket-planned"),
         };
 
         let summary = project_write_ticket_summary(WriteTicketSummaryInput {
@@ -173,17 +169,6 @@ mod tests {
             guarantee_display: None,
         });
 
-        assert!(summary.write_ticket_ref.is_none());
-
-        evaluated.identity = WriteTicketEvaluationIdentity::Planned {
-            write_ticket_id: Some(WriteTicketId::new("ticket-planned")),
-        };
-        let summary = project_write_ticket_summary(WriteTicketSummaryInput {
-            evaluated: &evaluated,
-            state_version: 8,
-            evidence: &WriteTicketEvidenceFacts::default(),
-            guarantee_display: None,
-        });
         assert_eq!(
             summary
                 .write_ticket_ref

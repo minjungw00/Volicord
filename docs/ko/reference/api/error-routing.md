@@ -31,8 +31,13 @@
 모듈은 Store 또는 의미 담당자의 typed 실패를 변환합니다.
 [`artifact.rs`](../../../../crates/volicord-core/src/artifact.rs),
 [`continuity/`](../../../../crates/volicord-core/src/continuity/),
-[`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/) 같은 의미
+[`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/),
+[`write_ticket/`](../../../../crates/volicord-core/src/write_ticket/) 같은 의미
 담당자는 typed fact 또는 오류를 반환하며 공개 응답 분기를 구성하지 않습니다.
+Write Ticket planning은 envelope, dry-run, 응답 state-version metadata를
+포함하지 않은 typed 의미 validation, invariant, Store, UserAction 실패를
+구분합니다. `methods/prepare_write.rs`만 이 실패를 현재 메서드 metadata와 결합해
+공개 `PlanError` 또는 응답 분기를 선택합니다.
 Recording 서비스도 폐쇄형 `RecordingError` variant를 반환하며,
 `methods/record_run.rs`만 이 의미 오류를 현재 envelope, dry-run intent,
 state version과 결합해 공개 분기를 선택합니다.

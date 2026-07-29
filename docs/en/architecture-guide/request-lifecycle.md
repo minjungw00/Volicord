@@ -113,10 +113,15 @@ transaction, replay, and response-envelope ownership.
 `prepare_write` evaluates current Task, Change Unit, scope, baseline, policy,
 sensitive approval, normalized paths, and current write-authority fingerprint
 through `crates/volicord-core/src/write_ticket/`.
-For a prospective issuance, `planning.rs` creates one validated
-`PlannedWriteTicket`. Dry run retains an ID-less plan and returns only preview
-effects. Planned and opaque stored tickets expose the same immutable semantic
-view but retain distinct evaluation identities.
+`planning.rs` receives only the semantic facts it evaluates and returns typed
+decision reasons, semantic record identities, candidate mutations, and an
+identity-free issuance draft. It does not receive the request envelope,
+dry-run intent, or a response state version. The public method projects those
+facts to public references and errors. Dry run returns its preview before
+durable identity allocation or ticket materialization; the committed path
+allocates an ID and materializes one validated `PlannedWriteTicket` for Store
+insertion and response projection. Planned and opaque stored tickets expose
+the same immutable semantic view but retain distinct evaluation identities.
 For a persisted state summary, `read_model.rs` acquires typed ticket, Task,
 workflow-policy, current UserAction-resolution, and selected-run evidence
 facts. `selection.rs` chooses among evaluated candidates, and
@@ -125,11 +130,12 @@ approval from typed facts. `summary.rs` only maps that evaluated state to the
 adapter-neutral summary. Methods that need this complete read use the narrow
 `service.rs` coordinator.
 An existing ticket is reusable only when every owner-defined coordinate remains
-valid. For `record_run`, `write_ticket/admission.rs` receives the typed Task,
-Change Unit, invocation, observed-change, policy-fingerprint, and operation
-facts. It applies the same validity and attempt-scope policy without decoding
-physical rows or constructing a method response. The recording plan consumes
-only an exactly matched admitted ticket inside the same commit as the Run.
+valid. For `record_run`, `write_ticket/admission.rs` receives the exact typed
+Task, Change Unit, Git workspace, observation time, observed-change,
+policy-fingerprint, and operation facts it evaluates. It applies the same
+validity and attempt-scope policy without decoding physical rows or
+constructing a method response. The recording plan consumes only an exactly
+matched admitted ticket inside the same commit as the Run.
 
 ## UserAction Separation
 

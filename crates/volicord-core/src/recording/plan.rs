@@ -14,7 +14,9 @@ use crate::policy::close_readiness_evidence::{
 use crate::record_refs::{change_unit_ref, state_ref, state_ref_from_stored};
 use crate::task_facts::active_blocker_refs;
 use crate::task_policy::{plan_user_action_lifecycle_transition, TaskLifecycleFacts};
-use crate::write_ticket::{admit_record_run, RecordRunWriteAdmission, WriteTicketAdmissionError};
+use crate::write_ticket::{
+    admit_record_run, RecordRunWriteAdmission, WriteTicketAdmissionError, WriteTicketInvalidReason,
+};
 use serde_json::json;
 use volicord_store::core_pipeline::{
     ArtifactLinkInsert, ArtifactMutation, CoreProjectStore, EvidenceMutation,
@@ -155,7 +157,7 @@ pub(super) fn decide_record_run_policy(
         };
         if resolved_control.pending_policy_reevaluation {
             return Err(write_ticket_invalid(
-                "approval_basis_changed",
+                WriteTicketInvalidReason::ApprovalBasisChanged,
                 "a pending project-policy control reevaluation requires prepare_write before this Run can consume a ticket",
             ));
         }
@@ -164,7 +166,7 @@ pub(super) fn decide_record_run_policy(
             .map_err(recording_store_error)?
             .ok_or_else(|| {
                 write_ticket_invalid(
-                    "missing",
+                    WriteTicketInvalidReason::Missing,
                     "write_ticket_id does not identify a write ticket",
                 )
             })?;
@@ -179,10 +181,10 @@ pub(super) fn decide_record_run_policy(
                 performed_operation: request.performed_operation.as_deref(),
                 task: &task,
                 change_unit: &change_unit,
-                verified_invocation,
+                git_workspace_context: verified_invocation.git_workspace_context.as_ref(),
                 observed_changes: normalized_observed_changes,
                 write_authority_fingerprint: &workflow_policy.write_authority_fingerprint,
-                now: *plan_now.as_datetime(),
+                observed_at: plan_now,
             },
         )
         .map_err(record_run_write_admission_error)?;
@@ -190,7 +192,7 @@ pub(super) fn decide_record_run_policy(
     } else {
         if request.write_ticket_id.is_some() {
             return Err(write_ticket_invalid(
-                "incompatible",
+                WriteTicketInvalidReason::Incompatible,
                 "write_ticket_id is only consumed for an observed product-file write or an effective sensitive Task",
             ));
         }
@@ -259,7 +261,7 @@ pub(super) fn decide_record_run_policy(
     let run_id = match request.run_id.clone() {
         Some(run_id) => run_id,
         None => {
-            allocate_run_id(service.durable_id_generator(), store).map_err(RecordingError::Core)?
+            allocate_run_id(service.durable_id_generator(), store).map_err(RecordingError::from)?
         }
     };
     if request.run_id.is_some()
@@ -294,6 +296,7 @@ pub(super) fn decide_record_run_policy(
 fn record_run_write_admission_error(error: WriteTicketAdmissionError) -> RecordingError {
     match error {
         WriteTicketAdmissionError::Core(error) => RecordingError::Core(error),
+        WriteTicketAdmissionError::Store(error) => RecordingError::Store(error),
         WriteTicketAdmissionError::UserAction(error) => RecordingError::UserAction(error),
         WriteTicketAdmissionError::Invalid { reason, message } => {
             write_ticket_invalid(reason, message)
@@ -310,7 +313,7 @@ fn record_run_close_basis_error(error: RecordRunCloseBasisError) -> RecordingErr
     }
 }
 
-fn write_ticket_invalid(reason: &'static str, message: &'static str) -> RecordingError {
+fn write_ticket_invalid(reason: WriteTicketInvalidReason, message: &'static str) -> RecordingError {
     RecordingError::Rejected(RecordingRejection::WriteTicketInvalid { reason, message })
 }
 
@@ -410,7 +413,7 @@ pub(super) fn plan_record_run_mutations(
     let evidence_summary_id = if recorded_evidence_summary.is_some() {
         Some(
             allocate_evidence_summary_id(service.durable_id_generator(), store)
-                .map_err(RecordingError::Core)?,
+                .map_err(RecordingError::from)?,
         )
     } else {
         None

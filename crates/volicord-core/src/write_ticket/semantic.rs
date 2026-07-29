@@ -21,12 +21,8 @@ pub(crate) struct WriteTicketSemanticFacts {
 /// Explicit identity of a value evaluated for summary projection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WriteTicketEvaluationIdentity {
-    Planned {
-        write_ticket_id: Option<WriteTicketId>,
-    },
-    Stored {
-        write_ticket_id: WriteTicketId,
-    },
+    Planned { write_ticket_id: WriteTicketId },
+    Stored { write_ticket_id: WriteTicketId },
 }
 
 /// Store-validated ticket facts after physical representation has been removed.
@@ -178,7 +174,7 @@ mod tests {
         );
         assert_ne!(
             WriteTicketEvaluationIdentity::Planned {
-                write_ticket_id: Some(WriteTicketId::new("ticket-stored"))
+                write_ticket_id: WriteTicketId::new("ticket-stored")
             },
             WriteTicketEvaluationIdentity::Stored {
                 write_ticket_id: WriteTicketId::new("ticket-stored")

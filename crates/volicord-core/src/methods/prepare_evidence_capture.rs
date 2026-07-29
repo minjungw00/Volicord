@@ -214,7 +214,10 @@ fn plan_prepare_evidence_capture(
             &request.baseline_ref,
         ))));
     }
-    if !workspace_context_matches(&change_unit, verified_invocation)? {
+    if !workspace_context_matches(
+        &change_unit,
+        verified_invocation.git_workspace_context.as_ref(),
+    ) {
         return Err(PlanError::Response(Box::new(workspace_stale_response(
             &request.envelope,
             Some(project_state.state_version),

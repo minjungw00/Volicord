@@ -9,6 +9,7 @@ mod state;
 use crate::artifact::ArtifactPolicyError;
 use crate::close_readiness::CloseReadinessError;
 use crate::pipeline::CorePipelineError;
+use crate::write_ticket::WriteTicketInvalidReason;
 use volicord_store::core_pipeline::CoreStorageMutation;
 use volicord_store::error::StoreError;
 use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, RunId, TaskId, WriteTicketId};
@@ -202,6 +203,7 @@ impl RecordRunResultFacts {
 #[derive(Debug)]
 pub(crate) enum RecordingError {
     Core(CorePipelineError),
+    Store(StoreError),
     UserAction(UserActionServiceError),
     Artifact(ArtifactPolicyError),
     CloseReadiness(CloseReadinessError),
@@ -228,7 +230,7 @@ pub(crate) enum RecordingRejection {
     },
     WriteTicketRequired,
     WriteTicketInvalid {
-        reason: &'static str,
+        reason: WriteTicketInvalidReason,
         message: &'static str,
     },
     EvidenceInsufficient {
@@ -246,7 +248,16 @@ pub(crate) enum RecordingRejection {
 
 impl From<CorePipelineError> for RecordingError {
     fn from(error: CorePipelineError) -> Self {
-        Self::Core(error)
+        match error {
+            CorePipelineError::Store(error) => Self::Store(error),
+            error => Self::Core(error),
+        }
+    }
+}
+
+impl From<StoreError> for RecordingError {
+    fn from(error: StoreError) -> Self {
+        Self::Store(error)
     }
 }
 
@@ -273,7 +284,7 @@ pub(super) fn recording_validation_error<T>(
 }
 
 pub(super) fn recording_store_error(error: StoreError) -> RecordingError {
-    RecordingError::Core(CorePipelineError::from(error))
+    RecordingError::Store(error)
 }
 
 pub(super) fn recording_user_action_error(error: UserActionServiceError) -> RecordingError {

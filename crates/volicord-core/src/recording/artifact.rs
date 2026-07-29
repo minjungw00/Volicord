@@ -173,7 +173,7 @@ pub(super) fn plan_staged_artifact_input(
     )?;
 
     let artifact_id = allocate_artifact_id(service.durable_id_generator(), store)
-        .map_err(RecordingError::Core)?;
+        .map_err(RecordingError::from)?;
     let uri = format!(
         "volicord-artifact://{}/{}",
         request.project_id.as_str(),

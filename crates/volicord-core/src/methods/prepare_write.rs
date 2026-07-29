@@ -3,6 +3,7 @@ use crate::close_readiness::{
     facts_from_projection, normalize_close_blockers, open_write_ticket_close_blocker,
     plan_projected_close_readiness,
 };
+use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::{
     store::{plan_error_response, store_error_plan},
     user_action::user_action_service_plan_error,
@@ -10,6 +11,8 @@ use crate::error_boundary::{
 use crate::evidence_facts::{
     load_current_evidence_summary_facts, load_required_evidence_criterion_ids,
 };
+use crate::guarantee_projection::guarantee_display;
+use crate::identity::allocate_write_ticket_id;
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
@@ -34,19 +37,22 @@ use crate::write_ticket::current_validity::{
 use crate::write_ticket::read_model::{stored_write_ticket_facts, WriteTicketEvidenceFacts};
 use crate::write_ticket::summary::{project_write_ticket_summary, WriteTicketSummaryInput};
 use crate::write_ticket::{
-    plan_prepare_write as plan_write_ticket, PrepareWritePlannedMutations, WriteTicketPlanningError,
+    materialize_planned_write_ticket, plan_prepare_write as plan_write_ticket,
+    planned_write_ticket_mutation, PrepareWriteInput, PrepareWritePlanningOutcome,
+    WriteTicketDecisionReason, WriteTicketPlanningError, WriteTicketRelatedRecord,
 };
 use serde_json::{json, Map, Value};
 use volicord_store::core_pipeline::{CoreProjectStore, CoreStorageMutation, ProjectStateHeader};
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
-use volicord_types::ids::{ChangeUnitId, TaskId};
+use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, WriteTicketId};
 use volicord_types::methods::{
     MethodOperationCategory, PrepareWriteRequest, PrepareWriteResultFields,
 };
 use volicord_types::schema::{
-    DryRunSummary, JsonObject, PlannedBlocker, PlannedEffect, WriteDecisionReason, WriteTicket,
-    WriteTicketPathPatterns, WriteTicketScope,
+    DryRunSummary, JsonObject, PlannedBlocker, PlannedEffect,
+    WriteDecisionReason as PublicWriteDecisionReason, WriteTicket, WriteTicketPathPatterns,
+    WriteTicketScope,
 };
 use volicord_types::values::{
     CloseState, ErrorCode, MethodName, PlannedBlockerSourceKind, StateRecordKind, UtcTimestamp,
@@ -60,7 +66,15 @@ struct PrepareWritePlan {
     event_kind: String,
     event_payload: JsonObject,
     result_fields: PrepareWriteResultFields,
-    dry_run_summary: DryRunSummary,
+}
+
+struct PrepareWriteProjectionContext<'a, 'store> {
+    service: &'a CoreService,
+    store: &'a CoreProjectStore<'store>,
+    project_state: &'a ProjectStateHeader,
+    request: &'a PrepareWriteRequest,
+    verified_invocation: &'a VerifiedInvocationContext,
+    operation_now: &'a UtcTimestamp,
 }
 
 impl CoreService {
@@ -106,15 +120,11 @@ impl CoreService {
                 .clone()
                 .expect("prepare_write preflight resolves an exact Task")
         });
-        let had_prior_write_ticket = !prepared
-            .store
-            .write_tickets_for_task(&ticket_task_id)?
-            .is_empty();
-        let plan = match plan_prepare_write(
-            self,
+        let planned = match plan_prepare_write(
             &prepared.store,
             &prepared.context.project_state,
-            request.clone(),
+            &request,
+            &ticket_task_id,
             &prepared.context.verified_invocation,
             &prepared.operation_now,
         ) {
@@ -127,13 +137,48 @@ impl CoreService {
                 )
             }
         };
+        let write_decision_reasons = project_write_decision_reasons(
+            &request.envelope.project_id,
+            prepared.context.project_state.state_version,
+            &planned.reasons,
+        );
 
         if request.envelope.dry_run.is_requested() {
+            let dry_run_summary = prepare_write_dry_run_summary(
+                planned.allowed,
+                planned.reused_write_ticket.is_some(),
+                &write_decision_reasons,
+            );
             return self.execute_prepared_request(
                 prepared,
-                dry_run_preview_branch::<PrepareWriteRequest>(plan.dry_run_summary),
+                dry_run_preview_branch::<PrepareWriteRequest>(dry_run_summary),
             );
         }
+        let had_prior_write_ticket = !prepared
+            .store
+            .write_tickets_for_task(&ticket_task_id)?
+            .is_empty();
+        let plan = match project_prepare_write_response(
+            PrepareWriteProjectionContext {
+                service: self,
+                store: &prepared.store,
+                project_state: &prepared.context.project_state,
+                request: &request,
+                verified_invocation: &prepared.context.verified_invocation,
+                operation_now: &prepared.operation_now,
+            },
+            planned,
+            write_decision_reasons,
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return plan_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    error,
+                )
+            }
+        };
 
         let metric_kind = match plan.result_fields.write_ticket_effect {
             WriteTicketEffect::Reused => Some(WorkflowMetricKind::WriteTicketReused),
@@ -198,30 +243,6 @@ fn prepare_write_policy(request: &PrepareWriteRequest) -> MethodPolicy {
     )
 }
 
-struct PrepareWriteResponseProjection {
-    task_id: TaskId,
-    change_unit_id: ChangeUnitId,
-    storage_mutations: Vec<CoreStorageMutation>,
-    event_kind: String,
-    event_payload: JsonObject,
-    result_fields: PrepareWriteResultFields,
-    dry_run_summary: DryRunSummary,
-}
-
-impl PrepareWriteResponseProjection {
-    fn into_plan(self) -> PrepareWritePlan {
-        PrepareWritePlan {
-            task_id: self.task_id,
-            change_unit_id: self.change_unit_id,
-            storage_mutations: self.storage_mutations,
-            event_kind: self.event_kind,
-            event_payload: self.event_payload,
-            result_fields: self.result_fields,
-            dry_run_summary: self.dry_run_summary,
-        }
-    }
-}
-
 fn prepare_write_change_unit_required_response(
     request: &PrepareWriteRequest,
     project_state: &ProjectStateHeader,
@@ -257,23 +278,36 @@ fn prepare_write_change_unit_required_response(
 }
 
 fn plan_prepare_write(
-    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: PrepareWriteRequest,
+    request: &PrepareWriteRequest,
+    task_id: &TaskId,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<PrepareWritePlan, PlanError> {
-    let mutations = plan_write_ticket(
-        service.durable_id_generator(),
+) -> Result<PrepareWritePlanningOutcome, PlanError> {
+    let task_is_current = !project_state
+        .active_task_id
+        .as_deref()
+        .is_some_and(|active_task_id| active_task_id != task_id.as_str());
+    plan_write_ticket(
         store,
-        project_state,
-        request.clone(),
-        verified_invocation,
+        PrepareWriteInput::new(
+            request.envelope.project_id.clone(),
+            task_id.clone(),
+            task_is_current,
+            request.change_unit_id.as_ref().cloned(),
+            request.intended_operation.clone(),
+            request.intended_paths.clone(),
+            request.product_file_write_intended,
+            request.sensitive_categories.clone(),
+            request.baseline_ref.clone(),
+            verified_invocation.actor_source.clone(),
+            verified_invocation.git_workspace_context.clone(),
+            verified_invocation.verification_basis.clone(),
+        ),
         operation_now,
     )
-    .map_err(|error| prepare_write_planning_error(&request, project_state, error))?;
-    Ok(project_prepare_write_response(store, project_state, mutations)?.into_plan())
+    .map_err(|error| prepare_write_planning_error(request, project_state, error))
 }
 
 fn prepare_write_planning_error(
@@ -282,7 +316,7 @@ fn prepare_write_planning_error(
     error: WriteTicketPlanningError,
 ) -> PlanError {
     match error {
-        WriteTicketPlanningError::Core(CorePipelineError::Store(error)) => {
+        WriteTicketPlanningError::Store(error) => {
             store_error_plan(&request.envelope, project_state, error)
         }
         WriteTicketPlanningError::Core(error) => PlanError::Core(error),
@@ -303,16 +337,19 @@ fn prepare_write_planning_error(
             match validation_rejected(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
-                field,
+                field.as_str(),
                 message,
             ) {
                 Ok(response) => PlanError::Response(Box::new(response)),
                 Err(error) => PlanError::Core(error),
             }
         }
-        WriteTicketPlanningError::ProductPathContainment { field, message } => {
+        WriteTicketPlanningError::ProductPathContainment { message } => {
             let mut details = Map::new();
-            details.insert("field".to_owned(), Value::String(field.to_owned()));
+            details.insert(
+                "field".to_owned(),
+                Value::String("intended_paths".to_owned()),
+            );
             PlanError::Response(Box::new(infallible_rejected_pipeline_response(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
@@ -324,37 +361,101 @@ fn prepare_write_planning_error(
                 )],
             )))
         }
+        WriteTicketPlanningError::Invariant { detail } => {
+            PlanError::Core(CorePipelineError::Invariant { detail })
+        }
     }
 }
 
 fn project_prepare_write_response(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    planned: PrepareWritePlannedMutations,
-) -> Result<PrepareWriteResponseProjection, PlanError> {
-    let PrepareWritePlannedMutations {
+    context: PrepareWriteProjectionContext<'_, '_>,
+    planned: PrepareWritePlanningOutcome,
+    reasons: Vec<PublicWriteDecisionReason>,
+) -> Result<PrepareWritePlan, PlanError> {
+    let PrepareWriteProjectionContext {
+        service,
+        store,
+        project_state,
         request,
-        planned_state_version,
-        plan_now,
+        verified_invocation,
+        operation_now,
+    } = context;
+    let PrepareWritePlanningOutcome {
         task_id,
         task,
         change_unit,
-        reasons,
         decision,
         allowed,
-        pending_user_action_refs,
-        active_user_action_refs,
-        guarantee_display,
-        write_ticket_id,
-        write_ticket_ref,
-        planned_write_ticket,
+        pending_user_action_request_ids,
+        active_user_action_resolution_ids,
+        planned_write_ticket: planned_write_ticket_draft,
         reused_write_ticket,
-        write_ticket_effect,
         allowed_path_patterns,
         denied_path_patterns,
-        storage_mutations,
+        mut storage_mutations,
+        ..
     } = planned;
-    let would_reuse_write_ticket = reused_write_ticket.is_some();
+    let planned_state_version = project_state.state_version + 1;
+    let pending_user_action_refs = pending_user_action_request_ids
+        .iter()
+        .map(|request_id| {
+            state_ref(
+                StateRecordKind::UserActionRequest,
+                request_id.as_str(),
+                &request.envelope.project_id,
+                Some(&task_id),
+                Some(project_state.state_version),
+            )
+        })
+        .collect::<Vec<_>>();
+    let active_user_action_refs = active_user_action_resolution_ids
+        .iter()
+        .map(|resolution_id| {
+            state_ref(
+                StateRecordKind::UserActionResolution,
+                resolution_id.as_str(),
+                &request.envelope.project_id,
+                Some(&task_id),
+                Some(project_state.state_version),
+            )
+        })
+        .collect::<Vec<_>>();
+    let (write_ticket_id, planned_write_ticket, write_ticket_effect) =
+        if let Some(draft) = planned_write_ticket_draft {
+            let write_ticket_id = allocate_write_ticket_id(service.durable_id_generator(), store)?;
+            let plan = materialize_planned_write_ticket(
+                draft,
+                write_ticket_id.clone(),
+                planned_state_version,
+                active_user_action_refs.clone(),
+            )
+            .map_err(|error| prepare_write_planning_error(request, project_state, error))?;
+            storage_mutations.push(planned_write_ticket_mutation(&plan));
+            (Some(write_ticket_id), Some(plan), WriteTicketEffect::Issued)
+        } else if let Some(record) = reused_write_ticket.as_ref() {
+            (
+                Some(WriteTicketId::new(record.write_ticket_id())),
+                None,
+                WriteTicketEffect::Reused,
+            )
+        } else {
+            (None, None, WriteTicketEffect::None)
+        };
+    let write_ticket_ref = write_ticket_id.as_ref().map(|write_ticket_id| {
+        state_ref(
+            StateRecordKind::WriteTicket,
+            write_ticket_id.as_str(),
+            &request.envelope.project_id,
+            Some(&task_id),
+            Some(planned_state_version),
+        )
+    });
+    let enforcement_profile = project_enforcement_profile(store)?;
+    let guarantee_display = Some(guarantee_display(
+        &enforcement_profile,
+        verified_invocation,
+        planned_state_version,
+    ));
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let blocker_refs = active_blocker_refs(store, &task_id, planned_state_version)?;
     let evidence_facts = load_current_evidence_summary_facts(
@@ -386,7 +487,7 @@ fn project_prepare_write_response(
             pending_user_action_refs.clone(),
             blocker_refs.clone(),
             evidence_summary.clone(),
-            plan_now.clone(),
+            operation_now.clone(),
         ),
     )
     .map_err(|error| {
@@ -550,21 +651,68 @@ fn project_prepare_write_response(
         );
     }
 
-    Ok(PrepareWriteResponseProjection {
+    Ok(PrepareWritePlan {
         task_id,
         change_unit_id,
         storage_mutations,
         event_kind,
         event_payload,
         result_fields,
-        dry_run_summary: prepare_write_dry_run_summary(allowed, would_reuse_write_ticket, &reasons),
     })
+}
+
+fn project_write_decision_reasons(
+    project_id: &ProjectId,
+    current_state_version: u64,
+    reasons: &[WriteTicketDecisionReason],
+) -> Vec<PublicWriteDecisionReason> {
+    reasons
+        .iter()
+        .map(|reason| PublicWriteDecisionReason {
+            category: reason.category,
+            code: reason.code.as_str().to_owned(),
+            message: reason.message.to_owned(),
+            related_refs: reason
+                .related_records
+                .iter()
+                .map(|record| match record {
+                    WriteTicketRelatedRecord::Task(task_id) => state_ref(
+                        StateRecordKind::Task,
+                        task_id.as_str(),
+                        project_id,
+                        Some(task_id),
+                        Some(current_state_version),
+                    ),
+                    WriteTicketRelatedRecord::CurrentChangeUnit {
+                        task_id,
+                        change_unit_id,
+                    } => state_ref(
+                        StateRecordKind::ChangeUnit,
+                        change_unit_id.as_str(),
+                        project_id,
+                        Some(task_id),
+                        Some(current_state_version),
+                    ),
+                    WriteTicketRelatedRecord::UserActionRequest {
+                        task_id,
+                        request_id,
+                    } => state_ref(
+                        StateRecordKind::UserActionRequest,
+                        request_id.as_str(),
+                        project_id,
+                        Some(task_id),
+                        Some(current_state_version),
+                    ),
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 fn prepare_write_dry_run_summary(
     allowed: bool,
     would_reuse_write_ticket: bool,
-    reasons: &[WriteDecisionReason],
+    reasons: &[PublicWriteDecisionReason],
 ) -> DryRunSummary {
     DryRunSummary {
         planned_effects: if allowed {

@@ -414,7 +414,7 @@ pub(super) fn plan_record_run_observation(
 
     let observation_id =
         allocate_evidence_observation_id(context.service.durable_id_generator(), context.store)
-            .map_err(RecordingError::Core)?;
+            .map_err(RecordingError::from)?;
     let observation_ref = state_ref(
         StateRecordKind::EvidenceObservation,
         observation_id.as_str(),
@@ -617,7 +617,7 @@ fn derive_record_run_observation_authority(
     if let Some(capture) = canonical_capture {
         let producer_id =
             allocate_evidence_producer_id(context.service.durable_id_generator(), context.store)
-                .map_err(RecordingError::Core)?;
+                .map_err(RecordingError::from)?;
         let producer_ref = state_ref(
             StateRecordKind::EvidenceProducer,
             producer_id.as_str(),

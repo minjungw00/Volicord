@@ -203,9 +203,14 @@ the issuance mutation commits. A reuse result returns the existing ID and ref.
 Blocked, approval-required, decision-required, rejected, and `dry_run` paths do
 not allocate a durable ID.
 
-Core represents a prospective issuance as a validated `PlannedWriteTicket`.
-That semantic plan is the single source for response projection and the typed
-Store insertion input. It is not a persisted ticket record. Reuse instead
+Core semantic planning represents a prospective issuance as an identity-free
+`PlannedWriteTicketDraft`; it does not inspect `dry_run`, allocate a durable
+ID, attach response state versions, or construct the public result. A
+`dry_run` request stops at the method boundary and projects only the preview.
+For a committed issuance, the method supplies the durable ID and
+state-versioned basis references to materialize one validated
+`PlannedWriteTicket`. That materialized value is the single source for
+response projection and the typed Store insertion input. Reuse instead
 projects the Store-validated `StoredWriteTicket` that already exists.
 
 ## Method result fields
@@ -385,8 +390,8 @@ For `dry_run=true`, a valid preview:
 - may describe a planned `write_ticket` effect such as `would_issue` in the `dry_run` summary when the preview would otherwise be allowed
 - may describe `would_reuse` as a planned effect when a compatible active
   ticket exists; this is preview text, not a committed `WriteTicketEffect`
-- keeps a prospective issuance as an ID-less semantic plan rather than a
-  persisted ticket record or Store insertion
+- keeps a prospective issuance as an identity-free semantic draft rather than
+  materializing a ticket record or Store insertion
 - persists no write-decision state
 
 A request without a current Change Unit is not a valid preview. It returns the

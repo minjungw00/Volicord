@@ -7,7 +7,6 @@ use crate::pipeline::CorePipelineError;
 use crate::policy::close_readiness::close_acceptance_policy_rank;
 use crate::policy::close_readiness_evidence::evaluate_evidence_gate;
 use crate::policy::workflow::{acceptance_policy_for_control, resolve_task_control_authority};
-use crate::write_ticket::change_unit_effect_contract;
 use volicord_store::core_pipeline::TaskControlLevelUpdate;
 use volicord_types::schema::{CloseReadinessBlocker, RiskAcceptanceCoverage};
 use volicord_types::values::{ChangeUnitEffectKind, CloseIntent, CloseState, TaskControlLevel};
@@ -36,9 +35,7 @@ pub(super) fn resolve_control(
     let sensitive_effect = context
         .current_change_unit
         .as_ref()
-        .map(change_unit_effect_contract)
-        .transpose()?
-        .flatten()
+        .and_then(|change_unit| change_unit.effect_contract.as_ref())
         .is_some_and(|contract| {
             !contract.sensitive_action_expectations.is_empty()
                 || contract.allowed_effects.iter().any(|effect| {

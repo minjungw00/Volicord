@@ -31,6 +31,50 @@ fn advisor_prepare_write_rejects_without_ticket_or_state_effect() -> Result<(), 
 }
 
 #[test]
+fn prepare_write_projects_semantic_validation_with_method_metadata() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_semantic_validation")?;
+    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    harness.use_generator_and_clock(
+        id_generator.clone(),
+        ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
+    );
+    let before = harness.counts()?;
+    let mut request = prepare_write_request(
+        "req_prepare_semantic_validation",
+        "idem_prepare_semantic_validation",
+        Some(before.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    request.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
+    request.intended_operation = "   ".to_owned();
+
+    let response = harness
+        .service
+        .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(response.response_value["base"]["dry_run"], true);
+    assert_eq!(
+        response.response_value["base"]["state_version"],
+        before.state_version
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "intended_operation"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
+    Ok(())
+}
+
+#[test]
 fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;

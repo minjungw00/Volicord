@@ -1,35 +1,35 @@
 use std::collections::BTreeSet;
 
-use chrono::{DateTime, Utc};
-use volicord_store::{core_pipeline::StoredWriteTicket, StoreError};
 use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
 use volicord_types::product_path::paths_are_authorized;
-use volicord_types::schema::{
-    ObservedChanges, StateRecordRef, WriteDecisionReason, WriteTicketAttemptScope,
-};
+use volicord_types::schema::{ObservedChanges, WriteTicketAttemptScope};
 use volicord_types::values::{PrepareWriteDecision, UtcTimestamp, WriteDecisionCategory};
 
+use super::{
+    WriteTicketDecisionCode, WriteTicketDecisionReason, WriteTicketInvalidReason,
+    WriteTicketRelatedRecord,
+};
+
 pub(crate) fn write_ticket_is_idle_expired(
-    record: &StoredWriteTicket,
-    now: DateTime<Utc>,
-) -> Result<bool, StoreError> {
-    let Some(timestamp) = record.idle_expires_at() else {
-        return Ok(false);
-    };
-    Ok(UtcTimestamp::from_datetime(now) >= *timestamp)
+    idle_expires_at: Option<&UtcTimestamp>,
+    observed_at: &UtcTimestamp,
+) -> bool {
+    idle_expires_at.is_some_and(|expires_at| observed_at >= expires_at)
 }
 
-pub(crate) fn prepare_write_decision(reasons: &[WriteDecisionReason]) -> PrepareWriteDecision {
+pub(crate) fn prepare_write_decision(
+    reasons: &[WriteTicketDecisionReason],
+) -> PrepareWriteDecision {
     if reasons.is_empty() {
         PrepareWriteDecision::Allowed
     } else if reasons
         .iter()
-        .any(|reason| reason.code == "user_action_unresolved")
+        .any(|reason| reason.code == WriteTicketDecisionCode::UserActionUnresolved)
     {
         PrepareWriteDecision::DecisionRequired
     } else if reasons
         .iter()
-        .any(|reason| reason.code == "sensitive_approval_missing")
+        .any(|reason| reason.code == WriteTicketDecisionCode::SensitiveApprovalMissing)
     {
         PrepareWriteDecision::ApprovalRequired
     } else {
@@ -39,7 +39,7 @@ pub(crate) fn prepare_write_decision(reasons: &[WriteDecisionReason]) -> Prepare
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RunWriteTicketMismatch {
-    pub(crate) reason: &'static str,
+    pub(crate) reason: WriteTicketInvalidReason,
     pub(crate) message: &'static str,
 }
 
@@ -59,25 +59,25 @@ pub(crate) fn run_write_ticket_mismatch(
 ) -> Option<RunWriteTicketMismatch> {
     if scope.task_id != *attempt.task_id {
         return Some(run_mismatch(
-            "task_mismatch",
+            WriteTicketInvalidReason::TaskMismatch,
             "write ticket task is not compatible with the recorded run",
         ));
     }
     if scope.change_unit_id != *attempt.change_unit_id {
         return Some(run_mismatch(
-            "change_unit_mismatch",
+            WriteTicketInvalidReason::ChangeUnitMismatch,
             "write ticket Change Unit is not compatible with the recorded run",
         ));
     }
     if scope.product_file_write_intended != attempt.observed_changes.product_file_write_observed {
         return Some(run_mismatch(
-            "product_write_flag_mismatch",
+            WriteTicketInvalidReason::ProductWriteFlagMismatch,
             "write ticket product-file intent is not compatible with the recorded run",
         ));
     }
     if scope.baseline_ref.as_ref() != Some(attempt.baseline_ref) {
         return Some(run_mismatch(
-            "baseline_mismatch",
+            WriteTicketInvalidReason::BaselineMismatch,
             "write ticket baseline is not compatible with the recorded run",
         ));
     }
@@ -87,7 +87,7 @@ pub(crate) fn run_write_ticket_mismatch(
         || (attempt.performed_operation_required && attempt.performed_operation.is_none())
     {
         return Some(run_mismatch(
-            "operation_mismatch",
+            WriteTicketInvalidReason::OperationMismatch,
             "performed operation does not exactly match the write ticket operation",
         ));
     }
@@ -95,7 +95,7 @@ pub(crate) fn run_write_ticket_mismatch(
         != category_set(&attempt.observed_changes.sensitive_categories)
     {
         return Some(run_mismatch(
-            "sensitive_category_mismatch",
+            WriteTicketInvalidReason::SensitiveCategoryMismatch,
             "write ticket sensitive categories are not compatible with the recorded run",
         ));
     }
@@ -106,28 +106,28 @@ pub(crate) fn run_write_ticket_mismatch(
         )
     {
         return Some(run_mismatch(
-            "path_mismatch",
+            WriteTicketInvalidReason::PathMismatch,
             "write ticket paths are not compatible with the recorded run",
         ));
     }
     None
 }
 
-fn run_mismatch(reason: &'static str, message: &'static str) -> RunWriteTicketMismatch {
+fn run_mismatch(reason: WriteTicketInvalidReason, message: &'static str) -> RunWriteTicketMismatch {
     RunWriteTicketMismatch { reason, message }
 }
 
 pub(crate) fn write_decision_reason(
     category: WriteDecisionCategory,
-    code: &'static str,
+    code: WriteTicketDecisionCode,
     message: &'static str,
-    related_refs: Vec<StateRecordRef>,
-) -> WriteDecisionReason {
-    WriteDecisionReason {
+    related_records: Vec<WriteTicketRelatedRecord>,
+) -> WriteTicketDecisionReason {
+    WriteTicketDecisionReason {
         category,
-        code: code.to_owned(),
-        message: message.to_owned(),
-        related_refs,
+        code,
+        message,
+        related_records,
     }
 }
 
@@ -155,7 +155,7 @@ mod tests {
     use volicord_types::product_path::ProductRelativePath;
     use volicord_types::schema::RequiredNullable;
 
-    fn reason(code: &'static str) -> WriteDecisionReason {
+    fn reason(code: WriteTicketDecisionCode) -> WriteTicketDecisionReason {
         write_decision_reason(
             WriteDecisionCategory::WriteCompatibility,
             code,
@@ -168,20 +168,20 @@ mod tests {
     fn prepare_write_decision_uses_the_strongest_semantic_blocker_class() {
         assert_eq!(prepare_write_decision(&[]), PrepareWriteDecision::Allowed);
         assert_eq!(
-            prepare_write_decision(&[reason("path_out_of_scope")]),
+            prepare_write_decision(&[reason(WriteTicketDecisionCode::PathOutOfScope)]),
             PrepareWriteDecision::Blocked
         );
         assert_eq!(
             prepare_write_decision(&[
-                reason("path_out_of_scope"),
-                reason("sensitive_approval_missing"),
+                reason(WriteTicketDecisionCode::PathOutOfScope),
+                reason(WriteTicketDecisionCode::SensitiveApprovalMissing),
             ]),
             PrepareWriteDecision::ApprovalRequired
         );
         assert_eq!(
             prepare_write_decision(&[
-                reason("sensitive_approval_missing"),
-                reason("user_action_unresolved"),
+                reason(WriteTicketDecisionCode::SensitiveApprovalMissing),
+                reason(WriteTicketDecisionCode::UserActionUnresolved),
             ]),
             PrepareWriteDecision::DecisionRequired
         );
@@ -381,6 +381,6 @@ mod tests {
                 normalized_scope_paths: &normalized_scope_paths,
             },
         )
-        .map(|mismatch| mismatch.reason)
+        .map(|mismatch| mismatch.reason.as_str())
     }
 }

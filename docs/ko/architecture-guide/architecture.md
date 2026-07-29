@@ -178,8 +178,12 @@ identity, artifact policy, continuity planning, Write Ticket planning, 닫기 �
 `state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs`는 Store와
 독립적으로 typed fact를 view로 투영합니다.
 
-집중된 Write Ticket 담당자 안에서 `write_ticket/planning.rs`는 발급 예정 값의
-유일한 표현인 `PlannedWriteTicket`을 구성하고 검증합니다.
+집중된 Write Ticket 담당자 안에서 `write_ticket/planning.rs`는 필요한 의미 입력만
+평가하고 typed 판단 사유, 의미 record identity, mutation, 발급 예정용 ID 없는
+`PlannedWriteTicketDraft`를 반환합니다. 공개 `prepare_write` 메서드는 dry-run
+분기 선택, 영속 ID 할당, state-version이 있는 record reference, 보장 표시,
+오류-응답 매핑, 삽입과 응답 projection에 쓰는 검증된 `PlannedWriteTicket`
+구체화를 담당합니다.
 `write_ticket/semantic.rs`는 plan과 Store가 검증한 opaque record가 공유하는
 불변 의미 view를 제공하면서 planned identity와 stored identity를 구분합니다.
 `write_ticket/read_model.rs`는 typed ticket, Task, workflow policy, 현재

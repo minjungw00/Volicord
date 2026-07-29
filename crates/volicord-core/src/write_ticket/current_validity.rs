@@ -8,6 +8,7 @@ use volicord_types::values::{
 use volicord_user_action_service::{current_sensitive_approval, SensitiveApprovalRequirement};
 
 use super::planning::PlannedWriteTicket;
+use super::policy::write_ticket_is_idle_expired;
 use super::read_model::{WriteTicketCurrentFacts, WriteTicketTaskFacts, WriteTicketWorkflowFacts};
 use super::semantic::{
     planned_write_ticket_semantic_facts, StoredWriteTicketFacts, WriteTicketEvaluationIdentity,
@@ -70,12 +71,7 @@ pub(crate) fn evaluate_terminal_write_ticket(
             WriteTicketApprovalState::NotApplicable,
         ));
     }
-    if ticket
-        .ticket
-        .idle_expires_at
-        .as_ref()
-        .is_some_and(|expires_at| observed_at >= expires_at)
-    {
+    if write_ticket_is_idle_expired(ticket.ticket.idle_expires_at.as_ref(), observed_at) {
         return Some(evaluated_stored_ticket(
             ticket,
             WriteTicketStatus::Invalidated,
@@ -138,12 +134,7 @@ pub(crate) fn requires_sensitive_approval_facts(
     observed_at: &volicord_types::values::UtcTimestamp,
 ) -> bool {
     ticket.status == WriteTicketStatus::Active
-        && ticket
-            .ticket
-            .idle_expires_at
-            .as_ref()
-            .map(|expires_at| observed_at < expires_at)
-            .unwrap_or(true)
+        && !write_ticket_is_idle_expired(ticket.ticket.idle_expires_at.as_ref(), observed_at)
         && ticket.ticket.validity_basis.write_authority_fingerprint
             == workflow.write_authority_fingerprint
         && !task.pending_policy_reevaluation
@@ -159,7 +150,7 @@ pub(crate) fn evaluate_planned_write_ticket(plan: &PlannedWriteTicket) -> Evalua
     };
     EvaluatedWriteTicket {
         identity: WriteTicketEvaluationIdentity::Planned {
-            write_ticket_id: plan.write_ticket_id().cloned(),
+            write_ticket_id: plan.write_ticket_id().clone(),
         },
         ticket,
         effective_status: WriteTicketStatus::Active,

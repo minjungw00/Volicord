@@ -17,16 +17,22 @@ status, invalidation, authority, and approval without Store access.
 `summary.rs` maps an already evaluated ticket and supplied evidence to the
 adapter-neutral summary without selecting a candidate or reevaluating policy.
 `service.rs` narrowly coordinates that complete persisted-summary use case.
-`planning.rs` owns the distinct, unpersisted `PlannedWriteTicket`. For new
-issuance, the same validated plan supplies both the response projection and
-the fully typed Store insertion; a dry-run plan has no durable ticket ID and
-cannot supply an insertion.
+`planning.rs` evaluates a focused `PrepareWriteInput` and returns typed
+semantic decision reasons, related record identities, candidate mutations,
+and the distinct, unpersisted `PlannedWriteTicketDraft`. It does not receive a
+public request envelope, dry-run intent, response state version, or durable ID
+generator. For committed new issuance, the public method supplies the durable
+ticket ID, state-versioned approval references, and basis state version to
+materialize one validated `PlannedWriteTicket`; that value supplies both the
+response projection and fully typed Store insertion. Dry run ends at the
+method boundary before materialization.
 `semantic.rs` exposes the immutable ticket meaning shared by planned and
 stored forms, but `WriteTicketEvaluationIdentity` keeps prospective and
 persisted identity explicit.
-For a protected Record Run, `write_ticket/admission.rs` accepts the typed
-operation, Task, Change Unit, invocation, observed-change, and current policy
-facts and returns the admitted attempt scope or a semantic admission error.
+For a protected Record Run, `write_ticket/admission.rs` accepts the exact typed
+operation, Task, Change Unit, Git workspace, observation time,
+observed-change, and current-policy facts it evaluates and returns the
+admitted attempt scope or a typed semantic admission error.
 `core_pipeline/write_tickets.rs` solely owns the physical ticket table,
 columns, row projection, canonical decoder, persisted invariants, strict
 normal and transaction-scoped reads, focused typed authority views, and
@@ -51,7 +57,10 @@ the same Store commit as the Run and its associated effects.
 
 ## Responsibility boundaries
 
-Core methods own request-specific orchestration and response composition. The
+Core methods own request-specific orchestration and response composition. For
+Prepare Write, that includes dry-run selection, durable ID allocation,
+state-versioned references, guarantee display, and conversion of typed
+planning, Store, and UserAction failures to public `PlanError` branches. The
 focused Write Ticket read boundary owns only typed fact acquisition.
 Selection and current validity are pure semantic policies. Summary projection
 accepts only evaluated typed state, state-version and display facts, and
@@ -64,8 +73,10 @@ decodes status, validity basis, attempt scope, Product Repository path
 collections, timestamps, and redundant owner coordinates before returning a
 `StoredWriteTicket`. Relationships among physical fields are validated as
 closed Write Ticket aggregate invariants. Core validates semantic planning
-invariants while constructing a `PlannedWriteTicket`; those checks are
-separate from Store-owned persisted physical validation. Planned issuance,
+invariants while constructing an identity-free draft, then validates identity
+and state-version-dependent invariants during method-owned
+`PlannedWriteTicket` materialization. Those checks are separate from
+Store-owned persisted physical validation. Planned issuance,
 stored state, and projected post-consumption state share a semantic view but
 retain their actual identities.
 Store also owns ticket queries, invalidation persistence, and consumption
@@ -86,10 +97,13 @@ row. Guard supplies observations but does not widen the ticket basis.
    policy applies the current precedence and tie-breaking rules.
 6. State-summary projection receives the selected evaluated ticket and supplied
    evidence facts and maps them without Store or policy access.
-7. `prepare_write` plans reuse or new issuance from its semantic facts.
-8. New issuance creates one `PlannedWriteTicket`; response projection and
-   `WriteTicketInsert` derive from it. Dry-run keeps the plan ID-less and
-   performs no Store insertion, while reuse reads a `StoredWriteTicket`.
+7. Write Ticket planning returns reuse or a new identity-free issuance draft,
+   typed decision reasons, related semantic identities, and candidate
+   mutations without inspecting dry-run intent or constructing public refs.
+8. For dry run, `prepare_write` projects a preview and stops. For committed
+   new issuance it allocates the durable ID, materializes one
+   `PlannedWriteTicket`, and derives response projection and
+   `WriteTicketInsert` from that value. Reuse reads a `StoredWriteTicket`.
 9. For Record Run, `write_ticket/admission.rs` repeats the current
    compatibility evaluation from typed operation facts and returns the admitted
    scope.
@@ -121,8 +135,9 @@ capability.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)
   and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
   typed fact acquisition, pure candidate selection and current-validity
-  evaluation, `PlannedWriteTicket` construction, pure summary projection,
-  narrow persisted-summary coordination, and protected Record Run admission.
+  evaluation, semantic issuance-draft planning, validated
+  `PlannedWriteTicket` materialization, pure summary projection, narrow
+  persisted-summary coordination, and protected Record Run admission.
 - [`crates/volicord-core/src/write_ticket/tests/read_model_service.rs`](../../../../crates/volicord-core/src/write_ticket/tests/read_model_service.rs):
   focused Store-backed fact acquisition and persisted-summary service coverage.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):

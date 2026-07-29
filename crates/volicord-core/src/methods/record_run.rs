@@ -1,6 +1,8 @@
 use crate::error_boundary::{
-    artifact::artifact_policy_plan_error, close_readiness::close_readiness_plan_error,
-    store::plan_error_response, user_action::user_action_service_plan_error,
+    artifact::artifact_policy_plan_error,
+    close_readiness::close_readiness_plan_error,
+    store::{plan_error_response, store_error_plan},
+    user_action::user_action_service_plan_error,
 };
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -21,6 +23,7 @@ use crate::workflow_diagnostics::{
     first_product_write_duration_micros, record_core_workflow_metric_best_effort,
     response_committed_fresh_effect,
 };
+use crate::write_ticket::WriteTicketInvalidReason;
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::methods::{MethodOperationCategory, RecordRunRequest, RecordRunResultFields};
@@ -36,6 +39,11 @@ fn record_run_error_response(
         RecordingError::Core(error) => {
             plan_error_response(&request.envelope, project_state, PlanError::Core(error))
         }
+        RecordingError::Store(error) => plan_error_response(
+            &request.envelope,
+            project_state,
+            store_error_plan(&request.envelope, project_state, error),
+        ),
         RecordingError::UserAction(error) => plan_error_response(
             &request.envelope,
             project_state,
@@ -155,7 +163,7 @@ fn write_ticket_required_response(
         envelope,
         state_version,
         ErrorCode::WriteTicketRequired,
-        "missing",
+        WriteTicketInvalidReason::Missing,
         "product-file write observations require a compatible active write ticket",
     )
 }
@@ -163,7 +171,7 @@ fn write_ticket_required_response(
 fn write_ticket_invalid_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
-    reason: &'static str,
+    reason: WriteTicketInvalidReason,
     message: &'static str,
 ) -> PipelineResponse {
     write_ticket_invalid_or_required_response(
@@ -179,11 +187,11 @@ fn write_ticket_invalid_or_required_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
     code: ErrorCode,
-    reason: &'static str,
+    reason: WriteTicketInvalidReason,
     message: &'static str,
 ) -> PipelineResponse {
     let details = object_from_value(serde_json::json!({
-        "write_ticket_reason": reason
+        "write_ticket_reason": reason.as_str()
     }))
     .expect("fixed write ticket error details should be an object");
     infallible_rejected_pipeline_response(

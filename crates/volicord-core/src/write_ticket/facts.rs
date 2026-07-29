@@ -1,82 +1,61 @@
 use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
-use volicord_types::methods::PrepareWriteRequest;
 use volicord_types::product_path::path_is_within;
-use volicord_types::schema::{ChangeUnitEffectContract, WriteDecisionReason};
 use volicord_types::values::{
-    StateRecordKind, UserActionKind, UserActionRequiredFor, UtcTimestamp, WriteDecisionCategory,
+    UserActionKind, UserActionRequiredFor, UtcTimestamp, WriteDecisionCategory,
 };
 
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, StoredUserActionRecordSet, TaskRecord,
+    ChangeUnitRecord, CoreProjectStore, StoredUserActionRecordSet, TaskRecord,
 };
 
-use super::WriteTicketPlanningError;
-use crate::pipeline::{CorePipelineError, CoreResult, VerifiedInvocationContext};
-use crate::record_refs::{change_unit_ref, state_ref};
+use super::{
+    WriteTicketDecisionCode, WriteTicketDecisionReason, WriteTicketPlanningError,
+    WriteTicketRelatedRecord,
+};
+use crate::pipeline::{CoreResult, GitWorkspaceContext};
 use crate::task_state::StoredScope;
 use crate::write_ticket::write_decision_reason;
 use volicord_user_action_service::{current_sensitive_approval, SensitiveApprovalRequirement};
 
-pub(crate) fn resolve_prepare_write_task(
+pub(crate) fn load_prepare_write_task(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &PrepareWriteRequest,
-) -> Result<(TaskId, TaskRecord, Vec<WriteDecisionReason>), WriteTicketPlanningError> {
-    let task_id = request
-        .task_id
-        .clone()
-        .or_else(|| request.envelope.task_id.as_ref().cloned())
-        .or_else(|| project_state.active_task_id.clone().map(TaskId::new))
-        .ok_or(WriteTicketPlanningError::NoActiveTask)?;
+    task_id: &TaskId,
+    task_is_current: bool,
+) -> Result<(TaskRecord, Vec<WriteTicketDecisionReason>), WriteTicketPlanningError> {
     let task = store
-        .task_record(&task_id)
-        .map_err(CorePipelineError::from)?
+        .task_record(task_id)?
         .ok_or(WriteTicketPlanningError::NoActiveTask)?;
 
     let mut reasons = Vec::new();
-    if project_state
-        .active_task_id
-        .as_deref()
-        .is_some_and(|active_task_id| active_task_id != task_id.as_str())
-    {
+    if !task_is_current {
         reasons.push(write_decision_reason(
             WriteDecisionCategory::Scope,
-            "scope_not_current",
+            WriteTicketDecisionCode::ScopeNotCurrent,
             "The addressed Task is not the current Task.",
-            vec![state_ref(
-                StateRecordKind::Task,
-                task_id.as_str(),
-                &request.envelope.project_id,
-                Some(&task_id),
-                Some(project_state.state_version),
-            )],
+            vec![WriteTicketRelatedRecord::Task(task_id.clone())],
         ));
     }
 
-    Ok((task_id, task, reasons))
+    Ok((task, reasons))
 }
 
 pub(crate) fn validate_prepare_write_change_unit(
-    request: &PrepareWriteRequest,
+    requested_change_unit_id: Option<&ChangeUnitId>,
     task_id: &TaskId,
     current_change_unit: &ChangeUnitRecord,
-    reasons: &mut Vec<WriteDecisionReason>,
+    reasons: &mut Vec<WriteTicketDecisionReason>,
 ) {
-    if request
-        .change_unit_id
-        .as_ref()
+    if requested_change_unit_id
         .is_some_and(|change_unit_id| change_unit_id.as_str() != current_change_unit.change_unit_id)
     {
         reasons.push(write_decision_reason(
             WriteDecisionCategory::Scope,
-            "scope_not_current",
+            WriteTicketDecisionCode::ScopeNotCurrent,
             "The addressed Change Unit is not the current Change Unit.",
-            vec![change_unit_ref(
-                &request.envelope.project_id,
-                task_id,
-                current_change_unit,
-                current_change_unit.basis_state_version,
-            )],
+            vec![WriteTicketRelatedRecord::CurrentChangeUnit {
+                task_id: task_id.clone(),
+                change_unit_id: ChangeUnitId::new(current_change_unit.change_unit_id.clone()),
+            }],
         ));
     }
 }
@@ -98,57 +77,49 @@ pub(crate) fn baseline_matches(
 
 pub(crate) fn workspace_context_matches(
     change_unit: &ChangeUnitRecord,
-    verified_invocation: &VerifiedInvocationContext,
-) -> CoreResult<bool> {
-    Ok(
-        match (
-            change_unit.write_basis.git_workspace_context.as_ref(),
-            verified_invocation.git_workspace_context.as_ref(),
-        ) {
-            (None, None) => true,
-            (Some(stored), Some(current)) => {
-                stored.git_common_dir == current.git_common_dir
-                    && stored.worktree_id == current.worktree_id
-                    && stored.branch_ref == current.branch_ref
-                    && stored.head_sha == current.head_sha
-                    && stored.workspace_fingerprint == current.workspace_fingerprint
-            }
-            (None, Some(_)) | (Some(_), None) => false,
-        },
-    )
+    git_workspace_context: Option<&GitWorkspaceContext>,
+) -> bool {
+    match (
+        change_unit.write_basis.git_workspace_context.as_ref(),
+        git_workspace_context,
+    ) {
+        (None, None) => true,
+        (Some(stored), Some(current)) => {
+            stored.git_common_dir == current.git_common_dir
+                && stored.worktree_id == current.worktree_id
+                && stored.branch_ref == current.branch_ref
+                && stored.head_sha == current.head_sha
+                && stored.workspace_fingerprint == current.workspace_fingerprint
+        }
+        (None, Some(_)) | (Some(_), None) => false,
+    }
 }
 
 pub(crate) fn paths_match_current_change_unit(
     intended_paths: &[String],
     change_unit: &ChangeUnitRecord,
-) -> CoreResult<bool> {
+) -> bool {
     if intended_paths.is_empty() {
-        return Ok(true);
+        return true;
     }
     if change_unit.bounded_paths.is_empty() {
-        return Ok(false);
+        return false;
     }
     let bounded_paths = &change_unit.bounded_paths;
-    Ok(!bounded_paths.is_empty()
+    !bounded_paths.is_empty()
         && intended_paths.iter().all(|path| {
             bounded_paths
                 .iter()
                 .any(|scope| path_is_within(path, scope))
-        }))
-}
-
-pub(crate) fn change_unit_effect_contract(
-    change_unit: &ChangeUnitRecord,
-) -> CoreResult<Option<ChangeUnitEffectContract>> {
-    Ok(change_unit.effect_contract.clone())
+        })
 }
 
 pub(crate) struct SensitiveApprovalSearch<'a> {
     pub(crate) store: &'a CoreProjectStore<'a>,
-    pub(crate) request: &'a PrepareWriteRequest,
     pub(crate) task_id: &'a TaskId,
     pub(crate) task: &'a TaskRecord,
     pub(crate) change_unit: &'a ChangeUnitRecord,
+    pub(crate) baseline_ref: &'a BaselineRef,
     pub(crate) intended_operation: &'a str,
     pub(crate) normalized_paths: &'a [String],
     pub(crate) sensitive_categories: &'a [String],
@@ -160,18 +131,17 @@ pub(crate) fn matching_sensitive_approval(
 ) -> Result<Option<StoredUserActionRecordSet>, WriteTicketPlanningError> {
     let SensitiveApprovalSearch {
         store,
-        request,
         task_id,
         task,
         change_unit,
+        baseline_ref,
         intended_operation,
         normalized_paths,
         sensitive_categories,
         now,
     } = search;
-    let records = store
-        .resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)
-        .map_err(CorePipelineError::from)?;
+    let records =
+        store.resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)?;
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let requirement = SensitiveApprovalRequirement {
         task_id,
@@ -180,7 +150,7 @@ pub(crate) fn matching_sensitive_approval(
         operation: intended_operation,
         normalized_paths,
         sensitive_categories,
-        baseline_ref: Some(&request.baseline_ref),
+        baseline_ref: Some(baseline_ref),
         required_for: UserActionRequiredFor::PrepareWrite,
         now,
     };

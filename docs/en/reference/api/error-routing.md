@@ -33,9 +33,15 @@ modules under
 [`error_boundary/`](../../../../crates/volicord-core/src/error_boundary/)
 translate Store or semantic-owner typed failures. Semantic owners such as
 [`artifact.rs`](../../../../crates/volicord-core/src/artifact.rs),
-[`continuity/`](../../../../crates/volicord-core/src/continuity/), and
-[`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/)
+[`continuity/`](../../../../crates/volicord-core/src/continuity/),
+[`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/), and
+[`write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)
 return typed facts or errors and do not construct public response branches.
+Write Ticket planning distinguishes typed semantic validation, invariant,
+Store, and UserAction failures without carrying envelope, dry-run, or response
+state-version metadata. `methods/prepare_write.rs` alone combines those
+failures with current method metadata and selects the public `PlanError` or
+response branch.
 The Recording service likewise returns closed `RecordingError` variants;
 `methods/record_run.rs` alone combines those semantic errors with the current
 envelope, dry-run intent, and state version to select the public branch.

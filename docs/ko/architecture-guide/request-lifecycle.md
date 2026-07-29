@@ -102,10 +102,14 @@ mutation variant와 Store 적용 순서를 보존합니다. `recording/state.rs`
 
 `prepare_write`는 `crates/volicord-core/src/write_ticket/`를 통해 현재 Task,
 Change Unit, scope, baseline, policy, 민감 승인, 정규 path, 현재 write-authority
-fingerprint를 평가합니다. 발급 예정이면 `planning.rs`가 검증된
-`PlannedWriteTicket` 하나를 만듭니다. Dry run은 ID가 없는 plan을 유지하고
-미리보기 효과만 반환합니다. Planned ticket과 opaque stored ticket은 같은 불변
-의미 view를 노출하지만 evaluation identity는 서로 구분합니다.
+fingerprint를 평가합니다. `planning.rs`는 실제로 평가하는 의미 fact만 받고 typed
+판단 사유, 의미 record identity, 후보 mutation, ID 없는 발급 draft를 반환합니다.
+요청 envelope, dry-run intent, 응답 state version은 받지 않습니다. 공개 메서드가
+이 fact를 공개 reference와 오류로 투영합니다. Dry run은 영속 identity를
+할당하거나 ticket을 구체화하기 전에 미리보기를 반환합니다. 커밋 경로는 ID를
+할당하고 Store 삽입과 응답 projection에 사용할 검증된 `PlannedWriteTicket`
+하나를 구체화합니다. Planned ticket과 opaque stored ticket은 같은 불변 의미
+view를 노출하지만 evaluation identity는 서로 구분합니다.
 영속 상태 summary에서는 `read_model.rs`가 typed ticket, Task, workflow policy,
 현재 UserAction resolution, 선택된 Run의 증거 fact를 취득합니다.
 `selection.rs`가 평가된 candidate 중 하나를 선택하고,
@@ -113,8 +117,8 @@ fingerprint를 평가합니다. 발급 예정이면 `planning.rs`가 검증된
 approval을 계산합니다. `summary.rs`는 평가된 상태를 adapter-neutral summary로만
 변환합니다. 이 전체 읽기가 필요한 메서드는 좁은 `service.rs` coordinator를
 사용합니다. 기존 ticket은 담당 문서의 모든 좌표가 계속 유효할 때만 재사용할 수
-있습니다. `record_run`에서는
-`write_ticket/admission.rs`가 typed Task, Change Unit, invocation, observed-change,
+있습니다. `record_run`에서는 `write_ticket/admission.rs`가 실제 평가에 필요한
+정확한 typed Task, Change Unit, Git workspace, 관찰 시각, observed-change,
 policy fingerprint, operation fact를 받습니다. 물리 row를 decode하거나 메서드
 응답을 구성하지 않고 같은 validity 및 attempt-scope 정책을 적용합니다. 기록
 plan은 정확히 일치해 승인된 ticket만 Run과 같은 commit 안에서 소비합니다.
