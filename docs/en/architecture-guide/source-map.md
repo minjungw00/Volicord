@@ -282,7 +282,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/tests/operational_host_e2e.rs` | Full managed Codex activation journey from applied setup through lease-bound MCP and exact Guard prompt/pre/post verification to complete read-only status, plus operational failure and cleanup regressions. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
 | `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed `production_supported` and `pre_release_only` facts, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
-| `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and semantic CI/release-workflow integrity tests, including build/smoke/staging order, matrix binary inputs, exactly-once action use, path filters, and dependency direction. |
+| `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, source-bundle command, and semantic CI/release-workflow integrity tests, including build/smoke/staging order, matrix binary inputs, exactly-once action use, path filters, and dependency direction. |
 | `tests/release-smoke/Cargo.toml` | Publish-disabled dedicated smoke package boundary with protocol, canonical tool type, and shared bounded test-process dependencies but no CLI library, MCP implementation, Core, Store, or `xtask` dependency. |
 | `tests/release-smoke/src/lib.rs` | Actual supplied-binary orchestration, disposable Git Product Repository and Runtime Home fixture, preferred-revision initialize and `tools/list` transcript validation, canonical representative tool assertions, release-specific process bounds, smoke result reporting, and focused transcript failure tests. |
 | `tests/release-smoke/src/main.rs` | Package command entry and private stable Codex fixture behavior selected by the copied `codex` or `codex.exe` identity. |
@@ -309,6 +309,7 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/src/workspace_manifests.rs` | Shared workspace-manifest parsing and current package and Rust applicability values. |
 | `xtask/src/architecture.rs` | Cargo-metadata-derived package manifests, target source roots, dependency edges, package-level architecture validation, bilingual generated responsibility and dependency regions, generated-region drift checks, and informational maintainability reporting. |
 | `xtask/src/release_metadata.rs` | Workspace release-version inheritance and release-tag validation. |
+| `xtask/src/source_bundle.rs` | Canonical Git-commit and tree resolution, tracked-state checks for default `HEAD`, deterministic ZIP generation from Git tree and blob metadata, canonical path and Unix mode encoding, and complete archive-to-tree validation. |
 | `xtask/src/storage.rs` | Canonical Storage DDL documentation validation. |
 | `xtask/src/artifact_hygiene.rs` | Git-index validation against repository artifact-exclusion rules owned by `.gitignore`. |
 | `xtask/src/repository.rs` | Shared repository path normalization used by focused validators. |
@@ -320,6 +321,7 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/tests/docs_check.rs` | Shared neutral fixture construction and current documentation-check test composition. |
 | `xtask/tests/docs_check/*.rs` | Focused current-schema, link, structure, contract-identifier, terminology, artifact, CLI, and architecture tests grouped with their owning validators. |
 | `xtask/tests/mcp_spec.rs` | Strict manifest parsing, classification, parity failures, immutable-pin, checksum, required-artifact, ordering, reporting, and offline-success coverage. |
+| `xtask/tests/source_bundle.rs` | Disposable-Git-repository and complete-current-tree coverage for untracked exclusion, regular, executable, and symlink modes, blob content, tracked-change rejection, deterministic bytes, command execution, extraction, and validation. |
 
 Update this map when a durable responsibility moves. Do not list removed,
 generated, or private scratch paths.

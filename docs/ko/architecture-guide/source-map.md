@@ -282,7 +282,7 @@
 | `crates/volicord-cli/tests/operational_host_e2e.rs` | 적용된 setup부터 lease-bound MCP와 정확한 Guard prompt/pre/post 검증을 거쳐 complete 읽기 전용 status에 이르는 전체 managed Codex activation journey 및 운영 실패·정리 regression. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
 | `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 `production_supported`와 `pre_release_only` 사실, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
-| `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, CI 및 릴리스 workflow 의미 테스트. Build/smoke/staging 순서, matrix binary input, 정확히 한 번인 action 사용, 경로 filter, 의존 방향을 포함합니다. |
+| `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 소스 번들 명령, CI 및 릴리스 workflow 의미 테스트. Build/smoke/staging 순서, matrix binary input, 정확히 한 번인 action 사용, 경로 filter, 의존 방향을 포함합니다. |
 | `tests/release-smoke/Cargo.toml` | 게시하지 않는 전용 스모크 패키지 경계. Protocol, 정규 tool type, 공유 한도 테스트 프로세스에는 의존하지만 CLI library, MCP 구현, Core, Store, `xtask`에는 의존하지 않습니다. |
 | `tests/release-smoke/src/lib.rs` | 전달받은 실제 바이너리 orchestration, 폐기 가능한 Git Product Repository 및 Runtime Home fixture, 선호 리비전 initialize와 `tools/list` transcript 검증, 정규 대표 도구 assertion, 릴리스 전용 프로세스 한도, 스모크 결과 보고, 집중 transcript 실패 테스트. |
 | `tests/release-smoke/src/main.rs` | 패키지 명령 진입점과 복사된 `codex` 또는 `codex.exe` identity로 선택되는 비공개 안정적 Codex fixture 동작. |
@@ -309,6 +309,7 @@
 | `xtask/src/workspace_manifests.rs` | 공유 workspace manifest parsing과 현재 package 및 Rust 적용 가능성 값. |
 | `xtask/src/architecture.rs` | Cargo metadata에서 가져온 package manifest, target source root, 의존 edge, 패키지 수준 아키텍처 검증, 한영 생성 책임 및 의존 영역, 생성 영역 drift 검사, 정보 제공용 유지보수성 보고. |
 | `xtask/src/release_metadata.rs` | workspace release version 상속과 release tag 검증. |
+| `xtask/src/source_bundle.rs` | 정규 Git commit과 tree 해석, 기본 `HEAD`의 추적 상태 점검, Git tree 및 blob 메타데이터 기반 결정적 ZIP 생성, 정규 경로와 Unix mode 인코딩, archive 전체와 tree의 대조 검증. |
 | `xtask/src/storage.rs` | 기준 Storage DDL 문서 검증. |
 | `xtask/src/artifact_hygiene.rs` | `.gitignore`가 담당하는 저장소 아티팩트 제외 규칙과 Git 색인의 일치 검증. |
 | `xtask/src/repository.rs` | 집중 validator가 사용하는 공유 repository 경로 정규화. |
@@ -320,6 +321,7 @@
 | `xtask/tests/docs_check.rs` | 중립적인 공유 fixture 구성과 현재 문서 점검 테스트 조합. |
 | `xtask/tests/docs_check/*.rs` | 현재 스키마, 링크, 구조, 계약 식별자, 용어, 아티팩트, CLI, 아키텍처 집중 테스트를 담당 validator별로 묶은 모듈. |
 | `xtask/tests/mcp_spec.rs` | 엄격한 manifest parsing, 분류, 집합 불일치, 변경 불가능한 pin, checksum, 필수 artifact, ordering, 보고, 오프라인 성공 coverage. |
+| `xtask/tests/source_bundle.rs` | 폐기 가능한 Git 저장소와 현재 tree 전체를 대상으로 하는 untracked 제외, 일반·실행·symlink mode, blob 내용, 추적 변경 거부, 결정적 바이트, 명령 실행, 압축 해제, 검증 coverage. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를
 나열하지 않습니다.

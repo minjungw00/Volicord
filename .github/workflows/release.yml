@@ -412,6 +412,14 @@ jobs:
           "${{ github.run_id }}"
           "${{ github.run_attempt }}"
 
+      - name: Install Rust for source packaging
+        run: |
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
+
+      - name: Build and validate the committed source bundle
+        run: cargo run --locked -p xtask -- source-bundle --output dist/volicord-source.zip
+
       - name: Add stamped install scripts and aggregate checksums
         run: |
           set -eu
@@ -446,6 +454,7 @@ jobs:
             pwsh -NoProfile -Command '$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile("dist/install.ps1", [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count -ne 0) { throw ($errors | Out-String) }'
           fi
           test ! -e "$dry_install_dir"
+          (cd dist && sha256sum volicord-source.zip > volicord-source.zip.sha256)
           (cd dist && cat *.sha256 > volicord-checksums.txt)
 
       - name: Upload assets to GitHub Release

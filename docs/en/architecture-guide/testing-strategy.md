@@ -10,7 +10,7 @@ contracts, preserve removed surfaces, or justify broader support claims.
 | Unit test | Pure parsing, canonical encoding, closed values, and policy decisions. |
 | Crate integration test | Adapter boundaries, Store reads/writes, process behavior, and strict persisted-record rejection. |
 | Conformance test | Public cross-method outcomes, error categories, replay, effects, and projections. |
-| Release-integrity test | Volicord target, version, package, checksum, workflow, and actual-binary smoke invariants. |
+| Release-integrity test | Volicord target, version, package, checksum, committed-tree source bundle, workflow, and actual-binary smoke invariants. |
 | Architecture check | Workspace package declarations, dependency kinds and directions, production/test-support separation, and Core dependency-layer eligibility. |
 | Documentation check | Owner routing, links, terminology, parity, examples, and generated-source drift. |
 
@@ -401,6 +401,26 @@ five published Volicord targets, version consistency, canonical text bytes,
 package and archive shape, packaged-binary identity, checksum output, and the
 ordinary build and package structure in the release workflow.
 
+`cargo run -p xtask -- source-bundle --output <path>` is the one source-bundle
+implementation. It selects `HEAD` by default and rejects tracked index or
+working-tree changes. `--commit <commit>` selects another exact commit when a
+release or CI check needs it. The command reads the selected tree and blobs
+through Git, writes a deterministically ordered ZIP with normalized metadata,
+and validates every entry before publishing the output. Regular files,
+executables, directories, and symbolic links use modes derived from the Git
+tree. Because the filesystem is never walked for inclusion, Git metadata,
+untracked files, runtime output, and existing untracked archives are outside
+the bundle.
+
+`cargo run -p xtask -- source-bundle-validate --input <path>` independently
+reopens the ZIP and compares its paths, file types, modes, link targets, and
+contents with the selected Git tree. Focused tests use disposable Git
+repositories for dirty tracked state, untracked content, regular files,
+executables, symbolic links, unsafe or duplicate ZIP paths, extraction, and
+byte-for-byte repeated generation. A complete-current-tree test exercises the
+same implementation against this repository. Ordinary CI and tagged release
+publication invoke the canonical creation command.
+
 `cargo run -p volicord-release-smoke -- --bin <path>` invokes the dedicated
 publish-disabled cross-platform actual-binary smoke package. It creates a
 disposable Git Product Repository, Runtime Home, Codex home, and a stable
@@ -430,9 +450,10 @@ are public manual transport and remain `manual_cli`; they do not call the
 hidden managed-host launcher or provide managed-host evidence.
 
 Generic release-integrity tests cover Volicord platform build and package
-artifacts. Operational Codex interoperability tests separately cover managed
-configuration, MCP initialization, required tools, safe tool round trips,
-Guard observations, session ownership, and revision isolation as defined by
+artifacts plus source-bundle workflow routing. Operational Codex
+interoperability tests separately cover managed configuration, MCP
+initialization, required tools, safe tool round trips, Guard observations,
+session ownership, and revision isolation as defined by
 [Agent Connection](../reference/agent-connection.md).
 
 A real-Codex run is optional operational smoke. It may report the bounded host

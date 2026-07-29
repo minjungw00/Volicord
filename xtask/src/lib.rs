@@ -12,6 +12,7 @@ mod mcp_spec;
 mod parity;
 mod release_metadata;
 mod repository;
+mod source_bundle;
 mod storage;
 mod structured_parser;
 mod terminology;
@@ -31,6 +32,7 @@ pub use mcp_spec::{
     run_mcp_spec_sync, McpSpecCheckReport, McpSpecSyncReport,
 };
 pub use release_metadata::{run_release_version_check, ReleaseVersionReport};
+pub use source_bundle::{create_source_bundle, validate_source_bundle, SourceBundleReport};
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";
 

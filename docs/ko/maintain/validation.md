@@ -334,6 +334,28 @@ binary identity, checksum 출력, workflow 의미를 보호합니다. Workflow �
 action identity, matrix input, step 순서, 호출 수를 검사하며 완전한 shell 명령 하나를
 비교하지 않습니다.
 
+commit된 소스 배포본에는 다음 정규 생성 및 검증 명령을 사용합니다.
+
+```sh
+cargo run --locked -p xtask -- source-bundle --output /tmp/volicord-source.zip
+cargo run --locked -p xtask -- source-bundle-validate --input /tmp/volicord-source.zip
+```
+
+생성 명령은 `HEAD`를 선택하고 추적 중인 index와 working tree가 변경되지 않았을 때만
+진행합니다. 선택한 Git tree에서 entry와 blob을 읽고, 완성한 ZIP을 검증한 뒤
+게시합니다. 두 명령 모두 `--commit <commit>`으로 다른 정확한 commit을 선택할 수
+있습니다. ZIP은 상대 경로에 정방향 slash를 사용하고 중복되거나 안전하지 않은 경로를
+거부합니다. 일반 파일은 `100644` 또는 `100755`, symlink는 target byte와 함께
+`120777`로 저장하며, timestamp와 stored compression을 정규화합니다. 같은 선택
+commit과 패키징 구현에서는 entry 순서, 내용, mode, link target, ZIP metadata가
+바이트 단위로 결정적입니다.
+
+검증 명령은 ZIP entry 전체 집합, 파일 형식, mode, 일반 파일 내용, symlink target을
+Git tree와 대조합니다. 포함 대상은 Git tree entry에서만 오므로 `.git` metadata,
+untracked 파일, 로컬 database, log, runtime data, 빌드 및 scratch 출력, 이전에 생성한
+untracked archive는 소스 번들 입력이 아닙니다. 일반 CI와 태그 릴리스 게시는 같은
+생성 명령을 실행하며 release-integrity 테스트가 그 workflow 경로를 검증합니다.
+
 게시하지 않는 `tests/release-smoke` 패키지는 플랫폼 공통 실제 바이너리 하네스를
 담당합니다. 폐기 가능한 Product Repository, Runtime Home, 안정적인 테스트 소유 Codex
 fixture를 사용하며 한도가 있는 프로세스 실행과 정리는 `volicord-test-process`에

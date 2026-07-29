@@ -393,16 +393,17 @@ documents:
   path_en: docs/en/user-guide/installation.md
   path_ko: docs/ko/user-guide/installation.md
   kind: tutorial
-  summary: Source build, conditional published-release installation, local source-building and release-image
-    Docker responsibilities, executable discovery, and installation verification tutorial.
+  summary: Source build and committed-tree source-bundle commands, conditional published-release installation,
+    local source-building and release-image Docker responsibilities, executable discovery, and installation
+    verification tutorial.
   normative_level: guide
   translation_policy: semantic_parity
   contracts:
   - cli.surface.public
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -415,6 +416,7 @@ documents:
   - reference.system-requirements
   - reference.admin-cli
   - reference.mcp-transport
+  - maintain.validation
 - doc_id: user-guide.quickstart
   path_en: docs/en/user-guide/quickstart.md
   path_ko: docs/ko/user-guide/quickstart.md
@@ -703,13 +705,13 @@ documents:
   path_ko: docs/ko/architecture-guide/source-map.md
   kind: explanation
   summary: Source path responsibility map for current Rust workspace modules, repository tooling,
-    and durable test inputs.
+    source-bundle implementation, and durable test inputs.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -863,8 +865,8 @@ documents:
   kind: explanation
   summary: Test-layer selection, machine-checked workspace architecture, strict contract and corruption
     coverage, pinned MCP specification inputs and offline integrity, documentation validation,
-    cross-platform actual-binary smoke, generic release integrity, and operational Codex
-    interoperability observation.
+    committed-tree source-bundle integrity, cross-platform actual-binary smoke, generic release integrity,
+    and operational Codex interoperability observation.
   normative_level: guide
   translation_policy: semantic_parity
   contracts:
@@ -874,8 +876,8 @@ documents:
   - diagnostic.process
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1334,14 +1336,14 @@ documents:
   path_en: docs/en/architecture-guide/change-guide.md
   path_ko: docs/ko/architecture-guide/change-guide.md
   kind: how_to
-  summary: How-to guidance for implementation change routing, owner routing, source-path routing,
-    and validation-command selection in the Rust workspace.
+  summary: How-to guidance for implementation change routing, owner routing, source-path and source-bundle
+    routing, and validation-command selection in the Rust workspace.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1373,13 +1375,14 @@ documents:
   kind: explanation
   summary: Concise top-level implementation architecture overview for workspace shape,
     machine-enforced dependency direction and visibility, operational paths, durable boundaries,
-    release integrity, dedicated binary-smoke and pinned-spec tooling, and detail routes.
+    committed-tree source-bundle and release integrity, dedicated binary-smoke and pinned-spec tooling,
+    and detail routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -3304,8 +3307,8 @@ documents:
   kind: maintenance
   summary: Maintenance policy for owner-derived structure, links, terminology, bilingual parity, workspace
     architecture enforcement, generated CLI synchronization and source drift, tracked artifact hygiene, onboarding usability,
-    dedicated cross-platform release-binary smoke, semantic release integrity, optional host smoke,
-    Rust checks, and result reporting.
+    deterministic committed-tree source bundles, dedicated cross-platform release-binary smoke, semantic release
+    integrity, optional host smoke, Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -3329,6 +3332,7 @@ documents:
   - contract-boundary and generated-source drift checks
   - durable repository-test selection and reporting boundaries
   - representative-user Codex onboarding usability validation
+  - deterministic committed-tree source-bundle generation and complete Git-tree validation
   - generic five-target, version, canonical-byte, package, checksum, and workflow integrity validation
   - one dedicated cross-platform actual-binary smoke package and reusable action shared exactly once by ordinary CI and each native release target
   - optional real-Codex smoke as an operational observation outside the ordinary release result

@@ -25,7 +25,7 @@
 | 관리 명령 문법, 인수, 가시성, introspection | `volicord-command-model` | Administrative CLI 소유자 |
 | 관리 명령 실행 또는 CLI 받은 편지함 | `volicord-cli` | Administrative CLI와 User Action 소유자 |
 | Codex 설정 또는 검증 | Codex 어댑터와 connection 명령 | Agent Connection, Security, System Requirements |
-| 릴리스 빌드 또는 패키지 무결성 | `tests/release-integrity`, 릴리스 workflow | 검증 |
+| 릴리스 빌드, 소스 번들, 패키지 무결성 | `xtask`, `tests/release-integrity`, 릴리스 workflow | 검증 |
 | 문서 경로 또는 용어 | `docs/doc-index.yaml`, 문서 쌍 | 문서와 번역 정책 |
 
 현재 어댑터 표면은 `personal`, `shared` 관리 stdio 연결을 사용하는 Codex Record
@@ -71,10 +71,10 @@ git diff --check
 패키지 아키텍처 메타데이터를 변경했다면 `docs-sync`를 실행하여 생성되는 영어·한국어
 책임 및 의존 표를 현재 상태로 유지합니다.
 
-릴리스 변경은 일반 release-integrity 패키지와 변경에 해당하는 빌드, 패키지,
-checksum, 플랫폼, workflow 점검도 요구합니다. 실제 Codex smoke 실행은 현재 구성과 환경의
-선택적인 운영 관찰입니다. Version이 바뀌면 관찰을 갱신하며 관리 호출 권한은 계속 session
-binding으로 판단합니다.
+릴리스 변경은 정규 `xtask` 소스 번들 명령, 일반 release-integrity 패키지, 변경에
+해당하는 빌드, 패키지, checksum, 플랫폼, workflow 점검도 요구합니다. 실제 Codex
+smoke 실행은 현재 구성과 환경의 선택적인 운영 관찰입니다. Version이 바뀌면 관찰을
+갱신하며 관리 호출 권한은 계속 session binding으로 판단합니다.
 
 ## 인계
 

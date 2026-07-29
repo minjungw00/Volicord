@@ -27,7 +27,7 @@ focused Reference owner, not by current code or this guide.
 | Administrative command syntax, arguments, visibility, or introspection | `volicord-command-model` | Administrative CLI owner |
 | Administrative command execution or CLI inbox | `volicord-cli` | Administrative CLI and User Action owners |
 | Codex setup or verification | Codex adapter and connection command | Agent Connection, Security, System Requirements |
-| Release build or package integrity | `tests/release-integrity`, release workflow | Validation |
+| Release build, source bundle, or package integrity | `xtask`, `tests/release-integrity`, release workflows | Validation |
 | Documentation route or terminology | `docs/doc-index.yaml`, paired docs | documentation and translation policies |
 
 The current adapter surface is Codex Record profile with `personal` and
@@ -74,11 +74,12 @@ git diff --check
 Run `docs-sync` whenever package architecture metadata changes so the generated
 English and Korean responsibility and dependency tables remain current.
 
-Release changes also require the generic release-integrity package and the
-ordinary build, package, checksum, platform, and workflow checks applicable to
-the change. A real-Codex smoke run is an optional operational observation for
-the current configuration and environment; version changes renew that
-observation, while managed-call authorization remains session-bound.
+Release changes also require the canonical `xtask` source-bundle command, the
+generic release-integrity package, and the ordinary build, package, checksum,
+platform, and workflow checks applicable to the change. A real-Codex smoke run
+is an optional operational observation for the current configuration and
+environment; version changes renew that observation, while managed-call
+authorization remains session-bound.
 
 ## Handoff
 

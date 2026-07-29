@@ -10,7 +10,7 @@
 | Unit test | 순수 파싱, 정규 인코딩, 폐쇄 값, 정책 결정. |
 | Crate integration test | 어댑터 경계, Store 읽기/쓰기, 프로세스 동작, 엄격한 저장 레코드 거부. |
 | Conformance test | 공개 교차 메서드 결과, 오류 범주, replay, 효과, projection. |
-| Release-integrity 테스트 | Volicord target, 버전, 패키지, checksum, workflow, 실제 바이너리 스모크 불변조건. |
+| Release-integrity 테스트 | Volicord target, 버전, 패키지, checksum, commit된 tree의 소스 번들, workflow, 실제 바이너리 스모크 불변조건. |
 | 아키텍처 검사 | 워크스페이스 패키지 선언, 의존성 종류와 방향, 프로덕션과 테스트 지원 분리, Core 의존 계층 적격성. |
 | 문서 검사 | 소유자 경로, 링크, 용어, 언어 동등성, 예시, 생성 소스 drift. |
 
@@ -342,6 +342,23 @@ Volicord target 다섯 개, 버전 일치, 기준 텍스트 바이트, 패키지
 패키징한 binary identity, checksum 출력, 릴리스 workflow의 일반 빌드와 패키지
 구조를 검증합니다.
 
+소스 번들 구현은
+`cargo run -p xtask -- source-bundle --output <path>` 하나입니다. 기본값은 `HEAD`이며
+추적 중인 index 또는 working tree에 변경이 있으면 거부합니다. 릴리스나 CI 점검에서
+다른 정확한 commit이 필요하면 `--commit <commit>`을 사용합니다. 이 명령은 선택한
+tree와 blob을 Git에서 읽고, 메타데이터를 정규화한 ZIP을 결정적인 순서로 작성한 뒤
+출력을 게시하기 전에 모든 entry를 검증합니다. 일반 파일, 실행 파일, directory,
+symlink의 mode는 Git tree에서 가져옵니다. 포함 대상을 정할 때 filesystem을 순회하지
+않으므로 Git metadata, untracked 파일, runtime 출력, 기존 untracked archive는 번들
+밖에 있습니다.
+
+`cargo run -p xtask -- source-bundle-validate --input <path>`는 ZIP을 독립적으로 다시
+열고 선택한 Git tree와 경로, 파일 형식, mode, link target, 내용을 대조합니다. 집중
+테스트는 폐기 가능한 Git 저장소에서 추적 상태 변경, untracked 내용, 일반 파일,
+실행 파일, symlink, 안전하지 않거나 중복된 ZIP 경로, 압축 해제, 바이트 단위 반복
+생성을 다룹니다. 현재 tree 전체 테스트는 같은 구현을 이 저장소에 적용합니다. 일반
+CI와 태그 릴리스 게시는 정규 생성 명령을 호출합니다.
+
 `cargo run -p volicord-release-smoke -- --bin <path>`는 게시하지 않는 전용 플랫폼
 공통 실제 바이너리 스모크 패키지를 호출합니다. 폐기 가능한 Git Product Repository,
 Runtime Home, Codex home과 안정적인 테스트 소유 Codex fixture 실행 파일을 만들고
@@ -366,10 +383,11 @@ operation이 없음을 증명합니다. Codex fixture는 스모크 실행 파일
 공개 수동 전송이므로 `manual_cli`로 남습니다. 숨은 managed-host launcher를 호출하지
 않으며 managed-host 증거를 제공하지 않습니다.
 
-일반 릴리스 무결성 테스트는 Volicord 플랫폼 빌드와 패키지 artifact를 다룹니다. 운영
-Codex 상호운용성 테스트는 [Agent Connection](../reference/agent-connection.md)이 정의한
-관리 구성, MCP 초기화, 필수 도구, 안전한 도구 왕복, Guard 관찰, session 소유권,
-revision 격리를 별도로 다룹니다.
+일반 릴리스 무결성 테스트는 Volicord 플랫폼 빌드, 패키지 artifact, 소스 번들
+workflow 경로를 다룹니다. 운영 Codex 상호운용성 테스트는
+[Agent Connection](../reference/agent-connection.md)이 정의한 관리 구성, MCP 초기화,
+필수 도구, 안전한 도구 왕복, Guard 관찰, session 소유권, revision 격리를 별도로
+다룹니다.
 
 실제 Codex 실행은 선택적인 운영 smoke입니다. 제한된 host version을 진단으로
 보고할 수 있고 version이 바뀌면 관찰을 다시 수행할 수 있습니다. 결과는 해당 구성과

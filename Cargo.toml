@@ -304,8 +304,8 @@ build = []
 
 [workspace.metadata.architecture.packages.xtask]
 group = "repository-validation"
-description = "Repository architecture, documentation, protocol fixture, and release metadata validation and synchronization."
-description_ko = "저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터 검증과 동기화를 담당합니다."
+description = "Repository architecture, documentation, protocol fixture, release metadata, and Git-tree source-bundle validation, generation, and synchronization."
+description_ko = "저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터, Git 트리 소스 번들의 검증, 생성, 동기화를 담당합니다."
 kind = "validation"
 production = false
 boundary = "neutral"

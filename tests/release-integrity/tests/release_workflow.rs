@@ -6,6 +6,7 @@ use volicord_types::release_target::ReleaseTargetTriple;
 const RELEASE_SMOKE_ACTION: &str = "./.github/actions/volicord-release-smoke";
 const RELEASE_SMOKE_INPUT: &str = "binary-path";
 const RELEASE_SMOKE_PACKAGE: &str = "volicord-release-smoke";
+const SOURCE_BUNDLE_COMMAND: &str = "source-bundle --output";
 
 #[test]
 fn maintained_workflow_and_action_yaml_files_parse() {
@@ -159,6 +160,31 @@ fn ordinary_ci_builds_then_smokes_the_debug_binary_exactly_once() {
 }
 
 #[test]
+fn ci_and_release_publish_use_the_canonical_source_bundle_command() {
+    let ci = read_yaml(".github/workflows/ci.yml");
+    let ci_steps = ci["jobs"]["checks"]["steps"]
+        .as_sequence()
+        .expect("CI check steps");
+    let ci_invocations = source_bundle_invocations(ci_steps);
+    assert_eq!(ci_invocations.len(), 1);
+    assert!(ci_invocations[0].contains("$RUNNER_TEMP/volicord-source.zip"));
+
+    let release = read_yaml(".github/workflows/release.yml");
+    let publish_steps = release["jobs"]["publish-release"]["steps"]
+        .as_sequence()
+        .expect("release publish steps");
+    let release_invocations = source_bundle_invocations(publish_steps);
+    assert_eq!(release_invocations.len(), 1);
+    assert!(release_invocations[0].contains("dist/volicord-source.zip"));
+    assert!(publish_steps
+        .iter()
+        .filter_map(|step| step["run"].as_str())
+        .any(|run| {
+            run.contains("(cd dist && sha256sum volicord-source.zip > volicord-source.zip.sha256)")
+        }));
+}
+
+#[test]
 fn ci_runs_the_complete_activation_journey_on_every_native_runtime_platform() {
     let workflow = read_yaml(".github/workflows/ci.yml");
     let linux = &workflow["jobs"]["checks"];
@@ -294,6 +320,19 @@ fn assert_no_direct_smoke_invocation(steps: &[Value]) {
         .filter(|run| run.contains(RELEASE_SMOKE_PACKAGE))
         .count();
     assert_eq!(direct, 0);
+}
+
+fn source_bundle_invocations(steps: &[Value]) -> Vec<&str> {
+    steps
+        .iter()
+        .filter_map(|step| step["run"].as_str())
+        .filter(|run| {
+            run.contains("cargo run")
+                && run.contains("--locked")
+                && run.contains("-p xtask")
+                && run.contains(SOURCE_BUNDLE_COMMAND)
+        })
+        .collect()
 }
 
 fn workflow_paths<'a>(workflow: &'a Value, event: &str) -> BTreeSet<&'a str> {

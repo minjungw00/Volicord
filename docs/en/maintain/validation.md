@@ -378,6 +378,32 @@ semantics. Workflow validation inspects parsed action identity, matrix inputs,
 step ordering, and invocation counts; it does not compare one complete shell
 command.
 
+For the committed source distribution, use the canonical creation and
+validation commands:
+
+```sh
+cargo run --locked -p xtask -- source-bundle --output /tmp/volicord-source.zip
+cargo run --locked -p xtask -- source-bundle-validate --input /tmp/volicord-source.zip
+```
+
+The creation command selects `HEAD`, requires its tracked index and working
+tree to be unchanged, reads entries and blobs from the selected Git tree, and
+validates the completed ZIP before publishing it. `--commit <commit>` on both
+commands selects another exact commit. The ZIP has forward-slash relative
+paths, rejects duplicate and unsafe paths, stores regular files as `100644` or
+`100755`, stores symbolic links as `120777` with their target bytes, and uses
+normalized timestamps and stored compression. Entry ordering, content, modes,
+link targets, and ZIP metadata are byte-for-byte deterministic for the same
+selected commit and packaging implementation.
+
+The validator compares the complete ZIP entry set, file types, modes, regular
+file content, and symbolic-link targets with the Git tree. Because inclusion
+comes only from Git tree entries, `.git` metadata, untracked files, local
+databases, logs, runtime data, build and scratch output, and previously
+generated untracked archives are not source-bundle inputs. Ordinary CI and
+tagged release publication run the same creation command; release-integrity
+tests verify that workflow routing.
+
 The publish-disabled `tests/release-smoke` package owns the cross-platform
 actual-binary harness. It uses a disposable Product Repository, Runtime Home,
 and stable test-owned Codex fixture while delegating bounded process execution

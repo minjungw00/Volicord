@@ -1,4 +1,5 @@
 use std::env;
+use std::path::Path;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -73,9 +74,29 @@ fn main() -> ExitCode {
         [command, option, tag] if command == "release-version-check" && option == "--tag" => {
             run_release_version_check_command(Some(tag))
         }
+        [command, option, output] if command == "source-bundle" && option == "--output" => {
+            run_source_bundle_command(Path::new(output), None)
+        }
+        [command, output_option, output, commit_option, commit]
+            if command == "source-bundle"
+                && output_option == "--output"
+                && commit_option == "--commit" =>
+        {
+            run_source_bundle_command(Path::new(output), Some(commit))
+        }
+        [command, option, input] if command == "source-bundle-validate" && option == "--input" => {
+            run_source_bundle_validate_command(Path::new(input), None)
+        }
+        [command, input_option, input, commit_option, commit]
+            if command == "source-bundle-validate"
+                && input_option == "--input"
+                && commit_option == "--commit" =>
+        {
+            run_source_bundle_validate_command(Path::new(input), Some(commit))
+        }
         _ => {
             eprintln!(
-                "usage: cargo run -p xtask -- <architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]>"
+                "usage: cargo run -p xtask -- <architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
             );
             ExitCode::from(2)
         }
@@ -180,6 +201,54 @@ fn run_release_version_check_command(tag: Option<&str>) -> ExitCode {
         }
         Err(error) => {
             eprintln!("release-version-check failed: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_source_bundle_command(output: &Path, commit: Option<&str>) -> ExitCode {
+    let result = match env::current_dir() {
+        Ok(root) => xtask::create_source_bundle(&root, output, commit),
+        Err(error) => Err(error.into()),
+    };
+
+    match result {
+        Ok(report) => {
+            println!(
+                "source-bundle passed: {} entries, {} bytes, commit {}, tree {}",
+                report.entry_count(),
+                report.byte_len(),
+                report.commit(),
+                report.tree()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("source-bundle failed: {error:#}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_source_bundle_validate_command(input: &Path, commit: Option<&str>) -> ExitCode {
+    let result = match env::current_dir() {
+        Ok(root) => xtask::validate_source_bundle(&root, input, commit),
+        Err(error) => Err(error.into()),
+    };
+
+    match result {
+        Ok(report) => {
+            println!(
+                "source-bundle-validate passed: {} entries, {} bytes, commit {}, tree {}",
+                report.entry_count(),
+                report.byte_len(),
+                report.commit(),
+                report.tree()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("source-bundle-validate failed: {error:#}");
             ExitCode::from(1)
         }
     }

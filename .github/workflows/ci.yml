@@ -73,6 +73,9 @@ jobs:
       - name: Run documentation checks
         run: cargo run --locked -p xtask -- docs-check
 
+      - name: Build and validate the committed source bundle
+        run: cargo run --locked -p xtask -- source-bundle --output "$RUNNER_TEMP/volicord-source.zip"
+
       - name: Check pinned MCP specification fixtures
         run: cargo run --locked -p xtask -- mcp-spec-check
 
