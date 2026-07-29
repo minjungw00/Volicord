@@ -506,8 +506,32 @@ Product Repository 경로, 중복 물리 column 사이의 모순은 Store 소유
 `Corrupt` failure를 만듭니다. 빈 값, 기본값, 다른 column을 통해 다시 해석하지
 않습니다. Store 손상 constructor는 Store 내부에만 있습니다. Core와 의미 서비스는
 검증된 field를 직접 사용하며 영속 표현을 parse하거나 Store 손상을 구성하지 않습니다.
-이미 유효한 typed fact 사이의 모순은 이를 소비하는 Core 또는 서비스 policy가 소유하는
-invariant failure입니다.
+하나의 영속 aggregate 안에서 여러 field 사이 관계가 어긋난 경우에도 Store
+corruption이며, 임의의 column 대신 해당 aggregate의 폐쇄형 invariant identity를
+사용합니다. 완전히 검증된 typed fact와 현재 operation 또는 policy fact 사이의 의미
+모순은 이를 소비하는 Core 또는 서비스 policy가 담당합니다.
+
+### Write Ticket 물리 소유권
+
+Write Ticket Store aggregate만 물리 `write_tickets` 테이블과 column, row
+projection, JSON 및 폐쇄형 값 decoding, timestamp decoding, Product Repository
+경로 decoding, 영속 필드 간 불변 조건을 담당합니다. 일반 읽기와 기존 Store
+transaction 안의 읽기는 정규 row projection, decoder, invariant validator 하나를
+공유합니다. 활성 ticket filtering은 선택한 각 row가 검증된 typed Write Ticket이 된
+뒤에만 수행합니다.
+
+다른 Store 모듈은 완전한 typed Write Ticket 또는 그 record에서 만든 집중된 typed
+view를 받습니다. 특히 workflow policy 영속화는 typed authority-binding view를
+사용하며 `write_tickets`를 query하거나 `validity_basis_json`을 parse하거나 ticket
+corruption을 구성하지 않습니다. 검증된 binding과 현재 workflow policy authority의
+비교는 의미 policy 판단입니다.
+
+한 물리 Write Ticket field에 국한된 corruption은 그 정확한 field를 식별합니다.
+Owner identity, scope revision, baseline, timestamp 순서, path set, path coverage,
+write intent, status lifecycle처럼 여러 field 사이 관계가 어긋나면 Write Ticket
+aggregate와 폐쇄형 invariant code를 식별합니다. 영속 ticket 자체가 내부적으로
+유효하다면 operation 시각을 기준으로 한 expiry, 현재 policy와의 incompatibility,
+요청 operation coverage 부족은 의미 거절로 유지됩니다.
 
 커밋된 메서드 응답의 정확한 byte는 의도적인 의미 담당자 예외입니다. Store는 영속 replay
 carrier와 typed replay identity를 검증하고 `response_json`을 정확히 보존하지만 메서드

@@ -86,12 +86,34 @@ Idempotency request-hash conflict details:
 ## Owner-state corruption detail fields
 
 When corrupt typed owner state is reported with
-`code=PERSISTED_DATA_CORRUPT` and `category=corrupt`, details may identify:
+`code=PERSISTED_DATA_CORRUPT` and `category=corrupt`,
+`owner_state_error` has exactly one of these shapes:
 
-- `owner_state_error.table`
-- `owner_state_error.record_ref`
-- `owner_state_error.logical_column`
-- `owner_state_error.corruption_category`
+- Field-local corruption identifies `table`, `record_ref`, `logical_column`,
+  and `corruption_category`.
+- Cross-field aggregate corruption identifies `aggregate`, `record_ref`,
+  `invariant`, and `corruption_category`.
+
+The field-local shape uses `corruption_category=corrupt_stored_json` or
+`corruption_category=corrupt_stored_value` and names the actual invalid
+physical field. The aggregate shape uses
+`corruption_category=corrupt_aggregate_invariant` and does not include `table`
+or `logical_column`.
+
+For `aggregate=write_ticket`, `invariant` is one of:
+
+- `task_identity_agreement`
+- `change_unit_identity_agreement`
+- `scope_revision_agreement`
+- `baseline_agreement`
+- `timestamp_order`
+- `duplicate_intended_paths`
+- `duplicate_allowed_paths`
+- `duplicate_denied_paths`
+- `allowed_denied_path_disjointness`
+- `intended_path_coverage`
+- `product_file_write_intent_agreement`
+- `status_lifecycle_agreement`
 
 These diagnostics must not include raw stored JSON, secrets, SQL text, or sensitive absolute paths. They do not make malformed JSON equivalent to absence.
 

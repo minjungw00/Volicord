@@ -60,7 +60,7 @@ use volicord_types::ids::{
     AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, GuardInstallationId, ProjectId,
 };
 use volicord_types::integration_revision::McpRuntimeSessionSource;
-use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile};
+use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile, WriteTicketStatus};
 /// Opens a raw existing Registry only for explicit fixture mutation.
 ///
 /// Production crates cannot obtain this writable handle. Tests outside this
@@ -1424,27 +1424,32 @@ pub mod core_fixtures {
 
         /// Reads the current status of a Write Ticket row.
         pub fn write_ticket_status(&self, write_ticket_id: &str) -> Result<String, StoreError> {
-            Ok(self.conn()?.query_row(
-                "SELECT status
-                   FROM write_tickets
-                  WHERE project_id = ?1
-                    AND write_ticket_id = ?2",
-                rusqlite::params![self.project_id, write_ticket_id],
-                |row| row.get(0),
-            )?)
+            let record = self
+                .store()?
+                .write_ticket_record(write_ticket_id)?
+                .ok_or_else(|| StoreError::NotFound {
+                    entity: "write_ticket",
+                    id: write_ticket_id.to_owned(),
+                })?;
+            Ok(match record.status {
+                WriteTicketStatus::Active => "active",
+                WriteTicketStatus::Consumed => "consumed",
+                WriteTicketStatus::Invalidated => "invalidated",
+                WriteTicketStatus::Revoked => "revoked",
+            }
+            .to_owned())
         }
 
         /// Reads the basis state version of a Write Ticket row.
         pub fn write_ticket_basis(&self, write_ticket_id: &str) -> Result<u64, Box<dyn Error>> {
-            let basis: i64 = self.conn()?.query_row(
-                "SELECT basis_state_version
-                   FROM write_tickets
-                  WHERE project_id = ?1
-                    AND write_ticket_id = ?2",
-                rusqlite::params![self.project_id, write_ticket_id],
-                |row| row.get(0),
-            )?;
-            Ok(u64::try_from(basis)?)
+            Ok(self
+                .store()?
+                .write_ticket_record(write_ticket_id)?
+                .ok_or_else(|| StoreError::NotFound {
+                    entity: "write_ticket",
+                    id: write_ticket_id.to_owned(),
+                })?
+                .basis_state_version)
         }
 
         /// Reads the effective non-expiry status of a user-action request fixture.
@@ -1903,22 +1908,6 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Replaces a Write Ticket attempt-scope JSON value with raw text.
-        pub fn set_write_ticket_attempt_scope_raw(
-            &self,
-            write_ticket_id: &str,
-            raw_json: &str,
-        ) -> Result<(), StoreError> {
-            self.mutation_conn()?.execute(
-                "UPDATE write_tickets
-                    SET attempt_scope_json = ?3
-                  WHERE project_id = ?1
-                    AND write_ticket_id = ?2",
-                rusqlite::params![self.project_id, write_ticket_id, raw_json],
-            )?;
-            Ok(())
-        }
-
         /// Replaces artifact owner JSON with raw text for controlled corruption fixtures.
         pub fn set_artifact_owner_json_raw(
             &self,
@@ -2000,20 +1989,14 @@ pub mod core_fixtures {
             created_at: &str,
             idle_expires_at: &str,
         ) -> Result<(), StoreError> {
-            self.mutation_conn()?.execute(
-                "UPDATE write_tickets
-                    SET created_at = ?3,
-                        idle_expires_at = ?4
-                  WHERE project_id = ?1
-                    AND write_ticket_id = ?2",
-                rusqlite::params![
-                    self.project_id,
-                    write_ticket_id,
-                    created_at,
-                    idle_expires_at
-                ],
-            )?;
-            Ok(())
+            let context = self.mutation_context()?;
+            let store =
+                CoreProjectStore::open_for_mutation(&context, &ProjectId::new(&self.project_id))?;
+            store.set_write_ticket_timestamps_fixture(
+                write_ticket_id,
+                created_at,
+                Some(idle_expires_at),
+            )
         }
 
         /// Reads Write Ticket `created_at` and optional `idle_expires_at` timestamp strings.
@@ -2021,14 +2004,19 @@ pub mod core_fixtures {
             &self,
             write_ticket_id: &str,
         ) -> Result<(String, Option<String>), StoreError> {
-            Ok(self.conn()?.query_row(
-                "SELECT created_at, idle_expires_at
-                   FROM write_tickets
-                  WHERE project_id = ?1
-                    AND write_ticket_id = ?2",
-                rusqlite::params![self.project_id, write_ticket_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?)
+            let record = self
+                .store()?
+                .write_ticket_record(write_ticket_id)?
+                .ok_or_else(|| StoreError::NotFound {
+                    entity: "write_ticket",
+                    id: write_ticket_id.to_owned(),
+                })?;
+            Ok((
+                record.created_at.to_string(),
+                record
+                    .idle_expires_at
+                    .map(|timestamp| timestamp.to_string()),
+            ))
         }
 
         /// Reads terminal lifecycle fields for a Task.

@@ -371,11 +371,15 @@ mod tests {
             allowed_path_prefixes: scope.intended_paths.clone(),
             denied_path_prefixes: Vec::new(),
             attempt_scope: scope.clone(),
+            created_by_actor_source: volicord_types::values::ActorSource::System,
+            created_by_user_action_resolution_id: None,
             idle_expires_at: None,
             invalidation_reason: None,
-            created_at,
             consumed_by_run_id: None,
             consumed_at: None,
+            revoked_at: None,
+            created_at,
+            metadata: serde_json::Map::new(),
         }
     }
 

@@ -10,6 +10,80 @@ use crate::bootstrap::{
 /// Store-layer result type.
 pub type StoreResult<T> = Result<T, StoreError>;
 
+/// Store aggregate that owns one persisted record contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreAggregate {
+    WriteTicket,
+}
+
+impl StoreAggregate {
+    /// Returns the canonical diagnostic identity for this aggregate.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WriteTicket => "write_ticket",
+        }
+    }
+}
+
+/// Closed persisted invariants owned by the Write Ticket aggregate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteTicketInvariant {
+    TaskIdentityAgreement,
+    ChangeUnitIdentityAgreement,
+    ScopeRevisionAgreement,
+    BaselineAgreement,
+    TimestampOrder,
+    DuplicateIntendedPaths,
+    DuplicateAllowedPaths,
+    DuplicateDeniedPaths,
+    AllowedDeniedPathDisjointness,
+    IntendedPathCoverage,
+    ProductFileWriteIntentAgreement,
+    StatusLifecycleAgreement,
+}
+
+impl WriteTicketInvariant {
+    /// Returns the canonical diagnostic identity for this invariant.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TaskIdentityAgreement => "task_identity_agreement",
+            Self::ChangeUnitIdentityAgreement => "change_unit_identity_agreement",
+            Self::ScopeRevisionAgreement => "scope_revision_agreement",
+            Self::BaselineAgreement => "baseline_agreement",
+            Self::TimestampOrder => "timestamp_order",
+            Self::DuplicateIntendedPaths => "duplicate_intended_paths",
+            Self::DuplicateAllowedPaths => "duplicate_allowed_paths",
+            Self::DuplicateDeniedPaths => "duplicate_denied_paths",
+            Self::AllowedDeniedPathDisjointness => "allowed_denied_path_disjointness",
+            Self::IntendedPathCoverage => "intended_path_coverage",
+            Self::ProductFileWriteIntentAgreement => "product_file_write_intent_agreement",
+            Self::StatusLifecycleAgreement => "status_lifecycle_agreement",
+        }
+    }
+}
+
+/// Closed aggregate-invariant identity carried by Store corruption diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreAggregateInvariant {
+    WriteTicket(WriteTicketInvariant),
+}
+
+impl StoreAggregateInvariant {
+    /// Returns the aggregate that owns this invariant.
+    pub const fn aggregate(self) -> StoreAggregate {
+        match self {
+            Self::WriteTicket(_) => StoreAggregate::WriteTicket,
+        }
+    }
+
+    /// Returns the canonical diagnostic identity for this invariant.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WriteTicket(invariant) => invariant.as_str(),
+        }
+    }
+}
+
 /// Errors raised while opening, initializing, or validating store databases.
 #[derive(Debug)]
 pub enum StoreError {
@@ -56,6 +130,12 @@ pub enum StoreError {
         table: &'static str,
         record_ref: String,
         logical_column: &'static str,
+    },
+    /// A persisted aggregate violates one of its closed cross-field invariants.
+    CorruptOwnerStateInvariant {
+        database_kind: &'static str,
+        record_ref: String,
+        invariant: StoreAggregateInvariant,
     },
     /// A stored owner field has a value outside the owner-defined set.
     CorruptStoredValue {
@@ -132,6 +212,17 @@ impl StoreError {
             table,
             record_ref: record_ref.into(),
             logical_column,
+        }
+    }
+
+    pub(crate) fn corrupt_write_ticket_invariant(
+        record_ref: impl Into<String>,
+        invariant: WriteTicketInvariant,
+    ) -> Self {
+        Self::CorruptOwnerStateInvariant {
+            database_kind: "project_state",
+            record_ref: record_ref.into(),
+            invariant: StoreAggregateInvariant::WriteTicket(invariant),
         }
     }
 
@@ -267,12 +358,12 @@ impl StoreError {
                 database_kind: Some(database_kind),
                 entity: None,
                 field: None,
-                owner_state_error: Some(OwnerStateFailureDetails {
+                owner_state_error: Some(StoreCorruptionLocation::Field(OwnerStateFailureDetails {
                     table,
                     record_ref: record_ref.clone(),
                     logical_column,
                     corruption_category: "corrupt_stored_json",
-                }),
+                })),
             },
             Self::CorruptOwnerStateValue {
                 database_kind,
@@ -286,11 +377,29 @@ impl StoreError {
                 database_kind: Some(database_kind),
                 entity: None,
                 field: None,
-                owner_state_error: Some(OwnerStateFailureDetails {
+                owner_state_error: Some(StoreCorruptionLocation::Field(OwnerStateFailureDetails {
                     table,
                     record_ref: record_ref.clone(),
                     logical_column,
                     corruption_category: "corrupt_stored_value",
+                })),
+            },
+            Self::CorruptOwnerStateInvariant {
+                database_kind,
+                record_ref,
+                invariant,
+            } => StoreFailureClassification {
+                route: StoreFailureRoute::PersistedDataCorrupt,
+                category: "corrupt_aggregate_invariant",
+                retryable: false,
+                database_kind: Some(database_kind),
+                entity: None,
+                field: None,
+                owner_state_error: Some(StoreCorruptionLocation::AggregateInvariant {
+                    aggregate: invariant.aggregate(),
+                    record_ref: record_ref.clone(),
+                    invariant: *invariant,
+                    corruption_category: "corrupt_aggregate_invariant",
                 }),
             },
             Self::CorruptStoredValue {
@@ -379,7 +488,19 @@ pub struct StoreFailureClassification {
     pub database_kind: Option<&'static str>,
     pub entity: Option<&'static str>,
     pub field: Option<&'static str>,
-    pub owner_state_error: Option<OwnerStateFailureDetails>,
+    pub owner_state_error: Option<StoreCorruptionLocation>,
+}
+
+/// Precise location of corrupt persisted owner state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoreCorruptionLocation {
+    Field(OwnerStateFailureDetails),
+    AggregateInvariant {
+        aggregate: StoreAggregate,
+        record_ref: String,
+        invariant: StoreAggregateInvariant,
+        corruption_category: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -551,6 +672,16 @@ impl fmt::Display for StoreError {
                 formatter,
                 "stored owner value {table}.{logical_column} for {record_ref} is invalid in {database_kind}"
             ),
+            Self::CorruptOwnerStateInvariant {
+                database_kind,
+                record_ref,
+                invariant,
+            } => write!(
+                formatter,
+                "stored {} aggregate invariant {} for {record_ref} is invalid in {database_kind}",
+                invariant.aggregate().as_str(),
+                invariant.as_str()
+            ),
             Self::CorruptStoredValue {
                 database_kind,
                 field,
@@ -594,6 +725,7 @@ impl Error for StoreError {
             | Self::CorruptStoredJson { .. }
             | Self::CorruptOwnerStateJson { .. }
             | Self::CorruptOwnerStateValue { .. }
+            | Self::CorruptOwnerStateInvariant { .. }
             | Self::CorruptStoredValue { .. }
             | Self::UnsupportedStorageProfile { .. }
             | Self::SchemaInvariant { .. }
@@ -618,7 +750,10 @@ impl From<rusqlite::Error> for StoreError {
 
 #[cfg(test)]
 mod tests {
-    use super::{StoreError, StoreFailureRoute};
+    use super::{
+        StoreAggregate, StoreAggregateInvariant, StoreCorruptionLocation, StoreError,
+        StoreFailureRoute, WriteTicketInvariant,
+    };
     use volicord_platform_fs::{PlatformDiagnostic, PlatformDiagnosticKind};
 
     #[test]
@@ -636,6 +771,28 @@ mod tests {
                 StoreFailureRoute::PersistedDataCorrupt
             );
         }
+    }
+
+    #[test]
+    fn write_ticket_cross_field_corruption_has_a_typed_aggregate_location() {
+        let error = StoreError::corrupt_write_ticket_invariant(
+            "ticket",
+            WriteTicketInvariant::TaskIdentityAgreement,
+        );
+        let classification = error.classification();
+
+        assert_eq!(classification.category, "corrupt_aggregate_invariant");
+        assert_eq!(
+            classification.owner_state_error,
+            Some(StoreCorruptionLocation::AggregateInvariant {
+                aggregate: StoreAggregate::WriteTicket,
+                record_ref: "ticket".to_owned(),
+                invariant: StoreAggregateInvariant::WriteTicket(
+                    WriteTicketInvariant::TaskIdentityAgreement
+                ),
+                corruption_category: "corrupt_aggregate_invariant",
+            })
+        );
     }
 
     #[test]

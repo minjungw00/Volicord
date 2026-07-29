@@ -55,7 +55,7 @@ without adding a second Store abstraction:
 | `facade.rs`, `open.rs` | Project-database handle, retained Runtime Home and project identity, read snapshots, and read-only or mutation-capable opening. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | Project header and enforcement-profile reads, strict stored-value decoding, and the project UTC floor. |
 | `tasks.rs` | Task and acceptance mutation inputs and SQL; Task rows, acceptance criteria, evidence claims, and Task revisions. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, and Run mutation inputs and SQL; private physical rows; strict closed-value, JSON, timestamp, and Product Repository path decoding into typed reads and Run observed-change projections. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, and Run mutation inputs and SQL; private physical rows; strict closed-value, JSON, timestamp, and Product Repository path decoding into typed reads and Run observed-change projections. `write_tickets.rs` is the sole physical Write Ticket owner and shares one canonical row projection, decoder, and persisted-invariant validator across normal and transaction-scoped reads. |
 | `evidence.rs`, `artifacts.rs` | Evidence and artifact mutation inputs and SQL; evidence summary and observation reads, artifact staging records, durable artifact records, artifact links, and artifact-body verification on reads. |
 | `user_actions.rs`, `continuity.rs` | User-action and continuity mutation inputs and SQL; strict decoding of physical JSON and stored scalar values into typed request/resolution records, effective-status reads, project-continuity rows, and bounded pages. |
 | `replay.rs` | Private tool-invocation rows, strict typed identity and replay-context decoding, immutable operation-result projection, and exact method-response bytes retained for Core-owned semantic replay. |
@@ -70,6 +70,10 @@ Project workflow-policy record reads and writes remain in
 That owner keeps the physical policy row private and verifies its current
 schema, closed values, canonical bytes, fingerprint, source, and timestamps
 before returning a typed policy record.
+When a policy mutation evaluates active Write Ticket bindings,
+`workflow_records.rs` receives a focused typed authority view from the Write
+Ticket aggregate. It neither queries the ticket table nor parses ticket JSON,
+and it applies only current workflow-policy semantics to the validated view.
 Transient artifact staging and durable artifact-body path operations remain in
 [`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs), while the
 project-facade artifact read side is owned by `core_pipeline/artifacts.rs`.

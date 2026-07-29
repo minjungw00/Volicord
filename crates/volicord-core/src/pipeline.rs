@@ -21,8 +21,8 @@ use volicord_store::{
         commit_input, CommitMutationInput, CommittedEventRef, CoreProjectStore,
         CoreStorageMutation, MutationCommitOutcome, PendingTaskEvent, ProjectStateHeader,
     },
-    CanonicalRuntimeHomePath, RuntimeHomeMutationContext, StoreError, StoreFailureRoute,
-    StoreResult,
+    CanonicalRuntimeHomePath, RuntimeHomeMutationContext, StoreCorruptionLocation, StoreError,
+    StoreFailureRoute, StoreResult,
 };
 use volicord_types::canonical::canonical_request_hash;
 use volicord_types::ids::{
@@ -2275,15 +2275,26 @@ pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
         );
     }
     if let Some(owner_state_error) = classification.owner_state_error {
-        details.insert(
-            "owner_state_error".to_owned(),
-            json!({
-                "table": owner_state_error.table,
-                "record_ref": owner_state_error.record_ref,
-                "logical_column": owner_state_error.logical_column,
-                "corruption_category": owner_state_error.corruption_category
+        let projected = match owner_state_error {
+            StoreCorruptionLocation::Field(field) => json!({
+                "table": field.table,
+                "record_ref": field.record_ref,
+                "logical_column": field.logical_column,
+                "corruption_category": field.corruption_category
             }),
-        );
+            StoreCorruptionLocation::AggregateInvariant {
+                aggregate,
+                record_ref,
+                invariant,
+                corruption_category,
+            } => json!({
+                "aggregate": aggregate.as_str(),
+                "record_ref": record_ref,
+                "invariant": invariant.as_str(),
+                "corruption_category": corruption_category
+            }),
+        };
+        details.insert("owner_state_error".to_owned(), projected);
     }
     let code = match classification.route {
         StoreFailureRoute::OperationalUnavailable => {
@@ -2371,6 +2382,7 @@ mod tests {
             StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis,
         },
         sqlite::registry_db_path,
+        StoreAggregateInvariant, WriteTicketInvariant,
     };
     use volicord_test_support::{
         open_project_fixture_database, open_registry_fixture_database,
@@ -2390,6 +2402,31 @@ mod tests {
     const PROJECT_ID: &str = "project_a";
     const TASK_ID: &str = "task_a";
     const CONNECTION_ID: &str = "connection_main";
+
+    #[test]
+    fn write_ticket_invariant_corruption_projects_without_a_physical_column() {
+        let error = store_failure_error(StoreError::CorruptOwnerStateInvariant {
+            database_kind: "project_state",
+            record_ref: "ticket".to_owned(),
+            invariant: StoreAggregateInvariant::WriteTicket(
+                WriteTicketInvariant::TaskIdentityAgreement,
+            ),
+        });
+        let details = error.details().expect("corruption details");
+        let location = details["owner_state_error"]
+            .as_object()
+            .expect("aggregate location");
+
+        assert_eq!(location["aggregate"], "write_ticket");
+        assert_eq!(location["record_ref"], "ticket");
+        assert_eq!(location["invariant"], "task_identity_agreement");
+        assert_eq!(
+            location["corruption_category"],
+            "corrupt_aggregate_invariant"
+        );
+        assert!(!location.contains_key("table"));
+        assert!(!location.contains_key("logical_column"));
+    }
 
     #[derive(Debug, Clone, PartialEq, Serialize)]
     struct PipelineTestResultFields {

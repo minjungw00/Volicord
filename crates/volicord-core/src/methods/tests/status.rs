@@ -89,68 +89,6 @@ fn status_renders_idle_timeout_invalidation_without_mutating_row() -> Result<(),
 }
 
 #[test]
-fn status_rejects_unrepresentable_stored_write_ticket_expiry_without_effect(
-) -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(&harness, "status_write_ticket_clock_range")?;
-    let write_ticket_id = "wa_status_clock_range";
-    insert_active_write_ticket_with_timestamps(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        write_ticket_id,
-        2,
-        "2026-06-18T00:00:00Z",
-        "2026-06-18T00:15:00Z",
-    )?;
-    harness.conn()?.execute(
-        "UPDATE write_tickets
-            SET idle_expires_at = '9999-12-31T23:59:59-23:59'
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-    )?;
-    let before = harness.counts()?;
-    let before_floor: String = harness.conn()?.query_row(
-        "SELECT updated_at FROM project_state WHERE project_id = ?1",
-        [PROJECT_ID],
-        |row| row.get(0),
-    )?;
-
-    let response = harness.service.status(
-        StatusRequest {
-            envelope: envelope(
-                "req_status_write_ticket_clock_range",
-                None,
-                false,
-                None,
-                Some(&task_id),
-            ),
-            continuity_page: None,
-            include: status_include(),
-        },
-        invocation(OperationCategory::Read),
-    )?;
-
-    assert_owner_state_value_rejection(
-        &response,
-        "write_tickets",
-        write_ticket_id,
-        "idle_expires_at",
-        &harness.runtime_home_path,
-    );
-    assert_eq!(harness.counts()?, before);
-    let after_floor: String = harness.conn()?.query_row(
-        "SELECT updated_at FROM project_state WHERE project_id = ?1",
-        [PROJECT_ID],
-        |row| row.get(0),
-    )?;
-    assert_eq!(after_floor, before_floor);
-    Ok(())
-}
-
-#[test]
 fn status_selects_latest_write_ticket_by_basis_state_version_when_ids_disagree(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;

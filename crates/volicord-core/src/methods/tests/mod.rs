@@ -39,6 +39,7 @@ use volicord_types::ids::{
     RequestId, SequenceDurableIdGenerator,
 };
 use volicord_types::methods::{ChangeUnitUpdate, InitialScope, ScopeUpdate};
+use volicord_types::product_path::ProductRelativePath;
 use volicord_types::schema::{
     ChangeUnitEffectContract, EvidenceUpdateProvenance, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
 };
@@ -411,9 +412,22 @@ impl MethodHarness {
     }
 
     fn counts(&self) -> Result<StorageEffectCounts, Box<dyn Error>> {
-        let store =
-            CoreProjectStore::open_read_only(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
-        Ok(store.effect_counts()?)
+        Ok(self.store()?.effect_counts()?)
+    }
+
+    fn store(&self) -> Result<CoreProjectStore<'static>, Box<dyn Error>> {
+        Ok(CoreProjectStore::open_read_only(
+            &self.runtime_home_path,
+            &ProjectId::new(PROJECT_ID),
+        )?)
+    }
+
+    fn mutation_store(&self) -> Result<CoreProjectStore<'_>, Box<dyn Error>> {
+        let context = self.service.context();
+        Ok(CoreProjectStore::open_for_mutation(
+            &context,
+            &ProjectId::new(PROJECT_ID),
+        )?)
     }
 
     fn conn(&self) -> Result<rusqlite::Connection, Box<dyn Error>> {
@@ -2753,108 +2767,54 @@ fn insert_active_write_ticket_with_scope(
     harness: &MethodHarness,
     input: WriteTicketScopeFixture<'_>,
 ) -> Result<(), Box<dyn Error>> {
-    let conn = harness.conn()?;
-    let scope_revision: i64 = conn.query_row(
-        "SELECT scope_revision FROM tasks WHERE project_id = ?1 AND task_id = ?2",
-        rusqlite::params![PROJECT_ID, input.task_id],
-        |row| row.get(0),
-    )?;
-    let context = harness.service.context();
-    let store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
+    let store = harness.mutation_store()?;
+    let scope_revision = store
+        .task_record(&TaskId::new(input.task_id))?
+        .ok_or_else(|| format!("missing Task fixture {}", input.task_id))?
+        .scope_revision;
     let policy = store.project_workflow_policy()?.map(|record| record.policy);
     let write_authority_fingerprint = project_write_authority_fingerprint(policy.as_ref())?;
-    let attempt_scope_json = json!({
-        "task_id": input.task_id,
-        "change_unit_id": input.change_unit_id,
-        "intended_operation": input.intended_operation,
-        "intended_paths": input.intended_paths,
-        "product_file_write_intended": true,
-        "sensitive_categories": input.sensitive_categories,
-        "baseline_ref": "baseline_test"
-    })
-    .to_string();
-    let validity_basis_json = json!({
-        "task_id": input.task_id,
-        "change_unit_id": input.change_unit_id,
-        "scope_revision": scope_revision,
-        "baseline_ref": "baseline_test",
-        "workspace_context_sha256": null,
-        "write_authority_fingerprint": write_authority_fingerprint,
-        "approval_basis_refs": []
-    })
-    .to_string();
-    let allowed_path_prefixes_json = serde_json::to_string(input.intended_paths)?;
-    conn.execute(
-        "INSERT INTO write_tickets (
-                project_id,
-                write_ticket_id,
-                task_id,
-                change_unit_id,
-                basis_state_version,
-                status,
-                validity_basis_json,
-                allowed_path_prefixes_json,
-                denied_path_prefixes_json,
-                attempt_scope_json,
-                created_by_actor_source,
-                idle_expires_at,
-                created_at
-            )
-            VALUES (
-                ?1,
-                ?2,
-                ?3,
-                ?4,
-                ?5,
-                'active',
-                ?6,
-                ?7,
-                ?8,
-                ?9,
-                ?10,
-                ?11,
-                ?12
-            )",
-        rusqlite::params![
-            PROJECT_ID,
-            input.write_ticket_id,
-            input.task_id,
-            input.change_unit_id,
-            i64::try_from(input.basis_state_version)?,
-            validity_basis_json,
-            allowed_path_prefixes_json,
-            "[]",
-            attempt_scope_json,
-            AGENT_ACTOR_SOURCE,
-            input.expires_at,
-            input.created_at
-        ],
-    )?;
-    Ok(())
-}
-
-fn mutate_write_ticket_scope_json(
-    harness: &MethodHarness,
-    write_ticket_id: &str,
-    mutate: impl FnOnce(&mut Value),
-) -> Result<(), Box<dyn Error>> {
-    let conn = harness.conn()?;
-    let text: String = conn.query_row(
-        "SELECT attempt_scope_json
-           FROM write_tickets
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-        |row| row.get(0),
-    )?;
-    let mut value: Value = serde_json::from_str(&text)?;
-    mutate(&mut value);
-    conn.execute(
-        "UPDATE write_tickets
-            SET attempt_scope_json = ?3
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id, value.to_string()],
+    let intended_paths = input
+        .intended_paths
+        .iter()
+        .map(|path| ProductRelativePath::parse(*path))
+        .collect::<Result<Vec<_>, _>>()?;
+    store.insert_write_ticket_fixture(
+        &volicord_store::core_pipeline::WriteTicketInsert {
+            write_ticket_id: input.write_ticket_id.to_owned(),
+            task_id: input.task_id.to_owned(),
+            change_unit_id: input.change_unit_id.to_owned(),
+            validity_basis: WriteTicketValidityBasis {
+                task_id: TaskId::new(input.task_id),
+                change_unit_id: ChangeUnitId::new(input.change_unit_id),
+                scope_revision,
+                baseline_ref: Some(BaselineRef::new("baseline_test")),
+                workspace_context_sha256: None,
+                write_authority_fingerprint,
+                approval_basis_refs: Vec::new(),
+            },
+            allowed_path_prefixes: intended_paths.clone(),
+            denied_path_prefixes: Vec::new(),
+            attempt_scope: WriteTicketAttemptScope {
+                task_id: TaskId::new(input.task_id),
+                change_unit_id: ChangeUnitId::new(input.change_unit_id),
+                intended_operation: input.intended_operation.to_owned(),
+                intended_paths,
+                product_file_write_intended: !input.intended_paths.is_empty(),
+                sensitive_categories: input
+                    .sensitive_categories
+                    .iter()
+                    .map(|category| (*category).to_owned())
+                    .collect(),
+                baseline_ref: Some(BaselineRef::new("baseline_test")),
+            },
+            created_by_actor_source: ActorSource::agent_connection(CONNECTION_ID),
+            created_by_user_action_resolution_id: None,
+            idle_expires_at: Some(UtcTimestamp::parse(input.expires_at)?),
+            created_at: UtcTimestamp::parse(input.created_at)?,
+            metadata: Map::new(),
+        },
+        input.basis_state_version,
     )?;
     Ok(())
 }
@@ -2864,37 +2824,33 @@ fn mutate_write_ticket_validity_basis_json(
     write_ticket_id: &str,
     mutate: impl FnOnce(&mut Value),
 ) -> Result<(), Box<dyn Error>> {
-    let conn = harness.conn()?;
-    let text: String = conn.query_row(
-        "SELECT validity_basis_json
-           FROM write_tickets
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-        |row| row.get(0),
-    )?;
-    let mut value: Value = serde_json::from_str(&text)?;
-    mutate(&mut value);
-    conn.execute(
-        "UPDATE write_tickets
-            SET validity_basis_json = ?3
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id, value.to_string()],
+    mutate_write_ticket_authority_json(harness, write_ticket_id, |validity_basis, _| {
+        mutate(validity_basis);
+    })
+}
+
+fn mutate_write_ticket_authority_json(
+    harness: &MethodHarness,
+    write_ticket_id: &str,
+    mutate: impl FnOnce(&mut Value, &mut Value),
+) -> Result<(), Box<dyn Error>> {
+    let store = harness.mutation_store()?;
+    let record = store
+        .write_ticket_record(write_ticket_id)?
+        .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?;
+    let mut validity_basis = serde_json::to_value(record.validity_basis)?;
+    let mut attempt_scope = serde_json::to_value(record.attempt_scope)?;
+    mutate(&mut validity_basis, &mut attempt_scope);
+    store.set_write_ticket_authority_fixture(
+        write_ticket_id,
+        serde_json::from_value(validity_basis)?,
+        serde_json::from_value(attempt_scope)?,
     )?;
     Ok(())
 }
 
 fn write_ticket_count(harness: &MethodHarness) -> Result<u64, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*)
-               FROM write_tickets
-              WHERE project_id = ?1",
-        rusqlite::params![PROJECT_ID],
-        |row| row.get(0),
-    )?;
-    Ok(u64::try_from(count)?)
+    Ok(harness.counts()?.write_tickets)
 }
 
 fn write_decision_event_count(harness: &MethodHarness) -> Result<u64, Box<dyn Error>> {
@@ -2958,31 +2914,27 @@ fn write_ticket_basis(
     harness: &MethodHarness,
     write_ticket_id: &str,
 ) -> Result<u64, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    let basis: i64 = conn.query_row(
-        "SELECT basis_state_version
-               FROM write_tickets
-              WHERE project_id = ?1
-                AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-        |row| row.get(0),
-    )?;
-    Ok(u64::try_from(basis)?)
+    Ok(harness
+        .store()?
+        .write_ticket_record(write_ticket_id)?
+        .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?
+        .basis_state_version)
 }
 
 fn write_ticket_timestamps(
     harness: &MethodHarness,
     write_ticket_id: &str,
 ) -> Result<(String, Option<String>), Box<dyn Error>> {
-    let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT created_at, idle_expires_at
-               FROM write_tickets
-              WHERE project_id = ?1
-                AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?)
+    let record = harness
+        .store()?
+        .write_ticket_record(write_ticket_id)?
+        .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?;
+    Ok((
+        record.created_at.to_string(),
+        record
+            .idle_expires_at
+            .map(|timestamp| timestamp.to_string()),
+    ))
 }
 
 fn user_action_status(
@@ -3712,15 +3664,30 @@ fn write_ticket_status(
     harness: &MethodHarness,
     write_ticket_id: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT status
-               FROM write_tickets
-              WHERE project_id = ?1
-                AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-        |row| row.get(0),
-    )?)
+    let status = harness
+        .store()?
+        .write_ticket_record(write_ticket_id)?
+        .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?
+        .status;
+    Ok(match status {
+        WriteTicketStatus::Active => "active",
+        WriteTicketStatus::Consumed => "consumed",
+        WriteTicketStatus::Invalidated => "invalidated",
+        WriteTicketStatus::Revoked => "revoked",
+    }
+    .to_owned())
+}
+
+fn write_ticket_invalidation_reason(
+    harness: &MethodHarness,
+    write_ticket_id: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    Ok(harness
+        .store()?
+        .write_ticket_record(write_ticket_id)?
+        .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?
+        .invalidation_reason
+        .map(|reason| reason.as_str().to_owned()))
 }
 
 fn artifact_staging_status(

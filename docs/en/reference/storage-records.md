@@ -575,9 +575,37 @@ produces the Store-owned persisted-data `Corrupt` failure. It is not
 reinterpreted through an empty value, a default, or another column. Store
 corruption constructors are internal to Store. Core and semantic services
 consume the validated fields directly and do not parse their persisted
-representations or construct Store corruption. A contradiction among otherwise
-valid typed facts is instead an invariant failure owned by the consuming Core
-or service policy.
+representations or construct Store corruption. A relationship failure among
+multiple fields of one persisted aggregate is still Store corruption and uses
+that aggregate's closed invariant identity rather than an arbitrary column.
+A semantic contradiction among fully validated typed facts and current
+operation or policy facts is instead owned by the consuming Core or service
+policy.
+
+### Write Ticket Physical Ownership
+
+The Write Ticket Store aggregate is the only implementation owner of the
+physical `write_tickets` table, its columns, row projection, JSON and closed
+value decoding, timestamp decoding, Product Repository path decoding, and
+persisted cross-field invariants. Normal reads and reads within an existing
+Store transaction use the same canonical row projection, decoder, and
+invariant validator. Filtering for active tickets occurs only after each
+selected row has become a validated typed Write Ticket.
+
+Other Store modules receive a complete typed Write Ticket or a focused typed
+view produced from that record. In particular, workflow-policy persistence
+uses a typed authority-binding view and does not query `write_tickets`, parse
+`validity_basis_json`, or construct ticket corruption. It compares the
+validated binding with current workflow-policy authority as a semantic policy
+decision.
+
+Corruption local to one physical Write Ticket field identifies that exact
+field. A relationship among fields, including owner identity, scope revision,
+baseline, timestamp ordering, path-set, path-coverage, write-intent, or status
+lifecycle disagreement, identifies the Write Ticket aggregate and a closed
+invariant code. Expiry relative to an operation time, incompatibility with the
+current policy, or lack of coverage for a requested operation remains a
+semantic rejection when the persisted ticket itself is internally valid.
 
 Exact committed method response bytes are a deliberate semantic-owner
 exception. Store validates the persisted replay carrier and its typed replay

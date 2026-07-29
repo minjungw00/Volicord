@@ -177,7 +177,12 @@ session을 무효화하지 않습니다.
 
 Typed record가 공개 경계를 건너기 전에 Store가 영속 row decode와 영속 record
 일관성을 담당합니다. 하위 서비스는 Store failure를 전파할 수 있지만 물리 손상
-진단을 다시 구성하지 않습니다. 각각 유효한 typed fact에서 파생된 의미 불변 조건
+진단을 다시 구성하지 않습니다. 한 field에 국한된 failure는 실제로 유효하지 않은
+물리 field를 식별합니다. 여러 field 사이 관계가 어긋난 failure는 편의상 고른
+column이 아니라 담당 aggregate와 폐쇄형 invariant code를 식별합니다. Write Ticket
+aggregate는 일반 읽기와 transaction 범위 읽기에 정규 decoder 하나를 적용하며, 이에
+의존하는 Store 모듈은 검증된 typed record 또는 집중된 typed view만 사용합니다.
+각각 유효한 typed fact에서 파생된 의미 불변 조건
 위반은 집중 담당 문서가 정한 서비스 또는 Core invariant, validation, availability
 failure입니다. 그 fact가 저장소에서 왔다는 이유만으로 영속 데이터 `Corrupt`가
 되지는 않습니다.

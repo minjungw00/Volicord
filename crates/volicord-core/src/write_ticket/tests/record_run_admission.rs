@@ -448,35 +448,6 @@ fn record_run_product_write_omits_optional_operation_and_consumes_ticket_once(
     response_write_summary["guarantee_display"] = status_write_summary["guarantee_display"].clone();
     assert_eq!(status_write_summary, response_write_summary);
 
-    mutate_write_ticket_validity_basis_json(&harness, &write_ticket_id, |basis| {
-        basis
-            .as_object_mut()
-            .expect("validity basis should be an object")
-            .remove("write_authority_fingerprint");
-    })?;
-    let corrupt_status = harness.service.status(
-        StatusRequest {
-            envelope: envelope(
-                "req_run_write_corrupt_consumed_status",
-                None,
-                false,
-                None,
-                Some(&task_id),
-            ),
-            continuity_page: None,
-            include: status_include(),
-        },
-        invocation(OperationCategory::Read),
-    )?;
-    assert_store_rejection(
-        &corrupt_status,
-        "PERSISTED_DATA_CORRUPT",
-        "corrupt_stored_json",
-    );
-    assert_eq!(
-        corrupt_status.response_value["base"]["effect_kind"],
-        "no_effect"
-    );
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
@@ -700,48 +671,6 @@ fn record_run_honors_configured_idle_timeout_boundary() -> Result<(), Box<dyn Er
 }
 
 #[test]
-fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result<(), Box<dyn Error>>
-{
-    let mut harness = MethodHarness::new()?;
-    enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_bad_time")?;
-    insert_active_write_ticket_with_timestamps(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        "wa_bad_timestamp",
-        2,
-        "2026-06-18T00:00:00.000Z",
-        "not-a-timestamp",
-    )?;
-    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
-    let clock = ManualClock::at("2026-06-18T00:00:00Z");
-    harness.use_generator_and_clock(id_generator, clock);
-    let before = harness.counts()?;
-
-    let response = harness.service.record_run(
-        product_write_record_run_request(
-            "req_run_auth_bad_time",
-            "idem_run_auth_bad_time",
-            2,
-            &task_id,
-            &change_unit_id,
-            "wa_bad_timestamp",
-            "run_auth_bad_time",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-
-    assert_store_rejection(&response, "PERSISTED_DATA_CORRUPT", "corrupt_stored_value");
-    let details = &response.response_value["errors"][0]["details"]["owner_state_error"];
-    assert_eq!(details["table"], "write_tickets");
-    assert_eq!(details["record_ref"], "wa_bad_timestamp");
-    assert_eq!(details["logical_column"], "idle_expires_at");
-    assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
 fn record_run_ignores_unrelated_state_version_increment() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -952,7 +881,8 @@ fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_baseline_auth")?;
     let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_baseline_auth")?;
-    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
+    mutate_write_ticket_authority_json(&harness, &write_ticket_id, |basis, scope| {
+        basis["baseline_ref"] = json!("baseline_other");
         scope["baseline_ref"] = json!("baseline_other");
     })?;
     let before = harness.counts()?;
@@ -973,66 +903,6 @@ fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
     assert_write_ticket_invalid_reason(&response, "baseline_mismatch");
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
-fn record_run_rejects_missing_write_authority_binding_as_corrupt_without_consumption(
-) -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(&harness, "run_missing_policy_binding")?;
-    let write_ticket_id = prepare_write_ticket(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        2,
-        "run_missing_policy_binding",
-    )?;
-    mutate_write_ticket_validity_basis_json(&harness, &write_ticket_id, |basis| {
-        basis
-            .as_object_mut()
-            .expect("validity basis should be an object")
-            .remove("write_authority_fingerprint");
-    })?;
-    let before = harness.counts()?;
-
-    let response = harness.service.record_run(
-        product_write_record_run_request(
-            "req_run_missing_policy_binding",
-            "idem_run_missing_policy_binding",
-            3,
-            &task_id,
-            &change_unit_id,
-            &write_ticket_id,
-            "run_missing_policy_binding",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-
-    assert_store_rejection(&response, "PERSISTED_DATA_CORRUPT", "corrupt_stored_json");
-    assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
-    assert_eq!(harness.counts()?, before);
-
-    let status = harness.service.status(
-        StatusRequest {
-            envelope: envelope(
-                "req_status_missing_policy_binding",
-                None,
-                false,
-                None,
-                Some(&task_id),
-            ),
-            continuity_page: None,
-            include: status_include(),
-        },
-        invocation(OperationCategory::Read),
-    )?;
-    assert_store_rejection(&status, "PERSISTED_DATA_CORRUPT", "corrupt_stored_json");
-    assert_eq!(status.response_value["base"]["effect_kind"], "no_effect");
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     Ok(())
 }
 
@@ -1070,119 +940,6 @@ fn record_run_rejects_mismatched_write_authority_binding_without_consumption(
     )?;
 
     assert_write_ticket_invalid_reason(&response, "policy_authority_mismatch");
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
-    assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
-fn record_run_rejects_write_ticket_task_mismatch_without_consumption() -> Result<(), Box<dyn Error>>
-{
-    let harness = MethodHarness::new()?;
-    enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_task_auth")?;
-    let write_ticket_id =
-        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_task_auth")?;
-    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
-        scope["task_id"] = json!("task_other");
-    })?;
-    let before = harness.counts()?;
-
-    let response = harness.service.record_run(
-        product_write_record_run_request(
-            "req_run_task_auth",
-            "idem_run_task_auth",
-            3,
-            &task_id,
-            &change_unit_id,
-            &write_ticket_id,
-            "run_task_auth",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-
-    assert_owner_state_rejection(
-        &response,
-        "write_tickets",
-        &write_ticket_id,
-        "validity_basis_json",
-        &harness.runtime_home_path,
-    );
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
-    assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
-fn record_run_rejects_write_ticket_change_unit_mismatch_without_consumption(
-) -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_change_unit_auth")?;
-    let write_ticket_id = prepare_write_ticket(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        2,
-        "run_change_unit_auth",
-    )?;
-    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
-        scope["change_unit_id"] = json!("cu_other");
-    })?;
-    let before = harness.counts()?;
-
-    let response = harness.service.record_run(
-        product_write_record_run_request(
-            "req_run_change_unit_auth",
-            "idem_run_change_unit_auth",
-            3,
-            &task_id,
-            &change_unit_id,
-            &write_ticket_id,
-            "run_change_unit_auth",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-
-    assert_owner_state_rejection(
-        &response,
-        "write_tickets",
-        &write_ticket_id,
-        "validity_basis_json",
-        &harness.runtime_home_path,
-    );
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
-    assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
-fn record_run_rejects_write_ticket_product_write_flag_mismatch_without_consumption(
-) -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_flag_auth")?;
-    let write_ticket_id =
-        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_flag_auth")?;
-    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
-        scope["product_file_write_intended"] = json!(false);
-    })?;
-    let before = harness.counts()?;
-
-    let response = harness.service.record_run(
-        product_write_record_run_request(
-            "req_run_flag_auth",
-            "idem_run_flag_auth",
-            3,
-            &task_id,
-            &change_unit_id,
-            &write_ticket_id,
-            "run_flag_auth",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-
-    assert_write_ticket_invalid_reason(&response, "product_write_flag_mismatch");
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())

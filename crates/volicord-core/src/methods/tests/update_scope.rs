@@ -286,20 +286,6 @@ fn material_scope_change_increments_revision_and_invalidates_basis() -> Result<(
     Ok(())
 }
 
-fn write_ticket_invalidation_reason(
-    harness: &MethodHarness,
-    write_ticket_id: &str,
-) -> Result<Option<String>, Box<dyn Error>> {
-    Ok(harness.conn()?.query_row(
-        "SELECT invalidation_reason
-           FROM write_tickets
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-        |row| row.get(0),
-    )?)
-}
-
 #[test]
 fn semantic_noop_scope_update_does_not_increment_revisions() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;

@@ -6,7 +6,6 @@ use rusqlite::{params, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
-use volicord_types::schema::WriteTicketValidityBasis;
 use volicord_types::schema::{WORKFLOW_POLICY_CONTRACT_ID, WRITE_AUTHORITY_CONTRACT_ID};
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, OperationCategory, RequestedControlLevel, TaskControlLevel,
@@ -16,6 +15,7 @@ use volicord_types::workflow_policy::{ProjectWorkflowPolicy, ProjectWorkflowPoli
 
 use crate::{
     core_pipeline::{
+        active_write_ticket_authority_bindings_in_tx, invalidate_active_write_ticket_ids_in_tx,
         CommitMutationInput, CoreProjectStore, CoreStorageMutation, MutationCommitOutcome,
         PendingTaskEvent, TaskRecord, VerifiedReplayContext,
     },
@@ -867,64 +867,28 @@ fn invalidate_incompatible_write_tickets(
     resulting_write_authority_fingerprint: &str,
     reevaluated_task_id: Option<&str>,
 ) -> StoreResult<(Vec<String>, Vec<String>)> {
-    let active_tickets = {
-        let mut statement = tx.prepare(
-            "SELECT write_ticket_id, task_id, validity_basis_json
-               FROM write_tickets
-              WHERE project_id = ?1
-                AND status = 'active'
-              ORDER BY write_ticket_id",
-        )?;
-        let rows = statement.query_map([project_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?;
-        rows.collect::<Result<Vec<_>, _>>()?
-    };
+    let active_tickets = active_write_ticket_authority_bindings_in_tx(tx, project_id)?;
     let mut affected_task_ids = BTreeSet::new();
     if let Some(task_id) = reevaluated_task_id {
         affected_task_ids.insert(task_id.to_owned());
     }
-    let mut invalidated_write_ticket_ids = Vec::new();
-    for (write_ticket_id, task_id, validity_basis_json) in active_tickets {
-        let basis = serde_json::from_str::<WriteTicketValidityBasis>(&validity_basis_json)
-            .map_err(|_| {
-                StoreError::corrupt_owner_state_json(
-                    "write_tickets",
-                    &write_ticket_id,
-                    "validity_basis_json",
-                )
-            })?;
-        if basis.task_id.as_str() != task_id || basis.write_authority_fingerprint.is_empty() {
-            return Err(StoreError::corrupt_owner_state_value(
-                "write_tickets",
-                &write_ticket_id,
-                "validity_basis_json",
-            ));
-        }
+    let mut invalidation_candidates = Vec::new();
+    for binding in active_tickets {
         let policy_binding_mismatch =
-            basis.write_authority_fingerprint != resulting_write_authority_fingerprint;
-        let task_reevaluation_pending = reevaluated_task_id == Some(task_id.as_str());
+            binding.write_authority_fingerprint != resulting_write_authority_fingerprint;
+        let task_reevaluation_pending = reevaluated_task_id == Some(binding.task_id.as_str());
         if !policy_binding_mismatch && !task_reevaluation_pending {
             continue;
         }
-        let updated = tx.execute(
-            "UPDATE write_tickets
-                SET status = 'invalidated',
-                    invalidation_reason = 'explicit_revoke'
-              WHERE project_id = ?1
-                AND write_ticket_id = ?2
-                AND status = 'active'",
-            params![project_id, write_ticket_id],
-        )?;
-        if updated == 1 {
-            affected_task_ids.insert(task_id);
-            invalidated_write_ticket_ids.push(write_ticket_id);
-        }
+        affected_task_ids.insert(binding.task_id.into_inner());
+        invalidation_candidates.push(binding.write_ticket_id);
     }
+    let invalidated_write_ticket_ids = invalidate_active_write_ticket_ids_in_tx(
+        tx,
+        project_id,
+        &invalidation_candidates,
+        volicord_types::values::WriteTicketInvalidationReason::ExplicitRevoke,
+    )?;
     Ok((
         affected_task_ids.into_iter().collect(),
         invalidated_write_ticket_ids,
@@ -1187,12 +1151,15 @@ mod tests {
 
     use serde_json::json;
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
-    use volicord_types::ids::ProjectId;
+    use volicord_types::canonical::canonical_json_sha256;
+    use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId};
+    use volicord_types::product_path::ProductRelativePath;
+    use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
+    use volicord_types::values::{WriteTicketInvalidationReason, WriteTicketStatus};
 
     use super::*;
     use crate::{
-        core_pipeline::{CoreStorageMutation, TaskMutation},
+        core_pipeline::{CoreStorageMutation, TaskMutation, WriteTicketInsert},
         mutation::TestRuntimeHomeAdmission,
     };
 
@@ -1332,6 +1299,61 @@ mod tests {
         Ok(())
     }
 
+    struct ActiveWriteTicketFixture<'a> {
+        write_ticket_id: &'a str,
+        task_id: &'a str,
+        change_unit_id: &'a str,
+        basis_state_version: u64,
+        write_authority_fingerprint: String,
+        intended_paths: &'a [&'a str],
+        created_at: &'a str,
+    }
+
+    fn insert_active_write_ticket(
+        store: &CoreProjectStore,
+        input: ActiveWriteTicketFixture<'_>,
+    ) -> Result<(), Box<dyn Error>> {
+        let intended_paths = input
+            .intended_paths
+            .iter()
+            .map(|path| ProductRelativePath::parse(*path))
+            .collect::<Result<Vec<_>, _>>()?;
+        store.insert_write_ticket_fixture(
+            &WriteTicketInsert {
+                write_ticket_id: input.write_ticket_id.to_owned(),
+                task_id: input.task_id.to_owned(),
+                change_unit_id: input.change_unit_id.to_owned(),
+                validity_basis: WriteTicketValidityBasis {
+                    task_id: TaskId::new(input.task_id),
+                    change_unit_id: ChangeUnitId::new(input.change_unit_id),
+                    scope_revision: 1,
+                    baseline_ref: None,
+                    workspace_context_sha256: None,
+                    write_authority_fingerprint: input.write_authority_fingerprint,
+                    approval_basis_refs: Vec::new(),
+                },
+                allowed_path_prefixes: intended_paths.clone(),
+                denied_path_prefixes: Vec::new(),
+                attempt_scope: WriteTicketAttemptScope {
+                    task_id: TaskId::new(input.task_id),
+                    change_unit_id: ChangeUnitId::new(input.change_unit_id),
+                    intended_operation: "workflow_policy_test".to_owned(),
+                    product_file_write_intended: !intended_paths.is_empty(),
+                    intended_paths,
+                    sensitive_categories: Vec::new(),
+                    baseline_ref: None,
+                },
+                created_by_actor_source: ActorSource::System,
+                created_by_user_action_resolution_id: None,
+                idle_expires_at: None,
+                created_at: UtcTimestamp::parse(input.created_at)?,
+                metadata: serde_json::Map::new(),
+            },
+            input.basis_state_version,
+        )?;
+        Ok(())
+    }
+
     #[test]
     fn workflow_policy_round_trip() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("workflow-record-round-trip")?;
@@ -1436,33 +1458,17 @@ mod tests {
                 })?;
         assert_eq!(authority_event_count, 1);
 
-        let validity_basis_json = canonical_json_string(&json!({
-            "task_id": "task_policy_active",
-            "change_unit_id": "cu_policy_active",
-            "scope_revision": 0,
-            "baseline_ref": null,
-            "workspace_context_sha256": null,
-            "write_authority_fingerprint": observe_fingerprint,
-            "approval_basis_refs": []
-        }))?;
-        store.conn.execute(
-            "INSERT INTO write_tickets (
-                project_id, write_ticket_id, task_id, change_unit_id,
-                basis_state_version, status, validity_basis_json,
-                allowed_path_prefixes_json, denied_path_prefixes_json,
-                attempt_scope_json, created_by_actor_source,
-                created_by_user_action_resolution_id, idle_expires_at,
-                invalidation_reason, consumed_by_run_id, consumed_at,
-                revoked_at, created_at, metadata_json
-             ) VALUES (?1, 'ticket_policy_before_raise', 'task_policy_active',
-                       'cu_policy_active', 1, 'active', ?2, '[]', '[]', '{}', ?3,
-                       NULL, NULL, NULL, NULL, NULL, NULL,
-                       '2026-07-16T00:00:00Z', '{}')",
-            params![
-                fixture.project_id(),
-                validity_basis_json,
-                fixture.actor_source()
-            ],
+        insert_active_write_ticket(
+            &store,
+            ActiveWriteTicketFixture {
+                write_ticket_id: "ticket_policy_before_raise",
+                task_id: "task_policy_active",
+                change_unit_id: "cu_policy_active",
+                basis_state_version: 1,
+                write_authority_fingerprint: observe_fingerprint.clone(),
+                intended_paths: &[],
+                created_at: "2026-07-16T00:00:00Z",
+            },
         )?;
 
         let (tracked_json, tracked_fingerprint) = workflow_policy("tracked", false)?;
@@ -1494,15 +1500,14 @@ mod tests {
             TaskControlLevel::Tracked
         );
         assert_eq!(marked.marked_at, strengthened.policy.applied_at);
-        let invalidated_ticket: (String, Option<String>) = store.conn.query_row(
-            "SELECT status, invalidation_reason
-               FROM write_tickets
-              WHERE write_ticket_id = 'ticket_policy_before_raise'",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(invalidated_ticket.0, "invalidated");
-        assert_eq!(invalidated_ticket.1.as_deref(), Some("explicit_revoke"));
+        let invalidated_ticket = store
+            .write_ticket_record("ticket_policy_before_raise")?
+            .expect("invalidated Write Ticket remains readable");
+        assert_eq!(invalidated_ticket.status, WriteTicketStatus::Invalidated);
+        assert_eq!(
+            invalidated_ticket.invalidation_reason,
+            Some(WriteTicketInvalidationReason::ExplicitRevoke)
+        );
 
         let (relaxed_json, relaxed_fingerprint) = workflow_policy("light", true)?;
         let relaxed =
@@ -1690,36 +1695,19 @@ mod tests {
                 1,
                 "2026-07-17T00:00:00Z",
             )?;
-            let validity_basis_json = canonical_json_string(&json!({
-                "task_id": "task_policy_binding",
-                "change_unit_id": "cu_policy_binding",
-                "scope_revision": 1,
-                "baseline_ref": null,
-                "workspace_context_sha256": null,
-                "write_authority_fingerprint": initial.resulting_write_authority_fingerprint,
-                "approval_basis_refs": []
-            }))?;
-            let allowed_path_prefixes_json = canonical_json_string(&case.ticket_paths)?;
-            store.conn.execute(
-                "INSERT INTO write_tickets (
-                    project_id, write_ticket_id, task_id, change_unit_id,
-                    basis_state_version, status, validity_basis_json,
-                    allowed_path_prefixes_json, denied_path_prefixes_json,
-                    attempt_scope_json, created_by_actor_source,
-                    created_by_user_action_resolution_id, idle_expires_at,
-                    invalidation_reason, consumed_by_run_id, consumed_at,
-                    revoked_at, created_at, metadata_json
-                 ) VALUES (?1, 'ticket_policy_binding', 'task_policy_binding',
-                           'cu_policy_binding',
-                           1, 'active', ?2, ?3, '[]', '{}', ?4,
-                           NULL, NULL, NULL, NULL, NULL, NULL,
-                           '2026-07-17T00:00:00Z', '{}')",
-                params![
-                    fixture.project_id(),
-                    validity_basis_json,
-                    allowed_path_prefixes_json,
-                    fixture.actor_source()
-                ],
+            insert_active_write_ticket(
+                &store,
+                ActiveWriteTicketFixture {
+                    write_ticket_id: "ticket_policy_binding",
+                    task_id: "task_policy_binding",
+                    change_unit_id: "cu_policy_binding",
+                    basis_state_version: 1,
+                    write_authority_fingerprint: initial
+                        .resulting_write_authority_fingerprint
+                        .clone(),
+                    intended_paths: &case.ticket_paths,
+                    created_at: "2026-07-17T00:00:00Z",
+                },
             )?;
 
             let (tightened_json, tightened_fingerprint) = workflow_policy_with_write_authority(
@@ -1757,16 +1745,21 @@ mod tests {
                 "{}",
                 case.name
             );
-            let (status, reason): (String, Option<String>) = store.conn.query_row(
-                "SELECT status, invalidation_reason
-                   FROM write_tickets
-                  WHERE project_id = ?1
-                    AND write_ticket_id = 'ticket_policy_binding'",
-                [fixture.project_id()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
-            assert_eq!(status, "invalidated", "{}", case.name);
-            assert_eq!(reason.as_deref(), Some("explicit_revoke"), "{}", case.name);
+            let ticket = store
+                .write_ticket_record("ticket_policy_binding")?
+                .expect("invalidated Write Ticket remains readable");
+            assert_eq!(
+                ticket.status,
+                WriteTicketStatus::Invalidated,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                ticket.invalidation_reason,
+                Some(WriteTicketInvalidationReason::ExplicitRevoke),
+                "{}",
+                case.name
+            );
             let active_task = store.active_task_record()?.expect("active Task");
             let mark = task_policy_control_reevaluation(&active_task)?
                 .expect("write-authority changes must mark the active Task");
@@ -1838,34 +1831,17 @@ mod tests {
             1,
             "2026-07-17T00:00:00Z",
         )?;
-        let validity_basis_json = canonical_json_string(&json!({
-            "task_id": "task_policy_equivalent",
-            "change_unit_id": "cu_policy_equivalent",
-            "scope_revision": 1,
-            "baseline_ref": null,
-            "workspace_context_sha256": null,
-            "write_authority_fingerprint": initial.resulting_write_authority_fingerprint,
-            "approval_basis_refs": []
-        }))?;
-        store.conn.execute(
-            "INSERT INTO write_tickets (
-                project_id, write_ticket_id, task_id, change_unit_id,
-                basis_state_version, status, validity_basis_json,
-                allowed_path_prefixes_json, denied_path_prefixes_json,
-                attempt_scope_json, created_by_actor_source,
-                created_by_user_action_resolution_id, idle_expires_at,
-                invalidation_reason, consumed_by_run_id, consumed_at,
-                revoked_at, created_at, metadata_json
-             ) VALUES (?1, 'ticket_policy_equivalent', 'task_policy_equivalent',
-                       'cu_policy_equivalent',
-                       1, 'active', ?2, '[\"src/export.rs\"]', '[]', '{}', ?3,
-                       NULL, NULL, NULL, NULL, NULL, NULL,
-                       '2026-07-17T00:00:00Z', '{}')",
-            params![
-                fixture.project_id(),
-                validity_basis_json,
-                fixture.actor_source()
-            ],
+        insert_active_write_ticket(
+            &store,
+            ActiveWriteTicketFixture {
+                write_ticket_id: "ticket_policy_equivalent",
+                task_id: "task_policy_equivalent",
+                change_unit_id: "cu_policy_equivalent",
+                basis_state_version: 1,
+                write_authority_fingerprint: initial.resulting_write_authority_fingerprint,
+                intended_paths: &["src/export.rs"],
+                created_at: "2026-07-17T00:00:00Z",
+            },
         )?;
 
         let (equivalent_json, equivalent_fingerprint) = workflow_policy_with_write_authority(
@@ -1892,15 +1868,10 @@ mod tests {
         assert!(equivalent.affected_task_ids.is_empty());
         assert!(equivalent.invalidated_write_ticket_ids.is_empty());
         assert!(!equivalent.active_task_requires_policy_reevaluation);
-        let status: String = store.conn.query_row(
-            "SELECT status
-               FROM write_tickets
-              WHERE project_id = ?1
-                AND write_ticket_id = 'ticket_policy_equivalent'",
-            [fixture.project_id()],
-            |row| row.get(0),
-        )?;
-        assert_eq!(status, "active");
+        let ticket = store
+            .write_ticket_record("ticket_policy_equivalent")?
+            .expect("compatible Write Ticket remains readable");
+        assert_eq!(ticket.status, WriteTicketStatus::Active);
 
         let replay =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {

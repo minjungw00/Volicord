@@ -201,6 +201,12 @@ object, absent value, or host-specific default.
 Store owns persisted-row decoding and persisted-record consistency before a
 typed record crosses its public boundary. Downstream services may propagate
 the Store failure, but they do not recreate physical corruption diagnostics.
+A field-local failure identifies the actual invalid physical field. A
+relationship failure across fields identifies the owning aggregate and one of
+its closed invariant codes; it does not attribute the contradiction to a
+convenient column. The Write Ticket aggregate applies this rule through one
+canonical decoder for normal and transaction-scoped reads, and dependent Store
+modules consume only its validated typed records or focused typed views.
 A semantic invariant failure derived from individually valid typed facts is a
 service or Core invariant, validation, or availability failure under its
 focused owner; it is not persisted-data `Corrupt` merely because the facts

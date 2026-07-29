@@ -59,7 +59,7 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 | `facade.rs`, `open.rs` | 프로젝트 데이터베이스 handle, 유지되는 Runtime Home 및 프로젝트 identity, 읽기 snapshot, 읽기 전용 또는 변경 가능 열기. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | 프로젝트 header와 enforcement profile 읽기, 엄격한 저장 값 decoding, 프로젝트 UTC floor. |
 | `tasks.rs` | Task 및 수락 mutation 입력과 SQL, Task row, 수락 기준, 증거 주장, Task revision. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, Run mutation 입력과 SQL, 비공개 물리 row, 폐쇄형 값·JSON·timestamp·Product Repository 경로를 엄격하게 decode한 typed 읽기와 Run observed-change projection. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, Run mutation 입력과 SQL, 비공개 물리 row, 폐쇄형 값·JSON·timestamp·Product Repository 경로를 엄격하게 decode한 typed 읽기와 Run observed-change projection. `write_tickets.rs`만 물리 Write Ticket을 담당하며 일반 읽기와 transaction 범위 읽기에서 정규 row projection, decoder, 영속 불변 조건 validator 하나를 공유합니다. |
 | `evidence.rs`, `artifacts.rs` | 증거 및 artifact mutation 입력과 SQL, 증거 요약과 관찰 읽기, artifact staging record, 영속 artifact record, artifact link, 읽기 시 artifact 본문 검증. |
 | `user_actions.rs`, `continuity.rs` | User Action 및 continuity mutation 입력과 SQL, 물리 JSON 및 저장 scalar를 typed 요청·해결 레코드로 엄격하게 decoding하는 읽기, 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
 | `replay.rs` | 비공개 tool invocation row, typed identity와 replay context의 엄격한 decoding, 변경 불가능한 operation-result projection, Core 소유 의미 replay를 위해 유지하는 정확한 메서드 응답 byte. |
@@ -73,7 +73,12 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 [`workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs)에
 남아 있습니다. 이 담당 모듈은 물리 policy row를 비공개로 유지하고 현재 schema,
 폐쇄형 값, 정규 byte, fingerprint, source, timestamp를 검증한 뒤 typed policy
-record를 반환합니다. 일시적 artifact staging과 영속 artifact 본문 경로 연산은
+record를 반환합니다.
+Policy mutation이 활성 Write Ticket binding을 평가할 때
+`workflow_records.rs`는 Write Ticket aggregate가 만든 집중된 typed authority
+view를 받습니다. Ticket 테이블을 query하거나 ticket JSON을 parse하지 않으며,
+검증된 view에 현재 workflow policy 의미만 적용합니다.
+일시적 artifact staging과 영속 artifact 본문 경로 연산은
 [`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)가 계속 담당하고,
 프로젝트 facade의 artifact 읽기 쪽은 `core_pipeline/artifacts.rs`가 담당합니다.
 

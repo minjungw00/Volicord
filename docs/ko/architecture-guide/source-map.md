@@ -78,7 +78,7 @@
 | `crates/volicord-store/src/integration_verification/coordinate.rs` | Typed caller, current, stored 검증 coordinate와 caller 및 run owner 검증. |
 | `crates/volicord-store/src/integration_verification/row.rs` | 비공개 검증 SQL, row decoding, 상태와 timestamp parsing, 데이터베이스 표현 변환, 집중 row decoder 테스트. |
 | `crates/volicord-store/src/integration_verification/tests/` | Begin, probe, typed acquisition, correlation, status, 동시 최초 acknowledgement를 위한 lifecycle 담당 테스트와 assertion에서 분리한 공유 fixture 구성. |
-| `crates/volicord-store/src/workflow_records.rs` | 비공개 workflow policy row projection, schema·폐쇄형 값·정규 byte·fingerprint·source·timestamp의 엄격한 decoding을 통한 typed policy record 구성, typed mutation 입력과 적용 및 효과. |
+| `crates/volicord-store/src/workflow_records.rs` | 비공개 workflow policy row projection, schema·폐쇄형 값·정규 byte·fingerprint·source·timestamp의 엄격한 decoding을 통한 typed policy record 구성, typed mutation 입력과 적용 및 효과. Policy mutation은 Write Ticket aggregate가 제공하는 집중된 typed authority view를 통해서만 Write Ticket compatibility를 평가합니다. |
 | `crates/volicord-store/src/core_pipeline/mod.rs` | 공개 Core Store 타입 routing, commit 및 mutation 입력, transaction 수준 Store 테스트. |
 | `crates/volicord-store/src/core_pipeline/facade.rs` | `CoreProjectStore` Connection 및 프로젝트 identity, 유지되는 mutation 권한, facade accessor, 공유 읽기 snapshot primitive. |
 | `crates/volicord-store/src/core_pipeline/open.rs` | 명시적인 읽기 전용 open과 context의 typed canonical Runtime Home identity를 유지하는 mutation open. |
@@ -87,7 +87,7 @@
 | `crates/volicord-store/src/core_pipeline/clock.rs` | Store handle clock sample, 프로젝트 UTC floor 읽기, transaction floor 전진. |
 | `crates/volicord-store/src/core_pipeline/tasks.rs` | Task와 수락 mutation 입력, 저장 검증과 SQL 적용, Task·수락 기준·증거 주장·Task revision projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/change_units.rs` | Change Unit mutation 입력, 저장 검증과 SQL 적용, projection, 엄격한 row 및 JSON decoding, facade 읽기, 집중 테스트. |
-| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | Typed Write Ticket mutation 입력, 저장 검증과 SQL 적용, 비공개 물리 row, status·validity basis·attempt scope·timestamp·제품 경로의 엄격한 decoding을 통한 typed record 구성, facade 읽기, 집중 테스트. |
+| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | 물리 Write Ticket 테이블과 column의 유일한 담당 모듈, typed mutation과 SQL, 비공개 row projection 하나, 일반/transaction 정규 decoder, 폐쇄형 값과 구조화 field 검증, typed 필드 간 invariant corruption, 집중된 authority view, facade 읽기, aggregate 테스트. |
 | `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation 입력, 저장 검증과 SQL 적용, Run 및 observed-change projection, 엄격한 decoding, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/evidence.rs` | 증거 mutation 입력, 저장 검증과 SQL 적용, 증거 요약 및 관찰 projection, 엄격한 row decoding, record reference projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact mutation 입력, 저장 검증과 SQL 적용, staging 및 영속 artifact projection, 엄격한 decoding, link 읽기, 영속 본문 검증, facade 읽기, 집중 테스트. |

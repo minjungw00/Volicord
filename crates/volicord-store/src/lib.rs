@@ -29,7 +29,10 @@ pub mod setup_transaction;
 pub mod sqlite;
 pub mod workflow_records;
 
-pub use error::{StoreError, StoreFailureRoute, StoreResult};
+pub use error::{
+    StoreAggregate, StoreAggregateInvariant, StoreCorruptionLocation, StoreError,
+    StoreFailureRoute, StoreResult, WriteTicketInvariant,
+};
 pub use mutation::{
     RuntimeHomeMutationContext, RuntimeHomeMutationSetupInProgress,
     RUNTIME_HOME_MUTATION_SETUP_IN_PROGRESS,

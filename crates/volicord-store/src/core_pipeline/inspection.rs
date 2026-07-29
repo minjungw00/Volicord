@@ -1,6 +1,8 @@
 use rusqlite::{params, Connection};
 
-use super::{facade::CoreProjectStore, validation::nonnegative_i64_to_u64};
+use super::{
+    facade::CoreProjectStore, validation::nonnegative_i64_to_u64, write_tickets::write_ticket_count,
+};
 use crate::{StoreError, StoreResult};
 
 /// Storage counters used to verify no-effect request branches.
@@ -64,7 +66,7 @@ impl CoreProjectStore<'_> {
                 "user_action_resolutions",
                 &self.project.project_id,
             )?,
-            write_tickets: table_count(&self.conn, "write_tickets", &self.project.project_id)?,
+            write_tickets: write_ticket_count(&self.conn, &self.project.project_id)?,
             runs: table_count(&self.conn, "runs", &self.project.project_id)?,
             evidence_capture_intents: table_count(
                 &self.conn,

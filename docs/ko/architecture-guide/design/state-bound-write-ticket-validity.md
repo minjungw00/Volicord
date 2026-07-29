@@ -14,8 +14,9 @@ policy를 평가하고 issue 또는 reuse를 계획한 뒤 typed 결과를 proje
 보호 대상 Record Run에서는 `write_ticket/admission.rs`가 typed operation, Task,
 Change Unit, invocation, observed-change, 현재 policy fact를 받아 승인된 attempt
 scope 또는 의미 승인 오류를 반환합니다.
-`core_pipeline/write_tickets.rs`는 strict ticket read와 grouped mutation 적용을
-담당합니다.
+`core_pipeline/write_tickets.rs`만 물리 ticket 테이블, column, row projection,
+정규 decoder, 영속 불변 조건, 엄격한 일반 및 transaction 범위 읽기, 집중된 typed
+authority view, grouped mutation 적용을 담당합니다.
 
 Ticket lookup은 structural precondition 뒤에만 실행합니다. Reuse는 관련 없는 global
 state counter에 의존하지 않고 stored basis와 current typed fact를 비교합니다. 보호된
@@ -40,8 +41,11 @@ Record Run 승인, projection을 담당합니다. Record Run planner는 의미 f
 않습니다. Store는 물리 ticket row를 비공개로 유지하고 status,
 validity basis, attempt scope, Product Repository 경로 모음, timestamp, 중복 owner
 coordinate를 엄격하게 decode한 뒤 typed record를 반환합니다. Store는 ticket query,
-invalidation persistence, consumption mutation도 담당합니다. Guard는 observation을
-제공하지만 ticket basis를 넓히지 않습니다.
+물리 field 사이 관계를 폐쇄형 Write Ticket aggregate invariant로 검증하고,
+invalidation persistence와 consumption mutation도 담당합니다. Workflow policy
+영속화는 검증된 record에서 만든 집중된 typed authority view만 받으며 ticket row를
+query하거나 decode하지 않습니다. Guard는 observation을 제공하지만 ticket basis를
+넓히지 않습니다.
 
 ## 실행 흐름
 
@@ -60,6 +64,9 @@ Current work 부재, stale 또는 corrupt policy, path normalization failure, ap
 mismatch, workspace mismatch, explicit revocation, incompatible basis, ambiguous ticket
 selection은 partial protected effect 없이 reuse 또는 consumption을 막습니다. Exact
 replay는 ticket을 다시 소비하지 않습니다.
+형식이 잘못된 물리 field와 영속 필드 간 불일치는 Store corruption입니다. 내부적으로
+유효한 typed ticket을 기준으로 판단한 expiry, path, operation, current-policy
+mismatch는 의미 policy 결과이며 영속 corruption이 아닙니다.
 
 ## 범위 제외
 
@@ -80,7 +87,9 @@ actor identity나 transferable capability가 아닙니다.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
   공유 typed 제품 경로 정규화와 포함 관계.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):
-  strict record, query, grouped mutation 적용.
+  물리 소유권, 정규 decoding, typed authority view, query, grouped mutation 적용.
+- [`crates/volicord-store/src/workflow_records.rs`](../../../../crates/volicord-store/src/workflow_records.rs):
+  workflow policy 영속화와 typed Write Ticket authority view를 이용한 의미 평가.
 
 ## 참조 담당 문서
 

@@ -102,6 +102,10 @@ mod user_actions;
 pub(crate) mod validation;
 mod write_tickets;
 
+pub(crate) use write_tickets::{
+    active_write_ticket_authority_bindings_in_tx, invalidate_active_write_ticket_ids_in_tx,
+};
+
 #[cfg(test)]
 mod test_support;
 

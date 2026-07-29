@@ -15,8 +15,10 @@ plans issue or reuse, and projects the typed outcome through its `facts.rs`,
 For a protected Record Run, `write_ticket/admission.rs` accepts the typed
 operation, Task, Change Unit, invocation, observed-change, and current policy
 facts and returns the admitted attempt scope or a semantic admission error.
-`core_pipeline/write_tickets.rs` owns strict ticket reads and grouped mutation
-application.
+`core_pipeline/write_tickets.rs` solely owns the physical ticket table,
+columns, row projection, canonical decoder, persisted invariants, strict
+normal and transaction-scoped reads, focused typed authority views, and
+grouped mutation application.
 
 Ticket lookup occurs only after structural preconditions. Reuse compares the
 stored basis with the current typed facts rather than relying on an unrelated
@@ -42,9 +44,12 @@ facts. The Record Run planner supplies semantic facts and does not interpret
 stored path JSON or construct ticket policy independently. Store keeps the
 physical ticket row private and strictly decodes status, validity basis,
 attempt scope, Product Repository path collections, timestamps, and redundant
-owner coordinates before returning a typed record. Store also owns ticket
-queries, invalidation persistence, and consumption mutation. Guard supplies
-observations but does not widen the ticket basis.
+owner coordinates before returning a typed record. Relationships among
+physical fields are validated as closed Write Ticket aggregate invariants.
+Store also owns ticket queries, invalidation persistence, and consumption
+mutation. Workflow-policy persistence receives only a focused typed authority
+view produced from the validated record; it never queries or decodes a ticket
+row. Guard supplies observations but does not widen the ticket basis.
 
 ## Execution flow
 
@@ -66,6 +71,10 @@ Missing current work, stale or corrupt policy, path normalization failure,
 approval mismatch, workspace mismatch, explicit revocation, incompatible
 basis, or ambiguous ticket selection prevents reuse or consumption without a
 partial protected effect. Exact replay does not consume the ticket again.
+Malformed physical fields and persisted cross-field disagreement are Store
+corruption. Expiry, path, operation, or current-policy mismatch evaluated from
+an internally valid typed ticket is a semantic policy outcome, not persisted
+corruption.
 
 ## Scope exclusions
 
@@ -88,7 +97,11 @@ capability.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
   shared typed product-path normalization and containment.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):
-  strict records, queries, and grouped mutation application.
+  physical ownership, canonical decoding, typed authority views, queries, and
+  grouped mutation application.
+- [`crates/volicord-store/src/workflow_records.rs`](../../../../crates/volicord-store/src/workflow_records.rs):
+  workflow-policy persistence and semantic evaluation over the typed Write
+  Ticket authority view.
 
 ## Reference owners
 

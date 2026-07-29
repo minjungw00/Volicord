@@ -125,6 +125,7 @@ impl RuntimeHomeDiagnostic {
             | StoreError::CorruptStoredJson { .. }
             | StoreError::CorruptOwnerStateJson { .. }
             | StoreError::CorruptOwnerStateValue { .. }
+            | StoreError::CorruptOwnerStateInvariant { .. }
             | StoreError::CorruptStoredValue { .. }
             | StoreError::UnsupportedStorageProfile { .. }
             | StoreError::SchemaInvariant { .. }
@@ -311,6 +312,7 @@ impl StoreDiagnostic {
             StoreError::CorruptStoredJson { .. }
             | StoreError::CorruptOwnerStateJson { .. }
             | StoreError::CorruptOwnerStateValue { .. }
+            | StoreError::CorruptOwnerStateInvariant { .. }
             | StoreError::CorruptStoredValue { .. } => Self::SerializationFailure,
             StoreError::UnsupportedStorageProfile { .. }
             | StoreError::SchemaInvariant { .. }

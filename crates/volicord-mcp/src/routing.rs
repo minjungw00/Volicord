@@ -875,9 +875,9 @@ pub(crate) fn concise_store_diagnostic(error: &StoreError) -> String {
         StoreError::CorruptStoredJson { .. } | StoreError::CorruptStoredValue { .. } => {
             "corrupt stored state".to_owned()
         }
-        StoreError::CorruptOwnerStateJson { .. } | StoreError::CorruptOwnerStateValue { .. } => {
-            "corrupt owner state".to_owned()
-        }
+        StoreError::CorruptOwnerStateJson { .. }
+        | StoreError::CorruptOwnerStateValue { .. }
+        | StoreError::CorruptOwnerStateInvariant { .. } => "corrupt owner state".to_owned(),
         StoreError::SchemaInvariant { database_kind, .. } => {
             format!("{database_kind} schema is invalid")
         }

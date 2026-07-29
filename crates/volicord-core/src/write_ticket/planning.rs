@@ -658,6 +658,9 @@ fn plan_prepare_write_mutations(
     };
     let typed_allowed_path_patterns = typed_product_paths(&allowed_path_patterns)?;
     let typed_denied_path_patterns = typed_product_paths(&denied_path_patterns)?;
+    let write_ticket_metadata = json_object(json!({
+        "verification_basis": verified_invocation.verification_basis.clone()
+    }))?;
     let planned_write_ticket_record = if let Some(record) = compatible_ticket.as_ref() {
         (request.envelope.dry_run.is_not_requested()).then(|| record.clone())
     } else {
@@ -674,11 +677,15 @@ fn plan_prepare_write_mutations(
                 allowed_path_prefixes: typed_allowed_path_patterns.clone(),
                 denied_path_prefixes: typed_denied_path_patterns.clone(),
                 attempt_scope: attempt_scope.clone(),
+                created_by_actor_source: verified_invocation.actor_source.clone(),
+                created_by_user_action_resolution_id: created_by_user_action_resolution_id.clone(),
                 idle_expires_at: idle_expires_at_timestamp.clone(),
                 invalidation_reason: None,
-                created_at: created_at.clone(),
                 consumed_by_run_id: None,
                 consumed_at: None,
+                revoked_at: None,
+                created_at: created_at.clone(),
+                metadata: write_ticket_metadata.clone(),
             })
     };
 
@@ -733,9 +740,7 @@ fn plan_prepare_write_mutations(
                 created_by_user_action_resolution_id,
                 idle_expires_at: idle_expires_at_timestamp.clone(),
                 created_at,
-                metadata: json_object(json!({
-                    "verification_basis": verified_invocation.verification_basis.clone()
-                }))?,
+                metadata: write_ticket_metadata,
             }),
         ));
     }

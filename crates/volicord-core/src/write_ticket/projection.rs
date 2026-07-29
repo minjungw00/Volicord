@@ -315,12 +315,16 @@ mod tests {
             allowed_path_prefixes: attempt_scope.intended_paths.clone(),
             denied_path_prefixes: Vec::new(),
             attempt_scope,
+            created_by_actor_source: volicord_types::values::ActorSource::System,
+            created_by_user_action_resolution_id: None,
             idle_expires_at: Some(idle_expires_at),
             invalidation_reason: None,
-            created_at: UtcTimestamp::parse("2026-07-29T00:00:00Z")
-                .expect("valid creation timestamp"),
             consumed_by_run_id: None,
             consumed_at: None,
+            revoked_at: None,
+            created_at: UtcTimestamp::parse("2026-07-29T00:00:00Z")
+                .expect("valid creation timestamp"),
+            metadata: serde_json::Map::new(),
         }
     }
 }

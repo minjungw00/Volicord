@@ -233,13 +233,10 @@ fn cancel_orchestration_invalidates_an_active_write_ticket_atomically() -> Resul
     assert_eq!(response.response_value["close_state"], "cancelled");
     assert_eq!(response.response_value["blockers"], json!([]));
     assert_eq!(write_ticket_status(&harness, &ticket_id)?, "invalidated");
-    let reason: String = harness.conn()?.query_row(
-        "SELECT invalidation_reason FROM write_tickets
-          WHERE project_id = ?1 AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, ticket_id],
-        |row| row.get(0),
-    )?;
-    assert_eq!(reason, "task_closed");
+    assert_eq!(
+        write_ticket_invalidation_reason(&harness, &ticket_id)?,
+        Some("task_closed".to_owned())
+    );
     let stored = task_terminal_fields(&harness, &task_id)?;
     assert_eq!(stored.lifecycle_phase, "cancelled");
     assert_eq!(stored.result.as_deref(), Some("cancelled"));

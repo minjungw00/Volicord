@@ -1,20 +1,27 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::BTreeSet;
+
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use volicord_types::{
-    ids::TaskId,
-    product_path::ProductRelativePath,
+    ids::{TaskId, WriteTicketId},
+    product_path::{path_is_within, ProductRelativePath},
     schema::{JsonObject, WriteTicketAttemptScope, WriteTicketValidityBasis},
     values::{ActorSource, UtcTimestamp, WriteTicketInvalidationReason, WriteTicketStatus},
 };
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
-use crate::{workflow_records::project_write_authority_fingerprint, StoreError, StoreResult};
+use crate::{
+    workflow_records::project_write_authority_fingerprint, StoreError, StoreResult,
+    WriteTicketInvariant,
+};
 
 const WRITE_TICKET_RECORD_COLUMNS: &str = "
     project_id, write_ticket_id, task_id, change_unit_id,
     basis_state_version, status, validity_basis_json,
     allowed_path_prefixes_json, denied_path_prefixes_json,
-    attempt_scope_json, idle_expires_at, invalidation_reason, created_at,
-    consumed_by_run_id, consumed_at";
+    attempt_scope_json, created_by_actor_source,
+    created_by_user_action_resolution_id, idle_expires_at,
+    invalidation_reason, consumed_by_run_id, consumed_at, revoked_at,
+    created_at, metadata_json";
 
 /// Write-ticket mutation applied inside one Core commit transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,11 +107,15 @@ pub struct WriteTicketRecord {
     pub allowed_path_prefixes: Vec<ProductRelativePath>,
     pub denied_path_prefixes: Vec<ProductRelativePath>,
     pub attempt_scope: WriteTicketAttemptScope,
+    pub created_by_actor_source: ActorSource,
+    pub created_by_user_action_resolution_id: Option<String>,
     pub idle_expires_at: Option<UtcTimestamp>,
     pub invalidation_reason: Option<WriteTicketInvalidationReason>,
-    pub created_at: UtcTimestamp,
     pub consumed_by_run_id: Option<String>,
     pub consumed_at: Option<UtcTimestamp>,
+    pub revoked_at: Option<UtcTimestamp>,
+    pub created_at: UtcTimestamp,
+    pub metadata: JsonObject,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,17 +124,44 @@ struct WriteTicketRecordRaw {
     write_ticket_id: String,
     task_id: String,
     change_unit_id: Option<String>,
-    basis_state_version: u64,
+    basis_state_version: i64,
     status: String,
     validity_basis_json: String,
     allowed_path_prefixes_json: String,
     denied_path_prefixes_json: String,
     attempt_scope_json: String,
+    created_by_actor_source: String,
+    created_by_user_action_resolution_id: Option<String>,
     idle_expires_at: Option<String>,
     invalidation_reason: Option<String>,
-    created_at: String,
     consumed_by_run_id: Option<String>,
     consumed_at: Option<String>,
+    revoked_at: Option<String>,
+    created_at: String,
+    metadata_json: String,
+}
+
+/// Validated Write Ticket authority facts consumed by workflow-policy storage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WriteTicketAuthorityBinding {
+    pub(crate) write_ticket_id: WriteTicketId,
+    pub(crate) task_id: TaskId,
+    pub(crate) write_authority_fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WriteTicketValidationFailure {
+    Field {
+        logical_column: &'static str,
+        kind: WriteTicketFieldKind,
+    },
+    Invariant(WriteTicketInvariant),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WriteTicketFieldKind {
+    Json,
+    Value,
 }
 
 impl CoreProjectStore<'_> {
@@ -144,6 +182,98 @@ impl CoreProjectStore<'_> {
     ) -> StoreResult<Option<WriteTicketRecord>> {
         write_ticket_record(&self.conn, &self.project.project_id, write_ticket_id)
     }
+
+    /// Inserts one fully typed Write Ticket fixture through the aggregate owner.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn insert_write_ticket_fixture(
+        &self,
+        input: &WriteTicketInsert,
+        basis_state_version: u64,
+    ) -> StoreResult<()> {
+        validate_identifier("write_ticket_id", &input.write_ticket_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("change_unit_id", &input.change_unit_id)?;
+        if let Some(resolution_id) = &input.created_by_user_action_resolution_id {
+            validate_identifier("created_by_user_action_resolution_id", resolution_id)?;
+        }
+        let record =
+            active_write_ticket_record(&self.project.project_id, input, basis_state_version);
+        validate_write_ticket_record(&record).map_err(|failure| StoreError::InvalidInput {
+            detail: format!("write-ticket fixture is internally inconsistent: {failure:?}"),
+        })?;
+        insert_write_ticket_record(&self.conn, &record)
+    }
+
+    /// Replaces typed authority facts for semantic-policy fixtures.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_write_ticket_authority_fixture(
+        &self,
+        write_ticket_id: &str,
+        validity_basis: WriteTicketValidityBasis,
+        attempt_scope: WriteTicketAttemptScope,
+    ) -> StoreResult<()> {
+        let mut record =
+            write_ticket_record(&self.conn, &self.project.project_id, write_ticket_id)?
+                .ok_or_else(|| StoreError::NotFound {
+                    entity: "write_ticket",
+                    id: write_ticket_id.to_owned(),
+                })?;
+        record.validity_basis = validity_basis;
+        record.attempt_scope = attempt_scope;
+        validate_write_ticket_record(&record).map_err(|failure| StoreError::InvalidInput {
+            detail: format!("write-ticket fixture is internally inconsistent: {failure:?}"),
+        })?;
+        let validity_basis_json = volicord_types::canonical::canonical_json_string(
+            &record.validity_basis,
+        )
+        .map_err(|error| StoreError::InvalidInput {
+            detail: format!("write-ticket fixture validity basis cannot be serialized: {error}"),
+        })?;
+        let attempt_scope_json = volicord_types::canonical::canonical_json_string(
+            &record.attempt_scope,
+        )
+        .map_err(|error| StoreError::InvalidInput {
+            detail: format!("write-ticket fixture attempt scope cannot be serialized: {error}"),
+        })?;
+        self.conn.execute(
+            "UPDATE write_tickets
+                SET validity_basis_json = ?3,
+                    attempt_scope_json = ?4
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            params![
+                self.project.project_id,
+                write_ticket_id,
+                validity_basis_json,
+                attempt_scope_json
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Replaces persisted lifecycle timestamps for aggregate timestamp fixtures.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_write_ticket_timestamps_fixture(
+        &self,
+        write_ticket_id: &str,
+        created_at: &str,
+        idle_expires_at: Option<&str>,
+    ) -> StoreResult<()> {
+        self.conn.execute(
+            "UPDATE write_tickets
+                SET created_at = ?3,
+                    idle_expires_at = ?4
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            params![
+                self.project.project_id,
+                write_ticket_id,
+                created_at,
+                idle_expires_at
+            ],
+        )?;
+        Ok(())
+    }
 }
 
 fn active_write_tickets(
@@ -156,7 +286,6 @@ fn active_write_tickets(
            FROM write_tickets
           WHERE project_id = ?1
             AND task_id = ?2
-            AND status = 'active'
           ORDER BY write_ticket_id"
     );
     let mut statement = conn.prepare(&sql)?;
@@ -166,7 +295,10 @@ fn active_write_tickets(
     )?;
     let mut records = Vec::new();
     for row in rows {
-        records.push(decode_write_ticket_record(row?)?);
+        let record = decode_write_ticket_record(row?)?;
+        if record.status == WriteTicketStatus::Active {
+            records.push(record);
+        }
     }
     Ok(records)
 }
@@ -217,29 +349,103 @@ fn write_ticket_record(
     .transpose()
 }
 
+fn write_ticket_record_in_tx(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    write_ticket_id: &str,
+) -> StoreResult<Option<WriteTicketRecord>> {
+    write_ticket_record(tx, project_id, write_ticket_id)
+}
+
+pub(crate) fn active_write_ticket_authority_bindings_in_tx(
+    tx: &Transaction<'_>,
+    project_id: &str,
+) -> StoreResult<Vec<WriteTicketAuthorityBinding>> {
+    let sql = format!(
+        "SELECT {WRITE_TICKET_RECORD_COLUMNS}
+           FROM write_tickets
+          WHERE project_id = ?1
+          ORDER BY write_ticket_id"
+    );
+    let mut statement = tx.prepare(&sql)?;
+    let rows = statement.query_map([project_id], write_ticket_record_raw_from_row)?;
+    let mut bindings = Vec::new();
+    for row in rows {
+        let record = decode_write_ticket_record(row?)?;
+        if record.status != WriteTicketStatus::Active {
+            continue;
+        }
+        bindings.push(WriteTicketAuthorityBinding {
+            write_ticket_id: WriteTicketId::new(record.write_ticket_id),
+            task_id: TaskId::new(record.task_id),
+            write_authority_fingerprint: record.validity_basis.write_authority_fingerprint,
+        });
+    }
+    Ok(bindings)
+}
+
+pub(crate) fn invalidate_active_write_ticket_ids_in_tx(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    write_ticket_ids: &[WriteTicketId],
+    invalidation_reason: WriteTicketInvalidationReason,
+) -> StoreResult<Vec<String>> {
+    let invalidation_reason =
+        encode_closed_value("write_tickets.invalidation_reason", &invalidation_reason)?;
+    let mut invalidated = Vec::with_capacity(write_ticket_ids.len());
+    for write_ticket_id in write_ticket_ids {
+        let changed = tx.execute(
+            "UPDATE write_tickets
+                SET status = 'invalidated',
+                    invalidation_reason = ?3
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2
+                AND status = 'active'",
+            params![project_id, write_ticket_id.as_str(), invalidation_reason],
+        )?;
+        if changed != 1 {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "identified active Write Ticket invalidation changed no rows",
+            ));
+        }
+        invalidated.push(write_ticket_id.as_str().to_owned());
+    }
+    Ok(invalidated)
+}
+
+pub(super) fn write_ticket_count(conn: &Connection, project_id: &str) -> StoreResult<u64> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM write_tickets WHERE project_id = ?1",
+        [project_id],
+        |row| row.get(0),
+    )?;
+    nonnegative_i64_to_u64("write ticket count", count).map_err(StoreError::from)
+}
+
 fn write_ticket_record_raw_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<WriteTicketRecordRaw> {
-    let basis_state_version = row.get::<_, i64>(4)?;
     Ok(WriteTicketRecordRaw {
         project_id: row.get(0)?,
         write_ticket_id: row.get(1)?,
         task_id: row.get(2)?,
         change_unit_id: row.get(3)?,
-        basis_state_version: nonnegative_i64_to_u64(
-            "write_tickets.basis_state_version",
-            basis_state_version,
-        )?,
+        basis_state_version: row.get(4)?,
         status: row.get(5)?,
         validity_basis_json: row.get(6)?,
         allowed_path_prefixes_json: row.get(7)?,
         denied_path_prefixes_json: row.get(8)?,
         attempt_scope_json: row.get(9)?,
-        idle_expires_at: row.get(10)?,
-        invalidation_reason: row.get(11)?,
-        created_at: row.get(12)?,
-        consumed_by_run_id: row.get(13)?,
-        consumed_at: row.get(14)?,
+        created_by_actor_source: row.get(10)?,
+        created_by_user_action_resolution_id: row.get(11)?,
+        idle_expires_at: row.get(12)?,
+        invalidation_reason: row.get(13)?,
+        consumed_by_run_id: row.get(14)?,
+        consumed_at: row.get(15)?,
+        revoked_at: row.get(16)?,
+        created_at: row.get(17)?,
+        metadata_json: row.get(18)?,
     })
 }
 
@@ -249,10 +455,23 @@ fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<WriteTic
         |column| StoreError::corrupt_owner_state_value("write_tickets", record_ref.clone(), column);
     let corrupt_json =
         |column| StoreError::corrupt_owner_state_json("write_tickets", record_ref.clone(), column);
+    let project_id = nonempty_stored_identifier(&raw.project_id)
+        .ok_or_else(|| corrupt_value("project_id"))?
+        .to_owned();
+    let write_ticket_id = nonempty_stored_identifier(&raw.write_ticket_id)
+        .ok_or_else(|| corrupt_value("write_ticket_id"))?
+        .to_owned();
+    let task_id = nonempty_stored_identifier(&raw.task_id)
+        .ok_or_else(|| corrupt_value("task_id"))?
+        .to_owned();
     let change_unit_id = raw
         .change_unit_id
-        .filter(|value| !value.trim().is_empty())
+        .as_deref()
+        .and_then(nonempty_stored_identifier)
         .ok_or_else(|| corrupt_value("change_unit_id"))?;
+    let change_unit_id = change_unit_id.to_owned();
+    let basis_state_version =
+        u64::try_from(raw.basis_state_version).map_err(|_| corrupt_value("basis_state_version"))?;
     let status = decode_owner_closed_value("write_tickets", &record_ref, "status", &raw.status)?;
     let validity_basis: WriteTicketValidityBasis = decode_owner_json_text(
         "write_tickets",
@@ -278,6 +497,18 @@ fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<WriteTic
         "attempt_scope_json",
         &raw.attempt_scope_json,
     )?;
+    let created_by_actor_source = raw
+        .created_by_actor_source
+        .parse::<ActorSource>()
+        .map_err(|_| corrupt_value("created_by_actor_source"))?;
+    let created_by_user_action_resolution_id = raw
+        .created_by_user_action_resolution_id
+        .map(|value| {
+            nonempty_stored_identifier(&value)
+                .map(str::to_owned)
+                .ok_or_else(|| corrupt_value("created_by_user_action_resolution_id"))
+        })
+        .transpose()?;
     let idle_expires_at = raw
         .idle_expires_at
         .as_deref()
@@ -297,104 +528,367 @@ fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<WriteTic
         .as_deref()
         .map(|value| UtcTimestamp::parse(value).map_err(|_| corrupt_value("consumed_at")))
         .transpose()?;
-    created_at
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| corrupt_value("created_at"))?;
-    if let Some(timestamp) = idle_expires_at.as_ref() {
-        timestamp
-            .ensure_canonical_rfc3339_representable()
-            .map_err(|_| corrupt_value("idle_expires_at"))?;
-    }
-    if let Some(timestamp) = consumed_at.as_ref() {
-        timestamp
-            .ensure_canonical_rfc3339_representable()
-            .map_err(|_| corrupt_value("consumed_at"))?;
-    }
-    if validity_basis.task_id.as_str() != raw.task_id
-        || validity_basis.change_unit_id.as_str() != change_unit_id
-        || attempt_scope.task_id.as_str() != raw.task_id
-        || attempt_scope.change_unit_id.as_str() != change_unit_id
-    {
-        return Err(corrupt_json("validity_basis_json"));
-    }
-    let intended_paths = attempt_scope
-        .intended_paths
-        .iter()
-        .collect::<std::collections::BTreeSet<_>>();
-    let allowed_paths = allowed_path_prefixes
-        .iter()
-        .collect::<std::collections::BTreeSet<_>>();
-    let denied_paths = denied_path_prefixes
-        .iter()
-        .collect::<std::collections::BTreeSet<_>>();
-    if raw.basis_state_version == 0
-        || validity_basis.scope_revision == 0
-        || attempt_scope.intended_operation.trim().is_empty()
-        || validity_basis.write_authority_fingerprint.len() != 71
-        || !validity_basis
-            .write_authority_fingerprint
-            .starts_with("sha256:")
-        || !validity_basis.write_authority_fingerprint[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        || validity_basis
-            .workspace_context_sha256
-            .as_ref()
-            .is_some_and(|digest| {
-                digest.len() != 64
-                    || !digest
-                        .bytes()
-                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-            })
-        || idle_expires_at
-            .as_ref()
-            .is_some_and(|expires_at| expires_at <= &created_at)
-        || intended_paths.len() != attempt_scope.intended_paths.len()
-        || allowed_paths.len() != allowed_path_prefixes.len()
-        || denied_paths.len() != denied_path_prefixes.len()
-        || !allowed_paths.is_disjoint(&denied_paths)
-        || !allowed_paths.is_subset(&intended_paths)
-        || !denied_paths.is_subset(&intended_paths)
-    {
-        return Err(corrupt_json("allowed_path_prefixes_json"));
-    }
-    let status_columns_are_valid = match status {
-        WriteTicketStatus::Active => {
-            invalidation_reason.is_none()
-                && raw.consumed_by_run_id.is_none()
-                && consumed_at.is_none()
-        }
-        WriteTicketStatus::Consumed => {
-            invalidation_reason.is_none()
-                && raw.consumed_by_run_id.is_some()
-                && consumed_at.is_some()
-        }
-        WriteTicketStatus::Invalidated | WriteTicketStatus::Revoked => {
-            invalidation_reason.is_some()
-                && raw.consumed_by_run_id.is_none()
-                && consumed_at.is_none()
-        }
-    };
-    if !status_columns_are_valid {
-        return Err(corrupt_value("status"));
-    }
-    Ok(WriteTicketRecord {
-        project_id: raw.project_id,
-        write_ticket_id: raw.write_ticket_id,
-        task_id: raw.task_id,
+    let revoked_at = raw
+        .revoked_at
+        .as_deref()
+        .map(|value| UtcTimestamp::parse(value).map_err(|_| corrupt_value("revoked_at")))
+        .transpose()?;
+    let consumed_by_run_id = raw
+        .consumed_by_run_id
+        .map(|value| {
+            nonempty_stored_identifier(&value)
+                .map(str::to_owned)
+                .ok_or_else(|| corrupt_value("consumed_by_run_id"))
+        })
+        .transpose()?;
+    let metadata: JsonObject = decode_owner_json_text(
+        "write_tickets",
+        &record_ref,
+        "metadata_json",
+        &raw.metadata_json,
+    )?;
+    let record = WriteTicketRecord {
+        project_id,
+        write_ticket_id,
+        task_id,
         change_unit_id,
-        basis_state_version: raw.basis_state_version,
+        basis_state_version,
         status,
         validity_basis,
         allowed_path_prefixes,
         denied_path_prefixes,
         attempt_scope,
+        created_by_actor_source,
+        created_by_user_action_resolution_id,
         idle_expires_at,
         invalidation_reason,
-        created_at,
-        consumed_by_run_id: raw.consumed_by_run_id,
+        consumed_by_run_id,
         consumed_at,
-    })
+        revoked_at,
+        created_at,
+        metadata,
+    };
+    validate_write_ticket_record(&record).map_err(|failure| match failure {
+        WriteTicketValidationFailure::Field {
+            logical_column,
+            kind: WriteTicketFieldKind::Json,
+        } => corrupt_json(logical_column),
+        WriteTicketValidationFailure::Field {
+            logical_column,
+            kind: WriteTicketFieldKind::Value,
+        } => corrupt_value(logical_column),
+        WriteTicketValidationFailure::Invariant(invariant) => {
+            StoreError::corrupt_write_ticket_invariant(record_ref.clone(), invariant)
+        }
+    })?;
+    Ok(record)
+}
+
+fn nonempty_stored_identifier(value: &str) -> Option<&str> {
+    (!value.trim().is_empty()).then_some(value)
+}
+
+fn validate_write_ticket_record(
+    record: &WriteTicketRecord,
+) -> Result<(), WriteTicketValidationFailure> {
+    let invalid_json = |logical_column| WriteTicketValidationFailure::Field {
+        logical_column,
+        kind: WriteTicketFieldKind::Json,
+    };
+    let invalid_value = |logical_column| WriteTicketValidationFailure::Field {
+        logical_column,
+        kind: WriteTicketFieldKind::Value,
+    };
+    if record.basis_state_version == 0 {
+        return Err(invalid_value("basis_state_version"));
+    }
+    if record.validity_basis.scope_revision == 0 {
+        return Err(invalid_json("validity_basis_json"));
+    }
+    if record.attempt_scope.intended_operation.trim().is_empty() {
+        return Err(invalid_json("attempt_scope_json"));
+    }
+    if !canonical_write_authority_fingerprint(&record.validity_basis.write_authority_fingerprint)
+        || record
+            .validity_basis
+            .workspace_context_sha256
+            .as_ref()
+            .is_some_and(|digest| !lowercase_sha256_hex(digest))
+    {
+        return Err(invalid_json("validity_basis_json"));
+    }
+    for (logical_column, timestamp) in [
+        ("created_at", Some(&record.created_at)),
+        ("idle_expires_at", record.idle_expires_at.as_ref()),
+        ("consumed_at", record.consumed_at.as_ref()),
+        ("revoked_at", record.revoked_at.as_ref()),
+    ] {
+        if timestamp
+            .is_some_and(|timestamp| timestamp.ensure_canonical_rfc3339_representable().is_err())
+        {
+            return Err(invalid_value(logical_column));
+        }
+    }
+    let task_id = record.task_id.as_str();
+    if record.validity_basis.task_id.as_str() != task_id
+        || record.attempt_scope.task_id.as_str() != task_id
+    {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::TaskIdentityAgreement,
+        ));
+    }
+    let change_unit_id = record.change_unit_id.as_str();
+    if record.validity_basis.change_unit_id.as_str() != change_unit_id
+        || record.attempt_scope.change_unit_id.as_str() != change_unit_id
+    {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::ChangeUnitIdentityAgreement,
+        ));
+    }
+    if record.validity_basis.scope_revision > record.basis_state_version {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::ScopeRevisionAgreement,
+        ));
+    }
+    if record.validity_basis.baseline_ref != record.attempt_scope.baseline_ref {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::BaselineAgreement,
+        ));
+    }
+    if record
+        .idle_expires_at
+        .as_ref()
+        .is_some_and(|expires_at| expires_at <= &record.created_at)
+        || record
+            .consumed_at
+            .as_ref()
+            .is_some_and(|consumed_at| consumed_at < &record.created_at)
+        || record
+            .revoked_at
+            .as_ref()
+            .is_some_and(|revoked_at| revoked_at < &record.created_at)
+    {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::TimestampOrder,
+        ));
+    }
+    let intended_paths = record
+        .attempt_scope
+        .intended_paths
+        .iter()
+        .collect::<BTreeSet<_>>();
+    let allowed_paths = record.allowed_path_prefixes.iter().collect::<BTreeSet<_>>();
+    let denied_paths = record.denied_path_prefixes.iter().collect::<BTreeSet<_>>();
+    if intended_paths.len() != record.attempt_scope.intended_paths.len() {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::DuplicateIntendedPaths,
+        ));
+    }
+    if allowed_paths.len() != record.allowed_path_prefixes.len() {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::DuplicateAllowedPaths,
+        ));
+    }
+    if denied_paths.len() != record.denied_path_prefixes.len() {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::DuplicateDeniedPaths,
+        ));
+    }
+    if record.allowed_path_prefixes.iter().any(|allowed| {
+        record.denied_path_prefixes.iter().any(|denied| {
+            path_is_within(allowed.as_str(), denied.as_str())
+                || path_is_within(denied.as_str(), allowed.as_str())
+        })
+    }) {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::AllowedDeniedPathDisjointness,
+        ));
+    }
+    if record.attempt_scope.intended_paths.iter().any(|intended| {
+        !record
+            .allowed_path_prefixes
+            .iter()
+            .any(|allowed| path_is_within(intended.as_str(), allowed.as_str()))
+            || record
+                .denied_path_prefixes
+                .iter()
+                .any(|denied| path_is_within(intended.as_str(), denied.as_str()))
+    }) {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::IntendedPathCoverage,
+        ));
+    }
+    if record.attempt_scope.product_file_write_intended
+        != !record.attempt_scope.intended_paths.is_empty()
+    {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::ProductFileWriteIntentAgreement,
+        ));
+    }
+    let status_columns_are_valid = match record.status {
+        WriteTicketStatus::Active => {
+            record.invalidation_reason.is_none()
+                && record.consumed_by_run_id.is_none()
+                && record.consumed_at.is_none()
+                && record.revoked_at.is_none()
+        }
+        WriteTicketStatus::Consumed => {
+            record.invalidation_reason.is_none()
+                && record.consumed_by_run_id.is_some()
+                && record.consumed_at.is_some()
+                && record.revoked_at.is_none()
+        }
+        WriteTicketStatus::Invalidated => {
+            record.invalidation_reason.is_some()
+                && record.consumed_by_run_id.is_none()
+                && record.consumed_at.is_none()
+                && record.revoked_at.is_none()
+        }
+        WriteTicketStatus::Revoked => {
+            record.invalidation_reason.is_some()
+                && record.consumed_by_run_id.is_none()
+                && record.consumed_at.is_none()
+                && record.revoked_at.is_some()
+        }
+    };
+    if !status_columns_are_valid {
+        return Err(WriteTicketValidationFailure::Invariant(
+            WriteTicketInvariant::StatusLifecycleAgreement,
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_write_authority_fingerprint(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn lowercase_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn active_write_ticket_record(
+    project_id: &str,
+    input: &WriteTicketInsert,
+    basis_state_version: u64,
+) -> WriteTicketRecord {
+    WriteTicketRecord {
+        project_id: project_id.to_owned(),
+        write_ticket_id: input.write_ticket_id.clone(),
+        task_id: input.task_id.clone(),
+        change_unit_id: input.change_unit_id.clone(),
+        basis_state_version,
+        status: WriteTicketStatus::Active,
+        validity_basis: input.validity_basis.clone(),
+        allowed_path_prefixes: input.allowed_path_prefixes.clone(),
+        denied_path_prefixes: input.denied_path_prefixes.clone(),
+        attempt_scope: input.attempt_scope.clone(),
+        created_by_actor_source: input.created_by_actor_source.clone(),
+        created_by_user_action_resolution_id: input.created_by_user_action_resolution_id.clone(),
+        idle_expires_at: input.idle_expires_at.clone(),
+        invalidation_reason: None,
+        consumed_by_run_id: None,
+        consumed_at: None,
+        revoked_at: None,
+        created_at: input.created_at.clone(),
+        metadata: input.metadata.clone(),
+    }
+}
+
+fn insert_write_ticket_record(conn: &Connection, record: &WriteTicketRecord) -> StoreResult<()> {
+    let validity_basis_json = volicord_types::canonical::canonical_json_string(
+        &record.validity_basis,
+    )
+    .map_err(|error| StoreError::InvalidInput {
+        detail: format!("write-ticket validity basis cannot be serialized: {error}"),
+    })?;
+    let allowed_path_prefixes_json = volicord_types::canonical::canonical_json_string(
+        &record.allowed_path_prefixes,
+    )
+    .map_err(|error| StoreError::InvalidInput {
+        detail: format!("write-ticket allowed paths cannot be serialized: {error}"),
+    })?;
+    let denied_path_prefixes_json = volicord_types::canonical::canonical_json_string(
+        &record.denied_path_prefixes,
+    )
+    .map_err(|error| StoreError::InvalidInput {
+        detail: format!("write-ticket denied paths cannot be serialized: {error}"),
+    })?;
+    let attempt_scope_json = volicord_types::canonical::canonical_json_string(
+        &record.attempt_scope,
+    )
+    .map_err(|error| StoreError::InvalidInput {
+        detail: format!("write-ticket attempt scope cannot be serialized: {error}"),
+    })?;
+    let metadata_json = volicord_types::canonical::canonical_json_string(&record.metadata)
+        .map_err(|error| StoreError::InvalidInput {
+            detail: format!("write-ticket metadata cannot be serialized: {error}"),
+        })?;
+    let basis_state_version = u64_to_i64("basis_state_version", record.basis_state_version)?;
+    let status = encode_closed_value("write_tickets.status", &record.status)?;
+    let created_by_actor_source = record.created_by_actor_source.to_canonical_string();
+    let invalidation_reason = record
+        .invalidation_reason
+        .as_ref()
+        .map(|reason| encode_closed_value("write_tickets.invalidation_reason", reason))
+        .transpose()?;
+
+    conn.execute(
+        "INSERT INTO write_tickets (
+            project_id,
+            write_ticket_id,
+            task_id,
+            change_unit_id,
+            basis_state_version,
+            status,
+            validity_basis_json,
+            allowed_path_prefixes_json,
+            denied_path_prefixes_json,
+            attempt_scope_json,
+            created_by_actor_source,
+            created_by_user_action_resolution_id,
+            idle_expires_at,
+            invalidation_reason,
+            consumed_by_run_id,
+            consumed_at,
+            revoked_at,
+            created_at,
+            metadata_json
+        )
+        VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+            ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19
+        )",
+        params![
+            record.project_id,
+            record.write_ticket_id,
+            record.task_id,
+            record.change_unit_id,
+            basis_state_version,
+            status,
+            validity_basis_json,
+            allowed_path_prefixes_json,
+            denied_path_prefixes_json,
+            attempt_scope_json,
+            created_by_actor_source,
+            record.created_by_user_action_resolution_id,
+            record.idle_expires_at.as_ref().map(ToString::to_string),
+            invalidation_reason,
+            record.consumed_by_run_id,
+            record.consumed_at.as_ref().map(ToString::to_string),
+            record.revoked_at.as_ref().map(ToString::to_string),
+            record.created_at.to_string(),
+            metadata_json,
+        ],
+    )?;
+    Ok(())
 }
 
 impl MutationContext<'_> {
@@ -410,45 +904,39 @@ impl MutationContext<'_> {
         input: &WriteTicketInvalidation,
     ) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        let invalidation_reason = encode_closed_value(
-            "write_tickets.invalidation_reason",
-            &input.invalidation_reason,
-        )?;
-        self.tx.execute(
-            "UPDATE write_tickets
-                SET status = 'invalidated',
-                    invalidation_reason = ?3
-              WHERE project_id = ?1
-                AND task_id = ?2
-                AND status = 'active'",
-            params![self.project_id, input.task_id, invalidation_reason],
+        let write_ticket_ids = active_write_tickets(self.tx, self.project_id, &input.task_id)?
+            .into_iter()
+            .map(|record| WriteTicketId::new(record.write_ticket_id))
+            .collect::<Vec<_>>();
+        invalidate_active_write_ticket_ids_in_tx(
+            self.tx,
+            self.project_id,
+            &write_ticket_ids,
+            input.invalidation_reason,
         )?;
         Ok(())
     }
 
     fn invalidate_write_ticket(&mut self, input: &WriteTicketByIdInvalidation) -> StoreResult<()> {
         validate_identifier("write_ticket_id", &input.write_ticket_id)?;
-        let invalidation_reason = encode_closed_value(
-            "write_tickets.invalidation_reason",
-            &input.invalidation_reason,
-        )?;
-        let changed = self.tx.execute(
-            "UPDATE write_tickets
-                SET status = 'invalidated',
-                    invalidation_reason = ?3
-              WHERE project_id = ?1
-                AND write_ticket_id = ?2
-                AND status = 'active'",
-            params![self.project_id, input.write_ticket_id, invalidation_reason],
-        )?;
-        if changed == 1 {
-            Ok(())
-        } else {
-            Err(StoreError::SchemaInvariant {
+        let record = write_ticket_record_in_tx(self.tx, self.project_id, &input.write_ticket_id)?
+            .ok_or_else(|| StoreError::SchemaInvariant {
+            database_kind: "project_state",
+            detail: "identified active write ticket invalidation changed no rows".to_owned(),
+        })?;
+        if record.status != WriteTicketStatus::Active {
+            return Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
                 detail: "identified active write ticket invalidation changed no rows".to_owned(),
-            })
+            });
         }
+        invalidate_active_write_ticket_ids_in_tx(
+            self.tx,
+            self.project_id,
+            &[WriteTicketId::new(input.write_ticket_id.clone())],
+            input.invalidation_reason,
+        )?;
+        Ok(())
     }
 
     fn insert_write_ticket(
@@ -459,171 +947,24 @@ impl MutationContext<'_> {
         validate_identifier("write_ticket_id", &input.write_ticket_id)?;
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("change_unit_id", &input.change_unit_id)?;
-        if input.validity_basis.task_id.as_str() != input.task_id
-            || input.validity_basis.change_unit_id.as_str() != input.change_unit_id
-            || input.attempt_scope.task_id.as_str() != input.task_id
-            || input.attempt_scope.change_unit_id.as_str() != input.change_unit_id
-        {
-            return Err(StoreError::InvalidInput {
-                detail: "write-ticket typed identities must match their row owner".to_owned(),
-            });
-        }
-        if committed_state_version == 0
-            || input.validity_basis.scope_revision == 0
-            || input.attempt_scope.intended_operation.trim().is_empty()
-            || input.validity_basis.write_authority_fingerprint.len() != 71
-            || !input
-                .validity_basis
-                .write_authority_fingerprint
-                .starts_with("sha256:")
-            || !input.validity_basis.write_authority_fingerprint[7..]
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-            || input
-                .validity_basis
-                .workspace_context_sha256
-                .as_ref()
-                .is_some_and(|digest| {
-                    digest.len() != 64
-                        || !digest
-                            .bytes()
-                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-                })
-            || input
-                .idle_expires_at
-                .as_ref()
-                .is_some_and(|expires_at| expires_at <= &input.created_at)
-        {
-            return Err(StoreError::InvalidInput {
-                detail: "write-ticket typed authority facts are internally inconsistent".to_owned(),
-            });
-        }
-        input
-            .created_at
-            .ensure_canonical_rfc3339_representable()
-            .map_err(|_| StoreError::InvalidInput {
-                detail: "write-ticket created_at is outside the supported range".to_owned(),
-            })?;
-        let validity_basis_json = volicord_types::canonical::canonical_json_string(
-            &input.validity_basis,
-        )
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("write-ticket validity basis cannot be serialized: {error}"),
-        })?;
-        let allowed_path_prefixes_json =
-            volicord_types::canonical::canonical_json_string(&input.allowed_path_prefixes)
-                .map_err(|error| StoreError::InvalidInput {
-                    detail: format!("write-ticket allowed paths cannot be serialized: {error}"),
-                })?;
-        let denied_path_prefixes_json = volicord_types::canonical::canonical_json_string(
-            &input.denied_path_prefixes,
-        )
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("write-ticket denied paths cannot be serialized: {error}"),
-        })?;
-        let attempt_scope_json = volicord_types::canonical::canonical_json_string(
-            &input.attempt_scope,
-        )
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("write-ticket attempt scope cannot be serialized: {error}"),
-        })?;
-        let created_by_actor_source = input.created_by_actor_source.to_canonical_string();
         if let Some(resolution_id) = &input.created_by_user_action_resolution_id {
             validate_identifier("created_by_user_action_resolution_id", resolution_id)?;
         }
-        let idle_expires_at = input.idle_expires_at.as_ref().map(ToString::to_string);
-        let created_at = input.created_at.to_string();
-        let metadata_json = volicord_types::canonical::canonical_json_string(&input.metadata)
-            .map_err(|error| StoreError::InvalidInput {
-                detail: format!("write-ticket metadata cannot be serialized: {error}"),
-            })?;
-        let basis_state_version = u64_to_i64("basis_state_version", committed_state_version)?;
-
-        self.tx.execute(
-            "INSERT INTO write_tickets (
-                project_id,
-                write_ticket_id,
-                task_id,
-                change_unit_id,
-                basis_state_version,
-                status,
-                validity_basis_json,
-                allowed_path_prefixes_json,
-                denied_path_prefixes_json,
-                attempt_scope_json,
-                created_by_actor_source,
-                created_by_user_action_resolution_id,
-                idle_expires_at,
-                invalidation_reason,
-                consumed_by_run_id,
-                consumed_at,
-                revoked_at,
-                created_at,
-                metadata_json
-            )
-            VALUES (
-                ?1,
-                ?2,
-                ?3,
-                ?4,
-                ?5,
-                'active',
-                ?6,
-                ?7,
-                ?8,
-                ?9,
-                ?10,
-                ?11,
-                ?12,
-                NULL,
-                NULL,
-                NULL,
-                NULL,
-                ?13,
-                ?14
-            )",
-            params![
-                self.project_id,
-                input.write_ticket_id,
-                input.task_id,
-                input.change_unit_id,
-                basis_state_version,
-                validity_basis_json,
-                allowed_path_prefixes_json,
-                denied_path_prefixes_json,
-                attempt_scope_json,
-                created_by_actor_source,
-                input.created_by_user_action_resolution_id,
-                idle_expires_at,
-                created_at,
-                metadata_json
-            ],
-        )?;
-        Ok(())
+        let record = active_write_ticket_record(self.project_id, input, committed_state_version);
+        validate_write_ticket_record(&record).map_err(|failure| StoreError::InvalidInput {
+            detail: format!("write-ticket typed authority facts are inconsistent: {failure:?}"),
+        })?;
+        insert_write_ticket_record(self.tx, &record)
     }
 
     fn consume_write_ticket(&mut self, input: &WriteTicketConsumption) -> StoreResult<()> {
         validate_identifier("write_ticket_id", &input.write_ticket_id)?;
         validate_identifier("run_id", &input.run_id)?;
-        let sql = format!(
-            "SELECT {WRITE_TICKET_RECORD_COLUMNS}
-               FROM write_tickets
-              WHERE project_id = ?1
-                AND write_ticket_id = ?2"
-        );
-        let raw = self
-            .tx
-            .query_row(
-                &sql,
-                params![self.project_id, input.write_ticket_id],
-                write_ticket_record_raw_from_row,
-            )
-            .optional()?
+        let ticket = write_ticket_record_in_tx(self.tx, self.project_id, &input.write_ticket_id)?
             .ok_or_else(|| StoreError::NotFound {
-                entity: "write_ticket",
-                id: input.write_ticket_id.clone(),
-            })?;
-        let ticket = decode_write_ticket_record(raw)?;
+            entity: "write_ticket",
+            id: input.write_ticket_id.clone(),
+        })?;
         let policy =
             crate::workflow_records::project_workflow_policy_from_conn(self.tx, self.project_id)?;
         let current_write_authority_fingerprint =
@@ -679,36 +1020,305 @@ mod behavior_tests;
 mod tests {
     use super::*;
     use crate::core_pipeline::mutations::with_empty_mutation_context;
+    use crate::StoreAggregateInvariant;
 
-    #[test]
-    fn write_ticket_decoder_requires_a_change_unit_owner() {
-        let error = decode_write_ticket_record(WriteTicketRecordRaw {
+    #[derive(Debug, Clone, Copy)]
+    enum ExpectedCorruption {
+        Json(&'static str),
+        Value(&'static str),
+        Invariant(WriteTicketInvariant),
+    }
+
+    fn valid_raw_write_ticket() -> WriteTicketRecordRaw {
+        WriteTicketRecordRaw {
             project_id: "project".to_owned(),
             write_ticket_id: "ticket".to_owned(),
             task_id: "task".to_owned(),
-            change_unit_id: None,
-            basis_state_version: 1,
+            change_unit_id: Some("change".to_owned()),
+            basis_state_version: 3,
             status: "active".to_owned(),
-            validity_basis_json: "{}".to_owned(),
-            allowed_path_prefixes_json: "[]".to_owned(),
-            denied_path_prefixes_json: "[]".to_owned(),
-            attempt_scope_json: "{}".to_owned(),
-            idle_expires_at: None,
+            validity_basis_json: format!(
+                r#"{{"task_id":"task","change_unit_id":"change","scope_revision":2,"baseline_ref":"baseline","workspace_context_sha256":"{}","write_authority_fingerprint":"sha256:{}","approval_basis_refs":[]}}"#,
+                "a".repeat(64),
+                "b".repeat(64),
+            ),
+            allowed_path_prefixes_json: r#"["src"]"#.to_owned(),
+            denied_path_prefixes_json: r#"["tests"]"#.to_owned(),
+            attempt_scope_json: r#"{"task_id":"task","change_unit_id":"change","intended_operation":"edit","intended_paths":["src/lib.rs"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline"}"#.to_owned(),
+            created_by_actor_source: "agent_connection:connection".to_owned(),
+            created_by_user_action_resolution_id: Some("resolution".to_owned()),
+            idle_expires_at: Some("2026-07-29T02:00:00Z".to_owned()),
             invalidation_reason: None,
-            created_at: "2026-01-01T00:00:00Z".to_owned(),
             consumed_by_run_id: None,
             consumed_at: None,
-        })
-        .expect_err("missing Change Unit owner must fail closed");
+            revoked_at: None,
+            created_at: "2026-07-29T00:00:00Z".to_owned(),
+            metadata_json: r#"{"owner":"write_ticket"}"#.to_owned(),
+        }
+    }
 
-        assert!(matches!(
-            error,
-            StoreError::CorruptOwnerStateValue {
-                table: "write_tickets",
-                logical_column: "change_unit_id",
-                ..
-            }
-        ));
+    fn assert_corruption(error: StoreError, expected: ExpectedCorruption) {
+        match expected {
+            ExpectedCorruption::Json(logical_column) => assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateJson {
+                    table: "write_tickets",
+                    logical_column: actual,
+                    ..
+                } if actual == logical_column
+            )),
+            ExpectedCorruption::Value(logical_column) => assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateValue {
+                    table: "write_tickets",
+                    logical_column: actual,
+                    ..
+                } if actual == logical_column
+            )),
+            ExpectedCorruption::Invariant(expected) => assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateInvariant {
+                    invariant: StoreAggregateInvariant::WriteTicket(actual),
+                    ..
+                } if actual == expected
+            )),
+        }
+    }
+
+    #[test]
+    fn write_ticket_decoder_accepts_a_complete_valid_row() {
+        let record = decode_write_ticket_record(valid_raw_write_ticket())
+            .expect("complete valid Write Ticket row must decode");
+
+        assert_eq!(record.write_ticket_id, "ticket");
+        assert_eq!(record.validity_basis.scope_revision, 2);
+        assert_eq!(
+            record.created_by_user_action_resolution_id.as_deref(),
+            Some("resolution")
+        );
+        assert_eq!(
+            record
+                .metadata
+                .get("owner")
+                .and_then(serde_json::Value::as_str),
+            Some("write_ticket")
+        );
+    }
+
+    #[test]
+    fn write_ticket_decoder_reports_precise_field_and_invariant_corruption() {
+        type MutateRaw = Box<dyn Fn(&mut WriteTicketRecordRaw)>;
+        let cases: Vec<(&str, MutateRaw, ExpectedCorruption)> = vec![
+            (
+                "invalid status",
+                Box::new(|raw| raw.status = "unknown".to_owned()),
+                ExpectedCorruption::Value("status"),
+            ),
+            (
+                "malformed validity basis",
+                Box::new(|raw| raw.validity_basis_json = "{".to_owned()),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "malformed attempt scope",
+                Box::new(|raw| raw.attempt_scope_json = "{".to_owned()),
+                ExpectedCorruption::Json("attempt_scope_json"),
+            ),
+            (
+                "invalid allowed path JSON",
+                Box::new(|raw| raw.allowed_path_prefixes_json = r#"["/src"]"#.to_owned()),
+                ExpectedCorruption::Json("allowed_path_prefixes_json"),
+            ),
+            (
+                "invalid denied path JSON",
+                Box::new(|raw| raw.denied_path_prefixes_json = r#"["../tests"]"#.to_owned()),
+                ExpectedCorruption::Json("denied_path_prefixes_json"),
+            ),
+            (
+                "invalid intended path JSON",
+                Box::new(|raw| {
+                    raw.attempt_scope_json = r#"{"task_id":"task","change_unit_id":"change","intended_operation":"edit","intended_paths":["/src/lib.rs"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline"}"#.to_owned()
+                }),
+                ExpectedCorruption::Json("attempt_scope_json"),
+            ),
+            (
+                "invalid authority fingerprint",
+                Box::new(|raw| {
+                    raw.validity_basis_json = format!(
+                        r#"{{"task_id":"task","change_unit_id":"change","scope_revision":2,"baseline_ref":"baseline","workspace_context_sha256":"{}","write_authority_fingerprint":"sha256:not-a-digest","approval_basis_refs":[]}}"#,
+                        "a".repeat(64),
+                    )
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "invalid workspace digest",
+                Box::new(|raw| {
+                    raw.validity_basis_json = format!(
+                        r#"{{"task_id":"task","change_unit_id":"change","scope_revision":2,"baseline_ref":"baseline","workspace_context_sha256":"NOT-A-DIGEST","write_authority_fingerprint":"sha256:{}","approval_basis_refs":[]}}"#,
+                        "b".repeat(64),
+                    )
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "invalid basis state version",
+                Box::new(|raw| raw.basis_state_version = 0),
+                ExpectedCorruption::Value("basis_state_version"),
+            ),
+            (
+                "invalid scope revision",
+                Box::new(|raw| {
+                    raw.validity_basis_json = format!(
+                        r#"{{"task_id":"task","change_unit_id":"change","scope_revision":0,"baseline_ref":"baseline","workspace_context_sha256":"{}","write_authority_fingerprint":"sha256:{}","approval_basis_refs":[]}}"#,
+                        "a".repeat(64),
+                        "b".repeat(64),
+                    )
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "empty intended operation",
+                Box::new(|raw| {
+                    raw.attempt_scope_json = r#"{"task_id":"task","change_unit_id":"change","intended_operation":"","intended_paths":["src/lib.rs"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline"}"#.to_owned()
+                }),
+                ExpectedCorruption::Json("attempt_scope_json"),
+            ),
+            (
+                "task identity disagreement",
+                Box::new(|raw| raw.task_id = "other-task".to_owned()),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::TaskIdentityAgreement),
+            ),
+            (
+                "change-unit identity disagreement",
+                Box::new(|raw| raw.change_unit_id = Some("other-change".to_owned())),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::ChangeUnitIdentityAgreement),
+            ),
+            (
+                "scope revision disagreement",
+                Box::new(|raw| raw.basis_state_version = 1),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::ScopeRevisionAgreement),
+            ),
+            (
+                "baseline disagreement",
+                Box::new(|raw| {
+                    raw.attempt_scope_json = r#"{"task_id":"task","change_unit_id":"change","intended_operation":"edit","intended_paths":["src/lib.rs"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"other-baseline"}"#.to_owned()
+                }),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::BaselineAgreement),
+            ),
+            (
+                "malformed timestamp",
+                Box::new(|raw| raw.idle_expires_at = Some("tomorrow".to_owned())),
+                ExpectedCorruption::Value("idle_expires_at"),
+            ),
+            (
+                "invalid timestamp order",
+                Box::new(|raw| raw.idle_expires_at = Some("2026-07-28T23:59:59Z".to_owned())),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::TimestampOrder),
+            ),
+            (
+                "duplicate intended paths",
+                Box::new(|raw| {
+                    raw.attempt_scope_json = r#"{"task_id":"task","change_unit_id":"change","intended_operation":"edit","intended_paths":["src/lib.rs","src/lib.rs"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline"}"#.to_owned()
+                }),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::DuplicateIntendedPaths),
+            ),
+            (
+                "duplicate allowed paths",
+                Box::new(|raw| raw.allowed_path_prefixes_json = r#"["src","src"]"#.to_owned()),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::DuplicateAllowedPaths),
+            ),
+            (
+                "duplicate denied paths",
+                Box::new(|raw| raw.denied_path_prefixes_json = r#"["tests","tests"]"#.to_owned()),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::DuplicateDeniedPaths),
+            ),
+            (
+                "allowed and denied overlap",
+                Box::new(|raw| raw.denied_path_prefixes_json = r#"["src/private"]"#.to_owned()),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::AllowedDeniedPathDisjointness),
+            ),
+            (
+                "intended path outside scope",
+                Box::new(|raw| {
+                    raw.attempt_scope_json = r#"{"task_id":"task","change_unit_id":"change","intended_operation":"edit","intended_paths":["docs/guide.md"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline"}"#.to_owned()
+                }),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::IntendedPathCoverage),
+            ),
+            (
+                "product write intent disagreement",
+                Box::new(|raw| {
+                    raw.attempt_scope_json = r#"{"task_id":"task","change_unit_id":"change","intended_operation":"edit","intended_paths":["src/lib.rs"],"product_file_write_intended":false,"sensitive_categories":[],"baseline_ref":"baseline"}"#.to_owned()
+                }),
+                ExpectedCorruption::Invariant(
+                    WriteTicketInvariant::ProductFileWriteIntentAgreement,
+                ),
+            ),
+            (
+                "status and invalidation inconsistency",
+                Box::new(|raw| raw.invalidation_reason = Some("explicit_revoke".to_owned())),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::StatusLifecycleAgreement),
+            ),
+        ];
+
+        for (name, mutate, expected) in cases {
+            let mut raw = valid_raw_write_ticket();
+            mutate(&mut raw);
+            let error = match decode_write_ticket_record(raw) {
+                Ok(_) => panic!("{name} must fail closed"),
+                Err(error) => error,
+            };
+            assert_corruption(error, expected);
+        }
+    }
+
+    #[test]
+    fn normal_and_transaction_reads_share_the_same_typed_decoder() -> StoreResult<()> {
+        let mut conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE write_tickets (
+                project_id TEXT NOT NULL,
+                write_ticket_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                change_unit_id TEXT,
+                basis_state_version INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                validity_basis_json TEXT NOT NULL,
+                allowed_path_prefixes_json TEXT NOT NULL,
+                denied_path_prefixes_json TEXT NOT NULL,
+                attempt_scope_json TEXT NOT NULL,
+                created_by_actor_source TEXT NOT NULL,
+                created_by_user_action_resolution_id TEXT,
+                idle_expires_at TEXT,
+                invalidation_reason TEXT,
+                consumed_by_run_id TEXT,
+                consumed_at TEXT,
+                revoked_at TEXT,
+                created_at TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                PRIMARY KEY (project_id, write_ticket_id)
+            );",
+        )?;
+        let expected = decode_write_ticket_record(valid_raw_write_ticket())?;
+        insert_write_ticket_record(&conn, &expected)?;
+        let normal = write_ticket_record(&conn, "project", "ticket")?
+            .expect("normal read must find the fixture");
+        let tx = conn.transaction()?;
+        let in_tx = write_ticket_record_in_tx(&tx, "project", "ticket")?
+            .expect("transaction read must find the fixture");
+        let authority_bindings = active_write_ticket_authority_bindings_in_tx(&tx, "project")?;
+
+        assert_eq!(normal, expected);
+        assert_eq!(in_tx, expected);
+        assert_eq!(
+            authority_bindings,
+            vec![WriteTicketAuthorityBinding {
+                write_ticket_id: WriteTicketId::new("ticket"),
+                task_id: TaskId::new("task"),
+                write_authority_fingerprint: format!("sha256:{}", "b".repeat(64)),
+            }]
+        );
+        Ok(())
     }
 
     #[test]

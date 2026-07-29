@@ -251,22 +251,16 @@ fn prepare_write_reuses_compatible_ticket_across_unrelated_state_increment(
 }
 
 #[test]
-fn prepare_write_rejects_active_ticket_missing_write_authority_binding_as_corrupt(
-) -> Result<(), Box<dyn Error>> {
-    assert_prepare_write_replaces_policy_stale_ticket(None, "missing")
-}
-
-#[test]
 fn prepare_write_replaces_active_ticket_with_mismatched_write_authority_binding(
 ) -> Result<(), Box<dyn Error>> {
     assert_prepare_write_replaces_policy_stale_ticket(
-        Some("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "mismatched",
     )
 }
 
 fn assert_prepare_write_replaces_policy_stale_ticket(
-    stale_fingerprint: Option<&str>,
+    stale_fingerprint: &str,
     fixture_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
@@ -288,17 +282,11 @@ fn assert_prepare_write_replaces_policy_stale_ticket(
         let object = basis
             .as_object_mut()
             .expect("write-ticket validity basis is object-shaped");
-        if let Some(fingerprint) = stale_fingerprint {
-            object.insert(
-                "write_authority_fingerprint".to_owned(),
-                Value::String(fingerprint.to_owned()),
-            );
-        } else {
-            object.remove("write_authority_fingerprint");
-        }
+        object.insert(
+            "write_authority_fingerprint".to_owned(),
+            Value::String(stale_fingerprint.to_owned()),
+        );
     })?;
-    let before_replacement = harness.counts()?;
-
     let replacement = harness.service.prepare_write(
         prepare_write_request(
             &format!("req_prepare_policy_stale_{fixture_name}_replacement"),
@@ -308,21 +296,7 @@ fn assert_prepare_write_replaces_policy_stale_ticket(
             Some(&change_unit_id),
         ),
         invocation(OperationCategory::AgentWorkflow),
-    );
-
-    if stale_fingerprint.is_none() {
-        let error = replacement
-            .expect_err("missing persisted write-authority binding must fail at Store decode");
-        assert!(matches!(
-            error,
-            CorePipelineError::Store(volicord_store::StoreError::CorruptOwnerStateJson { .. })
-        ));
-        assert_eq!(write_ticket_count(&harness)?, 1);
-        assert_eq!(write_ticket_status(&harness, &stale_ticket_id)?, "active");
-        assert_eq!(harness.counts()?, before_replacement);
-        return Ok(());
-    }
-    let replacement = replacement?;
+    )?;
 
     assert_eq!(replacement.response_value["decision"], "allowed");
     assert_eq!(replacement.response_value["write_ticket_effect"], "issued");
@@ -337,15 +311,10 @@ fn assert_prepare_write_replaces_policy_stale_ticket(
         write_ticket_status(&harness, &replacement_ticket_id)?,
         "active"
     );
-    let invalidation_reason: String = harness.conn()?.query_row(
-        "SELECT invalidation_reason
-           FROM write_tickets
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, stale_ticket_id],
-        |row| row.get(0),
-    )?;
-    assert_eq!(invalidation_reason, "explicit_revoke");
+    assert_eq!(
+        write_ticket_invalidation_reason(&harness, &stale_ticket_id)?,
+        Some("explicit_revoke".to_owned())
+    );
     assert!(replacement.response_value["write_ticket"]["validity_basis"]
         ["write_authority_fingerprint"]
         .as_str()
@@ -705,15 +674,10 @@ fn prepare_write_invalidates_expired_approval_basis_even_when_new_write_is_not_a
         write_ticket_status(&harness, &write_ticket_id)?,
         "invalidated"
     );
-    let invalidation_reason: String = harness.conn()?.query_row(
-        "SELECT invalidation_reason
-           FROM write_tickets
-          WHERE project_id = ?1
-            AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, write_ticket_id],
-        |row| row.get(0),
-    )?;
-    assert_eq!(invalidation_reason, "approval_basis_changed");
+    assert_eq!(
+        write_ticket_invalidation_reason(&harness, &write_ticket_id)?,
+        Some("approval_basis_changed".to_owned())
+    );
     let after = harness.counts()?;
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.write_tickets, before.write_tickets);
@@ -2410,12 +2374,9 @@ fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Resul
         write_ticket_status(&harness, &original_ticket_id)?,
         "invalidated"
     );
-    let reason: String = harness.conn()?.query_row(
-        "SELECT invalidation_reason FROM write_tickets
-          WHERE project_id = ?1 AND write_ticket_id = ?2",
-        rusqlite::params![PROJECT_ID, original_ticket_id],
-        |row| row.get(0),
-    )?;
-    assert_eq!(reason, "workspace_changed");
+    assert_eq!(
+        write_ticket_invalidation_reason(&harness, &original_ticket_id)?,
+        Some("workspace_changed".to_owned())
+    );
     Ok(())
 }

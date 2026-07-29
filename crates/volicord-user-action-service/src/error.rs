@@ -124,6 +124,7 @@ impl UserActionServiceError {
             error @ (StoreError::CorruptStoredJson { .. }
             | StoreError::CorruptOwnerStateJson { .. }
             | StoreError::CorruptOwnerStateValue { .. }
+            | StoreError::CorruptOwnerStateInvariant { .. }
             | StoreError::CorruptStoredValue { .. }
             | StoreError::SchemaInvariant { .. }) => Self::CorruptStoredState(error),
             error => Self::Store(error),

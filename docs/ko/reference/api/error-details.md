@@ -84,12 +84,33 @@ routing합니다. 플랫폼을 관찰할 수 없는 경우는 `ToolError` 밖의
 ## 담당 상태 손상 세부 필드
 
 타입이 지정된 담당 상태 손상을 `code=PERSISTED_DATA_CORRUPT`,
-`category=corrupt`로 보고할 때 세부사항은 아래 항목을 식별할 수 있습니다.
+`category=corrupt`로 보고할 때 `owner_state_error`는 아래 형태 중 정확히 하나입니다.
 
-- `owner_state_error.table`
-- `owner_state_error.record_ref`
-- `owner_state_error.logical_column`
-- `owner_state_error.corruption_category`
+- 한 field에 국한된 corruption은 `table`, `record_ref`, `logical_column`,
+  `corruption_category`를 식별합니다.
+- 여러 field에 걸친 aggregate corruption은 `aggregate`, `record_ref`,
+  `invariant`, `corruption_category`를 식별합니다.
+
+Field 형태는 `corruption_category=corrupt_stored_json` 또는
+`corruption_category=corrupt_stored_value`를 사용하고 실제로 유효하지 않은 물리
+field를 지정합니다. Aggregate 형태는
+`corruption_category=corrupt_aggregate_invariant`를 사용하며 `table`이나
+`logical_column`을 포함하지 않습니다.
+
+`aggregate=write_ticket`일 때 `invariant`는 다음 중 하나입니다.
+
+- `task_identity_agreement`
+- `change_unit_identity_agreement`
+- `scope_revision_agreement`
+- `baseline_agreement`
+- `timestamp_order`
+- `duplicate_intended_paths`
+- `duplicate_allowed_paths`
+- `duplicate_denied_paths`
+- `allowed_denied_path_disjointness`
+- `intended_path_coverage`
+- `product_file_write_intent_agreement`
+- `status_lifecycle_agreement`
 
 이 진단은 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 포함하면 안 됩니다. 형식이 잘못된 JSON을 부재와 동등하게 만들지 않습니다.
 
