@@ -19,6 +19,7 @@ use crate::ids::{
     RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId,
     UserActionOptionId, UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
+use crate::product_path::ProductRelativePath;
 use crate::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
     ArtifactIntegrityStatus, AuthorityNextActor, CarryForwardDispositionStatus, CarryForwardKind,
@@ -1241,7 +1242,7 @@ pub struct PlannedBlocker {
 }
 
 /// Common public reference for Core-owned state records.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StateRecordRef {
     pub record_kind: StateRecordKind,
@@ -1869,7 +1870,7 @@ pub struct WriteTicketPathPatterns {
 }
 
 /// Explicit state coordinates that govern write-ticket reuse and invalidation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WriteTicketValidityBasis {
     pub task_id: TaskId,
@@ -1911,12 +1912,12 @@ pub struct WriteTicket {
 }
 
 /// One-attempt boundary captured by a write ticket.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct WriteTicketAttemptScope {
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub intended_operation: String,
-    pub intended_paths: Vec<String>,
+    pub intended_paths: Vec<ProductRelativePath>,
     pub product_file_write_intended: bool,
     pub sensitive_categories: Vec<String>,
     pub baseline_ref: Option<BaselineRef>,

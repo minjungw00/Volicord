@@ -10,7 +10,7 @@ use volicord_types::ids::{ProjectId, UserActionRequestId};
 use volicord_types::schema::{JsonObject, RequiredNullable, UserActionRequest};
 use volicord_types::values::{
     AcceptancePolicy, PersistedCloseSummary, RequestedControlLevel, TaskControlLevel,
-    TaskLifecyclePhase, TaskMode, UserActionKind, UserActionStatus, WorkPhase,
+    TaskLifecyclePhase, TaskMode, UserActionKind, UserActionStatus, UtcTimestamp, WorkPhase,
 };
 
 fn task(lifecycle_phase: TaskLifecyclePhase) -> TaskRecord {
@@ -104,7 +104,7 @@ fn lifecycle_enters_and_leaves_waiting_user_from_current_authority() {
         project_id: "project-test".to_owned(),
         state_version: 11,
         active_task_id: Some("task-test".to_owned()),
-        updated_at: "2026-07-27T00:00:00Z".to_owned(),
+        updated_at: UtcTimestamp::parse("2026-07-27T00:00:00Z").expect("valid timestamp"),
     };
     let change_unit = change_unit();
 

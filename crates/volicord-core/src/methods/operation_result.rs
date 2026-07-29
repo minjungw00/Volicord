@@ -134,20 +134,14 @@ impl CoreService {
             }
         };
 
-        if stored.operation_category != OperationCategory::AgentWorkflow.as_str() {
+        if stored.operation_category != OperationCategory::AgentWorkflow {
             return operation_result_rejected(
                 &prepared,
                 ErrorCode::OperationResultUnavailable,
                 "operation result is unavailable",
             );
         }
-        if stored.actor_source
-            != prepared
-                .context
-                .verified_invocation
-                .actor_source
-                .to_canonical_string()
-        {
+        if stored.actor_source != prepared.context.verified_invocation.actor_source {
             return operation_result_rejected(
                 &prepared,
                 ErrorCode::InvocationContextMismatch,
@@ -299,8 +293,8 @@ fn stored_matches_ref(
     operation_result_ref: &OperationResultRef,
 ) -> bool {
     stored.project_id == operation_result_ref.project_id.as_str()
-        && stored.source_method == operation_result_ref.source_method.as_str()
-        && stored.source_idempotency_key == operation_result_ref.source_idempotency_key.as_str()
+        && stored.source_method == operation_result_ref.source_method
+        && stored.source_idempotency_key == operation_result_ref.source_idempotency_key
         && stored.committed_state_version == operation_result_ref.committed_state_version
         && stored.response_sha256 == operation_result_ref.response_sha256
         && stored.response_size_bytes == operation_result_ref.response_size_bytes

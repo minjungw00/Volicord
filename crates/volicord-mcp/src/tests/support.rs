@@ -919,7 +919,6 @@ pub(super) fn stored_action_record(
         &ProjectId::new(fixture.project_id()),
     )?;
     let now = store.current_timestamp()?;
-    let now = volicord_types::values::UtcTimestamp::parse(&now)?;
     let record = store
         .user_action_records_for_task(&volicord_types::ids::TaskId::new(task_id), &now)?
         .into_iter()

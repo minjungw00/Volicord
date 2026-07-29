@@ -35,6 +35,7 @@ use volicord_types::guard_manifest::{
 use volicord_types::ids::ProjectId;
 use volicord_types::schema::SummaryCard;
 use volicord_types::values::{GuardHookPhase, IntegrationProfile, UtcTimestamp};
+use volicord_types::workflow_policy::ProjectWorkflowPolicySource;
 
 use crate::{
     guard_integration::audit::{
@@ -1285,12 +1286,10 @@ fn project_policy_authority_state(
         Ok(None) => return ProjectPolicyAuthorityState::AuthorityMissing,
         Err(error) => return project_policy_store_failure_state(&error),
     };
-    if authority.policy_schema != volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID
-        || authority.source != "project_database"
-    {
+    if authority.source != ProjectWorkflowPolicySource::ProjectDatabase {
         return ProjectPolicyAuthorityState::AuthorityCorrupt;
     }
-    let authority_value = match serde_json::from_str::<Value>(&authority.policy_json) {
+    let authority_value = match serde_json::to_value(&authority.policy) {
         Ok(value) => value,
         Err(_) => return ProjectPolicyAuthorityState::AuthorityCorrupt,
     };
@@ -1333,7 +1332,11 @@ fn project_policy_authority_state(
 }
 
 fn project_policy_store_failure_state(error: &StoreError) -> ProjectPolicyAuthorityState {
-    match error.classification().route {
+    project_policy_store_failure_route(error.classification().route)
+}
+
+fn project_policy_store_failure_route(route: StoreFailureRoute) -> ProjectPolicyAuthorityState {
+    match route {
         StoreFailureRoute::PersistedDataCorrupt => ProjectPolicyAuthorityState::AuthorityCorrupt,
         StoreFailureRoute::OperationalUnavailable
         | StoreFailureRoute::InvalidEnvironment
@@ -2925,18 +2928,12 @@ mod tests {
 
     #[test]
     fn policy_authority_store_failures_keep_corrupt_and_unavailable_distinct() {
-        let corrupt = StoreError::corrupt_stored_json("project_state", "policy_json");
-        let unavailable = StoreError::Io(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "denied",
-        ));
-
         assert_eq!(
-            project_policy_store_failure_state(&corrupt),
+            project_policy_store_failure_route(StoreFailureRoute::PersistedDataCorrupt),
             ProjectPolicyAuthorityState::AuthorityCorrupt
         );
         assert_eq!(
-            project_policy_store_failure_state(&unavailable),
+            project_policy_store_failure_route(StoreFailureRoute::OperationalUnavailable),
             ProjectPolicyAuthorityState::AuthorityUnavailable
         );
     }

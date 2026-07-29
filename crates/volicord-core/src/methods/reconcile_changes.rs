@@ -4,12 +4,11 @@ use super::close_readiness::{
 };
 use super::{
     active_acceptance_criteria_for_task, allocate_user_action_request_id, build_state_summary,
-    changes_summary_text, close_state_text, core_error_response, decode_required_json,
-    evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_for_invocation,
-    mutation_method_policy, no_active_task_response, normalize_next_action_collection,
-    object_from_value, parse_owner_storage_value, parse_storage_value, prepare_or_response,
-    primary_next_action, profile_summary_text, project_state_projection, projected_close_basis,
-    projected_evidence_summary, projected_write_ticket_summary,
+    changes_summary_text, close_state_text, core_error_response, evidence_gate_summary_text,
+    evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
+    no_active_task_response, normalize_next_action_collection, object_from_value,
+    prepare_or_response, primary_next_action, profile_summary_text, project_state_projection,
+    projected_close_basis, projected_evidence_summary, projected_write_ticket_summary,
     record_core_workflow_metric_best_effort, response_committed_fresh_effect, state_ref,
     state_ref_from_stored, storage_value, store_error_plan, summary_card_for_core,
     user_action_service_plan_error, utc_timestamp, validation_rejected, write_ticket_summary_text,
@@ -30,7 +29,6 @@ use volicord_store::core_pipeline::{
     WriteTicketRecord,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
-use volicord_store::error::StoreError;
 use volicord_store::guards::UnrecordedChangeRecord;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{
@@ -44,14 +42,15 @@ use volicord_types::schema::{
     CloseReadinessBlocker, DryRunSummary, EvidenceSummary, JsonObject, NextActionSummary,
     PlannedBlocker, PlannedEffect, RequiredNullable, StateRecordRef, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserActionChoiceDraft, UserActionContext, UserActionDraft,
-    UserActionOptionInput, UserActionRequest, UserActionResolutionBody, WriteTicketAttemptScope,
+    UserActionOptionInput, UserActionRequest, UserActionResolutionBody,
 };
 use volicord_types::values::OperationCategory;
 use volicord_types::values::{
     ActorSource, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
     NextActionKind, NextActionPresentationRole, PlannedBlockerSourceKind, StateRecordKind,
-    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus,
+    UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    WriteTicketStatus,
 };
 use volicord_user_action_service::{
     agent_safe_pending_user_action_summaries, construct_user_action,
@@ -525,7 +524,7 @@ fn plan_reconcile_changes(
     let confirmed_false_positive_samples = planned_resolutions
         .iter()
         .filter(|resolution| {
-            resolution.record.confidence == "confirmed"
+            resolution.record.confidence == UnrecordedChangeConfidence::Confirmed
                 && !matches!(
                     resolution.basis,
                     UnrecordedChangeResolutionBasis::AcceptedByUser
@@ -636,15 +635,7 @@ fn deterministic_resolution(
     write_tickets: &[WriteTicketRecord],
     now: DateTime<Utc>,
 ) -> CoreResult<Option<ResolutionCandidate>> {
-    let observed_paths = match observed_paths(record) {
-        Ok(paths) => paths,
-        Err(()) => {
-            return Ok(Some(system_resolution(
-                UnrecordedChangeResolutionBasis::InvalidObservation,
-                "core_deterministic_invalid_observation",
-            )))
-        }
-    };
+    let observed_paths = observed_paths(record);
     if observed_paths.is_empty() {
         return Ok(Some(system_resolution(
             UnrecordedChangeResolutionBasis::NotProductChange,
@@ -663,39 +654,31 @@ fn deterministic_resolution(
     }
     let mut active_matches = Vec::new();
     for write_ticket in write_tickets {
-        let attempt_scope: WriteTicketAttemptScope = decode_required_json(
-            "write_tickets",
-            write_ticket.write_ticket_id.clone(),
-            "attempt_scope_json",
-            Some(&write_ticket.attempt_scope_json),
-        )?;
-        let allowed_paths: Vec<String> = decode_required_json(
-            "write_tickets",
-            write_ticket.write_ticket_id.clone(),
-            "allowed_path_prefixes_json",
-            Some(&write_ticket.allowed_path_prefixes_json),
-        )?;
-        let denied_paths: Vec<String> = decode_required_json(
-            "write_tickets",
-            write_ticket.write_ticket_id.clone(),
-            "denied_path_prefixes_json",
-            Some(&write_ticket.denied_path_prefixes_json),
-        )?;
+        let attempt_scope = &write_ticket.attempt_scope;
+        let allowed_paths = write_ticket
+            .allowed_path_prefixes
+            .iter()
+            .map(|path| path.as_str().to_owned())
+            .collect::<Vec<_>>();
+        let denied_paths = &write_ticket.denied_path_prefixes;
         if attempt_scope.product_file_write_intended
             && paths_are_authorized(&observed_paths, &allowed_paths)
             && !observed_paths.iter().any(|path| {
                 denied_paths
                     .iter()
-                    .any(|denied| path_is_within(path, denied))
+                    .any(|denied| path_is_within(path, denied.as_str()))
             })
         {
-            if write_ticket.status == "consumed" && write_ticket.consumed_by_run_id.is_some() {
+            if write_ticket.status == WriteTicketStatus::Consumed
+                && write_ticket.consumed_by_run_id.is_some()
+            {
                 return Ok(Some(system_resolution(
                     UnrecordedChangeResolutionBasis::CoveredByWriteTicket,
                     "core_deterministic_write_ticket",
                 )));
             }
-            if write_ticket.status == "active" && !write_ticket_is_idle_expired(write_ticket, now)?
+            if write_ticket.status == WriteTicketStatus::Active
+                && !write_ticket_is_idle_expired(write_ticket, now)?
             {
                 active_matches.push(write_ticket.write_ticket_id.clone());
             }
@@ -814,12 +797,12 @@ fn same_state_record(left: &StateRecordRef, right: &StateRecordRef) -> bool {
         && left.project_id == right.project_id
 }
 
-pub(super) fn observed_paths(record: &UnrecordedChangeRecord) -> Result<Vec<String>, ()> {
-    let paths = serde_json::from_str::<Vec<String>>(&record.observed_paths_json).map_err(|_| ())?;
-    if paths.iter().any(|path| path.trim().is_empty()) {
-        return Err(());
-    }
-    Ok(paths)
+pub(super) fn observed_paths(record: &UnrecordedChangeRecord) -> Vec<String> {
+    record
+        .observed_paths
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1034,24 +1017,10 @@ fn unrecorded_finding(
     Ok(UnrecordedChangeFinding {
         unrecorded_change_ref: unrecorded_change_ref(record, request, state_version),
         status: UnrecordedChangeStatus::Unresolved,
-        confidence: parse_storage_value(
-            "unrecorded_changes.confidence",
-            &record.confidence,
-        )?,
+        confidence: record.confidence,
         summary: record.summary.clone(),
-        observed_paths: observed_paths(record).map_err(|()| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                "unrecorded_changes",
-                record.unrecorded_change_id.clone(),
-                "observed_paths_json",
-            ))
-        })?,
-        detected_at: parse_owner_storage_value(
-            "unrecorded_changes",
-            record.unrecorded_change_id.clone(),
-            "detected_at",
-            &record.detected_at,
-        )?,
+        observed_paths: observed_paths(record),
+        detected_at: record.detected_at.clone(),
         next_action: NextActionSummary {
             presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::ReconcileChanges,

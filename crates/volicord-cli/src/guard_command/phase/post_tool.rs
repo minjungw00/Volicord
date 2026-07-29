@@ -25,9 +25,10 @@ use volicord_store::{
 use volicord_types::canonical::{canonical_git_object_id, canonical_json_bare_sha256};
 use volicord_types::guard_outcome::GuardPolicyDecision;
 use volicord_types::ids::{ProjectId, TaskId};
-use volicord_types::schema::WriteTicketValidityBasis;
+use volicord_types::product_path::ProductRelativePath;
 use volicord_types::values::{
-    MethodName, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis,
+    ActorSource, MethodName, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis,
+    UtcTimestamp, WriteTicketStatus,
 };
 
 use super::GuardPhaseResult;
@@ -422,8 +423,8 @@ fn record_post_tool_correlation(
                 &record.expected_write_id,
                 ExpectedWriteMatch {
                     matched_post_tool_guard_event_id: envelope.event_id.clone(),
-                    matched_paths: changed.clone(),
-                    matched_at: envelope.occurred_at.clone(),
+                    matched_paths: typed_observed_paths(&changed)?,
+                    matched_at: typed_guard_timestamp(&envelope.occurred_at)?,
                 },
             )?;
             let resolved_suspected_changes = resolve_matching_suspected_authorized(
@@ -663,10 +664,10 @@ fn record_unrecorded_changes(
             correlation: Some(context.envelope.correlation.clone()),
             connection_internal_id: context.envelope.connection_id.clone(),
             task_id: context.summary.active_task_id.clone(),
-            confidence: context.confidence.as_str().to_owned(),
+            confidence: context.confidence,
             summary: "Product file changes were observed after a host tool without a matching Volicord run record".to_owned(),
-            observed_paths_json: serde_json::to_string(&context.changed).map_err(json_error)?,
-            detection_json: json!({
+            observed_paths: typed_observed_paths(&context.changed)?,
+            detection: json!({
                 "source": "volicord_guard_post_tool",
                 "observation_source": context.observation_source,
                 "observation_confidence": context.observation_confidence,
@@ -689,13 +690,11 @@ fn record_unrecorded_changes(
                 "observer_role": "guard",
                 "does_not_prevent_writes": true,
                 "does_not_identify_actor": true
-            })
-            .to_string(),
-            detected_at: context.envelope.occurred_at.clone(),
-            metadata_json: json!({
+            }).as_object().cloned().expect("detection is an object"),
+            detected_at: typed_guard_timestamp(&context.envelope.occurred_at)?,
+            metadata: json!({
                 "guard_event_id": context.envelope.event_id
-            })
-            .to_string(),
+            }).as_object().cloned().expect("metadata is an object"),
         },
     )?;
     Ok(vec![json!({
@@ -713,29 +712,24 @@ fn promote_matching_suspected_changes(
     let Some(host_invocation_id) = context.observation.host_invocation_id.as_deref() else {
         return Ok(Vec::new());
     };
-    let observed_paths_json = serde_json::to_string(&context.changed).map_err(json_error)?;
+    let observed_paths = typed_observed_paths(&context.changed)?;
     let mut promoted = Vec::new();
     for record in list_unresolved_unrecorded_changes(
         context.mutation_context.runtime_home().as_path(),
         &context.project.project_id,
         Some(&context.envelope.connection_id),
     )? {
-        if record.confidence != UnrecordedChangeConfidence::Suspected.as_str()
+        if record.confidence != UnrecordedChangeConfidence::Suspected
             || record.session_id != context.envelope.session_id
             || record.task_id != context.summary.active_task_id
         {
             continue;
         }
-        let mut detection =
-            serde_json::from_str::<Value>(&record.detection_json).map_err(json_error)?;
+        let mut detection = record.detection.clone();
         if detection.get("host_invocation_id").and_then(Value::as_str) != Some(host_invocation_id) {
             continue;
         }
-        let Some(detection_object) = detection.as_object_mut() else {
-            return Err(GuardCommandError::Runtime(
-                "stored unrecorded-change detection must be an object".to_owned(),
-            ));
-        };
+        let detection_object = &mut detection;
         let prior_observation_confidence = detection_object
             .get("observation_confidence")
             .cloned()
@@ -774,9 +768,9 @@ fn promote_matching_suspected_changes(
             &context.project.project_id,
             &record.unrecorded_change_id,
             UnrecordedChangePromotion {
-                observed_paths_json: observed_paths_json.clone(),
-                detection_json: detection.to_string(),
-                confirmed_at: context.envelope.occurred_at.clone(),
+                observed_paths: observed_paths.clone(),
+                detection,
+                confirmed_at: typed_guard_timestamp(&context.envelope.occurred_at)?,
             },
         )?;
         promoted.push(json!({
@@ -1205,14 +1199,17 @@ fn committed_run_for_correlation(
         };
         let (Some(run_id), Some(consumed_at)) = (
             ticket.consumed_by_run_id.as_deref(),
-            ticket.consumed_at.as_deref().and_then(parsed_timestamp),
+            ticket
+                .consumed_at
+                .as_ref()
+                .map(|timestamp| *timestamp.as_datetime()),
         ) else {
             continue;
         };
-        let Some(created_at) = parsed_timestamp(&ticket.created_at) else {
-            continue;
-        };
-        if ticket.status != "consumed" || created_at > correlated_at || consumed_at < correlated_at
+        let created_at = *ticket.created_at.as_datetime();
+        if ticket.status != WriteTicketStatus::Consumed
+            || created_at > correlated_at
+            || consumed_at < correlated_at
         {
             continue;
         }
@@ -1230,10 +1227,7 @@ fn committed_run_for_correlation(
         else {
             continue;
         };
-        let validity_basis: WriteTicketValidityBasis =
-            serde_json::from_str(&ticket.validity_basis_json).map_err(|_| {
-                SuppressionFailure::new(SuppressionUnavailableReason::WriteTicketLookupFailed)
-            })?;
+        let validity_basis = &ticket.validity_basis;
         if run.status != RunStatus::Recorded
             || run.task_id != ticket.task_id
             || run.change_unit_id.as_deref() != Some(ticket.change_unit_id.as_str())
@@ -1308,6 +1302,20 @@ fn valid_sha256_coordinate(value: &str) -> bool {
         || value
             .strip_prefix("sha256:")
             .is_some_and(valid_lowercase_sha256)
+}
+
+fn typed_observed_paths(paths: &[String]) -> Result<Vec<ProductRelativePath>, GuardCommandError> {
+    paths
+        .iter()
+        .map(|path| {
+            ProductRelativePath::parse(path)
+                .map_err(|error| GuardCommandError::Runtime(error.to_string()))
+        })
+        .collect()
+}
+
+fn typed_guard_timestamp(value: &str) -> Result<UtcTimestamp, GuardCommandError> {
+    UtcTimestamp::parse(value).map_err(|error| GuardCommandError::Runtime(error.to_string()))
 }
 
 fn parsed_timestamp(value: &str) -> Option<DateTime<Utc>> {
@@ -1447,14 +1455,13 @@ fn resolve_matching_suspected_no_change(
         &project.project_id,
         Some(&envelope.connection_id),
     )? {
-        if record.confidence != UnrecordedChangeConfidence::Suspected.as_str()
+        if record.confidence != UnrecordedChangeConfidence::Suspected
             || record.session_id != envelope.session_id
             || record.task_id != summary.active_task_id
         {
             continue;
         }
-        let detection =
-            serde_json::from_str::<Value>(&record.detection_json).map_err(json_error)?;
+        let detection = &record.detection;
         if detection.get("host_invocation_id").and_then(Value::as_str) != Some(host_invocation_id) {
             continue;
         }
@@ -1463,14 +1470,13 @@ fn resolve_matching_suspected_no_change(
             &project.project_id,
             &record.unrecorded_change_id,
             UnrecordedChangeResolution {
-                resolution_json: json!({
+                resolution: json!({
                     "resolution_basis": UnrecordedChangeResolutionBasis::InvalidObservation.as_str(),
                     "source": source,
                     "confirmed_no_product_change": true
-                })
-                .to_string(),
-                resolved_at: resolved_at.clone(),
-                resolved_by_actor_source: "system".to_owned(),
+                }).as_object().cloned().expect("resolution is an object"),
+                resolved_at: typed_guard_timestamp(&resolved_at)?,
+                resolved_by_actor_source: ActorSource::System,
             },
         )?;
         resolved.push(json!({
@@ -1505,14 +1511,13 @@ fn resolve_matching_suspected_authorized(
         &project.project_id,
         Some(&envelope.connection_id),
     )? {
-        if record.confidence != UnrecordedChangeConfidence::Suspected.as_str()
+        if record.confidence != UnrecordedChangeConfidence::Suspected
             || record.session_id != envelope.session_id
             || record.task_id != summary.active_task_id
         {
             continue;
         }
-        let detection =
-            serde_json::from_str::<Value>(&record.detection_json).map_err(json_error)?;
+        let detection = &record.detection;
         if detection.get("host_invocation_id").and_then(Value::as_str) != Some(host_invocation_id) {
             continue;
         }
@@ -1521,15 +1526,17 @@ fn resolve_matching_suspected_authorized(
             &project.project_id,
             &record.unrecorded_change_id,
             UnrecordedChangeResolution {
-                resolution_json: json!({
+                resolution: json!({
                     "resolution_basis": basis.as_str(),
                     "source": source,
                     "authority_id": authority_id,
                     "deterministic_correlation": true
                 })
-                .to_string(),
-                resolved_at: resolved_at.clone(),
-                resolved_by_actor_source: "system".to_owned(),
+                .as_object()
+                .cloned()
+                .expect("resolution is an object"),
+                resolved_at: typed_guard_timestamp(&resolved_at)?,
+                resolved_by_actor_source: ActorSource::System,
             },
         )?;
         resolved.push(json!({
@@ -1660,23 +1667,19 @@ fn host_invocation_id_from_observation(observation: &ToolObservation) -> Option<
 }
 
 fn expected_write_time_contains(record: &ExpectedWriteRecord, observed_at: DateTime<Utc>) -> bool {
-    let Ok(created_at) = DateTime::parse_from_rfc3339(&record.created_at) else {
-        return false;
-    };
-    let Ok(expires_at) = DateTime::parse_from_rfc3339(&record.expires_at) else {
-        return false;
-    };
-    created_at.with_timezone(&Utc) <= observed_at && observed_at <= expires_at.with_timezone(&Utc)
+    record.created_at.as_datetime() <= &observed_at
+        && &observed_at <= record.expires_at.as_datetime()
 }
 
 fn expected_paths_cover_observed(
     record: &ExpectedWriteRecord,
     changed_set: &BTreeSet<String>,
 ) -> bool {
-    if record.path_policy != "exact_paths" {
-        return false;
-    }
-    let expected = record.expected_paths.iter().cloned().collect();
+    let expected = record
+        .expected_paths
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect();
     !changed_set.is_empty() && changed_set.is_subset(&expected)
 }
 
@@ -1687,7 +1690,7 @@ fn matched_paths_cover_observed(
     let expected = record
         .matched_paths
         .as_ref()
-        .map(|paths| paths.iter().cloned().collect())
+        .map(|paths| paths.iter().map(|path| path.as_str().to_owned()).collect())
         .unwrap_or_default();
     !changed_set.is_empty() && changed_set.is_subset(&expected)
 }
@@ -1702,7 +1705,7 @@ fn matched_expected_write_json(
         "status": "matched",
         "pre_tool_guard_event_id": record.pre_tool_guard_event_id,
         "host_invocation_id": record.host_invocation_id,
-        "path_policy": record.path_policy,
+        "path_policy": record.path_policy.as_str(),
         "observed_paths": changed,
         "task_id": record.task_id,
         "change_unit_id": record.change_unit_id,

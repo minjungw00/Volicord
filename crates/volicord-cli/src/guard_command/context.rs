@@ -1,6 +1,5 @@
 use std::{collections::BTreeSet, path::Path};
 
-use serde_json::Value;
 use volicord_core::GitWorkspaceContext;
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::{
@@ -21,8 +20,8 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, PromptCaptureStatus, StateRecordKind,
-    TaskControlLevel, UserActionBasisStatus, UserActionKind, UserActionOptionAction,
-    UserActionRequiredFor, UtcTimestamp,
+    TaskControlLevel, UnrecordedChangeConfidence, UserActionBasisStatus, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UtcTimestamp, WriteTicketStatus,
 };
 
 use super::{
@@ -101,11 +100,8 @@ pub(super) fn guard_state_summary(
     let store = CoreProjectStore::open_for_mutation(context, &ProjectId::new(&project.project_id))?;
     let project_state = store.project_state()?;
     let workflow_policy = store.project_workflow_policy()?;
-    let current_write_authority_fingerprint = project_write_authority_fingerprint(
-        workflow_policy
-            .as_ref()
-            .map(|policy| policy.policy_json.as_str()),
-    )?;
+    let current_write_authority_fingerprint =
+        project_write_authority_fingerprint(workflow_policy.as_ref().map(|policy| &policy.policy))?;
     let now_timestamp = core_current_timestamp(&store)?;
     let mut current_write_ticket_ids = Vec::new();
     let mut stale_write_ticket_ids = Vec::new();
@@ -143,19 +139,22 @@ pub(super) fn guard_state_summary(
         let current_sensitive_approvals =
             current_sensitive_approvals(&store, &task_id, &now_timestamp)?;
         for record in store.write_tickets_for_task(&task_id)? {
-            let validity_basis: WriteTicketValidityBasis =
-                serde_json::from_str(&record.validity_basis_json).map_err(json_error)?;
+            let validity_basis = &record.validity_basis;
             let policy_binding_is_current =
                 validity_basis.write_authority_fingerprint == current_write_authority_fingerprint;
             if !policy_binding_is_current {
                 stale_write_ticket_ids.push(record.write_ticket_id.clone());
-                if record.status != "consumed" {
-                    let intended_paths: Vec<String> =
-                        serde_json::from_str(&record.allowed_path_prefixes_json)
-                            .map_err(json_error)?;
-                    let denied_paths: Vec<String> =
-                        serde_json::from_str(&record.denied_path_prefixes_json)
-                            .map_err(json_error)?;
+                if record.status != WriteTicketStatus::Consumed {
+                    let intended_paths = record
+                        .allowed_path_prefixes
+                        .iter()
+                        .map(|path| path.as_str().to_owned())
+                        .collect::<Vec<_>>();
+                    let denied_paths = record
+                        .denied_path_prefixes
+                        .iter()
+                        .map(|path| path.as_str().to_owned())
+                        .collect::<Vec<_>>();
                     if !intended_paths.is_empty() {
                         policy_stale_write_tickets.push(PolicyStaleWriteTicketSummary {
                             write_ticket_id: record.write_ticket_id,
@@ -166,22 +165,18 @@ pub(super) fn guard_state_summary(
                 }
                 continue;
             }
-            if record.status != "active" {
+            if record.status != WriteTicketStatus::Active {
                 stale_write_ticket_ids.push(record.write_ticket_id);
                 continue;
             }
-            let attempt_scope: WriteTicketAttemptScope =
-                serde_json::from_str(&record.attempt_scope_json).map_err(json_error)?;
+            let attempt_scope = &record.attempt_scope;
             let not_idle_expired = record
                 .idle_expires_at
-                .as_deref()
-                .map(UtcTimestamp::parse)
-                .transpose()
-                .map_err(|error| GuardCommandError::Runtime(error.to_string()))?
-                .is_none_or(|expires_at| now_timestamp < expires_at);
+                .as_ref()
+                .is_none_or(|expires_at| now_timestamp < *expires_at);
             let approval_basis_current = write_ticket_approval_basis_is_current(
-                &validity_basis,
-                &attempt_scope,
+                validity_basis,
+                attempt_scope,
                 current_task_sensitive,
                 &current_sensitive_approvals,
             );
@@ -191,8 +186,8 @@ pub(super) fn guard_state_summary(
                     write_ticket_owner_basis_status(
                         &record.task_id,
                         Some(record.change_unit_id.as_str()),
-                        &validity_basis,
-                        &attempt_scope,
+                        validity_basis,
+                        attempt_scope,
                         current,
                     )
                 },
@@ -209,17 +204,23 @@ pub(super) fn guard_state_summary(
                 if workspace_validity_uncertain {
                     uncertain_write_ticket_ids.push(write_ticket_id.clone());
                 }
-                let intended_paths: Vec<String> =
-                    serde_json::from_str(&record.allowed_path_prefixes_json).map_err(json_error)?;
-                let denied_paths: Vec<String> =
-                    serde_json::from_str(&record.denied_path_prefixes_json).map_err(json_error)?;
+                let intended_paths = record
+                    .allowed_path_prefixes
+                    .iter()
+                    .map(|path| path.as_str().to_owned())
+                    .collect::<Vec<_>>();
+                let denied_paths = record
+                    .denied_path_prefixes
+                    .iter()
+                    .map(|path| path.as_str().to_owned())
+                    .collect::<Vec<_>>();
                 if !intended_paths.is_empty() {
                     active_write_tickets.push(ActiveWriteTicketSummary {
                         write_ticket_id,
                         change_unit_id: record.change_unit_id.clone(),
                         intended_paths,
                         denied_paths,
-                        idle_expires_at: record.idle_expires_at,
+                        idle_expires_at: record.idle_expires_at.map(|value| value.to_string()),
                         workspace_validity_uncertain,
                     });
                 }
@@ -243,11 +244,11 @@ pub(super) fn guard_state_summary(
     )?;
     let unresolved_unrecorded_change_count = unresolved_unrecorded_changes
         .iter()
-        .filter(|record| record.confidence == "confirmed")
+        .filter(|record| record.confidence == UnrecordedChangeConfidence::Confirmed)
         .count();
     let suspected_unrecorded_change_count = unresolved_unrecorded_changes
         .iter()
-        .filter(|record| record.confidence == "suspected")
+        .filter(|record| record.confidence == UnrecordedChangeConfidence::Suspected)
         .count();
     let _ = input.raw_text.len();
     Ok(GuardStateSummary {
@@ -281,16 +282,11 @@ fn pending_policy_control_reevaluation(
         return Ok(None);
     };
     let current_control = task.effective_control_level;
-    let required_control = strict_task_control_level(&mark.required_effective_control_level)?;
+    let required_control = mark.required_effective_control_level;
     let current_acceptance = task.acceptance_policy;
-    let acceptance_escalation = mark
-        .required_acceptance_policy
-        .as_deref()
-        .map(strict_acceptance_policy)
-        .transpose()?
-        .is_some_and(|required| {
-            acceptance_policy_rank(required) > acceptance_policy_rank(current_acceptance)
-        });
+    let acceptance_escalation = mark.required_acceptance_policy.is_some_and(|required| {
+        acceptance_policy_rank(required) > acceptance_policy_rank(current_acceptance)
+    });
     if required_control <= current_control && !acceptance_escalation {
         return Ok(None);
     }
@@ -301,17 +297,16 @@ fn policy_reevaluation_summary(
     mark: TaskPolicyControlReevaluation,
 ) -> GuardPolicyControlReevaluationSummary {
     GuardPolicyControlReevaluationSummary {
-        required_effective_control_level: mark.required_effective_control_level,
-        required_acceptance_policy: mark.required_acceptance_policy,
+        required_effective_control_level: mark.required_effective_control_level.as_str().to_owned(),
+        required_acceptance_policy: mark
+            .required_acceptance_policy
+            .map(|policy| match policy {
+                AcceptancePolicy::NotRequired => "not_required",
+                AcceptancePolicy::PolicyDependent => "policy_dependent",
+                AcceptancePolicy::Required => "required",
+            })
+            .map(str::to_owned),
     }
-}
-
-fn strict_task_control_level(value: &str) -> Result<TaskControlLevel, GuardCommandError> {
-    serde_json::from_value(Value::String(value.to_owned())).map_err(json_error)
-}
-
-fn strict_acceptance_policy(value: &str) -> Result<AcceptancePolicy, GuardCommandError> {
-    serde_json::from_value(Value::String(value.to_owned())).map_err(json_error)
 }
 
 const fn acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
@@ -565,6 +560,6 @@ fn sensitive_approval_matches_ticket(
             scope
                 .intended_paths
                 .iter()
-                .any(|approved| path_is_within(path, approved))
+                .any(|approved| path_is_within(path.as_str(), approved))
         })
 }

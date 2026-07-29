@@ -17,8 +17,8 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, EvidenceRelevanceStatus,
-    JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName, RedactionState,
-    StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
+    JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName, OperationCategory,
+    RedactionState, StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
     UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis,
     UtcTimestamp,
 };
@@ -451,10 +451,10 @@ fn user_action_store_derives_expiry_resolution_and_stale_status() -> Result<(), 
             Some(&IdempotencyKey::new("idem_store_action_resolve")),
             &RequestHash::new("sha256:action-resolve"),
             Some(VerifiedReplayContext {
-                actor_source: "local_user".to_owned(),
-                operation_category: "user_only".to_owned(),
+                actor_source: ActorSource::LocalUser,
+                operation_category: OperationCategory::UserOnly,
                 verification_basis: Some("store_test_user_channel".to_owned()),
-                git_workspace_context_json: None,
+                git_workspace_context: None,
             }),
             Some(2),
             vec![pending_event_for_task("action_resolve", task_id)],
@@ -1688,7 +1688,7 @@ fn effective_user_action_rejects_resolution_from_future_without_effect(
         params![PROJECT_ID, resolution_id],
     )?;
     let before = (store.effect_counts()?, store.project_state()?);
-    let now = UtcTimestamp::parse(&store.current_timestamp()?)?;
+    let now = store.current_timestamp()?;
 
     let error = store
         .user_action_record(request_id, &now)

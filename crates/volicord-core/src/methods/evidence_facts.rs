@@ -21,7 +21,6 @@ use volicord_store::core_pipeline::{
     CoreProjectStore, EvidenceObservationRecord, EvidenceSummaryRecord, StoredUserActionRecordSet,
     StoredUserActionResolution, TaskRecord,
 };
-use volicord_store::error::StoreError;
 use volicord_store::evidence_capture::{
     EvidenceCaptureCompleteness, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord,
 };
@@ -44,7 +43,7 @@ pub(super) struct UserActionObservationResolutionAuthority {
     pub(super) resolved_at: UtcTimestamp,
 }
 
-pub(super) fn decode_capture_intent_record(
+pub(super) fn capture_intent_from_record(
     record: &EvidenceCaptureIntentRecord,
 ) -> CoreResult<EvidenceCaptureIntent> {
     Ok(EvidenceCaptureIntent {
@@ -69,21 +68,20 @@ pub(super) fn validate_capture_receipt_record(
     intent: &EvidenceCaptureIntent,
     receipt: &EvidenceCaptureReceiptRecord,
 ) -> CoreResult<PersistedEvidenceCaptureReceiptBody> {
-    let corrupt = |column: &'static str| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "evidence_capture_receipts",
-            receipt.evidence_capture_receipt_id.clone(),
-            column,
-        ))
+    let contradiction = |field: &'static str| CorePipelineError::Invariant {
+        detail: format!(
+            "typed evidence receipt `{}` contradicts its capture intent at `{field}`",
+            receipt.evidence_capture_receipt_id
+        ),
     };
     let body = &receipt.safe_receipt;
     let intent_producer_kind = capture_spec_producer_kind(&intent.capture);
     validate_evidence_capture_expected_outcome(&intent.capture, &body.expected_outcome)
-        .map_err(|_| corrupt("expected_outcome_json"))?;
+        .map_err(|_| contradiction("expected_outcome"))?;
     validate_evidence_capture_observed_outcome(&intent.capture, &body.observed_outcome)
-        .map_err(|_| corrupt("observed_outcome_json"))?;
+        .map_err(|_| contradiction("observed_outcome"))?;
     validate_evidence_capture_limitations(&intent.capture, &body.limitations)
-        .map_err(|_| corrupt("limitations_json"))?;
+        .map_err(|_| contradiction("limitations"))?;
     let observed_outcome_sha256 =
         volicord_types::canonical::canonical_json_bare_sha256(&body.observed_outcome)?;
     if body.contract_id != volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
@@ -109,7 +107,7 @@ pub(super) fn validate_capture_receipt_record(
         || body.observed_by_actor_source != receipt.observed_by_actor_source
         || receipt.metadata.source != body.source
     {
-        return Err(corrupt("safe_receipt_json"));
+        return Err(contradiction("safe_receipt"));
     }
     Ok(body.clone())
 }
@@ -121,11 +119,11 @@ pub(super) fn capture_outcome_matches_expected(
     observed: &JsonObject,
 ) -> CoreResult<bool> {
     evidence_capture_observed_outcome_matches_expected(capture, expected, observed).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "evidence_capture_receipts",
-            receipt_id,
-            "observed_outcome_json",
-        ))
+        CorePipelineError::Invariant {
+            detail: format!(
+                "typed evidence receipt `{receipt_id}` has an invalid observed-outcome shape"
+            ),
+        }
     })
 }
 
@@ -520,7 +518,7 @@ fn stored_capture_authority_is_current(
     else {
         return Ok(false);
     };
-    let intent = decode_capture_intent_record(&intent_record)?;
+    let intent = capture_intent_from_record(&intent_record)?;
     let Some(receipt) = store
         .evidence_capture_receipt_for_intent(intent.capture_intent_id.as_str())
         .map_err(CorePipelineError::from)?

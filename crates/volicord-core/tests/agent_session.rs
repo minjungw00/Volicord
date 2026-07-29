@@ -9,10 +9,11 @@ use volicord_store::{
 use volicord_test_support::{
     core_fixtures::CoreFixture, seed_test_agent_session, transition_test_connection_mode,
 };
-use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, ProjectId};
 use volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID;
 use volicord_types::values::OperationCategory;
+use volicord_types::workflow_policy::{ProjectWorkflowPolicy, ProjectWorkflowPolicySource};
 
 #[test]
 fn current_agent_session_authorizes_a_typed_core_invocation() -> Result<(), Box<dyn Error>> {
@@ -204,6 +205,30 @@ fn stale_connection_and_project_revisions_fail_closed() -> Result<(), Box<dyn Er
     )?;
     let policy = serde_json::json!({
         "schema": WORKFLOW_POLICY_CONTRACT_ID,
+        "managed_by": "volicord",
+        "storage_scope": "local_overlay",
+        "connection_intent": "shared",
+        "host": "codex",
+        "repo_root": "/tmp/core-agent-session-policy",
+        "connection_id": project_fixture.connection_id(),
+        "guard_installation_id": "guard_agent_session_test",
+        "selected_profile": "record",
+        "mcp": {
+            "command": "volicord-mcp",
+            "args": [],
+            "env": {}
+        },
+        "host_hook": {
+            "enabled": true,
+            "commands": {
+                "pre_tool": {"command": "volicord", "args": ["guard", "pre-tool"]},
+                "post_tool": {"command": "volicord", "args": ["guard", "post-tool"]},
+                "prompt_capture": {
+                    "command": "volicord",
+                    "args": ["guard", "prompt-capture"]
+                }
+            }
+        },
         "workflow": {
             "default_direct_control": "tracked",
             "default_work_control": "tracked",
@@ -217,8 +242,8 @@ fn stale_connection_and_project_revisions_fail_closed() -> Result<(), Box<dyn Er
             "write_ticket": {"idle_timeout_minutes": null}
         }
     });
-    let policy_json = canonical_json_string(&policy)?;
     let policy_fingerprint = canonical_json_sha256(&policy)?.into_inner();
+    let policy = serde_json::from_value::<ProjectWorkflowPolicy>(policy)?;
     let context = project_fixture.mutation_context()?;
     let mut store = CoreProjectStore::open_for_mutation(
         &context,
@@ -226,9 +251,9 @@ fn stale_connection_and_project_revisions_fail_closed() -> Result<(), Box<dyn Er
     )?;
     store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
         policy_version: 1,
-        policy_json,
+        policy,
         policy_fingerprint,
-        source: "test".to_owned(),
+        source: ProjectWorkflowPolicySource::ProjectDatabase,
         expected_prior_fingerprint: None,
     })?;
     let error = CoreService::for_read_only(project_fixture.runtime_home_path())

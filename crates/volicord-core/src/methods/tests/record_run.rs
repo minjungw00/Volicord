@@ -3038,7 +3038,13 @@ fn record_run_rejects_write_ticket_task_mismatch_without_consumption() -> Result
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_write_ticket_invalid_reason(&response, "task_mismatch");
+    assert_owner_state_rejection(
+        &response,
+        "write_tickets",
+        &write_ticket_id,
+        "validity_basis_json",
+        &harness.runtime_home_path,
+    );
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -3075,7 +3081,13 @@ fn record_run_rejects_write_ticket_change_unit_mismatch_without_consumption(
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_write_ticket_invalid_reason(&response, "change_unit_mismatch");
+    assert_owner_state_rejection(
+        &response,
+        "write_tickets",
+        &write_ticket_id,
+        "validity_basis_json",
+        &harness.runtime_home_path,
+    );
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -5358,11 +5370,19 @@ fn record_run_rejects_future_reversed_and_out_of_range_staging_windows_without_e
             None,
             None,
         )];
-        let response = harness
+        let result = harness
             .service
-            .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
-
-        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+            .record_run(request, invocation(OperationCategory::AgentWorkflow));
+        match suffix {
+            "future_created" => {
+                assert!(matches!(result, Err(CorePipelineError::Invariant { .. })));
+            }
+            "reversed_window" | "out_of_range_created" => {
+                let response = result?;
+                assert_store_rejection(&response, "PERSISTED_DATA_CORRUPT", "corrupt_stored_value");
+            }
+            _ => unreachable!("closed fixture cases"),
+        }
         assert_eq!(harness.counts()?, before, "case {suffix}");
         assert_eq!(
             artifact_staging_status(&harness, handle.handle_id.as_str())?,

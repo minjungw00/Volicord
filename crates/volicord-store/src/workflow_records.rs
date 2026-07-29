@@ -6,10 +6,13 @@ use rusqlite::{params, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::schema::WriteTicketValidityBasis;
 use volicord_types::schema::{WORKFLOW_POLICY_CONTRACT_ID, WRITE_AUTHORITY_CONTRACT_ID};
 use volicord_types::values::{
-    AcceptancePolicy, RequestedControlLevel, TaskControlLevel, TaskMode, UtcTimestamp,
+    AcceptancePolicy, ActorSource, OperationCategory, RequestedControlLevel, TaskControlLevel,
+    TaskMode, UtcTimestamp,
 };
+use volicord_types::workflow_policy::{ProjectWorkflowPolicy, ProjectWorkflowPolicySource};
 
 use crate::{
     core_pipeline::{
@@ -33,9 +36,9 @@ pub enum WorkflowPolicyMutation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectWorkflowPolicyMutation {
     pub policy_version: u64,
-    pub policy_json: String,
+    pub policy: ProjectWorkflowPolicy,
     pub policy_fingerprint: String,
-    pub source: String,
+    pub source: ProjectWorkflowPolicySource,
     pub expected_prior_fingerprint: Option<String>,
 }
 
@@ -59,20 +62,20 @@ impl WorkflowPolicyMutation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectWorkflowPolicyUpsert {
     pub policy_version: u64,
-    pub policy_json: String,
+    pub policy: ProjectWorkflowPolicy,
     pub policy_fingerprint: String,
-    pub source: String,
-    pub applied_at: String,
-    pub created_at: String,
+    pub source: ProjectWorkflowPolicySource,
+    pub applied_at: UtcTimestamp,
+    pub created_at: UtcTimestamp,
 }
 
 /// Atomic administrative workflow-policy authority application input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectWorkflowPolicyAuthorityApply {
     pub policy_version: u64,
-    pub policy_json: String,
+    pub policy: ProjectWorkflowPolicy,
     pub policy_fingerprint: String,
-    pub source: String,
+    pub source: ProjectWorkflowPolicySource,
     pub expected_prior_fingerprint: Option<String>,
 }
 
@@ -131,92 +134,78 @@ struct ProjectWriteAuthorityTicketBasis {
     idle_timeout_minutes: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
-struct StoredProjectWriteAuthorityPolicy {
-    workflow: StoredProjectWriteAuthorityWorkflow,
-}
-
-#[derive(Debug, Deserialize)]
-struct StoredProjectWriteAuthorityWorkflow {
-    default_direct_control: TaskControlLevel,
-    default_work_control: TaskControlLevel,
-    light: StoredProjectWriteAuthorityLight,
-    write_ticket: StoredProjectWriteAuthorityTicket,
-}
-
-#[derive(Debug, Deserialize)]
-struct StoredProjectWriteAuthorityLight {
-    enabled: bool,
-    max_intended_paths: u64,
-    allowed_path_patterns: Vec<String>,
-    denied_path_patterns: Vec<String>,
-    final_acceptance: AcceptancePolicy,
-}
-
-#[derive(Debug, Deserialize)]
-struct StoredProjectWriteAuthorityTicket {
-    idle_timeout_minutes: Option<u64>,
-}
-
 /// Closed durable active-Task policy control reevaluation mark.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskPolicyControlReevaluation {
     pub policy_version: u64,
     pub policy_fingerprint: String,
-    pub required_effective_control_level: String,
+    pub required_effective_control_level: TaskControlLevel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub required_acceptance_policy: Option<String>,
-    pub marked_at: String,
+    pub required_acceptance_policy: Option<AcceptancePolicy>,
+    pub marked_at: UtcTimestamp,
 }
 
 /// Current authoritative project workflow-policy row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectWorkflowPolicyRecord {
     pub project_id: String,
-    pub policy_schema: String,
     pub policy_version: u64,
-    pub policy_json: String,
+    pub policy: ProjectWorkflowPolicy,
     pub policy_fingerprint: String,
-    pub source: String,
-    pub applied_at: String,
-    pub created_at: String,
+    pub source: ProjectWorkflowPolicySource,
+    pub applied_at: UtcTimestamp,
+    pub created_at: UtcTimestamp,
+    pub write_authority_fingerprint: String,
 }
 
-/// Derives the write-authority digest from an optional stored workflow-policy copy.
-pub fn project_write_authority_fingerprint(policy_json: Option<&str>) -> StoreResult<String> {
-    let mut basis = match policy_json {
-        Some(policy_json) => {
-            let stored: StoredProjectWriteAuthorityPolicy = serde_json::from_str(policy_json)
-                .map_err(|_| StoreError::InvalidInput {
-                    detail: "project workflow policy cannot produce a write-authority binding"
-                        .to_owned(),
-                })?;
-            if stored.workflow.light.max_intended_paths == 0
-                || stored
-                    .workflow
-                    .write_ticket
-                    .idle_timeout_minutes
-                    .is_some_and(|minutes| minutes == 0)
-            {
-                return Err(StoreError::InvalidInput {
-                    detail: "project workflow policy has an invalid write-authority value"
-                        .to_owned(),
-                });
-            }
+#[derive(Debug)]
+struct ProjectWorkflowPolicyRow {
+    project_id: String,
+    policy_schema: String,
+    policy_version: i64,
+    policy_json: String,
+    policy_fingerprint: String,
+    source: String,
+    applied_at: String,
+    created_at: String,
+}
+
+/// Derives the write-authority digest from an optional typed workflow policy.
+pub fn project_write_authority_fingerprint(
+    policy: Option<&ProjectWorkflowPolicy>,
+) -> StoreResult<String> {
+    let mut basis = match policy {
+        Some(policy) => {
+            policy.validate().map_err(|_| StoreError::InvalidInput {
+                detail: "project workflow policy cannot produce a write-authority binding"
+                    .to_owned(),
+            })?;
             ProjectWriteAuthorityFingerprintBasis {
                 schema: WRITE_AUTHORITY_CONTRACT_ID,
-                default_direct_control: stored.workflow.default_direct_control,
-                default_work_control: stored.workflow.default_work_control,
+                default_direct_control: policy.workflow.default_direct_control,
+                default_work_control: policy.workflow.default_work_control,
                 light: ProjectWriteAuthorityLightBasis {
-                    enabled: stored.workflow.light.enabled,
-                    max_intended_paths: stored.workflow.light.max_intended_paths,
-                    allowed_path_patterns: stored.workflow.light.allowed_path_patterns,
-                    denied_path_patterns: stored.workflow.light.denied_path_patterns,
-                    final_acceptance: stored.workflow.light.final_acceptance,
+                    enabled: policy.workflow.light.enabled,
+                    max_intended_paths: policy.workflow.light.max_intended_paths,
+                    allowed_path_patterns: policy
+                        .workflow
+                        .light
+                        .allowed_path_patterns
+                        .iter()
+                        .map(|path| path.as_str().to_owned())
+                        .collect(),
+                    denied_path_patterns: policy
+                        .workflow
+                        .light
+                        .denied_path_patterns
+                        .iter()
+                        .map(|path| path.as_str().to_owned())
+                        .collect(),
+                    final_acceptance: policy.workflow.light.final_acceptance,
                 },
                 write_ticket: ProjectWriteAuthorityTicketBasis {
-                    idle_timeout_minutes: stored.workflow.write_ticket.idle_timeout_minutes,
+                    idle_timeout_minutes: policy.workflow.write_ticket.idle_timeout_minutes,
                 },
             }
         }
@@ -260,25 +249,17 @@ impl CoreProjectStore<'_> {
     ) -> StoreResult<ProjectWorkflowPolicyRecord> {
         validate_project_workflow_policy(&input)?;
         let prior = self.project_workflow_policy()?;
-        let applied_at =
-            UtcTimestamp::parse(&input.applied_at).map_err(|_| StoreError::InvalidInput {
-                detail: "applied_at must be a canonical RFC 3339 UTC timestamp".to_owned(),
-            })?;
-        let created_at =
-            UtcTimestamp::parse(&input.created_at).map_err(|_| StoreError::InvalidInput {
-                detail: "created_at must be a canonical RFC 3339 UTC timestamp".to_owned(),
-            })?;
         self.apply_project_workflow_policy_authority_inner(
             ProjectWorkflowPolicyAuthorityApply {
                 policy_version: input.policy_version,
-                policy_json: input.policy_json,
+                policy: input.policy,
                 policy_fingerprint: input.policy_fingerprint,
                 source: input.source,
                 expected_prior_fingerprint: prior
                     .as_ref()
                     .map(|record| record.policy_fingerprint.clone()),
             },
-            Some(std::cmp::max(applied_at, created_at).to_string()),
+            Some(std::cmp::max(input.applied_at, input.created_at)),
         )
         .map(|result| result.policy)
     }
@@ -295,20 +276,19 @@ impl CoreProjectStore<'_> {
     fn apply_project_workflow_policy_authority_inner(
         &mut self,
         input: ProjectWorkflowPolicyAuthorityApply,
-        clock_floor: Option<String>,
+        clock_floor: Option<UtcTimestamp>,
     ) -> StoreResult<ProjectWorkflowPolicyApplyResult> {
         require_writable(self)?;
         validate_project_workflow_policy_fields(
             input.policy_version,
-            &input.policy_json,
+            &input.policy,
             &input.policy_fingerprint,
-            &input.source,
+            input.source,
         )?;
         let observation = self.workflow_policy_apply_observation()?;
         if let Some(prior) = observation.prior.as_ref() {
             if prior.policy_fingerprint == input.policy_fingerprint {
-                let write_authority_fingerprint =
-                    project_write_authority_fingerprint(Some(prior.policy_json.as_str()))?;
+                let write_authority_fingerprint = prior.write_authority_fingerprint.clone();
                 return Ok(ProjectWorkflowPolicyApplyResult {
                     policy: prior.clone(),
                     database_changed: false,
@@ -333,13 +313,10 @@ impl CoreProjectStore<'_> {
         )?;
 
         let prior_write_authority_fingerprint = project_write_authority_fingerprint(
-            observation
-                .prior
-                .as_ref()
-                .map(|record| record.policy_json.as_str()),
+            observation.prior.as_ref().map(|record| &record.policy),
         )?;
         let resulting_write_authority_fingerprint =
-            project_write_authority_fingerprint(Some(&input.policy_json))?;
+            project_write_authority_fingerprint(Some(&input.policy))?;
         let write_authority_changed =
             prior_write_authority_fingerprint != resulting_write_authority_fingerprint;
         let payload = canonical_json_string(&json!({
@@ -372,7 +349,7 @@ impl CoreProjectStore<'_> {
         );
         let mutation = ProjectWorkflowPolicyMutation {
             policy_version: input.policy_version,
-            policy_json: input.policy_json,
+            policy: input.policy,
             policy_fingerprint: input.policy_fingerprint,
             source: input.source,
             expected_prior_fingerprint: input.expected_prior_fingerprint,
@@ -383,10 +360,10 @@ impl CoreProjectStore<'_> {
             idempotency_key: None,
             request_hash,
             replay_context: Some(VerifiedReplayContext {
-                actor_source: "local_user".to_owned(),
-                operation_category: "admin_local".to_owned(),
+                actor_source: ActorSource::LocalUser,
+                operation_category: OperationCategory::AdminLocal,
                 verification_basis: Some("local_admin_policy_apply".to_owned()),
-                git_workspace_context_json: None,
+                git_workspace_context: None,
             }),
             expected_state_version: None,
             clock_floor,
@@ -496,7 +473,7 @@ impl CoreProjectStore<'_> {
     }
 }
 
-fn project_workflow_policy_from_conn(
+pub(crate) fn project_workflow_policy_from_conn(
     conn: &rusqlite::Connection,
     project_id: &str,
 ) -> StoreResult<Option<ProjectWorkflowPolicyRecord>> {
@@ -508,59 +485,70 @@ fn project_workflow_policy_from_conn(
               WHERE project_id = ?1",
             [project_id],
             |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, String>(7)?,
-                ))
+                Ok(ProjectWorkflowPolicyRow {
+                    project_id: row.get(0)?,
+                    policy_schema: row.get(1)?,
+                    policy_version: row.get(2)?,
+                    policy_json: row.get(3)?,
+                    policy_fingerprint: row.get(4)?,
+                    source: row.get(5)?,
+                    applied_at: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
             },
         )
         .optional()?;
     raw.map(|raw| {
-        let policy_version = u64::try_from(raw.2).map_err(|_| {
+        let corrupt_value = |column| {
             StoreError::corrupt_owner_state_value(
                 "project_workflow_policies",
-                raw.0.clone(),
-                "policy_version",
+                raw.project_id.clone(),
+                column,
             )
-        })?;
-        if raw.1 != WORKFLOW_POLICY_CONTRACT_ID || policy_version == 0 {
-            return Err(StoreError::corrupt_owner_state_value(
-                "project_workflow_policies",
-                raw.0,
-                "policy_schema",
-            ));
-        }
-        let record = ProjectWorkflowPolicyRecord {
-            project_id: raw.0,
-            policy_schema: raw.1,
-            policy_version,
-            policy_json: raw.3,
-            policy_fingerprint: raw.4,
-            source: raw.5,
-            applied_at: raw.6,
-            created_at: raw.7,
         };
-        validate_project_workflow_policy(&ProjectWorkflowPolicyUpsert {
-            policy_version: record.policy_version,
-            policy_json: record.policy_json.clone(),
-            policy_fingerprint: record.policy_fingerprint.clone(),
-            source: record.source.clone(),
-            applied_at: record.applied_at.clone(),
-            created_at: record.created_at.clone(),
-        })
-        .map_err(|_| {
-            StoreError::corrupt_owner_state_value(
+        let corrupt_json = || {
+            StoreError::corrupt_owner_state_json(
                 "project_workflow_policies",
-                record.project_id.clone(),
+                raw.project_id.clone(),
                 "policy_json",
             )
-        })?;
+        };
+        let policy_version =
+            u64::try_from(raw.policy_version).map_err(|_| corrupt_value("policy_version"))?;
+        if raw.policy_schema != WORKFLOW_POLICY_CONTRACT_ID || policy_version == 0 {
+            return Err(corrupt_value("policy_schema"));
+        }
+        let policy: ProjectWorkflowPolicy =
+            serde_json::from_str(&raw.policy_json).map_err(|_| corrupt_json())?;
+        policy.validate().map_err(|_| corrupt_json())?;
+        let canonical = canonical_json_string(&policy).map_err(|_| corrupt_json())?;
+        if canonical != raw.policy_json {
+            return Err(corrupt_json());
+        }
+        let fingerprint = canonical_json_sha256(&policy)
+            .map_err(|_| corrupt_json())?
+            .into_inner();
+        if fingerprint != raw.policy_fingerprint {
+            return Err(corrupt_value("policy_fingerprint"));
+        }
+        let source = serde_json::from_value(Value::String(raw.source))
+            .map_err(|_| corrupt_value("source"))?;
+        let applied_at =
+            UtcTimestamp::parse(&raw.applied_at).map_err(|_| corrupt_value("applied_at"))?;
+        let created_at =
+            UtcTimestamp::parse(&raw.created_at).map_err(|_| corrupt_value("created_at"))?;
+        let write_authority_fingerprint =
+            project_write_authority_fingerprint(Some(&policy)).map_err(|_| corrupt_json())?;
+        let record = ProjectWorkflowPolicyRecord {
+            project_id: raw.project_id,
+            policy_version,
+            policy,
+            policy_fingerprint: raw.policy_fingerprint,
+            source,
+            applied_at,
+            created_at,
+            write_authority_fingerprint,
+        };
         Ok(record)
     })
     .transpose()
@@ -574,9 +562,9 @@ pub(crate) fn apply_project_workflow_policy_mutation(
 ) -> StoreResult<ProjectWorkflowPolicyMutationEffect> {
     validate_project_workflow_policy_fields(
         input.policy_version,
-        &input.policy_json,
+        &input.policy,
         &input.policy_fingerprint,
-        &input.source,
+        input.source,
     )?;
     let existing = project_workflow_policy_from_conn(tx, project_id)?;
     validate_policy_replacement_basis(
@@ -585,11 +573,10 @@ pub(crate) fn apply_project_workflow_policy_mutation(
         input.policy_version,
         input.expected_prior_fingerprint.as_deref(),
     )?;
-    let prior_write_authority_fingerprint = project_write_authority_fingerprint(
-        existing.as_ref().map(|record| record.policy_json.as_str()),
-    )?;
+    let prior_write_authority_fingerprint =
+        project_write_authority_fingerprint(existing.as_ref().map(|record| &record.policy))?;
     let resulting_write_authority_fingerprint =
-        project_write_authority_fingerprint(Some(&input.policy_json))?;
+        project_write_authority_fingerprint(Some(&input.policy))?;
     let write_authority_changed =
         prior_write_authority_fingerprint != resulting_write_authority_fingerprint;
     let policy_version =
@@ -598,8 +585,12 @@ pub(crate) fn apply_project_workflow_policy_mutation(
         })?;
     let created_at = existing
         .as_ref()
-        .map(|record| record.created_at.as_str())
-        .unwrap_or(committed_at);
+        .map(|record| record.created_at.to_string())
+        .unwrap_or_else(|| committed_at.to_owned());
+    let policy_json =
+        canonical_json_string(&input.policy).map_err(|_| StoreError::InvalidInput {
+            detail: "workflow policy cannot be serialized canonically".to_owned(),
+        })?;
     tx.execute(
         "INSERT INTO project_workflow_policies (
             project_id, policy_schema, policy_version, policy_json,
@@ -617,9 +608,9 @@ pub(crate) fn apply_project_workflow_policy_mutation(
             project_id,
             WORKFLOW_POLICY_CONTRACT_ID,
             policy_version,
-            input.policy_json,
+            policy_json,
             input.policy_fingerprint,
-            input.source,
+            input.source.as_str(),
             committed_at,
             created_at,
         ],
@@ -672,14 +663,10 @@ pub(crate) fn clear_satisfied_task_policy_reevaluation(
         task_id,
         "effective_control_level",
     )?;
-    let required = parse_control_level(
-        &mark.required_effective_control_level,
-        "tasks",
-        task_id,
-        POLICY_CONTROL_REEVALUATION_METADATA_KEY,
-    )?;
-    let acceptance_satisfied = if let Some(required) = mark.required_acceptance_policy.as_deref() {
-        acceptance_policy_rank(acceptance_policy)? >= acceptance_policy_rank(required)?
+    let required = mark.required_effective_control_level;
+    let acceptance = parse_acceptance_policy(acceptance_policy, task_id)?;
+    let acceptance_satisfied = if let Some(required) = mark.required_acceptance_policy {
+        acceptance_policy_rank(acceptance) >= acceptance_policy_rank(required)
     } else {
         true
     };
@@ -759,14 +746,10 @@ fn active_task_has_policy_reevaluation_from_conn(
         &task_id,
         "effective_control_level",
     )?;
-    let required = parse_control_level(
-        &mark.required_effective_control_level,
-        "tasks",
-        &task_id,
-        POLICY_CONTROL_REEVALUATION_METADATA_KEY,
-    )?;
-    let acceptance_escalation = if let Some(required) = mark.required_acceptance_policy.as_deref() {
-        acceptance_policy_rank(required)? > acceptance_policy_rank(&acceptance_policy)?
+    let required = mark.required_effective_control_level;
+    let current_acceptance = parse_acceptance_policy(&acceptance_policy, &task_id)?;
+    let acceptance_escalation = if let Some(required) = mark.required_acceptance_policy {
+        acceptance_policy_rank(required) > acceptance_policy_rank(current_acceptance)
     } else {
         false
     };
@@ -812,49 +795,41 @@ fn merge_active_task_policy_reevaluation(
     };
     let current_level =
         parse_control_level(&current, "tasks", &task_id, "effective_control_level")?;
-    let required_level =
-        required_control_for_policy(project_id, &input.policy_json, &mode, &requested)?;
-    let required_acceptance =
-        required_acceptance_for_policy(project_id, &input.policy_json, required_level)?;
-    let current_acceptance_rank = acceptance_policy_rank(&current_acceptance)?;
+    let required_level = required_control_for_policy(&input.policy, &mode, &requested)?;
+    let required_acceptance = required_acceptance_for_policy(&input.policy, required_level);
+    let current_acceptance_rank =
+        acceptance_policy_rank(parse_acceptance_policy(&current_acceptance, &task_id)?);
     let existing_mark = task_policy_control_reevaluation_from_metadata(&metadata_json, &task_id)?;
     let existing_required = existing_mark
         .as_ref()
-        .map(|mark| {
-            parse_control_level(
-                &mark.required_effective_control_level,
-                "tasks",
-                &task_id,
-                POLICY_CONTROL_REEVALUATION_METADATA_KEY,
-            )
-        })
-        .transpose()?;
+        .map(|mark| mark.required_effective_control_level);
     let existing_required_acceptance = existing_mark
         .as_ref()
-        .and_then(|mark| mark.required_acceptance_policy.as_deref())
-        .map(acceptance_policy_rank)
-        .transpose()?;
+        .and_then(|mark| mark.required_acceptance_policy)
+        .map(acceptance_policy_rank);
 
     let combined_required_level =
         std::cmp::max(required_level, existing_required.unwrap_or(current_level));
     let combined_control_acceptance =
-        required_acceptance_for_policy(project_id, &input.policy_json, combined_required_level)?;
+        required_acceptance_for_policy(&input.policy, combined_required_level);
     let combined_required_acceptance = std::cmp::max(
         std::cmp::max(
-            acceptance_policy_rank(acceptance_policy_name(required_acceptance))?,
-            acceptance_policy_rank(acceptance_policy_name(combined_control_acceptance))?,
+            acceptance_policy_rank(required_acceptance),
+            acceptance_policy_rank(combined_control_acceptance),
         ),
         existing_required_acceptance.unwrap_or(current_acceptance_rank),
     );
     let next_mark = Some(TaskPolicyControlReevaluation {
         policy_version: input.policy_version,
         policy_fingerprint: input.policy_fingerprint.clone(),
-        required_effective_control_level: combined_required_level.as_str().to_owned(),
-        required_acceptance_policy: Some(
-            acceptance_policy_name(acceptance_policy_from_rank(combined_required_acceptance))
-                .to_owned(),
-        ),
-        marked_at: committed_at.to_owned(),
+        required_effective_control_level: combined_required_level,
+        required_acceptance_policy: Some(acceptance_policy_from_rank(combined_required_acceptance)),
+        marked_at: UtcTimestamp::parse(committed_at).map_err(|_| {
+            StoreError::schema_invariant(
+                "project_state",
+                "commit timestamp is not a valid RFC 3339 value",
+            )
+        })?,
     });
     if next_mark == existing_mark {
         return Ok(Some(task_id));
@@ -915,26 +890,23 @@ fn invalidate_incompatible_write_tickets(
     }
     let mut invalidated_write_ticket_ids = Vec::new();
     for (write_ticket_id, task_id, validity_basis_json) in active_tickets {
-        let basis = serde_json::from_str::<Value>(&validity_basis_json).map_err(|_| {
-            StoreError::corrupt_owner_state_json(
+        let basis = serde_json::from_str::<WriteTicketValidityBasis>(&validity_basis_json)
+            .map_err(|_| {
+                StoreError::corrupt_owner_state_json(
+                    "write_tickets",
+                    &write_ticket_id,
+                    "validity_basis_json",
+                )
+            })?;
+        if basis.task_id.as_str() != task_id || basis.write_authority_fingerprint.is_empty() {
+            return Err(StoreError::corrupt_owner_state_value(
                 "write_tickets",
                 &write_ticket_id,
                 "validity_basis_json",
-            )
-        })?;
-        let stored_write_authority_fingerprint = basis
-            .get("write_authority_fingerprint")
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                StoreError::corrupt_owner_state_value(
-                    "write_tickets",
-                    &write_ticket_id,
-                    "validity_basis_json.write_authority_fingerprint",
-                )
-            })?;
+            ));
+        }
         let policy_binding_mismatch =
-            stored_write_authority_fingerprint != resulting_write_authority_fingerprint;
+            basis.write_authority_fingerprint != resulting_write_authority_fingerprint;
         let task_reevaluation_pending = reevaluated_task_id == Some(task_id.as_str());
         if !policy_binding_mismatch && !task_reevaluation_pending {
             continue;
@@ -960,40 +932,13 @@ fn invalidate_incompatible_write_tickets(
 }
 
 fn required_control_for_policy(
-    project_id: &str,
-    policy_json: &str,
+    policy: &ProjectWorkflowPolicy,
     mode: &str,
     requested: &str,
 ) -> StoreResult<TaskControlLevel> {
-    let policy: Value = serde_json::from_str(policy_json).map_err(|_| {
-        StoreError::corrupt_owner_state_json("project_workflow_policies", project_id, "policy_json")
-    })?;
-    let workflow = policy
-        .get("workflow")
-        .ok_or_else(|| StoreError::InvalidInput {
-            detail: "policy workflow is required for active-Task reevaluation".to_owned(),
-        })?;
-    let control = |field: &str| -> StoreResult<TaskControlLevel> {
-        let value = workflow.get(field).and_then(Value::as_str).ok_or_else(|| {
-            StoreError::InvalidInput {
-                detail: format!("policy workflow {field} is invalid"),
-            }
-        })?;
-        serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
-            StoreError::InvalidInput {
-                detail: format!("policy workflow {field} is invalid"),
-            }
-        })
-    };
-    let direct_default = control("default_direct_control")?;
-    let work_default = control("default_work_control")?;
-    let light_enabled = workflow
-        .get("light")
-        .and_then(|light| light.get("enabled"))
-        .and_then(Value::as_bool)
-        .ok_or_else(|| StoreError::InvalidInput {
-            detail: "policy workflow light.enabled is invalid".to_owned(),
-        })?;
+    let direct_default = policy.workflow.default_direct_control;
+    let work_default = policy.workflow.default_work_control;
+    let light_enabled = policy.workflow.light.enabled;
     let mode: TaskMode = serde_json::from_value(Value::String(mode.to_owned()))
         .map_err(|_| StoreError::corrupt_owner_state_value("tasks", "active", "mode"))?;
     let requested: RequestedControlLevel =
@@ -1027,46 +972,21 @@ fn required_control_for_policy(
 }
 
 fn required_acceptance_for_policy(
-    project_id: &str,
-    policy_json: &str,
+    policy: &ProjectWorkflowPolicy,
     required_control: TaskControlLevel,
-) -> StoreResult<AcceptancePolicy> {
+) -> AcceptancePolicy {
     match required_control {
-        TaskControlLevel::Observe => Ok(AcceptancePolicy::NotRequired),
-        TaskControlLevel::Tracked | TaskControlLevel::Sensitive => Ok(AcceptancePolicy::Required),
-        TaskControlLevel::Light => {
-            let policy: Value = serde_json::from_str(policy_json).map_err(|_| {
-                StoreError::corrupt_owner_state_json(
-                    "project_workflow_policies",
-                    project_id,
-                    "policy_json",
-                )
-            })?;
-            let value = policy
-                .get("workflow")
-                .and_then(|workflow| workflow.get("light"))
-                .and_then(|light| light.get("final_acceptance"))
-                .cloned()
-                .ok_or_else(|| StoreError::InvalidInput {
-                    detail: "policy workflow light.final_acceptance is invalid".to_owned(),
-                })?;
-            serde_json::from_value(value).map_err(|_| StoreError::InvalidInput {
-                detail: "policy workflow light.final_acceptance is invalid".to_owned(),
-            })
-        }
+        TaskControlLevel::Observe => AcceptancePolicy::NotRequired,
+        TaskControlLevel::Tracked | TaskControlLevel::Sensitive => AcceptancePolicy::Required,
+        TaskControlLevel::Light => policy.workflow.light.final_acceptance,
     }
 }
 
-fn acceptance_policy_rank(value: &str) -> StoreResult<u8> {
+fn acceptance_policy_rank(value: AcceptancePolicy) -> u8 {
     match value {
-        "not_required" => Ok(0),
-        "policy_dependent" => Ok(1),
-        "required" => Ok(2),
-        _ => Err(StoreError::corrupt_owner_state_value(
-            "tasks",
-            "active",
-            "acceptance_policy",
-        )),
+        AcceptancePolicy::NotRequired => 0,
+        AcceptancePolicy::PolicyDependent => 1,
+        AcceptancePolicy::Required => 2,
     }
 }
 
@@ -1075,14 +995,6 @@ fn acceptance_policy_from_rank(rank: u8) -> AcceptancePolicy {
         0 => AcceptancePolicy::NotRequired,
         1 => AcceptancePolicy::PolicyDependent,
         _ => AcceptancePolicy::Required,
-    }
-}
-
-fn acceptance_policy_name(policy: AcceptancePolicy) -> &'static str {
-    match policy {
-        AcceptancePolicy::NotRequired => "not_required",
-        AcceptancePolicy::PolicyDependent => "policy_dependent",
-        AcceptancePolicy::Required => "required",
     }
 }
 
@@ -1102,15 +1014,6 @@ fn task_policy_control_reevaluation_from_metadata(
             task_id,
             "metadata_json",
         ));
-    }
-    parse_control_level(
-        &mark.required_effective_control_level,
-        "tasks",
-        task_id,
-        POLICY_CONTROL_REEVALUATION_METADATA_KEY,
-    )?;
-    if let Some(required) = mark.required_acceptance_policy.as_deref() {
-        acceptance_policy_rank(required)?;
     }
     validate_timestamp("marked_at", &mark.marked_at)
         .map_err(|_| StoreError::corrupt_owner_state_json("tasks", task_id, "metadata_json"))?;
@@ -1140,15 +1043,6 @@ fn decode_task_policy_control_reevaluation(
             "metadata_json",
         ));
     }
-    parse_control_level(
-        &mark.required_effective_control_level,
-        "tasks",
-        task_id,
-        POLICY_CONTROL_REEVALUATION_METADATA_KEY,
-    )?;
-    if let Some(required) = mark.required_acceptance_policy.as_deref() {
-        acceptance_policy_rank(required)?;
-    }
     validate_timestamp("marked_at", &mark.marked_at)
         .map_err(|_| StoreError::corrupt_owner_state_json("tasks", task_id, "metadata_json"))?;
     Ok(Some(mark))
@@ -1176,6 +1070,11 @@ fn parse_control_level(
 ) -> StoreResult<TaskControlLevel> {
     serde_json::from_value(Value::String(value.to_owned()))
         .map_err(|_| StoreError::corrupt_owner_state_value(entity, id, field))
+}
+
+fn parse_acceptance_policy(value: &str, task_id: &str) -> StoreResult<AcceptancePolicy> {
+    serde_json::from_value(Value::String(value.to_owned()))
+        .map_err(|_| StoreError::corrupt_owner_state_value("tasks", task_id, "acceptance_policy"))
 }
 
 fn canonical_sha256(value: &str) -> bool {
@@ -1226,9 +1125,9 @@ fn validate_policy_replacement_basis(
 fn validate_project_workflow_policy(input: &ProjectWorkflowPolicyUpsert) -> StoreResult<()> {
     validate_project_workflow_policy_fields(
         input.policy_version,
-        &input.policy_json,
+        &input.policy,
         &input.policy_fingerprint,
-        &input.source,
+        input.source,
     )?;
     validate_timestamp("applied_at", &input.applied_at)?;
     validate_timestamp("created_at", &input.created_at)
@@ -1236,43 +1135,32 @@ fn validate_project_workflow_policy(input: &ProjectWorkflowPolicyUpsert) -> Stor
 
 fn validate_project_workflow_policy_fields(
     policy_version: u64,
-    policy_json: &str,
+    policy: &ProjectWorkflowPolicy,
     policy_fingerprint: &str,
-    source: &str,
+    _source: ProjectWorkflowPolicySource,
 ) -> StoreResult<()> {
     if policy_version == 0 {
         return invalid("policy_version must be greater than zero");
     }
-    if source.trim().is_empty() {
-        return invalid("policy source must not be empty");
-    }
-    let policy: Value =
-        serde_json::from_str(policy_json).map_err(|_| StoreError::InvalidInput {
-            detail: "policy_json must be valid JSON".to_owned(),
+    policy
+        .validate()
+        .map_err(|error| StoreError::InvalidInput {
+            detail: error.to_string(),
         })?;
-    let canonical = canonical_json_string(&policy).map_err(|_| StoreError::InvalidInput {
-        detail: "policy_json cannot be canonicalized".to_owned(),
-    })?;
-    if canonical != policy_json {
-        return invalid("policy_json must use canonical JSON serialization");
-    }
-    let fingerprint = canonical_json_sha256(&policy)
+    let fingerprint = canonical_json_sha256(policy)
         .map_err(|_| StoreError::InvalidInput {
-            detail: "policy_json fingerprint could not be computed".to_owned(),
+            detail: "workflow policy fingerprint could not be computed".to_owned(),
         })?
         .as_str()
         .to_owned();
     if fingerprint != policy_fingerprint {
-        return invalid("policy_fingerprint must match canonical policy_json");
+        return invalid("policy_fingerprint must match the typed workflow policy");
     }
     Ok(())
 }
 
-fn validate_timestamp(field: &str, value: &str) -> StoreResult<()> {
-    let timestamp = UtcTimestamp::parse(value).map_err(|_| StoreError::InvalidInput {
-        detail: format!("{field} must be a canonical RFC 3339 UTC timestamp"),
-    })?;
-    timestamp
+fn validate_timestamp(field: &str, value: &UtcTimestamp) -> StoreResult<()> {
+    value
         .ensure_canonical_rfc3339_representable()
         .map_err(|_| StoreError::InvalidInput {
             detail: format!("{field} must be a canonical RFC 3339 UTC timestamp"),
@@ -1311,7 +1199,7 @@ mod tests {
     fn workflow_policy(
         default_direct_control: &str,
         light_enabled: bool,
-    ) -> Result<(String, String), Box<dyn Error>> {
+    ) -> Result<(ProjectWorkflowPolicy, String), Box<dyn Error>> {
         workflow_policy_with_acceptance(default_direct_control, light_enabled, "policy_dependent")
     }
 
@@ -1319,9 +1207,33 @@ mod tests {
         default_direct_control: &str,
         light_enabled: bool,
         final_acceptance: &str,
-    ) -> Result<(String, String), Box<dyn Error>> {
+    ) -> Result<(ProjectWorkflowPolicy, String), Box<dyn Error>> {
         let value = json!({
             "schema": WORKFLOW_POLICY_CONTRACT_ID,
+            "managed_by": "volicord",
+            "storage_scope": "local_overlay",
+            "connection_intent": "shared",
+            "host": "codex",
+            "repo_root": "/tmp/volicord-workflow-policy-test",
+            "connection_id": "connection_workflow_policy_test",
+            "guard_installation_id": "guard_workflow_policy_test",
+            "selected_profile": "record",
+            "mcp": {
+                "command": "volicord-mcp",
+                "args": [],
+                "env": {}
+            },
+            "host_hook": {
+                "enabled": true,
+                "commands": {
+                    "pre_tool": {"command": "volicord", "args": ["guard", "pre-tool"]},
+                    "post_tool": {"command": "volicord", "args": ["guard", "post-tool"]},
+                    "prompt_capture": {
+                        "command": "volicord",
+                        "args": ["guard", "prompt-capture"]
+                    }
+                }
+            },
             "workflow": {
                 "default_direct_control": default_direct_control,
                 "default_work_control": "tracked",
@@ -1335,10 +1247,9 @@ mod tests {
                 "write_ticket": {"idle_timeout_minutes": null}
             }
         });
-        Ok((
-            canonical_json_string(&value)?,
-            canonical_json_sha256(&value)?.into_inner(),
-        ))
+        let policy = serde_json::from_value::<ProjectWorkflowPolicy>(value.clone())?;
+        policy.validate()?;
+        Ok((policy, canonical_json_sha256(&value)?.into_inner()))
     }
 
     fn workflow_policy_with_write_authority(
@@ -1346,9 +1257,33 @@ mod tests {
         allowed_path_patterns: Vec<&str>,
         denied_path_patterns: Vec<&str>,
         idle_timeout_minutes: Option<u64>,
-    ) -> Result<(String, String), Box<dyn Error>> {
+    ) -> Result<(ProjectWorkflowPolicy, String), Box<dyn Error>> {
         let value = json!({
             "schema": WORKFLOW_POLICY_CONTRACT_ID,
+            "managed_by": "volicord",
+            "storage_scope": "local_overlay",
+            "connection_intent": "shared",
+            "host": "codex",
+            "repo_root": "/tmp/volicord-workflow-policy-test",
+            "connection_id": "connection_workflow_policy_test",
+            "guard_installation_id": "guard_workflow_policy_test",
+            "selected_profile": "record",
+            "mcp": {
+                "command": "volicord-mcp",
+                "args": [],
+                "env": {}
+            },
+            "host_hook": {
+                "enabled": true,
+                "commands": {
+                    "pre_tool": {"command": "volicord", "args": ["guard", "pre-tool"]},
+                    "post_tool": {"command": "volicord", "args": ["guard", "post-tool"]},
+                    "prompt_capture": {
+                        "command": "volicord",
+                        "args": ["guard", "prompt-capture"]
+                    }
+                }
+            },
             "workflow": {
                 "default_direct_control": "light",
                 "default_work_control": "light",
@@ -1362,10 +1297,9 @@ mod tests {
                 "write_ticket": {"idle_timeout_minutes": idle_timeout_minutes}
             }
         });
-        Ok((
-            canonical_json_string(&value)?,
-            canonical_json_sha256(&value)?.into_inner(),
-        ))
+        let policy = serde_json::from_value::<ProjectWorkflowPolicy>(value.clone())?;
+        policy.validate()?;
+        Ok((policy, canonical_json_sha256(&value)?.into_inner()))
     }
 
     fn insert_current_change_unit(
@@ -1406,33 +1340,16 @@ mod tests {
         let mut store =
             CoreProjectStore::open_for_mutation(&context, &ProjectId::new(fixture.project_id()))?;
 
-        let policy_value = json!({
-            "schema": WORKFLOW_POLICY_CONTRACT_ID,
-            "workflow": {
-                "default_direct_control": "tracked",
-                "default_work_control": "tracked",
-                "light": {
-                    "enabled": false,
-                    "max_intended_paths": 3,
-                    "allowed_path_patterns": [],
-                    "denied_path_patterns": [],
-                    "final_acceptance": "policy_dependent"
-                },
-                "write_ticket": {"idle_timeout_minutes": null}
-            }
-        });
-        let policy_json = canonical_json_string(&policy_value)?;
-        let policy_fingerprint = canonical_json_sha256(&policy_value)?.as_str().to_owned();
+        let (policy_value, policy_fingerprint) = workflow_policy("tracked", false)?;
         let policy = store.upsert_project_workflow_policy(ProjectWorkflowPolicyUpsert {
             policy_version: 1,
-            policy_json: policy_json.clone(),
+            policy: policy_value.clone(),
             policy_fingerprint: policy_fingerprint.clone(),
-            source: "volicord_init".to_owned(),
-            applied_at: "2026-07-16T00:00:00Z".to_owned(),
-            created_at: "2026-07-16T00:00:00Z".to_owned(),
+            source: ProjectWorkflowPolicySource::VolicordInit,
+            applied_at: UtcTimestamp::parse("2026-07-16T00:00:00Z")?,
+            created_at: UtcTimestamp::parse("2026-07-16T00:00:00Z")?,
         })?;
-        assert_eq!(policy.policy_schema, WORKFLOW_POLICY_CONTRACT_ID);
-        assert_eq!(policy.policy_json, policy_json);
+        assert_eq!(policy.policy, policy_value);
         assert_eq!(policy.policy_fingerprint, policy_fingerprint);
         assert_eq!(store.project_workflow_policy()?, Some(policy));
         Ok(())
@@ -1474,9 +1391,9 @@ mod tests {
         let initial =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 1,
-                policy_json: observe_json.clone(),
+                policy: observe_json.clone(),
                 policy_fingerprint: observe_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: None,
             })?;
         assert!(initial.database_changed);
@@ -1491,16 +1408,19 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(event_task_id, None);
-        assert_eq!(event_created_at, initial.policy.applied_at);
+        assert_eq!(
+            event_created_at,
+            initial.policy.applied_at.to_canonical_string()
+        );
         assert_eq!(store.project_state()?.updated_at, initial.policy.applied_at);
         assert_eq!(store.effect_counts()?.authority_events, 1);
 
         let replay =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 1,
-                policy_json: observe_json,
+                policy: observe_json,
                 policy_fingerprint: observe_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: Some(observe_fingerprint.clone()),
             })?;
         assert!(!replay.database_changed);
@@ -1549,9 +1469,9 @@ mod tests {
         let strengthened =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 2,
-                policy_json: tracked_json,
+                policy: tracked_json,
                 policy_fingerprint: tracked_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: Some(observe_fingerprint),
             })?;
         assert_eq!(strengthened.resulting_state_version, 2);
@@ -1569,7 +1489,10 @@ mod tests {
                 .expect("strengthened policy must mark the active Task");
         assert_eq!(marked.policy_version, 2);
         assert_eq!(marked.policy_fingerprint, tracked_fingerprint);
-        assert_eq!(marked.required_effective_control_level, "tracked");
+        assert_eq!(
+            marked.required_effective_control_level,
+            TaskControlLevel::Tracked
+        );
         assert_eq!(marked.marked_at, strengthened.policy.applied_at);
         let invalidated_ticket: (String, Option<String>) = store.conn.query_row(
             "SELECT status, invalidation_reason
@@ -1585,9 +1508,9 @@ mod tests {
         let relaxed =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 3,
-                policy_json: relaxed_json,
+                policy: relaxed_json,
                 policy_fingerprint: relaxed_fingerprint,
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: Some(tracked_fingerprint.clone()),
             })?;
         assert_eq!(relaxed.resulting_state_version, 3);
@@ -1600,7 +1523,10 @@ mod tests {
             preserved.policy_fingerprint,
             relaxed.policy.policy_fingerprint
         );
-        assert_eq!(preserved.required_effective_control_level, "tracked");
+        assert_eq!(
+            preserved.required_effective_control_level,
+            TaskControlLevel::Tracked
+        );
 
         let marker_commit = CommitMutationInput {
             project_id: fixture.project_id().to_owned(),
@@ -1608,10 +1534,10 @@ mod tests {
             idempotency_key: None,
             request_hash: "request_policy_marker_raise".to_owned(),
             replay_context: Some(VerifiedReplayContext {
-                actor_source: "local_user".to_owned(),
-                operation_category: "admin_local".to_owned(),
+                actor_source: ActorSource::LocalUser,
+                operation_category: OperationCategory::AdminLocal,
                 verification_basis: Some("store_test".to_owned()),
-                git_workspace_context_json: None,
+                git_workspace_context: None,
             }),
             expected_state_version: Some(3),
             clock_floor: None,
@@ -1732,9 +1658,9 @@ mod tests {
             let initial = store.apply_project_workflow_policy_authority(
                 ProjectWorkflowPolicyAuthorityApply {
                     policy_version: 1,
-                    policy_json: initial_json,
+                    policy: initial_json,
                     policy_fingerprint: initial_fingerprint.clone(),
-                    source: "project_database".to_owned(),
+                    source: ProjectWorkflowPolicySource::ProjectDatabase,
                     expected_prior_fingerprint: None,
                 },
             )?;
@@ -1805,9 +1731,9 @@ mod tests {
             let tightened = store.apply_project_workflow_policy_authority(
                 ProjectWorkflowPolicyAuthorityApply {
                     policy_version: 2,
-                    policy_json: tightened_json,
+                    policy: tightened_json,
                     policy_fingerprint: tightened_fingerprint,
-                    source: "project_database".to_owned(),
+                    source: ProjectWorkflowPolicySource::ProjectDatabase,
                     expected_prior_fingerprint: Some(initial_fingerprint),
                 },
             )?;
@@ -1845,7 +1771,8 @@ mod tests {
             let mark = task_policy_control_reevaluation(&active_task)?
                 .expect("write-authority changes must mark the active Task");
             assert_eq!(
-                mark.required_effective_control_level, "light",
+                mark.required_effective_control_level,
+                TaskControlLevel::Light,
                 "{}",
                 case.name
             );
@@ -1880,9 +1807,9 @@ mod tests {
         let initial =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 1,
-                policy_json: initial_json,
+                policy: initial_json,
                 policy_fingerprint: initial_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: None,
             })?;
         store.conn.execute(
@@ -1951,9 +1878,9 @@ mod tests {
         let equivalent =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 2,
-                policy_json: equivalent_json.clone(),
+                policy: equivalent_json.clone(),
                 policy_fingerprint: equivalent_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: Some(initial_fingerprint),
             })?;
         assert!(equivalent.database_changed);
@@ -1978,9 +1905,9 @@ mod tests {
         let replay =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 2,
-                policy_json: equivalent_json,
+                policy: equivalent_json,
                 policy_fingerprint: equivalent_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: Some(equivalent_fingerprint),
             })?;
         assert!(!replay.database_changed);
@@ -2005,9 +1932,9 @@ mod tests {
         let initial =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 1,
-                policy_json: policy_json.clone(),
+                policy: policy_json.clone(),
                 policy_fingerprint: policy_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: None,
             })?;
         assert_eq!(initial.resulting_state_version, 1);
@@ -2042,9 +1969,9 @@ mod tests {
         let replay =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 1,
-                policy_json,
+                policy: policy_json,
                 policy_fingerprint: policy_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: Some(policy_fingerprint),
             })?;
         assert!(!replay.database_changed);
@@ -2088,9 +2015,9 @@ mod tests {
         let initial =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 1,
-                policy_json: initial_json,
+                policy: initial_json,
                 policy_fingerprint: initial_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: None,
             })?;
         assert!(!initial.active_task_requires_escalation);
@@ -2100,9 +2027,9 @@ mod tests {
         let strengthened =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
                 policy_version: 2,
-                policy_json: required_json,
+                policy: required_json,
                 policy_fingerprint: required_fingerprint.clone(),
-                source: "project_database".to_owned(),
+                source: ProjectWorkflowPolicySource::ProjectDatabase,
                 expected_prior_fingerprint: Some(initial_fingerprint),
             })?;
 
@@ -2110,8 +2037,14 @@ mod tests {
         let mark =
             task_policy_control_reevaluation(&store.active_task_record()?.expect("active Task"))?
                 .expect("acceptance-only strengthening must mark the active Task");
-        assert_eq!(mark.required_effective_control_level, "light");
-        assert_eq!(mark.required_acceptance_policy.as_deref(), Some("required"));
+        assert_eq!(
+            mark.required_effective_control_level,
+            TaskControlLevel::Light
+        );
+        assert_eq!(
+            mark.required_acceptance_policy,
+            Some(AcceptancePolicy::Required)
+        );
         assert_eq!(mark.policy_fingerprint, required_fingerprint);
         let task = store.active_task_record()?.expect("active Task");
         let task_metadata_json = serde_json::to_string(&Value::Object(task.metadata.clone()))?;

@@ -58,12 +58,3 @@ pub(crate) fn observe_product_paths(
         })
         .collect()
 }
-
-/// Parses already stored semantic identities without observing the live
-/// filesystem.
-pub(crate) fn parse_stored_product_paths(
-    raw_paths: &[String],
-) -> Result<Vec<String>, ProductPathError> {
-    parse_product_paths(raw_paths)
-        .map(|paths| paths.into_iter().map(|path| path.into_string()).collect())
-}

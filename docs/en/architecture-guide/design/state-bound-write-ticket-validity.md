@@ -32,9 +32,11 @@ the same Store commit as the Run and its associated effects.
 
 Core methods own request-specific planning. Core workflow, path, access, and
 write-ticket policy modules own current authority evaluation over typed facts.
-Store owns strict ticket records, queries, invalidation persistence, and
-consumption mutation. Guard supplies observations but does not widen the
-ticket basis.
+Store keeps the physical ticket row private and strictly decodes status,
+validity basis, attempt scope, Product Repository path collections, timestamps,
+and redundant owner coordinates before returning a typed record. Store also
+owns ticket queries, invalidation persistence, and consumption mutation. Guard
+supplies observations but does not widen the ticket basis.
 
 ## Execution flow
 

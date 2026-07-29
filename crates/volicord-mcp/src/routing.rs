@@ -872,11 +872,11 @@ pub(crate) fn concise_store_diagnostic(error: &StoreError) -> String {
         } => format!("invalid project registration ({field}, {relationship})"),
         StoreError::InvalidInput { detail } => detail.clone(),
         StoreError::Conflict { entity, .. } => format!("{entity} conflict"),
-        StoreError::CorruptStoredJson { field, .. }
-        | StoreError::CorruptStoredValue { field, .. } => format!("corrupt stored field {field}"),
-        StoreError::CorruptOwnerStateJson { logical_column, .. }
-        | StoreError::CorruptOwnerStateValue { logical_column, .. } => {
-            format!("corrupt owner state field {logical_column}")
+        StoreError::CorruptStoredJson { .. } | StoreError::CorruptStoredValue { .. } => {
+            "corrupt stored state".to_owned()
+        }
+        StoreError::CorruptOwnerStateJson { .. } | StoreError::CorruptOwnerStateValue { .. } => {
+            "corrupt owner state".to_owned()
         }
         StoreError::SchemaInvariant { database_kind, .. } => {
             format!("{database_kind} schema is invalid")

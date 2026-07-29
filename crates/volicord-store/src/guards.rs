@@ -12,15 +12,17 @@ use volicord_host_contract::{
     HostContractProfileId, HostNativeCorrelation, HostSessionId, HostToolUseId, HostTurnId,
 };
 use volicord_platform_fs::resolve_git_worktree_layout;
-use volicord_types::canonical::canonical_json_sha256;
+use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
 use volicord_types::guard_manifest::{
     guard_manifest_from_json, guard_manifest_matches_owner_binding, GuardManifestOwnerBinding,
 };
 use volicord_types::integration_revision::{IntegrationRevision, ProjectIntegrationRevisionBasis};
 use volicord_types::managed_mcp_client_info::project_agent_session_id;
+use volicord_types::product_path::ProductRelativePath;
+use volicord_types::schema::JsonObject;
 use volicord_types::values::{
-    GuardDecision, GuardHookContractStatus, GuardHookPhase, PromptCaptureStatus,
-    UnrecordedChangeStatus, UtcTimestamp,
+    ActorSource, GuardDecision, GuardHookContractStatus, GuardHookPhase, PromptCaptureStatus,
+    UnrecordedChangeConfidence, UnrecordedChangeStatus, UtcTimestamp,
 };
 
 use crate::{
@@ -224,26 +226,56 @@ pub struct ExpectedWriteInsert {
     pub host_invocation_id: Option<String>,
     pub tool_name: Option<String>,
     pub command_kind: String,
-    pub path_policy: String,
-    pub expected_paths: Vec<String>,
+    pub path_policy: ExpectedWritePathPolicy,
+    pub expected_paths: Vec<ProductRelativePath>,
     pub task_id: String,
     pub change_unit_id: String,
     pub write_ticket_ids: Vec<String>,
     pub basis_state_version: u64,
-    pub created_at: String,
-    pub expires_at: String,
-    pub metadata_json: String,
+    pub created_at: UtcTimestamp,
+    pub expires_at: UtcTimestamp,
+    pub metadata: JsonObject,
 }
 
 /// Expected Product Repository write match input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedWriteMatch {
     pub matched_post_tool_guard_event_id: String,
-    pub matched_paths: Vec<String>,
-    pub matched_at: String,
+    pub matched_paths: Vec<ProductRelativePath>,
+    pub matched_at: UtcTimestamp,
 }
 
-/// Expected Product Repository write row stored in project `state.sqlite`.
+/// Closed path-matching policy for an expected Product Repository write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpectedWritePathPolicy {
+    ExactPaths,
+}
+
+impl ExpectedWritePathPolicy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ExactPaths => "exact_paths",
+        }
+    }
+}
+
+/// Closed lifecycle status for an expected Product Repository write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpectedWriteStatus {
+    Pending,
+    Matched,
+}
+
+impl ExpectedWriteStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Matched => "matched",
+        }
+    }
+}
+
+/// Strictly decoded expected Product Repository write facts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedWriteRecord {
     pub project_id: String,
@@ -256,19 +288,19 @@ pub struct ExpectedWriteRecord {
     pub host_invocation_id: Option<String>,
     pub tool_name: Option<String>,
     pub command_kind: String,
-    pub path_policy: String,
-    pub expected_paths: Vec<String>,
+    pub path_policy: ExpectedWritePathPolicy,
+    pub expected_paths: Vec<ProductRelativePath>,
     pub task_id: String,
     pub change_unit_id: String,
     pub write_ticket_ids: Vec<String>,
     pub basis_state_version: u64,
-    pub status: String,
+    pub status: ExpectedWriteStatus,
     pub matched_post_tool_guard_event_id: Option<String>,
-    pub matched_paths: Option<Vec<String>>,
-    pub created_at: String,
-    pub expires_at: String,
-    pub matched_at: Option<String>,
-    pub metadata_json: String,
+    pub matched_paths: Option<Vec<ProductRelativePath>>,
+    pub created_at: UtcTimestamp,
+    pub expires_at: UtcTimestamp,
+    pub matched_at: Option<UtcTimestamp>,
+    pub metadata: JsonObject,
 }
 
 #[derive(Debug)]
@@ -309,28 +341,28 @@ pub struct UnrecordedChangeInsert {
     pub correlation: Option<HostNativeCorrelation>,
     pub connection_internal_id: String,
     pub task_id: Option<String>,
-    pub confidence: String,
+    pub confidence: UnrecordedChangeConfidence,
     pub summary: String,
-    pub observed_paths_json: String,
-    pub detection_json: String,
-    pub detected_at: String,
-    pub metadata_json: String,
+    pub observed_paths: Vec<ProductRelativePath>,
+    pub detection: JsonObject,
+    pub detected_at: UtcTimestamp,
+    pub metadata: JsonObject,
 }
 
 /// Unrecorded Product Repository change resolution input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnrecordedChangeResolution {
-    pub resolution_json: String,
-    pub resolved_at: String,
-    pub resolved_by_actor_source: String,
+    pub resolution: JsonObject,
+    pub resolved_at: UtcTimestamp,
+    pub resolved_by_actor_source: ActorSource,
 }
 
 /// Deterministic observation used to promote one unresolved suspected change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnrecordedChangePromotion {
-    pub observed_paths_json: String,
-    pub detection_json: String,
-    pub confirmed_at: String,
+    pub observed_paths: Vec<ProductRelativePath>,
+    pub detection: JsonObject,
+    pub confirmed_at: UtcTimestamp,
 }
 
 /// Unrecorded Product Repository change row stored in project `state.sqlite`.
@@ -342,16 +374,36 @@ pub struct UnrecordedChangeRecord {
     pub correlation: Option<HostNativeCorrelation>,
     pub connection_internal_id: String,
     pub task_id: Option<String>,
-    pub status: String,
-    pub confidence: String,
+    pub status: UnrecordedChangeStatus,
+    pub confidence: UnrecordedChangeConfidence,
     pub summary: String,
-    pub observed_paths_json: String,
-    pub detection_json: String,
-    pub resolution_json: Option<String>,
-    pub detected_at: String,
-    pub resolved_at: Option<String>,
-    pub resolved_by_actor_source: Option<String>,
-    pub metadata_json: String,
+    pub observed_paths: Vec<ProductRelativePath>,
+    pub detection: JsonObject,
+    pub resolution: Option<JsonObject>,
+    pub detected_at: UtcTimestamp,
+    pub resolved_at: Option<UtcTimestamp>,
+    pub resolved_by_actor_source: Option<ActorSource>,
+    pub metadata: JsonObject,
+}
+
+#[derive(Debug)]
+struct UnrecordedChangeRaw {
+    project_id: String,
+    unrecorded_change_id: String,
+    session_id: Option<String>,
+    correlation: Option<HostNativeCorrelation>,
+    connection_internal_id: String,
+    task_id: Option<String>,
+    status: String,
+    confidence: String,
+    summary: String,
+    observed_paths_json: String,
+    detection_json: String,
+    resolution_json: Option<String>,
+    detected_at: String,
+    resolved_at: Option<String>,
+    resolved_by_actor_source: Option<String>,
+    metadata_json: String,
 }
 
 /// Read-only guard-health facts for one project and Agent Connection.
@@ -1665,7 +1717,7 @@ pub fn insert_expected_write(
         });
     };
     let expected_paths_json =
-        serde_json::to_string(&input.expected_paths).map_err(|error| StoreError::InvalidInput {
+        canonical_json_string(&input.expected_paths).map_err(|error| StoreError::InvalidInput {
             detail: format!("expected paths cannot be serialized: {error}"),
         })?;
     let write_ticket_ids_json =
@@ -1674,6 +1726,12 @@ pub fn insert_expected_write(
                 detail: format!("write-ticket IDs cannot be serialized: {error}"),
             }
         })?;
+    let metadata_json =
+        canonical_json_string(&input.metadata).map_err(|error| StoreError::InvalidInput {
+            detail: format!("expected-write metadata cannot be serialized: {error}"),
+        })?;
+    let created_at = input.created_at.to_canonical_string();
+    let expires_at = input.expires_at.to_canonical_string();
     let runtime_home = context.runtime_home().as_path();
     let fields = guard_correlation_fields(
         runtime_home,
@@ -1727,15 +1785,15 @@ pub fn insert_expected_write(
             input.host_invocation_id,
             input.tool_name,
             input.command_kind,
-            input.path_policy,
+            input.path_policy.as_str(),
             expected_paths_json,
             input.task_id,
             input.change_unit_id,
             write_ticket_ids_json,
             input.basis_state_version,
-            input.created_at,
-            input.expires_at,
-            input.metadata_json,
+            created_at,
+            expires_at,
+            metadata_json,
         ],
     )?;
     tx.commit()?;
@@ -1914,15 +1972,30 @@ pub fn mark_expected_write_matched(
     validate_identifier("expected_write_id", expected_write_id)?;
     validate_expected_write_match(&input)?;
     let matched_paths_json =
-        serde_json::to_string(&input.matched_paths).map_err(|error| StoreError::InvalidInput {
+        canonical_json_string(&input.matched_paths).map_err(|error| StoreError::InvalidInput {
             detail: format!("matched paths cannot be serialized: {error}"),
         })?;
+    let matched_at = input.matched_at.to_canonical_string();
     let mut project =
         open_project_for_mutation(context, project_id)?.ok_or_else(|| StoreError::NotFound {
             entity: "project",
             id: project_id.to_owned(),
         })?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
+    let existing =
+        expected_write_from_conn(&tx, project_id, expected_write_id)?.ok_or_else(|| {
+            StoreError::NotFound {
+                entity: "expected_write",
+                id: expected_write_id.to_owned(),
+            }
+        })?;
+    if existing.status == ExpectedWriteStatus::Pending
+        && (input.matched_at < existing.created_at || input.matched_at > existing.expires_at)
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "matched_at must fall within the expected-write time window".to_owned(),
+        });
+    }
     let changed = tx.execute(
         "UPDATE expected_writes
             SET status = 'matched',
@@ -1937,7 +2010,7 @@ pub fn mark_expected_write_matched(
             expected_write_id,
             input.matched_post_tool_guard_event_id,
             matched_paths_json,
-            input.matched_at,
+            matched_at,
         ],
     )?;
     tx.commit()?;
@@ -1974,6 +2047,18 @@ pub fn insert_unrecorded_change(
     input: UnrecordedChangeInsert,
 ) -> StoreResult<UnrecordedChangeRecord> {
     validate_unrecorded_change_insert(&input)?;
+    let observed_paths_json =
+        canonical_json_string(&input.observed_paths).map_err(|_| StoreError::InvalidInput {
+            detail: "unrecorded change observed paths cannot be serialized".to_owned(),
+        })?;
+    let detection_json =
+        canonical_json_string(&input.detection).map_err(|_| StoreError::InvalidInput {
+            detail: "unrecorded change detection cannot be serialized".to_owned(),
+        })?;
+    let metadata_json =
+        canonical_json_string(&input.metadata).map_err(|_| StoreError::InvalidInput {
+            detail: "unrecorded change metadata cannot be serialized".to_owned(),
+        })?;
     let runtime_home = context.runtime_home().as_path();
     let fields = input
         .correlation
@@ -2027,12 +2112,12 @@ pub fn insert_unrecorded_change(
                 .as_ref()
                 .and_then(|fields| fields.host_tool_name.as_deref()),
             input.task_id,
-            input.confidence,
+            unrecorded_change_confidence_name(input.confidence),
             input.summary,
-            input.observed_paths_json,
-            input.detection_json,
-            input.detected_at,
-            input.metadata_json
+            observed_paths_json,
+            detection_json,
+            input.detected_at.to_string(),
+            metadata_json
         ],
     )?;
     tx.commit()?;
@@ -2074,15 +2159,20 @@ pub fn promote_suspected_unrecorded_change(
 ) -> StoreResult<UnrecordedChangeRecord> {
     validate_identifier("project_id", project_id)?;
     validate_identifier("unrecorded_change_id", unrecorded_change_id)?;
-    validate_json_array(
-        "unrecorded_changes.observed_paths_json",
-        &promotion.observed_paths_json,
-    )?;
-    validate_json_object(
-        "unrecorded_changes.detection_json",
-        &promotion.detection_json,
-    )?;
-    validate_timestamp_text("confirmed_at", &promotion.confirmed_at)?;
+    promotion
+        .confirmed_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "confirmed_at must be a canonical four-digit RFC 3339 timestamp".to_owned(),
+        })?;
+    let observed_paths_json =
+        canonical_json_string(&promotion.observed_paths).map_err(|_| StoreError::InvalidInput {
+            detail: "unrecorded change observed paths cannot be serialized".to_owned(),
+        })?;
+    let detection_json =
+        canonical_json_string(&promotion.detection).map_err(|_| StoreError::InvalidInput {
+            detail: "unrecorded change detection cannot be serialized".to_owned(),
+        })?;
 
     let mut project =
         open_project_for_mutation(context, project_id)?.ok_or_else(|| StoreError::NotFound {
@@ -2102,8 +2192,8 @@ pub fn promote_suspected_unrecorded_change(
         params![
             project.project.project_id,
             unrecorded_change_id,
-            promotion.observed_paths_json,
-            promotion.detection_json,
+            observed_paths_json,
+            detection_json,
         ],
     )?;
     tx.commit()?;
@@ -2185,9 +2275,13 @@ pub(crate) fn unresolved_unrecorded_changes_from_conn(
     )?;
     let rows = stmt.query_map(
         params![project_id, connection_internal_id],
-        unrecorded_change_from_row,
+        unrecorded_change_raw_from_row,
     )?;
-    collect_rows(rows)
+    let mut records = Vec::new();
+    for row in rows {
+        records.push(decode_unrecorded_change(row?)?);
+    }
+    Ok(records)
 }
 
 /// Reads compact guard-health facts for one project and Agent Connection.
@@ -2639,6 +2733,10 @@ pub fn resolve_unrecorded_change(
     validate_identifier("project_id", project_id)?;
     validate_identifier("unrecorded_change_id", unrecorded_change_id)?;
     validate_unrecorded_change_resolution(&resolution)?;
+    let resolution_json =
+        canonical_json_string(&resolution.resolution).map_err(|_| StoreError::InvalidInput {
+            detail: "unrecorded change resolution cannot be serialized".to_owned(),
+        })?;
     let mut project =
         open_project_for_mutation(context, project_id)?.ok_or_else(|| StoreError::NotFound {
             entity: "project",
@@ -2657,9 +2755,9 @@ pub fn resolve_unrecorded_change(
         params![
             project.project.project_id,
             unrecorded_change_id,
-            resolution.resolution_json,
-            resolution.resolved_at,
-            resolution.resolved_by_actor_source
+            resolution_json,
+            resolution.resolved_at.to_string(),
+            resolution.resolved_by_actor_source.to_canonical_string()
         ],
     )?;
     tx.commit()?;
@@ -3029,14 +3127,32 @@ fn validate_expected_write_insert(input: &ExpectedWriteInsert) -> StoreResult<()
         validate_identifier("tool_name", tool_name)?;
     }
     validate_identifier("command_kind", &input.command_kind)?;
-    validate_expected_write_path_policy(&input.path_policy)?;
-    validate_string_items("expected_writes.expected_paths", &input.expected_paths)?;
+    if input.expected_paths.iter().collect::<BTreeSet<_>>().len() != input.expected_paths.len() {
+        return Err(StoreError::InvalidInput {
+            detail: "expected_writes.expected_paths must not contain duplicates".to_owned(),
+        });
+    }
     validate_identifier("task_id", &input.task_id)?;
     validate_identifier("change_unit_id", &input.change_unit_id)?;
     validate_string_items("expected_writes.write_ticket_ids", &input.write_ticket_ids)?;
-    validate_timestamp_text("created_at", &input.created_at)?;
-    validate_timestamp_text("expires_at", &input.expires_at)?;
-    validate_json_object("expected_writes.metadata_json", &input.metadata_json)
+    input
+        .created_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "created_at must fit the canonical RFC 3339 UTC range".to_owned(),
+        })?;
+    input
+        .expires_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "expires_at must fit the canonical RFC 3339 UTC range".to_owned(),
+        })?;
+    if input.created_at > input.expires_at {
+        return Err(StoreError::InvalidInput {
+            detail: "expected-write created_at must not be after expires_at".to_owned(),
+        });
+    }
+    Ok(())
 }
 
 fn validate_expected_write_match(input: &ExpectedWriteMatch) -> StoreResult<()> {
@@ -3044,18 +3160,17 @@ fn validate_expected_write_match(input: &ExpectedWriteMatch) -> StoreResult<()> 
         "matched_post_tool_guard_event_id",
         &input.matched_post_tool_guard_event_id,
     )?;
-    validate_string_items("expected_writes.matched_paths", &input.matched_paths)?;
-    validate_timestamp_text("matched_at", &input.matched_at)
-}
-
-fn validate_expected_write_path_policy(value: &str) -> StoreResult<()> {
-    if value == "exact_paths" {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: "path_policy must be exact_paths".to_owned(),
-        })
+    if input.matched_paths.iter().collect::<BTreeSet<_>>().len() != input.matched_paths.len() {
+        return Err(StoreError::InvalidInput {
+            detail: "expected_writes.matched_paths must not contain duplicates".to_owned(),
+        });
     }
+    input
+        .matched_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "matched_at must fit the canonical RFC 3339 UTC range".to_owned(),
+        })
 }
 
 fn validate_unrecorded_change_insert(input: &UnrecordedChangeInsert) -> StoreResult<()> {
@@ -3073,33 +3188,45 @@ fn validate_unrecorded_change_insert(input: &UnrecordedChangeInsert) -> StoreRes
     if let Some(task_id) = &input.task_id {
         validate_identifier("task_id", task_id)?;
     }
-    if !matches!(input.confidence.as_str(), "confirmed" | "suspected") {
-        return Err(StoreError::InvalidInput {
-            detail: "confidence must be confirmed or suspected".to_owned(),
-        });
-    }
     validate_identifier("summary", &input.summary)?;
-    validate_json_array(
-        "unrecorded_changes.observed_paths_json",
-        &input.observed_paths_json,
-    )?;
-    validate_json_object("unrecorded_changes.detection_json", &input.detection_json)?;
-    validate_timestamp_text("detected_at", &input.detected_at)?;
-    validate_json_object("unrecorded_changes.metadata_json", &input.metadata_json)
+    validate_unique_product_paths("unrecorded_changes.observed_paths", &input.observed_paths)?;
+    input
+        .detected_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "detected_at must be a canonical four-digit RFC 3339 timestamp".to_owned(),
+        })
 }
 
 fn validate_unrecorded_change_resolution(
     resolution: &UnrecordedChangeResolution,
 ) -> StoreResult<()> {
-    validate_json_object(
-        "unrecorded_changes.resolution_json",
-        &resolution.resolution_json,
-    )?;
-    validate_timestamp_text("resolved_at", &resolution.resolved_at)?;
-    validate_identifier(
-        "resolved_by_actor_source",
-        &resolution.resolved_by_actor_source,
-    )
+    resolution
+        .resolved_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "resolved_at must be a canonical four-digit RFC 3339 timestamp".to_owned(),
+        })
+}
+
+fn validate_unique_product_paths(
+    field: &'static str,
+    paths: &[ProductRelativePath],
+) -> StoreResult<()> {
+    if paths.iter().collect::<BTreeSet<_>>().len() == paths.len() {
+        Ok(())
+    } else {
+        Err(StoreError::InvalidInput {
+            detail: format!("{field} must not contain duplicates"),
+        })
+    }
+}
+
+const fn unrecorded_change_confidence_name(confidence: UnrecordedChangeConfidence) -> &'static str {
+    match confidence {
+        UnrecordedChangeConfidence::Confirmed => "confirmed",
+        UnrecordedChangeConfidence::Suspected => "suspected",
+    }
 }
 
 fn validate_identifier(field: &'static str, value: &str) -> StoreResult<()> {
@@ -3196,21 +3323,6 @@ fn validate_guard_hook_contract_status(value: &str) -> StoreResult<()> {
     }
 }
 
-fn validate_unrecorded_change_status(value: &str) -> StoreResult<()> {
-    if [
-        UnrecordedChangeStatus::Unresolved.as_str(),
-        UnrecordedChangeStatus::Resolved.as_str(),
-    ]
-    .contains(&value)
-    {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: "unrecorded change status must be unresolved or resolved".to_owned(),
-        })
-    }
-}
-
 fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
     let value = serde_json::from_str::<Value>(text).map_err(|error| StoreError::InvalidInput {
         detail: format!("{field} must be JSON object text: {error}"),
@@ -3220,19 +3332,6 @@ fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
     } else {
         Err(StoreError::InvalidInput {
             detail: format!("{field} must be a JSON object"),
-        })
-    }
-}
-
-fn validate_json_array(field: &'static str, text: &str) -> StoreResult<()> {
-    let value = serde_json::from_str::<Value>(text).map_err(|error| StoreError::InvalidInput {
-        detail: format!("{field} must be JSON array text: {error}"),
-    })?;
-    if value.is_array() {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: format!("{field} must be a JSON array"),
         })
     }
 }
@@ -3832,26 +3931,39 @@ fn expected_write_raw_from_row(row: &Row<'_>) -> rusqlite::Result<ExpectedWriteR
 }
 
 fn expected_write_from_raw(raw: ExpectedWriteRaw) -> StoreResult<ExpectedWriteRecord> {
-    let corrupt = |field| {
-        StoreError::corrupt_owner_state_json(
-            "expected_writes",
-            raw.expected_write_id.clone(),
-            field,
-        )
-    };
-    let expected_paths = decode_canonical_string_array(&raw.expected_paths_json)
-        .map_err(|_| corrupt("expected_paths_json"))?;
+    let record_ref = raw.expected_write_id.clone();
+    let corrupt_json =
+        |field| StoreError::corrupt_owner_state_json("expected_writes", record_ref.clone(), field);
+    let corrupt_value =
+        |field| StoreError::corrupt_owner_state_value("expected_writes", record_ref.clone(), field);
+    let expected_paths = serde_json::from_str::<Vec<ProductRelativePath>>(&raw.expected_paths_json)
+        .map_err(|_| corrupt_json("expected_paths_json"))?;
+    if canonical_json_string(&expected_paths).map_err(|_| corrupt_json("expected_paths_json"))?
+        != raw.expected_paths_json
+        || expected_paths.iter().collect::<BTreeSet<_>>().len() != expected_paths.len()
+    {
+        return Err(corrupt_json("expected_paths_json"));
+    }
     let write_ticket_ids = decode_canonical_string_array(&raw.write_ticket_ids_json)
-        .map_err(|_| corrupt("write_ticket_ids_json"))?;
+        .map_err(|_| corrupt_json("write_ticket_ids_json"))?;
     let change_unit_id = raw
         .change_unit_id
-        .ok_or_else(|| corrupt("change_unit_id"))?;
+        .ok_or_else(|| corrupt_value("change_unit_id"))?;
     let matched_paths = raw
         .matched_paths_json
         .as_deref()
-        .map(decode_canonical_string_array)
-        .transpose()
-        .map_err(|_| corrupt("matched_paths_json"))?;
+        .map(|value| {
+            let paths = serde_json::from_str::<Vec<ProductRelativePath>>(value)
+                .map_err(|_| corrupt_json("matched_paths_json"))?;
+            if canonical_json_string(&paths).map_err(|_| corrupt_json("matched_paths_json"))?
+                != value
+                || paths.iter().collect::<BTreeSet<_>>().len() != paths.len()
+            {
+                return Err(corrupt_json("matched_paths_json"));
+            }
+            Ok(paths)
+        })
+        .transpose()?;
     let correlation = decode_hook_correlation(
         Some(raw.correlation_kind.clone()),
         Some(raw.host_session_id.clone()),
@@ -3860,7 +3972,60 @@ fn expected_write_from_raw(raw: ExpectedWriteRaw) -> StoreResult<ExpectedWriteRe
         Some(raw.host_tool_name.clone()),
     )
     .map_err(StoreError::from)?
-    .ok_or_else(|| corrupt("correlation_kind"))?;
+    .ok_or_else(|| corrupt_value("correlation_kind"))?;
+    let path_policy = match raw.path_policy.as_str() {
+        "exact_paths" => ExpectedWritePathPolicy::ExactPaths,
+        _ => return Err(corrupt_value("path_policy")),
+    };
+    let status = match raw.status.as_str() {
+        "pending" => ExpectedWriteStatus::Pending,
+        "matched" => ExpectedWriteStatus::Matched,
+        _ => return Err(corrupt_value("status")),
+    };
+    let created_at = strict_stored_timestamp(
+        "expected_writes",
+        &record_ref,
+        "created_at",
+        &raw.created_at,
+    )?;
+    let expires_at = strict_stored_timestamp(
+        "expected_writes",
+        &record_ref,
+        "expires_at",
+        &raw.expires_at,
+    )?;
+    if created_at > expires_at {
+        return Err(corrupt_value("expires_at"));
+    }
+    let matched_at = raw
+        .matched_at
+        .as_deref()
+        .map(|value| strict_stored_timestamp("expected_writes", &record_ref, "matched_at", value))
+        .transpose()?;
+    let matched_fields_valid = match status {
+        ExpectedWriteStatus::Pending => {
+            raw.matched_post_tool_guard_event_id.is_none()
+                && matched_paths.is_none()
+                && matched_at.is_none()
+        }
+        ExpectedWriteStatus::Matched => {
+            raw.matched_post_tool_guard_event_id.is_some()
+                && matched_paths.is_some()
+                && matched_at.as_ref().is_some_and(|matched_at| {
+                    &created_at <= matched_at && matched_at <= &expires_at
+                })
+        }
+    };
+    if !matched_fields_valid {
+        return Err(corrupt_value("status"));
+    }
+    let metadata = serde_json::from_str::<JsonObject>(&raw.metadata_json)
+        .map_err(|_| corrupt_json("metadata_json"))?;
+    if canonical_json_string(&metadata).map_err(|_| corrupt_json("metadata_json"))?
+        != raw.metadata_json
+    {
+        return Err(corrupt_json("metadata_json"));
+    }
     Ok(ExpectedWriteRecord {
         project_id: raw.project_id,
         expected_write_id: raw.expected_write_id,
@@ -3872,19 +4037,19 @@ fn expected_write_from_raw(raw: ExpectedWriteRaw) -> StoreResult<ExpectedWriteRe
         host_invocation_id: raw.host_invocation_id,
         tool_name: raw.tool_name,
         command_kind: raw.command_kind,
-        path_policy: raw.path_policy,
+        path_policy,
         expected_paths,
         task_id: raw.task_id,
         change_unit_id,
         write_ticket_ids,
         basis_state_version: raw.basis_state_version,
-        status: raw.status,
+        status,
         matched_post_tool_guard_event_id: raw.matched_post_tool_guard_event_id,
         matched_paths,
-        created_at: raw.created_at,
-        expires_at: raw.expires_at,
-        matched_at: raw.matched_at,
-        metadata_json: raw.metadata_json,
+        created_at,
+        expires_at,
+        matched_at,
+        metadata,
     })
 }
 
@@ -3893,8 +4058,9 @@ fn unrecorded_change_from_conn(
     project_id: &str,
     unrecorded_change_id: &str,
 ) -> StoreResult<Option<UnrecordedChangeRecord>> {
-    conn.query_row(
-        "SELECT
+    let raw = conn
+        .query_row(
+            "SELECT
             u.project_id,
             u.unrecorded_change_id,
             u.session_id,
@@ -3922,11 +4088,12 @@ fn unrecorded_change_from_conn(
           AND h.connection_internal_id = u.connection_internal_id
         WHERE u.project_id = ?1
           AND u.unrecorded_change_id = ?2",
-        params![project_id, unrecorded_change_id],
-        unrecorded_change_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            params![project_id, unrecorded_change_id],
+            unrecorded_change_raw_from_row,
+        )
+        .optional()
+        .map_err(StoreError::from)?;
+    raw.map(decode_unrecorded_change).transpose()
 }
 
 fn unrecorded_change_by_conn(
@@ -3934,18 +4101,15 @@ fn unrecorded_change_by_conn(
     project_id: &str,
     unrecorded_change_id: &str,
 ) -> StoreResult<UnrecordedChangeRecord> {
-    let record =
-        unrecorded_change_from_conn(conn, project_id, unrecorded_change_id)?.ok_or_else(|| {
-            StoreError::NotFound {
-                entity: "unrecorded_change",
-                id: unrecorded_change_id.to_owned(),
-            }
-        })?;
-    validate_unrecorded_change_status(&record.status)?;
-    Ok(record)
+    unrecorded_change_from_conn(conn, project_id, unrecorded_change_id)?.ok_or_else(|| {
+        StoreError::NotFound {
+            entity: "unrecorded_change",
+            id: unrecorded_change_id.to_owned(),
+        }
+    })
 }
 
-fn unrecorded_change_from_row(row: &Row<'_>) -> rusqlite::Result<UnrecordedChangeRecord> {
+fn unrecorded_change_raw_from_row(row: &Row<'_>) -> rusqlite::Result<UnrecordedChangeRaw> {
     let correlation = decode_hook_correlation(
         row.get(5)?,
         row.get(4)?,
@@ -3953,7 +4117,7 @@ fn unrecorded_change_from_row(row: &Row<'_>) -> rusqlite::Result<UnrecordedChang
         row.get(7)?,
         row.get(8)?,
     )?;
-    Ok(UnrecordedChangeRecord {
+    Ok(UnrecordedChangeRaw {
         project_id: row.get(0)?,
         unrecorded_change_id: row.get(1)?,
         session_id: row.get(2)?,
@@ -3970,6 +4134,86 @@ fn unrecorded_change_from_row(row: &Row<'_>) -> rusqlite::Result<UnrecordedChang
         resolved_at: row.get(17)?,
         resolved_by_actor_source: row.get(18)?,
         metadata_json: row.get(19)?,
+    })
+}
+
+fn decode_unrecorded_change(raw: UnrecordedChangeRaw) -> StoreResult<UnrecordedChangeRecord> {
+    let record_ref = raw.unrecorded_change_id.clone();
+    let corrupt_value = |field| {
+        StoreError::corrupt_owner_state_value("unrecorded_changes", record_ref.clone(), field)
+    };
+    let corrupt_json = |field| {
+        StoreError::corrupt_owner_state_json("unrecorded_changes", record_ref.clone(), field)
+    };
+    let status = serde_json::from_value::<UnrecordedChangeStatus>(Value::String(raw.status))
+        .map_err(|_| corrupt_value("status"))?;
+    let confidence =
+        serde_json::from_value::<UnrecordedChangeConfidence>(Value::String(raw.confidence))
+            .map_err(|_| corrupt_value("confidence"))?;
+    let observed_paths = serde_json::from_str::<Vec<ProductRelativePath>>(&raw.observed_paths_json)
+        .map_err(|_| corrupt_json("observed_paths_json"))?;
+    if observed_paths.iter().collect::<BTreeSet<_>>().len() != observed_paths.len() {
+        return Err(corrupt_json("observed_paths_json"));
+    }
+    let detection = serde_json::from_str::<JsonObject>(&raw.detection_json)
+        .map_err(|_| corrupt_json("detection_json"))?;
+    let resolution = raw
+        .resolution_json
+        .as_deref()
+        .map(|value| {
+            serde_json::from_str::<JsonObject>(value).map_err(|_| corrupt_json("resolution_json"))
+        })
+        .transpose()?;
+    let detected_at = strict_stored_timestamp(
+        "unrecorded_changes",
+        &record_ref,
+        "detected_at",
+        &raw.detected_at,
+    )?;
+    let resolved_at = raw
+        .resolved_at
+        .as_deref()
+        .map(|value| {
+            strict_stored_timestamp("unrecorded_changes", &record_ref, "resolved_at", value)
+        })
+        .transpose()?;
+    let resolved_by_actor_source = raw
+        .resolved_by_actor_source
+        .map(|value| {
+            serde_json::from_value::<ActorSource>(Value::String(value))
+                .map_err(|_| corrupt_value("resolved_by_actor_source"))
+        })
+        .transpose()?;
+    let metadata = serde_json::from_str::<JsonObject>(&raw.metadata_json)
+        .map_err(|_| corrupt_json("metadata_json"))?;
+    let resolution_fields_valid = match status {
+        UnrecordedChangeStatus::Unresolved => {
+            resolution.is_none() && resolved_at.is_none() && resolved_by_actor_source.is_none()
+        }
+        UnrecordedChangeStatus::Resolved => {
+            resolution.is_some() && resolved_at.is_some() && resolved_by_actor_source.is_some()
+        }
+    };
+    if !resolution_fields_valid {
+        return Err(corrupt_value("status"));
+    }
+    Ok(UnrecordedChangeRecord {
+        project_id: raw.project_id,
+        unrecorded_change_id: raw.unrecorded_change_id,
+        session_id: raw.session_id,
+        correlation: raw.correlation,
+        connection_internal_id: raw.connection_internal_id,
+        task_id: raw.task_id,
+        status,
+        confidence,
+        summary: raw.summary,
+        observed_paths,
+        detection,
+        resolution,
+        detected_at,
+        resolved_at,
+        resolved_by_actor_source,
+        metadata,
     })
 }
 
@@ -4097,6 +4341,7 @@ pub(crate) fn test_guard_manifest_json(
 mod tests {
     use std::error::Error;
 
+    use serde_json::json;
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
@@ -4596,18 +4841,18 @@ mod tests {
                 host_invocation_id: Some("tool_call_a".to_owned()),
                 tool_name: Some("shell".to_owned()),
                 command_kind: "mutating".to_owned(),
-                path_policy: "exact_paths".to_owned(),
-                expected_paths: vec!["src/lib.rs".to_owned()],
+                path_policy: ExpectedWritePathPolicy::ExactPaths,
+                expected_paths: vec![ProductRelativePath::parse("src/lib.rs")?],
                 task_id: "task_guard_a".to_owned(),
                 change_unit_id: "change_unit_guard_a".to_owned(),
                 write_ticket_ids: vec!["write_ticket_a".to_owned()],
                 basis_state_version: 1,
-                created_at: "2026-06-30T00:04:30Z".to_owned(),
-                expires_at: "2026-06-30T00:19:30Z".to_owned(),
-                metadata_json: "{}".to_owned(),
+                created_at: UtcTimestamp::parse("2026-06-30T00:04:30Z")?,
+                expires_at: UtcTimestamp::parse("2026-06-30T00:19:30Z")?,
+                metadata: JsonObject::new(),
             },
         )?;
-        assert_eq!(expected.status, "pending");
+        assert_eq!(expected.status, ExpectedWriteStatus::Pending);
         assert_eq!(
             list_pending_expected_writes(
                 fixture.runtime_home.path(),
@@ -4617,17 +4862,39 @@ mod tests {
             .len(),
             1
         );
+        let out_of_window = mark_expected_write_matched(
+            &fixture.context()?,
+            "project_guard_a",
+            "expected_write_a",
+            ExpectedWriteMatch {
+                matched_post_tool_guard_event_id: "guard_event_post_a".to_owned(),
+                matched_paths: vec![ProductRelativePath::parse("src/lib.rs")?],
+                matched_at: UtcTimestamp::parse("2026-06-30T00:20:00Z")?,
+            },
+        )
+        .expect_err("an out-of-window match must roll back");
+        assert!(matches!(out_of_window, StoreError::InvalidInput { .. }));
+        assert_eq!(
+            expected_write(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                "expected_write_a",
+            )?
+            .expect("expected write")
+            .status,
+            ExpectedWriteStatus::Pending
+        );
         let matched = mark_expected_write_matched(
             &fixture.context()?,
             "project_guard_a",
             "expected_write_a",
             ExpectedWriteMatch {
                 matched_post_tool_guard_event_id: "guard_event_post_a".to_owned(),
-                matched_paths: vec!["src/lib.rs".to_owned()],
-                matched_at: "2026-06-30T00:05:00Z".to_owned(),
+                matched_paths: vec![ProductRelativePath::parse("src/lib.rs")?],
+                matched_at: UtcTimestamp::parse("2026-06-30T00:05:00Z")?,
             },
         )?;
-        assert_eq!(matched.status, "matched");
+        assert_eq!(matched.status, ExpectedWriteStatus::Matched);
         assert!(list_pending_expected_writes(
             fixture.runtime_home.path(),
             "project_guard_a",
@@ -4643,15 +4910,18 @@ mod tests {
                 correlation: Some(tool_correlation),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 task_id: None,
-                confidence: "confirmed".to_owned(),
+                confidence: UnrecordedChangeConfidence::Confirmed,
                 summary: "Product file changed without a matching Core run".to_owned(),
-                observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
-                detection_json: r#"{"source":"guard"}"#.to_owned(),
-                detected_at: "2026-06-30T00:05:00Z".to_owned(),
-                metadata_json: "{}".to_owned(),
+                observed_paths: vec![ProductRelativePath::parse("src/lib.rs")?],
+                detection: json!({"source": "guard"})
+                    .as_object()
+                    .cloned()
+                    .expect("object"),
+                detected_at: UtcTimestamp::parse("2026-06-30T00:05:00Z")?,
+                metadata: JsonObject::new(),
             },
         )?;
-        assert_eq!(change.status, "unresolved");
+        assert_eq!(change.status, UnrecordedChangeStatus::Unresolved);
 
         assert_eq!(
             list_unresolved_unrecorded_changes(
@@ -4668,13 +4938,16 @@ mod tests {
             "project_guard_a",
             "unrecorded_change_a",
             UnrecordedChangeResolution {
-                resolution_json: r#"{"recorded_run_id":"run_guard_a"}"#.to_owned(),
-                resolved_at: "2026-06-30T00:06:00Z".to_owned(),
-                resolved_by_actor_source: "agent_connection:conn_guard_a".to_owned(),
+                resolution: json!({"recorded_run_id": "run_guard_a"})
+                    .as_object()
+                    .cloned()
+                    .expect("object"),
+                resolved_at: UtcTimestamp::parse("2026-06-30T00:06:00Z")?,
+                resolved_by_actor_source: ActorSource::agent_connection("conn_guard_a"),
             },
         )?;
-        assert_eq!(resolved.status, "resolved");
-        assert!(resolved.resolution_json.is_some());
+        assert_eq!(resolved.status, UnrecordedChangeStatus::Resolved);
+        assert!(resolved.resolution.is_some());
         assert!(list_unresolved_unrecorded_changes(
             fixture.runtime_home.path(),
             "project_guard_a",
@@ -4685,6 +4958,52 @@ mod tests {
         let project = project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
             .expect("fixture project should exist");
         let conn = open_project_state_database_for_test(&project.state_db_path)?;
+        for (column, corrupt_text, restored_text, json_corruption) in [
+            ("observed_paths_json", "[123]", r#"["src/lib.rs"]"#, true),
+            (
+                "observed_paths_json",
+                r#"["../escape"]"#,
+                r#"["src/lib.rs"]"#,
+                true,
+            ),
+            ("detection_json", "[]", r#"{"source":"guard"}"#, true),
+            ("detected_at", "tomorrow", "2026-06-30T00:05:00Z", false),
+            ("metadata_json", "[]", "{}", true),
+        ] {
+            conn.execute(
+                &format!(
+                    "UPDATE unrecorded_changes SET {column} = ?1
+                      WHERE unrecorded_change_id = 'unrecorded_change_a'"
+                ),
+                [corrupt_text],
+            )?;
+            let error = unrecorded_change(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                "unrecorded_change_a",
+            )
+            .expect_err("invalid persisted unrecorded-change facts must fail in Store");
+            if json_corruption {
+                assert!(matches!(
+                    error,
+                    StoreError::CorruptOwnerStateJson { logical_column, .. }
+                        if logical_column == column
+                ));
+            } else {
+                assert!(matches!(
+                    error,
+                    StoreError::CorruptOwnerStateValue { logical_column, .. }
+                        if logical_column == column
+                ));
+            }
+            conn.execute(
+                &format!(
+                    "UPDATE unrecorded_changes SET {column} = ?1
+                      WHERE unrecorded_change_id = 'unrecorded_change_a'"
+                ),
+                [restored_text],
+            )?;
+        }
         for (column, corrupt_text, restored_text) in [
             (
                 "expected_paths_json",
@@ -4715,6 +5034,125 @@ mod tests {
             )?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn unrecorded_change_decoder_rejects_unknown_closed_values() {
+        let raw = |status: &str, confidence: &str| UnrecordedChangeRaw {
+            project_id: "project".to_owned(),
+            unrecorded_change_id: "unrecorded".to_owned(),
+            session_id: None,
+            correlation: None,
+            connection_internal_id: "connection".to_owned(),
+            task_id: None,
+            status: status.to_owned(),
+            confidence: confidence.to_owned(),
+            summary: "summary".to_owned(),
+            observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
+            detection_json: "{}".to_owned(),
+            resolution_json: None,
+            detected_at: "2026-07-29T00:00:00Z".to_owned(),
+            resolved_at: None,
+            resolved_by_actor_source: None,
+            metadata_json: "{}".to_owned(),
+        };
+
+        let invalid_status =
+            decode_unrecorded_change(raw("unknown", "confirmed")).expect_err("closed status");
+        assert!(matches!(
+            invalid_status,
+            StoreError::CorruptOwnerStateValue {
+                table: "unrecorded_changes",
+                logical_column: "status",
+                ..
+            }
+        ));
+
+        let invalid_confidence =
+            decode_unrecorded_change(raw("unresolved", "certain")).expect_err("closed confidence");
+        assert!(matches!(
+            invalid_confidence,
+            StoreError::CorruptOwnerStateValue {
+                table: "unrecorded_changes",
+                logical_column: "confidence",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn expected_write_decoder_owns_closed_paths_times_and_relational_shape() {
+        let raw = || ExpectedWriteRaw {
+            project_id: "project".to_owned(),
+            expected_write_id: "expected_write".to_owned(),
+            session_id: "session".to_owned(),
+            connection_internal_id: "connection".to_owned(),
+            host_session_id: "host_session".to_owned(),
+            correlation_kind: "codex_hook_tool".to_owned(),
+            host_turn_id: "turn".to_owned(),
+            host_tool_use_id: "tool_use".to_owned(),
+            host_tool_name: "shell".to_owned(),
+            guard_installation_id: Some("guard".to_owned()),
+            pre_tool_guard_event_id: "pre".to_owned(),
+            host_invocation_id: None,
+            tool_name: Some("shell".to_owned()),
+            command_kind: "mutating".to_owned(),
+            path_policy: "exact_paths".to_owned(),
+            expected_paths_json: r#"["src/lib.rs"]"#.to_owned(),
+            task_id: "task".to_owned(),
+            change_unit_id: Some("change_unit".to_owned()),
+            write_ticket_ids_json: r#"["write_ticket"]"#.to_owned(),
+            basis_state_version: 1,
+            status: "pending".to_owned(),
+            matched_post_tool_guard_event_id: None,
+            matched_paths_json: None,
+            created_at: "2026-07-29T00:00:00Z".to_owned(),
+            expires_at: "2026-07-29T00:15:00Z".to_owned(),
+            matched_at: None,
+            metadata_json: "{}".to_owned(),
+        };
+
+        let decoded = expected_write_from_raw(raw()).expect("valid typed expected write");
+        assert_eq!(decoded.status, ExpectedWriteStatus::Pending);
+        assert_eq!(
+            decoded.expected_paths,
+            vec![ProductRelativePath::parse("src/lib.rs").expect("path")]
+        );
+
+        let mut unknown_status = raw();
+        unknown_status.status = "unknown".to_owned();
+        assert!(matches!(
+            expected_write_from_raw(unknown_status),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
+
+        let mut unknown_policy = raw();
+        unknown_policy.path_policy = "prefixes".to_owned();
+        assert!(matches!(
+            expected_write_from_raw(unknown_policy),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
+
+        let mut noncanonical_paths = raw();
+        noncanonical_paths.expected_paths_json = r#"["src\/lib.rs"]"#.to_owned();
+        assert!(matches!(
+            expected_write_from_raw(noncanonical_paths),
+            Err(StoreError::CorruptOwnerStateJson { .. })
+        ));
+
+        let mut malformed_time = raw();
+        malformed_time.expires_at = "not-a-timestamp".to_owned();
+        assert!(matches!(
+            expected_write_from_raw(malformed_time),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
+
+        let mut contradictory = raw();
+        contradictory.status = "matched".to_owned();
+        assert!(matches!(
+            expected_write_from_raw(contradictory),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
     }
 
     #[test]
@@ -4769,12 +5207,12 @@ mod tests {
                 correlation: None,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 task_id: None,
-                confidence: "confirmed".to_owned(),
+                confidence: UnrecordedChangeConfidence::Confirmed,
                 summary: "Unrecorded change in project A".to_owned(),
-                observed_paths_json: r#"["a.txt"]"#.to_owned(),
-                detection_json: "{}".to_owned(),
-                detected_at: "2026-06-30T01:01:00Z".to_owned(),
-                metadata_json: "{}".to_owned(),
+                observed_paths: vec![ProductRelativePath::parse("a.txt")?],
+                detection: JsonObject::new(),
+                detected_at: UtcTimestamp::parse("2026-06-30T01:01:00Z")?,
+                metadata: JsonObject::new(),
             },
         )?;
 

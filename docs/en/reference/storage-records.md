@@ -551,28 +551,41 @@ Project continuity records are durable context, not a waiver. Their typed cursor
 and ordering belong to the status method. Carry-forward never bypasses current
 scope, baseline, Write Ticket, evidence, UserAction, or close checks.
 
-## Storage-Owned JSON
+## Storage-Owned Structured Values
 
-Every authority-relevant JSON field uses a closed typed schema, canonical
-encoding where a digest depends on bytes, and explicit size limits. Unknown,
-missing, duplicate, wrongly typed, noncanonical, or owner-inconsistent members
-are invalid input and corrupt persisted data.
+Every Store-owned structured authority field uses a closed typed schema,
+canonical encoding where a digest depends on bytes, and explicit size limits.
+Unknown, missing, duplicate, wrongly typed, noncanonical, or owner-inconsistent
+members are invalid input and corrupt persisted data.
 
-Physical row shapes and serialized JSON or closed `TEXT` values remain private
-to Store. Store decodes Task, Change Unit, artifact, Run, evidence, project
-continuity, `StoredRecordRef`, and UserAction owner state into typed records
-before it crosses a public Store interface, and accepts typed mutation inputs
-for those families. A malformed representation or unknown closed value
-produces the typed persisted-data `Corrupt` failure; it is not reinterpreted
-through an empty value, a default, or another column. Semantic metadata remains
-typed through service and Core code, and Store performs its single
-serialization at the SQLite boundary.
+Physical row shapes, serialized JSON, closed `TEXT` values, and persisted
+timestamp parsing remain private to Store. Store decodes Task, Change Unit,
+workflow-policy, Write Ticket, Run, evidence, artifact, project-state, replay
+identity, reconciliation observation, project continuity, `StoredRecordRef`,
+and UserAction owner state before any of those facts cross a public
+Store-to-Core or Store-to-service interface. The resulting records carry typed
+closed values, actors, timestamps, JSON objects, Product Repository paths,
+workflow policies, Write Ticket validity bases, and attempt scopes. Mutation
+interfaces accept the corresponding typed values and Store performs their
+single physical serialization at the SQLite boundary.
 
-The UserAction service consumes these validated typed records and evaluates
-semantic authority, lifecycle, resolution, and projection policy. It neither
-re-decodes persisted representations nor constructs Store corruption
-diagnostics. A service invariant involving valid typed facts remains distinct
-from persisted-record corruption.
+A malformed JSON value, unknown closed string, invalid timestamp, invalid
+Product Repository path, or contradiction among duplicated physical columns
+produces the Store-owned persisted-data `Corrupt` failure. It is not
+reinterpreted through an empty value, a default, or another column. Store
+corruption constructors are internal to Store. Core and semantic services
+consume the validated fields directly and do not parse their persisted
+representations or construct Store corruption. A contradiction among otherwise
+valid typed facts is instead an invariant failure owned by the consuming Core
+or service policy.
+
+Exact committed method response bytes are a deliberate semantic-owner
+exception. Store validates the persisted replay carrier and its typed replay
+identity, preserves `response_json` exactly, and does not reinterpret the
+method result. Core validates and decodes that exact result against the owning
+method contract when replay or operation-result behavior requires it.
+Core-owned event payload bytes follow their Core event contract and are not
+exposed as typed Store authority-record fields.
 
 Metadata explicitly classified as non-authority remains non-authority. It cannot
 create user judgment, evidence assurance, acceptance, Write Ticket authority,

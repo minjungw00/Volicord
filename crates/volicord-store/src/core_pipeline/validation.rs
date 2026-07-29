@@ -83,11 +83,20 @@ pub(super) fn validate_pending_event(event: &PendingTaskEvent) -> StoreResult<()
 }
 
 pub(super) fn validate_replay_context(context: &VerifiedReplayContext) -> StoreResult<()> {
+    let actor_source = context.actor_source.to_canonical_string();
+    let git_workspace_context_json = context
+        .git_workspace_context
+        .as_ref()
+        .map(canonical_json_string)
+        .transpose()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "git_workspace_context cannot be serialized canonically".to_owned(),
+        })?;
     validate_canonical_replay_identity(
-        &context.actor_source,
-        &context.operation_category,
+        &actor_source,
+        context.operation_category.as_str(),
         context.verification_basis.as_deref(),
-        context.git_workspace_context_json.as_deref(),
+        git_workspace_context_json.as_deref(),
     )
     .map_err(|failure| StoreError::InvalidInput {
         detail: format!("{} {}", failure.input_field, failure.detail),

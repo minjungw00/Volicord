@@ -11,7 +11,6 @@ const PROJECT_ENFORCEMENT_PROFILE_COLUMNS: &str = "
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectEnforcementProfileRecord {
     pub project_id: String,
-    pub enforcement_profile_json: String,
     pub profile: ProjectEnforcementProfile,
 }
 
@@ -67,7 +66,6 @@ fn decode_project_enforcement_profile(
     validate_project_enforcement_profile(&profile, &row.project_id)?;
     Ok(ProjectEnforcementProfileRecord {
         project_id: row.project_id,
-        enforcement_profile_json: row.enforcement_profile_json,
         profile,
     })
 }

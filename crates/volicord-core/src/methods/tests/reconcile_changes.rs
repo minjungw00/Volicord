@@ -103,7 +103,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
     assert_eq!(harness.counts()?, before_dry_run_counts);
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
 
     let response = harness.service.reconcile_changes(
@@ -148,7 +148,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
     );
     assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
     let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
-    assert_eq!(row.status, "resolved");
+    assert_eq!(row.status, UnrecordedChangeStatus::Resolved);
     let resolution = row_resolution(&row);
     assert_eq!(resolution["resolution_basis"], "not_product_change");
     assert_eq!(
@@ -220,7 +220,7 @@ fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
     );
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
-        "resolved"
+        UnrecordedChangeStatus::Resolved
     );
 
     let store =
@@ -231,8 +231,8 @@ fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
             &IdempotencyKey::new("idem_reconcile_local"),
         )?
         .expect("local recovery commit should persist replay row");
-    assert_eq!(replay.actor_source, LOCAL_USER_ACTOR_SOURCE);
-    assert_eq!(replay.operation_category, "local_recovery");
+    assert_eq!(replay.actor_source, ActorSource::LocalUser);
+    assert_eq!(replay.operation_category, OperationCategory::LocalRecovery);
     assert_eq!(
         replay.verification_basis.as_deref(),
         Some(UserActionVerificationBasis::CliDirectUserChannel.as_str())
@@ -346,7 +346,7 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
     assert_eq!(harness.counts()?, before);
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     assert_eq!(dry_run_generator.count(DurableIdKind::UserActionRequest), 0);
     assert_eq!(dry_run_generator.count(DurableIdKind::Event), 0);
@@ -386,7 +386,7 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
     assert_eq!(commit_generator.count(DurableIdKind::Event), 1);
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     Ok(())
 }
@@ -474,11 +474,11 @@ fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotenc
     }));
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &first_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &second_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     Ok(())
 }
@@ -518,7 +518,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
     );
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     let judgment_id = first.response_value["pending_user_action_summaries"][0]
         ["user_action_request_id"]
@@ -573,7 +573,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
         .expect("pending summaries should be an array")
         .is_empty());
     let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
-    assert_eq!(row.status, "resolved");
+    assert_eq!(row.status, UnrecordedChangeStatus::Resolved);
     let resolution = row_resolution(&row);
     assert_eq!(resolution["resolution_basis"], "accepted_by_user");
     assert_eq!(
@@ -584,10 +584,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
         resolution["user_action_resolution_ref"]["record_id"],
         user_action_resolution_id.as_str()
     );
-    assert_eq!(
-        row.resolved_by_actor_source.as_deref(),
-        Some(LOCAL_USER_ACTOR_SOURCE)
-    );
+    assert_eq!(row.resolved_by_actor_source, Some(ActorSource::LocalUser));
     Ok(())
 }
 
@@ -690,11 +687,8 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
         LOCAL_USER_ACTOR_SOURCE
     );
     let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
-    assert_eq!(row.status, "resolved");
-    assert_eq!(
-        row.resolved_by_actor_source.as_deref(),
-        Some(LOCAL_USER_ACTOR_SOURCE)
-    );
+    assert_eq!(row.status, UnrecordedChangeStatus::Resolved);
+    assert_eq!(row.resolved_by_actor_source, Some(ActorSource::LocalUser));
     let resolution = row_resolution(&row);
     assert_eq!(
         resolution["capture_basis"],
@@ -762,7 +756,7 @@ fn reconcile_changes_rejects_agent_supplied_system_resolution_basis() -> Result<
     );
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     Ok(())
 }
@@ -805,7 +799,7 @@ fn reconcile_changes_rejects_agent_direct_accepted_by_user_without_judgment(
     );
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     Ok(())
 }
@@ -844,8 +838,8 @@ fn reconcile_changes_rejects_mismatched_invocation_project() -> Result<(), Box<d
 }
 
 #[test]
-fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<(), Box<dyn Error>>
-{
+fn reconcile_changes_rejects_invalid_persisted_observation_at_store_boundary(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     record_guard_installation(&harness, "reconcile_invalid")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_invalid")?;
@@ -853,8 +847,16 @@ fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<
         &harness,
         &task_id,
         "reconcile_invalid",
-        "[123]",
+        r#"["src/export.rs"]"#,
     )?;
+    harness.conn()?.execute(
+        "UPDATE unrecorded_changes
+            SET observed_paths_json = '[123]'
+          WHERE project_id = ?1
+            AND unrecorded_change_id = ?2",
+        rusqlite::params![PROJECT_ID, unrecorded_change_id],
+    )?;
+    let before = harness.counts()?;
 
     let response = harness.service.reconcile_changes(
         reconcile_changes_request(
@@ -866,17 +868,23 @@ fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-
-    assert_eq!(
-        response.response_value["resolved_changes"][0]["resolution_basis"],
-        "invalid_observation"
+    assert_owner_state_rejection(
+        &response,
+        "unrecorded_changes",
+        &unrecorded_change_id,
+        "observed_paths_json",
+        &harness.runtime_home_path,
     );
-    let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
-    assert_eq!(row.status, "resolved");
-    assert_eq!(
-        row_resolution(&row)["capture_basis"],
-        "core_deterministic_invalid_observation"
-    );
+    let status: String = harness.conn()?.query_row(
+        "SELECT status
+           FROM unrecorded_changes
+          WHERE project_id = ?1
+            AND unrecorded_change_id = ?2",
+        rusqlite::params![PROJECT_ID, unrecorded_change_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(status, "unresolved");
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
@@ -917,11 +925,11 @@ fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &main_change_id)?.status,
-        "resolved"
+        UnrecordedChangeStatus::Resolved
     );
     assert_eq!(
         unrecorded_change_row(&harness, &other_project_id, &other_change_id)?.status,
-        "unresolved"
+        UnrecordedChangeStatus::Unresolved
     );
     Ok(())
 }
@@ -963,7 +971,7 @@ fn reconcile_changes_resolves_deterministic_active_write_ticket() -> Result<(), 
         "covered_by_write_ticket"
     );
     let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
-    assert_eq!(row.status, "resolved");
+    assert_eq!(row.status, UnrecordedChangeStatus::Resolved);
     assert_eq!(
         row_resolution(&row)["capture_basis"],
         "core_deterministic_write_ticket"

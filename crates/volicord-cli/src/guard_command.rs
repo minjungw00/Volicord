@@ -6,7 +6,7 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Utc};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_command_model::{HookArgs, HookCommand};
@@ -2080,10 +2080,6 @@ fn redacted_prompt_value(value: &Value) -> Value {
             "sha256": sha256_text(&value.to_string())
         }),
     }
-}
-
-fn format_timestamp(timestamp: DateTime<Utc>) -> String {
-    timestamp.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 fn sha256_text(text: &str) -> String {

@@ -7,7 +7,6 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, Utc};
-use rusqlite::OptionalExtension;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -440,9 +439,35 @@ impl MethodHarness {
     ) -> Result<(), Box<dyn Error>> {
         let policy_value = json!({
             "schema": volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID,
+            "managed_by": "volicord",
+            "storage_scope": "local_overlay",
+            "connection_intent": "shared",
+            "host": "codex",
+            "repo_root": "/tmp/volicord-method-test",
+            "connection_id": CONNECTION_ID,
+            "guard_installation_id": "guard_method_test",
+            "selected_profile": "record",
+            "mcp": {
+                "command": "volicord-mcp",
+                "args": [],
+                "env": {}
+            },
+            "host_hook": {
+                "enabled": true,
+                "commands": {
+                    "pre_tool": {"command": "volicord", "args": ["guard", "pre-tool"]},
+                    "post_tool": {"command": "volicord", "args": ["guard", "post-tool"]},
+                    "prompt_capture": {
+                        "command": "volicord",
+                        "args": ["guard", "prompt-capture"]
+                    }
+                }
+            },
             "workflow": workflow,
         });
-        let policy_json = volicord_types::canonical::canonical_json_string(&policy_value)?;
+        let policy = serde_json::from_value::<
+            volicord_types::workflow_policy::ProjectWorkflowPolicy,
+        >(policy_value.clone())?;
         let policy_fingerprint = volicord_types::canonical::canonical_json_sha256(&policy_value)?
             .as_str()
             .to_owned();
@@ -450,11 +475,11 @@ impl MethodHarness {
         let mut store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
         store.upsert_project_workflow_policy(ProjectWorkflowPolicyUpsert {
             policy_version,
-            policy_json,
+            policy,
             policy_fingerprint,
-            source: "test_fixture".to_owned(),
-            applied_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
-            created_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
+            source: volicord_types::workflow_policy::ProjectWorkflowPolicySource::ProjectDatabase,
+            applied_at: UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+            created_at: UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
         })?;
         Ok(())
     }
@@ -1211,12 +1236,12 @@ fn insert_project_unrecorded_change(
             correlation: None,
             connection_internal_id: CONNECTION_ID.to_owned(),
             task_id,
-            confidence: UnrecordedChangeConfidence::Confirmed.as_str().to_owned(),
+            confidence: UnrecordedChangeConfidence::Confirmed,
             summary: "Product Repository change observed outside a recorded run.".to_owned(),
-            observed_paths_json: observed_paths_json.to_owned(),
-            detection_json: "{}".to_owned(),
-            detected_at: "2026-06-30T00:05:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
+            observed_paths: serde_json::from_str(observed_paths_json)?,
+            detection: JsonObject::new(),
+            detected_at: UtcTimestamp::parse("2026-06-30T00:05:00Z")?,
+            metadata: JsonObject::new(),
         },
     )?;
     Ok(unrecorded_change_id)
@@ -1260,12 +1285,11 @@ fn unrecorded_change_row(
 }
 
 fn row_resolution(row: &UnrecordedChangeRecord) -> Value {
-    serde_json::from_str(
-        row.resolution_json
-            .as_deref()
-            .expect("resolved row should carry resolution_json"),
+    Value::Object(
+        row.resolution
+            .clone()
+            .expect("resolved row should carry a resolution"),
     )
-    .expect("resolution_json should be valid JSON")
 }
 
 fn record_close_evidence(
@@ -2683,16 +2707,10 @@ fn insert_active_write_ticket_with_scope(
         rusqlite::params![PROJECT_ID, input.task_id],
         |row| row.get(0),
     )?;
-    let policy_json = conn
-        .query_row(
-            "SELECT policy_json
-               FROM project_workflow_policies
-              WHERE project_id = ?1",
-            [PROJECT_ID],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
-    let write_authority_fingerprint = project_write_authority_fingerprint(policy_json.as_deref())?;
+    let context = harness.service.context();
+    let store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
+    let policy = store.project_workflow_policy()?.map(|record| record.policy);
+    let write_authority_fingerprint = project_write_authority_fingerprint(policy.as_ref())?;
     let attempt_scope_json = json!({
         "task_id": input.task_id,
         "change_unit_id": input.change_unit_id,

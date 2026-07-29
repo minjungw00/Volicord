@@ -21,15 +21,21 @@ replay 순서, rollback, 내구성, aggregate 간 저장 효과 테스트는
 저장 효과를 우선하며, 정규 SQL 담당 문서가 해당 byte를 현재 계약으로 정한
 경우에만 완전한 SQL text를 직접 비교합니다.
 
+Store 테스트는 모든 public Store-to-Core 또는 Store-to-service record 경계의 물리
+영속화, transaction, 엄격한 row decoding을 담당합니다. 잘못된 물리 enum, JSON,
+timestamp, Product Repository 경로, 빠진 값, 중복 column 사이의 모순을 주입하고
+Store 소유 영속 데이터 손상을 확인합니다. Core와 서비스 테스트는 Store가 구성한
+유효한 typed record를 사용해 의미 policy와 invariant failure를 검증합니다. 물리
+decoder를 반복하거나 Store 손상을 구성하지 않습니다. 이 구분은 workflow policy,
+Write Ticket, replay identity, reconciliation observation, UserAction과 그 밖의
+Core 지향 record family 모두에 적용됩니다.
+
 `volicord-user-action-service`에서는 의미 검증, 정규 body와 identity 구성,
 authority, lifecycle, materialization, 영속화 매핑, resolution, continuity,
 neutral projection 동작을 unit test가 담당합니다. Core 테스트는 요청 조율,
 생성된 식별자와 timestamp, replay, transaction 순서, 서비스 오류 매핑을
-담당합니다. Store 테스트는 물리 영속화, transaction, typed UserAction
-레코드로의 엄격한 row decoding을 담당합니다. UserAction 중복 표현, 닫힌 저장
-값, 빠진 물리 값, 요청-resolution identity 또는 action-kind 불일치는 Store
-테스트에 둡니다. 서비스 테스트는 Store가 구성한 유효한 record만 사용하며 의미
-policy와 서비스 담당 invariant failure를 검증합니다.
+담당합니다. UserAction 중복 표현, 빠진 물리 값, 요청-resolution identity 또는
+action-kind 불일치는 계속 Store 테스트에 둡니다.
 
 Product Repository 경로 테스트도 같은 소유권 분리를 따릅니다.
 `volicord-types`는 임시 directory 없이 어휘 값과 순수 관계를 테스트합니다.

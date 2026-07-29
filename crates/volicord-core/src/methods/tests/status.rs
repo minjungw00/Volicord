@@ -298,7 +298,7 @@ fn status_projects_control_policy_ticket_basis_invalidation_and_completion_claim
         "Core selected effective control `light` from the caller request and project workflow policy."
     );
     assert_eq!(active_task["project_policy"]["policy_version"], 1);
-    assert_eq!(active_task["project_policy"]["source"], "test_fixture");
+    assert_eq!(active_task["project_policy"]["source"], "project_database");
     assert_eq!(
         status.response_value["write_ticket_summary"]["validity_basis"],
         validity_basis

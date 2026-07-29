@@ -485,25 +485,35 @@ Project continuity record는 오래 유지되는 맥락이며 면제가 아닙�
 ordering은 status 메서드가 담당합니다. Carry-forward는 현재 scope, baseline, 쓰기
 티켓, evidence, UserAction, close 검사를 우회하지 않습니다.
 
-## 저장소 소유 JSON
+## Store 소유 구조화 값
 
-권한과 관련된 모든 JSON 필드는 닫힌 typed schema, digest가 bytes에 의존할 때의 정규
-encoding, 명시적 크기 제한을 사용합니다. 알 수 없거나 빠지거나 중복되거나 타입이
-잘못되거나 noncanonical이거나 담당자 불변식과 맞지 않는 member는 유효하지 않은 입력이며
-영속 데이터 손상입니다.
+Store가 소유하는 모든 구조화된 권한 필드는 닫힌 typed schema, digest가 byte에
+의존할 때의 정규 encoding, 명시적 크기 제한을 사용합니다. 알 수 없거나 빠지거나
+중복되거나 타입이 잘못되거나 noncanonical이거나 담당자 불변식과 맞지 않는 member는
+유효하지 않은 입력이며 영속 데이터 손상입니다.
 
-물리 row 형태와 직렬화한 JSON 또는 닫힌 `TEXT` 값은 Store 내부에만 둡니다. Store는
-Task, Change Unit, artifact, Run, evidence, project continuity, `StoredRecordRef`,
-UserAction 담당 상태를 public Store interface 밖으로 내보내기 전에 typed record로
-decode하고, 이 record family의 typed mutation input을 받습니다. 형식이 잘못된
-표현이나 알 수 없는 닫힌 값은 typed 영속 데이터 `Corrupt` failure를 만들며 빈 값,
-기본값, 다른 column을 통해 다시 해석하지 않습니다. 의미 metadata는 service와 Core를
-지나는 동안 typed 상태를 유지하고, Store가 SQLite 경계에서 한 번 직렬화합니다.
+물리 row 형태, 직렬화한 JSON, 닫힌 `TEXT` 값, 영속 timestamp parsing은 Store
+내부에만 둡니다. Store는 Task, Change Unit, workflow policy, Write Ticket, Run,
+evidence, artifact, project state, replay identity, reconciliation observation, project
+continuity, `StoredRecordRef`, UserAction 담당 상태를 public Store-to-Core 또는
+Store-to-service interface 밖으로 내보내기 전에 decode합니다. 결과 record는 닫힌
+typed 값, actor, timestamp, JSON object, Product Repository 경로, workflow policy,
+Write Ticket validity basis와 attempt scope를 전달합니다. Mutation interface도 대응하는
+typed 값을 받으며 Store가 SQLite 경계에서 한 번만 물리 형식으로 직렬화합니다.
 
-UserAction 서비스는 이 검증된 typed record를 사용해 의미 기반 authority,
-lifecycle, resolution, projection policy를 평가합니다. 영속 표현을 다시 decode하거나
-Store 손상 진단을 구성하지 않습니다. 유효한 typed fact 사이의 서비스 불변 조건
-위반은 영속 record 손상과 구분합니다.
+형식이 잘못된 JSON 값, 알 수 없는 닫힌 문자열, 유효하지 않은 timestamp, 유효하지 않은
+Product Repository 경로, 중복 물리 column 사이의 모순은 Store 소유 영속 데이터
+`Corrupt` failure를 만듭니다. 빈 값, 기본값, 다른 column을 통해 다시 해석하지
+않습니다. Store 손상 constructor는 Store 내부에만 있습니다. Core와 의미 서비스는
+검증된 field를 직접 사용하며 영속 표현을 parse하거나 Store 손상을 구성하지 않습니다.
+이미 유효한 typed fact 사이의 모순은 이를 소비하는 Core 또는 서비스 policy가 소유하는
+invariant failure입니다.
+
+커밋된 메서드 응답의 정확한 byte는 의도적인 의미 담당자 예외입니다. Store는 영속 replay
+carrier와 typed replay identity를 검증하고 `response_json`을 정확히 보존하지만 메서드
+결과를 다시 해석하지 않습니다. Replay 또는 operation-result 동작에 필요할 때 Core가
+그 정확한 결과를 담당 메서드 계약에 맞춰 검증하고 decode합니다. Core 소유 event payload
+byte는 해당 Core event 계약을 따르며 typed Store 권한 record field로 노출하지 않습니다.
 
 명시적으로 비권한으로 분류한 metadata는 계속 비권한입니다. 사용자 판단, evidence
 assurance, acceptance, 쓰기 티켓 권한, 닫기 준비 상태를 만들 수 없습니다.

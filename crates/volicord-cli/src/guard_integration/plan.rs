@@ -289,7 +289,7 @@ fn preserve_authoritative_workflow_policy(
     else {
         return Ok(());
     };
-    let authority_value = serde_json::from_str::<Value>(&authority.policy_json).map_err(|_| {
+    let authority_value = serde_json::to_value(&authority.policy).map_err(|_| {
         GuardIntegrationError::runtime(
             "authoritative project workflow policy is malformed; repair project policy before rerunning init",
         )

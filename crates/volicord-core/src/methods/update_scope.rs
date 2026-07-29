@@ -629,7 +629,7 @@ fn plan_update_scope_mutations(
         storage_mutations.push(CoreStorageMutation::WriteTicket(
             WriteTicketMutation::InvalidateActive(WriteTicketInvalidation {
                 task_id: request.task_id.as_str().to_owned(),
-                invalidation_reason: invalidation_reason.as_str().to_owned(),
+                invalidation_reason,
             }),
         ));
     }

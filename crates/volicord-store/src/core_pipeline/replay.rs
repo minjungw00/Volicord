@@ -1,7 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
 use volicord_types::ids::IdempotencyKey;
-use volicord_types::values::MethodName;
+use volicord_types::schema::JsonObject;
+use volicord_types::values::{ActorSource, MethodName, OperationCategory};
 
 use super::{
     facade::CoreProjectStore,
@@ -21,15 +22,15 @@ const TOOL_INVOCATION_COLUMNS: &str = "
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolInvocationRecord {
     pub project_id: String,
-    pub tool_name: String,
-    pub idempotency_key: String,
+    pub tool_name: MethodName,
+    pub idempotency_key: IdempotencyKey,
     pub request_hash: String,
     pub basis_state_version: u64,
     pub committed_state_version: u64,
-    pub actor_source: String,
-    pub operation_category: String,
+    pub actor_source: ActorSource,
+    pub operation_category: OperationCategory,
     pub verification_basis: Option<String>,
-    pub git_workspace_context_json: Option<String>,
+    pub git_workspace_context: Option<JsonObject>,
     pub response_json: String,
 }
 
@@ -37,11 +38,11 @@ pub struct ToolInvocationRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredOperationResult {
     pub project_id: String,
-    pub source_method: String,
-    pub source_idempotency_key: String,
+    pub source_method: MethodName,
+    pub source_idempotency_key: IdempotencyKey,
     pub committed_state_version: u64,
-    pub actor_source: String,
-    pub operation_category: String,
+    pub actor_source: ActorSource,
+    pub operation_category: OperationCategory,
     pub response_sha256: String,
     pub response_size_bytes: u64,
     pub response_json: String,
@@ -50,19 +51,34 @@ pub struct StoredOperationResult {
 /// Verified replay identity derived from current invocation context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedReplayContext {
-    pub actor_source: String,
-    pub operation_category: String,
+    pub actor_source: ActorSource,
+    pub operation_category: OperationCategory,
     pub verification_basis: Option<String>,
-    pub git_workspace_context_json: Option<String>,
+    pub git_workspace_context: Option<JsonObject>,
+}
+
+#[derive(Debug)]
+struct ToolInvocationRaw {
+    project_id: String,
+    tool_name: String,
+    idempotency_key: String,
+    request_hash: String,
+    basis_state_version: u64,
+    committed_state_version: u64,
+    actor_source: String,
+    operation_category: String,
+    verification_basis: Option<String>,
+    git_workspace_context_json: Option<String>,
+    response_json: String,
 }
 
 impl ToolInvocationRecord {
     /// Returns whether this replay row is eligible for the supplied verified context.
     pub fn matches_verified_replay_context(&self, context: &VerifiedReplayContext) -> bool {
-        self.actor_source == context.actor_source.as_str()
-            && self.operation_category == context.operation_category.as_str()
+        self.actor_source == context.actor_source
+            && self.operation_category == context.operation_category
             && self.verification_basis == context.verification_basis
-            && self.git_workspace_context_json == context.git_workspace_context_json
+            && self.git_workspace_context == context.git_workspace_context
     }
 }
 
@@ -94,15 +110,6 @@ impl CoreProjectStore<'_> {
 }
 
 fn stored_operation_result(record: ToolInvocationRecord) -> StoreResult<StoredOperationResult> {
-    if !matches!(
-        serde_json::from_str::<serde_json::Value>(&record.response_json),
-        Ok(serde_json::Value::Object(_))
-    ) {
-        return Err(StoreError::corrupt_stored_json(
-            "project_state",
-            "tool_invocations.response_json",
-        ));
-    }
     let response_size_bytes =
         u64::try_from(record.response_json.len()).map_err(|_| StoreError::SchemaInvariant {
             database_kind: "project_state",
@@ -142,11 +149,11 @@ pub(super) fn tool_invocation_tx(
         .query_row(
             &sql,
             params![project_id, tool_name, idempotency_key],
-            tool_invocation_from_row,
+            tool_invocation_raw_from_row,
         )
         .optional()
         .map_err(StoreError::from)?;
-    record.map(validate_loaded_replay_context).transpose()
+    record.map(decode_tool_invocation).transpose()
 }
 
 fn tool_invocation(
@@ -166,25 +173,23 @@ fn tool_invocation(
         .query_row(
             &sql,
             params![project_id, tool_name, idempotency_key],
-            tool_invocation_from_row,
+            tool_invocation_raw_from_row,
         )
         .optional()
         .map_err(StoreError::from)?;
-    record.map(validate_loaded_replay_context).transpose()
+    record.map(decode_tool_invocation).transpose()
 }
 
-fn validate_loaded_replay_context(
-    record: ToolInvocationRecord,
-) -> StoreResult<ToolInvocationRecord> {
+fn decode_tool_invocation(raw: ToolInvocationRaw) -> StoreResult<ToolInvocationRecord> {
     let record_ref = format!(
         "{}/{}/{}",
-        record.project_id, record.tool_name, record.idempotency_key
+        raw.project_id, raw.tool_name, raw.idempotency_key
     );
     validate_canonical_replay_identity(
-        &record.actor_source,
-        &record.operation_category,
-        record.verification_basis.as_deref(),
-        record.git_workspace_context_json.as_deref(),
+        &raw.actor_source,
+        &raw.operation_category,
+        raw.verification_basis.as_deref(),
+        raw.git_workspace_context_json.as_deref(),
     )
     .map_err(|failure| match failure.field_kind {
         ReplayContextFieldKind::Value => StoreError::corrupt_owner_state_value(
@@ -198,13 +203,73 @@ fn validate_loaded_replay_context(
             failure.logical_column,
         ),
     })?;
-    Ok(record)
+    let tool_name = serde_json::from_value::<MethodName>(serde_json::Value::String(raw.tool_name))
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "tool_invocations",
+                record_ref.clone(),
+                "tool_name",
+            )
+        })?;
+    let actor_source = raw.actor_source.parse::<ActorSource>().map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "tool_invocations",
+            record_ref.clone(),
+            "actor_source",
+        )
+    })?;
+    let operation_category = serde_json::from_value::<OperationCategory>(
+        serde_json::Value::String(raw.operation_category),
+    )
+    .map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "tool_invocations",
+            record_ref.clone(),
+            "operation_category",
+        )
+    })?;
+    let git_workspace_context = raw
+        .git_workspace_context_json
+        .as_deref()
+        .map(|value| {
+            serde_json::from_str::<JsonObject>(value).map_err(|_| {
+                StoreError::corrupt_owner_state_json(
+                    "tool_invocations",
+                    record_ref.clone(),
+                    "git_workspace_context_json",
+                )
+            })
+        })
+        .transpose()?;
+    if !matches!(
+        serde_json::from_str::<serde_json::Value>(&raw.response_json),
+        Ok(serde_json::Value::Object(_))
+    ) {
+        return Err(StoreError::corrupt_owner_state_json(
+            "tool_invocations",
+            record_ref,
+            "response_json",
+        ));
+    }
+    Ok(ToolInvocationRecord {
+        project_id: raw.project_id,
+        tool_name,
+        idempotency_key: IdempotencyKey::new(raw.idempotency_key),
+        request_hash: raw.request_hash,
+        basis_state_version: raw.basis_state_version,
+        committed_state_version: raw.committed_state_version,
+        actor_source,
+        operation_category,
+        verification_basis: raw.verification_basis,
+        git_workspace_context,
+        response_json: raw.response_json,
+    })
 }
 
-fn tool_invocation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolInvocationRecord> {
+fn tool_invocation_raw_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolInvocationRaw> {
     let basis_state_version = row.get::<_, i64>(4)?;
     let committed_state_version = row.get::<_, i64>(5)?;
-    Ok(ToolInvocationRecord {
+    Ok(ToolInvocationRaw {
         project_id: row.get(0)?,
         tool_name: row.get(1)?,
         idempotency_key: row.get(2)?,
@@ -237,15 +302,15 @@ mod tests {
         let response_json = "{\"result\":\"ok\"}".to_owned();
         let result = stored_operation_result(ToolInvocationRecord {
             project_id: "project".to_owned(),
-            tool_name: "volicord.status".to_owned(),
-            idempotency_key: "idempotency".to_owned(),
+            tool_name: MethodName::Status,
+            idempotency_key: IdempotencyKey::new("idempotency"),
             request_hash: "sha256:request".to_owned(),
             basis_state_version: 4,
             committed_state_version: 5,
-            actor_source: "local_user".to_owned(),
-            operation_category: "read_only".to_owned(),
+            actor_source: ActorSource::LocalUser,
+            operation_category: OperationCategory::Read,
             verification_basis: None,
-            git_workspace_context_json: None,
+            git_workspace_context: None,
             response_json: response_json.clone(),
         })
         .expect("object response must project");

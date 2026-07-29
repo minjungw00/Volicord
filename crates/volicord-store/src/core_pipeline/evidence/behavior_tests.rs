@@ -43,7 +43,7 @@ fn latest_evidence_summary_uses_state_version_when_time_and_ids_disagree(
         Some(0),
         vec![pending_event_for_task("summary_authority_old", task_id)],
     );
-    first_input.clock_floor = Some(fixed_time.to_owned());
+    first_input.clock_floor = Some(UtcTimestamp::parse(fixed_time)?);
     first_input.include_live_storage_time = false;
     store.commit_with(
         first_input,
@@ -71,7 +71,7 @@ fn latest_evidence_summary_uses_state_version_when_time_and_ids_disagree(
         Some(1),
         vec![pending_event_for_task("summary_authority_new", task_id)],
     );
-    second_input.clock_floor = Some(fixed_time.to_owned());
+    second_input.clock_floor = Some(UtcTimestamp::parse(fixed_time)?);
     second_input.include_live_storage_time = false;
     store.commit_with(
         second_input,
@@ -106,7 +106,10 @@ fn latest_evidence_summary_uses_state_version_when_time_and_ids_disagree(
         timestamps,
         vec![fixed_time.to_owned(), fixed_time.to_owned()]
     );
-    assert_eq!(store.project_state()?.updated_at, fixed_time);
+    assert_eq!(
+        store.project_state()?.updated_at,
+        UtcTimestamp::parse(fixed_time)?
+    );
 
     let before_counts = store.effect_counts()?;
     let before_state = store.project_state()?;
@@ -122,7 +125,7 @@ fn latest_evidence_summary_uses_state_version_when_time_and_ids_disagree(
             task_id,
         )],
     );
-    duplicate_input.clock_floor = Some(fixed_time.to_owned());
+    duplicate_input.clock_floor = Some(UtcTimestamp::parse(fixed_time)?);
     duplicate_input.include_live_storage_time = false;
     let error = store
         .commit_with(

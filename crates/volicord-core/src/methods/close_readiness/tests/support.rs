@@ -8,7 +8,8 @@ use volicord_types::ids::{ProjectId, RequestId, TaskId};
 use volicord_types::schema::{JsonObject, ToolEnvelope};
 use volicord_types::values::{
     AcceptancePolicy, PersistedCloseSummary, RequestedControlLevel, TaskControlLevel,
-    TaskLifecyclePhase, TaskMode, UtcTimestamp, WorkPhase,
+    TaskLifecyclePhase, TaskMode, UnrecordedChangeConfidence, UnrecordedChangeStatus, UtcTimestamp,
+    WorkPhase,
 };
 
 pub(super) fn facts() -> CloseReadinessFacts {
@@ -86,7 +87,7 @@ pub(super) fn project_state() -> ProjectStateHeader {
         project_id: "project_close_readiness".to_owned(),
         state_version: 7,
         active_task_id: Some("task_close_readiness".to_owned()),
-        updated_at: "2026-07-27T00:00:00Z".to_owned(),
+        updated_at: UtcTimestamp::parse("2026-07-27T00:00:00Z").expect("valid timestamp"),
     }
 }
 
@@ -98,15 +99,15 @@ pub(super) fn unresolved_change() -> UnrecordedChangeRecord {
         correlation: None,
         connection_internal_id: "connection_close_readiness".to_owned(),
         task_id: Some("task_close_readiness".to_owned()),
-        status: "unresolved".to_owned(),
-        confidence: "confirmed".to_owned(),
+        status: UnrecordedChangeStatus::Unresolved,
+        confidence: UnrecordedChangeConfidence::Confirmed,
         summary: "unrecorded test change".to_owned(),
-        observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
-        detection_json: "{}".to_owned(),
-        resolution_json: None,
-        detected_at: "2026-07-27T00:00:00Z".to_owned(),
+        observed_paths: vec!["src/lib.rs".parse().expect("valid path")],
+        detection: JsonObject::new(),
+        resolution: None,
+        detected_at: UtcTimestamp::parse("2026-07-27T00:00:00Z").expect("valid timestamp"),
         resolved_at: None,
         resolved_by_actor_source: None,
-        metadata_json: "{}".to_owned(),
+        metadata: JsonObject::new(),
     }
 }

@@ -107,8 +107,11 @@ A committed `dry_run=false` result that has planned storage effects:
 
 A valid call with no storage mutations returns a read-only result and does not create a replay row, event, or state-version increment.
 
-Reconciliation plans from persisted Unrecorded Change records and does not
-create new observations. Reconciliation changes
+Store strictly decodes persisted Unrecorded Change rows into typed status,
+confidence, Product Repository paths, actor, timestamp, and object facts before
+Core plans reconciliation. Core does not interpret their physical JSON or
+persisted closed-value spelling and does not create new observations.
+Reconciliation changes
 do not consume or invalidate a write ticket unless a separate operation changes
 one of that ticket's explicit validity coordinates; their state-version
 increments alone are irrelevant to ticket validity.

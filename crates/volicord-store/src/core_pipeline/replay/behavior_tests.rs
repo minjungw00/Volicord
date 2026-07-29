@@ -4,7 +4,7 @@ use rusqlite::params;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
-use volicord_types::values::MethodName;
+use volicord_types::values::{ActorSource, MethodName, OperationCategory};
 
 use crate::core_pipeline::test_support::{
     pending_event, replay_context, response_json, task_insert, StoreFixture as StoreHarness,
@@ -67,14 +67,18 @@ fn transaction_replay_rejects_changed_git_workspace_context() -> Result<(), Box<
     let harness = StoreHarness::new()?;
     let mut store = harness.store()?;
     let mut first_context = replay_context(CONNECTION_ID, "agent_workflow");
-    first_context.git_workspace_context_json =
-        Some(volicord_types::canonical::canonical_json_string(&json!({
+    first_context.git_workspace_context = Some(
+        json!({
             "git_common_dir": "/tmp/repo/.git",
             "worktree_id": format!("sha256:{}", "1".repeat(64)),
             "branch_ref": "refs/heads/original",
             "head_sha": "1111111111111111111111111111111111111111",
             "workspace_fingerprint": format!("sha256:{}", "2".repeat(64))
-        }))?);
+        })
+        .as_object()
+        .cloned()
+        .expect("object"),
+    );
     let first_input = commit_input(
         &ProjectId::new(PROJECT_ID),
         MethodName::UpdateScope,
@@ -115,14 +119,18 @@ fn transaction_replay_rejects_changed_git_workspace_context() -> Result<(), Box<
     assert_eq!(store.effect_counts()?, before);
 
     let mut changed_context = first_context;
-    changed_context.git_workspace_context_json =
-        Some(volicord_types::canonical::canonical_json_string(&json!({
+    changed_context.git_workspace_context = Some(
+        json!({
             "git_common_dir": "/tmp/repo/.git",
             "worktree_id": format!("sha256:{}", "3".repeat(64)),
             "branch_ref": "refs/heads/other",
             "head_sha": "2222222222222222222222222222222222222222",
             "workspace_fingerprint": format!("sha256:{}", "4".repeat(64))
-        }))?);
+        })
+        .as_object()
+        .cloned()
+        .expect("object"),
+    );
     let replay_input = commit_input(
         &ProjectId::new(PROJECT_ID),
         MethodName::UpdateScope,
@@ -147,14 +155,18 @@ fn malformed_stored_git_workspace_replay_context_is_corruption() -> Result<(), B
     let harness = StoreHarness::new()?;
     let mut store = harness.store()?;
     let mut context = replay_context(CONNECTION_ID, "agent_workflow");
-    context.git_workspace_context_json =
-        Some(volicord_types::canonical::canonical_json_string(&json!({
+    context.git_workspace_context = Some(
+        json!({
             "git_common_dir": "/tmp/repo/.git",
             "worktree_id": format!("sha256:{}", "1".repeat(64)),
             "branch_ref": "refs/heads/original",
             "head_sha": "1111111111111111111111111111111111111111",
             "workspace_fingerprint": format!("sha256:{}", "2".repeat(64))
-        }))?);
+        })
+        .as_object()
+        .cloned()
+        .expect("object"),
+    );
     let idempotency_key = IdempotencyKey::new("idem_store_workspace_corrupt");
     let first = store.commit_with(
         commit_input(
@@ -301,11 +313,14 @@ fn operation_result_reuses_exact_replay_bytes_and_metadata() -> Result<(), Box<d
         .operation_result(MethodName::UpdateScope, &idempotency_key)?
         .expect("committed replay response should be retrievable");
     assert_eq!(stored.project_id, PROJECT_ID);
-    assert_eq!(stored.source_method, MethodName::UpdateScope.as_str());
-    assert_eq!(stored.source_idempotency_key, idempotency_key.as_str());
+    assert_eq!(stored.source_method, MethodName::UpdateScope);
+    assert_eq!(stored.source_idempotency_key, idempotency_key);
     assert_eq!(stored.committed_state_version, 1);
-    assert_eq!(stored.actor_source, ACTOR_SOURCE);
-    assert_eq!(stored.operation_category, "agent_workflow");
+    assert_eq!(
+        stored.actor_source,
+        ActorSource::agent_connection(CONNECTION_ID)
+    );
+    assert_eq!(stored.operation_category, OperationCategory::AgentWorkflow);
     assert_eq!(stored.response_json, response_json);
     assert_eq!(stored.response_size_bytes, response_json.len() as u64);
     assert_eq!(
@@ -323,18 +338,12 @@ fn invalid_replay_identity_is_rejected_before_transaction_and_effects() -> Resul
     let before_state = store.project_state()?;
     let before_effects = store.effect_counts()?;
 
-    let mut invalid_actor = replay_context(CONNECTION_ID, "agent_workflow");
-    invalid_actor.actor_source = "agent_connection:".to_owned();
-    let mut invalid_category = replay_context(CONNECTION_ID, "agent_workflow");
-    invalid_category.operation_category = "agent-workflow".to_owned();
     let mut blank_basis = replay_context(CONNECTION_ID, "agent_workflow");
     blank_basis.verification_basis = Some(" \t ".to_owned());
     let mut invalid_git_context = replay_context(CONNECTION_ID, "agent_workflow");
-    invalid_git_context.git_workspace_context_json = Some("{}".to_owned());
+    invalid_git_context.git_workspace_context = Some(serde_json::Map::new());
 
     for (case, context, expected_field) in [
-        ("actor", invalid_actor, "actor_source"),
-        ("category", invalid_category, "operation_category"),
         ("basis", blank_basis, "verification_basis"),
         (
             "git_context",

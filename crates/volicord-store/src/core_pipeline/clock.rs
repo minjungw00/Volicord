@@ -6,7 +6,7 @@ use crate::{StoreError, StoreResult};
 
 impl CoreProjectStore<'_> {
     /// Returns the monotonic Core current UTC clock for this Store handle.
-    pub fn current_timestamp(&self) -> StoreResult<String> {
+    pub fn current_timestamp(&self) -> StoreResult<UtcTimestamp> {
         let local_floor = self.last_clock_sample.borrow().clone();
         let timestamp = project_current_utc_timestamp_for_conn(
             &self.conn,
@@ -14,20 +14,14 @@ impl CoreProjectStore<'_> {
             local_floor.as_ref(),
         )?;
         *self.last_clock_sample.borrow_mut() = Some(timestamp.clone());
-        Ok(timestamp.to_string())
+        Ok(timestamp)
     }
 
     /// Returns the persisted project clock floor combined with samples already
     /// accepted on this Store handle, without sampling SQLite wall-clock time.
     pub fn current_clock_floor(&self) -> StoreResult<UtcTimestamp> {
         let persisted = self.project_state()?;
-        let persisted = UtcTimestamp::parse(&persisted.updated_at).map_err(|_| {
-            StoreError::corrupt_owner_state_value(
-                "project_state",
-                &self.project.project_id,
-                "updated_at",
-            )
-        })?;
+        let persisted = persisted.updated_at;
         persisted
             .ensure_canonical_rfc3339_representable()
             .map_err(|_| {

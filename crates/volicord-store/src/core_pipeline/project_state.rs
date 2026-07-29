@@ -13,7 +13,15 @@ pub struct ProjectStateHeader {
     pub project_id: String,
     pub state_version: u64,
     pub active_task_id: Option<String>,
-    pub updated_at: String,
+    pub updated_at: UtcTimestamp,
+}
+
+#[derive(Debug)]
+struct ProjectStateRaw {
+    project_id: String,
+    state_version: u64,
+    active_task_id: Option<String>,
+    updated_at: String,
 }
 
 impl CoreProjectStore<'_> {
@@ -29,15 +37,14 @@ fn read_project_state(conn: &Connection, project_id: &str) -> StoreResult<Projec
            FROM project_state
           WHERE project_id = ?1"
     );
-    let state = conn
-        .query_row(&sql, params![project_id], project_state_from_row)
+    let raw = conn
+        .query_row(&sql, params![project_id], project_state_raw_from_row)
         .optional()?
         .ok_or_else(|| StoreError::NotFound {
             entity: "project_state",
             id: project_id.to_owned(),
         })?;
-    validate_project_state_updated_at(&state)?;
-    Ok(state)
+    decode_project_state(raw)
 }
 
 pub(super) fn read_project_state_tx(
@@ -49,20 +56,19 @@ pub(super) fn read_project_state_tx(
            FROM project_state
           WHERE project_id = ?1"
     );
-    let state = tx
-        .query_row(&sql, params![project_id], project_state_from_row)
+    let raw = tx
+        .query_row(&sql, params![project_id], project_state_raw_from_row)
         .optional()?
         .ok_or_else(|| StoreError::NotFound {
             entity: "project_state",
             id: project_id.to_owned(),
         })?;
-    validate_project_state_updated_at(&state)?;
-    Ok(state)
+    decode_project_state(raw)
 }
 
-fn project_state_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectStateHeader> {
+fn project_state_raw_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectStateRaw> {
     let state_version = row.get::<_, i64>(1)?;
-    Ok(ProjectStateHeader {
+    Ok(ProjectStateRaw {
         project_id: row.get(0)?,
         state_version: nonnegative_i64_to_u64("project_state.state_version", state_version)?,
         active_task_id: row.get(2)?,
@@ -70,16 +76,21 @@ fn project_state_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectSt
     })
 }
 
-fn validate_project_state_updated_at(state: &ProjectStateHeader) -> StoreResult<()> {
-    UtcTimestamp::parse(&state.updated_at)
-        .and_then(|timestamp| {
-            timestamp
-                .ensure_canonical_rfc3339_representable()
-                .map_err(|_| volicord_types::values::UtcTimestampParseError)
-        })
+fn decode_project_state(raw: ProjectStateRaw) -> StoreResult<ProjectStateHeader> {
+    let updated_at = UtcTimestamp::parse(&raw.updated_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value("project_state", &raw.project_id, "updated_at")
+    })?;
+    updated_at
+        .ensure_canonical_rfc3339_representable()
         .map_err(|_| {
-            StoreError::corrupt_owner_state_value("project_state", &state.project_id, "updated_at")
-        })
+            StoreError::corrupt_owner_state_value("project_state", &raw.project_id, "updated_at")
+        })?;
+    Ok(ProjectStateHeader {
+        project_id: raw.project_id,
+        state_version: raw.state_version,
+        active_task_id: raw.active_task_id,
+        updated_at,
+    })
 }
 
 #[cfg(test)]
@@ -93,7 +104,7 @@ mod tests {
             .query_row(
                 "SELECT 'project', -1, NULL, '2026-01-01T00:00:00Z'",
                 [],
-                project_state_from_row,
+                project_state_raw_from_row,
             )
             .expect_err("negative state version must fail strict row decoding");
 

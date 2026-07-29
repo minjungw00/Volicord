@@ -1,7 +1,7 @@
 use rusqlite::{params, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
-use volicord_types::values::{MethodName, UtcTimestamp};
+use volicord_types::values::MethodName;
 
 use super::mutations::{AggregateMutationResult, MutationContext};
 use super::{
@@ -80,18 +80,21 @@ impl CoreProjectStore<'_> {
                     detail: "committed mutations require verified invocation context".to_owned(),
                 })?;
         validate_replay_context(replay_context)?;
+        let replay_actor_source = replay_context.actor_source.to_canonical_string();
+        let replay_operation_category = replay_context.operation_category.as_str();
+        let replay_git_workspace_context_json = replay_context
+            .git_workspace_context
+            .as_ref()
+            .map(volicord_types::canonical::canonical_json_string)
+            .transpose()
+            .map_err(|_| StoreError::InvalidInput {
+                detail: "git_workspace_context cannot be serialized canonically".to_owned(),
+            })?;
         for event in &input.events {
             validate_pending_event(event)?;
         }
 
-        let explicit_clock_floor = input
-            .clock_floor
-            .as_deref()
-            .map(UtcTimestamp::parse)
-            .transpose()
-            .map_err(|_| StoreError::InvalidInput {
-                detail: "commit clock_floor must be a valid RFC 3339 UTC timestamp".to_owned(),
-            })?;
+        let explicit_clock_floor = input.clock_floor;
         if explicit_clock_floor
             .as_ref()
             .is_some_and(|timestamp| timestamp.ensure_canonical_rfc3339_representable().is_err())
@@ -190,14 +193,7 @@ impl CoreProjectStore<'_> {
             // remains bounded by the transaction's persisted project floor.
             match local_clock_floor {
                 Some(local_clock_floor) => {
-                    let persisted_floor =
-                        UtcTimestamp::parse(&current.updated_at).map_err(|_| {
-                            StoreError::corrupt_owner_state_value(
-                                "project_state",
-                                &self.project.project_id,
-                                "updated_at",
-                            )
-                        })?;
+                    let persisted_floor = current.updated_at.clone();
                     std::cmp::max(persisted_floor, local_clock_floor)
                 }
                 None => {
@@ -265,8 +261,8 @@ impl CoreProjectStore<'_> {
                 event_id: &event.event_id,
                 state_version: committed_state_i64,
                 event_type: &event.event_kind,
-                actor_source: replay_context.actor_source.as_str(),
-                operation_category: replay_context.operation_category.as_str(),
+                actor_source: &replay_actor_source,
+                operation_category: replay_operation_category,
                 task_id: event.task_id.as_deref(),
                 change_unit_id: event.change_unit_id.as_deref(),
                 payload_json: &event.event_payload_json,
@@ -313,8 +309,8 @@ impl CoreProjectStore<'_> {
                     event.event_id,
                     committed_state_i64,
                     event.event_kind,
-                    replay_context.actor_source.as_str(),
-                    replay_context.operation_category.as_str(),
+                    replay_actor_source,
+                    replay_operation_category,
                     event.task_id,
                     event.change_unit_id,
                     event.event_payload_json,
@@ -367,10 +363,10 @@ impl CoreProjectStore<'_> {
                     input.request_hash,
                     current_state_i64,
                     committed_state_i64,
-                    replay_context.actor_source.as_str(),
-                    replay_context.operation_category.as_str(),
+                    replay_actor_source,
+                    replay_operation_category,
                     replay_context.verification_basis.as_deref(),
-                    replay_context.git_workspace_context_json.as_deref(),
+                    replay_git_workspace_context_json.as_deref(),
                     response_json,
                     committed_at_text
                 ],

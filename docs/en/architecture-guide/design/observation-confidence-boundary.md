@@ -35,7 +35,10 @@ summary prose.
 
 CLI Guard modules decode host input and project host output. Core policy owns
 write and reconciliation interpretation. Store owns Guard events,
-Unrecorded Changes, structured finding lifecycle, and cause graphs.
+Unrecorded Changes, structured finding lifecycle, and cause graphs. Store
+strictly decodes persisted observation status, confidence, Product Repository
+paths, typed objects, actors, and timestamps before Core receives a
+reconciliation record.
 `volicord-types` owns dependency-safe diagnostic identity and report shapes;
 CLI and MCP domain modules own exhaustive conversion from their failures.
 

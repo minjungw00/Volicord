@@ -46,7 +46,7 @@ use volicord_store::{
     workflow_records::ProjectWorkflowPolicyAuthorityApply,
     RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::connection_verification::{
     ConnectionVerificationError, ConnectionVerificationReport,
 };

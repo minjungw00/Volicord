@@ -9,8 +9,8 @@ use volicord_types::{
     ids::{AgentConnectionId, ProjectId},
     schema::JsonObject,
     values::{
-        AcceptancePolicy, ActorSource, PersistedCloseSummary, RequestedControlLevel,
-        TaskControlLevel, TaskLifecyclePhase, TaskMode, WorkPhase,
+        AcceptancePolicy, ActorSource, OperationCategory, PersistedCloseSummary,
+        RequestedControlLevel, TaskControlLevel, TaskLifecyclePhase, TaskMode, WorkPhase,
     },
 };
 
@@ -81,20 +81,28 @@ pub(super) fn replay_context(
     connection_id: &str,
     operation_category: &str,
 ) -> VerifiedReplayContext {
+    let operation_category = match operation_category {
+        "read" | "read_only" => OperationCategory::Read,
+        "agent_workflow" => OperationCategory::AgentWorkflow,
+        "user_only" => OperationCategory::UserOnly,
+        "admin_local" => OperationCategory::AdminLocal,
+        "local_recovery" => OperationCategory::LocalRecovery,
+        value => panic!("unsupported test operation category: {value}"),
+    };
     VerifiedReplayContext {
-        actor_source: format!("agent_connection:{connection_id}"),
-        operation_category: operation_category.to_owned(),
+        actor_source: ActorSource::AgentConnection(AgentConnectionId::new(connection_id)),
+        operation_category,
         verification_basis: Some("store_test_registration".to_owned()),
-        git_workspace_context_json: None,
+        git_workspace_context: None,
     }
 }
 
 pub(super) fn local_user_replay_context() -> VerifiedReplayContext {
     VerifiedReplayContext {
-        actor_source: "local_user".to_owned(),
-        operation_category: "user_only".to_owned(),
+        actor_source: ActorSource::LocalUser,
+        operation_category: OperationCategory::UserOnly,
         verification_basis: Some("store_test_user_channel".to_owned()),
-        git_workspace_context_json: None,
+        git_workspace_context: None,
     }
 }
 

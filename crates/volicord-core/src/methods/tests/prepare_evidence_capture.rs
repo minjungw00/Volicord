@@ -820,12 +820,8 @@ fn contradicted_and_corrupt_capture_paths_fail_closed_without_false_support(
     let corrupt = harness.service.record_run(
         corrupt_request,
         invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace.clone()),
-    )?;
-    assert_eq!(corrupt.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        corrupt.response_value["errors"][0]["code"],
-        "PERSISTED_DATA_CORRUPT"
     );
+    assert!(matches!(corrupt, Err(CorePipelineError::Invariant { .. })));
     assert_eq!(harness.counts()?, before_corrupt);
 
     let mut oversized_safe_receipt = serde_json::from_str::<Value>(&stored_safe_receipt)?;

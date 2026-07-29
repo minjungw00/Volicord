@@ -102,14 +102,14 @@ impl StoreError {
         }
     }
 
-    pub fn corrupt_stored_json(database_kind: &'static str, field: &'static str) -> Self {
+    pub(crate) fn corrupt_stored_json(database_kind: &'static str, field: &'static str) -> Self {
         Self::CorruptStoredJson {
             database_kind,
             field,
         }
     }
 
-    pub fn corrupt_owner_state_json(
+    pub(crate) fn corrupt_owner_state_json(
         table: &'static str,
         record_ref: impl Into<String>,
         logical_column: &'static str,
@@ -122,7 +122,7 @@ impl StoreError {
         }
     }
 
-    pub fn corrupt_owner_state_value(
+    pub(crate) fn corrupt_owner_state_value(
         table: &'static str,
         record_ref: impl Into<String>,
         logical_column: &'static str,
@@ -135,7 +135,7 @@ impl StoreError {
         }
     }
 
-    pub fn corrupt_stored_value(database_kind: &'static str, field: &'static str) -> Self {
+    pub(crate) fn corrupt_stored_value(database_kind: &'static str, field: &'static str) -> Self {
         Self::CorruptStoredValue {
             database_kind,
             field,

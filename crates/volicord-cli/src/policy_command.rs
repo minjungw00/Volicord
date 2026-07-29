@@ -27,10 +27,11 @@ use volicord_store::{
     },
     RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::guard_manifest::{guard_manifest_from_json, GuardManagedArtifact};
 use volicord_types::ids::ProjectId;
 use volicord_types::values::{AcceptancePolicy, RequestedControlLevel, TaskControlLevel, TaskMode};
+use volicord_types::workflow_policy::{ProjectWorkflowPolicy, ProjectWorkflowPolicySource};
 
 use crate::{
     guard_integration::{
@@ -110,7 +111,7 @@ impl From<ProjectCommandError> for PolicyCommandError {
 #[derive(Debug, Clone)]
 pub(crate) struct ValidatedPolicyFile {
     pub(crate) value: Value,
-    pub(crate) canonical_json: String,
+    pub(crate) policy: ProjectWorkflowPolicy,
     pub(crate) fingerprint: String,
 }
 
@@ -216,7 +217,7 @@ where
         vec![policy_repair_action(&repo_root, None)]
     };
     render_json(&PolicyShowReport {
-        schema: authority.policy_schema,
+        schema: VOLICORD_POLICY_SCHEMA.to_owned(),
         policy_version: authority.policy_version,
         policy_fingerprint: authority.policy_fingerprint,
         source: "project_database".to_owned(),
@@ -300,9 +301,9 @@ fn apply_command_admitted(
     let authority_apply =
         store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
             policy_version: requested_version,
-            policy_json: candidate.canonical_json.clone(),
+            policy: candidate.policy.clone(),
             policy_fingerprint: candidate.fingerprint.clone(),
-            source: "project_database".to_owned(),
+            source: ProjectWorkflowPolicySource::ProjectDatabase,
             expected_prior_fingerprint: prior
                 .as_ref()
                 .map(|record| record.policy_fingerprint.clone()),
@@ -366,27 +367,11 @@ fn apply_command_admitted(
 fn authority_policy_value(
     authority: &ProjectWorkflowPolicyRecord,
 ) -> Result<Value, PolicyCommandError> {
-    if authority.policy_schema != VOLICORD_POLICY_SCHEMA {
-        return Err(corrupt_policy_authority());
-    }
-    let value = serde_json::from_str::<Value>(&authority.policy_json)
-        .map_err(|_| corrupt_policy_authority())?;
-    validate_workflow_policy(&value, None).map_err(|_| corrupt_policy_authority())?;
-    let canonical = canonical_json_string(&value).map_err(|_| corrupt_policy_authority())?;
-    let fingerprint = canonical_json_sha256(&value)
-        .map_err(|_| corrupt_policy_authority())?
-        .into_inner();
-    if canonical != authority.policy_json || fingerprint != authority.policy_fingerprint {
-        return Err(corrupt_policy_authority());
-    }
-    Ok(value)
-}
-
-fn corrupt_policy_authority() -> PolicyCommandError {
-    PolicyCommandError::Runtime(
-        "PROJECT_POLICY_CORRUPT: authoritative project workflow policy is malformed or has an inconsistent fingerprint"
-            .to_owned(),
-    )
+    serde_json::to_value(&authority.policy).map_err(|error| {
+        PolicyCommandError::Runtime(format!(
+            "authoritative project workflow policy could not be rendered: {error}"
+        ))
+    })
 }
 
 fn validate_policy_bindings(
@@ -612,14 +597,11 @@ fn active_task_requires_escalation(
     let current = task.effective_control_level;
     let current_acceptance = task.acceptance_policy;
     if let Some(mark) = task_policy_control_reevaluation(&task)? {
-        if parse_control(&mark.required_effective_control_level)? > current {
+        if mark.required_effective_control_level > current {
             return Ok(true);
         }
         if mark
             .required_acceptance_policy
-            .as_deref()
-            .map(parse_acceptance)
-            .transpose()?
             .is_some_and(|required| acceptance_rank(required) > acceptance_rank(current_acceptance))
         {
             return Ok(true);
@@ -789,8 +771,20 @@ pub(crate) fn read_validated_policy_file(
     })?;
     let value = strict.0;
     validate_workflow_policy(&value, None).map_err(validation_issue_error)?;
-    let canonical_json = canonical_json_string(&value).map_err(|error| {
-        PolicyCommandError::Runtime(format!("policy canonicalization failed: {error}"))
+    let policy =
+        serde_json::from_value::<ProjectWorkflowPolicy>(value.clone()).map_err(|error| {
+            validation_error(
+                "POLICY_JSON_MALFORMED",
+                "$",
+                format!("policy input does not match the current typed policy contract: {error}"),
+            )
+        })?;
+    policy.validate().map_err(|error| {
+        validation_error(
+            "POLICY_JSON_MALFORMED",
+            format!("$.{}", error.field()),
+            error.to_string(),
+        )
     })?;
     let fingerprint = canonical_json_sha256(&value)
         .map_err(|error| {
@@ -799,7 +793,7 @@ pub(crate) fn read_validated_policy_file(
         .into_inner();
     Ok(ValidatedPolicyFile {
         value,
-        canonical_json,
+        policy,
         fingerprint,
     })
 }

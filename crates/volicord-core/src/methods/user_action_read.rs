@@ -1,6 +1,6 @@
 //! Adapter-neutral UserAction reads and originating-result replay.
 
-use crate::methods::{decode_required_json, state_ref};
+use crate::methods::{decode_semantic_replay_result, state_ref};
 use crate::pipeline::{
     operation_result_ref, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
@@ -11,7 +11,6 @@ use volicord_store::core_pipeline::{
     CoreProjectStore, ProjectContinuityRecordRecord, StoredUserActionResolution,
     ToolInvocationRecord,
 };
-use volicord_store::StoreError;
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId};
 use volicord_types::methods::{MethodResultBase, RequestUserActionResult, ResolveUserActionResult};
 use volicord_types::schema::{
@@ -67,32 +66,29 @@ fn user_action_resolution_replay_projection(
     public_resolution: &UserActionResolution,
     resolution_ref: &StateRecordRef,
 ) -> CoreResult<(StateRecordRef, Vec<StateRecordRef>)> {
-    let replay = replay.ok_or_else(|| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "user_action_resolutions",
-            resolution.user_action_resolution_id(),
-            "channel_submission_id",
-        ))
+    let replay = replay.ok_or_else(|| CorePipelineError::Invariant {
+        detail: format!(
+            "resolved user action `{}` has no originating semantic replay result",
+            resolution.user_action_resolution_id()
+        ),
     })?;
     let replay_ref = format!(
         "{}/{}/{}",
-        replay.project_id, replay.tool_name, replay.idempotency_key
+        replay.project_id,
+        replay.tool_name.as_str(),
+        replay.idempotency_key.as_str()
     );
-    let result: ResolveUserActionResult = decode_required_json(
-        "tool_invocations",
-        replay_ref.clone(),
-        "response_json",
-        Some(&replay.response_json),
-    )?;
+    let result: ResolveUserActionResult =
+        decode_semantic_replay_result(&replay_ref, &replay.response_json)?;
     let exact_replay_context = replay.project_id == resolution.project_id()
-        && replay.tool_name == MethodName::ResolveUserAction.as_str()
-        && replay.idempotency_key == resolution.channel_submission_id()
-        && replay.actor_source == resolution.resolved_by_actor_source().to_canonical_string()
-        && replay.actor_source == ActorSource::LocalUser.to_canonical_string()
-        && replay.operation_category == OperationCategory::UserOnly.as_str()
+        && replay.tool_name == MethodName::ResolveUserAction
+        && replay.idempotency_key.as_str() == resolution.channel_submission_id()
+        && &replay.actor_source == resolution.resolved_by_actor_source()
+        && replay.actor_source == ActorSource::LocalUser
+        && replay.operation_category == OperationCategory::UserOnly
         && replay.verification_basis.as_deref()
             == Some(resolution.resolved_verification_basis().as_str())
-        && replay.git_workspace_context_json.is_none();
+        && replay.git_workspace_context.is_none();
     let exact_resolution = exact_replay_context
         && result.user_action_resolution == *public_resolution
         && result.user_action_resolution_ref.record_kind == StateRecordKind::UserActionResolution
@@ -108,9 +104,11 @@ fn user_action_resolution_replay_projection(
             .as_ref()
             == Some(&replay.committed_state_version);
     if !exact_resolution {
-        return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json("tool_invocations", replay_ref, "response_json"),
-        ));
+        return Err(CorePipelineError::Invariant {
+            detail: format!(
+                "resolve_user_action replay `{replay_ref}` contradicts its typed authority facts"
+            ),
+        });
     }
     let resolution_source_ref = state_ref(
         StateRecordKind::UserActionResolution,
@@ -124,13 +122,12 @@ fn user_action_resolution_replay_projection(
         if record.project_id != resolution.project_id()
             || record.source_task_id != public_resolution.task_id.as_str()
         {
-            return Err(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_value(
-                    "project_continuity_records",
-                    &record.continuity_record_id,
-                    "source_task_id",
+            return Err(CorePipelineError::Invariant {
+                detail: format!(
+                    "continuity record `{}` contradicts its resolved user-action source",
+                    record.continuity_record_id
                 ),
-            ));
+            });
         }
         if record.source_refs.first() == Some(&resolution_source_ref) {
             expected_derived_refs.push(state_ref(
@@ -146,9 +143,11 @@ fn user_action_resolution_replay_projection(
     expected_derived_refs.sort_by_key(state_record_ref_identity_key);
     actual_derived_refs.sort_by_key(state_record_ref_identity_key);
     if actual_derived_refs != expected_derived_refs {
-        return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json("tool_invocations", replay_ref, "response_json"),
-        ));
+        return Err(CorePipelineError::Invariant {
+            detail: format!(
+                "resolve_user_action replay `{replay_ref}` has inconsistent derived references"
+            ),
+        });
     }
     Ok((result.user_action_resolution_ref, result.derived_refs))
 }
@@ -318,12 +317,11 @@ impl CoreService {
                     .user_action_resolution_ref
                     .as_ref()
                     .cloned()
-                    .ok_or_else(|| {
-                        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                            "user_action_requests",
-                            user_action_request_id.as_str(),
-                            "user_action_resolution_ref",
-                        ))
+                    .ok_or_else(|| CorePipelineError::Invariant {
+                        detail: format!(
+                            "resolved user action `{}` has no typed resolution reference",
+                            user_action_request_id.as_str()
+                        ),
                     })?;
                 let safe = user_action_resolution_facts(&request, &public_resolution)?;
                 let (resolution_ref, derived_refs) = user_action_resolution_replay_projection(
@@ -413,31 +411,24 @@ impl CoreService {
             return Ok(None);
         };
         let source_idempotency_key = IdempotencyKey::new(record.request().source_idempotency_key());
-        let replay = origin_replay.ok_or_else(|| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                "user_action_requests",
-                user_action_request_id.as_str(),
-                "source_idempotency_key",
-            ))
+        let replay = origin_replay.ok_or_else(|| CorePipelineError::Invariant {
+            detail: format!(
+                "user action `{}` has no originating semantic replay result",
+                user_action_request_id.as_str()
+            ),
         })?;
-        if replay.operation_category != OperationCategory::AgentWorkflow.as_str()
-            || replay.actor_source != verified_invocation.actor_source.to_canonical_string()
+        if replay.operation_category != OperationCategory::AgentWorkflow
+            || replay.actor_source != verified_invocation.actor_source
         {
             return Ok(None);
         }
-        if replay.actor_source
-            != record
-                .request()
-                .requested_by_actor_source()
-                .to_canonical_string()
-        {
-            return Err(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_value(
-                    "user_action_requests",
-                    user_action_request_id.as_str(),
-                    "requested_by_actor_source",
+        if &replay.actor_source != record.request().requested_by_actor_source() {
+            return Err(CorePipelineError::Invariant {
+                detail: format!(
+                    "user action `{}` contradicts its originating actor authority",
+                    user_action_request_id.as_str()
                 ),
-            ));
+            });
         }
         if !crate::pipeline::stored_public_response_is_current(
             MethodName::RequestUserAction,
@@ -452,24 +443,19 @@ impl CoreService {
             )
             .map(Some);
         }
-        let result: RequestUserActionResult = decode_required_json(
-            "tool_invocations",
-            format!(
-                "{}/{}/{}",
-                replay.project_id, replay.tool_name, replay.idempotency_key
-            ),
-            "response_json",
-            Some(&replay.response_json),
-        )?;
+        let replay_identity = format!(
+            "{}/{}/{}",
+            replay.project_id,
+            replay.tool_name.as_str(),
+            replay.idempotency_key.as_str()
+        );
+        let result: RequestUserActionResult =
+            decode_semantic_replay_result(&replay_identity, &replay.response_json)?;
         let exact_origin = replay.project_id == project_id.as_str()
-            && replay.tool_name == MethodName::RequestUserAction.as_str()
-            && replay.idempotency_key == source_idempotency_key.as_str()
-            && replay.operation_category == OperationCategory::AgentWorkflow.as_str()
-            && replay.actor_source
-                == record
-                    .request()
-                    .requested_by_actor_source()
-                    .to_canonical_string()
+            && replay.tool_name == MethodName::RequestUserAction
+            && replay.idempotency_key == source_idempotency_key
+            && replay.operation_category == OperationCategory::AgentWorkflow
+            && &replay.actor_source == record.request().requested_by_actor_source()
             && replay.committed_state_version > replay.basis_state_version
             && result.base.effect_kind() == EffectKind::CoreCommitted
             && result.base.dry_run_intent().is_not_requested()
@@ -477,16 +463,11 @@ impl CoreService {
             && result.user_action_request_summary
                 == AgentSafeUserActionRequestSummary::pending(user_action_request_id.clone());
         if !exact_origin {
-            return Err(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_json(
-                    "tool_invocations",
-                    format!(
-                        "{}/{}/{}",
-                        replay.project_id, replay.tool_name, replay.idempotency_key
-                    ),
-                    "response_json",
+            return Err(CorePipelineError::Invariant {
+                detail: format!(
+                    "request_user_action replay `{replay_identity}` contradicts its typed authority facts"
                 ),
-            ));
+            });
         }
         let response_value = serde_json::from_str(&replay.response_json)?;
         let result_ref = operation_result_ref(

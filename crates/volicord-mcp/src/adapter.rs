@@ -1267,6 +1267,7 @@ impl McpAdapter {
         {
             let observed_at = CoreProjectStore::open_for_mutation(context, project_id)
                 .and_then(|store| store.current_timestamp())
+                .map(|timestamp| timestamp.to_string())
                 .map_err(McpAdapterError::Store)?;
             bind_agent_session_runtime(
                 context,

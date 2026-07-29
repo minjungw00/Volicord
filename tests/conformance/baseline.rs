@@ -29,7 +29,8 @@ use volicord_types::values::{
     ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
     EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
     JudgmentResolutionOutcome, OperationCategory, ResponseKind, StateRecordKind,
-    UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
+    UnrecordedChangeConfidence, UserActionChannelKind, UserActionOptionAction,
+    UserActionRequiredFor, UtcTimestamp,
 };
 use volicord_user_action_service::PendingUserActionFactsRequest;
 
@@ -4002,12 +4003,12 @@ fn insert_unrecorded_change_fixture(
             correlation: None,
             connection_internal_id: fixture.connection_id().to_owned(),
             task_id: Some(task_id.to_owned()),
-            confidence: "confirmed".to_owned(),
+            confidence: UnrecordedChangeConfidence::Confirmed,
             summary: "Product Repository change observed outside a recorded run.".to_owned(),
-            observed_paths_json: r#"["src/export.rs"]"#.to_owned(),
-            detection_json: "{}".to_owned(),
-            detected_at: "2026-06-30T00:05:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
+            observed_paths: vec!["src/export.rs".parse()?],
+            detection: JsonObject::new(),
+            detected_at: UtcTimestamp::parse("2026-06-30T00:05:00Z")?,
+            metadata: JsonObject::new(),
         },
     )?;
     Ok(())

@@ -4,17 +4,16 @@ use super::close_readiness::{
 };
 use super::{
     active_acceptance_criteria_for_task, allocate_write_ticket_id, baseline_matches,
-    build_state_summary, change_unit_effect_contract, change_unit_ref, decode_required_json,
+    build_state_summary, change_unit_effect_contract, change_unit_ref,
     guarantee_display_for_invocation, infallible_rejected_pipeline_response,
     matching_sensitive_approval, mutation_method_policy, object_from_value,
-    observe_request_product_paths, parse_owner_storage_value, paths_match_current_change_unit,
-    plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
+    observe_request_product_paths, paths_match_current_change_unit, plan_error_response,
+    prepare_or_response, project_state_projection, projected_close_basis,
     projected_evidence_summary, record_core_workflow_metric_best_effort,
     resolve_prepare_write_task, response_committed_fresh_effect, state_ref, state_ref_from_stored,
     store_error_plan, user_action_service_plan_error, validate_prepare_write_change_unit,
-    validation_rejected, workspace_context_matches, write_ticket_summary_for_record,
-    PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan, SensitiveApprovalSearch,
-    SummaryBuild,
+    validation_rejected, workspace_context_matches, write_ticket_summary_for_record, PlanError,
+    PrepareWritePlan, SensitiveApprovalSearch, SummaryBuild,
 };
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
@@ -48,7 +47,7 @@ use volicord_types::ids::{ChangeUnitId, TaskId, WriteTicketId};
 use volicord_types::methods::{
     MethodOperationCategory, PrepareWriteRequest, PrepareWriteResultFields,
 };
-use volicord_types::product_path::path_is_within;
+use volicord_types::product_path::{path_is_within, ProductRelativePath};
 use volicord_types::schema::{
     DryRunSummary, GuaranteeDisplay, JsonObject, StateRecordRef, WriteDecisionReason, WriteTicket,
     WriteTicketAttemptScope, WriteTicketPathPatterns, WriteTicketScope, WriteTicketValidityBasis,
@@ -57,6 +56,7 @@ use volicord_types::values::{
     AcceptancePolicy, CloseState, ErrorCode, MethodName, PrepareWriteDecision, StateRecordKind,
     TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor, UtcTimestamp, WorkPhase,
     WriteDecisionCategory, WriteTicketEffect, WriteTicketInvalidationReason, WriteTicketState,
+    WriteTicketStatus,
 };
 use volicord_user_action_service::{
     current_sensitive_approval, pending_user_action_authorities, user_action_authority_from_record,
@@ -619,12 +619,11 @@ fn plan_prepare_write_mutations(
             request.product_file_write_intended,
             &normalized_paths,
         )
-        .map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                "change_units",
-                change_unit.change_unit_id.clone(),
-                "effect_contract_json",
-            ))
+        .map_err(|_| CorePipelineError::Invariant {
+            detail: format!(
+                "typed Change Unit `{}` has an internally inconsistent effect contract",
+                change_unit.change_unit_id
+            ),
         })?;
         for violation in contract_violations {
             reasons.push(effect_contract_reason(
@@ -747,17 +746,17 @@ fn plan_prepare_write_mutations(
         planned_state_version,
     )?);
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
+    let typed_normalized_paths = typed_product_paths(&normalized_paths)?;
     let attempt_scope = WriteTicketAttemptScope {
         task_id: task_id.clone(),
         change_unit_id: change_unit_id.clone(),
         intended_operation: normalized_operation,
-        intended_paths: normalized_paths.clone(),
+        intended_paths: typed_normalized_paths,
         product_file_write_intended: request.product_file_write_intended,
         sensitive_categories: normalized_sensitive_categories,
         baseline_ref: Some(request.baseline_ref.clone()),
     };
-    let attempt_scope_json = serde_json::to_string(&attempt_scope)?;
-    let created_at = plan_now.to_string();
+    let created_at = plan_now.clone();
     let validity_basis = WriteTicketValidityBasis {
         task_id: task_id.clone(),
         change_unit_id: change_unit_id.clone(),
@@ -825,20 +824,7 @@ fn plan_prepare_write_mutations(
     } else {
         compatible_ticket
             .as_ref()
-            .and_then(|record| record.idle_expires_at.as_ref())
-            .map(|value| {
-                parse_owner_storage_value(
-                    "write_tickets",
-                    compatible_ticket
-                        .as_ref()
-                        .expect("idle expiration comes from a compatible ticket")
-                        .write_ticket_id
-                        .clone(),
-                    "idle_expires_at",
-                    value,
-                )
-            })
-            .transpose()?
+            .and_then(|record| record.idle_expires_at.clone())
     };
     let write_ticket_ref = write_ticket_id.as_ref().map(|write_ticket_id| {
         state_ref(
@@ -850,12 +836,12 @@ fn plan_prepare_write_mutations(
         )
     });
     let denied_path_patterns = if let Some(record) = compatible_ticket.as_ref() {
-        decode_write_ticket_path_prefixes(record, false)?
+        write_ticket_path_prefix_strings(record, false)?
     } else {
         denied_write_ticket_paths(&reasons, &normalized_paths)
     };
     let allowed_path_patterns = if let Some(record) = compatible_ticket.as_ref() {
-        decode_write_ticket_path_prefixes(record, true)?
+        write_ticket_path_prefix_strings(record, true)?
     } else {
         normalized_paths
             .iter()
@@ -863,6 +849,8 @@ fn plan_prepare_write_mutations(
             .cloned()
             .collect::<Vec<_>>()
     };
+    let typed_allowed_path_patterns = typed_product_paths(&allowed_path_patterns)?;
+    let typed_denied_path_patterns = typed_product_paths(&denied_path_patterns)?;
     let planned_write_ticket_record = if let Some(record) = compatible_ticket.as_ref() {
         (request.envelope.dry_run.is_not_requested()).then(|| record.clone())
     } else {
@@ -874,15 +862,12 @@ fn plan_prepare_write_mutations(
                 task_id: task_id.as_str().to_owned(),
                 change_unit_id: change_unit_id.as_str().to_owned(),
                 basis_state_version: planned_state_version,
-                status: "active".to_owned(),
-                validity_basis_json: serde_json::to_string(&validity_basis)
-                    .expect("write-ticket validity basis serializes"),
-                allowed_path_prefixes_json: serde_json::to_string(&allowed_path_patterns)
-                    .expect("write-ticket allowed paths serialize"),
-                denied_path_prefixes_json: serde_json::to_string(&denied_path_patterns)
-                    .expect("write-ticket denied paths serialize"),
-                attempt_scope_json: attempt_scope_json.clone(),
-                idle_expires_at: idle_expires_at_timestamp.as_ref().map(ToString::to_string),
+                status: WriteTicketStatus::Active,
+                validity_basis: validity_basis.clone(),
+                allowed_path_prefixes: typed_allowed_path_patterns.clone(),
+                denied_path_prefixes: typed_denied_path_patterns.clone(),
+                attempt_scope: attempt_scope.clone(),
+                idle_expires_at: idle_expires_at_timestamp.clone(),
                 invalidation_reason: None,
                 created_at: created_at.clone(),
                 consumed_by_run_id: None,
@@ -903,7 +888,7 @@ fn plan_prepare_write_mutations(
             storage_mutations.push(CoreStorageMutation::WriteTicket(
                 WriteTicketMutation::InvalidateById(WriteTicketByIdInvalidation {
                     write_ticket_id,
-                    invalidation_reason: "approval_basis_changed".to_owned(),
+                    invalidation_reason: WriteTicketInvalidationReason::ApprovalBasisChanged,
                 }),
             ));
         }
@@ -911,9 +896,7 @@ fn plan_prepare_write_mutations(
             storage_mutations.push(CoreStorageMutation::WriteTicket(
                 WriteTicketMutation::InvalidateById(WriteTicketByIdInvalidation {
                     write_ticket_id,
-                    invalidation_reason: WriteTicketInvalidationReason::WorkspaceChanged
-                        .as_str()
-                        .to_owned(),
+                    invalidation_reason: WriteTicketInvalidationReason::WorkspaceChanged,
                 }),
             ));
         }
@@ -921,9 +904,7 @@ fn plan_prepare_write_mutations(
             storage_mutations.push(CoreStorageMutation::WriteTicket(
                 WriteTicketMutation::InvalidateById(WriteTicketByIdInvalidation {
                     write_ticket_id,
-                    invalidation_reason: WriteTicketInvalidationReason::ExplicitRevoke
-                        .as_str()
-                        .to_owned(),
+                    invalidation_reason: WriteTicketInvalidationReason::ExplicitRevoke,
                 }),
             ));
         }
@@ -937,15 +918,15 @@ fn plan_prepare_write_mutations(
                 write_ticket_id: write_ticket_id.as_str().to_owned(),
                 task_id: task_id.as_str().to_owned(),
                 change_unit_id: change_unit_id.as_str().to_owned(),
-                validity_basis_json: serde_json::to_string(&validity_basis)?,
-                allowed_path_prefixes_json: serde_json::to_string(&allowed_path_patterns)?,
-                denied_path_prefixes_json: serde_json::to_string(&denied_path_patterns)?,
-                attempt_scope_json,
-                created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
+                validity_basis,
+                allowed_path_prefixes: typed_allowed_path_patterns,
+                denied_path_prefixes: typed_denied_path_patterns,
+                attempt_scope,
+                created_by_actor_source: verified_invocation.actor_source.clone(),
                 created_by_user_action_resolution_id,
-                idle_expires_at: idle_expires_at_timestamp.as_ref().map(ToString::to_string),
+                idle_expires_at: idle_expires_at_timestamp.clone(),
                 created_at,
-                metadata_json: serde_json::to_string(&json!({
+                metadata: object_from_value(json!({
                     "verification_basis": verified_invocation.verification_basis.clone()
                 }))?,
             }),
@@ -1063,20 +1044,8 @@ fn project_prepare_write_response(
         planned_write_ticket_record.as_ref(),
     ) {
         (Some(write_ticket_id), Some(write_ticket_ref), Some(record)) => {
-            let selected_scope: WriteTicketAttemptScope =
-                decode_required_json::<PersistedWriteTicketAttemptScope>(
-                    "write_tickets",
-                    record.write_ticket_id.clone(),
-                    "attempt_scope_json",
-                    Some(&record.attempt_scope_json),
-                )?
-                .into();
-            let selected_validity_basis: WriteTicketValidityBasis = decode_required_json(
-                "write_tickets",
-                record.write_ticket_id.clone(),
-                "validity_basis_json",
-                Some(&record.validity_basis_json),
-            )?;
+            let selected_scope = &record.attempt_scope;
+            let selected_validity_basis = record.validity_basis.clone();
             Some(WriteTicket {
                 write_ticket_id: write_ticket_id.clone(),
                 write_ticket_ref: write_ticket_ref.clone(),
@@ -1084,10 +1053,10 @@ fn project_prepare_write_response(
                 scope: WriteTicketScope {
                     task_id: task_id.clone(),
                     change_unit_id: change_unit_id.clone(),
-                    intended_operation: selected_scope.intended_operation,
+                    intended_operation: selected_scope.intended_operation.clone(),
                     product_file_write_intended: selected_scope.product_file_write_intended,
-                    sensitive_categories: selected_scope.sensitive_categories,
-                    baseline_ref: selected_scope.baseline_ref,
+                    sensitive_categories: selected_scope.sensitive_categories.clone(),
+                    baseline_ref: selected_scope.baseline_ref.clone(),
                 },
                 path_patterns: WriteTicketPathPatterns {
                     allowed: allowed_path_patterns.clone(),
@@ -1239,26 +1208,14 @@ fn select_active_write_tickets(
         {
             continue;
         }
-        let basis: WriteTicketValidityBasis = decode_required_json(
-            "write_tickets",
-            record.write_ticket_id.clone(),
-            "validity_basis_json",
-            Some(&record.validity_basis_json),
-        )?;
+        let basis = &record.validity_basis;
         if basis.write_authority_fingerprint != *required_write_authority_fingerprint {
             selection
                 .stale_policy_ticket_ids
                 .push(record.write_ticket_id);
             continue;
         }
-        let scope: WriteTicketAttemptScope =
-            decode_required_json::<PersistedWriteTicketAttemptScope>(
-                "write_tickets",
-                record.write_ticket_id.clone(),
-                "attempt_scope_json",
-                Some(&record.attempt_scope_json),
-            )?
-            .into();
+        let scope = &record.attempt_scope;
         if requirements.sensitive_approval_required
             && scope.intended_operation != required_scope.intended_operation
         {
@@ -1280,11 +1237,15 @@ fn select_active_write_tickets(
         {
             continue;
         }
-        let allowed = decode_write_ticket_path_prefixes(&record, true)?;
-        let denied = decode_write_ticket_path_prefixes(&record, false)?;
+        let allowed = write_ticket_path_prefix_strings(&record, true)?;
+        let denied = write_ticket_path_prefix_strings(&record, false)?;
         if !required_scope.intended_paths.iter().all(|path| {
-            allowed.iter().any(|prefix| path_is_within(path, prefix))
-                && !denied.iter().any(|prefix| path_is_within(path, prefix))
+            allowed
+                .iter()
+                .any(|prefix| path_is_within(path.as_str(), prefix))
+                && !denied
+                    .iter()
+                    .any(|prefix| path_is_within(path.as_str(), prefix))
         }) {
             continue;
         }
@@ -1299,8 +1260,8 @@ fn select_active_write_tickets(
             project_state,
             request,
             task,
-            &scope,
-            &basis,
+            scope,
+            basis,
             now,
         )? {
             selection
@@ -1338,12 +1299,17 @@ fn write_ticket_approval_basis_is_current_for_prepare(
         return Ok(scope.sensitive_categories.is_empty());
     }
 
+    let normalized_scope_paths = scope
+        .intended_paths
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect::<Vec<_>>();
     let requirement = SensitiveApprovalRequirement {
         task_id: &validity_basis.task_id,
         change_unit_id: &validity_basis.change_unit_id,
         scope_revision: task.scope_revision,
         operation: &scope.intended_operation,
-        normalized_paths: &scope.intended_paths,
+        normalized_paths: &normalized_scope_paths,
         sensitive_categories: &scope.sensitive_categories,
         baseline_ref: scope.baseline_ref.as_ref(),
         required_for: UserActionRequiredFor::PrepareWrite,
@@ -1396,28 +1362,31 @@ fn state_ref_identity_matches(left: &StateRecordRef, right: &StateRecordRef) -> 
         && left.task_id == right.task_id
 }
 
-fn decode_write_ticket_path_prefixes(
+fn write_ticket_path_prefix_strings(
     record: &WriteTicketRecord,
     allowed: bool,
 ) -> Result<Vec<String>, PlanError> {
-    let (field, value) = if allowed {
-        (
-            "allowed_path_prefixes_json",
-            &record.allowed_path_prefixes_json,
-        )
+    let paths = if allowed {
+        &record.allowed_path_prefixes
     } else {
-        (
-            "denied_path_prefixes_json",
-            &record.denied_path_prefixes_json,
-        )
+        &record.denied_path_prefixes
     };
-    decode_required_json(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        field,
-        Some(value),
-    )
-    .map_err(PlanError::Core)
+    Ok(paths.iter().map(|path| path.as_str().to_owned()).collect())
+}
+
+fn typed_product_paths(paths: &[String]) -> Result<Vec<ProductRelativePath>, PlanError> {
+    paths
+        .iter()
+        .map(|path| {
+            ProductRelativePath::parse(path).map_err(|error| {
+                PlanError::Core(CorePipelineError::Invariant {
+                    detail: format!(
+                        "a normalized Product Repository path became invalid before persistence: {error}"
+                    ),
+                })
+            })
+        })
+        .collect()
 }
 
 fn category_set_for_reuse(values: &[String]) -> BTreeSet<&str> {

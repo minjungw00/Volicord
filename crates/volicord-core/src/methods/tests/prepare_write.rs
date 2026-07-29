@@ -308,23 +308,21 @@ fn assert_prepare_write_replaces_policy_stale_ticket(
             Some(&change_unit_id),
         ),
         invocation(OperationCategory::AgentWorkflow),
-    )?;
+    );
 
     if stale_fingerprint.is_none() {
-        assert_store_rejection(
-            &replacement,
-            "PERSISTED_DATA_CORRUPT",
-            "corrupt_stored_json",
-        );
-        assert_eq!(
-            replacement.response_value["base"]["effect_kind"],
-            "no_effect"
-        );
+        let error = replacement
+            .expect_err("missing persisted write-authority binding must fail at Store decode");
+        assert!(matches!(
+            error,
+            CorePipelineError::Store(volicord_store::StoreError::CorruptOwnerStateJson { .. })
+        ));
         assert_eq!(write_ticket_count(&harness)?, 1);
         assert_eq!(write_ticket_status(&harness, &stale_ticket_id)?, "active");
         assert_eq!(harness.counts()?, before_replacement);
         return Ok(());
     }
+    let replacement = replacement?;
 
     assert_eq!(replacement.response_value["decision"], "allowed");
     assert_eq!(replacement.response_value["write_ticket_effect"], "issued");

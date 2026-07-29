@@ -41,7 +41,7 @@ pub struct CommitMutationInput {
     pub request_hash: String,
     pub replay_context: Option<VerifiedReplayContext>,
     pub expected_state_version: Option<u64>,
-    pub clock_floor: Option<String>,
+    pub clock_floor: Option<volicord_types::values::UtcTimestamp>,
     /// Whether commit time must also sample SQLite's live UTC clock.
     pub include_live_storage_time: bool,
     pub events: Vec<PendingTaskEvent>,
@@ -128,7 +128,7 @@ pub use facade::CoreProjectStore;
 pub use inspection::StorageEffectCounts;
 pub use mutations::CoreStorageMutation;
 pub use project_state::ProjectStateHeader;
-pub use reconciliation::ProductWriteObservationCandidate;
+pub use reconciliation::{ProductWriteObservationCandidate, ProductWriteObservationSource};
 pub use record_refs::StoredRecordRef;
 pub use replay::{StoredOperationResult, ToolInvocationRecord, VerifiedReplayContext};
 pub use runs::{

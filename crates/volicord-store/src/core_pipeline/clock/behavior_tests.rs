@@ -43,7 +43,7 @@ fn default_commit_clock_includes_transaction_live_storage_time() -> Result<(), B
         Some(0),
         vec![pending_event_for_task("live_commit_clock", task_id)],
     );
-    input.clock_floor = Some(configured_floor.to_owned());
+    input.clock_floor = Some(UtcTimestamp::parse(configured_floor)?);
 
     let outcome = store.commit_with(
         input,
@@ -56,7 +56,7 @@ fn default_commit_clock_includes_transaction_live_storage_time() -> Result<(), B
     )?;
 
     assert!(matches!(outcome, MutationCommitOutcome::Committed { .. }));
-    let committed_at = UtcTimestamp::parse(&store.project_state()?.updated_at)?;
+    let committed_at = store.project_state()?.updated_at;
     assert!(committed_at >= UtcTimestamp::parse(&sqlite_before)?);
     assert!(committed_at > UtcTimestamp::parse(configured_floor)?);
     Ok(())
@@ -88,7 +88,7 @@ fn canonical_clock_helpers_reject_corrupt_floor_and_extreme_sample_without_effec
 
     store.conn.execute(
         "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
-        params![PROJECT_ID, original_floor],
+        params![PROJECT_ID, original_floor.to_canonical_string()],
     )?;
     assert_eq!(store.effect_counts()?, before);
     drop(store);
@@ -105,7 +105,7 @@ fn canonical_clock_helpers_reject_corrupt_floor_and_extreme_sample_without_effec
         [PROJECT_ID],
         |row| row.get(0),
     )?;
-    assert_eq!(after_floor, original_floor);
+    assert_eq!(after_floor, original_floor.to_canonical_string());
     drop(conn);
     assert_eq!(harness.store()?.effect_counts()?, before);
     Ok(())
@@ -150,7 +150,7 @@ fn explicit_future_clock_floor_survives_active_task_commit_and_reopen() -> Resul
             pending_event_for_task("clock_floor_activate_second", future_task_id),
         ],
     );
-    clock_floor_input.clock_floor = Some(future_floor.to_string());
+    clock_floor_input.clock_floor = Some(future_floor.clone());
     let second = store.commit_with(
         clock_floor_input,
         |mutation, facts| {
@@ -190,7 +190,7 @@ fn explicit_future_clock_floor_survives_active_task_commit_and_reopen() -> Resul
     let expected = future_floor.to_string();
     let state = store.project_state()?;
     assert_eq!(state.active_task_id.as_deref(), Some(future_task_id));
-    assert_eq!(state.updated_at, expected);
+    assert_eq!(state.updated_at, future_floor);
     let (task_created_at, task_updated_at) = store.conn.query_row(
         "SELECT created_at, updated_at
                FROM tasks
@@ -256,14 +256,14 @@ fn explicit_future_clock_floor_survives_active_task_commit_and_reopen() -> Resul
             pending_event_for_task("clock_floor_activate_second", future_task_id),
         ],
     );
-    replay_input.clock_floor = Some(future_attempt_floor.to_owned());
+    replay_input.clock_floor = Some(UtcTimestamp::parse(future_attempt_floor)?);
     let replay = store.commit_with(
         replay_input,
         |_, _| panic!("replay must not invoke the mutation closure"),
         response_json,
     )?;
     assert!(matches!(replay, MutationCommitOutcome::Replayed { .. }));
-    assert_eq!(store.project_state()?.updated_at, expected);
+    assert_eq!(store.project_state()?.updated_at, future_floor);
     assert_eq!(store.effect_counts()?, before_noncommitting);
 
     let mut stale_input = commit_input(
@@ -275,7 +275,7 @@ fn explicit_future_clock_floor_survives_active_task_commit_and_reopen() -> Resul
         Some(0),
         vec![pending_event_for_task("clock_floor_stale", future_task_id)],
     );
-    stale_input.clock_floor = Some(future_attempt_floor.to_owned());
+    stale_input.clock_floor = Some(UtcTimestamp::parse(future_attempt_floor)?);
     let stale = store.commit_with(
         stale_input,
         |_, _| panic!("stale expected state must not invoke the mutation closure"),
@@ -285,32 +285,35 @@ fn explicit_future_clock_floor_survives_active_task_commit_and_reopen() -> Resul
         stale,
         MutationCommitOutcome::StaleExpectedState { .. }
     ));
-    assert_eq!(store.project_state()?.updated_at, expected);
+    assert_eq!(store.project_state()?.updated_at, future_floor);
     assert_eq!(store.effect_counts()?, before_noncommitting);
 
-    let before_invalid = store.effect_counts()?;
-    let mut invalid_floor = commit_input(
+    let before_unrepresentable = store.effect_counts()?;
+    let mut unrepresentable_floor = commit_input(
         &ProjectId::new(PROJECT_ID),
         MethodName::Intake,
-        Some(&IdempotencyKey::new("idem_invalid_clock_floor")),
-        &RequestHash::new("sha256:invalid-clock-floor"),
+        Some(&IdempotencyKey::new("idem_unrepresentable_clock_floor")),
+        &RequestHash::new("sha256:unrepresentable-clock-floor"),
         Some(replay_context(CONNECTION_ID, "agent_workflow")),
         Some(2),
-        vec![pending_event_for_task("invalid_clock_floor", task_id)],
+        vec![pending_event_for_task(
+            "unrepresentable_clock_floor",
+            task_id,
+        )],
     );
-    invalid_floor.clock_floor = Some("not-a-timestamp".to_owned());
+    unrepresentable_floor.clock_floor = Some(UtcTimestamp::parse("9999-12-31T23:59:59-23:59")?);
     let error = store
-        .commit_with(invalid_floor, |_, _| Ok(()), response_json)
-        .expect_err("invalid explicit clock floor must fail before effects");
+        .commit_with(unrepresentable_floor, |_, _| Ok(()), response_json)
+        .expect_err("unrepresentable explicit clock floor must fail before effects");
     assert!(matches!(error, StoreError::InvalidInput { .. }));
-    assert_eq!(store.effect_counts()?, before_invalid);
+    assert_eq!(store.effect_counts()?, before_unrepresentable);
 
     let remembered_floor = UtcTimestamp::parse("3000-01-01T00:00:00Z")?;
     store.remember_clock_sample(&remembered_floor);
-    assert!(UtcTimestamp::parse(&store.current_timestamp()?)? >= remembered_floor);
+    assert!(store.current_timestamp()? >= remembered_floor);
     drop(store);
     let reopened = harness.store()?;
-    assert_eq!(reopened.current_timestamp()?, expected);
+    assert_eq!(reopened.current_timestamp()?, future_floor);
     Ok(())
 }
 

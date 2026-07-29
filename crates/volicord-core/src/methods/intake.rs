@@ -389,9 +389,7 @@ fn plan_intake_mutations(
             storage_mutations.push(CoreStorageMutation::WriteTicket(
                 WriteTicketMutation::InvalidateActive(WriteTicketInvalidation {
                     task_id: active.task_id.clone(),
-                    invalidation_reason: WriteTicketInvalidationReason::TaskClosed
-                        .as_str()
-                        .to_owned(),
+                    invalidation_reason: WriteTicketInvalidationReason::TaskClosed,
                 }),
             ));
         }

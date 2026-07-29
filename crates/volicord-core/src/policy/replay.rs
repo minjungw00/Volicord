@@ -1,5 +1,4 @@
 use volicord_store::core_pipeline::VerifiedReplayContext;
-use volicord_types::canonical::canonical_json_string;
 use volicord_types::schema::ToolRejectedResponse;
 
 use crate::{
@@ -11,15 +10,21 @@ pub(crate) fn replay_context_from_verified_invocation(
     verified_invocation: &VerifiedInvocationContext,
 ) -> Result<VerifiedReplayContext, serde_json::Error> {
     Ok(VerifiedReplayContext {
-        actor_source: verified_invocation.actor_source.to_canonical_string(),
-        operation_category: verified_invocation.operation_category.as_str().to_owned(),
+        actor_source: verified_invocation.actor_source.clone(),
+        operation_category: verified_invocation.operation_category,
         verification_basis: (!verified_invocation.verification_basis.trim().is_empty())
             .then(|| verified_invocation.verification_basis.clone()),
-        git_workspace_context_json: verified_invocation
+        git_workspace_context: verified_invocation
             .git_workspace_context
             .as_ref()
-            .map(canonical_json_string)
-            .transpose()?,
+            .map(serde_json::to_value)
+            .transpose()?
+            .map(|value| {
+                value
+                    .as_object()
+                    .cloned()
+                    .expect("GitWorkspaceContext serializes as an object")
+            }),
     })
 }
 

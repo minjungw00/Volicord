@@ -33,7 +33,9 @@ Diagnostic identity는 closed domain diagnostic kind와 shared typed subject ide
 
 CLI Guard 모듈은 host input을 decode하고 host output을 투영합니다. Core policy는 write
 및 reconciliation 해석을 담당합니다. Store는 Guard event, Unrecorded Change,
-structured finding lifecycle, cause graph를 담당합니다. `volicord-types`는
+structured finding lifecycle, cause graph를 담당합니다. Store는 영속 observation의
+status, confidence, Product Repository 경로, typed object, actor, timestamp를
+엄격하게 decode한 뒤 reconciliation record를 Core에 전달합니다. `volicord-types`는
 dependency-safe diagnostic identity와 report shape를 담당하고 CLI 및 MCP domain
 모듈은 자신의 failure를 exhaustive하게 변환합니다.
 

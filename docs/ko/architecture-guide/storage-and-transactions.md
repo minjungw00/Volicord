@@ -59,11 +59,11 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 | `facade.rs`, `open.rs` | 프로젝트 데이터베이스 handle, 유지되는 Runtime Home 및 프로젝트 identity, 읽기 snapshot, 읽기 전용 또는 변경 가능 열기. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | 프로젝트 header와 enforcement profile 읽기, 엄격한 저장 값 decoding, 프로젝트 UTC floor. |
 | `tasks.rs` | Task 및 수락 mutation 입력과 SQL, Task row, 수락 기준, 증거 주장, Task revision. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change Unit, Write Ticket, Run mutation 입력과 SQL, 해당 읽기와 Run observed-change projection. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, Run mutation 입력과 SQL, 비공개 물리 row, 폐쇄형 값·JSON·timestamp·Product Repository 경로를 엄격하게 decode한 typed 읽기와 Run observed-change projection. |
 | `evidence.rs`, `artifacts.rs` | 증거 및 artifact mutation 입력과 SQL, 증거 요약과 관찰 읽기, artifact staging record, 영속 artifact record, artifact link, 읽기 시 artifact 본문 검증. |
 | `user_actions.rs`, `continuity.rs` | User Action 및 continuity mutation 입력과 SQL, 물리 JSON 및 저장 scalar를 typed 요청·해결 레코드로 엄격하게 decoding하는 읽기, 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
-| `replay.rs` | Tool invocation 조회, 검증된 replay context, 변경 불가능한 operation-result projection. |
-| `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | 제품 쓰기 관찰 후보, 활성 blocker reference, event identity 조회, 프로젝트 로컬 Agent Session 진입점. |
+| `replay.rs` | 비공개 tool invocation row, typed identity와 replay context의 엄격한 decoding, 변경 불가능한 operation-result projection, Core 소유 의미 replay를 위해 유지하는 정확한 메서드 응답 byte. |
+| `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | 엄격하게 decode한 typed 제품 쓰기 관찰 후보와 경로, 활성 blocker reference, event identity 조회, 프로젝트 로컬 Agent Session 진입점. |
 | `record_refs.rs`, `inspection.rs` | 공유 저장 record reference와 검증 경로에서 사용하는 무효과 저장소 counter. |
 | `mutations.rs` | 각 최상위 mutation group에서 aggregate 담당 모듈로 이어지는 얇은 정적 dispatch와 transaction 범위 적용 context. |
 | `commit.rs` | Aggregate 간 transaction 조율: replay 및 최신성 gate, 순서 있는 위임, 정규 state-version 전진 한 번, event와 replay 영속화, 응답 구성, commit 또는 rollback. |
@@ -71,7 +71,9 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 
 프로젝트 workflow policy record 읽기와 쓰기는
 [`workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs)에
-남아 있습니다. 일시적 artifact staging과 영속 artifact 본문 경로 연산은
+남아 있습니다. 이 담당 모듈은 물리 policy row를 비공개로 유지하고 현재 schema,
+폐쇄형 값, 정규 byte, fingerprint, source, timestamp를 검증한 뒤 typed policy
+record를 반환합니다. 일시적 artifact staging과 영속 artifact 본문 경로 연산은
 [`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)가 계속 담당하고,
 프로젝트 facade의 artifact 읽기 쪽은 `core_pipeline/artifacts.rs`가 담당합니다.
 

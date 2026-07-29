@@ -577,7 +577,7 @@ fn seed_test_agent_session_with_context(
     let host_thread_id = format!("test-thread-{sequence}");
     let host_turn_id = format!("test-turn-{sequence}");
     let store = CoreProjectStore::open_read_only(runtime_home, &project_id.into())?;
-    let observed_at = store.current_timestamp()?;
+    let observed_at = store.current_timestamp()?.to_string();
     let runtime_session_id = start_test_mcp_runtime_session_with_context(
         context,
         McpRuntimeSessionStart {
@@ -1520,13 +1520,8 @@ pub mod core_fixtures {
             else {
                 return Ok(None);
             };
-            let value: Value = serde_json::from_str(&text).map_err(|_| {
-                StoreError::corrupt_owner_state_json(
-                    "user_action_resolutions",
-                    user_action_request_id,
-                    "resolution_json",
-                )
-            })?;
+            let value: Value = serde_json::from_str(&text)
+                .expect("Store must return typed-valid user-action resolution JSON");
             Ok(value
                 .get("resolution_outcome")
                 .and_then(Value::as_str)
@@ -1552,13 +1547,8 @@ pub mod core_fixtures {
             else {
                 return Ok(None);
             };
-            let value: Value = serde_json::from_str(&text).map_err(|_| {
-                StoreError::corrupt_owner_state_json(
-                    "user_action_resolutions",
-                    user_action_request_id,
-                    "resolution_json",
-                )
-            })?;
+            let value: Value = serde_json::from_str(&text)
+                .expect("Store must return typed-valid user-action resolution JSON");
             Ok(value
                 .get("machine_action")
                 .and_then(Value::as_str)

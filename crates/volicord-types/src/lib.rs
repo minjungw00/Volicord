@@ -28,6 +28,7 @@ pub mod schema;
 pub mod storage_contract;
 pub mod tool_names;
 pub mod values;
+pub mod workflow_policy;
 
 #[cfg(test)]
 mod tests {

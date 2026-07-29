@@ -1,5 +1,3 @@
-use serde::Deserialize;
-use serde_json::Value;
 use volicord_store::{
     core_pipeline::{CoreProjectStore, TaskRecord},
     workflow_records::{project_write_authority_fingerprint, task_policy_control_reevaluation},
@@ -31,31 +29,6 @@ pub(crate) struct LightWorkflowPolicy {
     pub(crate) allowed_path_patterns: Vec<String>,
     pub(crate) denied_path_patterns: Vec<String>,
     pub(crate) final_acceptance: AcceptancePolicy,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StoredWorkflowPolicy {
-    default_direct_control: TaskControlLevel,
-    default_work_control: TaskControlLevel,
-    light: StoredLightWorkflowPolicy,
-    write_ticket: StoredWriteTicketWorkflowPolicy,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StoredLightWorkflowPolicy {
-    enabled: bool,
-    max_intended_paths: usize,
-    allowed_path_patterns: Vec<String>,
-    denied_path_patterns: Vec<String>,
-    final_acceptance: AcceptancePolicy,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StoredWriteTicketWorkflowPolicy {
-    idle_timeout_minutes: Option<u64>,
 }
 
 impl ProjectWorkflowPolicy {
@@ -108,51 +81,36 @@ pub(crate) fn project_workflow_policy(
     let Some(record) = store.project_workflow_policy()? else {
         return ProjectWorkflowPolicy::conservative_default();
     };
-    let corrupt = || {
-        StoreError::corrupt_owner_state_json(
-            "project_workflow_policies",
-            record.project_id.clone(),
-            "policy_json",
-        )
-    };
-    if record.policy_schema != WORKFLOW_POLICY_CONTRACT_ID {
-        return Err(corrupt());
-    }
-    let value: Value = serde_json::from_str(&record.policy_json).map_err(|_| corrupt())?;
-    if value.get("schema").and_then(Value::as_str) != Some(WORKFLOW_POLICY_CONTRACT_ID) {
-        return Err(corrupt());
-    }
-    let stored: StoredWorkflowPolicy =
-        serde_json::from_value(value.get("workflow").cloned().ok_or_else(corrupt)?)
-            .map_err(|_| corrupt())?;
-    if stored.light.max_intended_paths == 0
-        || stored
-            .write_ticket
-            .idle_timeout_minutes
-            .is_some_and(|minutes| minutes == 0)
-    {
-        return Err(corrupt());
-    }
-    let write_authority_fingerprint =
-        project_write_authority_fingerprint(Some(&record.policy_json))?;
+    let workflow = record.policy.workflow;
     Ok(ProjectWorkflowPolicy {
         summary: Some(ProjectWorkflowPolicySummary {
-            policy_schema: record.policy_schema,
+            policy_schema: WORKFLOW_POLICY_CONTRACT_ID.to_owned(),
             policy_version: record.policy_version,
             policy_fingerprint: record.policy_fingerprint,
-            source: record.source,
+            source: record.source.as_str().to_owned(),
         }),
-        default_direct_control: stored.default_direct_control,
-        default_work_control: stored.default_work_control,
+        default_direct_control: workflow.default_direct_control,
+        default_work_control: workflow.default_work_control,
         light: LightWorkflowPolicy {
-            enabled: stored.light.enabled,
-            max_intended_paths: stored.light.max_intended_paths,
-            allowed_path_patterns: stored.light.allowed_path_patterns,
-            denied_path_patterns: stored.light.denied_path_patterns,
-            final_acceptance: stored.light.final_acceptance,
+            enabled: workflow.light.enabled,
+            max_intended_paths: usize::try_from(workflow.light.max_intended_paths)
+                .expect("typed workflow policy validates the platform path-count range"),
+            allowed_path_patterns: workflow
+                .light
+                .allowed_path_patterns
+                .into_iter()
+                .map(|path| path.into_string())
+                .collect(),
+            denied_path_patterns: workflow
+                .light
+                .denied_path_patterns
+                .into_iter()
+                .map(|path| path.into_string())
+                .collect(),
+            final_acceptance: workflow.light.final_acceptance,
         },
-        write_ticket_idle_timeout_minutes: stored.write_ticket.idle_timeout_minutes,
-        write_authority_fingerprint,
+        write_ticket_idle_timeout_minutes: workflow.write_ticket.idle_timeout_minutes,
+        write_authority_fingerprint: record.write_authority_fingerprint,
     })
 }
 
@@ -182,13 +140,10 @@ pub(crate) fn resolve_task_control_authority(
     let mark = task_policy_control_reevaluation(task)?;
     let marked_control = mark
         .as_ref()
-        .map(|mark| parse_task_control_level(&mark.required_effective_control_level))
-        .transpose()?;
+        .map(|mark| mark.required_effective_control_level);
     let marked_acceptance = mark
         .as_ref()
-        .and_then(|mark| mark.required_acceptance_policy.as_deref())
-        .map(parse_acceptance_policy)
-        .transpose()?;
+        .and_then(|mark| mark.required_acceptance_policy);
 
     let policy_selected_control = std::cmp::max(current_control, policy_control);
     let effective_control_level = marked_control
@@ -309,17 +264,6 @@ pub(crate) fn acceptance_policy_for_control(
         TaskControlLevel::Light => policy.light.final_acceptance,
         TaskControlLevel::Tracked | TaskControlLevel::Sensitive => AcceptancePolicy::Required,
     }
-}
-
-pub(crate) fn parse_task_control_level(value: &str) -> Result<TaskControlLevel, StoreError> {
-    serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
-        StoreError::corrupt_owner_state_value("tasks", "current", "effective_control_level")
-    })
-}
-
-fn parse_acceptance_policy(value: &str) -> Result<AcceptancePolicy, StoreError> {
-    serde_json::from_value(Value::String(value.to_owned()))
-        .map_err(|_| StoreError::corrupt_owner_state_value("tasks", "current", "acceptance_policy"))
 }
 
 fn acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {

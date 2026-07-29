@@ -16,21 +16,10 @@ pub(crate) fn write_ticket_is_idle_expired(
     record: &WriteTicketRecord,
     now: DateTime<Utc>,
 ) -> Result<bool, StoreError> {
-    let Some(raw) = record.idle_expires_at.as_ref() else {
+    let Some(timestamp) = record.idle_expires_at.as_ref() else {
         return Ok(false);
     };
-    let corrupt = || {
-        StoreError::corrupt_owner_state_value(
-            "write_tickets",
-            record.write_ticket_id.clone(),
-            "idle_expires_at",
-        )
-    };
-    let timestamp = UtcTimestamp::parse(raw).map_err(|_| corrupt())?;
-    timestamp
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| corrupt())?;
-    Ok(UtcTimestamp::from_datetime(now) >= timestamp)
+    Ok(UtcTimestamp::from_datetime(now) >= *timestamp)
 }
 
 pub(crate) fn prepare_write_decision(reasons: &[WriteDecisionReason]) -> PrepareWriteDecision {

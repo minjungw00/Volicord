@@ -22,17 +22,24 @@ cross-aggregate storage-effect tests stay at the
 observable storage effects; complete SQL text is asserted only where a
 canonical SQL owner makes those bytes part of the current contract.
 
+Store tests own physical persistence, transactions, and strict row decoding for
+every public Store-to-Core or Store-to-service record boundary. They inject
+malformed physical enums, JSON, timestamps, Product Repository paths, missing
+values, and contradictory duplicate columns, then assert Store-owned
+persisted-data corruption. Core and service tests consume valid
+Store-constructed typed records and cover semantic policy and invariant
+failures; they do not repeat physical decoders or construct Store corruption.
+This split applies to workflow policy, Write Ticket, replay identity,
+reconciliation observations, UserAction, and the other Core-facing record
+families.
+
 Within `volicord-user-action-service`, unit tests own semantic validation,
 canonical body and identity construction, authority, lifecycle,
 materialization, persistence mapping, resolution, continuity, and neutral
 projection behavior. Core tests own request orchestration, generated
 identifiers and timestamps, replay, transaction sequencing, and service-error
-mapping. Store tests own physical persistence, transactions, and strict row
-decoding into typed UserAction records. UserAction duplicated representations,
-closed stored values, missing physical values, and request-resolution identity
-or action-kind disagreement are Store tests. Service tests use only valid
-Store-constructed records and cover semantic policy and service-owned invariant
-failures.
+mapping. UserAction duplicated representations, missing physical values, and
+request-resolution identity or action-kind disagreement remain Store tests.
 
 Product Repository path tests follow the same ownership split.
 `volicord-types` tests lexical values and pure relationships without temporary

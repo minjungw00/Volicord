@@ -30,8 +30,11 @@ Run mutation은 Run 및 관련 effect와 같은 Store commit에서 선택한 tic
 
 Core 메서드는 request-specific planning을 담당합니다. Core workflow, path, access,
 write-ticket policy 모듈은 typed fact에 대한 current authority evaluation을 담당합니다.
-Store는 strict ticket record, query, invalidation persistence, consumption mutation을
-담당합니다. Guard는 observation을 제공하지만 ticket basis를 넓히지 않습니다.
+Store는 물리 ticket row를 비공개로 유지하고 status, validity basis, attempt scope,
+Product Repository 경로 모음, timestamp, 중복 owner coordinate를 엄격하게 decode한
+뒤 typed record를 반환합니다. Store는 ticket query, invalidation persistence,
+consumption mutation도 담당합니다. Guard는 observation을 제공하지만 ticket basis를
+넓히지 않습니다.
 
 ## 실행 흐름
 

@@ -686,17 +686,14 @@ mod tests {
 
         let state = store.project_state()?;
         assert_eq!(state.state_version, before_state_version);
-        assert_eq!(state.updated_at, created_at.to_canonical_string());
-        assert!(UtcTimestamp::parse(&store.current_timestamp()?)? >= created_at);
+        assert_eq!(state.updated_at, created_at);
+        assert!(store.current_timestamp()? >= created_at);
         drop(store);
         let reopened = CoreProjectStore::open_read_only(
             fixture.runtime_home_path(),
             &ProjectId::new(fixture.project_id()),
         )?;
-        assert_eq!(
-            reopened.project_state()?.updated_at,
-            created_at.to_canonical_string()
-        );
+        assert_eq!(reopened.project_state()?.updated_at, created_at);
         Ok(())
     }
 

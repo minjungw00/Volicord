@@ -311,9 +311,7 @@ fn audit_authoritative_project_policy(
         validate_policy_schema(&policy, connection_intent)
             .map_err(|_| GuardArtifactIssue::Malformed)?;
         let fingerprint = policy_hash(&policy).map_err(|_| GuardArtifactIssue::Malformed)?;
-        if authority.policy_schema != super::files::VOLICORD_POLICY_SCHEMA
-            || fingerprint != authority.policy_fingerprint
-        {
+        if fingerprint != authority.policy_fingerprint {
             return Err(GuardArtifactIssue::OwnershipMismatch);
         }
         Ok(())

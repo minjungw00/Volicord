@@ -204,6 +204,9 @@ pub enum CorePipelineError {
     InvalidDispatch {
         detail: String,
     },
+    Invariant {
+        detail: String,
+    },
 }
 
 impl fmt::Display for CorePipelineError {
@@ -220,6 +223,7 @@ impl fmt::Display for CorePipelineError {
             Self::InvalidDispatch { detail } => {
                 write!(formatter, "invalid pipeline dispatch: {detail}")
             }
+            Self::Invariant { detail } => write!(formatter, "Core invariant failed: {detail}"),
         }
     }
 }
@@ -231,7 +235,9 @@ impl Error for CorePipelineError {
             Self::Store(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::DurableId(error) => Some(error),
-            Self::GeneratedIdCollision { .. } | Self::InvalidDispatch { .. } => None,
+            Self::GeneratedIdCollision { .. }
+            | Self::InvalidDispatch { .. }
+            | Self::Invariant { .. } => None,
         }
     }
 }
@@ -1318,14 +1324,7 @@ impl Clock for SystemClock {
     }
 
     fn project_now(&self, store: &CoreProjectStore) -> StoreResult<UtcTimestamp> {
-        let timestamp = store.current_timestamp()?;
-        UtcTimestamp::parse(&timestamp).map_err(|_| {
-            StoreError::corrupt_owner_state_value(
-                "project_state",
-                &store.project_record().project_id,
-                "updated_at",
-            )
-        })
+        store.current_timestamp()
     }
 
     fn include_live_storage_time_at_commit(&self) -> bool {
@@ -1920,7 +1919,7 @@ where
             event_payload_json: serde_json::to_string(&Value::Object(event_payload))?,
         }],
     );
-    input.clock_floor = Some(clock_floor.to_string());
+    input.clock_floor = Some(clock_floor.clone());
     input.include_live_storage_time = include_live_storage_time;
 
     let outcome = store.commit_mutation(input, &storage_mutations, |facts| {

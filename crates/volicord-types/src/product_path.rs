@@ -1,11 +1,16 @@
 use std::{error::Error, fmt, str::FromStr};
 
+use schemars::JsonSchema;
+use serde::{de, Deserialize, Deserializer, Serialize};
+
 /// A normalized, platform-neutral path relative to one Product Repository.
 ///
 /// This value establishes lexical validity only. It does not establish that a
 /// path exists or remains contained by a repository after filesystem links are
 /// resolved.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
+#[serde(transparent)]
+#[schemars(transparent)]
 pub struct ProductRelativePath(String);
 
 impl ProductRelativePath {
@@ -47,6 +52,16 @@ impl FromStr for ProductRelativePath {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::parse(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for ProductRelativePath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(de::Error::custom)
     }
 }
 

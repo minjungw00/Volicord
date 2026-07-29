@@ -404,11 +404,7 @@ fn validate_workspace(
 fn project_current_timestamp(
     store: &CoreProjectStore,
 ) -> Result<UtcTimestamp, EvidenceCommandError> {
-    let timestamp = store.current_timestamp()?;
-    strict_stored_timestamp(
-        &timestamp,
-        "Store returned an invalid Core current UTC timestamp",
-    )
+    store.current_timestamp().map_err(Into::into)
 }
 
 fn project_time_before_intent_expiry(

@@ -1147,8 +1147,10 @@ pub(super) fn record_authoritative_workflow_policy(
     project_id: &str,
     policy: &Value,
 ) -> Result<(), ConnectionCommandError> {
-    let canonical_json = canonical_json_string(policy)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let typed_policy = serde_json::from_value::<
+        volicord_types::workflow_policy::ProjectWorkflowPolicy,
+    >(policy.clone())
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     let fingerprint = canonical_json_sha256(policy)
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
         .into_inner();
@@ -1167,9 +1169,9 @@ pub(super) fn record_authoritative_workflow_policy(
     })?;
     store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
         policy_version,
-        policy_json: canonical_json,
+        policy: typed_policy,
         policy_fingerprint: fingerprint,
-        source: "project_database".to_owned(),
+        source: volicord_types::workflow_policy::ProjectWorkflowPolicySource::ProjectDatabase,
         expected_prior_fingerprint: prior
             .as_ref()
             .map(|record| record.policy_fingerprint.clone()),

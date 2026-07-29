@@ -836,8 +836,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -952,8 +952,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -981,8 +981,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -2274,8 +2274,8 @@ documents:
   - cli.command.inbox
   owner_area: core_api
   created_on: '2026-07-01'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2783,8 +2783,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   primary_audience:
   - storage implementers
   - maintainers

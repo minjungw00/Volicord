@@ -4,7 +4,7 @@ use super::close_readiness::{
     plan_projected_close_readiness,
 };
 use super::evidence_facts::{
-    capture_outcome_matches_expected, capture_verification_basis, decode_capture_intent_record,
+    capture_intent_from_record, capture_outcome_matches_expected, capture_verification_basis,
     stored_evidence_observation_provenance_facts, stored_evidence_observation_relevance,
     user_action_observation_resolution_authority, validate_capture_receipt_record,
 };
@@ -14,19 +14,18 @@ use super::{
     artifact_input_validation_plan_error, artifact_input_validation_response,
     artifact_missing_response, artifact_ref_from_verified_record, baseline_matches,
     baseline_stale_response, build_state_summary, change_unit_ref, decision_rejected_response,
-    decode_required_json, dry_run_summary, evidence_summary_for_display,
-    first_product_write_duration_micros, guarantee_display_for_invocation, mutation_method_policy,
-    no_active_change_unit_response, no_active_task_response, normalize_source_refs,
-    object_from_value, observe_request_product_paths, persistent_artifact_is_verified_current,
-    plan_error_response, prepare_or_response, project_state_projection,
-    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
-    record_core_workflow_metric_best_effort, rejected_pipeline_response,
-    response_committed_fresh_effect, sorted_unique, state_ref, state_ref_from_stored,
-    storage_value, store_error_plan, task_lifecycle_mutation, user_action_service_plan_error,
-    validation_plan_error, validation_rejected, workspace_context_matches,
-    workspace_stale_response, write_ticket_invalid_response, write_ticket_ref,
-    write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
-    PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
+    dry_run_summary, evidence_summary_for_display, first_product_write_duration_micros,
+    guarantee_display_for_invocation, mutation_method_policy, no_active_change_unit_response,
+    no_active_task_response, normalize_source_refs, object_from_value,
+    observe_request_product_paths, persistent_artifact_is_verified_current, plan_error_response,
+    prepare_or_response, project_state_projection, projected_evidence_summary_for_criteria,
+    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
+    rejected_pipeline_response, response_committed_fresh_effect, sorted_unique, state_ref,
+    state_ref_from_stored, store_error_plan, task_lifecycle_mutation,
+    user_action_service_plan_error, validation_plan_error, validation_rejected,
+    workspace_context_matches, workspace_stale_response, write_ticket_invalid_response,
+    write_ticket_ref, write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
+    PlanError, SummaryBuild,
 };
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
@@ -56,7 +55,6 @@ use crate::policy::{
         EvidenceObservationBasis,
     },
 };
-use crate::product_path::parse_stored_product_paths;
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -98,7 +96,7 @@ use volicord_types::values::{
     EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceProducerKind,
     EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, MethodName, RedactionState,
     RunKind, StateRecordKind, TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor,
-    UtcTimestamp, WorkPhase, WriteTicketStatus,
+    UtcTimestamp, WorkPhase, WriteTicketInvalidationReason, WriteTicketStatus,
 };
 use volicord_user_action_service::{
     current_sensitive_approval, pending_user_action_authorities,
@@ -1426,9 +1424,9 @@ fn project_record_run_response(
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
     let write_ticket_summary = if let Some((record, _scope)) = &write_ticket_scope {
         let mut consumed_record = record.clone();
-        consumed_record.status = storage_value(WriteTicketStatus::Consumed)?;
+        consumed_record.status = WriteTicketStatus::Consumed;
         consumed_record.consumed_by_run_id = Some(run_id.as_str().to_owned());
-        consumed_record.consumed_at = Some(plan_now.to_string());
+        consumed_record.consumed_at = Some(plan_now.clone());
         Some(write_ticket_summary_for_record(
             None,
             &consumed_record,
@@ -1632,7 +1630,7 @@ fn plan_record_run_capture_authority(
                 "evidence-capture intent was not found",
             )
         })?;
-    let intent = decode_capture_intent_record(&intent_record)?;
+    let intent = capture_intent_from_record(&intent_record)?;
     let intent_ref = state_ref(
         StateRecordKind::EvidenceCaptureIntent,
         intent_id,
@@ -1758,13 +1756,12 @@ fn plan_record_run_capture_authority(
         EvidenceProducerKind::UnverifiedCaller
         | EvidenceProducerKind::UserChannelObservation
         | EvidenceProducerKind::ReusedEvidence => {
-            return Err(PlanError::Core(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_value(
-                    "evidence_capture_receipts",
-                    receipt.evidence_capture_receipt_id,
-                    "capture_kind",
+            return Err(PlanError::Core(CorePipelineError::Invariant {
+                detail: format!(
+                    "typed evidence receipt `{}` has a capture kind that cannot produce strict evidence",
+                    receipt.evidence_capture_receipt_id
                 ),
-            )))
+            }))
         }
     };
     let verification_basis = capture_verification_basis(body.capture_kind)
@@ -3163,34 +3160,24 @@ fn sensitive_action_requirement_from_write_ticket(
     scope: &WriteTicketAttemptScope,
 ) -> Result<Option<SensitiveActionRequirement>, PlanError> {
     let sensitive_categories = normalized_string_set(&scope.sensitive_categories);
-    let validity_basis: WriteTicketValidityBasis = decode_required_json(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "validity_basis_json",
-        Some(&record.validity_basis_json),
-    )?;
+    let validity_basis = &record.validity_basis;
     if sensitive_categories.is_empty() && validity_basis.approval_basis_refs.is_empty() {
         return Ok(None);
     }
     let action_kind = scope.intended_operation.trim().to_owned();
     if action_kind.is_empty() {
-        return Err(PlanError::Core(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json(
-                "write_tickets",
-                record.write_ticket_id.clone(),
-                "attempt_scope_json",
+        return Err(PlanError::Core(CorePipelineError::Invariant {
+            detail: format!(
+                "write ticket `{}` has an empty intended operation after Store decoding",
+                record.write_ticket_id
             ),
-        )));
+        }));
     }
-    let normalized_paths = parse_stored_product_paths(&scope.intended_paths).map_err(|_| {
-        PlanError::Core(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json(
-                "write_tickets",
-                record.write_ticket_id.clone(),
-                "attempt_scope_json",
-            ),
-        ))
-    })?;
+    let normalized_paths = scope
+        .intended_paths
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect();
     Ok(Some(SensitiveActionRequirement {
         action_kind,
         normalized_paths,
@@ -3837,22 +3824,20 @@ fn validate_staged_artifact_record(
     let stored_created_at = &record.created_at;
     let stored_expires_at = &record.expires_at;
     if stored_expires_at <= stored_created_at {
-        return Err(PlanError::Core(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_value(
-                "artifact_staging",
-                record.handle_id.clone(),
-                "expires_at",
+        return Err(PlanError::Core(CorePipelineError::Invariant {
+            detail: format!(
+                "typed staged artifact `{}` expires no later than its creation time",
+                record.handle_id
             ),
-        )));
+        }));
     }
     if now < stored_created_at {
-        return Err(PlanError::Core(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_value(
-                "artifact_staging",
-                record.handle_id.clone(),
-                "created_at",
+        return Err(PlanError::Core(CorePipelineError::Invariant {
+            detail: format!(
+                "typed staged artifact `{}` was created after the Core observation time",
+                record.handle_id
             ),
-        )));
+        }));
     }
     if record.status == ArtifactStagingStatus::Expired || now >= stored_expires_at {
         return artifact_input_validation_plan_error(
@@ -4113,22 +4098,18 @@ fn validate_write_ticket_for_run(
         write_authority_fingerprint,
         now,
     } = context;
-    if record.status != "active" {
-        let reason = match record.status.as_str() {
-            "consumed" => "consumed",
-            "invalidated" => match record.invalidation_reason.as_deref() {
-                Some("scope_revision_changed") => "scope_revision_changed",
-                Some("change_unit_changed") => "change_unit_changed",
-                Some("baseline_changed") => "baseline_changed",
-                Some("workspace_changed") => "workspace_changed",
-                Some("approval_basis_changed") => "approval_basis_changed",
-                Some("idle_timeout") => "idle_timeout",
-                Some("task_closed") => "task_closed",
-                Some("explicit_revoke") => "explicit_revoke",
-                _ => "invalidated",
-            },
-            "revoked" => "revoked",
-            _ => "incompatible",
+    if record.status != WriteTicketStatus::Active {
+        let reason = match record.status {
+            WriteTicketStatus::Consumed => "consumed",
+            WriteTicketStatus::Invalidated => record
+                .invalidation_reason
+                .map(WriteTicketInvalidationReason::as_str)
+                .ok_or_else(|| CorePipelineError::Invariant {
+                    detail: "typed invalidated write ticket lacks an invalidation reason"
+                        .to_owned(),
+                })?,
+            WriteTicketStatus::Revoked => "revoked",
+            WriteTicketStatus::Active => "incompatible",
         };
         return Err(PlanError::Response(Box::new(
             write_ticket_invalid_response(
@@ -4166,12 +4147,7 @@ fn validate_write_ticket_for_run(
                 id: request.task_id.as_str().to_owned(),
             }))
         })?;
-    let validity_basis: WriteTicketValidityBasis = decode_required_json(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "validity_basis_json",
-        Some(&record.validity_basis_json),
-    )?;
+    let validity_basis = &record.validity_basis;
     if validity_basis.write_authority_fingerprint != write_authority_fingerprint {
         return write_ticket_mismatch(
             request,
@@ -4225,37 +4201,15 @@ fn validate_write_ticket_for_run(
             "write ticket workspace context is no longer current",
         );
     }
-    let scope: WriteTicketAttemptScope = decode_required_json::<PersistedWriteTicketAttemptScope>(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "attempt_scope_json",
-        Some(&record.attempt_scope_json),
-    )?
-    .into();
-    let allowed_paths: Vec<String> = decode_required_json(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "allowed_path_prefixes_json",
-        Some(&record.allowed_path_prefixes_json),
-    )?;
-    let denied_paths: Vec<String> = decode_required_json(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "denied_path_prefixes_json",
-        Some(&record.denied_path_prefixes_json),
-    )?;
-    let scope_paths = parse_stored_product_paths(&allowed_paths).map_err(|_| {
-        PlanError::Core(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json(
-                "write_tickets",
-                record.write_ticket_id.clone(),
-                "attempt_scope_json",
-            ),
-        ))
-    })?;
+    let scope = &record.attempt_scope;
+    let scope_paths = record
+        .allowed_path_prefixes
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect::<Vec<_>>();
     if let Some(mismatch) = run_write_ticket_mismatch(
         record,
-        &scope,
+        scope,
         RunWriteTicketAttempt {
             task_id: &request.task_id,
             change_unit_id: &request.change_unit_id,
@@ -4270,9 +4224,10 @@ fn validate_write_ticket_for_run(
         return write_ticket_mismatch(request, project_state, mismatch.reason, mismatch.message);
     }
     if observed_changes.changed_paths.iter().any(|path| {
-        denied_paths
+        record
+            .denied_path_prefixes
             .iter()
-            .any(|denied| path_is_within(path, denied))
+            .any(|denied| path_is_within(path, denied.as_str()))
     }) {
         return write_ticket_mismatch(
             request,
@@ -4287,8 +4242,8 @@ fn validate_write_ticket_for_run(
         project_state,
         request,
         &task,
-        &scope,
-        &validity_basis,
+        scope,
+        validity_basis,
         &authority_now,
     )? {
         return write_ticket_mismatch(
@@ -4298,7 +4253,7 @@ fn validate_write_ticket_for_run(
             "write ticket approval basis is no longer current",
         );
     }
-    Ok(scope)
+    Ok(scope.clone())
 }
 
 fn write_ticket_approval_basis_is_current(
@@ -4315,12 +4270,17 @@ fn write_ticket_approval_basis_is_current(
             && task.effective_control_level != TaskControlLevel::Sensitive);
     }
 
+    let normalized_scope_paths = scope
+        .intended_paths
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect::<Vec<_>>();
     let requirement = SensitiveApprovalRequirement {
         task_id: &request.task_id,
         change_unit_id: &request.change_unit_id,
         scope_revision: task.scope_revision,
         operation: &scope.intended_operation,
-        normalized_paths: &scope.intended_paths,
+        normalized_paths: &normalized_scope_paths,
         sensitive_categories: &scope.sensitive_categories,
         baseline_ref: scope.baseline_ref.as_ref(),
         required_for: UserActionRequiredFor::PrepareWrite,

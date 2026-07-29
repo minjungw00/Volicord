@@ -2,17 +2,18 @@ use chrono::Duration as ChronoDuration;
 use serde_json::{json, Value};
 use volicord_store::{
     bootstrap::ProjectRecord,
-    guards::{insert_expected_write, ExpectedWriteInsert},
+    guards::{insert_expected_write, ExpectedWriteInsert, ExpectedWritePathPolicy},
     RuntimeHomeMutationContext,
 };
 use volicord_types::guard_outcome::GuardPolicyDecision;
+use volicord_types::product_path::ProductRelativePath;
+use volicord_types::values::UtcTimestamp;
 
 use super::GuardPhaseResult;
 use crate::guard_command::{
     args::GuardInput,
     context::{guard_state_summary, ActiveWriteTicketSummary, GuardReason, GuardStateSummary},
     envelope::{event_time, GuardEnvelope},
-    format_timestamp,
     mutation::ToolClassification,
     render::{context_json, reasons_json, tool_observation_json, write_ticket_backing_json},
     stable_id,
@@ -205,6 +206,13 @@ fn expected_write_candidate(
     if expected_paths.is_empty() {
         return Ok(None);
     }
+    let typed_expected_paths = expected_paths
+        .iter()
+        .map(|path| {
+            ProductRelativePath::parse(path)
+                .map_err(|error| GuardCommandError::Runtime(error.to_string()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let write_ticket = match write_ticket_coverage(summary, observation) {
         WriteTicketCoverage::TicketBacked { ticket, .. } => ticket,
         _ => return Ok(None),
@@ -235,21 +243,23 @@ fn expected_write_candidate(
             host_invocation_id,
             tool_name: observation.tool_name.clone(),
             command_kind: observation.classification.as_str().to_owned(),
-            path_policy: "exact_paths".to_owned(),
-            expected_paths: expected_paths.clone(),
+            path_policy: ExpectedWritePathPolicy::ExactPaths,
+            expected_paths: typed_expected_paths,
             task_id,
             change_unit_id: write_ticket.change_unit_id.clone(),
             write_ticket_ids: write_ticket_ids.clone(),
             basis_state_version: summary.state_version,
-            created_at: format_timestamp(created_at),
-            expires_at: format_timestamp(expires_at),
-            metadata_json: json!({
+            created_at: UtcTimestamp::from(created_at),
+            expires_at: UtcTimestamp::from(expires_at),
+            metadata: json!({
                 "source": "volicord_guard_pre_tool",
                 "raw_event_sha256": input.raw_sha256,
                 "ticket_backed": true,
                 "write_ticket_ids": write_ticket_ids
             })
-            .to_string(),
+            .as_object()
+            .expect("literal expected-write metadata is an object")
+            .clone(),
         },
         expected_paths,
         write_ticket,
@@ -271,7 +281,7 @@ fn expected_write_candidate_json(candidate: &ExpectedWriteCandidate) -> Value {
         "host_invocation_id": candidate.insert.host_invocation_id,
         "tool_name": candidate.insert.tool_name,
         "command_kind": candidate.insert.command_kind,
-        "path_policy": candidate.insert.path_policy,
+        "path_policy": candidate.insert.path_policy.as_str(),
         "expected_paths": candidate.expected_paths,
         "task_id": candidate.insert.task_id,
         "change_unit_id": candidate.insert.change_unit_id,

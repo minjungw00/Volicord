@@ -4,7 +4,7 @@ use super::facts::{workflow_policy_for_close_context, CloseReadinessFacts};
 use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
 use crate::methods::{
-    change_unit_ref, decode_required_json, state_ref, store_error_plan, stored_refs_to_state_refs,
+    change_unit_ref, state_ref, store_error_plan, stored_refs_to_state_refs,
     user_action_service_plan_error, PlanError,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
@@ -15,13 +15,11 @@ use crate::policy::close_readiness::{
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::{BaselineRef, ChangeUnitId};
 use volicord_types::product_path::{path_is_within, paths_are_authorized};
-use volicord_types::schema::{
-    CloseReadinessBlocker, RiskAcceptanceCoverage, StateRecordRef, WriteTicketValidityBasis,
-};
+use volicord_types::schema::{CloseReadinessBlocker, RiskAcceptanceCoverage, StateRecordRef};
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, CloseIntent, CloseReadinessBlockerCategory, JudgmentKind,
     JudgmentResolutionOutcome, StateRecordKind, TaskControlLevel, UserActionKind,
-    UserActionRequiredFor, UtcTimestamp,
+    UserActionRequiredFor, UtcTimestamp, WriteTicketStatus,
 };
 use volicord_user_action_service::{
     current_cancellation_authority, current_sensitive_approval, pending_user_action_authorities,
@@ -651,17 +649,12 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         }
         let Some(ticket) = tickets.iter().find(|ticket| {
-            ticket.status == "consumed"
+            ticket.status == WriteTicketStatus::Consumed
                 && ticket.consumed_by_run_id.as_deref() == Some(observed.run_id.as_str())
         }) else {
             return Ok(false);
         };
-        let validity_basis: WriteTicketValidityBasis = decode_required_json(
-            "write_tickets",
-            ticket.write_ticket_id.clone(),
-            "validity_basis_json",
-            Some(&ticket.validity_basis_json),
-        )?;
+        let validity_basis = &ticket.validity_basis;
         if validity_basis.task_id != request.task_id
             || validity_basis.change_unit_id != close_basis.change_unit_id
             || validity_basis.scope_revision != context.task.scope_revision
@@ -669,23 +662,17 @@ fn light_completion_without_acceptance_allowed(
         {
             return Ok(false);
         }
-        let allowed: Vec<String> = decode_required_json(
-            "write_tickets",
-            ticket.write_ticket_id.clone(),
-            "allowed_path_prefixes_json",
-            Some(&ticket.allowed_path_prefixes_json),
-        )?;
-        let denied: Vec<String> = decode_required_json(
-            "write_tickets",
-            ticket.write_ticket_id.clone(),
-            "denied_path_prefixes_json",
-            Some(&ticket.denied_path_prefixes_json),
-        )?;
+        let allowed = ticket
+            .allowed_path_prefixes
+            .iter()
+            .map(|path| path.as_str().to_owned())
+            .collect::<Vec<_>>();
+        let denied = &ticket.denied_path_prefixes;
         if !paths_are_authorized(&observed.observed_changes.changed_paths, &allowed)
             || observed.observed_changes.changed_paths.iter().any(|path| {
                 denied
                     .iter()
-                    .any(|denied_prefix| path_is_within(path, denied_prefix))
+                    .any(|denied_prefix| path_is_within(path, denied_prefix.as_str()))
             })
         {
             return Ok(false);

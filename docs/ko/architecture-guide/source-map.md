@@ -78,7 +78,7 @@
 | `crates/volicord-store/src/integration_verification/coordinate.rs` | Typed caller, current, stored 검증 coordinate와 caller 및 run owner 검증. |
 | `crates/volicord-store/src/integration_verification/row.rs` | 비공개 검증 SQL, row decoding, 상태와 timestamp parsing, 데이터베이스 표현 변환, 집중 row decoder 테스트. |
 | `crates/volicord-store/src/integration_verification/tests/` | Begin, probe, typed acquisition, correlation, status, 동시 최초 acknowledgement를 위한 lifecycle 담당 테스트와 assertion에서 분리한 공유 fixture 구성. |
-| `crates/volicord-store/src/workflow_records.rs` | 프로젝트 workflow policy record 읽기, workflow-policy mutation 입력과 적용, typed policy mutation 효과. |
+| `crates/volicord-store/src/workflow_records.rs` | 비공개 workflow policy row projection, schema·폐쇄형 값·정규 byte·fingerprint·source·timestamp의 엄격한 decoding을 통한 typed policy record 구성, typed mutation 입력과 적용 및 효과. |
 | `crates/volicord-store/src/core_pipeline/mod.rs` | 공개 Core Store 타입 routing, commit 및 mutation 입력, transaction 수준 Store 테스트. |
 | `crates/volicord-store/src/core_pipeline/facade.rs` | `CoreProjectStore` Connection 및 프로젝트 identity, 유지되는 mutation 권한, facade accessor, 공유 읽기 snapshot primitive. |
 | `crates/volicord-store/src/core_pipeline/open.rs` | 명시적인 읽기 전용 open과 context의 typed canonical Runtime Home identity를 유지하는 mutation open. |
@@ -87,14 +87,14 @@
 | `crates/volicord-store/src/core_pipeline/clock.rs` | Store handle clock sample, 프로젝트 UTC floor 읽기, transaction floor 전진. |
 | `crates/volicord-store/src/core_pipeline/tasks.rs` | Task와 수락 mutation 입력, 저장 검증과 SQL 적용, Task·수락 기준·증거 주장·Task revision projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/change_units.rs` | Change Unit mutation 입력, 저장 검증과 SQL 적용, projection, 엄격한 row 및 JSON decoding, facade 읽기, 집중 테스트. |
-| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | Write Ticket mutation 입력, 저장 검증과 SQL 적용, projection, 엄격한 row 및 JSON decoding, facade 읽기, 집중 테스트. |
+| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | Typed Write Ticket mutation 입력, 저장 검증과 SQL 적용, 비공개 물리 row, status·validity basis·attempt scope·timestamp·제품 경로의 엄격한 decoding을 통한 typed record 구성, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation 입력, 저장 검증과 SQL 적용, Run 및 observed-change projection, 엄격한 decoding, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/evidence.rs` | 증거 mutation 입력, 저장 검증과 SQL 적용, 증거 요약 및 관찰 projection, 엄격한 row decoding, record reference projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact mutation 입력, 저장 검증과 SQL 적용, staging 및 영속 artifact projection, 엄격한 decoding, link 읽기, 영속 본문 검증, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/user_actions.rs` | User Action mutation 입력, 저장 검증과 SQL 적용, 물리 JSON 및 저장 scalar에서 opaque `StoredUserActionRequest`, `StoredUserActionResolution`, paired `StoredUserActionRecordSet` 값으로의 엄격한 decoding, 유효 상태 파생, facade 읽기, 집중 일관성 테스트. |
 | `crates/volicord-store/src/core_pipeline/continuity.rs` | Continuity mutation 입력, 저장 검증과 SQL 적용, 프로젝트 continuity projection, 한도 있는 snapshot page, facade 읽기, 집중 테스트. |
-| `crates/volicord-store/src/core_pipeline/replay.rs` | Tool invocation projection, SQL, 엄격한 replay context decoding, 변경 불가능한 operation-result projection, facade 읽기. |
-| `crates/volicord-store/src/core_pipeline/reconciliation.rs` | 확인된 expected-write 및 unrecorded-change 관찰 후보 projection과, 닫기 준비 상태 사실 취득에 사용하는 현재 handle 기반 미조정 변경 읽기. |
+| `crates/volicord-store/src/core_pipeline/replay.rs` | 비공개 tool invocation row, SQL, typed invocation identity 및 replay context의 엄격한 decoding, 변경 불가능한 operation-result projection, Core 소유 의미 replay를 위한 정확한 메서드 응답 byte, facade 읽기. |
+| `crates/volicord-store/src/core_pipeline/reconciliation.rs` | Product Repository 경로를 포함해 엄격하게 decode한 typed expected-write 및 unrecorded-change 관찰 후보 projection과, 닫기 준비 상태 사실 취득에 사용하는 현재 handle 기반 미조정 변경 읽기. |
 | `crates/volicord-store/src/core_pipeline/blockers.rs` | 활성 blocker reference query와 facade 읽기. |
 | `crates/volicord-store/src/core_pipeline/events.rs` | 프로젝트 authority event identity 조회. |
 | `crates/volicord-store/src/core_pipeline/agent_sessions.rs` | Guard 소유 엄격한 row reader를 사용하는 프로젝트 로컬 Agent Session facade 진입점. |
@@ -135,9 +135,9 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, Store 오류 세부사항 projection, 플랫폼 소유 Product Repository 관찰 실패의 중립 typed 운영 projection. |
-| `crates/volicord-core/src/product_path.rs` | 공유 어휘 parsing과 플랫폼 소유 활성 Product Repository 관찰을 조율하고, 이미 저장된 의미 identity는 파일시스템 없이 parsing합니다. |
+| `crates/volicord-core/src/product_path.rs` | 호출자가 제공한 경로의 공유 어휘 parsing과 플랫폼 소유 활성 Product Repository 관찰을 조율합니다. Store가 반환한 경로는 typed 값으로 도착하며 이 모듈을 거치지 않습니다. |
 | `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. 프로덕션 메서드 모듈은 공유 helper, pipeline과 정책 함수, Store 서비스, 공유 타입을 각 담당 모듈에서 명시적으로 가져오며 상위 모듈을 import prelude로 사용하지 않습니다. |
-| `crates/volicord-core/src/methods/evidence_facts.rs` | 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 typed 사실을 취득하는 공유 Store 조회와 엄격한 디코딩. |
+| `crates/volicord-core/src/methods/evidence_facts.rs` | 물리 row decoding을 반복하거나 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 사실을 취득하는 공유 typed Store 조회와 의미 일관성 검사. |
 | `crates/volicord-core/src/methods/close_readiness/mod.rs` | 메서드 plan이 사용하는 닫기 준비 상태 서비스, projection, 차단 사유 helper의 좁은 패키지 표면. |
 | `crates/volicord-core/src/methods/close_readiness/facts.rs` | 하나의 수락 기준 snapshot, 하나의 workflow policy snapshot, 현재 handle 기반 미조정 변경 읽기를 포함한 typed 현재 사실 취득 및 투영 사실 조립. 준비 상태 판단은 담당하지 않습니다. |
 | `crates/volicord-core/src/methods/close_readiness/change_control.rs` | Task, Change Unit, 닫기 근거, baseline, 복구, 미조정 변경, Write Ticket 조건 평가. |

@@ -55,11 +55,11 @@ without adding a second Store abstraction:
 | `facade.rs`, `open.rs` | Project-database handle, retained Runtime Home and project identity, read snapshots, and read-only or mutation-capable opening. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | Project header and enforcement-profile reads, strict stored-value decoding, and the project UTC floor. |
 | `tasks.rs` | Task and acceptance mutation inputs and SQL; Task rows, acceptance criteria, evidence claims, and Task revisions. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change-unit, write-ticket, and Run mutation inputs and SQL; their reads and Run observed-change projection. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, and Run mutation inputs and SQL; private physical rows; strict closed-value, JSON, timestamp, and Product Repository path decoding into typed reads and Run observed-change projections. |
 | `evidence.rs`, `artifacts.rs` | Evidence and artifact mutation inputs and SQL; evidence summary and observation reads, artifact staging records, durable artifact records, artifact links, and artifact-body verification on reads. |
 | `user_actions.rs`, `continuity.rs` | User-action and continuity mutation inputs and SQL; strict decoding of physical JSON and stored scalar values into typed request/resolution records, effective-status reads, project-continuity rows, and bounded pages. |
-| `replay.rs` | Tool-invocation lookup, verified replay context, and immutable operation-result projection. |
-| `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | Product-write observation candidates, active blocker references, event identity lookup, and the project-local Agent Session entry point. |
+| `replay.rs` | Private tool-invocation rows, strict typed identity and replay-context decoding, immutable operation-result projection, and exact method-response bytes retained for Core-owned semantic replay. |
+| `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | Strictly decoded typed product-write observation candidates and paths, active blocker references, event identity lookup, and the project-local Agent Session entry point. |
 | `record_refs.rs`, `inspection.rs` | Shared stored-record references and no-effect storage counters used by verification paths. |
 | `mutations.rs` | Thin static dispatch from each top-level mutation group to its aggregate owner and the transaction-scoped application context. |
 | `commit.rs` | Cross-aggregate transaction coordination: replay and freshness gates, ordered delegation, one canonical state-version advance, event and replay persistence, response construction, and commit or rollback. |
@@ -67,6 +67,9 @@ without adding a second Store abstraction:
 
 Project workflow-policy record reads and writes remain in
 [`workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs).
+That owner keeps the physical policy row private and verifies its current
+schema, closed values, canonical bytes, fingerprint, source, and timestamps
+before returning a typed policy record.
 Transient artifact staging and durable artifact-body path operations remain in
 [`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs), while the
 project-facade artifact read side is owned by `core_pipeline/artifacts.rs`.

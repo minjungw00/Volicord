@@ -22,7 +22,7 @@ use volicord_types::schema::{
     PlannedEffect, ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile,
     RequiredNullable, SourceRef, StateRecordRef, SummaryCard, TaskLifecycleState,
     TaskLineageSummary, ToolEnvelope, WorkspaceContext, WriteDecisionReason,
-    WriteTicketAttemptScope, WriteTicketStateSummary, WriteTicketValidityBasis,
+    WriteTicketStateSummary,
 };
 use volicord_types::values::{
     ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, CloseReason, CloseState, ErrorCode,
@@ -34,7 +34,6 @@ use volicord_types::values::{
 };
 
 use chrono::{DateTime, Duration, Utc};
-use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use volicord_store::{
     artifacts::{
@@ -64,9 +63,7 @@ use crate::policy::{
     workflow::{project_workflow_policy, resolve_task_control_authority},
     write_ticket::{write_decision_reason, write_ticket_is_idle_expired},
 };
-use crate::product_path::{
-    observe_product_paths, parse_stored_product_paths, ProductPathValidationError,
-};
+use crate::product_path::{observe_product_paths, ProductPathValidationError};
 use volicord_user_action_service::{current_sensitive_approval, SensitiveApprovalRequirement};
 
 mod close_readiness;
@@ -175,12 +172,10 @@ fn first_product_write_duration_micros(
         .ok()?
         .into_iter()
         .filter_map(|candidate| {
-            let paths = serde_json::from_str::<Vec<String>>(&candidate.observed_paths_json).ok()?;
-            let normalized = parse_stored_product_paths(&paths).ok()?;
-            if normalized.is_empty() {
+            if candidate.observed_paths.is_empty() {
                 return None;
             }
-            let observed_at = UtcTimestamp::parse(&candidate.observed_at).ok()?;
+            let observed_at = candidate.observed_at;
             if observed_at.as_datetime() < task_created_at.as_datetime()
                 || observed_at.as_datetime() > observed_no_later_than.as_datetime()
             {
@@ -540,36 +535,8 @@ fn prepare_or_response<'mutation>(
     }
 }
 
-fn parse_storage_value<T>(field: &'static str, value: &str) -> CoreResult<T>
-where
-    T: serde::de::DeserializeOwned,
-{
-    serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_stored_value("project_state", field))
-    })
-}
-
 fn utc_timestamp(timestamp: DateTime<Utc>) -> UtcTimestamp {
     UtcTimestamp::from_datetime(timestamp)
-}
-
-pub(crate) fn parse_owner_storage_value<T>(
-    table: &'static str,
-    record_ref: impl Into<String>,
-    logical_column: &'static str,
-    value: &str,
-) -> CoreResult<T>
-where
-    T: serde::de::DeserializeOwned,
-{
-    let record_ref = record_ref.into();
-    serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            table,
-            record_ref,
-            logical_column,
-        ))
-    })
 }
 
 pub(crate) fn artifact_ref_from_verified_record(
@@ -1064,32 +1031,14 @@ fn canonical_source_artifact_ref(
     })
 }
 
-pub(crate) fn decode_required_json<T>(
-    table: &'static str,
-    record_ref: impl Into<String>,
-    logical_column: &'static str,
-    raw: Option<&str>,
-) -> CoreResult<T>
+pub(crate) fn decode_semantic_replay_result<T>(replay_identity: &str, raw: &str) -> CoreResult<T>
 where
     T: serde::de::DeserializeOwned,
 {
-    let record_ref = record_ref.into();
-    let Some(raw) = raw else {
-        return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json(table, record_ref, logical_column),
-        ));
-    };
-    if raw.trim().is_empty() {
-        return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json(table, record_ref, logical_column),
-        ));
-    }
-    serde_json::from_str(raw).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-            table,
-            record_ref,
-            logical_column,
-        ))
+    serde_json::from_str(raw).map_err(|_| CorePipelineError::Invariant {
+        detail: format!(
+            "stored semantic replay result `{replay_identity}` does not match its method result contract"
+        ),
     })
 }
 
@@ -1284,13 +1233,7 @@ fn paths_match_current_change_unit(
     if change_unit.bounded_paths.is_empty() {
         return Ok(false);
     }
-    let bounded_paths = parse_stored_product_paths(&change_unit.bounded_paths).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-            "change_units",
-            change_unit.change_unit_id.clone(),
-            "bounded_paths_json",
-        ))
-    })?;
+    let bounded_paths = &change_unit.bounded_paths;
     Ok(!bounded_paths.is_empty()
         && intended_paths.iter().all(|path| {
             bounded_paths
@@ -1608,32 +1551,6 @@ pub(crate) struct StoredScope {
     pub(crate) baseline_ref: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PersistedWriteTicketAttemptScope {
-    task_id: TaskId,
-    change_unit_id: ChangeUnitId,
-    intended_operation: String,
-    intended_paths: Vec<String>,
-    product_file_write_intended: bool,
-    sensitive_categories: Vec<String>,
-    baseline_ref: Option<BaselineRef>,
-}
-
-impl From<PersistedWriteTicketAttemptScope> for WriteTicketAttemptScope {
-    fn from(scope: PersistedWriteTicketAttemptScope) -> Self {
-        Self {
-            task_id: scope.task_id,
-            change_unit_id: scope.change_unit_id,
-            intended_operation: scope.intended_operation,
-            intended_paths: scope.intended_paths,
-            product_file_write_intended: scope.product_file_write_intended,
-            sensitive_categories: scope.sensitive_categories,
-            baseline_ref: scope.baseline_ref,
-        }
-    }
-}
-
 impl StoredScope {
     pub(crate) fn from_task(task: &TaskRecord) -> CoreResult<Self> {
         Ok(Self::normalized(Self {
@@ -1880,12 +1797,7 @@ fn write_ticket_summary_for_record(
     observation_refs: Option<Vec<StateRecordRef>>,
     guarantee_display: Option<GuaranteeDisplay>,
 ) -> CoreResult<WriteTicketStateSummary> {
-    let attempt_scope = decode_required_json::<PersistedWriteTicketAttemptScope>(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "attempt_scope_json",
-        Some(&record.attempt_scope_json),
-    )?;
+    let attempt_scope = &record.attempt_scope;
     let consumed_by_run_ref = record.consumed_by_run_id.as_ref().map(|run_id| {
         state_ref(
             StateRecordKind::Run,
@@ -1923,26 +1835,14 @@ fn write_ticket_summary_for_record(
         status: effective_status,
         write_ticket_ref: Some(write_ticket_ref(record, state_version)),
         basis_state_version: Some(record.basis_state_version),
-        validity_basis: Some(decode_required_json(
-            "write_tickets",
-            record.write_ticket_id.clone(),
-            "validity_basis_json",
-            Some(&record.validity_basis_json),
-        )?),
+        validity_basis: Some(record.validity_basis.clone()),
         invalidation_reason: effective_invalidation_reason,
-        idle_expires_at: record
-            .idle_expires_at
-            .as_ref()
-            .map(|value| {
-                parse_owner_storage_value(
-                    "write_tickets",
-                    record.write_ticket_id.clone(),
-                    "idle_expires_at",
-                    value,
-                )
-            })
-            .transpose()?,
-        intended_paths: attempt_scope.intended_paths,
+        idle_expires_at: record.idle_expires_at.clone(),
+        intended_paths: attempt_scope
+            .intended_paths
+            .iter()
+            .map(|path| path.as_str().to_owned())
+            .collect(),
         consumed_by_run_ref,
         observation_refs,
         guarantee_display,
@@ -1954,7 +1854,7 @@ fn effective_write_ticket_status(
     _state_version: u64,
     now: Option<DateTime<Utc>>,
 ) -> CoreResult<WriteTicketStatus> {
-    let stored_status = parse_storage_value("write_tickets.status", &record.status)?;
+    let stored_status = record.status;
     if stored_status != WriteTicketStatus::Active {
         return Ok(stored_status);
     }
@@ -1974,7 +1874,7 @@ fn effective_write_ticket_invalidation_reason(
     record: &WriteTicketRecord,
     now: Option<DateTime<Utc>>,
 ) -> CoreResult<Option<WriteTicketInvalidationReason>> {
-    if record.status == "active"
+    if record.status == WriteTicketStatus::Active
         && now
             .map(|now| write_ticket_is_idle_expired(record, now))
             .transpose()
@@ -1983,11 +1883,7 @@ fn effective_write_ticket_invalidation_reason(
     {
         return Ok(Some(WriteTicketInvalidationReason::IdleTimeout));
     }
-    record
-        .invalidation_reason
-        .as_deref()
-        .map(|value| parse_storage_value("write_tickets.invalidation_reason", value))
-        .transpose()
+    Ok(record.invalidation_reason)
 }
 
 fn write_ticket_projection_invalidation_reason(
@@ -1995,19 +1891,8 @@ fn write_ticket_projection_invalidation_reason(
     record: &WriteTicketRecord,
     now: DateTime<Utc>,
 ) -> CoreResult<Option<WriteTicketInvalidationReason>> {
-    let validity_basis: WriteTicketValidityBasis = decode_required_json(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "validity_basis_json",
-        Some(&record.validity_basis_json),
-    )?;
-    let scope: WriteTicketAttemptScope = decode_required_json::<PersistedWriteTicketAttemptScope>(
-        "write_tickets",
-        record.write_ticket_id.clone(),
-        "attempt_scope_json",
-        Some(&record.attempt_scope_json),
-    )?
-    .into();
+    let validity_basis = &record.validity_basis;
+    let scope = &record.attempt_scope;
     let task = store
         .task_record(&validity_basis.task_id)
         .map_err(CorePipelineError::from)?
@@ -2033,12 +1918,17 @@ fn write_ticket_projection_invalidation_reason(
     }
 
     let now = UtcTimestamp::from_datetime(now);
+    let normalized_scope_paths = scope
+        .intended_paths
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect::<Vec<_>>();
     let requirement = SensitiveApprovalRequirement {
         task_id: &validity_basis.task_id,
         change_unit_id: &validity_basis.change_unit_id,
         scope_revision: task.scope_revision,
         operation: &scope.intended_operation,
-        normalized_paths: &scope.intended_paths,
+        normalized_paths: &normalized_scope_paths,
         sensitive_categories: &scope.sensitive_categories,
         baseline_ref: scope.baseline_ref.as_ref(),
         required_for: UserActionRequiredFor::PrepareWrite,
@@ -2989,10 +2879,9 @@ fn task_lifecycle_phase_storage(value: TaskLifecyclePhase) -> &'static str {
 }
 
 fn invalid_storage<T>(field: &'static str) -> CoreResult<T> {
-    Err(CorePipelineError::Store(StoreError::corrupt_stored_value(
-        "project_state",
-        field,
-    )))
+    Err(CorePipelineError::Invariant {
+        detail: format!("typed Store facts violate the Core `{field}` invariant"),
+    })
 }
 
 fn string_member(object: &JsonObject, key: &str) -> Option<String> {
