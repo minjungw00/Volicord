@@ -1163,7 +1163,7 @@ fn prepare_write_clears_same_level_policy_reevaluation_mark() -> Result<(), Box<
 }
 
 #[test]
-fn policy_strengthening_requires_approval_instead_of_reusing_nonsensitive_ticket(
+fn policy_strengthening_invalidates_nonsensitive_ticket_and_requires_approval(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
@@ -1207,7 +1207,10 @@ fn policy_strengthening_requires_approval_instead_of_reusing_nonsensitive_ticket
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
     assert_eq!(response.response_value["write_ticket_effect"], "none");
-    assert_eq!(write_ticket_status(&harness, &initial_ticket_id)?, "active");
+    assert_eq!(
+        write_ticket_status(&harness, &initial_ticket_id)?,
+        "invalidated"
+    );
     Ok(())
 }
 

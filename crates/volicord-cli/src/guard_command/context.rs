@@ -1,6 +1,6 @@
-use std::{collections::BTreeSet, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
-use volicord_core::GitWorkspaceContext;
+use volicord_core::{load_evaluated_write_tickets, GitWorkspaceContext};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::{
     bootstrap::ProjectRecord,
@@ -13,16 +13,11 @@ use volicord_store::{
     RuntimeHomeMutationContext,
 };
 use volicord_types::canonical::canonical_json_bare_sha256;
-use volicord_types::ids::{BaselineRef, ProjectId, TaskId, UserActionResolutionId};
-use volicord_types::product_path::path_is_within;
-use volicord_types::schema::{
-    UserActionBasis, UserActionResolutionBody, UserActionResolutionIdentity,
-    WriteTicketAttemptScope, WriteTicketValidityBasis,
-};
+use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
+use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
 use volicord_types::values::{
-    AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, PromptCaptureStatus,
-    TaskControlLevel, UnrecordedChangeConfidence, UserActionBasisStatus, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UtcTimestamp, WriteTicketStatus,
+    AcceptancePolicy, PromptCaptureStatus, UnrecordedChangeConfidence,
+    WriteTicketInvalidationReason, WriteTicketStatus,
 };
 
 use super::{
@@ -121,10 +116,8 @@ pub(super) fn guard_state_summary(
     let prompt_capture_operational = prompt_capture_availability.is_operational();
     if let Some(active_task_id) = project_state.active_task_id.as_deref() {
         let task_id = TaskId::new(active_task_id);
-        let mut current_task_sensitive = false;
         let current_task = store.task_record(&task_id)?;
         if let Some(task) = current_task.as_ref() {
-            current_task_sensitive = task.effective_control_level == TaskControlLevel::Sensitive;
             active_task_effective_control_level =
                 Some(task.effective_control_level.as_str().to_owned());
             policy_control_reevaluation = pending_policy_control_reevaluation(task)?;
@@ -137,8 +130,14 @@ pub(super) fn guard_state_summary(
                 current_write_ticket_basis(task, current_change_unit.as_ref(), &project.repo_root)
             })
             .transpose()?;
-        let current_sensitive_approvals =
-            current_sensitive_approvals(&store, &task_id, &now_timestamp)?;
+        let evaluated_write_tickets =
+            load_evaluated_write_tickets(&store, &task_id, &now_timestamp)?
+                .into_iter()
+                .filter_map(|evaluated| {
+                    let write_ticket_id = evaluated.stored_write_ticket_id()?.as_str().to_owned();
+                    Some((write_ticket_id, evaluated))
+                })
+                .collect::<BTreeMap<_, _>>();
         for record in store.write_tickets_for_task(&task_id)? {
             let validity_basis = record.validity_basis();
             let policy_binding_is_current =
@@ -174,12 +173,12 @@ pub(super) fn guard_state_summary(
             let not_idle_expired = record
                 .idle_expires_at()
                 .is_none_or(|expires_at| now_timestamp < *expires_at);
-            let approval_basis_current = write_ticket_approval_basis_is_current(
-                validity_basis,
-                attempt_scope,
-                current_task_sensitive,
-                &current_sensitive_approvals,
-            );
+            let approval_basis_current = evaluated_write_tickets
+                .get(record.write_ticket_id())
+                .is_some_and(|evaluated| {
+                    evaluated.invalidation()
+                        != Some(WriteTicketInvalidationReason::ApprovalBasisChanged)
+                });
             let owner_basis_status = current_ticket_basis.as_ref().map_or(
                 WriteTicketOwnerBasisStatus::Stale,
                 |current| {
@@ -317,84 +316,6 @@ const fn acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
     }
 }
 
-#[derive(Debug, Clone)]
-struct CurrentSensitiveApproval {
-    identity: UserActionResolutionIdentity,
-    basis: UserActionBasis,
-    required_for: Vec<UserActionRequiredFor>,
-}
-
-fn current_sensitive_approvals(
-    store: &CoreProjectStore,
-    task_id: &TaskId,
-    now: &UtcTimestamp,
-) -> Result<Vec<CurrentSensitiveApproval>, GuardCommandError> {
-    let mut approvals = Vec::new();
-    for record in
-        store.resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)?
-    {
-        let Some(resolution) = record.resolution() else {
-            continue;
-        };
-        let request = record.request().request();
-        let basis = record.request().basis();
-        let resolution_body = resolution.resolution();
-        let accepted = matches!(
-            resolution_body,
-            UserActionResolutionBody::Choice {
-                machine_action: UserActionOptionAction::Accept,
-                resolution_outcome: JudgmentResolutionOutcome::Accepted,
-                ..
-            }
-        );
-        let scope_current = basis.sensitive_action_scope().is_some_and(|scope| {
-            scope
-                .expires_at
-                .as_ref()
-                .is_none_or(|expires_at| now < expires_at)
-        });
-        if basis.compatibility_status() == UserActionBasisStatus::Current
-            && accepted
-            && resolution.resolved_by_actor_source() == &ActorSource::LocalUser
-            && request
-                .required_for
-                .contains(&UserActionRequiredFor::PrepareWrite)
-            && scope_current
-        {
-            approvals.push(CurrentSensitiveApproval {
-                identity: UserActionResolutionIdentity {
-                    project_id: ProjectId::new(resolution.project_id()),
-                    task_id: TaskId::new(record.request().task_id()),
-                    resolution_id: UserActionResolutionId::new(
-                        resolution.user_action_resolution_id(),
-                    ),
-                },
-                basis: basis.clone(),
-                required_for: request.required_for.clone(),
-            });
-        }
-    }
-    Ok(approvals)
-}
-
-fn write_ticket_approval_basis_is_current(
-    validity_basis: &WriteTicketValidityBasis,
-    attempt_scope: &WriteTicketAttemptScope,
-    current_task_sensitive: bool,
-    current_sensitive_approvals: &[CurrentSensitiveApproval],
-) -> bool {
-    if validity_basis.approval_basis_refs.is_empty() {
-        return !current_task_sensitive && attempt_scope.sensitive_categories.is_empty();
-    }
-
-    validity_basis.approval_basis_refs.iter().all(|reference| {
-        current_sensitive_approvals.iter().any(|approval| {
-            approval.identity == reference.identity()
-                && sensitive_approval_matches_ticket(approval, validity_basis, attempt_scope)
-        })
-    })
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WriteTicketOwnerBasisStatus {
     Current,
@@ -513,46 +434,4 @@ fn write_ticket_owner_basis_status(
         }
         _ => WriteTicketOwnerBasisStatus::Current,
     }
-}
-
-fn sensitive_approval_matches_ticket(
-    approval: &CurrentSensitiveApproval,
-    validity_basis: &WriteTicketValidityBasis,
-    attempt_scope: &WriteTicketAttemptScope,
-) -> bool {
-    if !approval
-        .required_for
-        .contains(&UserActionRequiredFor::PrepareWrite)
-    {
-        return false;
-    }
-    let coordinates = approval.basis.coordinates();
-    if coordinates.task_id != validity_basis.task_id
-        || coordinates.change_unit_id.as_ref() != Some(&validity_basis.change_unit_id)
-        || coordinates.scope_revision != validity_basis.scope_revision
-        || coordinates.baseline_ref.as_ref() != validity_basis.baseline_ref.as_ref()
-        || attempt_scope.task_id != validity_basis.task_id
-        || attempt_scope.change_unit_id != validity_basis.change_unit_id
-    {
-        return false;
-    }
-    let Some(scope) = approval.basis.sensitive_action_scope() else {
-        return false;
-    };
-    let approved_categories = scope
-        .sensitive_categories
-        .iter()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
-    scope.action_kind == attempt_scope.intended_operation
-        && attempt_scope
-            .sensitive_categories
-            .iter()
-            .all(|category| approved_categories.contains(category.as_str()))
-        && attempt_scope.intended_paths.iter().all(|path| {
-            scope
-                .intended_paths
-                .iter()
-                .any(|approved| path_is_within(path.as_str(), approved))
-        })
 }

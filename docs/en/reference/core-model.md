@@ -62,6 +62,12 @@ Write ticket is narrow.
   Write Ticket corruption. A well-formed referenced approval that expires or
   otherwise ceases to satisfy current semantic policy invalidates the approval
   basis without becoming persisted corruption.
+- One semantic approval assessment constructs the current matching
+  sensitive-approval identity set and classifies the Store-valid persisted
+  basis as not required, current with a non-empty typed basis, or changed with
+  a structured reason. State summary, ticket reuse, Run admission, and close
+  evaluation use that result rather than independently comparing approval
+  references or resolution IDs.
 - It is not reusable scope, ordinary write approval, command approval, shell permission, sensitive-action approval, user-owned judgment, OS permission, deployment approval, final acceptance, residual-risk acceptance, evidence, or proof that the write occurred.
 
 Runs and evidence record support, not authority substitutes.
@@ -565,17 +571,29 @@ It has these compatibility properties:
   write-authority fingerprint, and approval-basis refs. Its issuance
   `basis_state_version` is audit ordering only. A missing or mismatched binding
   makes an active ticket unusable without hiding consumed history.
+- Approval-assessed: current sensitive approvals are derived from the current
+  UserAction authority facts for the ticket's project, `Task`, Change Unit,
+  scope revision, operation, normalized paths, sensitive categories, baseline,
+  and required operation target. The persisted basis is assessed once against
+  that typed set. Newly required approval, no current resolution, changed
+  approval scope, or a basis resolution that is no longer current produces a
+  structured changed result.
 - Policy-bound: the fingerprint is the `sha256:`-prefixed canonical-JSON SHA-256
   of exactly
   `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
   The two pattern arrays are sorted and deduplicated first. This normalized
   fingerprint is narrower than the whole canonical-policy
   `policy_fingerprint`; every other policy field is excluded.
+- Workflow-policy and approval currentness remain independent typed inputs. A
+  current normalized write-authority fingerprint does not make a changed
+  approval basis current, and a current approval basis does not repair a
+  fingerprint mismatch.
 - Reusable before consumption: a compatible active ticket may satisfy a later
   `prepare_write` when it covers every newly intended path and has the same or
   stronger sensitive basis. Sensitive reuse also requires the exact normalized
-  operation and matching approval-resolution identity. Reuse does not create
-  another ticket.
+  operation and a current persisted approval basis. Additional unrelated
+  current approvals neither replace that basis nor invalidate it. Reuse does
+  not create another ticket.
 - Effect-contract-bound when present: it is created only when the proposed product-file change fits the current Change Unit effect contract.
 - Single-use: one compatible product-write Run or exact approval-bound
   non-product sensitive Run consumes it once.

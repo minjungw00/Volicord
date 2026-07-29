@@ -44,8 +44,12 @@ they protect. Pure projection tests use typed facts and no Store handle.
 Write Ticket read-model tests cover typed ticket, Task, workflow-policy,
 UserAction-resolution, and evidence acquisition plus Store-error propagation
 without asserting policy. Selection tests own candidate precedence and
-tie-breaking. Current-validity tests own effective status, expiration,
-workflow authority, approval, and typed invalidation outcomes. Summary tests
+tie-breaking. Approval-owner tests cover the complete typed requirement,
+current-set, persisted-basis, and semantic change-reason matrix using
+Store-valid references. One shared semantic fixture table verifies that
+`Current`, `NotRequired`, and `Changed` drive summary, reuse, and Record Run
+admission consistently. Current-validity tests own effective status,
+expiration, workflow authority, and typed invalidation outcomes. Summary tests
 map already evaluated planned or stored identities without a Store fixture or
 policy reevaluation. Focused service tests keep only representative persisted,
 invalidated, approval-dependent, dry-run, and failure paths.

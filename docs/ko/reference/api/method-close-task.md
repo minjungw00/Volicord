@@ -86,7 +86,7 @@ API 경계 블록:
 
 - `dry_run=false`인 상태 변경 `intent`에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - 오래된 `expected_state_version` 또는 멱등 요청 해시 충돌은 닫기 준비 상태 평가 전에 거절됩니다.
-- 닫기 관련 쓰기 티켓은 현재 Task, Change Unit, 범위 리비전, 기준선, workspace 맥락, 현재 정규화된 프로젝트 쓰기 권한 결속, 완전한 프로젝트/`Task`/UserAction resolution 승인 identity, Task 상태, 선택적으로 설정된 idle timeout이라는 명시적 유효성 근거로 확인합니다. 감사 전용 `basis_state_version`은 전역 상태 버전과 비교하지 않습니다. 영속 승인 참조의 소유자 불일치나 identity 중복은 Store 손상이고, 그 밖에 유효한 승인의 만료는 의미 기반 현재성 결과입니다.
+- 닫기 관련 쓰기 티켓은 현재 Task, Change Unit, 범위 리비전, 기준선, workspace 맥락, 현재 정규화된 프로젝트 쓰기 권한 결속, 정규 typed 승인 평가, Task 상태, 선택적으로 설정된 idle timeout이라는 명시적 유효성 근거로 한 번 평가합니다. 닫기 준비 상태는 이 평가된 ticket 상태를 소비하며 승인 참조나 resolution ID를 독립적으로 비교하지 않습니다. 감사 전용 `basis_state_version`은 전역 상태 버전과 비교하지 않습니다. 영속 승인 참조의 소유자 불일치나 identity 중복은 Store 손상이며 의미 변경 결과가 될 수 없고, 그 밖에 유효한 승인의 만료는 의미 기반 현재성 결과입니다.
 - 쓰기 티켓 유효성 확인은 최종 수락, 잔여 위험 수락, 사용자 소유 판단, 민감 동작 승인, 포괄적 승인을 기록하지 않습니다.
 
 닫기 조건:

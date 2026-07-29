@@ -42,12 +42,13 @@ ticket. It reuses that ticket when its Task, Change Unit, `scope_revision`,
 baseline, workspace, approval basis, and non-null normalized project
 write-authority binding are current, its allowed paths cover all newly intended
 paths, its sensitive basis is equal or stronger, and it remains unconsumed.
-Sensitive reuse additionally requires the exact normalized
-`intended_operation` and the same matching approval-resolution identity,
-including project, `Task`, and UserAction resolution IDs; a reworded operation
-or an unscoped matching resolution ID cannot borrow an earlier approval or
-ticket. Otherwise it
-issues one open ticket. A ticket is a Volicord
+Core constructs the canonical Write Ticket approval requirement and typed
+current sensitive-approval set, then assesses the Store-valid persisted basis
+once. Reuse accepts a current basis or a basis that is not required and rejects
+a changed basis. Sensitive reuse additionally requires the exact normalized
+`intended_operation`; a reworded operation cannot borrow an earlier approval
+or ticket, while additional unrelated current approvals do not replace or
+invalidate its persisted basis. Otherwise it issues one open ticket. A ticket is a Volicord
 authority record for the bounded product-write or sensitive-action intent within
 the current Task and Change Unit. A non-product sensitive ticket has
 `product_file_write_intended=false`; it binds the named operation, an empty
@@ -200,6 +201,11 @@ approval expiry invalidates a dependent ticket as `approval_basis_changed`, not
 as ordinary elapsed ticket time or persisted corruption. Persisted
 approval-reference owner disagreement or duplicate full resolution identity is
 corruption and does not enter semantic currentness evaluation.
+The semantic assessment reports a changed basis when approval is newly
+required, no current resolution exists, approval scope changed, or a persisted
+basis resolution is no longer current. State summary, ticket reuse, Record Run
+admission, and close readiness consume that assessment instead of independently
+comparing approval references or resolution IDs.
 `basis_state_version` records issuance order
 for audit and references only; it is never a freshness condition.
 
@@ -213,10 +219,11 @@ Core semantic planning represents a prospective issuance as an identity-free
 ID, attach response state versions, or construct the public result. A
 `dry_run` request stops at the method boundary and projects only the preview.
 For a committed issuance, the method supplies the durable ID and
-state-versioned basis references to materialize one validated
-`PlannedWriteTicket`. That materialized value is the single source for
-response projection and the typed Store insertion input. Reuse instead
-projects the Store-validated `StoredWriteTicket` that already exists.
+approval-reference projection state version; the typed non-empty approval basis
+constructs the state-versioned references while materializing one validated
+`PlannedWriteTicket`. That materialized value is the single source for response
+projection and the typed Store insertion input. Reuse instead projects the
+Store-validated `StoredWriteTicket` that already exists.
 
 ## Method result fields
 

@@ -1,4 +1,5 @@
 mod admission;
+pub(crate) mod approval;
 pub(crate) mod current_validity;
 mod facts;
 mod planning;
@@ -173,9 +174,8 @@ impl WriteTicketInvalidReason {
 
 pub(crate) use admission::{admit_record_run, RecordRunWriteAdmission, WriteTicketAdmissionError};
 pub(crate) use facts::{
-    baseline_matches, load_prepare_write_task, matching_sensitive_approval,
-    paths_match_current_change_unit, validate_prepare_write_change_unit, workspace_context_matches,
-    SensitiveApprovalSearch,
+    baseline_matches, load_prepare_write_task, paths_match_current_change_unit,
+    validate_prepare_write_change_unit, workspace_context_matches,
 };
 pub(crate) use planning::{
     materialize_planned_write_ticket, plan_prepare_write, planned_write_ticket_mutation,

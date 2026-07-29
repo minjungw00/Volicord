@@ -1,12 +1,8 @@
 use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
 use volicord_types::product_path::path_is_within;
-use volicord_types::values::{
-    UserActionKind, UserActionRequiredFor, UtcTimestamp, WriteDecisionCategory,
-};
+use volicord_types::values::WriteDecisionCategory;
 
-use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, StoredUserActionRecordSet, TaskRecord,
-};
+use volicord_store::core_pipeline::{ChangeUnitRecord, CoreProjectStore, TaskRecord};
 
 use super::{
     WriteTicketDecisionCode, WriteTicketDecisionReason, WriteTicketPlanningError,
@@ -15,7 +11,6 @@ use super::{
 use crate::pipeline::{CoreResult, GitWorkspaceContext};
 use crate::task_state::StoredScope;
 use crate::write_ticket::write_decision_reason;
-use volicord_user_action_service::{current_sensitive_approval, SensitiveApprovalRequirement};
 
 pub(crate) fn load_prepare_write_task(
     store: &CoreProjectStore,
@@ -112,55 +107,4 @@ pub(crate) fn paths_match_current_change_unit(
                 .iter()
                 .any(|scope| path_is_within(path, scope))
         })
-}
-
-pub(crate) struct SensitiveApprovalSearch<'a> {
-    pub(crate) store: &'a CoreProjectStore<'a>,
-    pub(crate) task_id: &'a TaskId,
-    pub(crate) task: &'a TaskRecord,
-    pub(crate) change_unit: &'a ChangeUnitRecord,
-    pub(crate) baseline_ref: &'a BaselineRef,
-    pub(crate) intended_operation: &'a str,
-    pub(crate) normalized_paths: &'a [String],
-    pub(crate) sensitive_categories: &'a [String],
-    pub(crate) now: &'a UtcTimestamp,
-}
-
-pub(crate) fn matching_sensitive_approval(
-    search: SensitiveApprovalSearch<'_>,
-) -> Result<Option<StoredUserActionRecordSet>, WriteTicketPlanningError> {
-    let SensitiveApprovalSearch {
-        store,
-        task_id,
-        task,
-        change_unit,
-        baseline_ref,
-        intended_operation,
-        normalized_paths,
-        sensitive_categories,
-        now,
-    } = search;
-    let records =
-        store.resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)?;
-    let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
-    let requirement = SensitiveApprovalRequirement {
-        task_id,
-        change_unit_id: &change_unit_id,
-        scope_revision: task.scope_revision,
-        operation: intended_operation,
-        normalized_paths,
-        sensitive_categories,
-        baseline_ref: Some(baseline_ref),
-        required_for: UserActionRequiredFor::PrepareWrite,
-        now,
-    };
-
-    for record in records {
-        let authority = volicord_user_action_service::user_action_authority_from_record(&record)?;
-        if current_sensitive_approval(&authority, &requirement) {
-            return Ok(Some(record));
-        }
-    }
-
-    Ok(None)
 }

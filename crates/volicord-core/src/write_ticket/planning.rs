@@ -7,9 +7,8 @@ use crate::policy::workflow::{
 use crate::product_path::{observe_product_paths, ProductPathValidationError};
 use crate::record_refs::state_ref;
 use crate::write_ticket::{
-    baseline_matches, load_prepare_write_task, matching_sensitive_approval,
-    paths_match_current_change_unit, validate_prepare_write_change_unit, workspace_context_matches,
-    SensitiveApprovalSearch,
+    baseline_matches, load_prepare_write_task, paths_match_current_change_unit,
+    validate_prepare_write_change_unit, workspace_context_matches,
 };
 use crate::write_ticket::{
     normalized_string_set, prepare_write_decision, write_decision_reason,
@@ -33,21 +32,22 @@ use volicord_types::ids::{
     WriteTicketId,
 };
 use volicord_types::product_path::{path_is_within, ProductRelativePath};
-use volicord_types::schema::{
-    JsonObject, UserActionResolutionIdentity, UserActionResolutionRef, WriteTicketAttemptScope,
-    WriteTicketValidityBasis,
-};
+use volicord_types::schema::{JsonObject, WriteTicketAttemptScope, WriteTicketValidityBasis};
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, MethodName, PrepareWriteDecision, StateRecordKind,
-    TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor, UtcTimestamp, WorkPhase,
-    WriteDecisionCategory, WriteTicketInvalidationReason,
+    TaskControlLevel, TaskMode, UserActionKind, UtcTimestamp, WorkPhase, WriteDecisionCategory,
+    WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
-    current_sensitive_approval, pending_user_action_authorities, user_action_authority_from_record,
-    user_action_blocks_operation, SensitiveApprovalRequirement, UserActionOperation,
+    pending_user_action_authorities, user_action_authority_from_record,
+    user_action_blocks_operation, UserActionAuthority, UserActionOperation,
     UserActionOperationContext,
 };
 
+use super::approval::{
+    assess_write_ticket_approval, ApprovalBasisChangeReason, CurrentSensitiveApprovals,
+    NonEmptyApprovalBasis, WriteTicketApprovalAssessment, WriteTicketApprovalRequirement,
+};
 use super::{
     WriteTicketDecisionCode, WriteTicketDecisionReason, WriteTicketField, WriteTicketPlanningError,
     WriteTicketRelatedRecord,
@@ -199,7 +199,7 @@ pub(crate) struct PlannedWriteTicketDraft {
     baseline_ref: BaselineRef,
     workspace_context_sha256: Option<String>,
     write_authority_fingerprint: String,
-    approval_resolution_identities: Vec<UserActionResolutionIdentity>,
+    approval_basis: Option<NonEmptyApprovalBasis>,
     allowed_path_prefixes: Vec<ProductRelativePath>,
     denied_path_prefixes: Vec<ProductRelativePath>,
     attempt_scope: WriteTicketAttemptScope,
@@ -406,23 +406,13 @@ pub(crate) fn materialize_planned_write_ticket(
     draft: PlannedWriteTicketDraft,
     write_ticket_id: WriteTicketId,
     basis_state_version: u64,
-    approval_basis_refs: Vec<UserActionResolutionRef>,
+    approval_projection_state_version: u64,
 ) -> Result<PlannedWriteTicket, WriteTicketPlanningError> {
-    let approval_refs_match = draft.approval_resolution_identities.len()
-        == approval_basis_refs.len()
-        && draft.approval_resolution_identities.iter().all(|identity| {
-            identity.project_id == draft.project_id
-                && identity.task_id == draft.task_id
-                && approval_basis_refs
-                    .iter()
-                    .any(|reference| reference.identity() == *identity)
-        });
-    if !approval_refs_match {
-        return Err(WriteTicketPlanningError::Invariant {
-            detail: "planned Write Ticket approval identities do not match supplied basis refs"
-                .to_owned(),
-        });
-    }
+    let approval_basis_refs = draft
+        .approval_basis
+        .as_ref()
+        .map(|basis| basis.resolution_refs(approval_projection_state_version))
+        .unwrap_or_default();
     PlannedWriteTicket::new(PlannedWriteTicketInput {
         project_id: draft.project_id,
         write_ticket_id,
@@ -460,7 +450,7 @@ pub(crate) struct PrepareWritePlanningOutcome {
     pub(crate) decision: PrepareWriteDecision,
     pub(crate) allowed: bool,
     pub(crate) pending_user_action_request_ids: Vec<UserActionRequestId>,
-    pub(crate) active_user_action_resolution_identities: Vec<UserActionResolutionIdentity>,
+    pub(crate) approval_basis: Option<NonEmptyApprovalBasis>,
     pub(crate) planned_write_ticket: Option<PlannedWriteTicketDraft>,
     pub(crate) reused_write_ticket: Option<StoredWriteTicket>,
     pub(crate) allowed_path_patterns: Vec<String>,
@@ -776,21 +766,31 @@ fn plan_prepare_write_mutations(
             None,
         ),
     ];
-    let sensitive_requirement = if !sensitive_approval_required {
-        None
-    } else {
-        Some(SensitiveApprovalRequirement {
-            task_id: &task_id,
-            change_unit_id: &current_change_unit_id,
-            scope_revision: task.scope_revision,
-            operation: &normalized_operation,
-            normalized_paths: &normalized_paths,
-            sensitive_categories: &normalized_sensitive_categories,
-            baseline_ref: Some(&input.baseline_ref),
-            required_for: UserActionRequiredFor::PrepareWrite,
-            now: &plan_now,
-        })
+    let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
+    let typed_normalized_paths = typed_product_paths(&normalized_paths)?;
+    let attempt_scope = WriteTicketAttemptScope {
+        task_id: task_id.clone(),
+        change_unit_id: change_unit_id.clone(),
+        intended_operation: normalized_operation,
+        intended_paths: typed_normalized_paths,
+        product_file_write_intended: input.product_file_write_intended,
+        sensitive_categories: normalized_sensitive_categories,
+        baseline_ref: Some(input.baseline_ref.clone()),
     };
+    let approval_requirement = WriteTicketApprovalRequirement::new(
+        &input.project_id,
+        task.scope_revision,
+        task.effective_control_level,
+        &attempt_scope,
+        &plan_now,
+    );
+    debug_assert_eq!(
+        approval_requirement.is_required(),
+        sensitive_approval_required
+    );
+    let sensitive_requirement = approval_requirement
+        .is_required()
+        .then(|| approval_requirement.sensitive_requirement());
     let pending_authorities = pending_user_action_authorities(store, &task_id, &plan_now)?;
     let operation_context = UserActionOperationContext {
         operation: UserActionOperation::PrepareWrite,
@@ -822,58 +822,22 @@ fn plan_prepare_write_mutations(
         ));
     }
 
-    let mut active_user_action_resolution_identities = Vec::new();
-    let mut created_by_user_action_resolution_id = None;
-    if sensitive_approval_required {
-        let matching_sensitive_approval = matching_sensitive_approval(SensitiveApprovalSearch {
-            store,
-            task_id: &task_id,
-            task: &task,
-            change_unit: &change_unit,
-            baseline_ref: &input.baseline_ref,
-            intended_operation: &normalized_operation,
-            normalized_paths: &normalized_paths,
-            sensitive_categories: &normalized_sensitive_categories,
-            now: &plan_now,
-        })?;
-        if let Some(record) = matching_sensitive_approval {
-            let authority = user_action_authority_from_record(&record)?;
-            if let Some(identity) = authority.resolution_identity() {
-                created_by_user_action_resolution_id = Some(identity.resolution_id.clone());
-                active_user_action_resolution_identities.push(identity);
-            }
-        } else {
-            reasons.push(write_decision_reason(
-                WriteDecisionCategory::SensitiveApproval,
-                WriteTicketDecisionCode::SensitiveApprovalMissing,
-                "A matching sensitive-action approval is required before write ticket issuance.",
-                Vec::new(),
-            ));
-        }
+    let approval_authorities = resolved_sensitive_approval_authorities(store, &task_id, &plan_now)?;
+    let current_approvals =
+        CurrentSensitiveApprovals::new(&approval_authorities, &approval_requirement);
+    let approval_basis = current_approvals.primary_basis();
+    let created_by_user_action_resolution_id = approval_basis
+        .as_ref()
+        .map(|basis| basis.first_resolution_id().clone());
+    if approval_requirement.is_required() && approval_basis.is_none() {
+        reasons.push(write_decision_reason(
+            WriteDecisionCategory::SensitiveApproval,
+            WriteTicketDecisionCode::SensitiveApprovalMissing,
+            "A matching sensitive-action approval is required before write ticket issuance.",
+            Vec::new(),
+        ));
     }
-    let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
-    let typed_normalized_paths = typed_product_paths(&normalized_paths)?;
-    let attempt_scope = WriteTicketAttemptScope {
-        task_id: task_id.clone(),
-        change_unit_id: change_unit_id.clone(),
-        intended_operation: normalized_operation,
-        intended_paths: typed_normalized_paths,
-        product_file_write_intended: input.product_file_write_intended,
-        sensitive_categories: normalized_sensitive_categories,
-        baseline_ref: Some(input.baseline_ref.clone()),
-    };
     let created_at = plan_now.clone();
-    let semantic_approval_basis_refs = active_user_action_resolution_identities
-        .iter()
-        .map(|identity| {
-            UserActionResolutionRef::new(
-                identity.project_id.clone(),
-                identity.task_id.clone(),
-                identity.resolution_id.clone(),
-                None,
-            )
-        })
-        .collect::<Vec<_>>();
     let validity_basis_for_selection = WriteTicketValidityBasis {
         task_id: task_id.clone(),
         change_unit_id: change_unit_id.clone(),
@@ -886,7 +850,7 @@ fn plan_prepare_write_mutations(
             .transpose()
             .map_err(CorePipelineError::from)?,
         write_authority_fingerprint: workflow_policy.write_authority_fingerprint.clone(),
-        approval_basis_refs: semantic_approval_basis_refs,
+        approval_basis_refs: Vec::new(),
     };
     let active_ticket_selection = select_active_write_tickets(
         store,
@@ -895,7 +859,8 @@ fn plan_prepare_write_mutations(
         ActiveWriteTicketRequirements {
             validity_basis: &validity_basis_for_selection,
             attempt_scope: &attempt_scope,
-            sensitive_approval_required,
+            approval_requirement: &approval_requirement,
+            approval_authorities: &approval_authorities,
         },
         &plan_now,
     )?;
@@ -959,7 +924,7 @@ fn plan_prepare_write_mutations(
         baseline_ref: input.baseline_ref.clone(),
         workspace_context_sha256: validity_basis_for_selection.workspace_context_sha256,
         write_authority_fingerprint: workflow_policy.write_authority_fingerprint,
-        approval_resolution_identities: active_user_action_resolution_identities.clone(),
+        approval_basis: approval_basis.clone(),
         allowed_path_prefixes: typed_allowed_path_patterns,
         denied_path_prefixes: typed_denied_path_patterns,
         attempt_scope,
@@ -1002,7 +967,7 @@ fn plan_prepare_write_mutations(
         decision,
         allowed,
         pending_user_action_request_ids,
-        active_user_action_resolution_identities,
+        approval_basis,
         planned_write_ticket,
         reused_write_ticket: compatible_ticket,
         allowed_path_patterns,
@@ -1037,7 +1002,26 @@ struct ActiveWriteTicketSelection {
 struct ActiveWriteTicketRequirements<'a> {
     validity_basis: &'a WriteTicketValidityBasis,
     attempt_scope: &'a WriteTicketAttemptScope,
-    sensitive_approval_required: bool,
+    approval_requirement: &'a WriteTicketApprovalRequirement<'a>,
+    approval_authorities: &'a [UserActionAuthority],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WriteTicketReuseApproval {
+    Reusable,
+    Changed(ApprovalBasisChangeReason),
+}
+
+pub(crate) fn reuse_approval_assessment(
+    assessment: WriteTicketApprovalAssessment,
+) -> WriteTicketReuseApproval {
+    match assessment {
+        WriteTicketApprovalAssessment::Current { .. }
+        | WriteTicketApprovalAssessment::NotRequired => WriteTicketReuseApproval::Reusable,
+        WriteTicketApprovalAssessment::Changed { reason } => {
+            WriteTicketReuseApproval::Changed(reason)
+        }
+    }
 }
 
 fn select_active_write_tickets(
@@ -1063,7 +1047,7 @@ fn select_active_write_tickets(
             continue;
         }
         let scope = record.attempt_scope();
-        if requirements.sensitive_approval_required
+        if requirements.approval_requirement.is_required()
             && scope.intended_operation != required_scope.intended_operation
         {
             continue;
@@ -1102,23 +1086,30 @@ fn select_active_write_tickets(
                 .push(record.write_ticket_id().to_owned());
             continue;
         }
-        if !write_ticket_approval_basis_is_current_for_prepare(
-            store, project_id, task, scope, basis, now,
-        )? {
-            selection
-                .stale_approval_ticket_ids
-                .push(record.write_ticket_id().to_owned());
-            continue;
-        }
-        if requirements.sensitive_approval_required
-            && (required_basis.approval_basis_refs.is_empty()
-                || basis.approval_basis_refs.is_empty()
-                || !approval_basis_identity_matches(
-                    &required_basis.approval_basis_refs,
-                    &basis.approval_basis_refs,
-                ))
-        {
-            continue;
+        let approval_requirement = WriteTicketApprovalRequirement::new(
+            project_id,
+            task.scope_revision,
+            task.effective_control_level,
+            scope,
+            now,
+        );
+        let current_approvals = CurrentSensitiveApprovals::new(
+            requirements.approval_authorities,
+            &approval_requirement,
+        );
+        let assessment = assess_write_ticket_approval(
+            &approval_requirement,
+            &current_approvals,
+            &basis.approval_basis_refs,
+        );
+        match reuse_approval_assessment(assessment) {
+            WriteTicketReuseApproval::Reusable => {}
+            WriteTicketReuseApproval::Changed(_) => {
+                selection
+                    .stale_approval_ticket_ids
+                    .push(record.write_ticket_id().to_owned());
+                continue;
+            }
         }
         if selection.compatible.is_none() {
             selection.compatible = Some(record);
@@ -1127,69 +1118,19 @@ fn select_active_write_tickets(
     Ok(selection)
 }
 
-fn write_ticket_approval_basis_is_current_for_prepare(
+fn resolved_sensitive_approval_authorities(
     store: &CoreProjectStore,
-    project_id: &ProjectId,
-    task: &TaskRecord,
-    scope: &WriteTicketAttemptScope,
-    validity_basis: &WriteTicketValidityBasis,
+    task_id: &TaskId,
     now: &UtcTimestamp,
-) -> Result<bool, WriteTicketPlanningError> {
-    if validity_basis.approval_basis_refs.is_empty() {
-        return Ok(scope.sensitive_categories.is_empty());
-    }
-
-    let normalized_scope_paths = scope
-        .intended_paths
-        .iter()
-        .map(|path| path.as_str().to_owned())
-        .collect::<Vec<_>>();
-    let requirement = SensitiveApprovalRequirement {
-        task_id: &validity_basis.task_id,
-        change_unit_id: &validity_basis.change_unit_id,
-        scope_revision: task.scope_revision,
-        operation: &scope.intended_operation,
-        normalized_paths: &normalized_scope_paths,
-        sensitive_categories: &scope.sensitive_categories,
-        baseline_ref: scope.baseline_ref.as_ref(),
-        required_for: UserActionRequiredFor::PrepareWrite,
-        now,
-    };
+) -> Result<Vec<UserActionAuthority>, WriteTicketPlanningError> {
     let records = store
-        .resolved_user_action_records(
-            &validity_basis.task_id,
-            UserActionKind::SensitiveApproval,
-            now,
-        )
+        .resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)
         .map_err(CorePipelineError::from)?;
-    let mut current_resolution_identities = BTreeSet::new();
-    for record in records {
-        let authority = user_action_authority_from_record(&record)?;
-        if current_sensitive_approval(&authority, &requirement) {
-            if let Some(identity) = authority.resolution_identity() {
-                current_resolution_identities.insert(identity);
-            }
-        }
-    }
-
-    Ok(!current_resolution_identities.is_empty()
-        && validity_basis.approval_basis_refs.iter().all(|stored| {
-            stored.project_id() == project_id
-                && stored.task_id() == &validity_basis.task_id
-                && current_resolution_identities.contains(&stored.identity())
-        }))
-}
-
-fn approval_basis_identity_matches(
-    left: &[UserActionResolutionRef],
-    right: &[UserActionResolutionRef],
-) -> bool {
-    left.len() == right.len()
-        && left.iter().all(|reference| {
-            right
-                .iter()
-                .any(|candidate| reference.identity() == candidate.identity())
-        })
+    records
+        .iter()
+        .map(user_action_authority_from_record)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(WriteTicketPlanningError::from)
 }
 
 fn write_ticket_path_prefix_strings(record: &StoredWriteTicket, allowed: bool) -> Vec<String> {
@@ -1330,7 +1271,7 @@ mod tests {
             draft,
             WriteTicketId::new("write_ticket_planned"),
             7,
-            Vec::new(),
+            6,
         )
         .expect("identity completes materialization");
         assert_eq!(plan.write_ticket_id().as_str(), "write_ticket_planned");
@@ -1368,7 +1309,6 @@ mod tests {
         assert_eq!(planned.ticket, reused.ticket);
         assert_eq!(planned.effective_status, reused.effective_status);
         assert_eq!(planned.authority, reused.authority);
-        assert_eq!(planned.approval, reused.approval);
         assert_ne!(planned.identity, reused.identity);
     }
 
@@ -1416,7 +1356,7 @@ mod tests {
                 .expect("valid basis has baseline"),
             workspace_context_sha256: input.validity_basis.workspace_context_sha256,
             write_authority_fingerprint: input.validity_basis.write_authority_fingerprint,
-            approval_resolution_identities: Vec::new(),
+            approval_basis: None,
             allowed_path_prefixes: input.allowed_path_prefixes,
             denied_path_prefixes: input.denied_path_prefixes,
             attempt_scope: input.attempt_scope,

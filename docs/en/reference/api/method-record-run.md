@@ -37,9 +37,12 @@ Current Record Run implementation responsibilities route as follows:
   and [`artifact.rs`](../../../../crates/volicord-core/src/recording/artifact.rs)
   resolve capture authority and produce typed evidence-target, observation, and
   artifact plans through the shared evidence and artifact policies.
-- [`crates/volicord-core/src/write_ticket/admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)
-  owns Record Run admission against the canonical Write Ticket facts and
-  policy.
+- [`crates/volicord-core/src/write_ticket/approval.rs`](../../../../crates/volicord-core/src/write_ticket/approval.rs)
+  owns the canonical Write Ticket approval requirement, typed current
+  sensitive-approval set, and semantic basis assessment;
+  [`admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)
+  consumes that assessment before applying Record Run-specific admission
+  checks.
 - [`crates/volicord-core/src/close_readiness/recording.rs`](../../../../crates/volicord-core/src/close_readiness/recording.rs)
   constructs the typed current close basis and residual-risk facts used by the
   shared close-readiness service.
@@ -351,10 +354,9 @@ Ticket-backed recording consumes the write ticket only when:
 
 - the ticket has `status=active` and has not already been consumed or revoked
 - its `WriteTicketValidityBasis` still matches the current `task_id`,
-  `change_unit_id`, `scope_revision`, baseline, workspace digest, and approval
-  basis refs; every approval ref matches a current resolved authority by its
-  full project, `Task`, and UserAction resolution identity rather than an
-  unscoped resolution ID
+  `change_unit_id`, `scope_revision`, baseline, and workspace digest; its
+  Store-valid approval basis receives a current or not-required result from the
+  canonical typed approval assessment
 - its non-null `write_authority_fingerprint` exactly matches the fingerprint
   independently reloaded from the current authoritative project policy; the
   Store rechecks the same binding inside the ticket-consumption transaction
@@ -386,7 +388,10 @@ An expired or otherwise no-longer-current well-formed approval produces the
 semantic `approval_basis_changed` outcome. Persisted approval-reference owner
 disagreement, missing required reference metadata, or duplicate full
 resolution identity is Store corruption and cannot reach this admission
-policy.
+policy. The assessment distinguishes approval newly required, no current
+resolution, changed approval scope, and a persisted basis resolution that is no
+longer current. Record Run admission does not reconstruct or compare approval
+reference identities independently.
 
 The method rejects stale `expected_state_version` according to normal request
 conflict precedence. It independently validates the ticket basis; a different

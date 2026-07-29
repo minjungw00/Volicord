@@ -4,21 +4,22 @@ use crate::write_ticket::{
     run_write_ticket_mismatch, write_ticket_is_idle_expired, RunWriteTicketAttempt,
     WriteTicketInvalidReason,
 };
-use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, StoredWriteTicket, TaskRecord,
 };
 use volicord_store::error::StoreError;
-use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
+use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, TaskId};
 use volicord_types::product_path::path_is_within;
-use volicord_types::schema::{ObservedChanges, WriteTicketAttemptScope, WriteTicketValidityBasis};
+use volicord_types::schema::{ObservedChanges, WriteTicketAttemptScope};
 use volicord_types::values::{
-    TaskControlLevel, UserActionKind, UserActionRequiredFor, UtcTimestamp,
-    WriteTicketInvalidationReason, WriteTicketStatus,
+    TaskControlLevel, UserActionKind, UtcTimestamp, WriteTicketInvalidationReason,
+    WriteTicketStatus,
 };
-use volicord_user_action_service::{
-    current_sensitive_approval, user_action_authority_from_record, SensitiveApprovalRequirement,
-    UserActionServiceError,
+use volicord_user_action_service::{user_action_authority_from_record, UserActionServiceError};
+
+use super::approval::{
+    assess_write_ticket_approval, ApprovalBasisChangeReason, CurrentSensitiveApprovals,
+    WriteTicketApprovalAssessment, WriteTicketApprovalRequirement,
 };
 
 #[derive(Debug)]
@@ -71,6 +72,24 @@ pub(crate) struct RecordRunWriteAdmission<'a> {
     pub(crate) observed_changes: &'a ObservedChanges,
     pub(crate) write_authority_fingerprint: &'a str,
     pub(crate) observed_at: &'a UtcTimestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RecordRunApprovalAdmission {
+    Admitted,
+    Rejected(ApprovalBasisChangeReason),
+}
+
+pub(crate) fn record_run_approval_admission(
+    assessment: WriteTicketApprovalAssessment,
+) -> RecordRunApprovalAdmission {
+    match assessment {
+        WriteTicketApprovalAssessment::Current { .. }
+        | WriteTicketApprovalAssessment::NotRequired => RecordRunApprovalAdmission::Admitted,
+        WriteTicketApprovalAssessment::Changed { reason } => {
+            RecordRunApprovalAdmission::Rejected(reason)
+        }
+    }
 }
 
 pub(crate) fn admit_record_run(
@@ -189,83 +208,35 @@ pub(crate) fn admit_record_run(
             "write ticket denied path prefixes do not cover the recorded run",
         );
     }
-    if !write_ticket_approval_basis_is_current(WriteTicketApprovalBasisContext {
-        store,
-        task_id,
-        change_unit_id,
-        task,
+    let authorities = store
+        .resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, observed_at)?
+        .iter()
+        .map(user_action_authority_from_record)
+        .collect::<Result<Vec<_>, _>>()?;
+    let ticket_project_id = ProjectId::new(record.project_id());
+    let approval_requirement = WriteTicketApprovalRequirement::new(
+        &ticket_project_id,
+        task.scope_revision,
+        task.effective_control_level,
         scope,
-        validity_basis,
-        now: observed_at,
-    })? {
+        observed_at,
+    );
+    let current_approvals = CurrentSensitiveApprovals::new(&authorities, &approval_requirement);
+    let approval_assessment = assess_write_ticket_approval(
+        &approval_requirement,
+        &current_approvals,
+        &validity_basis.approval_basis_refs,
+    );
+    if matches!(
+        record_run_approval_admission(approval_assessment),
+        RecordRunApprovalAdmission::Rejected(_)
+    ) {
         return write_ticket_mismatch(
             WriteTicketInvalidReason::ApprovalBasisChanged,
             "write ticket approval basis is no longer current",
         );
     }
     Ok(scope.clone())
-}
-
-struct WriteTicketApprovalBasisContext<'a> {
-    store: &'a CoreProjectStore<'a>,
-    task_id: &'a TaskId,
-    change_unit_id: &'a ChangeUnitId,
-    task: &'a TaskRecord,
-    scope: &'a WriteTicketAttemptScope,
-    validity_basis: &'a WriteTicketValidityBasis,
-    now: &'a UtcTimestamp,
-}
-
-fn write_ticket_approval_basis_is_current(
-    context: WriteTicketApprovalBasisContext<'_>,
-) -> Result<bool, WriteTicketAdmissionError> {
-    let WriteTicketApprovalBasisContext {
-        store,
-        task_id,
-        change_unit_id,
-        task,
-        scope,
-        validity_basis,
-        now,
-    } = context;
-    if validity_basis.approval_basis_refs.is_empty() {
-        return Ok(scope.sensitive_categories.is_empty()
-            && task.effective_control_level != TaskControlLevel::Sensitive);
-    }
-
-    let normalized_scope_paths = scope
-        .intended_paths
-        .iter()
-        .map(|path| path.as_str().to_owned())
-        .collect::<Vec<_>>();
-    let requirement = SensitiveApprovalRequirement {
-        task_id,
-        change_unit_id,
-        scope_revision: task.scope_revision,
-        operation: &scope.intended_operation,
-        normalized_paths: &normalized_scope_paths,
-        sensitive_categories: &scope.sensitive_categories,
-        baseline_ref: scope.baseline_ref.as_ref(),
-        required_for: UserActionRequiredFor::PrepareWrite,
-        now,
-    };
-    let records =
-        store.resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)?;
-    let mut current_resolution_identities = BTreeSet::new();
-    for record in records {
-        let authority = user_action_authority_from_record(&record)?;
-        if current_sensitive_approval(&authority, &requirement) {
-            if let Some(identity) = authority.resolution_identity() {
-                current_resolution_identities.insert(identity);
-            }
-        }
-    }
-
-    Ok(!current_resolution_identities.is_empty()
-        && validity_basis
-            .approval_basis_refs
-            .iter()
-            .all(|reference| current_resolution_identities.contains(&reference.identity())))
 }
 
 fn write_ticket_mismatch(

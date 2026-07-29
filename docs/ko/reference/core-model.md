@@ -72,6 +72,11 @@ Volicord는 Volicord 기록을 다룹니다.
   resolution identity가 중복되거나 소유자가 일치하지 않으면 영속 Write Ticket
   손상입니다. 형식이 올바른 참조 승인이 만료되거나 현재 의미 policy를 더 이상
   만족하지 않는 경우에는 승인 근거가 무효화되지만 영속 손상이 되지는 않습니다.
+- 하나의 의미 승인 평가가 현재 일치하는 민감 승인 identity 집합을 구성하고,
+  Store가 검증한 영속 근거를 불필요, 비어 있지 않은 typed 근거를 가진 현재 상태,
+  구조화된 사유가 있는 변경 상태로 분류합니다. 상태 summary, ticket reuse, Run
+  승인, 닫기 평가는 승인 참조나 resolution ID를 독립적으로 비교하지 않고 이
+  결과를 사용합니다.
 - 재사용 가능한 범위, 일반 쓰기 승인, 명령 승인, 셸 권한, 민감 동작 승인, 사용자 소유 판단, OS 권한, 배포 승인, 최종 수락, 잔여 위험 수락, 증거, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 
 실행 기록과 증거는 뒷받침을 기록할 뿐 권한을 대신하지 않습니다.
@@ -570,15 +575,24 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
   fingerprint, 승인 근거 참조입니다. 발급 때의 `basis_state_version`은 감사 순서에만
   사용합니다. 결속이 없거나 다르면 활성 티켓을 사용할 수 없지만 소비된 과거 기록은
   숨기지 않습니다.
+- 승인 평가: 현재 민감 승인은 티켓의 프로젝트, `Task`, Change Unit, 범위 리비전,
+  동작, 정규화된 경로, 민감 범주, 기준선, 필요한 연산 대상에 대한 현재 UserAction
+  권한 fact에서 파생합니다. 영속 근거는 이 typed 집합을 기준으로 한 번
+  평가합니다. 새로 필요해진 승인, 현재 resolution 부재, 승인 범위 변경, 더 이상
+  현재 상태가 아닌 근거 resolution은 구조화된 변경 결과를 만듭니다.
 - 정책 결속: fingerprint는 정확한
   `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
   canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 두 패턴 배열은
   먼저 정렬하고 중복을 제거합니다. 이 정규화 fingerprint는 전체 canonical 정책
   `policy_fingerprint`보다 좁으며 그 밖의 모든 정책 필드는 제외합니다.
+- workflow policy와 승인 현재성은 독립된 typed 입력으로 남습니다. 현재 정규화
+  쓰기 권한 fingerprint는 변경된 승인 근거를 현재 상태로 만들지 않으며, 현재 승인
+  근거도 fingerprint 불일치를 복구하지 않습니다.
 - 소비 전 재사용 가능: 호환되는 활성 티켓이 새 intended path를 모두 포함하고
   민감 근거가 같거나 더 강하면 이후 `prepare_write`에서 재사용할 수 있습니다.
-  민감 재사용에는 정규화된 동작과 일치하는 승인 resolution 정체성도 정확히 같아야
-  합니다. 재사용은 새 티켓을 만들지 않습니다.
+  민감 재사용에는 정규화된 동작과 현재 상태인 영속 승인 근거가 필요합니다. 관련
+  없는 현재 승인이 추가되어도 그 근거를 대체하거나 무효화하지 않습니다. 재사용은
+  새 티켓을 만들지 않습니다.
 - 효과 계약 결합: 값이 있으면 제안된 제품 파일 변경이 현재 적용 Change Unit 효과 계약에 맞을 때만 만들어집니다.
 - 1회용: 호환되는 제품 쓰기 실행 기록 또는 정확한 승인 결속 비제품 민감 실행 기록
   하나가 한 번 소비합니다.

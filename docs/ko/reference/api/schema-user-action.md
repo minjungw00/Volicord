@@ -203,6 +203,9 @@ summary만 담으며 좌표를 중복하거나 고아 observation identity를 �
 `task_id`, `user_action_resolution_id`) 튜플입니다. 권한 소비자는 범위가 없는
 resolution ID와 주변 소유자 상태에서 identity를 다시 만들지 않고 해결된
 UserAction fact에서 완전한 identity를 얻습니다.
+Write Ticket 승인 담당자는 이 권한 fact에 현재 민감 승인 의미를 적용하고 ticket
+소비자에게 typed 평가를 제공합니다. Summary, reuse, admission, 닫기 준비 상태는
+resolution ID 집합을 다시 만들지 않습니다.
 
 ```schema
 UserActionResolution:

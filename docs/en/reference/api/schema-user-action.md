@@ -217,6 +217,10 @@ The semantic UserAction resolution identity is the typed tuple
 (`project_id`, `task_id`, `user_action_resolution_id`). Authority consumers
 obtain that full identity from the resolved UserAction facts instead of
 reconstructing it from an unscoped resolution ID and ambient owner state.
+The Write Ticket approval owner applies the current sensitive-approval
+semantics to those authority facts and exposes a typed assessment to ticket
+consumers; summary, reuse, admission, and close readiness do not rebuild a
+resolution-ID set.
 
 ```schema
 UserActionResolution:

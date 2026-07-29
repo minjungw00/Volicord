@@ -50,3 +50,5 @@ pub use pipeline::{
     CoreService, GitWorkspaceContext, InvocationAuthority, InvocationContext, PipelineResponse,
     SystemClock, VerifiedInvocationContext,
 };
+pub use write_ticket::current_validity::EvaluatedWriteTicket;
+pub use write_ticket::service::load_evaluated_write_tickets;

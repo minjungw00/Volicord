@@ -40,11 +40,15 @@ Change Unit planning, Task policy 모듈, `continuity/`, `write_ticket/`,
 테스트는 typed fact를 사용하며 Store handle을 받지 않습니다. Write Ticket
 read-model 테스트는 정책을 검증하지 않고 typed ticket, Task,
 workflow policy, UserAction resolution, 증거 취득과 Store 오류 전파를 다룹니다.
-선택 테스트는 candidate 우선순위와 동률 해소를 담당합니다. 현재 유효성 테스트는
-effective status, 만료, workflow authority, approval, typed invalidation 결과를
-담당합니다. Summary 테스트는 Store fixture나 정책 재평가 없이 이미 평가된
-planned 또는 stored identity를 변환합니다. 집중 service 테스트에는 영속,
-무효화, approval-dependent, dry-run, 실패 경로의 대표 사례만 둡니다.
+선택 테스트는 candidate 우선순위와 동률 해소를 담당합니다. 승인 담당자 테스트는
+Store가 검증한 참조를 사용해 typed 요구사항, 현재 집합, 영속 근거, 의미 변경
+사유의 전체 matrix를 다룹니다. 하나의 공유 의미 fixture 표는 `Current`,
+`NotRequired`, `Changed`가 summary, reuse, Record Run 승인을 일관되게 구동하는지
+검증합니다. 현재 유효성 테스트는 effective status, 만료, workflow authority,
+typed invalidation 결과를 담당합니다. Summary 테스트는 Store fixture나 정책
+재평가 없이 이미 평가된 planned 또는 stored identity를 변환합니다. 집중 service
+테스트에는 영속, 무효화, approval-dependent, dry-run, 실패 경로의 대표 사례만
+둡니다.
 Mutation planning 테스트는 typed plan과 schema 담당 모듈의 정확한 field
 accessor를 검증합니다. 그
 밖의 담당자 테스트는 typed fact, policy 판단, retry 동작, 정확한 경계 매핑 하나를

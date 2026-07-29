@@ -35,8 +35,10 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
   [`artifact.rs`](../../../../crates/volicord-core/src/recording/artifact.rs)는
   공유 증거 및 artifact 정책을 통해 캡처 권한을 해석하고 typed 증거 대상, 관찰,
   artifact plan을 만듭니다.
-- [`crates/volicord-core/src/write_ticket/admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)는
-  정규 Write Ticket fact와 정책에 대한 Record Run 승인을 담당합니다.
+- [`crates/volicord-core/src/write_ticket/approval.rs`](../../../../crates/volicord-core/src/write_ticket/approval.rs)는
+  정규 Write Ticket 승인 요구사항, typed 현재 민감 승인 집합, 의미 근거 평가를
+  담당합니다. [`admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)는
+  그 평가를 소비한 뒤 Record Run 전용 승인 검사를 적용합니다.
 - [`crates/volicord-core/src/close_readiness/recording.rs`](../../../../crates/volicord-core/src/close_readiness/recording.rs)는
   공유 닫기 준비 상태 서비스가 사용할 typed 현재 닫기 근거와 잔여 위험 fact를
   구성합니다.
@@ -331,9 +333,8 @@ Capture-backed 관찰 규칙:
 
 - 티켓이 `status=active`이고 이미 소비되거나 철회되지 않았습니다.
 - `WriteTicketValidityBasis`가 현재 `task_id`, `change_unit_id`,
-  `scope_revision`, 기준선, workspace digest, 승인 근거 참조와 계속 일치합니다. 각
-  승인 참조는 범위가 없는 resolution ID가 아니라 완전한 프로젝트, `Task`,
-  UserAction resolution identity로 현재 해결 권한과 일치해야 합니다.
+  `scope_revision`, 기준선, workspace digest와 계속 일치합니다. Store가 검증한
+  승인 근거는 정규 typed 승인 평가에서 현재 또는 불필요 결과를 받아야 합니다.
 - null이 아닌 `write_authority_fingerprint`가 현재 권위 프로젝트 정책에서 독립적으로
   다시 읽어 계산한 fingerprint와 정확히 일치합니다. Store는 티켓 소비 트랜잭션
   안에서 같은 결속을 다시 확인합니다.
@@ -358,7 +359,10 @@ Capture-backed 관찰 규칙:
 형식이 올바른 승인이 만료되거나 더 이상 현재 상태가 아니면 의미 기반
 `approval_basis_changed` 결과가 됩니다. 영속 승인 참조의 소유자 불일치, 필수
 참조 metadata 누락, 완전한 resolution identity 중복은 Store 손상이며 이 승인
-policy까지 도달할 수 없습니다.
+policy까지 도달할 수 없습니다. 평가는 승인이 새로 필요한 경우, 현재 resolution
+부재, 승인 범위 변경, 영속 근거 resolution이 더 이상 현재 상태가 아닌 경우를
+구분합니다. Record Run 승인은 승인 참조 identity를 독립적으로 다시 구성하거나
+비교하지 않습니다.
 
 오래된 `expected_state_version`은 일반 요청 충돌 우선순위에 따라 거절합니다.
 티켓 근거는 별도로 검증하며 전역 상태 버전 차이만으로 티켓에

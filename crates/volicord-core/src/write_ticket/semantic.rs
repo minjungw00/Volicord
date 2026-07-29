@@ -77,9 +77,7 @@ pub(crate) mod test_support {
     use volicord_types::values::{UtcTimestamp, WriteTicketStatus};
 
     use super::{StoredWriteTicketFacts, WriteTicketEvaluationIdentity, WriteTicketSemanticFacts};
-    use crate::write_ticket::current_validity::{
-        EvaluatedWriteTicket, WriteTicketApprovalState, WriteTicketAuthorityState,
-    };
+    use crate::write_ticket::current_validity::{EvaluatedWriteTicket, WriteTicketAuthorityState};
 
     pub(crate) fn timestamp(value: &str) -> UtcTimestamp {
         UtcTimestamp::parse(value).expect("test timestamp should be valid")
@@ -144,7 +142,6 @@ pub(crate) mod test_support {
             effective_status: status,
             invalidation: None,
             authority: WriteTicketAuthorityState::NotApplicable,
-            approval: WriteTicketApprovalState::NotApplicable,
             consumed_by_run_id: None,
         }
     }

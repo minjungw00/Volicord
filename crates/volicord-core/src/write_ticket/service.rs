@@ -5,9 +5,11 @@ use volicord_types::values::UtcTimestamp;
 
 use crate::pipeline::CoreResult;
 
+use super::approval::{
+    assess_write_ticket_approval, CurrentSensitiveApprovals, WriteTicketApprovalRequirement,
+};
 use super::current_validity::{
-    evaluate_current_write_ticket, evaluate_terminal_write_ticket,
-    requires_sensitive_approval_facts, EvaluatedWriteTicket,
+    evaluate_current_write_ticket, evaluate_terminal_write_ticket, EvaluatedWriteTicket,
 };
 use super::read_model::{
     load_sensitive_approval_facts, load_write_ticket_candidates, load_write_ticket_control_facts,
@@ -16,7 +18,7 @@ use super::read_model::{
 use super::selection::{select_write_ticket, WriteTicketSelection};
 use super::summary::{project_write_ticket_summary, WriteTicketSummaryInput};
 
-pub(crate) fn load_evaluated_write_tickets(
+pub fn load_evaluated_write_tickets(
     store: &CoreProjectStore,
     task_id: &TaskId,
     observed_at: &UtcTimestamp,
@@ -27,14 +29,7 @@ pub(crate) fn load_evaluated_write_tickets(
         .any(|candidate| evaluate_terminal_write_ticket(candidate.clone(), observed_at).is_none());
     let current = if needs_current_facts {
         let (task, workflow) = load_write_ticket_control_facts(store, task_id)?;
-        let needs_approval_facts = candidates.iter().any(|candidate| {
-            requires_sensitive_approval_facts(candidate, &task, &workflow, observed_at)
-        });
-        let sensitive_approvals = if needs_approval_facts {
-            load_sensitive_approval_facts(store, task_id, observed_at)?
-        } else {
-            Vec::new()
-        };
+        let sensitive_approvals = load_sensitive_approval_facts(store, task_id, observed_at)?;
         Some(WriteTicketCurrentFacts {
             task,
             workflow,
@@ -48,12 +43,24 @@ pub(crate) fn load_evaluated_write_tickets(
         .into_iter()
         .map(|candidate| {
             evaluate_terminal_write_ticket(candidate.clone(), observed_at).unwrap_or_else(|| {
-                evaluate_current_write_ticket(
-                    candidate,
-                    current
-                        .as_ref()
-                        .expect("active ticket evaluation acquires current facts"),
-                )
+                let current = current
+                    .as_ref()
+                    .expect("active ticket evaluation acquires current facts");
+                let requirement = WriteTicketApprovalRequirement::new(
+                    &candidate.ticket.project_id,
+                    current.task.scope_revision,
+                    current.task.effective_control_level,
+                    &candidate.ticket.attempt_scope,
+                    &current.observed_at,
+                );
+                let approvals =
+                    CurrentSensitiveApprovals::new(&current.sensitive_approvals, &requirement);
+                let assessment = assess_write_ticket_approval(
+                    &requirement,
+                    &approvals,
+                    &candidate.ticket.validity_basis.approval_basis_refs,
+                );
+                evaluate_current_write_ticket(candidate, current, assessment)
             })
         })
         .collect())

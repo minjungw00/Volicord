@@ -41,10 +41,12 @@
 Unit, `scope_revision`, 기준선, workspace, 승인 근거가 현재 상태이고 null이 아닌
 정규화 프로젝트 쓰기 권한 결속이 현재 값과 일치하며, 허용 경로가 새 intended path를
 모두 포함하고, 민감 근거가 같거나 더 강하고, 아직 소비되지 않았으면 재사용합니다.
-민감 티켓을 재사용하려면 정규화된 `intended_operation`이
-정확히 같고 프로젝트, `Task`, UserAction resolution ID를 포함한 승인 resolution
-identity도 같아야 합니다. 표현을 바꾼 동작이나 범위가 없는 동일 resolution ID는
-이전 승인이나 티켓을 빌려 쓸 수 없습니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
+Core는 정규 Write Ticket 승인 요구사항과 typed 현재 민감 승인 집합을 구성한 뒤
+Store가 검증한 영속 근거를 한 번 평가합니다. 재사용은 현재 근거나 승인이 필요하지
+않은 근거를 허용하고 변경된 근거를 거절합니다. 민감 티켓을 재사용하려면 정규화된
+`intended_operation`도 정확히 같아야 합니다. 표현을 바꾼 동작은 이전 승인이나
+티켓을 빌려 쓸 수 없으며, 관련 없는 현재 승인이 추가되어도 영속 근거를 대체하거나
+무효화하지 않습니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
 `Task`와 Change Unit 안에서 경계가 정해진 제품 쓰기 또는 민감 동작 의도를 나타내는
 Volicord 권한 기록입니다. 비제품 민감 티켓은
 `product_file_write_intended=false`이며 이름 붙은 동작, 빈 제품 경로 집합, 기준선,
@@ -186,7 +188,11 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 유지할 수 있습니다. 승인 만료는 단순 티켓 시간 경과나 영속 손상이 아니라
 `approval_basis_changed`로 종속 티켓을 무효화합니다. 영속 승인 참조의 소유자
 불일치나 완전한 resolution identity 중복은 손상이며 의미 기반 현재성 평가에
-들어가지 않습니다. `basis_state_version`은
+들어가지 않습니다. 의미 평가는 승인이 새로 필요하거나, 현재 resolution이 없거나,
+승인 범위가 바뀌거나, 영속 근거 resolution이 더 이상 현재 상태가 아닐 때 변경된
+근거를 보고합니다. 상태 summary, ticket reuse, Record Run 승인, 닫기 준비 상태는
+승인 참조나 resolution ID를 독립적으로 비교하지 않고 이 평가를 소비합니다.
+`basis_state_version`은
 발급 순서 감사와 참조에만 쓰며 최신성 조건이 아닙니다.
 
 새로 허용되어 커밋된 호출은 발급 mutation이 커밋될 때만 영속
@@ -196,10 +202,10 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 Core 의미 planning은 발급 예정 값을 ID 없는 `PlannedWriteTicketDraft`로
 표현합니다. `dry_run`을 검사하거나 영속 ID를 할당하거나 응답 state version을
 붙이거나 공개 결과를 구성하지 않습니다. `dry_run` 요청은 메서드 경계에서
-멈추고 미리보기만 투영합니다. 커밋되는 발급에서는 메서드가 영속 ID와
-state-version이 있는 basis reference를 제공해 검증된 `PlannedWriteTicket`
-하나를 구체화합니다. 이 구체화된 값이 응답 projection과 typed Store 삽입
-입력의 단일 원본입니다. 재사용은 이미 존재하는 Store 검증
+멈추고 미리보기만 투영합니다. 커밋되는 발급에서는 메서드가 영속 ID와 승인 참조
+projection state version을 제공하고, typed 비어 있지 않은 승인 근거가 state-version이
+있는 reference를 구성하면서 검증된 `PlannedWriteTicket` 하나를 구체화합니다. 이
+구체화된 값이 응답 projection과 typed Store 삽입 입력의 단일 원본입니다. 재사용은 이미 존재하는 Store 검증
 `StoredWriteTicket`을 projection합니다.
 
 ## 메서드 결과 필드
