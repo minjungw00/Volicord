@@ -1,3 +1,4 @@
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::close_readiness::{
     assess_close_readiness, close_next_action, CloseReadinessAssessment, CloseReadinessFacts,
     CloseReadinessRequest,
@@ -6,7 +7,11 @@ use crate::continuity::{
     plan_project_continuity_record, PlannedProjectContinuityRecord, ProjectContinuityDraft,
     ProjectContinuityPlanContext,
 };
+use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::store::plan_error_response;
+use crate::evidence_projection::evidence_summary_for_display;
+use crate::guarantee_projection::guarantee_display;
+use crate::guidance::primary_next_action;
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{dry_run_summary, validation_rejected};
@@ -16,13 +21,13 @@ use crate::pipeline::{
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::projection::{
-    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
-    close_state_text, evidence_gate_summary_text, evidence_summary_for_display,
-    guarantee_display_from_profile, primary_next_action, profile_summary_text,
-    summary_card_for_core, write_ticket_summary_text, SummaryBuild, SummaryCardBuild,
-};
+use crate::policy::workflow::project_workflow_policy;
 use crate::record_refs::state_ref;
+use crate::state_summary::{state_summary, StateSummaryInput};
+use crate::summary_text::{
+    changes_summary_text, close_state_text, evidence_gate_summary_text, profile_summary_text,
+    summary_card, write_ticket_summary_text, SummaryCardInput,
+};
 use crate::workflow_diagnostics::{
     elapsed_micros, record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
@@ -237,13 +242,13 @@ impl CoreService {
         };
         let plan_now = prepared.operation_now.clone();
 
-        let guarantee_profile = match prepared.store.project_enforcement_profile() {
-            Ok(record) => record.profile,
+        let guarantee_profile = match project_enforcement_profile(&prepared.store) {
+            Ok(profile) => profile,
             Err(error) => {
                 return plan_error_response(
                     &request.envelope,
                     &prepared.context.project_state,
-                    PlanError::Core(CorePipelineError::from(error)),
+                    PlanError::Core(error),
                 )
             }
         };
@@ -307,13 +312,13 @@ impl CoreService {
             );
         }
 
-        let guarantee_profile = match prepared.store.project_enforcement_profile() {
-            Ok(record) => record.profile,
+        let guarantee_profile = match project_enforcement_profile(&prepared.store) {
+            Ok(profile) => profile,
             Err(error) => {
                 return plan_error_response(
                     &request.envelope,
                     &prepared.context.project_state,
-                    PlanError::Core(CorePipelineError::from(error)),
+                    PlanError::Core(error),
                 )
             }
         };
@@ -670,7 +675,7 @@ fn project_close_task_response(
         event_payload,
     } = planned;
     let guarantee_display = match (verified_invocation, guarantee_profile) {
-        (Some(invocation), Some(profile)) => Some(guarantee_display_from_profile(
+        (Some(invocation), Some(profile)) => Some(guarantee_display(
             profile,
             invocation,
             response_state_version,
@@ -683,7 +688,7 @@ fn project_close_task_response(
         .evidence_summary
         .clone()
         .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
-    let acceptance_criteria = active_acceptance_criteria_for_task(store, &request.task_id)?;
+    let acceptance_criteria = active_acceptance_criteria(store, &request.task_id)?;
     let current_close_pending_user_action_ids = blockers
         .iter()
         .filter(|blocker| blocker.code == "pending_user_action")
@@ -715,12 +720,15 @@ fn project_close_task_response(
         }
     }
 
-    let state = build_state_summary(SummaryBuild {
-        store,
+    let project_policy = project_workflow_policy(store)
+        .map_err(CorePipelineError::from)?
+        .summary;
+    let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: response_state_version,
         task: &synthetic_task,
         current_change_unit: context.current_change_unit.as_ref(),
+        project_policy,
         acceptance_criteria,
         pending_user_action_refs: context.pending_user_action_refs.clone(),
         blocker_refs: context.blocker_refs.clone(),
@@ -740,7 +748,7 @@ fn project_close_task_response(
 
     let artifact_refs = context.artifact_refs.clone();
     let no_next_actions: &[NextActionSummary] = &[];
-    let summary_card = summary_card_for_core(SummaryCardBuild {
+    let summary_card = summary_card(SummaryCardInput {
         task: Some(&synthetic_task),
         recording: if storage_mutations.is_empty() {
             "read_only"

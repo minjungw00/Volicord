@@ -183,8 +183,21 @@ method-neutral execution carrier for Task and Change Unit identity, Store
 mutations, and event payloads. Method-specific result fields and response
 composition remain in each public method module.
 Method modules import durable identity, artifact policy, continuity planning,
-evidence facts, Write Ticket planning, close readiness, state projection, and
-record-reference conversion from their focused Core owners.
+Write Ticket planning, close readiness, and record-reference conversion from
+their focused Core owners. Store-backed acceptance, Task, enforcement, and
+evidence reads live in `acceptance_facts.rs`, `task_facts.rs`,
+`enforcement_facts.rs`, and `evidence_facts.rs`. `state_summary.rs`,
+`evidence_projection.rs`, and `guarantee_projection.rs` are Store-independent
+typed-fact-to-view projections.
+
+`ChangeUnitUpdate` schema accessors own exact method-field extraction, and
+`change_unit_planning.rs` owns Change Unit mutation planning. `task_policy.rs`
+owns Task lifecycle interpretation and lifecycle mutation planning.
+`guidance.rs` owns typed semantic next-action selection and normalization,
+while `summary_text.rs` owns adapter-neutral public summary wording. Neither
+text owner emits CLI syntax, transport framing, Markdown, or terminal
+rendering. Public method modules import these focused owners directly; Core has
+no catch-all projection facade, helper prelude, or re-export service locator.
 
 `method_execution.rs` contains only method-generic request preparation and plan
 support. `method_rejection.rs` constructs method-neutral validation and

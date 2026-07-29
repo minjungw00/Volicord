@@ -3,11 +3,12 @@ use crate::close_readiness::{
     facts_with_projected_acceptance_criteria, facts_with_record_run_projection,
     plan_projected_close_readiness,
 };
+use crate::enforcement_facts::project_enforcement_profile;
+use crate::guarantee_projection::guarantee_display;
 use crate::pipeline::VerifiedInvocationContext;
-use crate::projection::{
-    build_state_summary, guarantee_display_for_invocation, project_state_projection, SummaryBuild,
-};
+use crate::policy::workflow::project_workflow_policy;
 use crate::recording::RecordingError;
+use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
 use crate::write_ticket::{projected_write_ticket_summary, write_ticket_summary_for_record};
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::schema::StateSummary;
@@ -24,11 +25,15 @@ pub(super) fn acquire_record_run_state(
     verified_invocation: &VerifiedInvocationContext,
     planned: &RecordRunPlannedMutations,
 ) -> Result<StateSummary, RecordingError> {
-    let guarantee_display = guarantee_display_for_invocation(
-        store,
+    let enforcement_profile = project_enforcement_profile(store)?;
+    let guarantee_display = guarantee_display(
+        &enforcement_profile,
         verified_invocation,
         planned.planned_state_version,
-    )?;
+    );
+    let project_policy = project_workflow_policy(store)
+        .map_err(crate::pipeline::CorePipelineError::from)?
+        .summary;
     let write_ticket_summary = if let Some((record, _scope)) = &planned.write_ticket_scope {
         let mut consumed_record = record.clone();
         consumed_record.status = WriteTicketStatus::Consumed;
@@ -51,7 +56,7 @@ pub(super) fn acquire_record_run_state(
             Some(guarantee_display.clone()),
         )?
     };
-    let projected_project_state = project_state_projection(
+    let projected_project_state = project_state_header(
         project_state,
         planned.planned_state_version,
         project_state
@@ -86,12 +91,12 @@ pub(super) fn acquire_record_run_state(
         ),
     )
     .map_err(RecordingError::CloseReadiness)?;
-    Ok(build_state_summary(SummaryBuild {
-        store,
+    Ok(state_summary(StateSummaryInput {
         project_id: &planned.request.project_id,
         state_version: planned.planned_state_version,
         task: &planned.projected_task,
         current_change_unit: Some(&planned.change_unit),
+        project_policy,
         acceptance_criteria: planned.acceptance_criteria.clone(),
         pending_user_action_refs: planned.pending_user_action_refs.clone(),
         blocker_refs: planned.blocker_refs.clone(),

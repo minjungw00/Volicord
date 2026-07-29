@@ -171,9 +171,22 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 locator로 사용하지 않습니다. `operation_plan.rs`는 Task와 Change Unit 식별자,
 Store mutation, event payload를 담는 메서드 중립 실행 carrier를 담당합니다.
 메서드별 result field와 응답 구성은 각 공개 메서드 모듈에 남습니다. 메서드 모듈은 durable
-identity, artifact policy, continuity planning, evidence fact, Write Ticket planning,
-닫기 준비 상태, 상태 projection, record-reference 변환을 각각 집중된 Core 담당
-모듈에서 가져옵니다.
+identity, artifact policy, continuity planning, Write Ticket planning, 닫기 준비
+상태, record-reference 변환을 각각 집중된 Core 담당 모듈에서 가져옵니다. Store 기반
+수락, Task, enforcement, 증거 조회는 각각 `acceptance_facts.rs`,
+`task_facts.rs`, `enforcement_facts.rs`, `evidence_facts.rs`에 둡니다.
+`state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs`는 Store와
+독립적으로 typed fact를 view로 투영합니다.
+
+`ChangeUnitUpdate` schema accessor는 정확한 메서드 field 추출을 담당하고,
+`change_unit_planning.rs`는 Change Unit mutation 계획을 담당합니다.
+`task_policy.rs`는 Task lifecycle 해석과 lifecycle mutation 계획을 담당합니다.
+`guidance.rs`는 typed 의미 기반 다음 행동 선택과 정규화를 담당하고,
+`summary_text.rs`는 adapter-neutral 공개 summary 문구를 담당합니다. 두 text
+담당 모듈은 CLI 문법, transport framing, Markdown, terminal rendering을 만들지
+않습니다. 공개 메서드 모듈은 이 집중 담당 모듈을 직접 명시적으로 import합니다.
+Core에는 범용 projection facade, helper prelude, re-export service locator가
+없습니다.
 
 `method_execution.rs`는 메서드 공통 요청 준비와 plan 지원만 담당합니다.
 `method_rejection.rs`는 메서드 중립 validation 및 rejection 응답을 구성합니다.

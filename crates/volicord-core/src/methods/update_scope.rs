@@ -1,12 +1,19 @@
+use crate::acceptance_facts::active_acceptance_criteria;
+use crate::change_unit_planning::plan_current_change_unit;
 use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities,
     facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
+use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::{
     product_path::observe_request_product_paths,
     store::{plan_error_response, store_error_plan},
     user_action::user_action_service_plan_error,
 };
+use crate::evidence_facts::load_current_evidence_summary_facts;
+use crate::evidence_projection::evidence_summary_for_display;
+use crate::guarantee_projection::guarantee_display;
+use crate::guidance::next_actions_for_state;
 use crate::identity::{allocate_acceptance_criterion_id, allocate_change_unit_id};
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -22,19 +29,19 @@ use crate::pipeline::{
 use crate::policy::close_readiness::{
     accepted_current_scope_decision_authority, ScopeDecisionAuthorityRequirement,
 };
-use crate::policy::close_readiness_evidence::evidence_summary_with_required_criteria;
+use crate::policy::close_readiness_evidence::{
+    evidence_summary_with_required_criteria, project_close_evidence_summary,
+    required_acceptance_criterion_ids,
+};
 use crate::policy::effect_contract::{validate_effect_contract, EffectContractValidationError};
 use crate::policy::workflow::{
     acceptance_policy_for_control, project_workflow_policy, resolve_task_control_authority,
     ProjectWorkflowPolicy,
 };
-use crate::projection::{
-    active_acceptance_criteria_for_task, build_state_summary, change_unit_insert,
-    evidence_summary_for_display, guarantee_display_for_invocation, next_actions_for_state,
-    project_state_projection, projected_close_basis, projected_evidence_summary_for_criteria,
-    synthetic_change_unit_record, task_lifecycle_mutation, SummaryBuild,
-};
 use crate::record_refs::{change_unit_ref, state_ref, state_ref_from_stored, write_ticket_ref};
+use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
+use crate::task_facts::{active_blocker_refs, current_close_basis};
+use crate::task_policy::{plan_user_action_lifecycle_transition, TaskLifecycleFacts};
 use crate::task_state::{normalize_display_text, StoredScope};
 use crate::write_ticket::projected_write_ticket_summary;
 use serde_json::json;
@@ -558,14 +565,14 @@ fn plan_update_scope_mutations(
                 }
                 let change_unit_id = allocate_change_unit_id(service.durable_id_generator(), store)
                     .map_err(PlanError::Core)?;
-                let insert = change_unit_insert(&request, &change_unit_id, verified_invocation)?;
-                let record = synthetic_change_unit_record(
-                    &request.envelope.project_id,
-                    &request.task_id,
-                    &insert,
+                let change_unit_plan = plan_current_change_unit(
+                    &request,
+                    &change_unit_id,
+                    verified_invocation,
                     planned_state_version,
-                )
-                .map_err(PlanError::Core)?;
+                );
+                let record = change_unit_plan.projected_record;
+                let insert = change_unit_plan.insert;
                 storage_mutations.push(CoreStorageMutation::ChangeUnit(
                     ChangeUnitMutation::InsertCurrent(insert),
                 ));
@@ -597,14 +604,14 @@ fn plan_update_scope_mutations(
                 }
                 let change_unit_id = allocate_change_unit_id(service.durable_id_generator(), store)
                     .map_err(PlanError::Core)?;
-                let insert = change_unit_insert(&request, &change_unit_id, verified_invocation)?;
-                let record = synthetic_change_unit_record(
-                    &request.envelope.project_id,
-                    &request.task_id,
-                    &insert,
+                let change_unit_plan = plan_current_change_unit(
+                    &request,
+                    &change_unit_id,
+                    verified_invocation,
                     planned_state_version,
-                )
-                .map_err(PlanError::Core)?;
+                );
+                let record = change_unit_plan.projected_record;
+                let insert = change_unit_plan.insert;
                 storage_mutations.push(CoreStorageMutation::ChangeUnit(
                     ChangeUnitMutation::ReplaceCurrent(insert),
                 ));
@@ -652,8 +659,13 @@ fn plan_update_scope_mutations(
             synthetic_change_unit.as_ref(),
             &[],
         ) {
-            synthetic_task.lifecycle_phase = lifecycle_phase.to_owned();
-            storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
+            if let Some(transition) = plan_user_action_lifecycle_transition(
+                TaskLifecycleFacts::from(&task),
+                lifecycle_phase,
+            )? {
+                synthetic_task.lifecycle_phase = transition.target();
+                storage_mutations.push(transition.storage_mutation());
+            }
         }
     }
 
@@ -762,12 +774,7 @@ fn project_update_scope_response(
             .map(state_ref_from_stored)
             .collect::<Vec<_>>()
     };
-    let blocker_refs = store
-        .active_blocker_refs(&request.task_id, planned_state_version)
-        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
-        .into_iter()
-        .map(state_ref_from_stored)
-        .collect::<Vec<_>>();
+    let blocker_refs = active_blocker_refs(store, &request.task_id, planned_state_version)?;
     let task_ref = state_ref(
         StateRecordKind::Task,
         request.task_id.as_str(),
@@ -781,8 +788,15 @@ fn project_update_scope_response(
         change_unit_ref.as_ref(),
         planned_state_version,
     );
-    let guarantee_display =
-        guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
+    let enforcement_profile = project_enforcement_profile(store)?;
+    let guarantee_display = guarantee_display(
+        &enforcement_profile,
+        verified_invocation,
+        planned_state_version,
+    );
+    let project_policy = project_workflow_policy(store)
+        .map_err(CorePipelineError::from)?
+        .summary;
     let write_ticket_summary = projected_write_ticket_summary(
         store,
         &request.task_id,
@@ -793,22 +807,26 @@ fn project_update_scope_response(
     let projected_current_close_basis = if scope_changed {
         None
     } else {
-        projected_close_basis(store, &request.task_id)?
+        current_close_basis(store, &request.task_id)?
     };
-    let evidence_summary = projected_evidence_summary_for_criteria(
+    let evidence_facts = load_current_evidence_summary_facts(
         store,
-        &request.envelope.project_id,
-        planned_state_version,
         &synthetic_task,
-        &acceptance_criteria,
-    )?
-    .map(|summary| evidence_summary_for_display(summary, projected_current_close_basis.as_ref()));
+        &request.envelope.project_id,
+        &request.task_id,
+        planned_state_version,
+    )?;
+    let required_criteria = required_acceptance_criterion_ids(&acceptance_criteria);
+    let evidence_summary =
+        project_close_evidence_summary(evidence_facts, &required_criteria).map(|summary| {
+            evidence_summary_for_display(summary, projected_current_close_basis.as_ref())
+        });
     let close_evidence_summary = if scope_changed {
         evidence_summary_with_required_criteria(None, &acceptance_criteria)
     } else {
         evidence_summary.clone()
     };
-    let projected_project_state = project_state_projection(
+    let projected_project_state = project_state_header(
         project_state,
         planned_state_version,
         project_state
@@ -847,12 +865,12 @@ fn project_update_scope_response(
             error,
         )
     })?;
-    let state = build_state_summary(SummaryBuild {
-        store,
+    let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &synthetic_task,
         current_change_unit: synthetic_change_unit.as_ref(),
+        project_policy,
         acceptance_criteria,
         pending_user_action_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
@@ -922,7 +940,7 @@ fn plan_acceptance_criteria_replacement(
     ),
     PlanError,
 > {
-    let current = active_acceptance_criteria_for_task(store, &request.task_id)?;
+    let current = active_acceptance_criteria(store, &request.task_id)?;
     let Some(replacements) = request.acceptance_criteria.as_ref() else {
         return Ok((current, None, false));
     };

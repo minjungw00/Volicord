@@ -1,15 +1,19 @@
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::close_readiness::{
     build_record_run_close_basis, RecordRunCloseBasisContext, RecordRunCloseBasisError,
 };
+use crate::evidence_facts::load_current_evidence_summary_facts;
+use crate::evidence_projection::evidence_summary_for_display;
 use crate::identity::{allocate_evidence_summary_id, allocate_run_id};
 use crate::json_object::object_from_value;
 use crate::pipeline::{CoreService, VerifiedInvocationContext};
-use crate::policy::close_readiness_evidence::evidence_summary_with_required_criteria;
-use crate::projection::{
-    active_acceptance_criteria_for_task, evidence_summary_for_display,
-    projected_evidence_summary_for_criteria, task_lifecycle_update,
+use crate::policy::close_readiness_evidence::{
+    evidence_summary_with_required_criteria, project_close_evidence_summary,
+    required_acceptance_criterion_ids,
 };
 use crate::record_refs::{change_unit_ref, state_ref, state_ref_from_stored};
+use crate::task_facts::active_blocker_refs;
+use crate::task_policy::{plan_user_action_lifecycle_transition, TaskLifecycleFacts};
 use crate::write_ticket::{admit_record_run, RecordRunWriteAdmission, WriteTicketAdmissionError};
 use serde_json::json;
 use volicord_store::core_pipeline::{
@@ -394,7 +398,7 @@ pub(super) fn plan_record_run_mutations(
         .collect::<Vec<_>>();
     let observation_refs_by_target = observation_refs_by_target(&observation_plans);
 
-    let acceptance_criteria = active_acceptance_criteria_for_task(store, &request.task_id)?;
+    let acceptance_criteria = active_acceptance_criteria(store, &request.task_id)?;
     let mut recorded_evidence_summary = build_record_run_evidence_summary(
         &observation_context,
         request,
@@ -444,22 +448,21 @@ pub(super) fn plan_record_run_mutations(
     );
     let projected_state_evidence_summary = match recorded_evidence_summary.as_ref() {
         Some(_) => projected_close_evidence_summary.clone(),
-        None => projected_evidence_summary_for_criteria(
-            store,
-            &request.project_id,
-            planned_state_version,
-            &task,
-            &acceptance_criteria,
-        )?
-        .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref())),
+        None => {
+            let evidence_facts = load_current_evidence_summary_facts(
+                store,
+                &task,
+                &request.project_id,
+                &request.task_id,
+                planned_state_version,
+            )?;
+            let required = required_acceptance_criterion_ids(&acceptance_criteria);
+            project_close_evidence_summary(evidence_facts, &required)
+                .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()))
+        }
     };
     let close_basis = current_close_basis.clone();
-    let blocker_refs = store
-        .active_blocker_refs(&request.task_id, planned_state_version)
-        .map_err(recording_store_error)?
-        .into_iter()
-        .map(state_ref_from_stored)
-        .collect::<Vec<_>>();
+    let blocker_refs = active_blocker_refs(store, &request.task_id, planned_state_version)?;
     let pending_user_action_refs = pending_refs_after_record_run_invalidation(
         store,
         request,
@@ -665,10 +668,11 @@ pub(super) fn assemble_record_run_mutation_plan(
         }),
     ));
     if let Some(lifecycle_phase) = lifecycle_phase {
-        steps.push(RecordRunMutation::Task(task_lifecycle_update(
-            &request.task_id,
-            lifecycle_phase,
-        )));
+        if let Some(transition) =
+            plan_user_action_lifecycle_transition(TaskLifecycleFacts::from(task), lifecycle_phase)?
+        {
+            steps.push(RecordRunMutation::Task(transition.task_mutation()));
+        }
     }
     if let Some((record, _scope)) = write_ticket_scope {
         steps.push(RecordRunMutation::WriteTicket(

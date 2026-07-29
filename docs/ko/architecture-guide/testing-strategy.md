@@ -31,9 +31,12 @@ Write Ticket, replay identity, reconciliation observation, UserAction과 그 밖
 Core 지향 record family 모두에 적용됩니다.
 
 `volicord-core`에서는 재사용 가능한 의미 담당자 테스트를 그 테스트가 보호하는
-`identity.rs`, `artifact.rs`, `projection.rs`, `continuity/`, `write_ticket/`,
-`close_readiness/`, 집중 `error_boundary/` 모듈 옆에 둡니다. 이 테스트는 typed
-입력을 사용하고 typed fact, policy 판단, retry 동작, 정확한 경계 매핑 하나를
+`identity.rs`, `artifact.rs`, 집중 fact, projection, guidance, summary text,
+Change Unit planning, Task policy 모듈, `continuity/`, `write_ticket/`,
+`close_readiness/`, 집중 `error_boundary/` 모듈 옆에 둡니다. 순수 projection
+테스트는 typed fact를 사용하며 Store handle을 받지 않습니다. Mutation planning
+테스트는 typed plan과 schema 담당 모듈의 정확한 field accessor를 검증합니다. 그
+밖의 담당자 테스트는 typed fact, policy 판단, retry 동작, 정확한 경계 매핑 하나를
 검증합니다. 공개 메서드 조율, 응답 계열, replay, 커밋 효과 matrix는
 `methods/tests/`에 둡니다. 메서드 통합 테스트가 재사용 담당자 로직의 유일한
 coverage가 되면 안 됩니다.

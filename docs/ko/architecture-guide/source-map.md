@@ -9,6 +9,7 @@
 |---|---|
 | `crates/volicord-types/src/lib.rs` | 공개 담당 모듈 경로. 공유 정의는 각 담당 모듈을 통해 공개됩니다. |
 | `crates/volicord-types/src/schema.rs` | 공유 요청, 응답, 저장 레코드 형태. |
+| `crates/volicord-types/src/methods.rs` | 공개 메서드 요청 및 결과 schema, 메서드-연산 매핑, 메서드 소유 `ChangeUnitUpdate` object member의 정확한 typed accessor. |
 | `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계. 파일시스템은 관찰하지 않습니다. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
@@ -143,9 +144,13 @@
 | `crates/volicord-core/src/identity.rs` | 주입된 `DurableIdGenerator`를 사용하는 generic bounded durable ID 할당과 record family별 충돌 검사를 담당합니다. 호출자는 ID 할당을 위해 `CoreService`를 노출하지 않습니다. |
 | `crates/volicord-core/src/artifact.rs` | Typed Store record에 대한 artifact 검증, 무결성 및 가용성 fact, source-reference 정규화를 담당합니다. |
 | `crates/volicord-core/src/continuity/` | Core continuity 계획과 projection, Store fact 취득, durable ID 할당, UserAction 유래 continuity 구체화를 담당합니다. |
-| `crates/volicord-core/src/evidence_facts.rs` | 물리 row decoding을 반복하거나 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 사실을 취득하는 공유 typed Store 조회와 의미 일관성 검사. |
-| `crates/volicord-core/src/projection.rs` | Adapter-neutral 상태 summary, 의미 기반 next-action 정규화와 선택, 증거 표시 projection, 공유 state-record projection을 담당합니다. |
-| `crates/volicord-core/src/record_refs.rs`, `task_state.rs`, `task_policy.rs` | 집중된 state-record 참조 변환, typed Task 상태 해석, 재사용 가능한 Task policy를 각각 담당합니다. |
+| `crates/volicord-core/src/acceptance_facts.rs`, `task_facts.rs`, `enforcement_facts.rs`, `evidence_facts.rs` | 수락 기준, Task 차단 및 닫기 근거 fact, project enforcement, 증거를 위한 집중 typed Store 조회와 의미 일관성 검사. 물리 row decoding을 반복하거나 view projection을 담당하지 않습니다. |
+| `crates/volicord-core/src/change_unit_planning.rs` | Schema 소유의 정확한 typed field accessor를 사용하는 Change Unit record projection과 Store mutation 계획을 담당합니다. |
+| `crates/volicord-core/src/state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs` | Store와 독립적으로 typed fact를 공개 상태 summary와 증거 또는 보장 표시 값으로 투영합니다. |
+| `crates/volicord-core/src/guidance.rs` | Adapter-neutral typed 의미 기반 다음 행동 선택, 정규화, primary 선택, 연산 범주 projection을 담당합니다. |
+| `crates/volicord-core/src/summary_text.rs` | CLI 문법, transport framing, Markdown, terminal rendering이 없는 adapter-neutral 공개 `SummaryCard` text projection을 담당합니다. |
+| `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | 집중된 state-record 참조 변환과 typed Task 상태 해석을 담당합니다. |
+| `crates/volicord-core/src/task_policy.rs` | Typed lifecycle 해석과 lifecycle mutation 계획을 포함하는 재사용 가능한 Task policy를 담당합니다. |
 | `crates/volicord-core/src/write_ticket/` | Write Ticket fact, validity와 attempt-scope policy, prepare-write 의미 계획, Record Run 승인, adapter-neutral ticket projection의 정규 담당 모듈입니다. `admission.rs`는 typed 연산 fact를 받아 typed attempt scope 또는 의미 승인 오류를 반환하며 공개 응답 구성은 호출 메서드에 남습니다. |
 | `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하고, `methods/mod.rs`는 모듈 wiring만 제공하며 메서드별 plan wrapper는 해당 메서드 모듈에 둡니다. |
 | `crates/volicord-core/src/recording/mod.rs`, `context.rs`, `model.rs` | 좁은 의미 `RecordRunInput` 및 `RecordRunOperationPlan` 경계, 입력 정규화, Store 기반 typed fact 취득, 기록 패키지 내부에서만 공유하는 폐쇄형 fact, 권한, 관찰, artifact, mutation plan 모델. |

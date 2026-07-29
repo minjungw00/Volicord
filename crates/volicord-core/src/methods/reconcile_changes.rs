@@ -1,11 +1,19 @@
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_unrecorded_changes,
     plan_projected_close_readiness, CloseReadinessSummary,
 };
+use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::{
     store::{core_error_response, store_error_plan},
     user_action::user_action_service_plan_error,
 };
+use crate::evidence_facts::{
+    load_current_evidence_summary_facts, load_required_evidence_criterion_ids,
+};
+use crate::evidence_projection::evidence_summary_for_display;
+use crate::guarantee_projection::guarantee_display;
+use crate::guidance::{normalize_next_action_collection, primary_next_action};
 use crate::identity::allocate_user_action_request_id;
 use crate::json_object::object_from_value;
 use crate::method_execution::{
@@ -17,15 +25,15 @@ use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::projection::{
-    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
-    close_state_text, evidence_gate_summary_text, evidence_summary_for_display,
-    guarantee_display_for_invocation, normalize_next_action_collection, primary_next_action,
-    profile_summary_text, project_state_projection, projected_close_basis,
-    projected_evidence_summary, summary_card_for_core, write_ticket_summary_text, SummaryBuild,
-    SummaryCardBuild,
-};
+use crate::policy::close_readiness_evidence::project_close_evidence_summary;
+use crate::policy::workflow::project_workflow_policy;
 use crate::record_refs::{state_ref, state_ref_from_stored};
+use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
+use crate::summary_text::{
+    changes_summary_text, close_state_text, evidence_gate_summary_text, profile_summary_text,
+    summary_card, write_ticket_summary_text, SummaryCardInput,
+};
+use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
@@ -405,14 +413,13 @@ fn plan_reconcile_changes(
         &planned_user_actions,
         now,
     )?;
-    let blocker_refs = store
-        .active_blocker_refs(&request.task_id, planned_state_version)
-        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
-        .into_iter()
-        .map(state_ref_from_stored)
-        .collect::<Vec<_>>();
-    let guarantee_display =
-        guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
+    let blocker_refs = active_blocker_refs(store, &request.task_id, planned_state_version)?;
+    let enforcement_profile = project_enforcement_profile(store)?;
+    let guarantee_display = guarantee_display(
+        &enforcement_profile,
+        verified_invocation,
+        planned_state_version,
+    );
     let write_ticket_summary = projected_write_ticket_summary(
         store,
         &request.task_id,
@@ -420,14 +427,17 @@ fn plan_reconcile_changes(
         *now.as_datetime(),
         Some(guarantee_display.clone()),
     )?;
-    let current_close_basis = projected_close_basis(store, &request.task_id)?;
-    let evidence_summary = projected_evidence_summary(
+    let current_close_basis = current_close_basis(store, &request.task_id)?;
+    let evidence_facts = load_current_evidence_summary_facts(
         store,
-        &request.envelope.project_id,
-        planned_state_version,
         &task,
-    )?
-    .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
+        &request.envelope.project_id,
+        &request.task_id,
+        planned_state_version,
+    )?;
+    let required_criteria = load_required_evidence_criterion_ids(store, &request.task_id)?;
+    let evidence_summary = project_close_evidence_summary(evidence_facts, &required_criteria)
+        .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
     let mut pending_authorities = existing_pending_authorities.clone();
     pending_authorities.extend(
         planned_user_actions
@@ -449,13 +459,16 @@ fn plan_reconcile_changes(
         *now.as_datetime(),
         planned_state_version,
     )?;
-    let state = build_state_summary(SummaryBuild {
-        store,
+    let project_policy = project_workflow_policy(store)
+        .map_err(CorePipelineError::from)?
+        .summary;
+    let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task,
         current_change_unit: current_change_unit.as_ref(),
-        acceptance_criteria: active_acceptance_criteria_for_task(store, &request.task_id)?,
+        project_policy,
+        acceptance_criteria: active_acceptance_criteria(store, &request.task_id)?,
         pending_user_action_refs: projected_pending_refs.clone(),
         blocker_refs,
         write_ticket_summary,
@@ -482,7 +495,7 @@ fn plan_reconcile_changes(
         request.envelope.dry_run,
     );
     normalize_next_action_collection(&mut result_next_actions, planned_state_version);
-    let summary_card = summary_card_for_core(SummaryCardBuild {
+    let summary_card = summary_card(SummaryCardInput {
         task: Some(&task),
         recording: if storage_mutations.is_empty() {
             "read_only"
@@ -970,7 +983,7 @@ fn plan_projected_close_readiness_with_resolutions(
     now: DateTime<Utc>,
     planned_state_version: u64,
 ) -> Result<CloseReadinessSummary, PlanError> {
-    let projected_project_state = project_state_projection(
+    let projected_project_state = project_state_header(
         project_state,
         planned_state_version,
         project_state
@@ -983,7 +996,7 @@ fn plan_projected_close_readiness_with_resolutions(
             facts_from_projection(
                 task.clone(),
                 current_change_unit,
-                projected_close_basis(store, &request.task_id)?,
+                current_close_basis(store, &request.task_id)?,
                 pending_refs,
                 blocker_refs,
                 evidence_summary,

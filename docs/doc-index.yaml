@@ -2395,8 +2395,8 @@ documents:
   - cli.command.connection.mode
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-07-29'
+  last_verified_on: '2026-07-29'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2406,6 +2406,7 @@ documents:
   - operate
   canonical_for:
   - state schemas
+  - normative public state display text and adapter-presentation boundary
   - '`WriteTicketValidityBasis.write_authority_fingerprint` shape and normalization scope'
   - non-authoritative `SourceRef` shape and field semantics
   - close-readiness state shapes

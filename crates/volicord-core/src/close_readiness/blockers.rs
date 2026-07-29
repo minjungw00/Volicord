@@ -1,5 +1,5 @@
 use super::guidance::{close_guidance, CloseGuidance};
-use crate::projection::{allowed_operation_categories, next_action_expected_state_version};
+use crate::guidance::{allowed_operation_categories, expected_state_version_for};
 use volicord_types::schema::{CloseReadinessBlocker, NextActionSummary, StateRecordRef};
 use volicord_types::values::{CloseReadinessBlockerCategory, NextActionPresentationRole};
 
@@ -50,7 +50,7 @@ pub(crate) fn normalize_close_blockers(
             NextActionPresentationRole::Additional
         };
         action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
-        action.expected_state_version = next_action_expected_state_version(
+        action.expected_state_version = expected_state_version_for(
             &action.allowed_operation_categories,
             expected_state_version,
         );

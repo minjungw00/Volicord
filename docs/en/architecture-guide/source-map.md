@@ -9,6 +9,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-types/src/lib.rs` | Public owner-module routing. Shared definitions are public through their owning modules. |
 | `crates/volicord-types/src/schema.rs` | Shared request, response, and stored-record shapes. |
+| `crates/volicord-types/src/methods.rs` | Public method request and result schemas, method-operation mappings, and exact typed accessors for method-owned `ChangeUnitUpdate` object members. |
 | `crates/volicord-types/src/product_path.rs` | Platform-neutral Product Repository relative-path value, lexical validation, and pure component-aware containment relationships; no filesystem observation. |
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
@@ -143,9 +144,13 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/identity.rs` | Generic bounded durable-ID allocation and record-family collision checks over an injected `DurableIdGenerator`; callers do not expose `CoreService` for identity allocation. |
 | `crates/volicord-core/src/artifact.rs` | Artifact verification, integrity and availability facts, and source-reference normalization over typed Store records. |
 | `crates/volicord-core/src/continuity/` | Core continuity planning, projection, Store fact acquisition, durable identity allocation, and UserAction-derived continuity materialization. |
-| `crates/volicord-core/src/evidence_facts.rs` | Shared typed Store reads and semantic consistency checks that acquire facts for stored and projected evidence without repeating physical row decoding or owning evidence-policy classification. |
-| `crates/volicord-core/src/projection.rs` | Adapter-neutral state summaries, semantic next-action normalization and selection, evidence display projection, and shared state-record projections. |
-| `crates/volicord-core/src/record_refs.rs`, `task_state.rs`, `task_policy.rs` | Focused state-record reference conversion, typed Task-state interpretation, and reusable Task policy. |
+| `crates/volicord-core/src/acceptance_facts.rs`, `task_facts.rs`, `enforcement_facts.rs`, `evidence_facts.rs` | Focused typed Store reads and semantic consistency checks for acceptance criteria, Task blocker and close-basis facts, project enforcement, and evidence. They do not repeat physical row decoding or own view projection. |
+| `crates/volicord-core/src/change_unit_planning.rs` | Change Unit record projection and Store mutation planning over exact schema-owned typed field accessors. |
+| `crates/volicord-core/src/state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs` | Store-independent typed-fact projection into public state summaries and evidence or guarantee display values. |
+| `crates/volicord-core/src/guidance.rs` | Adapter-neutral typed semantic next-action selection, normalization, primary selection, and operation-category projection. |
+| `crates/volicord-core/src/summary_text.rs` | Adapter-neutral public `SummaryCard` text projection without CLI syntax, transport framing, Markdown, or terminal rendering. |
+| `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | Focused state-record reference conversion and typed Task-state interpretation. |
+| `crates/volicord-core/src/task_policy.rs` | Reusable Task policy, including typed lifecycle interpretation and lifecycle mutation planning. |
 | `crates/volicord-core/src/write_ticket/` | Canonical Write Ticket facts, validity and attempt-scope policy, prepare-write semantic planning, Record Run admission, and adapter-neutral ticket projection. `admission.rs` accepts typed operation facts and returns a typed attempt scope or semantic admission error; public response composition remains in the calling method. |
 | `crates/volicord-core/src/methods/` | Public-method entry points and request-specific orchestration. Production modules import shared responsibilities from their explicit owners; `methods/mod.rs` provides only module wiring, while method-specific plan wrappers stay in their owning method modules. |
 | `crates/volicord-core/src/recording/mod.rs`, `context.rs`, `model.rs` | The narrow semantic `RecordRunInput` and `RecordRunOperationPlan` boundary, input normalization, Store-aware typed fact acquisition, and the closed fact, authority, observation, artifact, and mutation-plan models shared only within the recording package. |

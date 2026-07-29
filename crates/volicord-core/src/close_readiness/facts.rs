@@ -1,11 +1,11 @@
 use super::CloseReadinessError;
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::evidence_facts::load_close_evidence_summary_facts;
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness_evidence::{
     project_close_evidence_summary, required_acceptance_criterion_ids,
 };
 use crate::policy::workflow::{project_workflow_policy, ProjectWorkflowPolicy};
-use crate::projection::active_acceptance_criteria_for_task;
 use crate::record_refs::state_ref_from_stored;
 use std::collections::{BTreeSet, HashMap};
 use volicord_store::core_pipeline::{
@@ -172,7 +172,7 @@ pub(super) fn acquire_close_readiness_facts(
         })
         .transpose()?
         .flatten();
-    let acceptance_criteria = active_acceptance_criteria_for_task(store, task_id)?;
+    let acceptance_criteria = active_acceptance_criteria(store, task_id)?;
     let required_criterion_ids = required_acceptance_criterion_ids(&acceptance_criteria);
     let evidence_facts = load_close_evidence_summary_facts(
         store,
@@ -242,7 +242,7 @@ pub(super) fn acquire_projected_store_facts(
 ) -> Result<(), CloseReadinessError> {
     acquire_unrecorded_change_facts(store, facts)?;
     if facts.acceptance_criteria.is_none() {
-        let acceptance_criteria = active_acceptance_criteria_for_task(store, task_id)?;
+        let acceptance_criteria = active_acceptance_criteria(store, task_id)?;
         facts.projected_required_criterion_ids =
             Some(required_acceptance_criterion_ids(&acceptance_criteria));
         facts.acceptance_criteria = Some(acceptance_criteria);

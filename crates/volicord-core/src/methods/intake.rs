@@ -1,11 +1,16 @@
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::artifact::{normalize_source_refs, normalize_source_refs_with_carried_artifact_task};
 use crate::close_readiness::{
     facts_from_projection, facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
 use crate::continuity::project_continuity_ref;
+use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::{
     store::plan_error_response, user_action::user_action_service_plan_error,
 };
+use crate::evidence_facts::load_current_evidence_summary_facts;
+use crate::guarantee_projection::guarantee_display;
+use crate::guidance::next_actions_for_state;
 use crate::identity::{allocate_acceptance_criterion_id, allocate_task_id};
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -15,17 +20,17 @@ use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, CorePipelineError, CoreResult, CoreService,
     InvocationContext, PipelineResponse, TaskRequirement, VerifiedInvocationContext,
 };
+use crate::policy::close_readiness_evidence::{
+    project_close_evidence_summary, required_acceptance_criterion_ids,
+};
 use crate::policy::evidence::unique_state_record_refs;
 use crate::policy::workflow::{
     acceptance_policy_for_control, effective_control_level, project_workflow_policy,
     resolve_task_control_authority, ProjectWorkflowPolicy,
 };
-use crate::projection::{
-    active_acceptance_criteria_for_task, build_state_summary, guarantee_display_for_invocation,
-    next_actions_for_state, project_state_projection, projected_blocker_refs,
-    projected_close_basis, projected_evidence_summary_for_criteria, SummaryBuild,
-};
 use crate::record_refs::state_ref;
+use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
+use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::task_policy::{initial_work_phase, resolve_requested_mode};
 use crate::task_state::{normalize_display_text, StoredScope};
 use crate::write_ticket::normalized_string_set;
@@ -458,7 +463,7 @@ fn plan_intake_mutations(
         }
         criteria
     } else {
-        active_acceptance_criteria_for_task(store, &task_id)?
+        active_acceptance_criteria(store, &task_id)?
     };
 
     let task_record = if create_new {
@@ -699,7 +704,7 @@ fn project_intake_response(
     let blocker_refs = if create_new {
         Vec::new()
     } else {
-        projected_blocker_refs(store, &task_id, planned_state_version)?
+        active_blocker_refs(store, &task_id, planned_state_version)?
     };
     let next_actions = next_actions_for_state(
         task_record.mode,
@@ -707,14 +712,16 @@ fn project_intake_response(
         change_unit_ref.as_ref(),
         planned_state_version,
     );
-    let evidence_summary = projected_evidence_summary_for_criteria(
+    let evidence_facts = load_current_evidence_summary_facts(
         store,
-        &request.envelope.project_id,
-        planned_state_version,
         &task_record,
-        &acceptance_criteria,
+        &request.envelope.project_id,
+        &task_id,
+        planned_state_version,
     )?;
-    let projected_project_state = project_state_projection(
+    let required_criteria = required_acceptance_criterion_ids(&acceptance_criteria);
+    let evidence_summary = project_close_evidence_summary(evidence_facts, &required_criteria);
+    let projected_project_state = project_state_header(
         project_state,
         planned_state_version,
         Some(task_record.task_id.clone()),
@@ -731,7 +738,7 @@ fn project_intake_response(
                 if create_new {
                     None
                 } else {
-                    projected_close_basis(store, &task_id)?
+                    current_close_basis(store, &task_id)?
                 },
                 pending_refs.clone(),
                 blocker_refs.clone(),
@@ -748,8 +755,15 @@ fn project_intake_response(
             error,
         )
     })?;
-    let guarantee_display =
-        guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
+    let enforcement_profile = project_enforcement_profile(store)?;
+    let guarantee_display = guarantee_display(
+        &enforcement_profile,
+        verified_invocation,
+        planned_state_version,
+    );
+    let project_policy = project_workflow_policy(store)
+        .map_err(CorePipelineError::from)?
+        .summary;
     let write_ticket_summary = if create_new {
         None
     } else {
@@ -761,12 +775,12 @@ fn project_intake_response(
             Some(guarantee_display.clone()),
         )?
     };
-    let state = build_state_summary(SummaryBuild {
-        store,
+    let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task_record,
         current_change_unit: current_change_unit.as_ref(),
+        project_policy,
         acceptance_criteria,
         pending_user_action_refs: pending_refs,
         blocker_refs,
@@ -1111,7 +1125,7 @@ fn reference_only_carry_sources(
     let needs_current_risks = selected.contains(&CarryForwardKind::KnownLimitations)
         || selected.contains(&CarryForwardKind::ResidualRisks);
     let current_close_basis = if needs_current_risks {
-        projected_close_basis(store, &TaskId::new(predecessor.task_id.clone()))?
+        current_close_basis(store, &TaskId::new(predecessor.task_id.clone()))?
     } else {
         None
     };

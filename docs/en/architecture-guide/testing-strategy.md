@@ -34,10 +34,13 @@ reconciliation observations, UserAction, and the other Core-facing record
 families.
 
 Within `volicord-core`, reusable semantic-owner tests stay beside
-`identity.rs`, `artifact.rs`, `projection.rs`, `continuity/`,
+`identity.rs`, `artifact.rs`, the focused fact, projection, guidance, summary
+text, Change Unit planning, and Task policy modules, `continuity/`,
 `write_ticket/`, `close_readiness/`, and the focused `error_boundary/` module
-they protect. They use typed inputs and assert typed facts, policy decisions,
-retry behavior, or one precise boundary mapping. Public method orchestration,
+they protect. Pure projection tests use typed facts and no Store handle.
+Mutation-planning tests assert typed plans and exact schema-owned field
+accessors. The other owner tests assert typed facts, policy decisions, retry
+behavior, or one precise boundary mapping. Public method orchestration,
 response-family, replay, and committed-effect matrices remain under
 `methods/tests/`. A method integration test does not become the sole coverage
 for reusable owner logic.

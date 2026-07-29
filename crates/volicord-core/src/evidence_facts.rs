@@ -849,6 +849,26 @@ pub(super) fn load_required_evidence_criterion_ids(
         .collect())
 }
 
+pub(crate) fn load_current_evidence_summary_facts(
+    store: &CoreProjectStore,
+    task: &TaskRecord,
+    project_id: &ProjectId,
+    task_id: &TaskId,
+    state_version: u64,
+) -> CoreResult<CloseEvidenceSummaryFacts> {
+    let record = store
+        .latest_evidence_summary(task_id)
+        .map_err(CorePipelineError::from)?;
+    load_close_evidence_summary_facts(
+        store,
+        record.as_ref(),
+        task,
+        project_id,
+        task_id,
+        state_version,
+    )
+}
+
 pub(super) fn load_close_evidence_summary_facts(
     store: &CoreProjectStore,
     record: Option<&EvidenceSummaryRecord>,

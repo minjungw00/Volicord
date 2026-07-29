@@ -622,6 +622,49 @@ pub struct ChangeUnitUpdate {
     pub fields: JsonObject,
 }
 
+impl ChangeUnitUpdate {
+    /// Returns the method-owned Change Unit scope summary when it is a string.
+    pub fn scope_summary(&self) -> Option<&str> {
+        self.fields.get("scope_summary").and_then(Value::as_str)
+    }
+
+    /// Returns the string-valued method-owned affected areas.
+    pub fn affected_areas(&self) -> Vec<String> {
+        self.fields
+            .get("affected_areas")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Returns the string-valued method-owned affected paths.
+    pub fn affected_paths(&self) -> Vec<String> {
+        self.fields
+            .get("affected_paths")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Returns the string-valued method-owned constraints.
+    pub fn constraints(&self) -> Vec<String> {
+        self.fields
+            .get("constraints")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
 declare_method_result! {
     /// `volicord.update_scope` method result branch and its method-specific fields.
     pub struct UpdateScopeResult from UpdateScopeResultFields with UpdateScopeResultBase {

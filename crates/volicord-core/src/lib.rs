@@ -7,13 +7,19 @@
 //! Adapters may depend on this crate; this crate does not depend on adapter
 //! crates.
 
+mod acceptance_facts;
 mod agent_session;
 mod artifact;
 mod authority_status;
+mod change_unit_planning;
 mod close_readiness;
 mod continuity;
+mod enforcement_facts;
 mod error_boundary;
 mod evidence_facts;
+mod evidence_projection;
+mod guarantee_projection;
+mod guidance;
 mod identity;
 mod json_object;
 mod method_execution;
@@ -23,9 +29,11 @@ mod operation_plan;
 pub mod pipeline;
 mod policy;
 mod product_path;
-mod projection;
 mod record_refs;
 mod recording;
+mod state_summary;
+mod summary_text;
+mod task_facts;
 mod task_policy;
 mod task_state;
 mod workflow_diagnostics;

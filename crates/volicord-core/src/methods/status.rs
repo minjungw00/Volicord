@@ -1,8 +1,19 @@
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::close_readiness::{close_next_action, plan_close_readiness, CloseReadinessRequest};
 use crate::continuity::project_continuity_summary_from_record;
+use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::{
     store::{core_error_response, plan_error_response},
     user_action::user_action_service_plan_error,
+};
+use crate::evidence_facts::{
+    load_current_evidence_summary_facts, load_required_evidence_criterion_ids,
+};
+use crate::evidence_projection::evidence_summary_for_display;
+use crate::guarantee_projection::guarantee_display;
+use crate::guidance::{
+    next_actions_for_state, normalize_next_action_collection, primary_next_action,
+    unique_next_actions,
 };
 use crate::method_execution::{prepare_or_response, PlanError};
 use crate::method_rejection::validation_plan_error;
@@ -12,16 +23,15 @@ use crate::pipeline::{
     TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::close_readiness::is_terminal_lifecycle;
+use crate::policy::close_readiness_evidence::project_close_evidence_summary;
 use crate::policy::workflow::{project_workflow_policy, resolve_task_control_authority};
-use crate::projection::{
-    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
-    close_state_summary_text, evidence_gate_summary_text, evidence_summary_for_display,
-    guarantee_display_from_profile, next_actions_for_state, normalize_next_action_collection,
-    primary_next_action, profile_summary_text, projected_blocker_refs, projected_evidence_summary,
-    summary_card_for_core, unique_next_actions, write_ticket_summary_text, SummaryBuild,
-    SummaryCardBuild,
-};
 use crate::record_refs::state_ref;
+use crate::state_summary::{state_summary, StateSummaryInput};
+use crate::summary_text::{
+    changes_summary_text, close_state_summary_text, evidence_gate_summary_text,
+    profile_summary_text, summary_card, write_ticket_summary_text, SummaryCardInput,
+};
+use crate::task_facts::active_blocker_refs;
 use crate::write_ticket::projected_write_ticket_summary;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
@@ -230,18 +240,13 @@ fn status_result_fields(
     let mut receipt_next_actions = Vec::new();
     let mut card_pending_user_action_count = 0usize;
     let guarantee_profile = if include.guarantees {
-        Some(
-            store
-                .project_enforcement_profile()
-                .map_err(CorePipelineError::from)?
-                .profile,
-        )
+        Some(project_enforcement_profile(store)?)
     } else {
         None
     };
     let guarantee_projection = guarantee_profile
         .as_ref()
-        .map(|profile| guarantee_display_from_profile(profile, verified_invocation, state_version));
+        .map(|profile| guarantee_display(profile, verified_invocation, state_version));
 
     if let Some(task) = task {
         let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
@@ -293,7 +298,7 @@ fn status_result_fields(
             pending_user_action_summaries =
                 agent_safe_pending_user_action_summaries(all_pending_user_actions.clone());
         }
-        blocker_refs = projected_blocker_refs(store, &task_id, state_version)?;
+        blocker_refs = active_blocker_refs(store, &task_id, state_version)?;
         let projected_write_ticket = if include.write_ticket {
             projected_write_ticket_summary(
                 store,
@@ -359,7 +364,15 @@ fn status_result_fields(
             next_actions.extend(task_next_actions.clone());
         }
         let projected_evidence = if include.task || include.evidence || include.close {
-            projected_evidence_summary(store, project_id, state_version, task)?
+            let evidence_facts = load_current_evidence_summary_facts(
+                store,
+                task,
+                project_id,
+                &task_id,
+                state_version,
+            )?;
+            let required_criteria = load_required_evidence_criterion_ids(store, &task_id)?;
+            project_close_evidence_summary(evidence_facts, &required_criteria)
                 .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()))
         } else {
             None
@@ -368,13 +381,13 @@ fn status_result_fields(
             evidence_summary = projected_evidence.clone();
         }
         if include.task {
-            let state = build_state_summary(SummaryBuild {
-                store,
+            let state = state_summary(StateSummaryInput {
                 project_id,
                 state_version,
                 task,
                 current_change_unit: current_change_unit.as_ref(),
-                acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
+                project_policy: workflow_policy.summary.clone(),
+                acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
                 pending_user_action_refs: all_pending_user_actions,
                 blocker_refs: blocker_refs.clone(),
                 write_ticket_summary: projected_write_ticket,
@@ -459,7 +472,7 @@ fn status_result_fields(
     }
 
     let close_blockers_slice = close_blockers.as_deref().unwrap_or(&[]);
-    let summary_card = summary_card_for_core(SummaryCardBuild {
+    let summary_card = summary_card(SummaryCardInput {
         task,
         recording: "read_only",
         profile: profile_summary_text(guarantee_projection.as_ref()),

@@ -23,6 +23,7 @@ use crate::policy::{
 };
 use crate::record_refs::state_ref;
 use crate::recording::{recording_validation_error, RecordingError};
+use crate::task_facts::active_blocker_refs;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
@@ -1067,20 +1068,18 @@ pub(super) fn validate_evidence_gap_refs(
     context: &RecordRunObservationContext<'_>,
     refs: &[StateRecordRef],
 ) -> Result<(), RecordingError> {
-    let active = context
-        .store
-        .active_blocker_refs(
-            &context.request.task_id,
-            context.project_state.state_version,
-        )
-        .map_err(CorePipelineError::from)?;
+    let active = active_blocker_refs(
+        context.store,
+        &context.request.task_id,
+        context.project_state.state_version,
+    )?;
     for record_ref in refs {
         if record_ref.record_kind != StateRecordKind::Blocker
             || record_ref.project_id != context.request.project_id
             || record_ref.task_id.as_ref() != Some(&context.request.task_id)
             || !active
                 .iter()
-                .any(|stored| stored.record_id == record_ref.record_id.as_str())
+                .any(|stored| stored.record_id == record_ref.record_id)
         {
             return recording_validation_error(
                 "evidence_updates[].gap_refs",

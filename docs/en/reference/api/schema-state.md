@@ -581,6 +581,12 @@ WriteDecisionReason:
 
 Meaning:
 - `SummaryCard` is the stable compact summary shape for major user-facing status views. It uses public display strings for `Task`, Recording, Profile, Write Ticket, Evidence, User Judgment, Changes, Close Status, Transport, one Next action, and a concise Guarantee line.
+- Display strings returned in `SummaryCard` and the returned
+  `NextActionSummary.label` and `NextActionSummary.blocking_question` fields are
+  normative public API values for that response. CLI or MCP adapters may wrap
+  those values, but command syntax, transport framing, terminal or Markdown
+  styling, and adapter-only explanatory copy are adapter presentation and are
+  not Core-returned display strings.
 - When evidence or close projection is selected, `SummaryCard.evidence` is the exact `EvidenceGateSummary.state` value owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). It does not independently infer a state from staged input or `EvidenceSummary.evidence_state`.
 - `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies. When a structured action applies, the summary selects the action whose `presentation_role=primary`; array position is not a selection contract.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.

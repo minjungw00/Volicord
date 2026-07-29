@@ -1,3 +1,4 @@
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::close_readiness::{
     facts_from_projection, normalize_close_blockers, open_write_ticket_close_blocker,
     plan_projected_close_readiness,
@@ -5,6 +6,9 @@ use crate::close_readiness::{
 use crate::error_boundary::{
     store::{plan_error_response, store_error_plan},
     user_action::user_action_service_plan_error,
+};
+use crate::evidence_facts::{
+    load_current_evidence_summary_facts, load_required_evidence_criterion_ids,
 };
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -16,11 +20,11 @@ use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, InvocationContext, MethodPolicy, PipelineResponse,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::projection::{
-    active_acceptance_criteria_for_task, build_state_summary, project_state_projection,
-    projected_close_basis, projected_evidence_summary, SummaryBuild,
-};
-use crate::record_refs::{state_ref, state_ref_from_stored};
+use crate::policy::close_readiness_evidence::project_close_evidence_summary;
+use crate::policy::workflow::project_workflow_policy;
+use crate::record_refs::state_ref;
+use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
+use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
@@ -347,19 +351,17 @@ fn project_prepare_write_response(
         storage_mutations,
     } = planned;
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
-    let blocker_refs = store
-        .active_blocker_refs(&task_id, planned_state_version)
-        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
-        .into_iter()
-        .map(state_ref_from_stored)
-        .collect::<Vec<_>>();
-    let evidence_summary = projected_evidence_summary(
+    let blocker_refs = active_blocker_refs(store, &task_id, planned_state_version)?;
+    let evidence_facts = load_current_evidence_summary_facts(
         store,
-        &request.envelope.project_id,
-        planned_state_version,
         &task,
+        &request.envelope.project_id,
+        &task_id,
+        planned_state_version,
     )?;
-    let projected_project_state = project_state_projection(
+    let required_criteria = load_required_evidence_criterion_ids(store, &task_id)?;
+    let evidence_summary = project_close_evidence_summary(evidence_facts, &required_criteria);
+    let projected_project_state = project_state_header(
         project_state,
         planned_state_version,
         project_state
@@ -375,7 +377,7 @@ fn project_prepare_write_response(
         facts_from_projection(
             task.clone(),
             Some(change_unit.clone()),
-            projected_close_basis(store, &task_id)?,
+            current_close_basis(store, &task_id)?,
             pending_user_action_refs.clone(),
             blocker_refs.clone(),
             evidence_summary.clone(),
@@ -442,13 +444,16 @@ fn project_prepare_write_response(
         }
         _ => None,
     };
-    let state = build_state_summary(SummaryBuild {
-        store,
+    let project_policy = project_workflow_policy(store)
+        .map_err(CorePipelineError::from)?
+        .summary;
+    let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task,
         current_change_unit: Some(&change_unit),
-        acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
+        project_policy,
+        acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs,
         blocker_refs,
         write_ticket_summary: planned_write_ticket_record

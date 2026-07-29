@@ -1,3 +1,5 @@
+use crate::enforcement_facts::project_enforcement_profile;
+use crate::guarantee_projection::guarantee_display;
 use crate::identity::allocate_write_ticket_id;
 use crate::pipeline::{CorePipelineError, VerifiedInvocationContext};
 use crate::policy::effect_contract::{product_write_violations, EffectContractViolation};
@@ -6,7 +8,6 @@ use crate::policy::workflow::{
     ProjectWorkflowPolicy,
 };
 use crate::product_path::{observe_product_paths, ProductPathValidationError};
-use crate::projection::guarantee_display_for_invocation;
 use crate::record_refs::{change_unit_ref, state_ref};
 use crate::write_ticket::{
     baseline_matches, change_unit_effect_contract, matching_sensitive_approval,
@@ -546,11 +547,12 @@ fn plan_prepare_write_mutations(
         }
     }
 
-    let guarantee_display = Some(guarantee_display_for_invocation(
-        store,
+    let enforcement_profile = project_enforcement_profile(store)?;
+    let guarantee_display = Some(guarantee_display(
+        &enforcement_profile,
         verified_invocation,
         planned_state_version,
-    )?);
+    ));
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let typed_normalized_paths = typed_product_paths(&normalized_paths)?;
     let attempt_scope = WriteTicketAttemptScope {

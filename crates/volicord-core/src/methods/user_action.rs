@@ -1,12 +1,20 @@
+use crate::acceptance_facts::active_acceptance_criteria;
 use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_authorities,
     plan_projected_close_readiness,
 };
 use crate::continuity::{plan_user_action_continuity_records, ContinuityPlanningError};
+use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::{
     product_path::observe_request_product_paths, store::plan_error_response,
     user_action::user_action_service_plan_error,
 };
+use crate::evidence_facts::{
+    load_current_evidence_summary_facts, load_required_evidence_criterion_ids,
+};
+use crate::evidence_projection::evidence_summary_for_display;
+use crate::guarantee_projection::guarantee_display;
+use crate::guidance::next_actions_for_state;
 use crate::identity::{allocate_user_action_request_id, allocate_user_action_resolution_id};
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -20,13 +28,12 @@ use crate::pipeline::{
     CoreService, InvocationContext, PipelineResponse, TaskRequirement, VerifiedActorContext,
     VerifiedInvocationContext,
 };
-use crate::projection::{
-    active_acceptance_criteria_for_task, build_state_summary, evidence_summary_for_display,
-    guarantee_display_for_invocation, next_actions_for_state, project_state_projection,
-    projected_blocker_refs, projected_close_basis, projected_evidence_summary,
-    task_lifecycle_mutation, SummaryBuild,
-};
+use crate::policy::close_readiness_evidence::project_close_evidence_summary;
+use crate::policy::workflow::project_workflow_policy;
 use crate::record_refs::{state_ref, state_ref_from_stored};
+use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
+use crate::task_facts::{active_blocker_refs, current_close_basis};
+use crate::task_policy::{plan_user_action_lifecycle_transition, TaskLifecycleFacts};
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
@@ -265,9 +272,15 @@ fn plan_request_user_action(
         current_change_unit.as_ref(),
         &pending_authorities,
     );
+    let lifecycle_transition = lifecycle_phase
+        .map(|target| {
+            plan_user_action_lifecycle_transition(TaskLifecycleFacts::from(&task), target)
+        })
+        .transpose()?
+        .flatten();
     let mut projected_task = task.clone();
-    if let Some(lifecycle_phase) = lifecycle_phase {
-        projected_task.lifecycle_phase = lifecycle_phase.to_owned();
+    if let Some(transition) = lifecycle_transition.as_ref() {
+        projected_task.lifecycle_phase = transition.target();
     }
     let (state, blocker_refs, next_actions) = projected_user_action_state(
         store,
@@ -292,8 +305,8 @@ fn plan_request_user_action(
         state,
     };
     let mut storage_mutations = vec![materialized.mutation];
-    if let Some(lifecycle_phase) = lifecycle_phase {
-        storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
+    if let Some(transition) = lifecycle_transition {
+        storage_mutations.push(transition.storage_mutation());
     }
     Ok(RequestUserActionPlan {
         operation: OperationPlan::new(
@@ -346,7 +359,7 @@ fn projected_user_action_state(
     if let Some(added_pending_ref) = added_pending_ref {
         pending_refs.push(added_pending_ref);
     }
-    let blocker_refs = projected_blocker_refs(store, &task_id, planned_state_version)?;
+    let blocker_refs = active_blocker_refs(store, &task_id, planned_state_version)?;
     let task_ref = state_ref(
         StateRecordKind::Task,
         task_id.as_str(),
@@ -369,8 +382,15 @@ fn projected_user_action_state(
         change_unit_ref.as_ref(),
         planned_state_version,
     );
-    let guarantee_display =
-        guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
+    let enforcement_profile = project_enforcement_profile(store)?;
+    let guarantee_display = guarantee_display(
+        &enforcement_profile,
+        verified_invocation,
+        planned_state_version,
+    );
+    let project_policy = project_workflow_policy(store)
+        .map_err(CorePipelineError::from)?
+        .summary;
     let write_ticket_summary = projected_write_ticket_summary(
         store,
         &task_id,
@@ -378,10 +398,17 @@ fn projected_user_action_state(
         *now.as_datetime(),
         Some(guarantee_display.clone()),
     )?;
-    let current_close_basis = projected_close_basis(store, &task_id)?;
-    let evidence_summary =
-        projected_evidence_summary(store, &envelope.project_id, planned_state_version, task)?
-            .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
+    let current_close_basis = current_close_basis(store, &task_id)?;
+    let evidence_facts = load_current_evidence_summary_facts(
+        store,
+        task,
+        &envelope.project_id,
+        &task_id,
+        planned_state_version,
+    )?;
+    let required_criteria = load_required_evidence_criterion_ids(store, &task_id)?;
+    let evidence_summary = project_close_evidence_summary(evidence_facts, &required_criteria)
+        .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
     let mut pending_authorities = pending_user_action_authorities(store, &task_id, now)
         .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
     if let Some(resolved_request_id) = resolved_request_id {
@@ -408,7 +435,7 @@ fn projected_user_action_state(
             UserActionStatus::Stale | UserActionStatus::Superseded | UserActionStatus::Expired => {}
         }
     }
-    let projected_project_state = project_state_projection(
+    let projected_project_state = project_state_header(
         project_state,
         planned_state_version,
         project_state
@@ -445,13 +472,13 @@ fn projected_user_action_state(
             error,
         )
     })?;
-    let state = build_state_summary(SummaryBuild {
-        store,
+    let state = state_summary(StateSummaryInput {
         project_id: &envelope.project_id,
         state_version: planned_state_version,
         task,
         current_change_unit,
-        acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
+        project_policy,
+        acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
         write_ticket_summary,
@@ -814,9 +841,15 @@ fn plan_resolve_user_action(
         current_change_unit.as_ref(),
         &pending_authorities,
     );
+    let lifecycle_transition = lifecycle_phase
+        .map(|target| {
+            plan_user_action_lifecycle_transition(TaskLifecycleFacts::from(&task), target)
+        })
+        .transpose()?
+        .flatten();
     let mut projected_task = task.clone();
-    if let Some(lifecycle_phase) = lifecycle_phase {
-        projected_task.lifecycle_phase = lifecycle_phase.to_owned();
+    if let Some(transition) = lifecycle_transition.as_ref() {
+        projected_task.lifecycle_phase = transition.target();
     }
     let (state, _blocker_refs, next_actions) = projected_user_action_state(
         store,
@@ -846,8 +879,8 @@ fn plan_resolve_user_action(
     };
     let mut storage_mutations = vec![materialized_resolution.mutation];
     storage_mutations.extend(continuity_plans.into_iter().map(|plan| plan.mutation));
-    if let Some(lifecycle_phase) = lifecycle_phase {
-        storage_mutations.push(task_lifecycle_mutation(&task_id, lifecycle_phase));
+    if let Some(transition) = lifecycle_transition {
+        storage_mutations.push(transition.storage_mutation());
     }
     Ok(ResolveUserActionPlan {
         method: ResolveUserActionMethodPlan {

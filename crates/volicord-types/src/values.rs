@@ -990,6 +990,22 @@ pub enum TaskLifecyclePhase {
     Superseded,
 }
 
+impl TaskLifecyclePhase {
+    /// Returns the stable value name for this lifecycle phase.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Shaping => "shaping",
+            Self::Ready => "ready",
+            Self::Executing => "executing",
+            Self::WaitingUser => "waiting_user",
+            Self::Blocked => "blocked",
+            Self::Completed => "completed",
+            Self::Cancelled => "cancelled",
+            Self::Superseded => "superseded",
+        }
+    }
+}
+
 /// Close-state values returned by close-task result paths.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -999,6 +1015,19 @@ pub enum CloseState {
     Closed,
     Cancelled,
     Superseded,
+}
+
+impl CloseState {
+    /// Returns the stable value name for this close state.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Blocked => "blocked",
+            Self::Closed => "closed",
+            Self::Cancelled => "cancelled",
+            Self::Superseded => "superseded",
+        }
+    }
 }
 
 /// Status close-state values, including `none` for no current close state.
@@ -1011,6 +1040,20 @@ pub enum StatusCloseState {
     Cancelled,
     Superseded,
     None,
+}
+
+impl StatusCloseState {
+    /// Returns the stable value name for this status close state.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Blocked => "blocked",
+            Self::Closed => "closed",
+            Self::Cancelled => "cancelled",
+            Self::Superseded => "superseded",
+            Self::None => "none",
+        }
+    }
 }
 
 /// Task close-reason values.
@@ -1197,6 +1240,18 @@ pub enum WriteTicketStatus {
     Revoked,
 }
 
+impl WriteTicketStatus {
+    /// Returns the stable value name for this write-ticket status.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Consumed => "consumed",
+            Self::Invalidated => "invalidated",
+            Self::Revoked => "revoked",
+        }
+    }
+}
+
 /// Stable reason recorded when a write ticket becomes invalid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1311,6 +1366,21 @@ pub enum EvidenceGateState {
     Sufficient,
     Stale,
     Blocked,
+}
+
+impl EvidenceGateState {
+    /// Returns the stable value name for this evidence-gate state.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRequired => "not_required",
+            Self::OptionalNone => "optional_none",
+            Self::RequiredMissing => "required_missing",
+            Self::Partial => "partial",
+            Self::Sufficient => "sufficient",
+            Self::Stale => "stale",
+            Self::Blocked => "blocked",
+        }
+    }
 }
 
 /// Evidence coverage item state values.
