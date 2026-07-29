@@ -341,6 +341,12 @@ commit path:
 
 Persistent artifact promotion happens through method-planned Core mutations,
 such as `record_run`, when the applicable owner-defined behavior allows it.
+For Record Run, `crates/volicord-core/src/recording/artifact.rs` validates
+typed staged or existing artifact facts and returns a
+`RecordRunArtifactPlan`. `recording/plan.rs` places its typed promotion and link
+mutations in `RecordRunMutationPlan`; only the final projection converts that
+closed plan to the Store mutation carrier. The public method does not inspect
+staging records or assemble artifact persistence values.
 
 Relevant tests include
 `stage_artifact_creates_transient_handle_without_core_commit`,
@@ -348,6 +354,8 @@ Relevant tests include
 [`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../crates/volicord-core/src/methods/tests/stage_artifact.rs),
 `record_run_promotes_staged_artifact_and_updates_evidence` in
 [`crates/volicord-core/src/methods/tests/record_run.rs`](../../../crates/volicord-core/src/methods/tests/record_run.rs),
+the Record Run artifact validation and staging matrix in
+[`crates/volicord-core/src/recording/tests/artifact.rs`](../../../crates/volicord-core/src/recording/tests/artifact.rs),
 and `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`
 in [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
 

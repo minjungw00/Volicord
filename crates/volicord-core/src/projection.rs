@@ -449,7 +449,14 @@ pub(crate) fn task_lifecycle_mutation(
     task_id: &TaskId,
     lifecycle_phase: TaskLifecyclePhase,
 ) -> CoreStorageMutation {
-    CoreStorageMutation::Task(TaskMutation::UpdateScope(TaskScopeUpdate {
+    CoreStorageMutation::Task(task_lifecycle_update(task_id, lifecycle_phase))
+}
+
+pub(crate) fn task_lifecycle_update(
+    task_id: &TaskId,
+    lifecycle_phase: TaskLifecyclePhase,
+) -> TaskMutation {
+    TaskMutation::UpdateScope(TaskScopeUpdate {
         task_id: task_id.as_str().to_owned(),
         work_phase: None,
         lifecycle_phase: Some(lifecycle_phase),
@@ -460,7 +467,7 @@ pub(crate) fn task_lifecycle_mutation(
         bounded_context: None,
         autonomy_boundary: None,
         close_summary: None,
-    }))
+    })
 }
 
 pub(crate) fn summary_card_for_core(input: SummaryCardBuild<'_>) -> SummaryCard {

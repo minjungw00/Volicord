@@ -11,6 +11,9 @@
 normalized path fact를 읽습니다. 집중된 `write_ticket/` 담당자는 `facts.rs`,
 `policy.rs`, `planning.rs`, `projection.rs`에서 현재 fact를 취득하고 정규화하며,
 policy를 평가하고 issue 또는 reuse를 계획한 뒤 typed 결과를 projection합니다.
+보호 대상 Record Run에서는 `write_ticket/admission.rs`가 typed operation, Task,
+Change Unit, invocation, observed-change, 현재 policy fact를 받아 승인된 attempt
+scope 또는 의미 승인 오류를 반환합니다.
 `core_pipeline/write_tickets.rs`는 strict ticket read와 grouped mutation 적용을
 담당합니다.
 
@@ -32,7 +35,9 @@ Run mutation은 Run 및 관련 effect와 같은 Store commit에서 선택한 tic
 
 Core 메서드는 요청별 조율과 응답 구성을 담당합니다. 집중된 Write Ticket 담당자는
 typed fact에 대한 재사용 가능한 fact 취득, policy 평가, issue 또는 reuse 계획,
-projection을 담당합니다. Store는 물리 ticket row를 비공개로 유지하고 status,
+Record Run 승인, projection을 담당합니다. Record Run planner는 의미 fact를
+제공하며 저장된 path JSON을 해석하거나 ticket 정책을 독립적으로 구성하지
+않습니다. Store는 물리 ticket row를 비공개로 유지하고 status,
 validity basis, attempt scope, Product Repository 경로 모음, timestamp, 중복 owner
 coordinate를 엄격하게 decode한 뒤 typed record를 반환합니다. Store는 ticket query,
 invalidation persistence, consumption mutation도 담당합니다. Guard는 observation을
@@ -45,7 +50,8 @@ invalidation persistence, consumption mutation도 담당합니다. Guard는 obse
 3. Core policy가 normalized current write-authority basis를 계산합니다.
 4. Store가 compatible ticket candidate를 반환하고 Core가 reuse 또는 new issuance를
    선택합니다.
-5. 이후 보호 대상 operation이 current compatibility evaluation을 반복합니다.
+5. Record Run에서는 `write_ticket/admission.rs`가 typed operation fact로 current
+   compatibility evaluation을 반복하고 승인된 scope를 반환합니다.
 6. Store가 보호 대상 mutation과 함께 ticket consumption을 commit합니다.
 
 ## 실패 동작
@@ -68,7 +74,9 @@ actor identity나 transferable capability가 아닙니다.
   요청별 issue/reuse와 protected consumption 조율.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)와
   [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed fact 취득, current-basis 평가, 계획, projection.
+  typed fact 취득, current-basis 평가, 계획, 보호 대상 Record Run 승인, projection.
+- [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):
+  집중된 Record Run ticket 승인 및 무효과 거절 coverage.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
   공유 typed 제품 경로 정규화와 포함 관계.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):

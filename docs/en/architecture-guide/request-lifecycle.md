@@ -85,14 +85,36 @@ Rejected, dry-run, unavailable, corrupt, unsupported-contract, and conflict
 branches follow [Storage Effects](../reference/storage-effects.md). They never
 borrow effects from a nearby success branch.
 
+## Record Run Flow
+
+After common preflight, the public `record_run` entry point delegates to the
+recording package. `recording/context.rs` normalizes the request and acquires
+the current typed operation facts. Capture-intent and receipt resolution,
+evidence observation and producer planning, and artifact verification or
+promotion planning then run through `recording/authority.rs`,
+`recording/evidence.rs`, and `recording/artifact.rs`, which reuse the focused
+evidence and artifact owners.
+
+The Write Ticket owner admits any required ticket from semantic operation
+facts. The close-readiness recording owner resolves close-basis references and
+residual-risk inputs. `recording/plan.rs` combines these results into one typed
+mutation plan, preserving distinct domain mutation variants and Store
+application order. `recording/state.rs` acquires the post-operation state facts,
+and Store-free `recording/projection.rs` constructs the method fields. Only the
+public method module maps semantic errors into response branches; the shared
+pipeline retains transaction, replay, and response-envelope ownership.
+
 ## Write Ticket Flow
 
 `prepare_write` evaluates current Task, Change Unit, scope, baseline, policy,
 sensitive approval, normalized paths, and current write-authority fingerprint
 through `crates/volicord-core/src/write_ticket/`.
 An existing ticket is reusable only when every owner-defined coordinate remains
-valid. `record_run` revalidates the ticket and consumes only exact matched
-effects inside the same commit as the Run.
+valid. For `record_run`, `write_ticket/admission.rs` receives the typed Task,
+Change Unit, invocation, observed-change, policy-fingerprint, and operation
+facts. It applies the same validity and attempt-scope policy without decoding
+physical rows or constructing a method response. The recording plan consumes
+only an exactly matched admitted ticket inside the same commit as the Run.
 
 ## UserAction Separation
 

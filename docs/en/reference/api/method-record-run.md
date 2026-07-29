@@ -19,6 +19,41 @@ This document does not own:
 - Core evidence meaning, Core authority semantics, storage DDL, storage record layouts, exact storage effects, artifact lifecycle, or security guarantees
 - public error code meaning, public error precedence, machine-readable error details, or shared response-branch routing
 
+## Implementation routes
+
+The public entry point at
+[`crates/volicord-core/src/methods/record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs)
+owns request-specific pipeline orchestration and maps typed recording failures
+and result fields into the public method response.
+
+Current Record Run implementation responsibilities route as follows:
+
+- [`crates/volicord-core/src/recording/context.rs`](../../../../crates/volicord-core/src/recording/context.rs)
+  normalizes the request and acquires the typed Task, Change Unit, workflow,
+  and control facts.
+- [`crates/volicord-core/src/recording/authority.rs`](../../../../crates/volicord-core/src/recording/authority.rs),
+  [`evidence.rs`](../../../../crates/volicord-core/src/recording/evidence.rs),
+  and [`artifact.rs`](../../../../crates/volicord-core/src/recording/artifact.rs)
+  resolve capture authority and produce typed evidence-target, observation, and
+  artifact plans through the shared evidence and artifact policies.
+- [`crates/volicord-core/src/write_ticket/admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)
+  owns Record Run admission against the canonical Write Ticket facts and
+  policy.
+- [`crates/volicord-core/src/close_readiness/recording.rs`](../../../../crates/volicord-core/src/close_readiness/recording.rs)
+  constructs the typed current close basis and residual-risk facts used by the
+  shared close-readiness service.
+- [`crates/volicord-core/src/recording/plan.rs`](../../../../crates/volicord-core/src/recording/plan.rs)
+  coordinates those owners and assembles the typed mutation plan;
+  [`state.rs`](../../../../crates/volicord-core/src/recording/state.rs) acquires
+  the Store-aware post-operation state facts; and
+  [`projection.rs`](../../../../crates/volicord-core/src/recording/projection.rs)
+  performs the Store-free `RecordRunResultFields` projection.
+
+The exact dependency and transaction boundaries are described in the
+[Core architecture](../../architecture-guide/architecture.md),
+[request lifecycle](../../architecture-guide/request-lifecycle.md), and
+[source map](../../architecture-guide/source-map.md).
+
 ## Purpose
 
 `volicord.record_run` is the baseline public method for recording Evidence after meaningful work. It records a Run for:

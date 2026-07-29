@@ -328,7 +328,12 @@ decode합니다.
   필요는 없습니다.
 
 영속 아티팩트 승격은 적용되는 담당 문서가 허용하는 경우 `record_run` 같은
-메서드 계획 Core 변이를 통해 일어납니다.
+메서드 계획 Core 변이를 통해 일어납니다. Record Run에서는
+`crates/volicord-core/src/recording/artifact.rs`가 typed staged 또는 기존 artifact
+fact를 검증하고 `RecordRunArtifactPlan`을 반환합니다. `recording/plan.rs`는 typed
+승격 및 link mutation을 `RecordRunMutationPlan`에 넣고 최종 projection만 이 폐쇄형
+plan을 Store mutation carrier로 변환합니다. 공개 메서드는 staging record를
+검사하거나 artifact 영속 값을 조립하지 않습니다.
 
 관련 테스트에는
 [`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../crates/volicord-core/src/methods/tests/stage_artifact.rs)의
@@ -336,6 +341,8 @@ decode합니다.
 `stage_artifact_dry_run_creates_no_handle_or_storage`,
 [`crates/volicord-core/src/methods/tests/record_run.rs`](../../../crates/volicord-core/src/methods/tests/record_run.rs)의
 `record_run_promotes_staged_artifact_and_updates_evidence`, 그리고
+[`crates/volicord-core/src/recording/tests/artifact.rs`](../../../crates/volicord-core/src/recording/tests/artifact.rs)의
+Record Run artifact 검증 및 staging 행렬,
 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
 `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`가 있습니다.
 

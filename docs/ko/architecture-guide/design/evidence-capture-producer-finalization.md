@@ -10,10 +10,11 @@ producer finalization, Run commit 사이의 현재 구현 경계를 설명합니
 `volicord.prepare_evidence_capture`는 Core에서 planning되고 한도가 있는 capture
 intent를 commit합니다. CLI fulfillment 코드는 담당 source 경로를 실행하거나
 상관시키고, Store는 immutable receipt와 content-bound staging data를 씁니다.
-`record_run`은 `evidence_facts.rs`를 통해 엄격한 현재 intent와 receipt fact를
-읽고 `artifact.rs`에 artifact source 검증을 위임하며, typed fact를 집중 evidence
-policy 모듈로 평가한 뒤 Run과 같은 grouped Store mutation에 producer finalization을
-포함합니다.
+`record_run`은 `recording/authority.rs`를 통해 엄격한 현재 intent와 receipt fact를
+읽습니다. 이때 `evidence_facts.rs`의 typed receipt fact와 기록 artifact planner의
+검증된 receipt 승격을 사용합니다. Typed 권한은 `recording/evidence.rs`로 전달되며,
+이 모듈은 집중 evidence policy로 권한을 평가하고 typed Record Run mutation plan에
+observation 및 producer finalization을 포함합니다.
 
 Observation과 producer authority는 구분됩니다. 저장된 source observation은 현재 Core
 policy가 전체 binding을 받아들이고 Run commit이 성공하기 전까지 producer가 아닙니다.
@@ -32,22 +33,26 @@ policy가 전체 binding을 받아들이고 Run commit이 성공하기 전까지
 
 ## 책임 경계
 
-Core 메서드 코드는 요청을 검증하고 집중 담당자를 조율하며 메서드 응답을 구성합니다.
-`evidence_facts.rs`는 재사용 가능한 typed fact 취득을 담당하고, `artifact.rs`는
-재사용 가능한 artifact source 검증을 담당하며, Core evidence policy 모듈은 typed
-fact에 대한 provenance, binding, target, relevance, close-readiness 평가를 담당합니다.
-CLI fulfillment는 command 또는 tool-source collection을 담당합니다. Store는 intent,
-receipt, staging, producer, Run persistence를 담당합니다.
+공개 Core 메서드는 요청을 검증하고 메서드 응답을 구성합니다.
+`recording/authority.rs`는 Store 기반 캡처 fact 해석을 조율하고,
+`recording/evidence.rs`와 `recording/artifact.rs`는 받아들인 typed fact를 관찰,
+producer, 승격, link plan으로 바꿉니다. `evidence_facts.rs`는 재사용 가능한 typed
+fact 취득을 담당하고, 최상위 Core `artifact.rs`는 재사용 가능한 artifact source
+검증을 담당하며, Core evidence policy 모듈은 typed fact에 대한 provenance,
+binding, target, relevance, close-readiness 평가를 담당합니다. CLI fulfillment는
+command 또는 tool-source collection을 담당합니다. Store는 intent, receipt,
+staging, producer, Run persistence를 담당합니다.
 
 ## 실행 흐름
 
 1. Core가 evidence-capture intent를 planning하고 commit합니다.
 2. 지원되는 local source가 intent를 다시 검증하고 Store를 통해 한도가 있는 receipt를
    기록합니다.
-3. `record_run`이 현재 intent, receipt, artifact, target fact를 읽습니다.
-4. 집중 Core policy 모듈이 SQL read를 담당하지 않으면서 provenance와 binding을
-   평가합니다.
-5. 메서드 planner가 Run과 producer mutation을 만듭니다.
+3. 기록 권한 담당 모듈이 현재 typed intent, receipt, artifact, target fact를
+   읽습니다.
+4. 기록 증거 담당 모듈이 집중된 순수 Core policy를 호출해 그 policy에 Store
+   접근을 주지 않고 provenance와 binding을 평가합니다.
+5. 기록 planner가 typed Run, evidence, producer, artifact mutation을 만듭니다.
 6. Store가 immediate transaction 하나에서 producer finalization과 Run 상태를
    적용합니다.
 
@@ -70,6 +75,10 @@ attestation으로 취급하지 않습니다.
 - [`crates/volicord-core/src/methods/prepare_evidence_capture.rs`](../../../../crates/volicord-core/src/methods/prepare_evidence_capture.rs)와
   [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs):
   요청별 메서드 조율과 응답 구성.
+- [`crates/volicord-core/src/recording/authority.rs`](../../../../crates/volicord-core/src/recording/authority.rs),
+  [`evidence.rs`](../../../../crates/volicord-core/src/recording/evidence.rs),
+  [`artifact.rs`](../../../../crates/volicord-core/src/recording/artifact.rs):
+  Record Run 캡처 해석과 typed 관찰, producer, 승격, link 계획.
 - [`crates/volicord-core/src/evidence_facts.rs`](../../../../crates/volicord-core/src/evidence_facts.rs)와
   [`artifact.rs`](../../../../crates/volicord-core/src/artifact.rs):
   공유 typed fact 취득과 artifact source 검증.

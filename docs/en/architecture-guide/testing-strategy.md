@@ -42,6 +42,20 @@ response-family, replay, and committed-effect matrices remain under
 `methods/tests/`. A method integration test does not become the sole coverage
 for reusable owner logic.
 
+Record Run follows this split by source responsibility. Request and fact
+acquisition, capture authority, evidence observation and reuse, artifact
+verification and promotion, and result projection matrices live under
+`crates/volicord-core/src/recording/tests/`. Close-basis and residual-risk
+coverage lives in `close_readiness/tests/recording.rs`; ticket compatibility,
+admission, consumption, and no-effect rejection coverage lives in
+`write_ticket/tests/record_run_admission.rs`. The focused typed mutation plan is
+exercised through these owner scenarios and the Store commit boundary. The
+small `methods/tests/record_run.rs` suite retains representative request
+orchestration, committed/no-effect alternatives, evidence and artifact paths,
+ticket and stale-state rejection, rollback propagation, and replay
+consistency. Complete domain policy matrices do not live in the public method
+suite.
+
 Within `volicord-user-action-service`, unit tests own semantic validation,
 canonical body and identity construction, authority, lifecycle,
 materialization, persistence mapping, resolution, continuity, and neutral

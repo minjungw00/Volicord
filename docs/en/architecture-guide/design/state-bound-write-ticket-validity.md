@@ -12,6 +12,9 @@ approval, workflow-policy, and normalized path facts. The focused
 `write_ticket/` owner acquires and normalizes current facts, evaluates policy,
 plans issue or reuse, and projects the typed outcome through its `facts.rs`,
 `policy.rs`, `planning.rs`, and `projection.rs` modules.
+For a protected Record Run, `write_ticket/admission.rs` accepts the typed
+operation, Task, Change Unit, invocation, observed-change, and current policy
+facts and returns the admitted attempt scope or a semantic admission error.
 `core_pipeline/write_tickets.rs` owns strict ticket reads and grouped mutation
 application.
 
@@ -34,7 +37,9 @@ the same Store commit as the Run and its associated effects.
 
 Core methods own request-specific orchestration and response composition. The
 focused Write Ticket owner owns reusable fact acquisition, policy evaluation,
-issuance or reuse planning, and projection over typed facts. Store keeps the
+issuance or reuse planning, Record Run admission, and projection over typed
+facts. The Record Run planner supplies semantic facts and does not interpret
+stored path JSON or construct ticket policy independently. Store keeps the
 physical ticket row private and strictly decodes status, validity basis,
 attempt scope, Product Repository path collections, timestamps, and redundant
 owner coordinates before returning a typed record. Store also owns ticket
@@ -50,7 +55,9 @@ observations but does not widen the ticket basis.
 3. Core policy computes the normalized current write-authority basis.
 4. Store returns compatible ticket candidates and Core selects reuse or new
    issuance.
-5. A later protected operation repeats the current compatibility evaluation.
+5. For Record Run, `write_ticket/admission.rs` repeats the current
+   compatibility evaluation from typed operation facts and returns the admitted
+   scope.
 6. Store commits ticket consumption with the protected mutation.
 
 ## Failure behavior
@@ -74,7 +81,10 @@ capability.
   request-specific issue/reuse and protected-consumption orchestration.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)
   and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed fact acquisition, current-basis evaluation, planning, and projection.
+  typed fact acquisition, current-basis evaluation, planning, protected Record
+  Run admission, and projection.
+- [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):
+  focused Record Run ticket admission and no-effect rejection coverage.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
   shared typed product-path normalization and containment.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):

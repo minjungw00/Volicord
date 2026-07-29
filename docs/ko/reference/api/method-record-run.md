@@ -19,6 +19,39 @@
 - Core의 증거 의미, Core 권한 의미, 저장 DDL, 저장 기록 레이아웃, 정확한 저장 효과, 아티팩트 생명주기, 보안 보장
 - 공개 오류 코드 의미, 공개 오류 우선순위, 기계 판독용 오류 세부사항, 공통 응답 분기 처리 경로
 
+## 구현 경로
+
+공개 진입점
+[`crates/volicord-core/src/methods/record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs)는
+요청별 pipeline 조율을 담당하고 typed 기록 오류와 결과 field를 공개 메서드
+응답으로 매핑합니다.
+
+현재 Record Run 구현 책임은 다음 경로로 나뉩니다.
+
+- [`crates/volicord-core/src/recording/context.rs`](../../../../crates/volicord-core/src/recording/context.rs)는
+  요청을 정규화하고 typed Task, Change Unit, workflow, control fact를 취득합니다.
+- [`crates/volicord-core/src/recording/authority.rs`](../../../../crates/volicord-core/src/recording/authority.rs),
+  [`evidence.rs`](../../../../crates/volicord-core/src/recording/evidence.rs),
+  [`artifact.rs`](../../../../crates/volicord-core/src/recording/artifact.rs)는
+  공유 증거 및 artifact 정책을 통해 캡처 권한을 해석하고 typed 증거 대상, 관찰,
+  artifact plan을 만듭니다.
+- [`crates/volicord-core/src/write_ticket/admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)는
+  정규 Write Ticket fact와 정책에 대한 Record Run 승인을 담당합니다.
+- [`crates/volicord-core/src/close_readiness/recording.rs`](../../../../crates/volicord-core/src/close_readiness/recording.rs)는
+  공유 닫기 준비 상태 서비스가 사용할 typed 현재 닫기 근거와 잔여 위험 fact를
+  구성합니다.
+- [`crates/volicord-core/src/recording/plan.rs`](../../../../crates/volicord-core/src/recording/plan.rs)는
+  이 담당 모듈을 조율하고 typed mutation plan을 조립합니다.
+  [`state.rs`](../../../../crates/volicord-core/src/recording/state.rs)는 Store를
+  사용하는 연산 후 상태 fact를 취득하고,
+  [`projection.rs`](../../../../crates/volicord-core/src/recording/projection.rs)는
+  Store 조회 없이 `RecordRunResultFields`를 투영합니다.
+
+정확한 의존성과 트랜잭션 경계는
+[Core 아키텍처](../../architecture-guide/architecture.md),
+[요청 생명주기](../../architecture-guide/request-lifecycle.md),
+[소스 지도](../../architecture-guide/source-map.md)에 설명되어 있습니다.
+
 ## 목적
 
 `volicord.record_run`은 의미 있는 작업 뒤에 증거를 기록하는 기준 공개 메서드입니다. 이 메서드는 아래 작업에 대한 Run을 기록합니다.

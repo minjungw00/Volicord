@@ -82,6 +82,16 @@ pub(crate) fn normalize_display_text(value: &str) -> String {
     value.trim().to_owned()
 }
 
+pub(crate) fn normalize_display_string_list(values: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .map(|value| normalize_display_text(value))
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 pub(crate) fn normalize_scope_string_list(values: Vec<String>) -> Vec<String> {
     values
         .into_iter()

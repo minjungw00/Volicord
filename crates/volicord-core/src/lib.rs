@@ -24,6 +24,7 @@ mod policy;
 mod product_path;
 mod projection;
 mod record_refs;
+mod recording;
 mod task_policy;
 mod task_state;
 mod workflow_diagnostics;

@@ -91,6 +91,39 @@ where
     );
 }
 
+fn assert_record_run_close_projection_matches_status(response: &Value, status: &Value) {
+    assert_eq!(
+        response["current_close_basis"],
+        status["current_close_basis"]
+    );
+    assert_eq!(response["state"]["close_state"], status["close_state"]);
+    assert_eq!(
+        response["state"]["close_blockers"],
+        status["close_blockers"]
+    );
+    assert!(!response["state"]["close_blockers"]
+        .as_array()
+        .expect("record_run close blockers should be an array")
+        .iter()
+        .any(|blocker| blocker["code"] == "stale_current_close_basis"));
+    let primary_next_actions = response["state"]["close_blockers"]
+        .as_array()
+        .expect("record_run close blockers should be an array")
+        .iter()
+        .flat_map(|blocker| {
+            blocker["next_actions"]
+                .as_array()
+                .expect("close blocker next_actions should be an array")
+        })
+        .filter(|action| action["presentation_role"] == "primary")
+        .collect::<Vec<_>>();
+    assert_eq!(primary_next_actions.len(), 1);
+    assert_eq!(
+        primary_next_actions[0],
+        &status["summary_card"]["next_action"]
+    );
+}
+
 #[derive(Debug, Clone)]
 struct ManualClock {
     now: Arc<Mutex<DateTime<Utc>>>,
@@ -584,6 +617,20 @@ mod prepare_write;
 mod projection_boundary;
 mod reconcile_changes;
 mod record_run;
+#[path = "../../recording/tests/artifact.rs"]
+mod record_run_artifact;
+#[path = "../../recording/tests/authority.rs"]
+mod record_run_authority;
+#[path = "../../close_readiness/tests/recording.rs"]
+mod record_run_close_basis;
+#[path = "../../recording/tests/context.rs"]
+mod record_run_context;
+#[path = "../../recording/tests/evidence.rs"]
+mod record_run_evidence;
+#[path = "../../recording/tests/projection.rs"]
+mod record_run_projection;
+#[path = "../../write_ticket/tests/record_run_admission.rs"]
+mod record_run_write_admission;
 mod replay;
 mod stage_artifact;
 mod status;

@@ -5,6 +5,7 @@ mod evidence;
 mod facts;
 mod guidance;
 mod policy;
+mod recording;
 mod service;
 mod summary;
 
@@ -41,6 +42,9 @@ pub(crate) use facts::{
     facts_with_resolved_authorities, facts_with_resolved_unrecorded_changes, CloseReadinessFacts,
 };
 pub(crate) use guidance::close_next_action;
+pub(crate) use recording::{
+    build_record_run_close_basis, RecordRunCloseBasisContext, RecordRunCloseBasisError,
+};
 pub(crate) use service::{
     assess_close_readiness, plan_close_readiness, plan_projected_close_readiness,
     CloseReadinessRequest,

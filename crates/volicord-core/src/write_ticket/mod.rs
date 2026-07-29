@@ -1,3 +1,4 @@
+mod admission;
 mod facts;
 mod planning;
 mod policy;
@@ -37,6 +38,7 @@ impl From<UserActionServiceError> for WriteTicketPlanningError {
     }
 }
 
+pub(crate) use admission::{admit_record_run, RecordRunWriteAdmission, WriteTicketAdmissionError};
 pub(crate) use facts::{
     baseline_matches, change_unit_effect_contract, matching_sensitive_approval,
     paths_match_current_change_unit, resolve_prepare_write_task,

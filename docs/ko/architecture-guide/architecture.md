@@ -180,6 +180,39 @@ policy, Product Repository path의 source 오류 모델이 공개 메서드 plan
 만나는 경계에서만 변환합니다. 의미 담당 모듈은 typed fact, plan, service 오류를
 반환하며 공개 메서드 응답 구성에 의존하지 않습니다.
 
+## Record Run 책임 경계
+
+`volicord.record_run` 진입점은
+`crates/volicord-core/src/methods/record_run.rs`에 있습니다. 이 모듈은 공통 Core
+pipeline을 통해 메서드 envelope을 검증하고,
+`crates/volicord-core/src/recording/`에 의미 계획을 위임하며, 폐쇄형
+`RecordingError` 모델을 공개 응답 분기로 매핑하고, 결과 `MethodPlan`을 제출한
+뒤 메서드별 workflow metric을 기록합니다. 증거, artifact, 닫기 근거, 잔여 위험,
+Write Ticket 정책은 담당하지 않습니다.
+
+기록 패키지는 연산 흐름을 typed 형태로 유지합니다.
+
+1. `context.rs`는 요청을 정규화하고 현재 typed Task, Change Unit, workflow,
+   control fact를 취득합니다.
+2. `authority.rs`, `evidence.rs`, `artifact.rs`는 Store가 반환한 캡처 record를
+   해석하고 typed 권한, 증거 대상, 관찰, producer, artifact plan을 만듭니다. 정책
+   판단에는 `evidence_facts.rs`, `artifact.rs`, `volicord-user-action-service`, 순수
+   증거 정책 모듈을 재사용하며 기록 모듈은 물리 Store row를 decode하지 않습니다.
+3. `write_ticket/admission.rs`는 typed 연산 fact를 받아 정규 Write Ticket 정책으로
+   현재 ticket을 검증합니다. `close_readiness/recording.rs`는 기존 닫기 준비 상태
+   및 증거 정책 담당 모듈을 통해 typed 닫기 근거와 잔여 위험 입력을 해석합니다.
+4. `recording/plan.rs`는 `RecordRunMutationPlan`을 조립합니다. 폐쇄형
+   `RecordRunMutation` variant는 최종 Store plan 변환 전까지 Run, Task,
+   UserAction, Write Ticket, 증거, artifact mutation을 구분합니다.
+5. `recording/state.rs`는 연산 후 `StateSummary` 투영에 필요한 Store 기반 fact를
+   취득합니다. `recording/projection.rs`는 Store 조회나 정책 재평가 없이 이
+   summary와 typed 계획 fact를 사용해 `RecordRunResultFields`를 만듭니다.
+
+Store를 사용하는 기록 서비스는 typed fact, plan, 의미 오류를 반환하며
+`PipelineResponse`를 구성하지 않습니다. 재사용 가능한 순수 정책 모듈은 typed
+입력을 받고 Store handle을 갖지 않습니다. 공개 메서드 계층만 의미 기록 오류와
+메서드 field를 응답 envelope으로 매핑합니다.
+
 ## UserAction 담당 경계
 
 `crates/volicord-user-action-service/`는 재사용 가능한 UserAction 의미를
@@ -250,9 +283,11 @@ Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 후속 행위 선택을 담당하며 CLI 명령, 캡처 경로, Markdown 지침, adapter rendering,
 credential을 구성하지 않습니다. `summary.rs`는 전체 닫기 평가와 더 작은
 메서드 중립 준비 상태 projection을 담당합니다. `service.rs`는 이 좁은 API를
-통해 사실 취득, 책임별 평가, 순수 정책 결합을 조율합니다. 다른 Core 도메인과
-공유하는 현재 근거 및
-사용자 권한 호환성 순수 함수는
+통해 사실 취득, 책임별 평가, 순수 정책 결합을 조율합니다. `recording.rs`는
+Record Run 닫기 근거 참조 해석, 현재 민감 행동 근거 구성, 잔여 위험 입력 검증을
+담당하며 `check_close`, `close_task`, `status`와 같은 typed 증거 및 닫기 준비 상태
+정책을 호출합니다. 다른 Core 도메인과 공유하는 현재 근거 및 사용자 권한 호환성
+순수 함수는
 `crates/volicord-core/src/policy/close_readiness.rs`에 남습니다.
 
 `close_task.rs`는 요청별 닫기 연산 조율을 담당합니다. 공개 요청을 검증하고

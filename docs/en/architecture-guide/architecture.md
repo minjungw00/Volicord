@@ -191,6 +191,45 @@ failures where those source and destination error models meet. Semantic owners
 return typed facts, plans, or service errors and do not depend on public-method
 response composition.
 
+## Record Run responsibility boundaries
+
+The `volicord.record_run` entry point remains in
+`crates/volicord-core/src/methods/record_run.rs`. It verifies the method
+envelope through the common Core pipeline, delegates semantic planning to
+`crates/volicord-core/src/recording/`, maps the closed `RecordingError` model
+to the public response branch, submits the resulting `MethodPlan`, and records
+method-specific workflow metrics. It does not own evidence, artifact,
+close-basis, residual-risk, or Write Ticket policy.
+
+The recording package keeps the operation flow typed:
+
+1. `context.rs` normalizes the request and acquires the current typed Task,
+   Change Unit, workflow, and control facts.
+2. `authority.rs`, `evidence.rs`, and `artifact.rs` resolve Store-backed capture
+   records and build typed authority, evidence-target, observation, producer,
+   and artifact plans. Their policy decisions reuse `evidence_facts.rs`, `artifact.rs`,
+   `volicord-user-action-service`, and the pure evidence policy modules; no
+   recording module decodes a physical Store row.
+3. `write_ticket/admission.rs` receives the typed operation facts and validates
+   the current ticket through the canonical Write Ticket policy.
+   `close_readiness/recording.rs` resolves the typed close-basis and
+   residual-risk inputs through the existing close-readiness and evidence
+   policy owners.
+4. `recording/plan.rs` assembles `RecordRunMutationPlan`. Its closed
+   `RecordRunMutation` variants keep Run, Task, UserAction, Write Ticket,
+   evidence, and artifact mutations distinct until the final Store-plan
+   conversion.
+5. `recording/state.rs` performs the Store-aware acquisition needed for the
+   projected post-operation `StateSummary`.
+   `recording/projection.rs` consumes that summary and the typed planned facts
+   without Store access or policy reevaluation, then produces
+   `RecordRunResultFields`.
+
+Store-aware recording services return typed facts, plans, or semantic errors;
+they do not construct `PipelineResponse`. Reusable pure policy modules accept
+typed inputs and have no Store handle. The public method layer alone maps
+semantic recording errors and method fields into response envelopes.
+
 ## UserAction ownership
 
 `crates/volicord-user-action-service/` owns reusable UserAction semantics.
@@ -269,9 +308,12 @@ CLI commands, capture paths, Markdown instructions, adapter renderings, or
 credentials. `summary.rs` owns the full close assessment and the smaller
 method-neutral readiness projection. `service.rs` coordinates fact acquisition,
 responsibility-owned evaluation, and pure policy combination through that
-narrow API. The pure current-basis and
-user-authority compatibility functions shared with other Core domains remain in
-`crates/volicord-core/src/policy/close_readiness.rs`.
+narrow API. `recording.rs` owns Record Run close-basis reference resolution,
+current sensitive-action basis construction, and residual-risk input
+validation; it calls the same typed evidence and close-readiness policy used by
+`check_close`, `close_task`, and `status`. The pure current-basis and
+user-authority compatibility functions shared with other Core domains remain
+in `crates/volicord-core/src/policy/close_readiness.rs`.
 
 `close_task.rs` is the request-specific close-operation orchestrator. It
 validates the public request, invokes the close-readiness service, plans the
