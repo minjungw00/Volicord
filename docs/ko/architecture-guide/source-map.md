@@ -38,6 +38,14 @@
 | `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 고유 정규 code와 한도가 있는 세부사항을 가진 폐쇄형 typed 플랫폼 diagnostic kind, 공유 플랫폼 finding projection, 효과를 인식하는 정확한 directory-tree 제거, typed 원자적 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 연산, 안전한 Runtime Home 변경 lease와 permit export, 정규 읽기 전용 Git layout 탐색, Product Repository 관찰 export. |
 | `crates/volicord-platform-fs/src/product_path.rs` | Product Repository root와 후보 경로의 활성 관찰, 비공개 canonical identity, 아직 없는 후보의 가장 가까운 기존 상위 처리, link-aware containment, 불투명한 typed 관찰을 단독으로 담당합니다. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | 정규 Runtime Home identity, domain-separated 전체 digest 기반 외부 coordination 파일 파생, OS lock 영역 하나를 공유하는 shared-writer 및 exclusive-setup mode, 즉시 및 한도 있는 typed 획득, 빌린 변경 permit, Unix/macOS 또는 네이티브 Windows의 handle 수명 기반 해제. |
+| `crates/volicord-platform-fs/src/repository_observation/mod.rs` | 공개 repository observer 모듈 경로와 facade export. |
+| `crates/volicord-platform-fs/src/repository_observation/model.rs` | 폐쇄형 repository snapshot, 경로 상태, 전환, delta, 관찰 불가 이유, invocation 경로, 정규 직렬화, semantic observer contract digest 타입. |
+| `crates/volicord-platform-fs/src/repository_observation/coordinates.rs` | 정규 repository 및 Git layout identity, HEAD/tree 및 status 좌표, 정확한 dirty/untracked status 경로 parsing. |
+| `crates/volicord-platform-fs/src/repository_observation/path_state.rs` | 경계 안의 worktree와 불변 tree 경로 상태 관찰, streaming content hash, executable 및 symbolic link identity, clean Gitlink 관찰, 전체 hash 사용량 계산. |
+| `crates/volicord-platform-fs/src/repository_observation/snapshot.rs` | Typed invocation 경로 합집합, 한도 있는 안정적 이중 관찰, 전후 좌표 재확인, repository snapshot 구성. |
+| `crates/volicord-platform-fs/src/repository_observation/delta.rs` | Dirty, untracked, invocation, 변경된 tree 후보 경로의 합집합과 결정적인 before/after net 경로 전환 계산. |
+| `crates/volicord-platform-fs/src/repository_observation/bounded.rs` | Typed observer 한도와 한도 있는 Git process input, output, duration, termination, capture, streaming blob 처리. |
+| `crates/volicord-platform-fs/src/repository_observation/tests.rs` | 폐기형 Git repository를 사용한 net worktree/tree 전환, 변경되지 않은 기존 상태, Gitlink 및 플랫폼 경로 상태, 불안정성, containment, resource limit, 정규 digest 결정성 검증. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | 프로세스 간 공유·배타 변경 lease 경합과 프로세스 종료 시 해제 regression. |
 | `crates/volicord-cli/src/host_integration/process.rs` | 플랫폼 경계 관찰을 바탕으로 한 프로세스 target 검증, target 경로 파일시스템 제한 집행, 정규 플랫폼 diagnostic 표시 projection. |
 

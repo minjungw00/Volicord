@@ -22,6 +22,7 @@ use volicord_types::values::UtcTimestamp;
 
 mod mutation_lease;
 mod product_path;
+mod repository_observation;
 
 pub use mutation_lease::{
     canonical_runtime_home_path, CanonicalRuntimeHomePath, RuntimeHomeMutationBusy,
@@ -30,6 +31,12 @@ pub use mutation_lease::{
     RuntimeHomeMutationWaitPolicy,
 };
 pub use product_path::{ObservedProductPath, ObservedProductPathState, ObservedProductRepository};
+pub use repository_observation::{
+    ContentIdentity, InvocationObservationPaths, ObservationUnavailable,
+    ObservationUnavailableReason, ObserverLimits, ProductPathState, RepositoryDelta,
+    RepositoryObservationCoordinate, RepositoryObservationSnapshot, RepositoryObserver,
+    RepositoryPathTransition, SemanticObserverContractDigest,
+};
 
 #[cfg(windows)]
 use std::fs::File;
