@@ -242,14 +242,16 @@ pub fn run_live_with_driver(
             authority_setup: scenario.authority_setup.clone(),
         };
         match driver.run_trial(&request, repository.path()) {
-            Ok(observation) => match validate_observation(&observation, trial, &coordinate) {
-                Ok(()) => observations.push(observation),
-                Err(error) => trial_failures.push(TrialFailure {
-                    trial_id: trial.trial_id.clone(),
-                    failure_code: "observation_coordinate_mismatch".to_owned(),
-                    detail: error.to_string(),
-                }),
-            },
+            Ok(observation) => {
+                match validate_observation(&observation, trial, scenario, &coordinate) {
+                    Ok(()) => observations.push(observation),
+                    Err(error) => trial_failures.push(TrialFailure {
+                        trial_id: trial.trial_id.clone(),
+                        failure_code: "observation_coordinate_mismatch".to_owned(),
+                        detail: error.to_string(),
+                    }),
+                }
+            }
             Err(failure) => trial_failures.push(TrialFailure {
                 trial_id: trial.trial_id.clone(),
                 failure_code: failure.code,
@@ -360,7 +362,27 @@ fn validate_repetitions(repetitions: u32) -> HarnessResult<()> {
 
 pub fn validate_schedule_matrix(schedule: &[ScheduleEntry], repetitions: u32) -> HarnessResult<()> {
     validate_repetitions(repetitions)?;
-    let expected_len = EvaluationCondition::ALL.len() * TaskGroup::ALL.len() * repetitions as usize;
+    let mut scenario_specs = BTreeMap::<&str, (TaskGroup, &str)>::new();
+    for trial in schedule {
+        match scenario_specs.get(trial.scenario_id.as_str()) {
+            Some((task_group, digest))
+                if *task_group != trial.task_group
+                    || *digest != trial.repository_seed_digest.as_str() =>
+            {
+                return Err(HarnessError::new(
+                    "a scenario changes task group or repository seed across trials",
+                ));
+            }
+            Some(_) => {}
+            None => {
+                scenario_specs.insert(
+                    trial.scenario_id.as_str(),
+                    (trial.task_group, trial.repository_seed_digest.as_str()),
+                );
+            }
+        }
+    }
+    let expected_len = EvaluationCondition::ALL.len() * scenario_specs.len() * repetitions as usize;
     if schedule.len() != expected_len {
         return Err(HarnessError::new(format!(
             "schedule contains {} trials; expected {expected_len}",
@@ -368,52 +390,37 @@ pub fn validate_schedule_matrix(schedule: &[ScheduleEntry], repetitions: u32) ->
         )));
     }
 
-    let expected_coordinates = (1..=repetitions)
-        .flat_map(|repetition| {
-            EvaluationCondition::ALL
-                .into_iter()
-                .flat_map(move |condition| {
-                    TaskGroup::ALL
-                        .into_iter()
-                        .map(move |task_group| (condition, task_group, repetition))
-                })
-        })
-        .collect::<BTreeSet<_>>();
+    let mut expected_coordinates = BTreeSet::new();
+    for repetition in 1..=repetitions {
+        for condition in EvaluationCondition::ALL {
+            for scenario_id in scenario_specs.keys() {
+                expected_coordinates.insert((condition, *scenario_id, repetition));
+            }
+        }
+    }
     let mut actual_coordinates = BTreeSet::new();
-    let mut scenario_ids = BTreeMap::<(TaskGroup, u32), BTreeSet<&str>>::new();
-    let mut repository_digests = BTreeMap::<(TaskGroup, u32), BTreeSet<&str>>::new();
+    let mut covered_task_groups = BTreeSet::new();
     for (index, trial) in schedule.iter().enumerate() {
         if trial.order != index as u64 + 1 || trial.trial_id != format!("trial-{:06}", index + 1) {
             return Err(HarnessError::new(
                 "schedule order and trial identifiers must be contiguous",
             ));
         }
-        actual_coordinates.insert((trial.condition, trial.task_group, trial.repetition));
-        scenario_ids
-            .entry((trial.task_group, trial.repetition))
-            .or_default()
-            .insert(&trial.scenario_id);
-        repository_digests
-            .entry((trial.task_group, trial.repetition))
-            .or_default()
-            .insert(&trial.repository_seed_digest);
+        actual_coordinates.insert((
+            trial.condition,
+            trial.scenario_id.as_str(),
+            trial.repetition,
+        ));
+        covered_task_groups.insert(trial.task_group);
     }
     if actual_coordinates != expected_coordinates {
         return Err(HarnessError::new(
-            "schedule does not contain each required condition, task-group, and repetition exactly once",
+            "schedule does not contain each scenario, condition, and repetition exactly once",
         ));
     }
-    if scenario_ids.values().any(|ids| ids.len() != 1) {
+    if covered_task_groups != TaskGroup::ALL.into_iter().collect() {
         return Err(HarnessError::new(
-            "a task-group repetition does not use the same scenario across conditions",
-        ));
-    }
-    if repository_digests
-        .values()
-        .any(|digests| digests.len() != 1)
-    {
-        return Err(HarnessError::new(
-            "a scenario repetition does not use identical repository state across conditions",
+            "schedule does not cover every required task group",
         ));
     }
     Ok(())
@@ -439,12 +446,56 @@ pub fn materialize_repository(scenario: &ScenarioFixture) -> HarnessResult<TempD
             HarnessError::new(format!("fixture file could not be written: {error}"))
         })?;
     }
+    if let Some(attribution) = &scenario.dirty_worktree_attribution {
+        run_repository_git(directory.path(), &["init", "-q"])?;
+        run_repository_git(
+            directory.path(),
+            &["config", "user.name", "Volicord Evaluation"],
+        )?;
+        run_repository_git(
+            directory.path(),
+            &["config", "user.email", "evaluation@volicord.invalid"],
+        )?;
+        run_repository_git(directory.path(), &["config", "commit.gpgsign", "false"])?;
+        run_repository_git(directory.path(), &["add", "--all"])?;
+        run_repository_git(
+            directory.path(),
+            &["commit", "-q", "-m", "evaluation fixture baseline"],
+        )?;
+        fs::write(
+            directory.path().join(&attribution.path),
+            attribution.preexisting_dirty_content.as_bytes(),
+        )
+        .map_err(|error| {
+            HarnessError::new(format!(
+                "dirty-worktree fixture file could not be written: {error}"
+            ))
+        })?;
+    }
     Ok(directory)
+}
+
+fn run_repository_git(repository: &Path, args: &[&str]) -> HarnessResult<()> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(args)
+        .output()
+        .map_err(|error| HarnessError::new(format!("fixture Git could not run: {error}")))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(HarnessError::new(format!(
+            "fixture Git command failed with status {}",
+            output.status
+        )))
+    }
 }
 
 fn validate_observation(
     observation: &DriverObservation,
     trial: &ScheduleEntry,
+    scenario: &ScenarioFixture,
     coordinate: &ModelHostCoordinate,
 ) -> HarnessResult<()> {
     if observation.schema != DRIVER_OBSERVATION_SCHEMA
@@ -466,6 +517,7 @@ fn validate_observation(
         || observation.confirmed_out_of_scope_blocked > observation.confirmed_out_of_scope_attempts
         || observation.sensitive_without_approval_allowed
             > observation.sensitive_without_approval_attempts
+        || observation.unrecorded_change_true_positives > observation.unrecorded_change_checks
         || observation.unrecorded_change_false_positives > observation.unrecorded_change_checks
         || observation
             .first_product_write_ms
@@ -474,6 +526,19 @@ fn validate_observation(
         return Err(HarnessError::new(
             "driver observation contains an impossible aggregate count",
         ));
+    }
+    if trial.condition == EvaluationCondition::RecordLight {
+        if let Some(attribution) = &scenario.dirty_worktree_attribution {
+            if observation.unrecorded_change_checks < attribution.minimum_checks
+                || observation.unrecorded_change_true_positives < attribution.minimum_true_positives
+                || observation.unrecorded_change_false_positives
+                    > attribution.maximum_false_positives
+            {
+                return Err(HarnessError::new(
+                    "driver observation does not satisfy dirty-worktree attribution checks",
+                ));
+            }
+        }
     }
     Ok(())
 }

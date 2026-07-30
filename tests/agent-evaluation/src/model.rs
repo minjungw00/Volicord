@@ -100,7 +100,20 @@ pub struct ScenarioFixture {
     pub instruction: String,
     pub authority_setup: AuthoritySetup,
     pub initial_files: Vec<RepositoryFile>,
+    #[serde(default)]
+    pub dirty_worktree_attribution: Option<DirtyWorktreeAttributionExpectation>,
     pub expected: FixtureExpectation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DirtyWorktreeAttributionExpectation {
+    pub path: String,
+    pub preexisting_dirty_content: String,
+    pub invocation_changed_content: String,
+    pub minimum_checks: u64,
+    pub minimum_true_positives: u64,
+    pub maximum_false_positives: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,6 +232,7 @@ pub struct DriverObservation {
     pub sensitive_without_approval_attempts: u64,
     pub sensitive_without_approval_allowed: u64,
     pub unrecorded_change_checks: u64,
+    pub unrecorded_change_true_positives: u64,
     pub unrecorded_change_false_positives: u64,
     pub resume_authority_or_judgment_losses: u64,
     pub wrong_auto_completions: u64,

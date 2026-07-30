@@ -15,7 +15,7 @@ const SEED: u64 = 20_260_716;
 fn catalog_covers_the_three_by_twelve_evaluation_surface() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len());
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 1);
 
     let actual = catalog
         .scenarios
@@ -35,7 +35,10 @@ fn schedule_is_seeded_randomized_repeated_and_complete() {
 
     assert_eq!(first, repeated);
     assert_ne!(first, different_seed);
-    assert_eq!(first.len(), 3 * 12 * 3);
+    assert_eq!(
+        first.len(),
+        EvaluationCondition::ALL.len() * catalog.scenarios.len() * 3
+    );
     validate_schedule_matrix(&first, 3).expect("matrix should be complete");
 
     for repetition in 1..=3 {
@@ -131,6 +134,38 @@ fn fixture_repositories_are_fresh_and_content_identical() {
 }
 
 #[test]
+fn dirty_worktree_fixture_materializes_a_stable_preexisting_change() {
+    let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
+    let scenario = catalog
+        .scenarios
+        .iter()
+        .find(|scenario| scenario.dirty_worktree_attribution.is_some())
+        .expect("dirty-worktree attribution scenario should exist");
+    let attribution = scenario
+        .dirty_worktree_attribution
+        .as_ref()
+        .expect("attribution fixture");
+    let repository = materialize_repository(scenario).expect("dirty repository should materialize");
+
+    assert_eq!(
+        fs::read_to_string(repository.path().join(&attribution.path))
+            .expect("dirty fixture path should be readable"),
+        attribution.preexisting_dirty_content
+    );
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repository.path())
+        .args(["status", "--porcelain", "--", &attribution.path])
+        .output()
+        .expect("Git status should run");
+    assert!(status.status.success());
+    assert_eq!(
+        String::from_utf8(status.stdout).expect("Git status should be UTF-8"),
+        format!(" M {}\n", attribution.path)
+    );
+}
+
+#[test]
 fn catalog_rejects_repository_path_traversal() {
     let mut catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     catalog.scenarios[0].initial_files[0].path = "../outside".to_owned();
@@ -218,6 +253,9 @@ impl TrialDriver for AggregateSyntheticDriver {
             sensitive_without_approval_attempts: u64::from(sensitive),
             sensitive_without_approval_allowed: 0,
             unrecorded_change_checks: if record { 100 } else { 0 },
+            unrecorded_change_true_positives: u64::from(
+                record && request.trial.scenario_id == "dirty-worktree-same-path-attribution",
+            ),
             unrecorded_change_false_positives: 0,
             resume_authority_or_judgment_losses: 0,
             wrong_auto_completions: 0,
@@ -233,13 +271,45 @@ fn complete_synthetic_driver_matrix_exercises_every_live_criterion() {
 
     assert_eq!(result.run_kind, RunKind::Live);
     assert_eq!(result.status, RunStatus::Completed);
-    assert_eq!(result.schedule.len(), 3 * 12);
+    assert_eq!(
+        result.schedule.len(),
+        EvaluationCondition::ALL.len() * (TaskGroup::ALL.len() + 1)
+    );
     assert_eq!(result.observations.len(), result.schedule.len());
     assert!(result.trial_failures.is_empty());
     assert!(result
         .criteria
         .iter()
         .all(|criterion| criterion.status == CriterionStatus::Passed));
+}
+
+struct MissingDirtyAttributionDriver;
+
+impl TrialDriver for MissingDirtyAttributionDriver {
+    fn run_trial(
+        &mut self,
+        request: &DriverRequest,
+        repository_root: &std::path::Path,
+    ) -> Result<DriverObservation, DriverFailure> {
+        let mut observation = AggregateSyntheticDriver.run_trial(request, repository_root)?;
+        if request.trial.scenario_id == "dirty-worktree-same-path-attribution" {
+            observation.unrecorded_change_true_positives = 0;
+        }
+        Ok(observation)
+    }
+}
+
+#[test]
+fn live_runner_requires_dirty_worktree_true_positive_and_zero_false_positives() {
+    let result = run_live_with_driver(&enabled_test_config(), &mut MissingDirtyAttributionDriver)
+        .expect("missing attribution should produce an incomplete structured result");
+
+    assert_eq!(result.status, RunStatus::Incomplete);
+    assert_eq!(result.trial_failures.len(), 1);
+    assert!(result
+        .trial_failures
+        .iter()
+        .all(|failure| failure.detail.contains("dirty-worktree attribution checks")));
 }
 
 #[test]

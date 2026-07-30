@@ -34,7 +34,7 @@ use volicord_store::diagnostic_findings::{
 };
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
-    current_project_agent_session_coordinates,
+    current_project_agent_session_coordinates, repository_observation, RepositoryObservationState,
 };
 use volicord_store::inspection::{
     inspect_runtime_home, AgentConnectionInspectionRecord, DatabaseInspection,
@@ -48,7 +48,7 @@ use volicord_store::operational_sessions::{
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::diagnostics::DiagnosticFindingId;
 use volicord_types::guard_manifest::{
-    guard_manifest_from_json, GuardManagedOwnership, GuardManifest,
+    guard_manifest_from_json, GuardManagedArtifact, GuardManagedOwnership, GuardManifest,
 };
 use volicord_types::integration_revision::McpRuntimeSessionSource;
 use volicord_types::integration_verification::{
@@ -1397,6 +1397,23 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     let project_id = snapshot.projects[0].project_id.clone();
     let manifest = guard_manifest_from_json(&snapshot.guard_installations[0].manifest_json)?;
     assert_current_guard_projection(&fixture, &manifest)?;
+    let managed_guidance = manifest
+        .managed_files
+        .iter()
+        .find(|file| file.artifact() == GuardManagedArtifact::AgentsManagedBlock)
+        .ok_or("managed repository guidance expectation")?;
+    let managed_guidance_path = managed_guidance.path();
+    let managed_guidance_relative = managed_guidance_path.strip_prefix(&fixture.repo_root)?;
+    let managed_guidance_after_setup = fs::read(managed_guidance_path)?;
+    let managed_guidance_status_after_setup = git_output(
+        &fixture.repo_root,
+        &["status", "--porcelain", "--"],
+        &[managed_guidance_relative.as_os_str()],
+    )?;
+    assert!(
+        !managed_guidance_status_after_setup.trim().is_empty(),
+        "setup must leave its tracked managed guidance update uncommitted"
+    );
 
     let abandoned = volicord_test_support::start_test_mcp_runtime_session(
         &fixture.runtime_home,
@@ -1607,6 +1624,22 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(verbose.contains("    Verification tool observed at:"));
     assert!(!verbose.contains("Details: {"));
     assert!(!verbose.contains("\":["));
+    assert_eq!(
+        fs::read(managed_guidance_path)?,
+        managed_guidance_after_setup,
+        "managed verification changed the setup-created guidance update"
+    );
+    assert_eq!(
+        git_output(
+            &fixture.repo_root,
+            &["status", "--porcelain", "--"],
+            &[managed_guidance_relative.as_os_str()],
+        )?,
+        managed_guidance_status_after_setup,
+        "managed verification changed the preexisting guidance worktree state"
+    );
+    assert_database_integrity(&fixture.runtime_home.join("registry.sqlite"))?;
+    assert_database_integrity(&fixture.project_state_db_path())?;
 
     let changed_version = fixture.run_connection("verify", NEXT_FUTURE_VERSION, true)?;
     let changed_report = assert_connection_report(&changed_version, 0, "verify", "complete")?;
@@ -2132,7 +2165,34 @@ impl OperationalFixture {
         for directory in [&codex_home, &user_home, &path_dir, &repo_root] {
             fs::create_dir_all(directory)?;
         }
-        fs::create_dir(repo_root.join(".git"))?;
+        let managed_guidance_relative =
+            GuardManagedArtifact::AgentsManagedBlock.repository_relative_path()?;
+        let managed_guidance_path = repo_root.join(managed_guidance_relative);
+        if let Some(parent) = managed_guidance_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(
+            managed_guidance_path,
+            "# Product repository guidance\n\nPreserve this tracked baseline.\n",
+        )?;
+        git_output(&repo_root, &["init", "-q"], &[])?;
+        git_output(
+            &repo_root,
+            &["config", "user.name", "Volicord Operational Test"],
+            &[],
+        )?;
+        git_output(
+            &repo_root,
+            &["config", "user.email", "operational-test@volicord.invalid"],
+            &[],
+        )?;
+        git_output(&repo_root, &["config", "commit.gpgsign", "false"], &[])?;
+        git_output(&repo_root, &["add", "--all"], &[])?;
+        git_output(
+            &repo_root,
+            &["commit", "-q", "-m", "operational fixture baseline"],
+            &[],
+        )?;
         let codex_name = if cfg!(windows) { "codex.exe" } else { "codex" };
         fs::copy(env::current_exe()?, path_dir.join(codex_name))?;
         let volicord_name = if cfg!(windows) {
@@ -2174,6 +2234,12 @@ impl OperationalFixture {
 
     fn base_command(&self, program: impl AsRef<OsStr>, version: &str) -> Command {
         let mut command = Command::new(program);
+        let mut search_paths = vec![self.path_dir.clone()];
+        if let Some(ambient_path) = env::var_os("PATH") {
+            search_paths.extend(env::split_paths(&ambient_path));
+        }
+        let search_path =
+            env::join_paths(search_paths).expect("operational fixture PATH should join");
         command
             .env_clear()
             .env_remove("WSL_DISTRO_NAME")
@@ -2181,7 +2247,7 @@ impl OperationalFixture {
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
             .env("USERPROFILE", &self.user_home)
-            .env("PATH", &self.path_dir)
+            .env("PATH", search_path)
             .env(CODEX_VERSION_ENV, version)
             .current_dir(&self.repo_root);
         #[cfg(windows)]
@@ -2428,11 +2494,27 @@ impl OperationalFixture {
             .ok_or("managed Guard Connection should exist")?;
         assert_eq!(connection.server_name, "volicord");
         let server = McpServerKey::parse(&connection.server_name)?;
+        let list_callable = project_mcp_tool(&server, AgentToolId::LIST_PROJECTS)?;
         let begin_callable =
             project_mcp_tool(&server, AgentToolId::BEGIN_INTEGRATION_VERIFICATION)?;
         let probe_callable = project_mcp_tool(&server, AgentToolId::GUARD_PROBE)?;
         let status_callable = project_mcp_tool(&server, AgentToolId::GET_INTEGRATION_VERIFICATION)?;
 
+        let list_pre = json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": "future.tool-use.integration-verification-list",
+            "tool_name": list_callable.callable_name().as_str(),
+            "tool_input": {},
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PreTool),
+                &list_pre,
+            )?
+            .status
+            .success());
         child.write(&json_lines(&[managed_tool_call_in_turn(
             3,
             managed_host_round_trip_tool().wire_name(),
@@ -2441,6 +2523,22 @@ impl OperationalFixture {
             INTEGRATION_VERIFICATION_TURN_ID,
         )])?)?;
         child.read_responses(1)?;
+        let list_post = json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": "future.tool-use.integration-verification-list",
+            "tool_name": list_callable.callable_name().as_str(),
+            "tool_input": {},
+            "tool_response": {"success": true},
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PostTool),
+                &list_post,
+            )?
+            .status
+            .success());
         let begin_input = json!({"project_selector": project_id});
         let begin_pre = json!({
             "hook_event_name": "PreToolUse",
@@ -2776,18 +2874,96 @@ impl OperationalFixture {
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row
                 .get::<_, i64>(0))?,
-            guard_history_before.0 + 7
+            guard_history_before.0 + 9
         );
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row
                 .get::<_, i64>(0))?,
             guard_history_before.1 + 1
         );
+        let observation_rows = project_state
+            .prepare(
+                "SELECT repository_observation_id, host_tool_use_id, host_tool_name, state,
+                        unavailable_reason, session_id
+                   FROM repository_observations
+                  WHERE host_turn_id = ?1
+                    AND session_id = ?2
+                  ORDER BY host_tool_use_id, started_at",
+            )?
+            .query_map(
+                [
+                    INTEGRATION_VERIFICATION_TURN_ID,
+                    current_session_id.as_str(),
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(
+            observation_rows.len(),
+            4,
+            "the four managed verification tools must each own one observation: {observation_rows:?}"
+        );
+        for (observation_id, _, _, _, _, _) in observation_rows {
+            let observation =
+                repository_observation(&self.runtime_home, project_id, &observation_id)?
+                    .ok_or("managed verification repository observation")?;
+            assert_eq!(
+                observation.state,
+                RepositoryObservationState::Complete,
+                "managed tool observation {} ended {:?}: {:?}",
+                observation_id,
+                observation.state,
+                observation.unavailable_reason
+            );
+            assert!(observation
+                .delta
+                .as_ref()
+                .is_some_and(|delta| delta.is_empty()));
+            let result = observation
+                .terminal_result
+                .as_ref()
+                .ok_or("managed verification terminal repository result")?;
+            assert_eq!(
+                result.observation_state,
+                RepositoryObservationState::Complete
+            );
+            assert_eq!(
+                result.delta.as_ref().map(|delta| delta.transition_count),
+                Some(0)
+            );
+            assert!(result.expected_write_matches.is_empty());
+            assert!(result.unrecorded_changes.is_empty());
+        }
+        assert_eq!(
+            project_state.query_row("SELECT COUNT(*) FROM expected_writes", [], |row| {
+                row.get::<_, i64>(0)
+            })?,
+            0
+        );
+        assert_eq!(
+            project_state.query_row("SELECT COUNT(*) FROM unrecorded_changes", [], |row| {
+                row.get::<_, i64>(0)
+            })?,
+            0
+        );
         Ok(())
     }
 
     fn run_safe_tool_storage_failure(&self) -> Result<(), Box<dyn Error>> {
         let connection_id = self.connection_id();
+        let git_dir = self.repo_root.join(".git");
+        let displaced_git_dir = self.repo_root.join(".git-safe-call-displaced");
+        fs::rename(&git_dir, &displaced_git_dir)?;
+        fs::create_dir(&git_dir)?;
         let output = self.run_managed_mcp_messages(
             &connection_id,
             json_lines(&[
@@ -2802,6 +2978,8 @@ impl OperationalFixture {
                 ),
             ])?,
         )?;
+        fs::remove_dir(&git_dir)?;
+        fs::rename(&displaced_git_dir, &git_dir)?;
         assert!(
             !output.status.success()
                 || json_rpc_responses(&output.stdout)?.iter().any(|response| {
@@ -3568,6 +3746,48 @@ fn json_rpc_responses(bytes: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {
         .filter(|line| !line.trim().is_empty())
         .map(|line| Ok(serde_json::from_str(line)?))
         .collect()
+}
+
+fn git_output(
+    repository: &Path,
+    args: &[&str],
+    path_args: &[&OsStr],
+) -> Result<String, Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(args)
+        .args(path_args)
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "Git command failed with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+fn assert_database_integrity(path: &Path) -> Result<(), Box<dyn Error>> {
+    let connection = rusqlite::Connection::open(path)?;
+    assert_eq!(
+        connection.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))?,
+        "ok",
+        "SQLite integrity check failed for {}",
+        path.display()
+    );
+    let foreign_key_failures = connection
+        .prepare("PRAGMA foreign_key_check")?
+        .query_map([], |_| Ok(()))?
+        .collect::<Result<Vec<_>, _>>()?;
+    assert!(
+        foreign_key_failures.is_empty(),
+        "SQLite foreign-key check failed for {}",
+        path.display()
+    );
+    Ok(())
 }
 
 fn directory_contents(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn Error>> {

@@ -30,9 +30,9 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
             "fixture catalog schema must be {FIXTURE_CATALOG_SCHEMA}"
         )));
     }
-    if catalog.scenarios.len() != TaskGroup::ALL.len() {
+    if catalog.scenarios.len() < TaskGroup::ALL.len() {
         return Err(HarnessError::new(format!(
-            "fixture catalog must contain exactly {} scenarios",
+            "fixture catalog must contain at least {} scenarios",
             TaskGroup::ALL.len()
         )));
     }
@@ -47,12 +47,7 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
                 scenario.scenario_id
             )));
         }
-        if !task_groups.insert(scenario.task_group) {
-            return Err(HarnessError::new(format!(
-                "task group {} appears more than once",
-                scenario.task_group.as_str()
-            )));
-        }
+        task_groups.insert(scenario.task_group);
     }
     if task_groups != TaskGroup::ALL.into_iter().collect() {
         return Err(HarnessError::new(
@@ -73,8 +68,9 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
             check_id: "twelve_task_groups".to_owned(),
             status: CheckStatus::Passed,
             detail: format!(
-                "{} unique deterministic task groups are present",
-                TaskGroup::ALL.len()
+                "{} deterministic scenarios cover all {} task groups",
+                catalog.scenarios.len(),
+                TaskGroup::ALL.len(),
             ),
         },
         FixtureCheck {
@@ -126,6 +122,37 @@ fn validate_scenario(scenario: &ScenarioFixture) -> HarnessResult<()> {
         .chain(&scenario.authority_setup.denied_paths)
     {
         validate_relative_path(path)?;
+    }
+    if let Some(attribution) = &scenario.dirty_worktree_attribution {
+        validate_relative_path(&attribution.path)?;
+        let baseline = scenario
+            .initial_files
+            .iter()
+            .find(|file| file.path == attribution.path)
+            .ok_or_else(|| {
+                HarnessError::new(format!(
+                    "scenario {} dirty-worktree path must identify an initial file",
+                    scenario.scenario_id
+                ))
+            })?;
+        if baseline.content == attribution.preexisting_dirty_content
+            || attribution.preexisting_dirty_content == attribution.invocation_changed_content
+        {
+            return Err(HarnessError::new(format!(
+                "scenario {} dirty-worktree contents must represent distinct baseline, preexisting, and invocation states",
+                scenario.scenario_id
+            )));
+        }
+        if attribution.minimum_checks == 0
+            || attribution.minimum_true_positives == 0
+            || attribution.minimum_true_positives > attribution.minimum_checks
+            || attribution.maximum_false_positives > attribution.minimum_checks
+        {
+            return Err(HarnessError::new(format!(
+                "scenario {} dirty-worktree attribution bounds are invalid",
+                scenario.scenario_id
+            )));
+        }
     }
 
     let expected = &scenario.expected;
@@ -206,6 +233,14 @@ pub fn repository_seed_digest(scenario: &ScenarioFixture) -> String {
         bytes.extend_from_slice(path.as_bytes());
         bytes.push(0);
         bytes.extend_from_slice(content.as_bytes());
+        bytes.push(0xff);
+    }
+    if let Some(attribution) = &scenario.dirty_worktree_attribution {
+        bytes.extend_from_slice(attribution.path.as_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(attribution.preexisting_dirty_content.as_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(attribution.invocation_changed_content.as_bytes());
         bytes.push(0xff);
     }
     stable_digest(&bytes)

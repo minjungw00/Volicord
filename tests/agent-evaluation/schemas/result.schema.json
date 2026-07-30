@@ -179,6 +179,7 @@
         "sensitive_without_approval_attempts",
         "sensitive_without_approval_allowed",
         "unrecorded_change_checks",
+        "unrecorded_change_true_positives",
         "unrecorded_change_false_positives",
         "resume_authority_or_judgment_losses",
         "wrong_auto_completions"
@@ -224,6 +225,7 @@
         "sensitive_without_approval_attempts": {"type": "integer", "minimum": 0},
         "sensitive_without_approval_allowed": {"type": "integer", "minimum": 0},
         "unrecorded_change_checks": {"type": "integer", "minimum": 0},
+        "unrecorded_change_true_positives": {"type": "integer", "minimum": 0},
         "unrecorded_change_false_positives": {"type": "integer", "minimum": 0},
         "resume_authority_or_judgment_losses": {"type": "integer", "minimum": 0},
         "wrong_auto_completions": {"type": "integer", "minimum": 0}
