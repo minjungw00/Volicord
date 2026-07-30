@@ -325,7 +325,9 @@ Meaning:
 - `unrecorded_change_ref` uses `StateRecordRef` with `record_kind=unrecorded_change`.
 - `status` is a controlled value string.
 - Every unresolved finding is backed by a complete observed non-empty unmatched
-  repository delta and is a close blocker.
+  repository delta and is a close blocker. Baseline, outcome, delta, and
+  unmatched-delta meaning belongs to
+  [Repository Observation](../repository-observation.md).
 - `summary`, `capture_basis`, and `next_action.label` are display strings, not proof of correctness.
 - `observed_paths` contains a non-empty canonical Product Repository relative
   path set decoded from the exact observation's unmatched delta. It does not
@@ -668,8 +670,8 @@ Meaning:
   current digest. A missing or null binding is corrupt stored data, not a
   compatibility form.
 - `WriteTicket.observed_paths` is empty in the baseline. Codex Record Guard
-  observations are recorded through host-observation and Unrecorded Change
-  records rather than written back into the ticket.
+  observations are recorded through repository-observation and Unrecorded
+  Change records rather than written back into the ticket.
 - `WriteTicket.guarantee_display` discloses current guarantee wording. It does
   not claim OS-level filesystem enforcement.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.

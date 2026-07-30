@@ -20,6 +20,8 @@
 |---|---|---|---|
 | Runtime Home | 런타임 홈 | 운영 기록과 설정을 위한 로컬 Volicord 데이터 공간입니다. | [런타임 경계](runtime-boundaries.md) |
 | Product Repository | 제품 저장소 | Volicord 런타임 상태와 구분되는 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](runtime-boundaries.md) |
+| Repository Observation | 저장소 관찰 | 행위자 귀속이나 단독 원인 증명 없이 정확한 호출 하나의 Product Repository 전이를 기록하는 제한된 관찰입니다. | [저장소 관찰](repository-observation.md) |
+| Unrecorded Change | 미기록 변경 | 정확한 예상 쓰기에 포함되지 않아 조정 대상이 된 완전하고 비어 있지 않은 저장소 delta입니다. | [저장소 관찰](repository-observation.md) |
 | Task | 작업 | 구체화되거나, 진행되거나, 막히거나, 닫히는 사용자 가치 단위입니다. | [Core 모델](core-model.md) |
 | Write Ticket | 쓰기 티켓 | 제안된 제품 파일 변경 또는 정확한 승인 결속 비제품 민감 동작이 현재 Task, 범위, 정규화된 프로젝트 쓰기 권한에 맞는다는 Volicord 기록입니다. | [Core 모델](core-model.md) |
 | Evidence | 증거 | 실행, 관찰, 증거 첨부를 포함해 안정적인 수락 기준 또는 보충 주장 대상을 뒷받침하는 기록입니다. | [Core 모델](core-model.md) |

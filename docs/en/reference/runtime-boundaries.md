@@ -362,11 +362,13 @@ command hooks have no thread coordinate.
 
 Each compatible Codex tool invocation owns at most one project-local
 repository observation on the exact project, Connection, session, turn,
-tool-use ID, and canonical tool-name coordinate. Pre-tool persistence records
-the baseline before a write-capable or unknown-effect invocation is allowed;
-post-tool persistence closes the same aggregate with a complete deterministic
-delta or a closed unavailable reason. Whole-worktree dirtiness and host path
-reports are not invocation deltas.
+tool-use ID, and canonical tool-name coordinate. `PreToolUse` persistence
+records the exact repository baseline before a write-capable or unknown-effect
+invocation is allowed. `PostToolUse` persistence closes the same aggregate with
+the exact repository outcome and a complete deterministic repository delta, or
+with a closed observation-unavailable reason. Ambient repository status and
+host path reports are not invocation deltas. Exact observation behavior belongs
+to [Repository Observation](repository-observation.md).
 
 Runtime source is also explicit. `managed_host` is created only by atomic
 one-time lease consumption; `manual_cli` identifies the public stdio or

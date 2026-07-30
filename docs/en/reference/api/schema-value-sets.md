@@ -559,9 +559,14 @@ unresolved
 resolved
 ```
 
-Mutation observation confidence uses `confirmed`, `structured`, `heuristic`,
-or `unknown`. Observed effect kind uses `read_only`, `product_file_write`,
-`non_product_write`, `external_effect`, or `unknown`.
+The separate `ObservationConfidence` value used by `MutationAssessment` and
+workflow diagnostics uses `confirmed`, `structured`, `heuristic`, or `unknown`.
+`ObservedEffectKind` uses `read_only`, `product_file_write`,
+`non_product_write`, `external_effect`, or `unknown`. These values do not
+classify Repository Observation states or Unrecorded Changes.
+[Repository Observation](../repository-observation.md) uses `open`, `complete`,
+and `unavailable`; an Unrecorded Change exists only for a complete non-empty
+unmatched delta.
 
 <a id="unrecorded-change-resolution-basis-values"></a>
 `UnrecordedChangeResolutionSummary.resolution_basis` and stored unrecorded-change resolution metadata use:

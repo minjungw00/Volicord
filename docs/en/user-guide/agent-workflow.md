@@ -235,11 +235,12 @@ malicious.
 
 Use `volicord.reconcile_changes` when available. If MCP is unavailable, route
 the user to `volicord changes reconcile`. Any user acceptance must go through a
-supported User Channel. The finding represents only the complete unmatched
-Product Repository delta during one exact invocation window; it does not
-attribute an actor or exclusive cause. Observation-unavailable diagnostics are
-separate and must not be restated as path findings. Report the Close Status and
-next action projected by the owner.
+supported User Channel. Treat observation-unavailable diagnostics separately
+from path findings, and report the Close Status and next action projected by
+the owner. Exact invocation, delta, and finding meanings belong to
+[Repository Observation](../reference/repository-observation.md); resolution
+behavior belongs to
+[`volicord.reconcile_changes`](../reference/api/method-reconcile-changes.md).
 
 <a id="report-status"></a>
 <a id="handle-close"></a>

@@ -166,9 +166,9 @@ Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤�
   닫기 차단 사유 집합이 비어 있을 때만 `true`입니다. 활성 Task가 없거나 권한
   refresh를 완료할 수 없거나 차단 사유가 하나라도 남으면 `false`이며, 표시 문구나
   에이전트의 주장이 이를 덮어쓸 수 없습니다.
-- 모든 미해결 Unrecorded Change는 완전하게 관찰된 일치하지 않는 Product Repository
-  delta를 나타내며 닫기 차단 사유에 기여합니다. 관찰을 사용할 수 없다는 진단은 별도로
-  남고 Unrecorded Change로 투영되지 않습니다.
+- 모든 미해결 Unrecorded Change는 완전하게 관찰된 비어 있지 않은 불일치 Product
+  Repository delta를 나타내며 닫기 차단 사유에 기여합니다. 관찰을 사용할 수 없다는
+  진단은 별도로 남고 Unrecorded Change로 투영되지 않습니다.
 - 선택한 종료 Task는 저장된 종료 상태를 `closed`, `cancelled`, `superseded` 중 하나로
   표시하고 닫기 차단 사유는 빈 목록, 다음 행동은 없음으로 둡니다. 종료되지 않은
   `ready` 닫기 상태에서는 일반 작업 흐름 제안보다 먼저 에이전트의 다음 행동으로

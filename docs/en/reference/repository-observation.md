@@ -27,7 +27,23 @@ invocation. Its semantic coordinate contains:
 The Store permits at most one observation for this complete invocation
 coordinate. A different turn, tool-use ID, tool name, Connection, project, or
 Guard event cannot satisfy the coordinate. A reported effect, path hint,
-current dirty-path list, or tool name alone is not correlation.
+ambient repository status, or tool name alone is not correlation.
+
+## Observation Terms
+
+- The **exact host invocation** is the complete project, Connection, session,
+  turn, tool-use ID, canonical tool-name, and compatible Guard-event
+  coordinate above.
+- The **repository baseline** is the exact stable `PreToolUse` snapshot
+  persisted for that invocation.
+- The **repository outcome** is the exact stable matching `PostToolUse`
+  snapshot.
+- The **repository delta** is the deterministic net transition from that
+  baseline to that outcome.
+- The **unmatched delta** is the non-empty portion of a complete repository
+  delta not covered by that observation's exact expected write.
+- **Observation unavailable** is a closed observation result that does not
+  claim a complete repository delta.
 
 ## Observation States
 
@@ -38,12 +54,12 @@ RepositoryObservationState:
   unavailable
 ```
 
-`open` contains a strictly decoded canonical pre-tool snapshot and its verified
-digest. It contains no post-tool event, post-tool outcome, delta, unavailable
-reason, completion time, or terminal result.
+`open` contains the strictly decoded canonical repository baseline and its
+verified digest. It contains no post-tool event, repository outcome, repository
+delta, unavailable reason, completion time, or terminal result.
 
 `complete` contains the exact matching post-tool event, a strictly decoded
-canonical post-tool snapshot, the deterministic net repository delta, verified
+canonical repository outcome, the deterministic net repository delta, verified
 snapshot and delta digests, and the completion time. Its delta may be empty.
 
 `unavailable` contains one closed reason and a completion time. It does not

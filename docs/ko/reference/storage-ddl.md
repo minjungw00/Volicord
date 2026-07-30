@@ -2342,8 +2342,9 @@ CREATE TABLE project_workflow_policies (
   우회하지 않습니다.
 - `host_sessions`, `host_turns`, `host_tool_invocations`는 프로젝트 로컬 host 상관관계를 정규화합니다. 복합 key는 프로젝트, Connection, session, turn, tool-use, tool-name 소유권을 보존합니다. Tool-use ID는 다른 turn이나 tool name으로 다시 결속할 수 없습니다. `managed_mcp_sessions`만 필수 `host_thread_id`와 선택적 `runtime_session_id`를 저장하며 partial unique index는 runtime attach 뒤에만 적용됩니다. Registry 예약 실패 뒤 또는 마지막 프로젝트 attach 전의 null runtime은 권한이 아닙니다.
 - `guard_events`는 모든 관찰을 필수 typed hook phase, Guard 설치, 정확한 policy hash, integration revision에 결속합니다. `correlation_kind=codex_hook_prompt`는 session과 turn이 있고 tool field가 없는 `prompt_capture`에만 유효합니다. `correlation_kind=codex_hook_tool`은 session, turn, tool-use ID, tool name이 있는 `pre_tool` 또는 `post_tool`에만 유효합니다. Compatible event에는 이 정확한 형태 중 하나가 필요합니다. Hook row에는 thread column이 없습니다. 현재 소유권의 `compatible` event만 필수 phase를 충족하고, 현재 `malformed` 또는 `incompatible` event는 Guard observation check를 실패시키며, 이전 hash나 revision은 현재 check를 충족하지 않습니다. `decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한되며 이 값은 OS 수준 집행 증명이 아니라 로컬 호스트 판단 요청을 기록합니다.
-- `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 일치한 행은 일치한 Guard 관찰 이벤트, 일치 경로 JSON, `matched_at`을 가져야 하고, 대기 행은 이 일치 필드를 가지면 안 됩니다.
-- `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 해결 JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다.
+- `repository_observations`는 정확한 프로젝트, Connection, host session, host turn, tool-use ID, tool-name 좌표마다 행 하나를 둡니다. Check는 `open`, `complete`, `unavailable`의 기준선, 결과, delta, reason, event, 완료, terminal-result column을 각 상태의 정확한 조합으로 제한합니다.
+- `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 모든 행은 정확한 저장소 관찰 하나를 참조합니다. 일치한 행은 비어 있지 않은 matched path JSON과 `matched_at`을 가지며, 대기 행은 둘 다 갖지 않습니다.
+- `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 모든 행은 정확한 저장소 관찰 하나를 참조하고 비어 있지 않은 path 집합과 정규 unmatched-delta digest를 저장하며 해당 관찰과 digest에서 유일합니다. 해결된 행은 resolution JSON, `resolved_at`, `resolved_by_actor_source`를 가지며, 미해결 행은 이 resolution field를 갖지 않습니다.
 
 ## 관련 담당 문서
 

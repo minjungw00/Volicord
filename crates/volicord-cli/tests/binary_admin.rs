@@ -84,7 +84,7 @@ Commands:
   project      Manage registered Product Repositories
   mcp          Inspect or manually serve the local stdio MCP adapter
   export       Export local authority records
-  changes      Reconcile observed product changes
+  changes      Reconcile Unrecorded Changes in the Product Repository
   inbox        List or resolve pending UserAction requests
   evidence     Fulfill an authorized evidence-capture intent
   help         Print this message or the help of the given subcommand(s)

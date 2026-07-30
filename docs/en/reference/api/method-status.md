@@ -172,10 +172,10 @@ Truthful projection rules:
   close basis is valid and the complete close-blocker set is empty. It is
   `false` when no active Task exists, authority refresh cannot be completed, or
   any blocker remains; display text and an agent assertion cannot override it.
-- Every unresolved Unrecorded Change represents a complete observed unmatched
-  Product Repository delta and contributes the close blocker. Observation
-  unavailability remains a separate diagnostic and is never projected as an
-  Unrecorded Change.
+- Every unresolved Unrecorded Change represents a complete observed non-empty
+  unmatched Product Repository delta and contributes the close blocker.
+  Observation unavailability remains a separate diagnostic and is never
+  projected as an Unrecorded Change.
 - A terminal selected Task projects its stored terminal state as `closed`,
   `cancelled`, or `superseded`, with an empty close-blocker set and no next
   action. A non-terminal `ready` close state selects `volicord.close_task` as

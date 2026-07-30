@@ -74,9 +74,12 @@ form 대신 영속 데이터 오류로 실패합니다.
 
 ## 조정
 
-`changes reconcile`은 공개 Core 메서드로 경로를 잡습니다. Suppression은 명시적인
-`Applied` 또는 `Unavailable`이며 rendering은 모든 remaining path와 unavailable reason을
-보존해야 합니다.
+`changes reconcile`은 공개 Core 메서드로 경로를 잡고 미해결 finding, 해결 결과,
+사용자 행동 경로, 닫기 상태, 다음 행동을 표시합니다. 저장소 관찰 불가 상태는 별도
+Guard 진단으로 남으며 path finding으로 합성하지 않습니다. 정확한 관찰과 해결
+동작은 [저장소 관찰](../reference/repository-observation.md)과
+[`volicord.reconcile_changes`](../reference/api/method-reconcile-changes.md)가
+담당합니다.
 
 ## 진단과 출력
 

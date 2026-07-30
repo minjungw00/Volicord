@@ -2362,9 +2362,11 @@ terms:
       - "unrecorded_changes"
       - "UnrecordedChangeFinding"
     primary_owner:
-      en: "docs/en/reference/api/method-reconcile-changes.md"
-      ko: "docs/ko/reference/api/method-reconcile-changes.md"
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
     related_references:
+      - en: "docs/en/reference/api/method-reconcile-changes.md"
+        ko: "docs/ko/reference/api/method-reconcile-changes.md"
       - en: "docs/en/reference/storage-records.md"
         ko: "docs/ko/reference/storage-records.md"
       - en: "docs/en/reference/storage-ddl.md"
@@ -2373,6 +2375,199 @@ terms:
       - "Use Unrecorded Change when the concept is user-visible."
       - "Preserve exact schema/storage identifiers such as `UnrecordedChangeFinding` and `unrecorded_changes` in reference/API/storage contexts."
       - "Use Unrecorded Change only for a complete non-empty unmatched invocation-scoped repository delta."
+  repository_observation:
+    category: "product_concept"
+    en: "Repository Observation"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "user_guide"
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "저장소 관찰"
+    ko_user: "저장소 관찰"
+    preserve_as_identifier:
+      - "RepositoryObservationId"
+      - "RepositoryObservationState"
+      - "repository_observation"
+      - "repository_observations"
+      - "open"
+      - "complete"
+      - "unavailable"
+    primary_owner:
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
+    related_references:
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+      - en: "docs/en/reference/agent-connection.md"
+        ko: "docs/ko/reference/agent-connection.md"
+    notes:
+      - "Use for the exact invocation-scoped Product Repository transition record."
+      - "Preserve the exact state values `open`, `complete`, and `unavailable` in both languages."
+      - "Do not use generic observation confidence to classify a Repository Observation or Unrecorded Change."
+  repository_baseline:
+    category: "architecture_concept"
+    en: "repository baseline"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "저장소 기준선"
+    ko_user: "저장소 기준선"
+    preserve_as_identifier:
+      - "RepositoryObservationCheckpoint"
+      - "pre_snapshot_json"
+      - "pre_snapshot_digest"
+    primary_owner:
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
+    related_references:
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+    notes:
+      - "Use for the exact stable PreToolUse Product Repository snapshot for one host invocation."
+  repository_outcome:
+    category: "architecture_concept"
+    en: "repository outcome"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "저장소 결과"
+    ko_user: "저장소 결과"
+    preserve_as_identifier:
+      - "RepositoryObservationSnapshot"
+      - "post_snapshot_json"
+      - "post_snapshot_digest"
+    primary_owner:
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
+    related_references:
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+    notes:
+      - "Use for the exact stable PostToolUse Product Repository snapshot matching one repository baseline."
+  repository_delta:
+    category: "architecture_concept"
+    en: "repository delta"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "저장소 delta"
+    ko_user: "저장소 delta"
+    preserve_as_identifier:
+      - "RepositoryDelta"
+      - "RepositoryDeltaSummary"
+      - "delta_json"
+      - "delta_digest"
+    primary_owner:
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
+    related_references:
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+    notes:
+      - "Use for the deterministic net Product Repository transition from one exact baseline to its outcome."
+  observation_unavailable:
+    category: "architecture_concept"
+    en: "observation unavailable"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "관찰 불가"
+    ko_user: "관찰 불가"
+    preserve_as_identifier:
+      - "ObservationUnavailable"
+      - "ObservationUnavailableReason"
+      - "unavailable"
+      - "unavailable_reason"
+    primary_owner:
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
+    related_references:
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
+    notes:
+      - "Use for a closed repository observation that does not claim a complete delta."
+      - "Keep observation-unavailable diagnostics separate from actual Product Repository changes."
+  exact_host_invocation:
+    category: "architecture_concept"
+    en: "exact host invocation"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "정확한 호스트 호출"
+    ko_user: "정확한 호스트 호출"
+    preserve_as_identifier:
+      - "CodexHookToolCorrelation"
+      - "host_session_id"
+      - "host_turn_id"
+      - "host_tool_use_id"
+      - "host_tool_name"
+    primary_owner:
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
+    related_references:
+      - en: "docs/en/reference/agent-connection.md"
+        ko: "docs/ko/reference/agent-connection.md"
+      - en: "docs/en/reference/mcp-transport.md"
+        ko: "docs/ko/reference/mcp-transport.md"
+    notes:
+      - "Use for the complete host-owned correlation coordinate required to bind one PreToolUse baseline to one PostToolUse outcome."
+      - "A generic optional `host_invocation_id`, MCP thread, path, or tool name alone is not this coordinate."
+  unmatched_delta:
+    category: "architecture_concept"
+    en: "unmatched delta"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "불일치 delta"
+    ko_user: "불일치 delta"
+    preserve_as_identifier:
+      - "unmatched_delta_digest"
+    primary_owner:
+      en: "docs/en/reference/repository-observation.md"
+      ko: "docs/ko/reference/repository-observation.md"
+    related_references:
+      - en: "docs/en/reference/api/method-reconcile-changes.md"
+        ko: "docs/ko/reference/api/method-reconcile-changes.md"
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+    notes:
+      - "Use for the non-empty portion of a complete repository delta not covered by the exact expected write."
   observation_confidence:
     category: "api_value_set"
     en: "observation confidence"
@@ -2413,16 +2608,13 @@ terms:
     related_references:
       - en: "docs/en/reference/api/schema-state.md"
         ko: "docs/ko/reference/api/schema-state.md"
-      - en: "docs/en/reference/api/method-reconcile-changes.md"
-        ko: "docs/ko/reference/api/method-reconcile-changes.md"
       - en: "docs/en/reference/admin-cli.md"
         ko: "docs/ko/reference/admin-cli.md"
-      - en: "docs/en/reference/storage-records.md"
-        ko: "docs/ko/reference/storage-records.md"
     notes:
       - "Preserve exact type, value, and field identifiers in both languages."
       - "Use confirmed only for owner-defined deterministic or corroborated facts; heuristic or unknown observations must not be rewritten as confirmed in guide prose."
       - "Observation confidence is not actor identity, intent, OS enforcement, or proof that every effect was observed."
+      - "This value set belongs to `MutationAssessment` and workflow diagnostics; it is not a Repository Observation state or an Unrecorded Change classification."
   actor_source:
     category: "identifier"
     en: "actor_source"

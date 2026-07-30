@@ -189,7 +189,7 @@ UserAction 서비스·Core·공유 타입·Store 경계 위반, 일반·빌드 �
 `volicord-test-support`만 허용하는지도 확인합니다. Core, CLI, MCP, presentation
 의존성은 아키텍처 gate를 실패시킵니다.
 
-Core의 일반 허용 목록은 typed Product Repository 관찰을 위해
+Core의 일반 허용 목록은 typed 호출 범위 저장소 관찰을 위해
 `volicord-platform-fs`를 허용합니다. 공유 타입과 UserAction 서비스 그룹은 이
 의존성을 허용하지 않으므로 활성 파일시스템 관찰이 의미 값이나 검증으로 이동할 수
 없습니다.
@@ -364,8 +364,10 @@ matrix를 정합니다.
   bounded get까지 비관리 source로 대신하지 않고 다루는
   `crates/volicord-cli/tests/operational_host_e2e.rs`
 - 안정적인 identity를 유지하는 반복 Guard 초기화와 관련 없는 repository content 보존
-- 호출 범위 Guard 저장소 관찰, exact expected-write 일치, unmatched-delta
-  Unrecorded Change
+- 정확한 pre-tool 기준선, post-tool 결과, 결정론적 net delta, 정확한 host 상관관계,
+  `open`, `complete`, `unavailable` 상태를 포함하는 호출 범위 Guard 저장소 관찰
+- 완전한 delta를 대상으로 한 expected-write 일치, 기존 dirty 상태 attribution 경계,
+  unmatched-delta Unrecorded Change, 실제 변경과 분리된 unavailable 진단
 - Codex 구성 drift와 행동 probe 실패 보고
 - 성공, stdin 전달, 0이 아닌 종료, 시간 초과, 결정론적 stdout/stderr truncation,
   동시 stream, 자손이 유지하는 pipe, stdin 쓰기 실패 후 정리, 반복 정리, 네이티브

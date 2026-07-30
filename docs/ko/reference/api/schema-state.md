@@ -323,7 +323,8 @@ UnrecordedChangeResolutionSummary:
 - `unrecorded_change_ref`는 `record_kind=unrecorded_change`인 `StateRecordRef`를 사용합니다.
 - `status`는 제어 값 문자열입니다.
 - 모든 미해결 finding은 완전히 관찰된 비어 있지 않은 불일치 저장소 delta를
-  근거로 하며 닫기 차단 사유입니다.
+  근거로 하며 닫기 차단 사유입니다. 기준선, 결과, delta, 불일치 delta의 의미는
+  [저장소 관찰](../repository-observation.md)이 담당합니다.
 - `summary`, `capture_basis`, `next_action.label`은 표시 문자열이며 정확성 증명이 아닙니다.
 - `observed_paths`는 정확한 관찰의 불일치 delta에서 decode한 비어 있지 않은 정규
   Product Repository 상대 경로 집합을 담습니다. 프롬프트 텍스트, 명령 텍스트,
@@ -656,7 +657,7 @@ WriteDecisionReason:
   `write_ticket.idle_timeout_minutes=null`을 사용합니다. 모든 정규 티켓은 현재 digest를
   담습니다. 누락되거나 null인 결속은 호환 형식이 아니라 저장 데이터 손상입니다.
 - `WriteTicket.observed_paths`는 기준 범위에서 비어 있습니다. Codex Record Guard
-  관찰은 티켓에 다시 쓰지 않고 호스트 관찰 및 미기록 변경 기록으로 남깁니다.
+  관찰은 티켓에 다시 쓰지 않고 저장소 관찰 및 미기록 변경 기록으로 남깁니다.
 - `WriteTicket.guarantee_display`는 현재 보장 문구를 공개합니다. OS 수준 파일시스템
   집행을 주장하지 않습니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.

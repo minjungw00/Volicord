@@ -234,6 +234,30 @@ and [Storage Effects](../reference/storage-effects.md).
 | Registered evidence-capture fulfillment | Creates the receipt, transient staging, and source claims together, and advances the floor to at least receipt `created_at`; no Core event, replay row, or state-version increment. |
 | Local User Channel token issuance | Inserts the request-bound token and advances the floor to at least token `created_at`; no Core event, replay row, or state-version increment. |
 
+## Repository-observation transactions
+
+`volicord-platform-fs` captures the exact Product Repository baseline before a
+host tool invocation and its outcome afterward. The Guard adapter packages
+those typed filesystem values with the exact host invocation coordinate; it
+does not infer repository change ownership.
+
+Store uses dedicated immediate transactions for this path. The pre-tool
+transaction records the Guard event, exact invocation coordinate, an `open`
+observation or `unavailable` diagnostic, and any expected write together. The
+post-tool transaction validates the exact open observation, then records either
+the complete outcome and deterministic delta or an `unavailable` diagnostic.
+For a complete observation it also matches expected writes and materializes an
+Unrecorded Change only when an unmatched delta remains. A replay reads the
+stored terminal observation instead of scanning the filesystem again.
+
+Core reconciliation reads the validated Unrecorded Change projection; it does
+not reconstruct repository observations or turn unavailable diagnostics into
+changes. Exact state, matching, and storage-effect rules belong to
+[Repository Observation](../reference/repository-observation.md) and
+[Storage Effects](../reference/storage-effects.md). The implementation
+responsibility split is summarized in
+[Repository Observation Boundary](design/repository-observation-boundary.md).
+
 ## Mutation values
 
 `CoreStorageMutation` functions as a command-like value between method planning

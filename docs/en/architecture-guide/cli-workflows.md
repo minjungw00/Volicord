@@ -82,9 +82,13 @@ resolution data fails with a persisted-data error rather than a default form.
 
 ## Reconciliation
 
-`changes reconcile` routes through the public Core method. Suppression is
-explicitly `Applied` or `Unavailable`; rendering must preserve every remaining
-path and the unavailable reason.
+`changes reconcile` routes through the public Core method and renders its
+unresolved findings, resolution results, user-action route, Close Status, and
+next action. Repository-observation unavailability remains a separate Guard
+diagnostic and is not synthesized as a path finding. Exact observation and
+resolution behavior belongs to
+[Repository Observation](../reference/repository-observation.md) and
+[`volicord.reconcile_changes`](../reference/api/method-reconcile-changes.md).
 
 ## Diagnostics And Output
 

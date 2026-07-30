@@ -86,6 +86,11 @@ unknown, missing, duplicate, reordered, or strict-subset capability list, or a
 noncurrent value is invalid. Store supplies no default, alias, conversion, or
 capability inference.
 
+`invocation_repository_observation` identifies the single current storage
+shape for exact invocation-scoped repository observations, observation-bound
+expected writes, and unmatched-delta Unrecorded Changes. It is a semantic
+capability identifier, not a numeric behavior switch or an upgrade instruction.
+
 Field meanings:
 
 | Field | Contract |

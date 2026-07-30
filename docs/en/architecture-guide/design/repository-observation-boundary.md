@@ -11,8 +11,10 @@ expected-write matching, and Unrecorded Change creation.
 `volicord-platform-fs` captures bounded stable snapshots and computes
 content- and mode-aware net path transitions. Guard adapters decode one exact
 typed Codex hook correlation and supply invocation targets or reviewed hints.
-Store owns one aggregate row per exact host tool invocation and applies the
-pre-tool and post-tool mutations atomically.
+The exact `PreToolUse` snapshot is the repository baseline and the matching
+`PostToolUse` snapshot is the repository outcome. Store owns one aggregate row
+per exact host tool invocation and applies the pre-tool and post-tool mutations
+atomically.
 
 Core consumes only Store-validated actual Unrecorded Changes. Operational
 observation-unavailable diagnostics remain separate from reconciliation and
@@ -23,6 +25,7 @@ close-readiness state.
 - An allowed write-capable or unknown-effect invocation has a persisted stable
   pre-tool baseline.
 - One complete observation uses one exact matching pre/post hook pair.
+- The aggregate state is exactly `open`, `complete`, or `unavailable`.
 - A deterministic delta is calculated only from compatible stable snapshots.
 - Expected writes match only their exact observation and complete delta.
 - An Unrecorded Change contains only a non-empty unmatched observed delta.
@@ -73,7 +76,9 @@ complete monitoring, or OS enforcement.
   stable snapshots and deterministic deltas.
 - [`crates/volicord-cli/src/guard_command/`](../../../../crates/volicord-cli/src/guard_command/):
   typed Codex hook adaptation and Guard result projection.
-- [`crates/volicord-store/src/guards.rs`](../../../../crates/volicord-store/src/guards.rs):
+- [`crates/volicord-store/src/guards.rs`](../../../../crates/volicord-store/src/guards.rs)
+  and
+  [`guards/repository_observation.rs`](../../../../crates/volicord-store/src/guards/repository_observation.rs):
   exact host correlation, repository-observation aggregates, expected writes,
   and Unrecorded Changes.
 - [`crates/volicord-core/src/methods/reconcile_changes.rs`](../../../../crates/volicord-core/src/methods/reconcile_changes.rs)

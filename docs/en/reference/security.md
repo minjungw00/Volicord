@@ -128,7 +128,10 @@ One exact invocation-scoped observation records only the net Product Repository
 transition between its persisted baseline and outcome. An exact expected write
 may cover only matching paths in that complete delta. An `unavailable`
 observation remains visible and cannot be treated as a complete empty delta or
-as evidence that no change occurred.
+as evidence that no change occurred. The invocation window observes a
+transition; it does not establish actor identity or exclusive causation. Exact
+capture, matching, and finding rules belong to
+[Repository Observation](repository-observation.md).
 
 ## Explicit Non-Guarantees
 

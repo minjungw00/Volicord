@@ -328,6 +328,13 @@ The reviewed fixtures and coverage manifest under
 `crates/volicord-host-contract/tests/host_contracts.rs`, are pinned contract
 inputs rather than protocol-revision or package-version claims.
 
+The exact command-hook tool coordinate, rather than an MCP invocation field,
+correlates a `PreToolUse` repository baseline with its matching `PostToolUse`
+repository outcome. MCP transport does not reinterpret that coordinate.
+[Repository Observation](repository-observation.md) owns the observation
+lifecycle, deterministic delta, expected-write match, and unmatched-delta
+rules.
+
 MCP registration supplies an explicit `McpServerKey`; `AgentToolId` supplies
 the complete `McpRawToolName`. `McpToolIdentity` preserves both coordinates,
 and `CodexMcpCallableNames` projects them under

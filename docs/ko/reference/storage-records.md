@@ -257,11 +257,11 @@ session 및 turn 아래 hook tool-use ID와 정규 tool name을 기록합니다.
 호환 event의 `guard_events.correlation_kind`는 `codex_hook_prompt` 또는
 `codex_hook_tool`입니다. `prompt_capture`는 session과 turn을 요구하고 tool-use field를
 금지합니다. `pre_tool`과 `post_tool`은 session, turn, tool-use ID, 정규 tool name을 모두
-요구합니다. Prompt capture는 정확한 host turn을 참조하고, expected write는 정확한 host
-tool invocation을 참조하며, 상관관계가 있는 unrecorded change도 같은 invocation을
-참조합니다. Rust 입력은 해당 `HostNativeCorrelation` variant를 운반하고, SQL check와 복합
-foreign key는 불완전하거나 phase 또는 Connection이 교차된 형태를 거부합니다. 어떤 hook
-record에도 host-thread field가 없습니다.
+요구합니다. Prompt capture는 정확한 host turn을 참조합니다. 저장소 관찰은 정확한 host
+tool invocation을 참조하고, expected write와 상관관계가 있는 Unrecorded Change는 그
+정확한 관찰을 참조합니다. Rust 입력은 해당 `HostNativeCorrelation` variant를 운반하고,
+SQL check와 복합 foreign key는 불완전하거나 phase 또는 Connection이 교차된 형태를
+거부합니다. 어떤 hook record에도 host-thread field가 없습니다.
 
 `managed_mcp_sessions`는 별도의 MCP 전용 프로젝트 anchor입니다. 정규화한 host session과
 최신 host turn을 참조하고 host thread를 요구하며 선택적인 Registry runtime attachment를
@@ -469,11 +469,11 @@ managed MCP role과 같은 runtime session을 중복 제거하고 관련 verific
 
 Repository observation, expected write, Unrecorded Change 기록은 프로젝트
 로컬입니다. 관찰 하나는 정규화한 프로젝트, Connection, host session, host turn, hook
-tool-use ID, 정규 tool-name 좌표에서 유일합니다. `open`에는 검증한 baseline이,
-`complete`에는 검증한 post snapshot과 결정적인 delta가 필요하며, `unavailable`에는
-닫힌 reason이 필요하고 완전한 delta가 없습니다. Expected write는 각각 그 정확한
-관찰에 속합니다. Unrecorded Change는 관찰에 연결되고 비어 있지 않은 정규 path 집합과
-unmatched-delta digest를 저장합니다.
+tool-use ID, 정규 tool-name 좌표에서 유일합니다. `open`에는 검증한 저장소 기준선이,
+`complete`에는 검증한 저장소 결과와 결정적인 저장소 delta가 필요하며,
+`unavailable`에는 닫힌 관찰 불가 reason이 필요하고 완전한 delta가 없습니다. Expected
+write는 각각 그 정확한 관찰에 속합니다. Unrecorded Change는 관찰에 연결되고 비어 있지
+않은 정규 path 집합과 unmatched-delta digest를 저장합니다.
 
 Prompt 관찰은 제한된 관찰 schema 아래에서만 저장할 수 있습니다. 사용자 choice,
 resolution 본문, 비공개 resolution form, credential을 담지 않습니다.

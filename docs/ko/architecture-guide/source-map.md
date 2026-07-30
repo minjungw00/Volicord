@@ -39,11 +39,11 @@
 | `crates/volicord-platform-fs/src/product_path.rs` | Product Repository root와 후보 경로의 활성 관찰, 비공개 canonical identity, 아직 없는 후보의 가장 가까운 기존 상위 처리, link-aware containment, 불투명한 typed 관찰을 단독으로 담당합니다. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | 정규 Runtime Home identity, domain-separated 전체 digest 기반 외부 coordination 파일 파생, OS lock 영역 하나를 공유하는 shared-writer 및 exclusive-setup mode, 즉시 및 한도 있는 typed 획득, 빌린 변경 permit, Unix/macOS 또는 네이티브 Windows의 handle 수명 기반 해제. |
 | `crates/volicord-platform-fs/src/repository_observation/mod.rs` | 공개 repository observer 모듈 경로와 facade export. |
-| `crates/volicord-platform-fs/src/repository_observation/model.rs` | 폐쇄형 repository snapshot, 경로 상태, 전환, delta, 관찰 불가 이유, invocation 경로, 정규 직렬화, semantic observer contract digest 타입. |
+| `crates/volicord-platform-fs/src/repository_observation/model.rs` | 폐쇄형 저장소 기준선/결과 snapshot, 경로 상태, 전환, delta, 관찰 불가 이유, invocation 경로, 정규 직렬화, semantic observer contract digest 타입. |
 | `crates/volicord-platform-fs/src/repository_observation/coordinates.rs` | 정규 repository 및 Git layout identity, HEAD/tree 및 status 좌표, 정확한 dirty/untracked status 경로 parsing. |
 | `crates/volicord-platform-fs/src/repository_observation/path_state.rs` | 경계 안의 worktree와 불변 tree 경로 상태 관찰, streaming content hash, executable 및 symbolic link identity, clean Gitlink 관찰, 전체 hash 사용량 계산. |
-| `crates/volicord-platform-fs/src/repository_observation/snapshot.rs` | Typed invocation 경로 합집합, 한도 있는 안정적 이중 관찰, 전후 좌표 재확인, repository snapshot 구성. |
-| `crates/volicord-platform-fs/src/repository_observation/delta.rs` | Dirty, untracked, invocation, 변경된 tree 후보 경로의 합집합과 결정적인 before/after net 경로 전환 계산. |
+| `crates/volicord-platform-fs/src/repository_observation/snapshot.rs` | 완전한 status/invocation 후보 합집합, 한도 있는 안정적 이중 관찰, 전후 좌표 재확인, 저장소 기준선/결과 snapshot 구성. |
+| `crates/volicord-platform-fs/src/repository_observation/delta.rs` | 저장소 기준선/결과에서 관찰한 경로, status 경로, invocation 경로, 변경된 tree 후보의 합집합과 결정적인 net 경로 전환 계산. |
 | `crates/volicord-platform-fs/src/repository_observation/bounded.rs` | Typed observer 한도와 한도 있는 Git process input, output, duration, termination, capture, streaming blob 처리. |
 | `crates/volicord-platform-fs/src/repository_observation/tests.rs` | 폐기형 Git repository를 사용한 net worktree/tree 전환, 변경되지 않은 기존 상태, Gitlink 및 플랫폼 경로 상태, 불안정성, containment, resource limit, 정규 digest 결정성 검증. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | 프로세스 간 공유·배타 변경 lease 경합과 프로세스 종료 시 해제 regression. |
@@ -103,7 +103,7 @@
 | `crates/volicord-store/src/core_pipeline/user_actions.rs` | User Action mutation 입력, 저장 검증과 SQL 적용, 물리 JSON 및 저장 scalar에서 opaque `StoredUserActionRequest`, `StoredUserActionResolution`, paired `StoredUserActionRecordSet` 값으로의 엄격한 decoding, 유효 상태 파생, facade 읽기, 집중 일관성 테스트. |
 | `crates/volicord-store/src/core_pipeline/continuity.rs` | Continuity mutation 입력, 저장 검증과 SQL 적용, 프로젝트 continuity projection, 한도 있는 snapshot page, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/replay.rs` | 비공개 tool invocation row, SQL, typed invocation identity 및 replay context의 엄격한 decoding, 변경 불가능한 operation-result projection, Core 소유 의미 replay를 위한 정확한 메서드 응답 byte, facade 읽기. |
-| `crates/volicord-store/src/core_pipeline/reconciliation.rs` | Product Repository 경로를 포함해 엄격하게 decode한 typed expected-write 및 unrecorded-change 관찰 후보 projection과, 닫기 준비 상태 사실 취득에 사용하는 현재 handle 기반 미조정 변경 읽기. |
+| `crates/volicord-store/src/core_pipeline/reconciliation.rs` | Product Repository 경로를 포함해 엄격하게 decode한 typed expected-write 및 Unrecorded Change 제품 쓰기 metric 후보 projection과, 닫기 준비 상태 사실 취득에 사용하는 현재 handle 기반 미조정 변경 읽기. |
 | `crates/volicord-store/src/core_pipeline/blockers.rs` | 활성 blocker reference query와 facade 읽기. |
 | `crates/volicord-store/src/core_pipeline/events.rs` | 프로젝트 authority event identity 조회. |
 | `crates/volicord-store/src/core_pipeline/agent_sessions.rs` | Guard 소유 엄격한 row reader를 사용하는 프로젝트 로컬 Agent Session facade 진입점. |
@@ -112,7 +112,7 @@
 | `crates/volicord-store/src/core_pipeline/mutations.rs` | Grouped `CoreStorageMutation` routing, 정적 aggregate dispatch, transaction 범위 mutation context, typed aggregate 적용 결과. |
 | `crates/volicord-store/src/core_pipeline/commit.rs` | Replay 및 최신성 gate, 순서 있는 aggregate 위임, state-version 전진 한 번과 정규 commit timestamp 하나, 원자적 event·replay·response 영속화, rollback, 최종 commit 결과. |
 | `crates/volicord-store/src/core_pipeline/validation.rs` | 현재 Store 담당 모듈이 공유하는 저장 값 및 mutation 입력 검증. |
-| `crates/volicord-store/src/guards.rs`와 `crates/volicord-store/src/guards/repository_observation.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, prompt capture, 호출 범위 저장소 관찰과 정확한 expected-write 일치의 원자적 처리. |
+| `crates/volicord-store/src/guards.rs`와 `crates/volicord-store/src/guards/repository_observation.rs` | Typed exact host 상관관계 정규화, MCP 전용 project anchor, prompt capture, 호출 범위 저장소 관찰, 정확한 expected-write 일치, 불일치 delta 기반 Unrecorded Change 구체화의 원자적 처리. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent와 producer 레코드. |
 | `crates/volicord-store/src/artifacts.rs` | 아티팩트 staging과 영속 본문 검증. |
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home 선택과 경로 경계 검증, runtime-path failure를 거치는 typed 플랫폼 diagnostic 전파. |

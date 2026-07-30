@@ -731,6 +731,12 @@ source variants instead of providing a generic interchangeable coordinate.
 Store phase checks and SQL discriminators reject cross-source or incomplete
 combinations.
 
+Repository Observation uses only the exact `CodexHookToolCorrelation` shared
+by the matching `PreToolUse` and `PostToolUse` events. A generic optional
+`host_invocation_id`, MCP thread coordinate, path report, or tool name alone
+cannot correlate that observation. The complete observation coordinate and
+lifecycle belong to [Repository Observation](repository-observation.md).
+
 The Connection's registered `server_name` is decoded as `McpServerKey` and
 remains separate from each complete `McpRawToolName`. The
 `CodexMcpCallableNames` contract projects those coordinates to one

@@ -81,6 +81,10 @@ enabled_capabilities:
 누락·중복·재정렬된 capability 목록, strict subset, 현재가 아닌 값은 유효하지
 않습니다. Store는 default, alias, conversion, capability 추론을 제공하지 않습니다.
 
+`invocation_repository_observation`은 정확한 호출 범위 저장소 관찰, 관찰에 결속된
+예상 쓰기, 불일치 delta 기반 Unrecorded Change의 단일 현재 저장 형태를 식별합니다.
+숫자 동작 switch나 upgrade 지침이 아니라 의미 기반 capability 식별자입니다.
+
 필드 의미:
 
 | 필드 | 계약 |

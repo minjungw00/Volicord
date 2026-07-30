@@ -112,7 +112,7 @@ Store, UserAction 서비스, CLI, presentation package는 `volicord-mcp-wire`를
 | `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, 전송, 도구 투영, 세션 결속, Core 호출 어댑터를 담당합니다. |
 | `volicord-mcp-protocol` | `mcp-protocol` | 스키마 | 프로덕션 | 중립 | 호스트 독립 MCP 리비전 프로필과 의미 기반 역량 레지스트리를 담당합니다. |
 | `volicord-mcp-wire` | `mcp-wire` | 스키마 | 프로덕션 | 어댑터 | MCP 요청, 결과, 오류, 구조화 콘텐츠, JSON-RPC 엔벌로프, 생성 wire 스키마를 담당합니다. |
-| `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | Product Repository 및 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
+| `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | 호출 범위 Product Repository 관찰, 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
 | `volicord-platform-process` | `platform-process` | 인프라 | 프로덕션 | 중립 | 플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다. |
 | `volicord-release-integrity-tests` | `release-integrity` | 검증 | 비프로덕션 | 중립 | 릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다. |
 | `volicord-release-smoke` | `release-smoke` | 검증 | 비프로덕션 | 중립 | 크로스 플랫폼 실제 바이너리 릴리스 스모크 조율과 transcript 검증을 담당합니다. |
@@ -226,6 +226,21 @@ Core에는 범용 projection facade, helper prelude, re-export service locator�
 policy, Product Repository path의 source 오류 모델이 공개 메서드 plan 오류 모델과
 만나는 경계에서만 변환합니다. 의미 담당 모듈은 typed fact, plan, service 오류를
 반환하며 공개 메서드 응답 구성에 의존하지 않습니다.
+
+## 저장소 관찰 책임 경계
+
+`volicord-host-contract`는 source별 정확한 Codex hook 상관관계를 decode하고 예상
+Product Repository 효과를 분류합니다.
+`volicord-platform-fs::repository_observation`은 한도 있고 안정적인 저장소 기준선과
+결과 및 결정적인 순 delta를 담당합니다. CLI Guard 모듈은 host event를 adaptation하고
+host 결과를 projection합니다. Store는 정확한 호출 범위 aggregate, 원자적 pre/post
+transaction, 예상 쓰기 일치, 엄격한 replay, 미기록 변경 구체화를 담당합니다.
+
+Core는 조정과 닫기 준비 상태를 위해 Store가 검증한 미해결 미기록 변경만 읽습니다.
+스냅샷을 capture하거나 hook event를 상관시키거나 delta를 재구성하거나 관찰 불가
+진단을 변경 사실로 바꾸지 않습니다. 정확한 동작은
+[저장소 관찰](../reference/repository-observation.md)에, 집중 구현 흐름은
+[저장소 관찰 경계 설계](design/repository-observation-boundary.md)에 남습니다.
 
 ## Record Run 책임 경계
 
@@ -451,7 +466,7 @@ Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니
 | MCP 어댑터 경계 | `volicord mcp serve`가 공개 수동 전송 진입 경로이며 숨은 launcher의 메모리 내 lease claim만 `managed_host` runtime을 만들 수 있습니다. `stdio` facade는 한도가 있는 transport, JSON-RPC envelope, lifecycle, Runtime Home/repository/Connection binding, tool dispatch, telemetry를 각각 담당하는 모듈에 위임합니다. Lifecycle은 폐쇄형 `SessionState` variant를 사용하므로 initialize 전에는 initialization 선택 정보가, initialized 전환 전에는 ready 전용 session 정보가, `Closed` 밖에서는 종료 정보가 존재할 수 없습니다. Framing은 결과 projection을 알지 못하고, JSON-RPC parsing은 Core 연산을 수행하지 않으며, lifecycle은 message를 승인하고, binding은 routing identity를 선택하며, tool dispatch는 framing을 담당하지 않은 채 호출을 디코딩하고 adapter를 호출합니다. `volicord-types`는 Core 소유 도구에 `MethodName`을 재사용하고 운영 verification role을 컴파일 시점에 결합하는 폐쇄형 `AgentToolId` identity catalog를 제공합니다. `volicord-mcp`는 정규 registry를 이 identity로 식별하고 revision별 도구 소유권을 나누지 않은 채 선택한 semantic profile을 통해 wire 이름, 정의, 메서드 결과, MCP 소유 운영 실패를 투영합니다. 어댑터는 연산 전 Runtime Home과 Agent Connection routing context를 해석한 뒤 각 활성 mutation context가 그 routing identity와 일치하는지 요구합니다. Project routing, 진단, Store 접근, Core 구성에는 승인된 identity를 사용하고 adapter 관리 local invocation fact를 파생하며 Core JSON을 MCP 콘텐츠로 감쌉니다. Neutral Core 운영 실패는 메서드 응답을 만들지 않고 MCP로 변환합니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
 | 관리 CLI와 Codex 어댑터 | `volicord-cli`는 parsing된 command-model DTO에 대한 프로세스 시작과 디스패치, Codex 설정 탐색, 관리 entry 설치 및 검증, dependency-aware 검증 정책, 결정론적 진단 root 선택, 선택한 Connection 보고서의 concise/verbose/JSON 표시, lifecycle-aware finding 및 runtime-session lookup 출력, 복구, 제거, 숨은 동일 프로세스 host launcher를 담당합니다. Launcher는 일회성 Store lease를 발급하기 전에 현재 entry를 정확히 다시 검증하며 lease 자료를 구성, 인자, 환경, 출력에 두지 않습니다. Lookup 성공 여부는 저장된 finding severity와 독립적입니다. Codex 어댑터는 허용된 도구 승인 overlay만 보존하면서 정규 관리 시작 계약을 Codex TOML로 변환하고 다시 읽습니다. Linux나 WSL2를 분류하지 않습니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
 | 릴리스 무결성 | `xtask`는 working directory를 순회하지 않고 commit된 정확한 Git tree에서 추적 파일 형식, 내용, mode를 포함하는 결정적인 소스 ZIP 하나를 만들고 검증합니다. 일반 점검은 모든 게시 Volicord target, 패키지와 checksum 연속성, 소스 번들 workflow 경로, workflow 의미를 다룹니다. 재사용 workflow action 하나가 일반 CI의 로컬 debug build 뒤에 전용 `tests/release-smoke` 패키지를 정확히 한 번 호출하고, 네이티브 릴리스 target마다 artifact staging 전에 정확히 한 번 호출합니다. 이 패키지는 안정적인 테스트 소유 Codex fixture와 전달받은 정확한 바이너리를 사용해 공개 수동 stdio를 실행하며 선택적 실제 Codex 관찰 및 managed-host 증거와 구분됩니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
-| 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 프로세스 target과 kernel을 관찰하고 네이티브 Linux와 WSL2를 구분하며 `/etc/os-release`를 통해 WSL2 배포판을 검증하고 target 경로 제한 집행에 필요한 파일시스템 관찰을 제공합니다. Product Repository root와 후보 경로의 활성 관찰, 비공개 canonical identity, 가장 가까운 기존 상위 처리, link containment, typed 경로 diagnostic을 단독으로 담당합니다. Core는 불투명한 관찰을 사용하며 의미 서비스에는 파일시스템 좌표를 전달하지 않습니다. Repository observer는 dirty, untracked, typed invocation 경로 상태의 한도 있고 안정적인 invocation 단위 snapshot을 만든 뒤 그 상태를 변경된 tree 후보와 결합하여 content와 mode를 반영하는 결정적인 net 경로 전환을 계산하거나 typed 관찰 불가 결과를 반환합니다. 또한 효과를 인식하는 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 primitive, 정규 Runtime Home별 공유·배타 변경 승인과 빌린 permit, 정규 읽기 전용 Git common-directory/worktree 탐색을 격리합니다. 어떤 파일을 관리할지, 교체나 쓰기를 승인할지, 복구가 무엇을 뜻할지는 결정하지 않습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
+| 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 프로세스 target과 kernel을 관찰하고 네이티브 Linux와 WSL2를 구분하며 `/etc/os-release`를 통해 WSL2 배포판을 검증하고 target 경로 제한 집행에 필요한 파일시스템 관찰을 제공합니다. Product Repository root와 후보 경로의 활성 관찰, 비공개 canonical identity, 가장 가까운 기존 상위 처리, link containment, typed 경로 diagnostic을 단독으로 담당합니다. Core는 불투명한 관찰을 사용하며 의미 서비스에는 파일시스템 좌표를 전달하지 않습니다. Repository observer는 완전한 status 및 typed invocation 후보 집합에 대해 한도 있고 안정적인 호출 범위 기준선과 결과를 만든 뒤 두 스냅샷을 변경된 tree 후보와 결합하여 content와 mode를 반영하는 결정적인 net 경로 전환을 계산하거나 typed 관찰 불가 결과를 반환합니다. 또한 효과를 인식하는 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 primitive, 정규 Runtime Home별 공유·배타 변경 승인과 빌린 permit, 정규 읽기 전용 Git common-directory/worktree 탐색을 격리합니다. 어떤 파일을 관리할지, 교체나 쓰기를 승인할지, 복구가 무엇을 뜻할지는 결정하지 않습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [저장소 관찰](../reference/repository-observation.md), [시스템 요구사항](../reference/system-requirements.md). |
 | 플랫폼 프로세스 파사드 | `volicord-platform-process`는 한도가 있는 자식 프로세스 격리와 자식 파이프 준비 상태를 위한 안전한 API를 노출합니다. 저수준 프로세스 그룹, Windows Job Object, 비차단 파이프 설정, 파이프 폴링을 담당합니다. `volicord-cli`는 MCP 감독 정책, 생명주기 기한, 프로토콜 프레이밍, 교환 진행 상태, 진단 책임을 유지합니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |
 | 테스트 프로세스 경계 | `volicord-test-process`는 저장소 테스트와 스모크 하네스가 재사용하는 한도 있는 자식 프로세스 실행을 담당합니다. 프로세스를 시작하기 전에 플랫폼 격리를 만들고, 하나의 lifecycle 기한 안에서 한도 있는 stdio를 함께 처리하며, 시간 초과나 실패 시 프로세스 트리를 종료하고, 직접 자식을 회수하고, 마지막 파이프 정리 시간을 제한합니다. Volicord 제품 API를 노출하지 않으며 제품 프로세스 정책은 `volicord-cli`에 남습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md). |
 | 테스트와 검증 | 구현 테스트는 담당 문서가 정의한 사실을 적절한 계층에서 검증합니다. MCP 모듈 테스트는 lifecycle, batching, protocol projection, tool call, managed-host observation, diagnostics, conformance 계약별로 나누며 공유 설정은 그 assertion과 분리합니다. MCP 프로덕션 지원에는 고정 manifest의 릴리스 항목과 프로덕션 profile이 필요하며 가벼운 checker가 정확한 집합 일치를 강제합니다. 독립적인 registry 기반 적합성 테스트는 모든 프로덕션 profile의 실제 wire 동작을 실행합니다. 추적 중인 pre-release schema는 프로덕션 순회 밖에 있고 저장소 로컬 적합성 범위는 외부 인증이 아닙니다. 테스트, 픽스처, 생성 스냅샷, 문서 점검은 제품 계약 담당 문서가 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
@@ -478,4 +493,5 @@ Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니
 | Agent Connection, 호스트 처리 경로, 명시적 Connection Project 멤버십 | [Agent Connection과 호스트 라우팅](design/agent-connection-routing.md) |
 | Core가 MCP와 CLI 어댑터에서 독립적임 | [Core와 어댑터 의존 경계](design/core-adapter-boundary.md) |
 | 정상 커밋된 Store 변이 전 메서드 계획 | [원자적 변이 커밋 전 계획](design/plan-and-atomic-commit.md) |
+| 호출 범위 저장소 기준선, 결과, delta, 정확한 예상 쓰기 일치 | [저장소 관찰 경계](design/repository-observation-boundary.md) |
 | 런타임 데이터와 제품 파일 분리 | [Runtime Home과 Product Repository 분리](design/runtime-home-and-product-repository.md) |

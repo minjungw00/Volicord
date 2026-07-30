@@ -1464,6 +1464,13 @@ decision, does not satisfy that Guard phase, and continues. Event Store failure
 reports `PersistenceUnavailable`; that failure alone does not deny the host
 action.
 
+For compatible tool hooks, the host-neutral result projects one exact
+repository-observation identity. `PreToolUse` reports `open` or `unavailable`;
+the matching `PostToolUse` reports `complete` or `unavailable`. Observation
+unavailability remains separate from an Unrecorded Change. Snapshot, delta,
+expected-write, and finding rules belong to
+[Repository Observation](repository-observation.md).
+
 For Codex host output, the adapter writes only valid hook JSON to stdout,
 keeps stderr empty, and exits `0` for compatible continuation, incompatible
 observation, persistence-unavailable feedback, and explicit pre-tool denial.
@@ -1703,7 +1710,9 @@ volicord changes reconcile --repo "<repo>"
 Reconciliation projects the public `volicord.reconcile_changes` behavior into a
 local administrative flow. Repository-observation unavailability remains a
 separate explicit diagnostic and is not rendered as an empty complete delta or
-an Unrecorded Change.
+an Unrecorded Change. Exact observation meaning belongs to
+[Repository Observation](repository-observation.md); resolution behavior
+belongs to [`volicord.reconcile_changes`](api/method-reconcile-changes.md).
 
 <a id="user-channel-commands"></a>
 ## User Channel Commands

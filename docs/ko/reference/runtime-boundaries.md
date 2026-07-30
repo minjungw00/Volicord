@@ -318,10 +318,12 @@ tool의 session/turn/tool-use/tool-name 상관관계를 제공하며 command hoo
 좌표가 없습니다.
 
 호환되는 Codex 도구 호출마다 정확한 프로젝트, Connection, session, turn, tool-use ID,
-정규 tool-name 좌표에 프로젝트 로컬 저장소 관찰을 최대 하나만 둡니다. Pre-tool
-영속화는 쓰기 가능 또는 효과를 알 수 없는 호출을 허용하기 전에 baseline을 기록하고,
-post-tool 영속화는 같은 aggregate를 완전하고 결정적인 delta 또는 닫힌 unavailable
-reason으로 끝냅니다. 전체 worktree dirty 상태와 host 경로 보고는 호출 delta가 아닙니다.
+정규 tool-name 좌표에 프로젝트 로컬 저장소 관찰을 최대 하나만 둡니다. `PreToolUse`
+영속화는 쓰기 가능 또는 효과를 알 수 없는 호출을 허용하기 전에 정확한 저장소
+기준선을 기록합니다. `PostToolUse` 영속화는 같은 aggregate를 정확한 저장소 결과와
+완전하고 결정적인 저장소 delta로 닫거나, 닫힌 관찰 불가 reason으로 끝냅니다. 주변
+저장소 상태와 host 경로 보고는 호출 delta가 아닙니다. 정확한 관찰 동작은
+[저장소 관찰](repository-observation.md)이 담당합니다.
 
 Runtime source도 명시적입니다. `managed_host`는 one-time lease를 원자적으로 소비하는
 경우에만 만들고, `manual_cli`는 공개 stdio 또는 일회용 CLI conformance 경로를

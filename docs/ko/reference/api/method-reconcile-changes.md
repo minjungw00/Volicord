@@ -18,6 +18,7 @@
 
 - 공통 요청 래퍼, 응답 분기, `dry_run`, 거절 응답 스키마 본문
 - `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, `NextActionSummary` 필드 정의
+- 저장소 기준선 또는 결과 capture, 정확한 호스트 호출 상관관계, 저장소 delta 구성, 예상 쓰기 일치, 미기록 변경 생성. 자세한 내용은 [저장소 관찰](../repository-observation.md)을 봅니다.
 - 저장소 테이블 배치, SQLite 제약, 공개 오류 코드 의미, 공개 오류 우선순위, 공통 응답 분기 처리
 - 정확성 증명, 테스트 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안 보장
 
@@ -35,10 +36,10 @@
 
 미기록 변경을 해결하면 `unresolved_unrecorded_changes` 닫기 차단 사유 계산에서 빠집니다. 해결됐다는 사실만으로 제품 파일이 정확하거나, 검토 또는 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 뜻은 아닙니다.
 
-모든 finding은 정확한 호출의 예상 쓰기와 일치하지 않은 완전히 관찰된 비어 있지
-않은 Product Repository delta를 나타냅니다. 모든 미해결 finding은
-`unresolved_unrecorded_changes`에 기여하며 닫기 전에 조정해야 합니다. 관찰 불가
-진단은 finding이 아니며 합성 경로로 이 메서드에 들어오지 않습니다.
+모든 finding은 완전한 호출 범위 저장소 관찰 하나의 비어 있지 않은 불일치 delta를
+나타냅니다. 모든 미해결 finding은 `unresolved_unrecorded_changes`에 기여하며 닫기
+전에 조정해야 합니다. 관찰 불가 진단은 finding이 아니며 합성 경로로 이 메서드에
+들어오지 않습니다.
 
 ## 필수 입력
 

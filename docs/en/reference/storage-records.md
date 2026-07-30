@@ -292,11 +292,12 @@ tool name is rejected.
 `codex_hook_tool` when the event is compatible. `prompt_capture` requires a
 session and turn and forbids tool-use fields. `pre_tool` and `post_tool`
 require session, turn, tool-use ID, and canonical tool name. Prompt captures
-reference the exact host turn; expected writes reference the exact host tool
-invocation; correlated unrecorded changes do the same. Rust inputs carry the
-corresponding `HostNativeCorrelation` variant, and SQL checks plus composite
-foreign keys reject incomplete, cross-phase, and cross-Connection shapes.
-None of these hook records has a host-thread field.
+reference the exact host turn. Repository observations reference the exact
+host tool invocation; expected writes and correlated Unrecorded Changes
+reference that exact observation. Rust inputs carry the corresponding
+`HostNativeCorrelation` variant, and SQL checks plus composite foreign keys
+reject incomplete, cross-phase, and cross-Connection shapes. None of these
+hook records has a host-thread field.
 
 `managed_mcp_sessions` is the separate MCP-only project anchor. It references
 the normalized host session and latest host turn, requires a host thread, and
@@ -535,11 +536,12 @@ IDs.
 Repository observations, expected writes, and Unrecorded Changes are
 project-local. One observation is unique on its normalized project,
 Connection, host session, host turn, hook tool-use ID, and canonical tool-name
-coordinate. `open` requires a verified baseline; `complete` requires a verified
-post snapshot and deterministic delta; `unavailable` requires a closed reason
-and contains no complete delta. Each expected write belongs to that exact
-observation. Each Unrecorded Change links to it, contains a non-empty canonical
-path set, and stores the unmatched-delta digest.
+coordinate. `open` requires a verified repository baseline; `complete` requires
+a verified repository outcome and deterministic repository delta;
+`unavailable` requires a closed observation-unavailable reason and contains no
+complete delta. Each expected write belongs to that exact observation. Each
+Unrecorded Change links to it, contains a non-empty canonical path set, and
+stores the unmatched-delta digest.
 
 Prompt observations may be stored only under their bounded observation schema.
 They do not carry a user choice, resolution body, private resolution form, or

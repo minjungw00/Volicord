@@ -18,6 +18,7 @@ This document does not own:
 
 - common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, or `NextActionSummary` field definitions
+- repository baseline or outcome capture, exact host-invocation correlation, repository-delta construction, expected-write matching, or Unrecorded Change creation; see [Repository Observation](../repository-observation.md)
 - storage table layout, SQLite constraints, public error code meaning, public error precedence, or shared response-branch routing
 - proof of correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security guarantees
 
@@ -35,11 +36,11 @@ The method never silently dismisses a bypass. An Agent Connection cannot mark an
 
 Resolving an Unrecorded Change removes it from the `unresolved_unrecorded_changes` close-blocker calculation. Resolution does not prove that the changed product files are correct, reviewed, tested, accepted for close, or acceptable as residual risk.
 
-Every finding represents a complete observed non-empty Product Repository
-delta that was unmatched by its exact invocation's expected write. Every
-unresolved finding contributes `unresolved_unrecorded_changes` and must be
-reconciled before close. Observation-unavailable diagnostics are not findings
-and do not enter this method as synthetic paths.
+Every finding represents the non-empty unmatched delta from one complete
+invocation-scoped Repository Observation. Every unresolved finding contributes
+`unresolved_unrecorded_changes` and must be reconciled before close.
+Observation-unavailable diagnostics are not findings and do not enter this
+method as synthetic paths.
 
 ## Required inputs
 

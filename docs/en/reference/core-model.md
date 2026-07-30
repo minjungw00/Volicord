@@ -658,7 +658,7 @@ requires both its compatible sensitive-action approval and final acceptance.
 A `light` Task with `policy_dependent` may complete without final acceptance
 only when policy explicitly allows low-risk automatic completion, required
 evidence is sufficient, no user action or acceptance-requiring residual risk is
-pending, no sensitive/secret/external-network effect exists, no confirmed
+pending, no sensitive/secret/external-network effect exists, no unresolved
 Unrecorded Change exists, actual paths fit the consumed ticket, scope has not
 expanded since the first write, the Change Unit and baseline remain unchanged,
 and no Run or verification failure remains unresolved. Failure of any condition

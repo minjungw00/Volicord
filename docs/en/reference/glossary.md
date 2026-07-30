@@ -20,6 +20,8 @@ needed. Terms such as `Core`, `Change Unit`, `Expected Write`, host-hook install
 |---|---|---|---|
 | Runtime Home | 런타임 홈 | The local Volicord data space for operational records and configuration. | [Runtime Boundaries](runtime-boundaries.md) |
 | Product Repository | 제품 저장소 | The user's project workspace and product files, separate from Volicord runtime state. | [Runtime Boundaries](runtime-boundaries.md) |
+| Repository Observation | 저장소 관찰 | A bounded exact-invocation record of a Product Repository transition, without actor attribution or exclusive-cause proof. | [Repository Observation](repository-observation.md) |
+| Unrecorded Change | 미기록 변경 | A complete non-empty repository delta that was not covered by its exact expected write and remains subject to reconciliation. | [Repository Observation](repository-observation.md) |
 | Task | 작업 | The user-value unit being shaped, worked, blocked, or closed. | [Core Model](core-model.md) |
 | Write Ticket | 쓰기 티켓 | A Volicord record that a proposed product-file change or exact approval-bound non-product sensitive action is compatible with the current Task, scope, and normalized project write authority. | [Core Model](core-model.md) |
 | Evidence | 증거 | Recorded support for a stable acceptance-criterion or supplemental-claim target, including runs, observations, or evidence attachments. | [Core Model](core-model.md) |

@@ -9,9 +9,10 @@
 
 `volicord-platform-fs`는 한도 안에서 안정적인 스냅샷을 capture하고 content와 mode를
 반영한 순 경로 전이를 계산합니다. Guard adapter는 정확한 typed Codex hook
-상관관계 하나를 decode하고 호출 대상이나 검토된 hint를 제공합니다. Store는 정확한
-호스트 도구 호출마다 aggregate row 하나를 소유하고 pre-tool 및 post-tool 변경을
-원자적으로 적용합니다.
+상관관계 하나를 decode하고 호출 대상이나 검토된 hint를 제공합니다. 정확한
+`PreToolUse` 스냅샷은 저장소 기준선이고 일치하는 `PostToolUse` 스냅샷은 저장소
+결과입니다. Store는 정확한 호스트 도구 호출마다 aggregate row 하나를 소유하고
+pre-tool 및 post-tool 변경을 원자적으로 적용합니다.
 
 Core는 Store가 검증한 실제 미기록 변경만 사용합니다. 운영상 관찰 불가 진단은
 조정 및 닫기 준비 상태와 분리합니다.
@@ -21,6 +22,7 @@ Core는 Store가 검증한 실제 미기록 변경만 사용합니다. 운영상
 - 허용된 write-capable 또는 unknown-effect 호출에는 영속한 안정적 pre-tool
   baseline이 있습니다.
 - 완전한 관찰 하나는 정확히 일치하는 pre/post hook 쌍 하나를 사용합니다.
+- Aggregate 상태는 정확히 `open`, `complete`, `unavailable` 중 하나입니다.
 - 결정적인 delta는 호환되는 안정적 스냅샷에서만 계산합니다.
 - 예상 쓰기는 정확히 자기 관찰과 완전한 delta에만 일치합니다.
 - 미기록 변경은 비어 있지 않은 관찰된 불일치 delta만 담습니다.
@@ -65,7 +67,8 @@ Write-capable 및 unknown-effect 호출은 baseline을 capture하거나 원자�
   안정적인 스냅샷과 결정적인 delta
 - [`crates/volicord-cli/src/guard_command/`](../../../../crates/volicord-cli/src/guard_command/):
   typed Codex hook adaptation과 Guard 결과 projection
-- [`crates/volicord-store/src/guards.rs`](../../../../crates/volicord-store/src/guards.rs):
+- [`crates/volicord-store/src/guards.rs`](../../../../crates/volicord-store/src/guards.rs)와
+  [`guards/repository_observation.rs`](../../../../crates/volicord-store/src/guards/repository_observation.rs):
   정확한 호스트 상관관계, 저장소 관찰 aggregate, 예상 쓰기, 미기록 변경
 - [`crates/volicord-core/src/methods/reconcile_changes.rs`](../../../../crates/volicord-core/src/methods/reconcile_changes.rs)와
   [`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/):

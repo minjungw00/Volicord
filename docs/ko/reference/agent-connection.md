@@ -652,6 +652,11 @@ Tool 상관관계에는 tool-use ID와 정규 tool name도 필요합니다. 어�
 좌표를 제공하지 않고 이 source variant를 보존합니다. Store phase check와 SQL
 discriminator는 source가 교차되거나 불완전한 조합을 거부합니다.
 
+저장소 관찰은 일치하는 `PreToolUse`와 `PostToolUse` 이벤트가 공유하는 정확한
+`CodexHookToolCorrelation`만 사용합니다. 범용 nullable `host_invocation_id`, MCP
+thread 좌표, 경로 보고, 도구 이름만으로는 이 관찰을 상관시킬 수 없습니다. 완전한
+관찰 좌표와 생명주기는 [저장소 관찰](repository-observation.md)이 담당합니다.
+
 Connection에 등록된 `server_name`은 `McpServerKey`로 decode하며 각 도구의 완전한
 `McpRawToolName`과 구분해 유지합니다. `CodexMcpCallableNames` 계약은 이 좌표를
 `codex-mcp-callable-names`의 `HostCallableIdentity` 하나로 투영합니다. Raw tool

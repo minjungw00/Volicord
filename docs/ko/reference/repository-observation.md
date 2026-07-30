@@ -23,8 +23,21 @@
 
 Store는 이 완전한 호출 좌표마다 관찰을 최대 하나만 허용합니다. 다른 turn,
 tool-use ID, 도구 이름, Connection, 프로젝트, Guard 이벤트는 해당 좌표를 만족할
-수 없습니다. 보고된 효과, 경로 hint, 현재 dirty 경로 목록, 도구 이름만으로는
+수 없습니다. 보고된 효과, 경로 hint, 주변 저장소 상태, 도구 이름만으로는
 상관관계를 만들 수 없습니다.
+
+## 관찰 용어
+
+- **정확한 호스트 호출**은 위의 완전한 프로젝트, Connection, session, turn,
+  tool-use ID, 정규 tool-name, 호환 Guard 이벤트 좌표입니다.
+- **저장소 기준선**은 해당 호출을 위해 영속한 정확하고 안정적인 `PreToolUse`
+  스냅샷입니다.
+- **저장소 결과**는 정확히 일치하는 안정적인 `PostToolUse` 스냅샷입니다.
+- **저장소 delta**는 그 기준선에서 결과까지의 결정적인 순 전이입니다.
+- **불일치 delta**는 완전한 저장소 delta 가운데 해당 관찰의 정확한 예상 쓰기가
+  포함하지 않는 비어 있지 않은 부분입니다.
+- **관찰 불가**는 완전한 저장소 delta가 있다고 주장하지 않는 닫힌 관찰
+  결과입니다.
 
 ## 관찰 상태
 
@@ -35,13 +48,13 @@ RepositoryObservationState:
   unavailable
 ```
 
-`open`은 엄격하게 decode한 정규 pre-tool 스냅샷과 검증한 digest를 담습니다.
-post-tool 이벤트, post-tool 결과, delta, 관찰 불가 이유, 완료 시각, terminal
-결과는 담지 않습니다.
+`open`은 엄격하게 decode한 정규 저장소 기준선과 검증한 digest를 담습니다.
+post-tool 이벤트, 저장소 결과, 저장소 delta, 관찰 불가 이유, 완료 시각,
+terminal 결과는 담지 않습니다.
 
 `complete`는 정확히 일치하는 post-tool 이벤트, 엄격하게 decode한 정규 post-tool
-스냅샷, 결정적인 저장소 순 delta, 검증한 스냅샷 및 delta digest, 완료 시각을
-담습니다. Delta는 비어 있을 수 있습니다.
+저장소 결과, 결정적인 저장소 순 delta, 검증한 스냅샷 및 delta digest, 완료
+시각을 담습니다. Delta는 비어 있을 수 있습니다.
 
 `unavailable`은 닫힌 이유 하나와 완료 시각을 담습니다. 완전한 delta가 있다고
 주장하지 않습니다. 호출이 거부됐거나 post-tool 완료를 관찰할 수 없게 된

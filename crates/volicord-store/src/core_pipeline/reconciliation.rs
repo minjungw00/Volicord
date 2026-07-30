@@ -53,8 +53,8 @@ impl CoreProjectStore<'_> {
         )
     }
 
-    /// Lists confirmed, Task-bound product-write observation candidates without assigning
-    /// authority or interpreting their path payloads.
+    /// Lists strictly decoded, Task-bound product-write metric candidates without
+    /// assigning authority or reinterpreting their path payloads.
     pub fn product_write_observation_candidates_for_task(
         &self,
         task_id: &TaskId,

@@ -225,6 +225,25 @@ typed 메서드 필드 담당 타입을 유지합니다. 커밋 분기는 이벤
 | 등록된 evidence-capture fulfillment | Receipt, 일시적 staging, source claim을 함께 만들고 하한을 receipt `created_at` 이상으로 전진시킵니다. Core event, replay 행, state-version 증가는 없습니다. |
 | 로컬 User Channel token 발급 | 요청 결속 token을 삽입하고 하한을 token `created_at` 이상으로 전진시킵니다. Core event, replay 행, state-version 증가는 없습니다. |
 
+## 저장소 관찰 트랜잭션
+
+`volicord-platform-fs`는 host tool 호출 전에 정확한 Product Repository 기준선을,
+호출 뒤에는 그 결과를 캡처합니다. Guard adapter는 이 typed 파일시스템 값을 정확한
+host 호출 좌표와 함께 묶으며 저장소 변경의 소유자를 추론하지 않습니다.
+
+Store는 이 경로에 전용 immediate transaction을 사용합니다. pre-tool transaction은
+Guard event, 정확한 호출 좌표, `open` 관찰 또는 `unavailable` 진단, expected write를
+함께 기록합니다. post-tool transaction은 정확한 open 관찰을 검증한 뒤 완전한 결과와
+결정론적 delta 또는 `unavailable` 진단을 저장합니다. 완전한 관찰이면 expected write를
+일치시키고 unmatched delta가 남을 때만 Unrecorded Change를 구체화합니다. 재실행은
+파일시스템을 다시 스캔하지 않고 저장된 terminal 관찰을 읽습니다.
+
+Core reconciliation은 검증된 Unrecorded Change projection을 읽습니다. 저장소 관찰을
+다시 구성하거나 관찰 불가 진단을 변경으로 바꾸지 않습니다. 정확한 상태, 일치,
+저장 효과 규칙은 [저장소 관찰](../reference/repository-observation.md)과
+[저장 효과](../reference/storage-effects.md)가 담당합니다. 구현 책임 분리는
+[저장소 관찰 경계](design/repository-observation-boundary.md)에 요약되어 있습니다.
+
 ## 변이 값
 
 `CoreStorageMutation`은 메서드 계획과 Store 저장 처리 사이의 명령값처럼

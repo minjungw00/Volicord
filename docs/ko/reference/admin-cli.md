@@ -1371,6 +1371,12 @@ API가 아닙니다.
 계속합니다. Event Store 실패는 `PersistenceUnavailable`을 보고하며 그 실패만으로 host 동작을
 거부하지 않습니다.
 
+호환되는 tool hook의 host-neutral 결과는 정확한 저장소 관찰 identity 하나를
+projection합니다. `PreToolUse`는 `open` 또는 `unavailable`을, 일치하는
+`PostToolUse`는 `complete` 또는 `unavailable`을 보고합니다. 관찰 불가는 미기록
+변경과 분리합니다. 스냅샷, delta, 예상 쓰기, finding 규칙은
+[저장소 관찰](repository-observation.md)이 담당합니다.
+
 Codex host output에서 adapter는 유효한 hook JSON만 stdout에 쓰고 stderr를 비우며, 호환되는
 계속, 호환되지 않는 관찰, persistence-unavailable feedback, 명시적인 pre-tool denial 모두
 exit `0`을 사용합니다. 호환되는 명시적 `PreToolUse` policy-denial 분기만
@@ -1582,7 +1588,9 @@ volicord changes reconcile --repo "<repo>"
 
 조정은 공개 `volicord.reconcile_changes` 동작을 로컬 관리 흐름에 투영합니다. 저장소
 관찰을 사용할 수 없다는 진단은 별도로 명시하며 완전한 빈 delta나 Unrecorded Change로
-표시하지 않습니다.
+표시하지 않습니다. 정확한 관찰 의미는 [저장소 관찰](repository-observation.md)이,
+해결 동작은 [`volicord.reconcile_changes`](api/method-reconcile-changes.md)가
+담당합니다.
 
 <a id="user-channel-commands"></a>
 ## User Channel 명령

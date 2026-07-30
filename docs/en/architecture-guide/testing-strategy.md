@@ -213,10 +213,10 @@ admits only `volicord-types` and `volicord-store` as normal dependencies and
 `volicord-test-support` as a development dependency. Any dependency on Core,
 CLI, MCP, or presentation fails the architecture gate.
 
-Core's normal allowlist admits `volicord-platform-fs` for typed Product
-Repository observation. The shared-types and UserAction-service groups do not
-admit that dependency, so live filesystem observation cannot move into their
-semantic values or validation.
+Core's normal allowlist admits `volicord-platform-fs` for typed,
+invocation-scoped Repository Observation. The shared-types and
+UserAction-service groups do not admit that dependency, so live filesystem
+observation cannot move into their semantic values or validation.
 
 Core tests construct host-neutral requests with typed local-user or validated
 Agent Connection authority. CLI, MCP, application, and host-contract owners
@@ -429,8 +429,12 @@ Durable tests should cover, as applicable:
   non-managed source substitution;
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;
-- invocation-scoped Guard repository observations, exact expected-write
-  matching, and unmatched-delta Unrecorded Changes; and
+- invocation-scoped Guard repository observations with exact pre-tool
+  baselines, post-tool outcomes, deterministic net deltas, exact host
+  correlation, and `open`, `complete`, or `unavailable` states;
+- complete-delta expected-write matching, pre-existing dirty-state attribution
+  bounds, unmatched-delta Unrecorded Changes, and unavailable diagnostics kept
+  separate from actual changes; and
 - Codex configuration drift and behavior-probe failure reporting;
 - reusable bounded test child execution across success, stdin delivery,
   nonzero exit, timeout, deterministic stdout/stderr truncation, simultaneous

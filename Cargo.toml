@@ -90,8 +90,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-platform-fs]
 group = "platform-filesystem"
-description = "Product Repository and platform filesystem observation, publication, mutation admission, and Git layout primitives."
-description_ko = "Product Repository 및 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다."
+description = "Invocation-scoped Product Repository observation, platform filesystem observation, publication, mutation admission, and Git layout primitives."
+description_ko = "호출 범위 Product Repository 관찰, 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다."
 kind = "infrastructure"
 production = true
 boundary = "core-facing"

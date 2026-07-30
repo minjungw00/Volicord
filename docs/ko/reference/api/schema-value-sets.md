@@ -566,9 +566,13 @@ unresolved
 resolved
 ```
 
-변경 관찰 confidence는 `confirmed`, `structured`, `heuristic`, `unknown`을
-사용합니다. 관찰 effect kind는 `read_only`, `product_file_write`,
-`non_product_write`, `external_effect`, `unknown`을 사용합니다.
+`MutationAssessment`와 workflow 진단이 사용하는 별도 `ObservationConfidence` 값은
+`confirmed`, `structured`, `heuristic`, `unknown`입니다. `ObservedEffectKind`는
+`read_only`, `product_file_write`, `non_product_write`, `external_effect`,
+`unknown`을 사용합니다. 이 값은 저장소 관찰 상태나 미기록 변경을 분류하지
+않습니다. [저장소 관찰](../repository-observation.md)은 `open`,
+`complete`, `unavailable`을 사용하며, 미기록 변경은 완전하고 비어 있지 않은
+불일치 delta에 대해서만 존재합니다.
 
 <a id="unrecorded-change-resolution-basis-values"></a>
 `UnrecordedChangeResolutionSummary.resolution_basis`와 저장된 미기록 변경 해결 메타데이터는 아래 값을 사용합니다.

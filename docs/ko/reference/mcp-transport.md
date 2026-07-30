@@ -288,6 +288,11 @@ coverage manifest 및
 `crates/volicord-host-contract/tests/host_contracts.rs`의 parser/checksum assertion은
 고정 계약 입력이며 protocol revision이나 package version 주장이 아닙니다.
 
+MCP invocation field가 아니라 정확한 command-hook tool 좌표가 `PreToolUse` 저장소
+기준선과 일치하는 `PostToolUse` 저장소 결과를 상관시킵니다. MCP 전송은 이 좌표를
+다시 해석하지 않습니다. 관찰 생명주기, 결정적인 delta, 예상 쓰기 일치,
+불일치 delta 규칙은 [저장소 관찰](repository-observation.md)이 담당합니다.
+
 MCP 등록은 명시적인 `McpServerKey`를 제공하고 `AgentToolId`는 완전한
 `McpRawToolName`을 제공합니다. `McpToolIdentity`는 두 좌표를 보존하며
 `CodexMcpCallableNames`는 이를 `codex-mcp-callable-names`의 검증된

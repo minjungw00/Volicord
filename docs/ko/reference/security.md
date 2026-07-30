@@ -109,7 +109,9 @@ Guard와 조정 기록은 제한된 관찰입니다. 파일을 바꾼 actor, 악
 증명하지 않습니다. 정확한 호출 범위 관찰 하나는 영속 baseline과 outcome 사이의 net
 Product Repository transition만 기록합니다. Exact expected write는 그 완전한 delta
 안에서 일치하는 경로만 포함할 수 있습니다. `unavailable` 관찰은 계속 표시해야 하며
-완전한 빈 delta나 변경이 없었다는 증거로 취급할 수 없습니다.
+완전한 빈 delta나 변경이 없었다는 증거로 취급할 수 없습니다. 호출 구간은 전이를
+관찰할 뿐 actor identity나 단독 인과관계를 성립시키지 않습니다. 정확한 capture,
+matching, finding 규칙은 [저장소 관찰](repository-observation.md)이 담당합니다.
 
 ## 명시적 비보장
 

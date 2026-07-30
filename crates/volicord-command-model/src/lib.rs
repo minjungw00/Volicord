@@ -62,7 +62,7 @@ pub enum Command {
     Mcp(McpArgs),
     /// Export local authority records.
     Export(ExportArgs),
-    /// Reconcile observed product changes.
+    /// Reconcile Unrecorded Changes in the Product Repository.
     Changes(ChangesArgs),
     /// List or resolve pending UserAction requests.
     Inbox(InboxArgs),
@@ -506,7 +506,7 @@ pub struct ChangesArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum ChangesCommand {
-    /// Reconcile observed changes for one Task.
+    /// Reconcile Unrecorded Changes for one Task.
     Reconcile(ChangesReconcileArgs),
 }
 

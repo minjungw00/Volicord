@@ -217,10 +217,11 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 
 사용할 수 있으면 `volicord.reconcile_changes`를 사용합니다. MCP를 사용할 수 없으면
 사용자를 `volicord changes reconcile`로 안내합니다. 사용자 수락은 지원되는 사용자
-채널을 거쳐야 합니다. Finding은 정확한 호출 구간 동안의 완전한 Product Repository
-delta 가운데 일치하지 않는 부분만 나타내며 actor나 단독 원인을 귀속하지 않습니다.
-관찰 불가 진단은 별도이며 경로 finding으로 바꾸지 않습니다. 담당 경로가 제공한 닫기
-상태와 다음 행동을 보고합니다.
+채널을 거쳐야 합니다. 관찰 불가 진단은 경로 finding과 분리하고, 담당 경로가 제공한
+닫기 상태와 다음 행동을 보고합니다. 정확한 호출, delta, finding 의미는
+[저장소 관찰](../reference/repository-observation.md)이 담당하고, 해결 동작은
+[`volicord.reconcile_changes`](../reference/api/method-reconcile-changes.md)가
+담당합니다.
 
 <a id="report-status"></a>
 <a id="handle-close"></a>
