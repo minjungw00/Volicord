@@ -6,16 +6,14 @@ use volicord_types::values::UtcTimestamp;
 use crate::pipeline::CorePipelineError;
 use crate::pipeline::CoreResult;
 
-use super::approval::{
-    assess_write_ticket_approval, CurrentSensitiveApprovals, WriteTicketApprovalRequirement,
-};
+use super::approval::{assess_write_ticket_approval, WriteTicketApprovalRequirement};
 use super::current_validity::{
     evaluate_active_candidate, pre_evaluate_stored_write_ticket, StoredTicketPreEvaluation,
     StoredWriteTicketEvaluation, StoredWriteTicketStateError,
 };
 use super::read_model::{
     load_sensitive_approval_facts, load_write_ticket_candidates, load_write_ticket_control_facts,
-    load_write_ticket_evidence_facts, WriteTicketCurrentFacts,
+    load_write_ticket_evidence_facts, WriteTicketCurrentFacts, WriteTicketCurrentTaskFacts,
 };
 use super::selection::{select_stored_write_ticket, StoredWriteTicketSelection};
 use super::summary::{project_stored_write_ticket_summary, StoredWriteTicketSummaryInput};
@@ -43,24 +41,23 @@ pub fn load_evaluated_stored_write_tickets(
     let (task, workflow) = load_write_ticket_control_facts(store, task_id)?;
     let sensitive_approvals = load_sensitive_approval_facts(store, task_id, observed_at)?;
     let current = WriteTicketCurrentFacts {
-        task,
+        task: WriteTicketCurrentTaskFacts {
+            pending_policy_reevaluation: task.pending_policy_reevaluation,
+        },
         workflow,
-        sensitive_approvals,
-        observed_at: observed_at.clone(),
     };
     for candidate in active {
         let ticket = candidate.semantic_facts();
         let requirement = WriteTicketApprovalRequirement::new(
             ticket.project_id(),
-            current.task.scope_revision,
-            current.task.effective_control_level,
+            task.scope_revision,
+            task.effective_control_level,
             ticket.attempt_scope(),
-            &current.observed_at,
+            observed_at,
         );
-        let approvals = CurrentSensitiveApprovals::new(&current.sensitive_approvals, &requirement);
         let assessment = assess_write_ticket_approval(
             &requirement,
-            &approvals,
+            &sensitive_approvals,
             &ticket.validity_basis().approval_basis_refs,
         );
         evaluated.push(evaluate_active_candidate(candidate, &current, assessment).into());

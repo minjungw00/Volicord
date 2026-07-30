@@ -43,19 +43,24 @@ text, Change Unit planning, and Task policy modules, `continuity/`,
 they protect. Pure projection tests use typed facts and no Store handle.
 Write Ticket read-model tests cover typed ticket, Task, workflow-policy,
 UserAction-resolution, and evidence acquisition plus Store-error propagation
-without asserting policy. Current-validity tests cover active, invalidated,
-consumed, revoked, and effective-expiry transitions; they also prove that
-terminal records complete before current-fact loading and every evaluated
-stored state retains a mandatory ticket ID. Historical/display selection tests
+without asserting policy. Their shared current-facts fixtures contain only the
+non-approval Task and workflow-control inputs used by active
+current-validity evaluation. Current-validity tests receive those facts plus a
+typed `WriteTicketApprovalAssessment` and cover active, invalidated, consumed,
+revoked, and effective-expiry transitions; they also prove that terminal
+records complete before current-fact loading and every evaluated stored state
+retains a mandatory ticket ID. Historical/display selection tests
 accept only `StoredWriteTicketEvaluation` values and own stored-state
 precedence and tie-breaking. Prepare Write compatibility-selection tests
 consume complete classified candidate sets and distinguish no active
 candidates, active but incompatible candidates, exactly one compatible ticket,
 two or more compatible tickets, and mixed compatible/incompatible sets. They
 verify deterministic ambiguity identity ordering without treating that order
-as authority. Approval-owner tests cover the complete typed requirement,
-current-set, persisted-basis, and semantic change-reason matrix using
-Store-valid references. One shared semantic fixture table covers current
+as authority. Approval-owner tests pass raw UserAction authority facts only to
+the canonical approval owner and prove that its private current set yields a
+typed issuance basis or typed persisted-basis assessment. They cover the
+complete typed requirement, persisted-basis, and semantic change-reason matrix
+using Store-valid references. One shared semantic fixture table covers current
 approval, approval not required, newly required approval, stale resolution,
 changed approval scope, expiry, consumption, revocation, invalidation, and a
 current reusable ticket. It sends each fixture through the same canonical
@@ -88,11 +93,13 @@ compare the issued or reused nested ticket, top-level result facts, typed
 planned or stored source, Store mutation input, and reloaded record for the
 currently exposed path, validity, expiry, Task, Change Unit, and approval-basis
 facts. No-ticket tests verify null ticket identity and reference fields and no
-insertion. Store-backed Prepare Write ambiguity coverage persists multiple
-compatible active tickets, invokes the actual method path, verifies the
-method-owned blocked outcome and sorted candidate refs, and confirms no
-candidate was reused, consumed, invalidated, or selected. Replay retains exact
-response coverage.
+insertion. The approval-dependent method scenarios also prove that Prepare
+Write selection receives the canonical typed assessment rather than raw
+UserAction authority facts. Store-backed Prepare Write ambiguity coverage
+persists multiple compatible active tickets, invokes the actual method path,
+verifies the method-owned blocked outcome and sorted candidate refs, and
+confirms no candidate was reused, consumed, invalidated, or selected. Replay
+retains exact response coverage.
 
 Record Run follows this split by source responsibility. Request and fact
 acquisition, capture authority, evidence observation and reuse, artifact
@@ -107,7 +114,9 @@ tests enter admission with a typed reusable ticket and matching exact-attempt
 compatibility proof, then carry only an admissible ticket into mutation
 planning and consumption. The committed product-write scenario also proves
 that the Run row, Run ticket-effect payload, and consumed ticket use the same
-admitted ticket identity. The
+admitted ticket identity. Approval-dependent admission scenarios pass the
+locally acquired raw authority directly to the canonical approval owner and
+exercise current-validity only with the returned typed assessment. The
 small `methods/tests/record_run.rs` suite retains representative request
 orchestration, conversion to the neutral execution carrier and public result
 fields, semantic-error routing with dry-run and state-version metadata,
@@ -115,6 +124,11 @@ committed/no-effect alternatives, evidence and artifact paths, ticket and
 stale-state rejection, rollback propagation, and replay consistency. Neutral
 `OperationPlan` tests assert its method-independent execution inputs. Complete
 domain policy matrices do not live in the public method suite.
+
+Close-readiness Write Ticket tests accept only
+`StoredWriteTicketEvaluation` values and verify blocker projection from active
+and terminal evaluated states. They do not construct raw UserAction authority
+facts or repeat approval-policy evaluation.
 
 Within `volicord-user-action-service`, unit tests own semantic validation,
 canonical body and identity construction, authority, lifecycle,

@@ -204,12 +204,15 @@ reused and none branches cannot create an insertion.
 `write_ticket/semantic.rs` provides the immutable semantic view shared by a
 plan and an opaque Store-validated record; planned and stored lifecycle
 identities remain in distinct types. `write_ticket/read_model.rs` acquires
-typed stored-ticket, Task, workflow-policy, current UserAction-resolution, and
-evidence facts.
-`write_ticket/approval.rs` uniquely constructs the canonical approval
-requirement and current sensitive-approval identity set, then returns the typed
-currentness assessment consumed by summary evaluation, reuse, Record Run
-admission, close readiness, and the CLI guard context.
+typed stored-ticket, Task, workflow-policy, observation-time,
+UserAction-resolution, and evidence facts. Its `WriteTicketCurrentFacts`
+contains only the non-approval facts used by current-validity evaluation.
+`write_ticket/approval.rs` is the only Write Ticket owner that consumes raw
+UserAction authority values. It uniquely constructs the canonical approval
+requirement and private current sensitive-approval identity set, then returns a
+typed approval basis or `WriteTicketApprovalAssessment`. Summary evaluation,
+reuse, Record Run admission, close readiness, and the CLI guard context consume
+that assessment or an evaluated stored state derived from it.
 `write_ticket/current_validity.rs` first closes terminal stored states, then
 evaluates only active candidates into reusable or invalidated stored states.
 Every resulting `StoredWriteTicketEvaluation` has a mandatory persisted
@@ -261,8 +264,10 @@ The recording package keeps the operation flow typed:
    and artifact plans. Their policy decisions reuse `evidence_facts.rs`, `artifact.rs`,
    `volicord-user-action-service`, and the pure evidence policy modules; no
    recording module decodes a physical Store row.
-3. `write_ticket/admission.rs` receives the typed operation facts and validates
-   the current ticket through the canonical Write Ticket policy.
+3. `write_ticket/admission.rs` receives the typed operation facts, passes raw
+   approval authority directly to `write_ticket/approval.rs`, and validates the
+   current ticket from the returned assessment through the canonical Write
+   Ticket policy.
    `close_readiness/recording.rs` resolves the typed close-basis and
    residual-risk inputs through the existing close-readiness and evidence
    policy owners.
@@ -350,7 +355,10 @@ unresolved-change reads through the current `CoreProjectStore`, and assembles
 method projections without deciding readiness. `change_control.rs`,
 `evidence.rs`, and `acceptance.rs`
 evaluate their respective change/write, evidence/artifact, and user-authority
-conditions. Evidence evaluation calls the focused pure policy modules under
+conditions. Write Ticket close conditions consume
+`StoredWriteTicketEvaluation` values produced by the focused Write Ticket
+service and do not receive raw approval authorities. Evidence evaluation calls
+the focused pure policy modules under
 `crates/volicord-core/src/policy/`; it does not reimplement provenance,
 relevance, target, binding, or evidence-gate policy.
 

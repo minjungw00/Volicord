@@ -12,6 +12,7 @@ use crate::policy::evidence_target::{
 };
 use crate::record_refs::{change_unit_ref, state_ref};
 use crate::task_state::StoredScope;
+use crate::write_ticket::current_validity::StoredWriteTicketEvaluation;
 use crate::write_ticket::service::load_evaluated_stored_write_tickets;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
@@ -219,7 +220,6 @@ fn unresolved_write_ticket_blockers(
     context: &mut CloseReadinessFacts,
     now: &UtcTimestamp,
 ) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
-    let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     if context.write_tickets.is_none() {
         let records = load_evaluated_stored_write_tickets(store, &request.task_id, now)
@@ -231,6 +231,19 @@ fn unresolved_write_ticket_blockers(
             detail: "close-readiness Write Ticket facts were not acquired".to_owned(),
         }));
     };
+    Ok(open_write_ticket_blockers_from_evaluated(
+        task_ref,
+        project_state.state_version,
+        write_tickets,
+    ))
+}
+
+fn open_write_ticket_blockers_from_evaluated(
+    task_ref: StateRecordRef,
+    state_version: u64,
+    write_tickets: &[StoredWriteTicketEvaluation],
+) -> Vec<CloseReadinessBlocker> {
+    let mut blockers = Vec::new();
     for record in write_tickets {
         if let Some(reusable) = record.as_reusable() {
             let semantic = reusable.semantic_facts();
@@ -241,12 +254,12 @@ fn unresolved_write_ticket_blockers(
                     reusable.write_ticket_id().as_str(),
                     semantic.project_id(),
                     Some(&semantic.validity_basis().task_id),
-                    Some(project_state.state_version),
+                    Some(state_version),
                 ),
             ));
         }
     }
-    Ok(blockers)
+    blockers
 }
 
 fn current_close_basis_blocker(

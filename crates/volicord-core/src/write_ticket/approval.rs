@@ -15,13 +15,13 @@ use volicord_user_action_service::{
 /// The exact current sensitive approvals for one canonical Write Ticket requirement.
 #[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CurrentSensitiveApprovals {
+struct CurrentSensitiveApprovals {
     identities: BTreeSet<UserActionResolutionIdentity>,
     scope_candidate_identities: BTreeSet<UserActionResolutionIdentity>,
 }
 
 impl CurrentSensitiveApprovals {
-    pub(crate) fn new(
+    fn new(
         authorities: &[UserActionAuthority],
         requirement: &WriteTicketApprovalRequirement<'_>,
     ) -> Self {
@@ -51,7 +51,7 @@ impl CurrentSensitiveApprovals {
         }
     }
 
-    pub(crate) fn primary_basis(&self) -> Option<NonEmptyApprovalBasis> {
+    fn primary_basis(&self) -> Option<NonEmptyApprovalBasis> {
         self.identities
             .first()
             .cloned()
@@ -206,12 +206,21 @@ pub(crate) enum WriteTicketApprovalAssessment {
     Changed { reason: ApprovalBasisChangeReason },
 }
 
+/// Returns the canonical current approval basis for a newly issued Write Ticket.
+pub(crate) fn current_write_ticket_approval_basis(
+    requirement: &WriteTicketApprovalRequirement<'_>,
+    authorities: &[UserActionAuthority],
+) -> Option<NonEmptyApprovalBasis> {
+    CurrentSensitiveApprovals::new(authorities, requirement).primary_basis()
+}
+
 /// Assesses one Store-valid persisted approval basis against the canonical current set.
 pub(crate) fn assess_write_ticket_approval(
     requirement: &WriteTicketApprovalRequirement<'_>,
-    current: &CurrentSensitiveApprovals,
+    authorities: &[UserActionAuthority],
     persisted_refs: &[UserActionResolutionRef],
 ) -> WriteTicketApprovalAssessment {
+    let current = CurrentSensitiveApprovals::new(authorities, requirement);
     let Some(basis) = NonEmptyApprovalBasis::from_store_valid_refs(persisted_refs) else {
         return if requirement.is_required() {
             WriteTicketApprovalAssessment::Changed {
@@ -272,19 +281,20 @@ mod tests {
     use volicord_types::values::{
         ActorSource, JudgmentResolutionOutcome, TaskControlLevel, UserActionBasisStatus,
         UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus,
-        UserActionVerificationBasis, WriteTicketInvalidationReason, WriteTicketStatus,
+        UserActionVerificationBasis, UtcTimestamp, WriteTicketInvalidationReason,
+        WriteTicketStatus,
     };
     use volicord_user_action_service::UserActionAuthority;
 
     use super::{
-        assess_write_ticket_approval, ApprovalBasisChangeReason, CurrentSensitiveApprovals,
-        WriteTicketApprovalAssessment, WriteTicketApprovalRequirement,
+        assess_write_ticket_approval, current_write_ticket_approval_basis,
+        ApprovalBasisChangeReason, WriteTicketApprovalAssessment, WriteTicketApprovalRequirement,
     };
     use crate::write_ticket::current_validity::{
         evaluate_active_candidate, pre_evaluate_stored_write_ticket, StoredTicketPreEvaluation,
     };
     use crate::write_ticket::read_model::{
-        WriteTicketCurrentFacts, WriteTicketEvidenceFacts, WriteTicketTaskFacts,
+        WriteTicketCurrentFacts, WriteTicketCurrentTaskFacts, WriteTicketEvidenceFacts,
         WriteTicketWorkflowFacts,
     };
     use crate::write_ticket::semantic::test_support::{
@@ -411,8 +421,30 @@ mod tests {
         let now = timestamp("2026-07-29T00:05:00Z");
         let requirement =
             WriteTicketApprovalRequirement::new(&project_id, scope_revision, control, scope, &now);
-        let current = CurrentSensitiveApprovals::new(authorities, &requirement);
-        assess_write_ticket_approval(&requirement, &current, refs)
+        assess_write_ticket_approval(&requirement, authorities, refs)
+    }
+
+    #[test]
+    fn approval_owner_projects_the_current_basis_without_exposing_raw_authorities() {
+        let project_id = ProjectId::new("project-test");
+        let now = timestamp("2026-07-29T00:05:00Z");
+        let scope = scope();
+        let requirement = WriteTicketApprovalRequirement::new(
+            &project_id,
+            3,
+            TaskControlLevel::Sensitive,
+            &scope,
+            &now,
+        );
+        let authorities = [
+            matching_approval("resolution-b"),
+            matching_approval("resolution-a"),
+        ];
+
+        let basis = current_write_ticket_approval_basis(&requirement, &authorities)
+            .expect("matching authorities should produce a typed approval basis");
+
+        assert_eq!(basis.first_resolution_id().as_str(), "resolution-a");
     }
 
     #[test]
@@ -610,6 +642,7 @@ mod tests {
             name: &'static str,
             stored: crate::write_ticket::semantic::StoredWriteTicketFacts,
             current: WriteTicketCurrentFacts,
+            observed_at: UtcTimestamp,
             approval: Option<WriteTicketApprovalAssessment>,
             expected_approval: ApprovalExpectation,
             expected_status: WriteTicketStatus,
@@ -617,18 +650,14 @@ mod tests {
             expected_reusable: bool,
         }
 
-        fn current_facts(control: TaskControlLevel, observed_at: &str) -> WriteTicketCurrentFacts {
+        fn current_facts() -> WriteTicketCurrentFacts {
             WriteTicketCurrentFacts {
-                task: WriteTicketTaskFacts {
-                    scope_revision: 3,
-                    effective_control_level: control,
+                task: WriteTicketCurrentTaskFacts {
                     pending_policy_reevaluation: false,
                 },
                 workflow: WriteTicketWorkflowFacts {
                     write_authority_fingerprint: format!("sha256:{}", "0".repeat(64)),
                 },
-                sensitive_approvals: Vec::new(),
-                observed_at: timestamp(observed_at),
             }
         }
 
@@ -649,7 +678,8 @@ mod tests {
                     persisted_refs,
                     timestamp("2026-07-29T00:15:00Z"),
                 ),
-                current: current_facts(control, "2026-07-29T00:05:00Z"),
+                current: current_facts(),
+                observed_at: timestamp("2026-07-29T00:05:00Z"),
                 approval: Some(approval),
                 expected_approval: expected.approval,
                 expected_status: expected.status,
@@ -668,7 +698,8 @@ mod tests {
             Case {
                 name,
                 stored,
-                current: current_facts(TaskControlLevel::Tracked, observed_at),
+                current: current_facts(),
+                observed_at: timestamp(observed_at),
                 approval: None,
                 expected_approval: ApprovalExpectation::NotAssessed,
                 expected_status,
@@ -846,9 +877,8 @@ mod tests {
                 }
             }
 
-            let pre_evaluated =
-                pre_evaluate_stored_write_ticket(case.stored, &case.current.observed_at)
-                    .expect("Store-valid fixture should produce an evaluation");
+            let pre_evaluated = pre_evaluate_stored_write_ticket(case.stored, &case.observed_at)
+                .expect("Store-valid fixture should produce an evaluation");
             let (stored, record_run_admissible) = match pre_evaluated {
                 StoredTicketPreEvaluation::Complete(terminal) => (terminal.into(), false),
                 StoredTicketPreEvaluation::NeedsCurrentFacts(candidate) => {

@@ -191,11 +191,13 @@ dependency-safe 불변 값입니다. 공개 `prepare_write` 메서드는 dry-run
 `write_ticket/semantic.rs`는 plan과 Store가 검증한 opaque record가 공유하는
 불변 의미 view를 제공하며 planned lifecycle identity와 stored lifecycle identity는
 서로 다른 타입에 남습니다. `write_ticket/read_model.rs`는 typed stored ticket,
-Task, workflow policy, 현재 UserAction resolution, 증거 fact를 취득합니다.
-`write_ticket/approval.rs`만 정규
-승인 요구사항과 현재 민감 승인 identity 집합을 구성하고, summary 평가, reuse,
-Record Run 승인, 닫기 준비 상태, CLI guard context가 소비하는 typed 현재성 평가를
-반환합니다.
+Task, workflow policy, 관찰 시각, UserAction resolution, 증거 fact를 취득합니다.
+`WriteTicketCurrentFacts`에는 현재 유효성 평가가 사용하는 비승인 fact만 둡니다.
+`write_ticket/approval.rs`만 원시 UserAction 권한 값을 소비합니다. 이 모듈만 정규
+승인 요구사항과 비공개 현재 민감 승인 identity 집합을 구성하고 typed 승인 근거
+또는 `WriteTicketApprovalAssessment`를 반환합니다. Summary 평가, reuse, Record Run
+승인, 닫기 준비 상태, CLI guard context는 이 평가 또는 여기서 파생된 평가 완료
+stored 상태를 소비합니다.
 `write_ticket/current_validity.rs`는 terminal stored 상태를 먼저 완결한 뒤 active
 candidate만 reusable 또는 invalidated stored 상태로 평가합니다. 그 결과인 모든
 `StoredWriteTicketEvaluation`은 필수 영속 identity를 가집니다.
@@ -244,8 +246,9 @@ Write Ticket 정책은 담당하지 않습니다.
    해석하고 typed 권한, 증거 대상, 관찰, producer, artifact plan을 만듭니다. 정책
    판단에는 `evidence_facts.rs`, `artifact.rs`, `volicord-user-action-service`, 순수
    증거 정책 모듈을 재사용하며 기록 모듈은 물리 Store row를 decode하지 않습니다.
-3. `write_ticket/admission.rs`는 typed 연산 fact를 받아 정규 Write Ticket 정책으로
-   현재 ticket을 검증합니다. `close_readiness/recording.rs`는 기존 닫기 준비 상태
+3. `write_ticket/admission.rs`는 typed 연산 fact를 받고 원시 승인 권한을
+   `write_ticket/approval.rs`에 직접 전달한 뒤 반환된 평가로 정규 Write Ticket
+   정책에 따라 현재 ticket을 검증합니다. `close_readiness/recording.rs`는 기존 닫기 준비 상태
    및 증거 정책 담당 모듈을 통해 typed 닫기 근거와 잔여 위험 입력을 해석합니다.
 4. `recording/plan.rs`는 `RecordRunMutationPlan`을 조립합니다. 폐쇄형
    `RecordRunMutation` variant는 최종 Store plan 변환 전까지 Run, Task,
@@ -322,7 +325,9 @@ Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 미조정 변경 조회를 포함해 현재 사실 집합을 한 번 취득하고, 준비 상태를
 판단하지 않은 채 메서드 projection을 조립합니다. `change_control.rs`, `evidence.rs`,
 `acceptance.rs`는 각각 변경 및 쓰기, 증거 및 아티팩트, 사용자 권한 조건을
-평가합니다. 증거 평가는 `crates/volicord-core/src/policy/` 아래의 집중된 순수
+평가합니다. Write Ticket 닫기 조건은 집중 Write Ticket 서비스가 만든
+`StoredWriteTicketEvaluation` 값을 소비하며 원시 승인 권한을 받지 않습니다.
+증거 평가는 `crates/volicord-core/src/policy/` 아래의 집중된 순수
 정책 모듈을 호출하며 출처, 관련성, 대상, 결속, 증거 게이트 정책을 다시
 구현하지 않습니다.
 

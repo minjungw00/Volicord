@@ -40,17 +40,20 @@ Change Unit planning, Task policy 모듈, `continuity/`, `write_ticket/`,
 테스트는 typed fact를 사용하며 Store handle을 받지 않습니다. Write Ticket
 read-model 테스트는 정책을 검증하지 않고 typed ticket, Task,
 workflow policy, UserAction resolution, 증거 취득과 Store 오류 전파를 다룹니다.
-현재 유효성 테스트는 active, invalidated, consumed, revoked, effective expiry
-전이를 다루며 terminal record가 현재 fact를 읽기 전에 완결되고 평가된 모든 stored
-상태가 필수 ticket ID를 유지함을 검증합니다. 과거/표시 선택 테스트는
-`StoredWriteTicketEvaluation` 값만 받고 stored 상태 우선순위와 동률 해소를
-담당합니다. Prepare Write 호환성 선택 테스트는 분류가 끝난 전체 후보 집합을 받고,
+공유 현재 fact fixture에는 active 현재 유효성 평가에 쓰이는 비승인 Task 및
+workflow-control 입력만 있습니다. 현재 유효성 테스트는 이 fact와 typed
+`WriteTicketApprovalAssessment`를 받아 active, invalidated, consumed, revoked,
+effective expiry 전이를 다루며 terminal record가 현재 fact를 읽기 전에 완결되고
+평가된 모든 stored 상태가 필수 ticket ID를 유지함을 검증합니다. 과거/표시 선택
+테스트는 `StoredWriteTicketEvaluation` 값만 받고 stored 상태 우선순위와 동률
+해소를 담당합니다. Prepare Write 호환성 선택 테스트는 분류가 끝난 전체 후보 집합을 받고,
 active 후보 없음, active지만 호환되지 않는 후보, 호환 ticket 정확히 하나, 호환
 ticket 둘 이상, 호환 후보와 비호환 후보가 섞인 집합을 구분합니다. 이 테스트는
 결정적인 모호성 identity 순서를 검증하되 그 순서를 권한으로 취급하지 않습니다.
-승인 담당자 테스트는
-Store가 검증한 참조를 사용해 typed 요구사항, 현재 집합, 영속 근거, 의미 변경
-사유의 전체 matrix를 다룹니다. 하나의 공유 의미 fixture 표는 현재 승인, 승인이
+승인 담당자 테스트는 원시 UserAction 권한 fact를 정규 승인 담당자에게만 전달하고,
+그 비공개 현재 집합이 typed 발급 근거 또는 typed 영속 근거 평가를 만드는지
+검증합니다. Store가 검증한 참조를 사용해 typed 요구사항, 영속 근거, 의미 변경
+사유의 전체 matrix도 다룹니다. 하나의 공유 의미 fixture 표는 현재 승인, 승인이
 필요하지 않은 경우, 새로 필요해진 승인, 오래된 resolution, 변경된 승인 범위,
 만료, 소비, 철회, 무효화, 현재 재사용 가능한 ticket을 다룹니다. 각 fixture를 같은
 정규 평가에 통과시켜 summary, Prepare Write 재사용, Record Run 승인, 닫기 준비
@@ -78,7 +81,9 @@ dry-run 발급 및 재사용 결과, ticket 없음 결과를 담당합니다. �
 경로, 유효성, 만료, Task, Change Unit, 승인 근거 fact에 대해 발급 또는 재사용된
 중첩 ticket, 최상위 결과 fact, typed planned 또는 stored 원본, Store mutation
 입력, 다시 읽은 record를 비교합니다. Ticket 없음 테스트는 null ticket identity 및
-reference field와 insertion 부재를 검증합니다. Store 기반 Prepare Write 모호성
+reference field와 insertion 부재를 검증합니다. 승인 의존 메서드 시나리오는 Prepare
+Write 선택이 원시 UserAction 권한 fact가 아니라 정규 typed 평가를 받는지도
+검증합니다. Store 기반 Prepare Write 모호성
 coverage는 호환되는 active ticket 여러 개를 영속화하고 실제 메서드 경로를 호출해
 메서드 소유 차단 결과와 정렬된 후보 참조를 검증하며, 어느 후보도 재사용, 소비,
 무효화, 선택되지 않았음을 확인합니다. Replay는 정확한 응답 coverage를 유지합니다.
@@ -94,13 +99,18 @@ coverage는 `close_readiness/tests/recording.rs`에, ticket 호환성, 승인, �
 증명으로 admission에 진입하고 admissible ticket만 mutation planning과
 consumption으로 전달합니다. 커밋된 product-write 시나리오는 Run row, Run의 ticket
 effect payload, 소비된 ticket이 같은 admissible ticket identity를 사용함도
-검증합니다. 작은
+검증합니다. 승인 의존 admission 시나리오는 로컬에서 취득한 원시 권한을 정규 승인
+담당자에게 직접 전달하고 반환된 typed 평가로만 현재 유효성을 검증합니다. 작은
 `methods/tests/record_run.rs` suite에는 대표 요청 조율,
 중립 실행 carrier와 공개 결과 field로의 변환, dry-run 및 state-version
 metadata를 보존하는 의미 오류 routing, commit 및 무효과 대안, 증거 및 artifact
 경로, ticket 및 stale-state 거절, rollback 전파, replay 일관성을 남깁니다. 중립
 `OperationPlan` 테스트는 메서드 독립 실행 입력을 검증합니다. 완전한 도메인 정책
 행렬은 공개 메서드 suite에 두지 않습니다.
+
+닫기 준비 상태의 Write Ticket 테스트는 `StoredWriteTicketEvaluation` 값만 받고
+active 및 terminal 평가 상태에서 차단 사유가 파생되는지 검증합니다. 원시
+UserAction 권한 fact를 구성하거나 승인 policy 평가를 반복하지 않습니다.
 
 `volicord-user-action-service`에서는 의미 검증, 정규 body와 identity 구성,
 authority, lifecycle, materialization, 영속화 매핑, resolution, continuity,

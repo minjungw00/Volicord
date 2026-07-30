@@ -437,9 +437,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use volicord_types::values::{
-        TaskControlLevel, WriteTicketInvalidationReason, WriteTicketStatus,
-    };
+    use volicord_types::values::{WriteTicketInvalidationReason, WriteTicketStatus};
 
     use super::{
         evaluate_active_candidate, pre_evaluate_stored_write_ticket,
@@ -448,16 +446,14 @@ mod tests {
     };
     use crate::write_ticket::approval::{ApprovalBasisChangeReason, WriteTicketApprovalAssessment};
     use crate::write_ticket::read_model::{
-        WriteTicketCurrentFacts, WriteTicketTaskFacts, WriteTicketWorkflowFacts,
+        WriteTicketCurrentFacts, WriteTicketCurrentTaskFacts, WriteTicketWorkflowFacts,
     };
     use crate::write_ticket::semantic::test_support::{
         consumed_facts, invalidated_facts, revoked_facts, stored_facts, timestamp,
     };
 
-    fn task_facts() -> WriteTicketTaskFacts {
-        WriteTicketTaskFacts {
-            scope_revision: 3,
-            effective_control_level: TaskControlLevel::Tracked,
+    fn task_facts() -> WriteTicketCurrentTaskFacts {
+        WriteTicketCurrentTaskFacts {
             pending_policy_reevaluation: false,
         }
     }
@@ -472,8 +468,6 @@ mod tests {
         WriteTicketCurrentFacts {
             task: task_facts(),
             workflow: workflow_facts(),
-            sensitive_approvals: Vec::new(),
-            observed_at: timestamp("2026-07-29T00:05:00Z"),
         }
     }
 

@@ -11,16 +11,21 @@ invalidates, and consumes Write Tickets against current Core and Store facts.
 approval, workflow-policy, and normalized path facts. The focused
 `write_ticket/` owner keeps those responsibilities explicit.
 `read_model.rs` acquires typed stored-ticket, Task, normalized
-workflow-policy, current UserAction-resolution, and evidence facts.
+workflow-policy, observation-time, UserAction-resolution, and evidence facts.
+Raw UserAction authority values are loaded only when approval evaluation is
+required and are passed directly to `approval.rs`; they are not retained in
+`WriteTicketCurrentFacts`.
 `current_validity.rs` first converts each Store-validated record into either a
 terminal stored evaluation or an active stored candidate. Invalidated,
 consumed, and revoked records finish at that boundary; only an active
-candidate can request current authority and approval facts. It then converts
-that candidate into either `ReusableStoredWriteTicket` or an invalidated
-stored state. `approval.rs` is the single owner that constructs the canonical
-Write Ticket approval requirement, derives the invariant-bearing current
-sensitive-approval set, and assesses a Store-valid persisted approval basis as
-`NotRequired`, `Current`, or `Changed` with a typed reason.
+candidate can request non-approval current facts and a typed approval
+assessment. `current_validity.rs` then converts that candidate into either
+`ReusableStoredWriteTicket` or an invalidated stored state. `approval.rs` is
+the only Write Ticket owner that consumes raw UserAction authority. It
+constructs the canonical Write Ticket approval requirement, privately derives
+the invariant-bearing current sensitive-approval set, and returns either the
+current typed basis for issuance or a Store-valid persisted-basis assessment
+of `NotRequired`, `Current`, or `Changed` with a typed reason.
 `selection.rs` owns two distinct policies. Historical and display-oriented
 summary selection chooses among complete `StoredWriteTicketEvaluation` values.
 Authority-bearing Prepare Write selection consumes the complete set of
@@ -103,8 +108,12 @@ the same Store commit as the Run and its associated effects.
   authority-bearing compatibility selection.
 - Structural request and current Change Unit validation precede lookup.
 - Reuse does not widen paths, approvals, operations, or authority.
-- `approval.rs` alone constructs the current sensitive-approval identity set,
-  the Write Ticket approval requirement, and the semantic assessment.
+- `approval.rs` alone consumes raw UserAction authority and constructs the
+  private current sensitive-approval identity set, the Write Ticket approval
+  requirement, the typed issuance basis, and the semantic assessment.
+- `WriteTicketCurrentFacts` retains only the typed Task pending-policy flag and
+  workflow-control fingerprint used by active current-validity evaluation; it
+  contains no raw approval authority collection or approval-requirement input.
 - Summary evaluation, reuse, Record Run admission, close readiness, and the CLI
   guard context consume that assessment or the evaluated ticket state derived
   from it; they do not compare project, `Task`, or UserAction resolution
@@ -124,7 +133,9 @@ planning, Store, and UserAction failures to public `PlanError` branches. The
 focused Write Ticket read boundary owns only typed fact acquisition. Approval
 construction and assessment, stored display selection, compatibility
 cardinality selection, and current validity are focused pure semantic
-policies. Planned summary projection accepts a
+policies. Raw approval authorities remain local to acquisition and direct
+calls into `approval.rs`; current-validity receives the assessment separately
+from non-approval current facts. Planned summary projection accepts a
 `PlannedWriteTicket`; stored summary projection accepts a
 `StoredWriteTicketEvaluation` plus supplied evidence. Neither can read Store
 or recompute workflow, UserAction, or approval policy. The narrow service
@@ -158,15 +169,18 @@ row. Guard supplies observations but does not widen the ticket basis.
 
 1. Common preflight validates actor, operation category, project, and request
    shape.
-2. `prepare_write` loads the current work, policy, workspace, path, and
-   approval facts.
+2. `prepare_write` loads the current work, policy, workspace, path, and raw
+   approval facts, then passes the raw approval values directly to
+   `approval.rs`.
 3. Core policy computes the normalized current write-authority basis.
 4. The Write Ticket read boundary pre-evaluates every stored record. Terminal
    records become complete typed outcomes immediately; active records become
    `ActiveStoredWriteTicketCandidate` values.
 5. Only when active candidates exist does the service load current Task,
-   workflow-policy, and UserAction facts. `approval.rs` produces the semantic
-   assessment for each active candidate, and current-validity policy produces a
+   workflow-policy, and UserAction facts. Raw UserAction authority is consumed
+   only by `approval.rs`, which produces the semantic assessment for each active
+   candidate. Current-validity policy receives that assessment with
+   `WriteTicketCurrentFacts` containing only non-approval facts and produces a
    reusable or invalidated active outcome.
 6. Historical and display selection considers only complete stored
    evaluations. After selection the service loads its evidence and projects
@@ -186,8 +200,10 @@ row. Guard supplies observations but does not widen the ticket basis.
    nested result, top-level identity and paths, planned summary, and
    `WriteTicketInsert` from that value. Reused derives its result and stored
    summary from `ReusableStoredWriteTicket`; none derives only decision paths.
-10. For Record Run, evaluation produces an exact-attempt compatibility proof
-   while current-validity evaluation proves a `ReusableStoredWriteTicket`.
+10. For Record Run, admission passes raw approval authority directly to
+   `approval.rs`; current-validity consumes the returned assessment while
+   operation-specific evaluation produces an exact-attempt compatibility proof
+   and proves a `ReusableStoredWriteTicket`.
    `write_ticket/admission.rs` combines those matching proofs and returns
    `AdmissibleStoredWriteTicket`.
 11. Store commits consumption of that admissible ticket with the protected
@@ -224,8 +240,9 @@ capability.
   request-specific issue/reuse and protected-consumption orchestration.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)
   and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed fact acquisition, canonical approval requirement and current-set
-  construction, typed approval assessment, terminal pre-evaluation,
+  typed fact acquisition, canonical approval requirement and private
+  current-set construction from raw UserAction authority, typed approval basis
+  and assessment, non-approval current facts, terminal pre-evaluation,
   active-only current-validity evaluation, distinct display and
   authority-bearing compatibility selection, semantic issuance-draft
   planning, validated `PlannedWriteTicket` materialization, separate planned

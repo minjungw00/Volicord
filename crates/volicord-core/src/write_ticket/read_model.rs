@@ -13,11 +13,17 @@ use crate::record_refs::state_ref_from_stored;
 
 use super::semantic::StoredWriteTicketFacts;
 
-/// Task facts needed by current Write Ticket validity policy.
+/// Task facts acquired for Write Ticket approval and current-validity policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WriteTicketTaskFacts {
     pub(crate) scope_revision: u64,
     pub(crate) effective_control_level: TaskControlLevel,
+    pub(crate) pending_policy_reevaluation: bool,
+}
+
+/// Task facts consumed by active stored-ticket current-validity policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WriteTicketCurrentTaskFacts {
     pub(crate) pending_policy_reevaluation: bool,
 }
 
@@ -30,10 +36,8 @@ pub(crate) struct WriteTicketWorkflowFacts {
 /// Current typed facts consumed by pure Write Ticket validity policy.
 #[derive(Debug, Clone)]
 pub(crate) struct WriteTicketCurrentFacts {
-    pub(crate) task: WriteTicketTaskFacts,
+    pub(crate) task: WriteTicketCurrentTaskFacts,
     pub(crate) workflow: WriteTicketWorkflowFacts,
-    pub(crate) sensitive_approvals: Vec<UserActionAuthority>,
-    pub(crate) observed_at: UtcTimestamp,
 }
 
 /// Evidence facts consumed by pure Write Ticket summary projection.

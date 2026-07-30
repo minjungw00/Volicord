@@ -36,12 +36,15 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
   공유 증거 및 artifact 정책을 통해 캡처 권한을 해석하고 typed 증거 대상, 관찰,
   artifact plan을 만듭니다.
 - [`crates/volicord-core/src/write_ticket/approval.rs`](../../../../crates/volicord-core/src/write_ticket/approval.rs)는
-  정규 Write Ticket 승인 요구사항, typed 현재 민감 승인 집합, 의미 근거 평가를
-  담당합니다.
+  원시 현재 UserAction 권한 fact를 사용하는 유일한 담당 모듈입니다. 정규 Write
+  Ticket 승인 요구사항을 담당하고, typed 현재 민감 승인 집합을 비공개로 구성하며,
+  의미 근거 평가를 반환합니다.
   [`current_validity.rs`](../../../../crates/volicord-core/src/write_ticket/current_validity.rs)는
-  active stored candidate를 `ReusableStoredWriteTicket`으로 변환하고,
+  비승인 현재 fact와 이 typed 평가를 받아 active stored candidate를
+  `ReusableStoredWriteTicket`으로 변환하고,
   [`admission.rs`](../../../../crates/volicord-core/src/write_ticket/admission.rs)는 이
-  reusable 타입과 일치하는 정확한 attempt 호환성 증명을 결합해
+  모듈이 로컬에서 읽은 원시 승인 권한을 승인 담당자에게 직접 전달한 뒤 reusable
+  타입과 일치하는 정확한 attempt 호환성 증명을 결합해
   `AdmissibleStoredWriteTicket`을 반환합니다. Terminal stored 상태는 이 admission
   경로에 들어갈 수 없습니다.
 - [`crates/volicord-core/src/close_readiness/recording.rs`](../../../../crates/volicord-core/src/close_readiness/recording.rs)는
@@ -341,6 +344,8 @@ Capture-backed 관찰 규칙:
 - `WriteTicketValidityBasis`가 현재 `task_id`, `change_unit_id`,
   `scope_revision`, 기준선, workspace digest와 계속 일치합니다. Store가 검증한
   승인 근거는 정규 typed 승인 평가에서 현재 또는 불필요 결과를 받아야 합니다.
+  Admission은 원시 UserAction 권한을 로컬에서 읽어 승인 담당자에게 직접 전달하고
+  현재 유효성 fact에는 보관하지 않습니다.
 - null이 아닌 `write_authority_fingerprint`가 현재 권위 프로젝트 정책에서 독립적으로
   다시 읽어 계산한 fingerprint와 정확히 일치합니다. Store는 티켓 소비 트랜잭션
   안에서 같은 결속을 다시 확인합니다.
@@ -367,8 +372,9 @@ Capture-backed 관찰 규칙:
 참조 metadata 누락, 완전한 resolution identity 중복은 Store 손상이며 이 승인
 policy까지 도달할 수 없습니다. 평가는 승인이 새로 필요한 경우, 현재 resolution
 부재, 승인 범위 변경, 영속 근거 resolution이 더 이상 현재 상태가 아닌 경우를
-구분합니다. Record Run 승인은 승인 참조 identity를 독립적으로 다시 구성하거나
-비교하지 않습니다.
+구분합니다. 정규 담당자는 Record Run admission에 원시 UserAction 권한 fact를
+노출하지 않고 typed 평가를 반환합니다. Record Run admission은 승인 참조 identity를
+독립적으로 다시 구성하거나 비교하지 않습니다.
 
 오래된 `expected_state_version`은 일반 요청 충돌 우선순위에 따라 거절합니다.
 티켓 근거는 별도로 검증하며 전역 상태 버전 차이만으로 티켓에

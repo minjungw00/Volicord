@@ -74,11 +74,13 @@ Volicord는 Volicord 기록을 다룹니다.
   resolution identity가 중복되거나 소유자가 일치하지 않으면 영속 Write Ticket
   손상입니다. 형식이 올바른 참조 승인이 만료되거나 현재 의미 policy를 더 이상
   만족하지 않는 경우에는 승인 근거가 무효화되지만 영속 손상이 되지는 않습니다.
-- 하나의 의미 승인 평가가 현재 일치하는 민감 승인 identity 집합을 구성하고,
-  Store가 검증한 영속 근거를 불필요, 비어 있지 않은 typed 근거를 가진 현재 상태,
-  구조화된 사유가 있는 변경 상태로 분류합니다. 상태 summary, ticket reuse, Run
-  승인, 닫기 평가는 승인 참조나 resolution ID를 독립적으로 비교하지 않고 이
-  결과를 사용합니다.
+- 정규 승인 담당자만 현재 UserAction 권한의 원시 fact를 사용합니다. 이 담당자는
+  현재 일치하는 민감 승인 identity 집합을 비공개로 구성하고, 발급에는 비어 있지
+  않은 typed 근거를, Store가 검증한 영속 근거 평가에는 불필요, 현재 상태, 구조화된
+  사유가 있는 변경 상태 중 하나인 typed 평가를 반환합니다. 현재 Write Ticket
+  fact에는 이 원시 승인 입력이 없습니다. 상태 summary, ticket reuse, Run 승인,
+  닫기 평가는 승인 참조나 resolution ID를 독립적으로 해석하지 않고 typed 평가
+  또는 파생된 평가 상태를 사용합니다.
 - 재사용 가능한 범위, 일반 쓰기 승인, 명령 승인, 셸 권한, 민감 동작 승인, 사용자 소유 판단, OS 권한, 배포 승인, 최종 수락, 잔여 위험 수락, 증거, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 
 실행 기록과 증거는 뒷받침을 기록할 뿐 권한을 대신하지 않습니다.
@@ -577,11 +579,13 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
   fingerprint, 승인 근거 참조입니다. 발급 때의 `basis_state_version`은 감사 순서에만
   사용합니다. 결속이 없거나 다르면 활성 티켓을 사용할 수 없지만 소비된 과거 기록은
   숨기지 않습니다.
-- 승인 평가: 현재 민감 승인은 티켓의 프로젝트, `Task`, Change Unit, 범위 리비전,
-  동작, 정규화된 경로, 민감 범주, 기준선, 필요한 연산 대상에 대한 현재 UserAction
-  권한 fact에서 파생합니다. 영속 근거는 이 typed 집합을 기준으로 한 번
-  평가합니다. 새로 필요해진 승인, 현재 resolution 부재, 승인 범위 변경, 더 이상
-  현재 상태가 아닌 근거 resolution은 구조화된 변경 결과를 만듭니다.
+- 승인 평가: 정규 승인 담당자만 티켓의 프로젝트, `Task`, Change Unit, 범위
+  리비전, 동작, 정규화된 경로, 민감 범주, 기준선, 필요한 연산 대상에 대한 현재
+  UserAction 권한의 원시 fact를 받습니다. 이 담당자는 typed 현재 민감 승인 집합을
+  비공개로 파생하고 영속 근거를 한 번 평가합니다. 그 밖의 현재 유효성 fact에는
+  원시 권한이 없습니다. 새로 필요해진 승인, 현재 resolution 부재, 승인 범위 변경,
+  더 이상 현재 상태가 아닌 근거 resolution은 구조화된 변경 결과를 만들며,
+  후속 정책은 이를 typed 평가 또는 파생된 평가 상태로 사용합니다.
 - 정책 결속: fingerprint는 정확한
   `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
   canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 두 패턴 배열은
@@ -766,6 +770,9 @@ flowchart LR
 - 수리, 손상, 조정, 복구 또는 그 밖에 닫기를 부정직하게 만드는 제약
 
 닫기 준비 상태는 현재 닫기 입력으로 `CurrentCloseBasis`를 사용합니다. 종료 닫기 요약을 현재 닫기 전 근거로 사용하지 않습니다.
+
+Write Ticket 닫기 조건은 평가된 영속 티켓 상태를 사용합니다. 원시 UserAction 권한
+fact를 받거나 승인 policy 해석을 반복하지 않습니다.
 
 닫기 근거 권한:
 

@@ -13,16 +13,14 @@ use volicord_types::schema::ObservedChanges;
 use volicord_types::values::{TaskControlLevel, UserActionKind, UtcTimestamp};
 use volicord_user_action_service::{user_action_authority_from_record, UserActionServiceError};
 
-use super::approval::{
-    assess_write_ticket_approval, CurrentSensitiveApprovals, WriteTicketApprovalRequirement,
-};
+use super::approval::{assess_write_ticket_approval, WriteTicketApprovalRequirement};
 use super::current_validity::{
     evaluate_active_candidate, pre_evaluate_stored_write_ticket, ActiveStoredWriteTicketCandidate,
     ReusableStoredWriteTicket, StoredTicketPreEvaluation, StoredWriteTicketStateError,
     TerminalStoredWriteTicketEvaluation, WriteTicketAuthorityState,
 };
 use super::read_model::{
-    stored_write_ticket_facts, WriteTicketCurrentFacts, WriteTicketTaskFacts,
+    stored_write_ticket_facts, WriteTicketCurrentFacts, WriteTicketCurrentTaskFacts,
     WriteTicketWorkflowFacts,
 };
 
@@ -263,23 +261,18 @@ pub(crate) fn evaluate_record_run_candidate(
         .iter()
         .map(user_action_authority_from_record)
         .collect::<Result<Vec<_>, _>>()?;
-    let current_approvals = CurrentSensitiveApprovals::new(&authorities, &approval_requirement);
     let approval_assessment = assess_write_ticket_approval(
         &approval_requirement,
-        &current_approvals,
+        &authorities,
         &ticket.validity_basis().approval_basis_refs,
     );
     let current = WriteTicketCurrentFacts {
-        task: WriteTicketTaskFacts {
-            scope_revision: task.scope_revision,
-            effective_control_level: task.effective_control_level,
+        task: WriteTicketCurrentTaskFacts {
             pending_policy_reevaluation: false,
         },
         workflow: WriteTicketWorkflowFacts {
             write_authority_fingerprint: write_authority_fingerprint.to_owned(),
         },
-        sensitive_approvals: authorities,
-        observed_at: observed_at.clone(),
     };
     match evaluate_active_candidate(candidate, &current, approval_assessment).into_reusable() {
         Ok(reusable) => Ok((reusable, compatible_attempt)),

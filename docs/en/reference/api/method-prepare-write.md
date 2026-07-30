@@ -48,10 +48,14 @@ a committed `decision=blocked` result with
 `code=compatible_write_ticket_ambiguous`, issues or reuses no ticket, and
 reports the candidate Write Ticket refs in deterministic identity order.
 Candidate order from the Store grants no authority.
-Core constructs the canonical Write Ticket approval requirement and typed
-current sensitive-approval set, then assesses the Store-valid persisted basis
-once. Reuse accepts a current basis or a basis that is not required and rejects
-a changed basis. Sensitive reuse additionally requires the exact normalized
+The current read path sends raw UserAction authority facts directly to the
+canonical Write Ticket approval owner. That owner alone privately constructs
+the typed current sensitive-approval set and returns either the typed issuance
+basis or the one semantic assessment of a Store-valid persisted basis. Raw
+approval facts are not retained in the shared current-validity facts and are
+not available to ticket selection or reuse. Reuse accepts a current basis or a
+basis that is not required and rejects a changed basis. Sensitive reuse
+additionally requires the exact normalized
 `intended_operation`; a reworded operation cannot borrow an earlier approval
 or ticket, while additional unrelated current approvals do not replace or
 invalidate its persisted basis. A ticket is a Volicord
@@ -211,8 +215,9 @@ corruption and does not enter semantic currentness evaluation.
 The semantic assessment reports a changed basis when approval is newly
 required, no current resolution exists, approval scope changed, or a persisted
 basis resolution is no longer current. State summary, ticket reuse, Record Run
-admission, and close readiness consume that assessment instead of independently
-comparing approval references or resolution IDs.
+admission, and close readiness consume that typed assessment or derived
+evaluated state instead of receiving the raw UserAction authorities or
+independently comparing approval references or resolution IDs.
 `basis_state_version` records issuance order
 for audit and references only; it is never a freshness condition.
 

@@ -43,8 +43,8 @@ use volicord_user_action_service::{
 };
 
 use super::approval::{
-    assess_write_ticket_approval, CurrentSensitiveApprovals, NonEmptyApprovalBasis,
-    WriteTicketApprovalRequirement,
+    assess_write_ticket_approval, current_write_ticket_approval_basis, NonEmptyApprovalBasis,
+    WriteTicketApprovalAssessment, WriteTicketApprovalRequirement,
 };
 use super::current_validity::{
     evaluate_active_candidate, pre_evaluate_stored_write_ticket, ActiveStoredWriteTicketEvaluation,
@@ -52,12 +52,12 @@ use super::current_validity::{
     WriteTicketAuthorityState,
 };
 use super::read_model::{
-    stored_write_ticket_facts, WriteTicketCurrentFacts, WriteTicketTaskFacts,
+    stored_write_ticket_facts, WriteTicketCurrentFacts, WriteTicketCurrentTaskFacts,
     WriteTicketWorkflowFacts,
 };
 use super::selection::{
     select_prepare_write_candidates, CompatibleWriteTicketSelection,
-    PrepareWriteCandidateEvaluation, PrepareWriteCandidateSelection,
+    PrepareWriteCandidateEvaluation,
 };
 use super::{
     WriteTicketDecisionCode, WriteTicketDecisionReason, WriteTicketField, WriteTicketPlanningError,
@@ -872,9 +872,8 @@ fn plan_prepare_write_mutations(
     }
 
     let approval_authorities = resolved_sensitive_approval_authorities(store, &task_id, &plan_now)?;
-    let current_approvals =
-        CurrentSensitiveApprovals::new(&approval_authorities, &approval_requirement);
-    let approval_basis = current_approvals.primary_basis();
+    let approval_basis =
+        current_write_ticket_approval_basis(&approval_requirement, &approval_authorities);
     let created_by_user_action_resolution_id = approval_basis
         .as_ref()
         .map(|basis| basis.first_resolution_id().clone());
@@ -901,18 +900,54 @@ fn plan_prepare_write_mutations(
         write_authority_fingerprint: workflow_policy.write_authority_fingerprint.clone(),
         approval_basis_refs: Vec::new(),
     };
-    let active_ticket_selection = select_active_write_tickets(
-        store,
-        &input.project_id,
-        &task,
-        ActiveWriteTicketRequirements {
-            validity_basis: &validity_basis_for_selection,
-            attempt_scope: &attempt_scope,
-            approval_requirement: &approval_requirement,
-            approval_authorities: &approval_authorities,
+    let selection_requirements = ActiveWriteTicketRequirements {
+        validity_basis: &validity_basis_for_selection,
+        attempt_scope: &attempt_scope,
+        approval_required: approval_requirement.is_required(),
+    };
+    let current = WriteTicketCurrentFacts {
+        task: WriteTicketCurrentTaskFacts {
+            pending_policy_reevaluation: false,
         },
-        &plan_now,
-    )?;
+        workflow: WriteTicketWorkflowFacts {
+            write_authority_fingerprint: validity_basis_for_selection
+                .write_authority_fingerprint
+                .clone(),
+        },
+    };
+    let mut candidate_evaluations = Vec::new();
+    for record in store.active_write_tickets(&task_id)? {
+        let candidate =
+            match pre_evaluate_stored_write_ticket(stored_write_ticket_facts(&record), &plan_now)
+                .map_err(stored_ticket_state_error)?
+            {
+                StoredTicketPreEvaluation::Complete(_) => {
+                    candidate_evaluations.push(PrepareWriteCandidateEvaluation::Incompatible);
+                    continue;
+                }
+                StoredTicketPreEvaluation::NeedsCurrentFacts(candidate) => candidate,
+            };
+        let candidate_ticket = candidate.semantic_facts();
+        let candidate_requirement = WriteTicketApprovalRequirement::new(
+            &input.project_id,
+            task.scope_revision,
+            task.effective_control_level,
+            candidate_ticket.attempt_scope(),
+            &plan_now,
+        );
+        let approval_assessment = assess_write_ticket_approval(
+            &candidate_requirement,
+            &approval_authorities,
+            &candidate_ticket.validity_basis().approval_basis_refs,
+        );
+        candidate_evaluations.push(evaluate_prepare_write_candidate(
+            candidate,
+            &selection_requirements,
+            &current,
+            approval_assessment,
+        ));
+    }
+    let active_ticket_selection = select_prepare_write_candidates(candidate_evaluations);
     if !matches!(
         active_ticket_selection.compatibility,
         CompatibleWriteTicketSelection::None
@@ -1059,77 +1094,19 @@ fn acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
 struct ActiveWriteTicketRequirements<'a> {
     validity_basis: &'a WriteTicketValidityBasis,
     attempt_scope: &'a WriteTicketAttemptScope,
-    approval_requirement: &'a WriteTicketApprovalRequirement<'a>,
-    approval_authorities: &'a [UserActionAuthority],
-}
-
-fn select_active_write_tickets(
-    store: &CoreProjectStore,
-    project_id: &ProjectId,
-    task: &TaskRecord,
-    requirements: ActiveWriteTicketRequirements<'_>,
-    now: &UtcTimestamp,
-) -> Result<PrepareWriteCandidateSelection, WriteTicketPlanningError> {
-    let mut candidates = Vec::new();
-    for record in store.active_write_tickets(&requirements.validity_basis.task_id)? {
-        candidates.push(evaluate_prepare_write_candidate(
-            record,
-            project_id,
-            task,
-            &requirements,
-            now,
-        )?);
-    }
-    Ok(select_prepare_write_candidates(candidates))
+    approval_required: bool,
 }
 
 fn evaluate_prepare_write_candidate(
-    record: volicord_store::core_pipeline::StoredWriteTicket,
-    project_id: &ProjectId,
-    task: &TaskRecord,
+    candidate: super::current_validity::ActiveStoredWriteTicketCandidate,
     requirements: &ActiveWriteTicketRequirements<'_>,
-    now: &UtcTimestamp,
-) -> Result<PrepareWriteCandidateEvaluation, WriteTicketPlanningError> {
+    current: &WriteTicketCurrentFacts,
+    approval_assessment: WriteTicketApprovalAssessment,
+) -> PrepareWriteCandidateEvaluation {
     let required_basis = requirements.validity_basis;
-    let required_write_authority_fingerprint = &required_basis.write_authority_fingerprint;
     let required_scope = requirements.attempt_scope;
-    let candidate = match pre_evaluate_stored_write_ticket(stored_write_ticket_facts(&record), now)
-        .map_err(stored_ticket_state_error)?
-    {
-        StoredTicketPreEvaluation::Complete(_) => {
-            return Ok(PrepareWriteCandidateEvaluation::Incompatible)
-        }
-        StoredTicketPreEvaluation::NeedsCurrentFacts(candidate) => candidate,
-    };
     let candidate_id = candidate.write_ticket_id().clone();
-    let candidate_ticket = candidate.semantic_facts();
-    let candidate_requirement = WriteTicketApprovalRequirement::new(
-        project_id,
-        task.scope_revision,
-        task.effective_control_level,
-        candidate_ticket.attempt_scope(),
-        now,
-    );
-    let candidate_approvals =
-        CurrentSensitiveApprovals::new(requirements.approval_authorities, &candidate_requirement);
-    let candidate_approval = assess_write_ticket_approval(
-        &candidate_requirement,
-        &candidate_approvals,
-        &candidate_ticket.validity_basis().approval_basis_refs,
-    );
-    let current = WriteTicketCurrentFacts {
-        task: WriteTicketTaskFacts {
-            scope_revision: task.scope_revision,
-            effective_control_level: task.effective_control_level,
-            pending_policy_reevaluation: false,
-        },
-        workflow: WriteTicketWorkflowFacts {
-            write_authority_fingerprint: required_write_authority_fingerprint.clone(),
-        },
-        sensitive_approvals: requirements.approval_authorities.to_vec(),
-        observed_at: now.clone(),
-    };
-    let evaluated = evaluate_active_candidate(candidate, &current, candidate_approval);
+    let evaluated = evaluate_active_candidate(candidate, current, approval_assessment);
     if matches!(
         &evaluated,
         ActiveStoredWriteTicketEvaluation::Invalidated(ticket)
@@ -1139,21 +1116,21 @@ fn evaluate_prepare_write_candidate(
                     | WriteTicketAuthorityState::PendingPolicyReevaluation
             )
     ) {
-        return Ok(PrepareWriteCandidateEvaluation::StalePolicy(candidate_id));
+        return PrepareWriteCandidateEvaluation::StalePolicy(candidate_id);
     }
     let basis = evaluated.semantic_facts().validity_basis();
     let scope = evaluated.semantic_facts().attempt_scope();
-    if requirements.approval_requirement.is_required()
+    if requirements.approval_required
         && scope.intended_operation != required_scope.intended_operation
     {
-        return Ok(PrepareWriteCandidateEvaluation::Incompatible);
+        return PrepareWriteCandidateEvaluation::Incompatible;
     }
     if basis.task_id != required_basis.task_id
         || basis.change_unit_id != required_basis.change_unit_id
         || basis.scope_revision != required_basis.scope_revision
         || basis.baseline_ref != required_basis.baseline_ref
     {
-        return Ok(PrepareWriteCandidateEvaluation::Incompatible);
+        return PrepareWriteCandidateEvaluation::Incompatible;
     }
     if scope.task_id != required_scope.task_id
         || scope.change_unit_id != required_scope.change_unit_id
@@ -1162,7 +1139,7 @@ fn evaluate_prepare_write_candidate(
         || !category_set_for_reuse(&required_scope.sensitive_categories)
             .is_subset(&category_set_for_reuse(&scope.sensitive_categories))
     {
-        return Ok(PrepareWriteCandidateEvaluation::Incompatible);
+        return PrepareWriteCandidateEvaluation::Incompatible;
     }
     let path_scope = evaluated.semantic_facts().path_scope();
     if !required_scope.intended_paths.iter().all(|path| {
@@ -1175,14 +1152,12 @@ fn evaluate_prepare_write_candidate(
                 .iter()
                 .any(|prefix| path.is_within(prefix))
     }) {
-        return Ok(PrepareWriteCandidateEvaluation::Incompatible);
+        return PrepareWriteCandidateEvaluation::Incompatible;
     }
     if basis.workspace_context_sha256 != required_basis.workspace_context_sha256 {
-        return Ok(PrepareWriteCandidateEvaluation::StaleWorkspace(
-            candidate_id,
-        ));
+        return PrepareWriteCandidateEvaluation::StaleWorkspace(candidate_id);
     }
-    Ok(match evaluated {
+    match evaluated {
         ActiveStoredWriteTicketEvaluation::Reusable(ticket) => {
             PrepareWriteCandidateEvaluation::Compatible(Box::new(ticket))
         }
@@ -1194,7 +1169,7 @@ fn evaluate_prepare_write_candidate(
         ActiveStoredWriteTicketEvaluation::Invalidated(ticket) => {
             PrepareWriteCandidateEvaluation::StalePolicy(ticket.write_ticket_id().clone())
         }
-    })
+    }
 }
 
 fn resolved_sensitive_approval_authorities(

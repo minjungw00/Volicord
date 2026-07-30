@@ -62,11 +62,14 @@ Write ticket is narrow.
   Write Ticket corruption. A well-formed referenced approval that expires or
   otherwise ceases to satisfy current semantic policy invalidates the approval
   basis without becoming persisted corruption.
-- One semantic approval assessment constructs the current matching
-  sensitive-approval identity set and classifies the Store-valid persisted
-  basis as not required, current with a non-empty typed basis, or changed with
-  a structured reason. State summary, ticket reuse, Run admission, and close
-  evaluation use that result rather than independently comparing approval
+- The canonical approval owner is the only consumer of raw current UserAction
+  authority facts. It privately constructs the current matching
+  sensitive-approval identity set and returns either a typed non-empty basis
+  for issuance or a typed assessment that classifies a Store-valid persisted
+  basis as not required, current, or changed with a structured reason. Current
+  Write Ticket facts exclude those raw approval inputs. State summary, ticket
+  reuse, Run admission, and close evaluation consume the typed assessment or
+  derived evaluated state rather than independently interpreting approval
   references or resolution IDs.
 - It is not reusable scope, ordinary write approval, command approval, shell permission, sensitive-action approval, user-owned judgment, OS permission, deployment approval, final acceptance, residual-risk acceptance, evidence, or proof that the write occurred.
 
@@ -571,13 +574,15 @@ It has these compatibility properties:
   write-authority fingerprint, and approval-basis refs. Its issuance
   `basis_state_version` is audit ordering only. A missing or mismatched binding
   makes an active ticket unusable without hiding consumed history.
-- Approval-assessed: current sensitive approvals are derived from the current
+- Approval-assessed: the canonical approval owner alone receives raw current
   UserAction authority facts for the ticket's project, `Task`, Change Unit,
   scope revision, operation, normalized paths, sensitive categories, baseline,
-  and required operation target. The persisted basis is assessed once against
-  that typed set. Newly required approval, no current resolution, changed
-  approval scope, or a basis resolution that is no longer current produces a
-  structured changed result.
+  and required operation target. It privately derives the typed current
+  sensitive-approval set and assesses the persisted basis once. Other
+  current-validity facts do not contain the raw authorities. Newly required
+  approval, no current resolution, changed approval scope, or a basis
+  resolution that is no longer current produces a structured changed result
+  consumed downstream as a typed assessment or derived evaluated state.
 - Policy-bound: the fingerprint is the `sha256:`-prefixed canonical-JSON SHA-256
   of exactly
   `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
@@ -773,6 +778,10 @@ Close readiness considers:
 - recovery, repair, corruption, reconciliation, or other constraints that would make close dishonest
 
 Close readiness uses `CurrentCloseBasis` as the current close input. It does not use a terminal close summary as the current pre-close basis.
+
+Write Ticket close conditions consume evaluated stored-ticket states. They do
+not receive raw UserAction authority facts or repeat approval-policy
+interpretation.
 
 Close-basis authority:
 
