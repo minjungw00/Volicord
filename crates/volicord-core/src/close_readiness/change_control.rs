@@ -18,7 +18,7 @@ use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::BaselineRef;
 use volicord_types::schema::{CloseReadinessBlocker, CurrentCloseBasis, StateRecordRef};
 use volicord_types::values::{
-    CloseIntent, CloseReadinessBlockerCategory, StateRecordKind, UtcTimestamp, WriteTicketStatus,
+    CloseIntent, CloseReadinessBlockerCategory, StateRecordKind, UtcTimestamp,
 };
 
 pub(super) fn terminal_blockers(
@@ -232,20 +232,18 @@ fn unresolved_write_ticket_blockers(
         }));
     };
     for record in write_tickets {
-        match record.status() {
-            WriteTicketStatus::Active => blockers.push(open_write_ticket_close_blocker(
+        if let Some(reusable) = record.as_reusable() {
+            let semantic = reusable.semantic_facts();
+            blockers.push(open_write_ticket_close_blocker(
                 task_ref.clone(),
                 state_ref(
                     StateRecordKind::WriteTicket,
-                    record.write_ticket_id().as_str(),
-                    &record.semantic_facts().project_id,
-                    Some(&record.semantic_facts().validity_basis.task_id),
+                    reusable.write_ticket_id().as_str(),
+                    semantic.project_id(),
+                    Some(&semantic.validity_basis().task_id),
                     Some(project_state.state_version),
                 ),
-            )),
-            WriteTicketStatus::Invalidated
-            | WriteTicketStatus::Revoked
-            | WriteTicketStatus::Consumed => {}
+            ));
         }
     }
     Ok(blockers)

@@ -677,14 +677,14 @@ fn deterministic_resolution(
     let mut active_matches = Vec::new();
     for write_ticket in write_tickets {
         let semantic = write_ticket.semantic_facts();
-        let attempt_scope = &semantic.attempt_scope;
+        let attempt_scope = semantic.attempt_scope();
         let allowed_paths = semantic
-            .path_scope
+            .path_scope()
             .allowed()
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied_paths = semantic.path_scope.denied();
+        let denied_paths = semantic.path_scope().denied();
         if attempt_scope.product_file_write_intended
             && paths_are_authorized(&observed_paths, &allowed_paths)
             && !observed_paths.iter().any(|path| {

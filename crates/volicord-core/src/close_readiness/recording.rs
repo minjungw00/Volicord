@@ -242,9 +242,9 @@ pub(super) fn sensitive_action_requirement_from_write_ticket(
     ticket: &AdmissibleStoredWriteTicket,
 ) -> Result<Option<SensitiveActionRequirement>, RecordRunCloseBasisError> {
     let semantic = ticket.semantic_facts();
-    let scope = &semantic.attempt_scope;
+    let scope = semantic.attempt_scope();
     let sensitive_categories = normalized_string_set(&scope.sensitive_categories);
-    let validity_basis = &semantic.validity_basis;
+    let validity_basis = semantic.validity_basis();
     if sensitive_categories.is_empty() && validity_basis.approval_basis_refs.is_empty() {
         return Ok(None);
     }
@@ -274,14 +274,14 @@ pub(super) fn sensitive_action_requirement_from_write_ticket(
         source_write_ticket_ref: state_ref(
             StateRecordKind::WriteTicket,
             ticket.write_ticket_id().as_str(),
-            &semantic.project_id,
+            semantic.project_id(),
             Some(&validity_basis.task_id),
             Some(
                 run_ref
                     .produced_at_state_version
                     .as_ref()
                     .copied()
-                    .unwrap_or(semantic.basis_state_version),
+                    .unwrap_or(semantic.basis_state_version()),
             ),
         ),
     }))

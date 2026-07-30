@@ -145,6 +145,7 @@ struct PrepareWritePolicyDecision {
     control_mutations: Vec<CoreStorageMutation>,
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlannedWriteTicket {
     project_id: ProjectId,
@@ -192,6 +193,7 @@ struct PlannedWriteTicketInput {
     metadata: JsonObject,
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlannedWriteTicketDraft {
     project_id: ProjectId,
@@ -500,6 +502,7 @@ pub(crate) struct PrepareWriteMutationFacts {
     pub(crate) storage_mutations: Vec<CoreStorageMutation>,
 }
 
+#[must_use]
 pub(crate) struct PrepareWritePlanningOutcome {
     pub(crate) common: PrepareWriteCommonFacts,
     pub(crate) ticket: PrepareWriteTicketPlan,
@@ -1064,7 +1067,7 @@ fn select_active_write_tickets(
             project_id,
             task.scope_revision,
             task.effective_control_level,
-            &candidate_ticket.attempt_scope,
+            candidate_ticket.attempt_scope(),
             now,
         );
         let candidate_approvals = CurrentSensitiveApprovals::new(
@@ -1074,7 +1077,7 @@ fn select_active_write_tickets(
         let candidate_approval = assess_write_ticket_approval(
             &candidate_requirement,
             &candidate_approvals,
-            &candidate_ticket.validity_basis.approval_basis_refs,
+            &candidate_ticket.validity_basis().approval_basis_refs,
         );
         let current = WriteTicketCurrentFacts {
             task: WriteTicketTaskFacts {
@@ -1101,8 +1104,8 @@ fn select_active_write_tickets(
             selection.stale_policy_ticket_ids.push(candidate_id);
             continue;
         }
-        let basis = &evaluated.semantic_facts().validity_basis;
-        let scope = &evaluated.semantic_facts().attempt_scope;
+        let basis = evaluated.semantic_facts().validity_basis();
+        let scope = evaluated.semantic_facts().attempt_scope();
         if requirements.approval_requirement.is_required()
             && scope.intended_operation != required_scope.intended_operation
         {
@@ -1124,7 +1127,7 @@ fn select_active_write_tickets(
         {
             continue;
         }
-        let path_scope = &evaluated.semantic_facts().path_scope;
+        let path_scope = evaluated.semantic_facts().path_scope();
         if !required_scope.intended_paths.iter().all(|path| {
             path_scope
                 .allowed()
@@ -1332,6 +1335,14 @@ mod tests {
         assert_eq!(insert.validity_basis, *plan.validity_basis());
         assert_eq!(insert.path_scope, *plan.path_scope());
         assert_eq!(insert.attempt_scope, *plan.attempt_scope());
+        assert_eq!(insert.idle_expires_at.as_ref(), plan.idle_expires_at());
+        let mutation = planned_write_ticket_mutation(&plan);
+        let CoreStorageMutation::WriteTicket(WriteTicketMutation::Insert(mutation_insert)) =
+            mutation
+        else {
+            panic!("a planned Write Ticket must materialize as exactly one insert");
+        };
+        assert_eq!(*mutation_insert, insert);
         assert_eq!(summary.status, WriteTicketStatus::Active);
         assert_eq!(
             summary
@@ -1341,6 +1352,8 @@ mod tests {
             Some("write_ticket_planned")
         );
         assert_eq!(summary.basis_state_version, Some(7));
+        assert_eq!(summary.validity_basis.as_ref(), Some(plan.validity_basis()));
+        assert_eq!(summary.idle_expires_at.as_ref(), plan.idle_expires_at());
         assert!(summary.observation_refs.is_empty());
     }
 
@@ -1383,16 +1396,14 @@ mod tests {
         let plan =
             valid_plan(WriteTicketId::new("write_ticket_shared")).expect("valid planned ticket");
         let planned = crate::write_ticket::semantic::planned_write_ticket_semantic_facts(&plan);
-        let stored = crate::write_ticket::semantic::StoredWriteTicketFacts {
-            write_ticket_id: WriteTicketId::new("write_ticket_shared"),
-            ticket: planned.clone(),
-            status: WriteTicketStatus::Active,
-            invalidation_reason: None,
-            consumed_by_run_id: None,
-        };
+        let stored = crate::write_ticket::semantic::test_support::stored_facts_from_semantic(
+            "write_ticket_shared",
+            WriteTicketStatus::Active,
+            planned.clone(),
+        );
 
-        assert_eq!(planned, stored.ticket);
-        assert_eq!(plan.write_ticket_id(), &stored.write_ticket_id);
+        assert_eq!(planned, *stored.semantic_facts());
+        assert_eq!(plan.write_ticket_id(), stored.write_ticket_id());
     }
 
     #[test]

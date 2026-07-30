@@ -76,6 +76,21 @@ acceptance decisions, close-readiness state, or residual-risk decisions.
   generator, template, or fixture that owns the output and regenerate with the
   repository-supported command.
 
+## Owner Closure Discipline
+
+- When implementation introduces one canonical semantic owner, remove the
+  former owners and forwarding wrappers in the same change.
+- Keep planned and stored states, and active and terminal states, distinct.
+  Do not recombine them into a convenience type that weakens those boundaries.
+- Give multiple consumers one typed assessment or evaluated state. Do not make
+  each consumer reconstruct the same decision from raw facts.
+- Derive response projection and persistence inputs from one typed plan or
+  branch value.
+- Do not use panic, `expect`, `unwrap`, or debug-only assertions to enforce a
+  domain-state transition. Use checked conversion and typed errors.
+- State an implementation invariant in documentation only when current types,
+  visibility, Store decoding, or canonical policy enforce it.
+
 ## Tests And Artifacts
 
 - Place integration tests in the repository's established integration-test

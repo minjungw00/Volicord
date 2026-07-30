@@ -18,8 +18,8 @@ use super::approval::{
 };
 use super::current_validity::{
     evaluate_active_candidate, pre_evaluate_stored_write_ticket, ActiveStoredWriteTicketCandidate,
-    ActiveStoredWriteTicketEvaluation, ReusableStoredWriteTicket, StoredTicketPreEvaluation,
-    StoredWriteTicketStateError, TerminalStoredWriteTicketEvaluation, WriteTicketAuthorityState,
+    ReusableStoredWriteTicket, StoredTicketPreEvaluation, StoredWriteTicketStateError,
+    TerminalStoredWriteTicketEvaluation, WriteTicketAuthorityState,
 };
 use super::read_model::{
     stored_write_ticket_facts, WriteTicketCurrentFacts, WriteTicketTaskFacts,
@@ -83,11 +83,13 @@ pub(crate) struct RecordRunTicketCurrentness<'a> {
     pub(crate) observed_at: &'a UtcTimestamp,
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AdmissibleStoredWriteTicket {
     reusable: ReusableStoredWriteTicket,
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompatibleRecordRunAttempt {
     write_ticket_id: WriteTicketId,
@@ -137,7 +139,7 @@ fn validate_record_run_attempt(
         git_workspace_context,
         observed_changes,
     } = *context;
-    let validity_basis = &ticket.validity_basis;
+    let validity_basis = ticket.validity_basis();
     let current_workspace_sha256 = git_workspace_context
         .map(volicord_types::canonical::canonical_json_bare_sha256)
         .transpose()?;
@@ -171,9 +173,9 @@ fn validate_record_run_attempt(
             "write ticket workspace context is no longer current",
         );
     }
-    let scope = &ticket.attempt_scope;
+    let scope = ticket.attempt_scope();
     let scope_paths = ticket
-        .path_scope
+        .path_scope()
         .allowed()
         .iter()
         .map(|path| path.as_str().to_owned())
@@ -195,7 +197,7 @@ fn validate_record_run_attempt(
     }
     if observed_changes.changed_paths.iter().any(|path| {
         ticket
-            .path_scope
+            .path_scope()
             .denied()
             .iter()
             .any(|denied| path_is_within(path, denied.as_str()))
@@ -241,7 +243,7 @@ pub(crate) fn evaluate_record_run_candidate(
             "current Git workspace context differs from the write ticket Change Unit basis",
         ));
     }
-    if ticket.validity_basis.write_authority_fingerprint != write_authority_fingerprint {
+    if ticket.validity_basis().write_authority_fingerprint != write_authority_fingerprint {
         return Err(write_ticket_invalid(
             WriteTicketInvalidReason::PolicyAuthorityMismatch,
             "write ticket policy authority is no longer current",
@@ -250,10 +252,10 @@ pub(crate) fn evaluate_record_run_candidate(
     let compatible_attempt =
         validate_record_run_attempt(candidate.write_ticket_id(), ticket, admission)?;
     let approval_requirement = WriteTicketApprovalRequirement::new(
-        &ticket.project_id,
+        ticket.project_id(),
         task.scope_revision,
         task.effective_control_level,
-        &ticket.attempt_scope,
+        ticket.attempt_scope(),
         observed_at,
     );
     let authorities = store
@@ -265,7 +267,7 @@ pub(crate) fn evaluate_record_run_candidate(
     let approval_assessment = assess_write_ticket_approval(
         &approval_requirement,
         &current_approvals,
-        &ticket.validity_basis.approval_basis_refs,
+        &ticket.validity_basis().approval_basis_refs,
     );
     let current = WriteTicketCurrentFacts {
         task: WriteTicketTaskFacts {
@@ -279,9 +281,9 @@ pub(crate) fn evaluate_record_run_candidate(
         sensitive_approvals: authorities,
         observed_at: observed_at.clone(),
     };
-    match evaluate_active_candidate(candidate, &current, approval_assessment) {
-        ActiveStoredWriteTicketEvaluation::Reusable(reusable) => Ok((reusable, compatible_attempt)),
-        ActiveStoredWriteTicketEvaluation::Invalidated(ticket)
+    match evaluate_active_candidate(candidate, &current, approval_assessment).into_reusable() {
+        Ok(reusable) => Ok((reusable, compatible_attempt)),
+        Err(ticket)
             if matches!(
                 ticket.authority(),
                 WriteTicketAuthorityState::WriteAuthorityChanged
@@ -293,7 +295,7 @@ pub(crate) fn evaluate_record_run_candidate(
                 "write ticket policy authority is no longer current",
             ))
         }
-        ActiveStoredWriteTicketEvaluation::Invalidated(_) => Err(write_ticket_invalid(
+        Err(_) => Err(write_ticket_invalid(
             WriteTicketInvalidReason::ApprovalBasisChanged,
             "write ticket approval basis is no longer current",
         )),

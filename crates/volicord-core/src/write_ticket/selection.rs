@@ -4,6 +4,7 @@ use volicord_types::values::WriteTicketStatus;
 
 use super::current_validity::StoredWriteTicketEvaluation;
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StoredWriteTicketSelection {
     None,
@@ -30,8 +31,8 @@ fn compare_candidates(
         .then_with(|| {
             right
                 .semantic_facts()
-                .basis_state_version
-                .cmp(&left.semantic_facts().basis_state_version)
+                .basis_state_version()
+                .cmp(&left.semantic_facts().basis_state_version())
         })
         .then_with(|| left.write_ticket_id().cmp(right.write_ticket_id()))
 }

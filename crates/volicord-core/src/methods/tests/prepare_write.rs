@@ -167,7 +167,7 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         response.response_value["write_ticket"]["path_patterns"]["denied"],
         json!([])
     );
-    assert_prepare_write_paths_match_stored_scope(
+    assert_prepare_write_ticket_matches_stored_source(
         &harness,
         &response.response_value,
         &write_ticket_id,
@@ -294,7 +294,7 @@ fn prepare_write_reuses_compatible_ticket_across_unrelated_state_increment(
         response_record_id(&reused.response_value, "write_ticket_ref"),
         first_ticket_id
     );
-    assert_prepare_write_paths_match_stored_scope(
+    assert_prepare_write_ticket_matches_stored_source(
         &harness,
         &reused.response_value,
         &first_ticket_id,
@@ -2484,7 +2484,7 @@ fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Resul
     Ok(())
 }
 
-fn assert_prepare_write_paths_match_stored_scope(
+fn assert_prepare_write_ticket_matches_stored_source(
     harness: &MethodHarness,
     response: &Value,
     write_ticket_id: &str,
@@ -2505,7 +2505,18 @@ fn assert_prepare_write_paths_match_stored_scope(
         .iter()
         .map(|path| path.as_str())
         .collect::<Vec<_>>();
+    let attempt_scope = stored.attempt_scope();
 
+    assert_eq!(response["write_ticket_id"], write_ticket_id);
+    assert_eq!(response["write_ticket_ref"]["record_id"], write_ticket_id);
+    assert_eq!(
+        response["write_ticket"]["write_ticket_id"],
+        response["write_ticket_id"]
+    );
+    assert_eq!(
+        response["write_ticket"]["write_ticket_ref"],
+        response["write_ticket_ref"]
+    );
     assert_eq!(
         response["write_ticket"]["path_patterns"]["allowed"],
         response["allowed_path_patterns"]
@@ -2521,6 +2532,42 @@ fn assert_prepare_write_paths_match_stored_scope(
     assert_eq!(
         response["denied_path_patterns"],
         serde_json::to_value(denied)?
+    );
+    assert_eq!(
+        response["write_ticket"]["basis_state_version"],
+        stored.basis_state_version()
+    );
+    assert_eq!(
+        response["write_ticket"]["validity_basis"],
+        serde_json::to_value(stored.validity_basis())?
+    );
+    assert_eq!(
+        response["write_ticket"]["idle_expires_at"],
+        serde_json::to_value(stored.idle_expires_at())?
+    );
+    assert_eq!(
+        response["write_ticket"]["scope"]["task_id"],
+        attempt_scope.task_id.as_str()
+    );
+    assert_eq!(
+        response["write_ticket"]["scope"]["change_unit_id"],
+        attempt_scope.change_unit_id.as_str()
+    );
+    assert_eq!(
+        response["write_ticket"]["scope"]["intended_operation"],
+        attempt_scope.intended_operation
+    );
+    assert_eq!(
+        response["write_ticket"]["scope"]["product_file_write_intended"],
+        attempt_scope.product_file_write_intended
+    );
+    assert_eq!(
+        response["write_ticket"]["scope"]["sensitive_categories"],
+        serde_json::to_value(&attempt_scope.sensitive_categories)?
+    );
+    assert_eq!(
+        response["write_ticket"]["scope"]["baseline_ref"],
+        serde_json::to_value(attempt_scope.baseline_ref.as_ref())?
     );
     Ok(())
 }

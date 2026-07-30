@@ -190,10 +190,12 @@ fn write_ticket_invalid_or_required_response(
     reason: WriteTicketInvalidReason,
     message: &'static str,
 ) -> PipelineResponse {
-    let details = object_from_value(serde_json::json!({
-        "write_ticket_reason": reason.as_str()
-    }))
-    .expect("fixed write ticket error details should be an object");
+    let details = [(
+        "write_ticket_reason".to_owned(),
+        serde_json::Value::String(reason.as_str().to_owned()),
+    )]
+    .into_iter()
+    .collect();
     infallible_rejected_pipeline_response(
         envelope.dry_run,
         state_version,

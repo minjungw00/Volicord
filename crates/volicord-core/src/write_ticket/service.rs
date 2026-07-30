@@ -51,17 +51,17 @@ pub fn load_evaluated_stored_write_tickets(
     for candidate in active {
         let ticket = candidate.semantic_facts();
         let requirement = WriteTicketApprovalRequirement::new(
-            &ticket.project_id,
+            ticket.project_id(),
             current.task.scope_revision,
             current.task.effective_control_level,
-            &ticket.attempt_scope,
+            ticket.attempt_scope(),
             &current.observed_at,
         );
         let approvals = CurrentSensitiveApprovals::new(&current.sensitive_approvals, &requirement);
         let assessment = assess_write_ticket_approval(
             &requirement,
             &approvals,
-            &ticket.validity_basis.approval_basis_refs,
+            &ticket.validity_basis().approval_basis_refs,
         );
         evaluated.push(evaluate_active_candidate(candidate, &current, assessment).into());
     }
@@ -86,7 +86,7 @@ pub(crate) fn load_current_write_ticket_summary(
     let ticket = evaluated.semantic_facts();
     let evidence = load_write_ticket_evidence_facts(
         store,
-        &ticket.validity_basis.task_id,
+        &ticket.validity_basis().task_id,
         evaluated.consumed_by_run_id(),
         state_version,
     )?;

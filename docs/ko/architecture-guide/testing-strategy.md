@@ -46,9 +46,11 @@ workflow policy, UserAction resolution, 증거 취득과 Store 오류 전파를 
 `StoredWriteTicketEvaluation` 값만 받고 stored 상태 우선순위와 동률 해소를
 담당합니다. 승인 담당자 테스트는
 Store가 검증한 참조를 사용해 typed 요구사항, 현재 집합, 영속 근거, 의미 변경
-사유의 전체 matrix를 다룹니다. 하나의 공유 의미 fixture 표는 `Current`,
-`NotRequired`, `Changed`가 summary, reuse, Record Run 승인을 일관되게 구동하는지
-검증합니다. Summary 테스트는 Store fixture나 정책 재평가 없이
+사유의 전체 matrix를 다룹니다. 하나의 공유 의미 fixture 표는 현재 승인, 승인이
+필요하지 않은 경우, 새로 필요해진 승인, 오래된 resolution, 변경된 승인 범위,
+만료, 소비, 철회, 무효화, 현재 재사용 가능한 ticket을 다룹니다. 각 fixture를 같은
+정규 평가에 통과시켜 summary, Prepare Write 재사용, Record Run 승인, 닫기 준비
+상태 판단이 일관됨을 검증합니다. Summary 테스트는 Store fixture나 정책 재평가 없이
 `PlannedWriteTicket`과 평가 완료 stored 상태를 각각 변환합니다. 집중 service
 테스트는 terminal 사전 평가, active에 한정한 현재 fact 취득, 선택 뒤 증거 읽기와
 영속, 무효화, approval-dependent, dry-run, 실패 경로의 대표 사례를 검증합니다.
@@ -68,9 +70,11 @@ plan에서 완전히 typed인 `WriteTicketInsert`를 파생하는 과정을 검�
 ticket 없음이 삽입을 만들 수 없음도 검증합니다. 공개 응답을 구성하거나 dry-run
 intent를 의미 planning fact로 취급하지 않습니다. Prepare Write 메서드 테스트는
 공개 오류 metadata, state-version이 있는 reference projection, durable ID 할당,
-dry-run 발급 및 재사용 결과, ticket 없음 결과, 발급 또는 재사용된 중첩 경로와
-최상위 경로 및 원본 planned 또는 stored scope의 동등성을 담당합니다. 커밋 발급
-테스트는 영속 scope도 같은 응답 원본과 비교하며 replay는 정확한 응답 coverage를
+dry-run 발급 및 재사용 결과, ticket 없음 결과를 담당합니다. 또한 현재 공개되는
+경로, 유효성, 만료, Task, Change Unit, 승인 근거 fact에 대해 발급 또는 재사용된
+중첩 ticket, 최상위 결과 fact, typed planned 또는 stored 원본, Store mutation
+입력, 다시 읽은 record를 비교합니다. Ticket 없음 테스트는 null ticket identity 및
+reference field와 insertion 부재를 검증합니다. Replay는 정확한 응답 coverage를
 유지합니다.
 
 Record Run도 소스 책임에 따라 이 구분을 적용합니다. 요청 및 fact 취득, 캡처 권한,
@@ -82,7 +86,9 @@ coverage는 `close_readiness/tests/recording.rs`에, ticket 호환성, 승인, �
 집중된 typed mutation plan은 이 담당 시나리오와 Store commit 경계에서
 검증합니다. 이 테스트는 typed reusable ticket과 일치하는 정확한 attempt 호환성
 증명으로 admission에 진입하고 admissible ticket만 mutation planning과
-consumption으로 전달합니다. 작은
+consumption으로 전달합니다. 커밋된 product-write 시나리오는 Run row, Run의 ticket
+effect payload, 소비된 ticket이 같은 admissible ticket identity를 사용함도
+검증합니다. 작은
 `methods/tests/record_run.rs` suite에는 대표 요청 조율,
 중립 실행 carrier와 공개 결과 field로의 변환, dry-run 및 state-version
 metadata를 보존하는 의미 오류 routing, commit 및 무효과 대안, 증거 및 artifact

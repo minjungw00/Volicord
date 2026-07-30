@@ -82,7 +82,7 @@ fn project_summary(
     evidence: &WriteTicketEvidenceFacts,
     guarantee_display: Option<GuaranteeDisplay>,
 ) -> WriteTicketStateSummary {
-    let task_id = &facts.ticket.validity_basis.task_id;
+    let task_id = &facts.ticket.validity_basis().task_id;
     let write_ticket_ref = Some(write_ticket_state_ref(
         facts.write_ticket_id,
         facts.ticket,
@@ -93,7 +93,7 @@ fn project_summary(
         state_ref(
             StateRecordKind::Run,
             run_id.as_str(),
-            &facts.ticket.project_id,
+            facts.ticket.project_id(),
             Some(task_id),
             Some(state_version),
         )
@@ -101,13 +101,13 @@ fn project_summary(
     WriteTicketStateSummary {
         status: facts.status,
         write_ticket_ref,
-        basis_state_version: Some(facts.ticket.basis_state_version),
-        validity_basis: Some(facts.ticket.validity_basis.clone()),
+        basis_state_version: Some(facts.ticket.basis_state_version()),
+        validity_basis: Some(facts.ticket.validity_basis().clone()),
         invalidation_reason: facts.invalidation,
-        idle_expires_at: facts.ticket.idle_expires_at.clone(),
+        idle_expires_at: facts.ticket.idle_expires_at().cloned(),
         intended_paths: facts
             .ticket
-            .attempt_scope
+            .attempt_scope()
             .intended_paths
             .iter()
             .map(|path| path.as_str().to_owned())
@@ -127,7 +127,7 @@ fn write_ticket_state_ref(
     state_ref(
         StateRecordKind::WriteTicket,
         write_ticket_id.as_str(),
-        &ticket.project_id,
+        ticket.project_id(),
         Some(task_id),
         Some(state_version),
     )
@@ -147,8 +147,8 @@ mod tests {
     #[test]
     fn stored_ticket_summary_maps_only_supplied_evaluated_and_evidence_facts() {
         let evaluated = stored_evaluation("ticket-summary", WriteTicketStatus::Consumed, 9);
-        let task_id = evaluated.semantic_facts().validity_basis.task_id.clone();
-        let project_id = evaluated.semantic_facts().project_id.clone();
+        let task_id = evaluated.semantic_facts().validity_basis().task_id.clone();
+        let project_id = evaluated.semantic_facts().project_id().clone();
         let observation_ref = state_ref(
             StateRecordKind::EvidenceObservation,
             "observation-summary",

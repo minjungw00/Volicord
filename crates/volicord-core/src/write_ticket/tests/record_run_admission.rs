@@ -412,6 +412,16 @@ fn record_run_product_write_omits_optional_operation_and_consumes_ticket_once(
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
     let after = harness.counts()?;
     let run_id = run_id_from_record_run(&response.response_value);
+    let (stored_run_ticket_id, stored_effect_json): (Option<String>, String) =
+        harness.conn()?.query_row(
+            "SELECT write_ticket_id, write_ticket_effect_json
+               FROM runs
+              WHERE project_id = ?1 AND run_id = ?2",
+            rusqlite::params![PROJECT_ID, run_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+    let stored_effect: volicord_store::core_pipeline::StoredRunWriteTicketEffect =
+        serde_json::from_str(&stored_effect_json)?;
     let observation_id = response.response_value["evidence_observations"][0]["observation_id"]
         .as_str()
         .expect("observation id should be present")
@@ -419,6 +429,17 @@ fn record_run_product_write_omits_optional_operation_and_consumes_ticket_once(
     let write_summary = &response.response_value["state"]["write_ticket_summary"];
 
     assert_eq!(response.response_value["base"]["state_version"], 4);
+    assert_eq!(
+        stored_run_ticket_id.as_deref(),
+        Some(write_ticket_id.as_str())
+    );
+    assert_eq!(
+        stored_effect
+            .write_ticket_id
+            .as_ref()
+            .map(WriteTicketId::as_str),
+        Some(write_ticket_id.as_str())
+    );
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
     assert_eq!(write_summary["status"], "consumed");
     assert_eq!(write_summary["consumed_by_run_ref"]["record_id"], run_id);

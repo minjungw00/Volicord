@@ -22,6 +22,7 @@ struct StoredWriteTicketState {
 }
 
 /// A physically active stored ticket that still requires current semantic facts.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ActiveStoredWriteTicketCandidate {
     stored: StoredWriteTicketState,
@@ -38,6 +39,7 @@ impl ActiveStoredWriteTicketCandidate {
 }
 
 /// A stored ticket proven reusable against current authority and approval facts.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReusableStoredWriteTicket {
     stored: StoredWriteTicketState,
@@ -53,11 +55,12 @@ impl ReusableStoredWriteTicket {
     }
 
     pub(crate) fn path_scope(&self) -> &WriteTicketPathScope {
-        &self.stored.ticket.path_scope
+        self.stored.ticket.path_scope()
     }
 }
 
 /// A stored ticket whose persisted or effective current state is invalidated.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidatedStoredWriteTicket {
     stored: StoredWriteTicketState,
@@ -84,6 +87,7 @@ impl InvalidatedStoredWriteTicket {
 }
 
 /// A stored ticket consumed by one recorded Run.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsumedStoredWriteTicket {
     stored: StoredWriteTicketState,
@@ -105,6 +109,7 @@ impl ConsumedStoredWriteTicket {
 }
 
 /// A stored ticket explicitly revoked in persisted state.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevokedStoredWriteTicket {
     stored: StoredWriteTicketState,
@@ -193,6 +198,7 @@ impl StoredWriteTicketEvaluation {
     }
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TerminalStoredWriteTicketEvaluation {
     Invalidated(InvalidatedStoredWriteTicket),
@@ -210,6 +216,7 @@ impl From<TerminalStoredWriteTicketEvaluation> for StoredWriteTicketEvaluation {
     }
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ActiveStoredWriteTicketEvaluation {
     Reusable(ReusableStoredWriteTicket),
@@ -223,6 +230,15 @@ impl ActiveStoredWriteTicketEvaluation {
             Self::Invalidated(ticket) => ticket.semantic_facts(),
         }
     }
+
+    pub(crate) fn into_reusable(
+        self,
+    ) -> Result<ReusableStoredWriteTicket, Box<InvalidatedStoredWriteTicket>> {
+        match self {
+            Self::Reusable(ticket) => Ok(ticket),
+            Self::Invalidated(ticket) => Err(Box::new(ticket)),
+        }
+    }
 }
 
 impl From<ActiveStoredWriteTicketEvaluation> for StoredWriteTicketEvaluation {
@@ -234,6 +250,7 @@ impl From<ActiveStoredWriteTicketEvaluation> for StoredWriteTicketEvaluation {
     }
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StoredTicketPreEvaluation {
     Complete(TerminalStoredWriteTicketEvaluation),
@@ -253,13 +270,8 @@ pub(crate) fn pre_evaluate_stored_write_ticket(
     ticket: StoredWriteTicketFacts,
     observed_at: &volicord_types::values::UtcTimestamp,
 ) -> Result<StoredTicketPreEvaluation, StoredWriteTicketStateError> {
-    let StoredWriteTicketFacts {
-        write_ticket_id,
-        ticket,
-        status,
-        invalidation_reason,
-        consumed_by_run_id,
-    } = ticket;
+    let (write_ticket_id, ticket, status, invalidation_reason, consumed_by_run_id) =
+        ticket.into_lifecycle_parts();
     let stored = StoredWriteTicketState {
         write_ticket_id,
         ticket,
@@ -269,7 +281,7 @@ pub(crate) fn pre_evaluate_stored_write_ticket(
             if invalidation_reason.is_some() || consumed_by_run_id.is_some() {
                 return Err(StoredWriteTicketStateError::ActiveLifecycleDetails);
             }
-            if write_ticket_is_idle_expired(stored.ticket.idle_expires_at.as_ref(), observed_at) {
+            if write_ticket_is_idle_expired(stored.ticket.idle_expires_at(), observed_at) {
                 Ok(StoredTicketPreEvaluation::Complete(
                     TerminalStoredWriteTicketEvaluation::Invalidated(
                         InvalidatedStoredWriteTicket {
@@ -336,7 +348,7 @@ pub(crate) fn evaluate_active_candidate(
     current: &WriteTicketCurrentFacts,
     approval: WriteTicketApprovalAssessment,
 ) -> ActiveStoredWriteTicketEvaluation {
-    let basis = &candidate.stored.ticket.validity_basis;
+    let basis = candidate.stored.ticket.validity_basis();
     if basis.write_authority_fingerprint != current.workflow.write_authority_fingerprint {
         return ActiveStoredWriteTicketEvaluation::Invalidated(InvalidatedStoredWriteTicket {
             stored: candidate.stored,
@@ -438,7 +450,9 @@ mod tests {
     use crate::write_ticket::read_model::{
         WriteTicketCurrentFacts, WriteTicketTaskFacts, WriteTicketWorkflowFacts,
     };
-    use crate::write_ticket::semantic::test_support::{stored_facts, timestamp};
+    use crate::write_ticket::semantic::test_support::{
+        consumed_facts, invalidated_facts, revoked_facts, stored_facts, timestamp,
+    };
 
     fn task_facts() -> WriteTicketTaskFacts {
         WriteTicketTaskFacts {
@@ -465,8 +479,11 @@ mod tests {
 
     #[test]
     fn terminal_statuses_and_idle_expiry_do_not_require_current_facts() {
-        let mut invalidated = stored_facts("ticket-invalidated", WriteTicketStatus::Invalidated, 7);
-        invalidated.invalidation_reason = Some(WriteTicketInvalidationReason::ApprovalBasisChanged);
+        let invalidated = invalidated_facts(
+            "ticket-invalidated",
+            WriteTicketInvalidationReason::ApprovalBasisChanged,
+            7,
+        );
         let evaluated =
             pre_evaluate_stored_write_ticket(invalidated, &timestamp("2026-07-29T00:05:00Z"));
         let Ok(StoredTicketPreEvaluation::Complete(
@@ -481,8 +498,7 @@ mod tests {
             WriteTicketInvalidationReason::ApprovalBasisChanged
         );
 
-        let mut consumed = stored_facts("ticket-consumed", WriteTicketStatus::Consumed, 7);
-        consumed.consumed_by_run_id = Some(volicord_types::ids::RunId::new("run-consuming"));
+        let consumed = consumed_facts("ticket-consumed", "run-consuming", 7);
         let evaluated =
             pre_evaluate_stored_write_ticket(consumed, &timestamp("2026-07-29T00:05:00Z"));
         let Ok(StoredTicketPreEvaluation::Complete(TerminalStoredWriteTicketEvaluation::Consumed(
@@ -494,8 +510,11 @@ mod tests {
         assert_eq!(consumed.write_ticket_id().as_str(), "ticket-consumed");
         assert_eq!(consumed.consumed_by_run_id().as_str(), "run-consuming");
 
-        let mut revoked = stored_facts("ticket-revoked", WriteTicketStatus::Revoked, 7);
-        revoked.invalidation_reason = Some(WriteTicketInvalidationReason::ExplicitRevoke);
+        let revoked = revoked_facts(
+            "ticket-revoked",
+            WriteTicketInvalidationReason::ExplicitRevoke,
+            7,
+        );
         let evaluated =
             pre_evaluate_stored_write_ticket(revoked, &timestamp("2026-07-29T00:05:00Z"));
         let Ok(StoredTicketPreEvaluation::Complete(TerminalStoredWriteTicketEvaluation::Revoked(

@@ -50,10 +50,14 @@ stored state retains a mandatory ticket ID. Selection tests accept only
 `StoredWriteTicketEvaluation` values and own stored-state precedence and
 tie-breaking. Approval-owner tests cover the complete typed requirement,
 current-set, persisted-basis, and semantic change-reason matrix using
-Store-valid references. One shared semantic fixture table verifies that
-`Current`, `NotRequired`, and `Changed` drive summary, reuse, and Record Run
-admission consistently. Summary tests separately map `PlannedWriteTicket` and
-evaluated stored state without a Store fixture or policy reevaluation. Focused
+Store-valid references. One shared semantic fixture table covers current
+approval, approval not required, newly required approval, stale resolution,
+changed approval scope, expiry, consumption, revocation, invalidation, and a
+current reusable ticket. It sends each fixture through the same canonical
+evaluation and verifies consistent summary, Prepare Write reuse, Record Run
+admission, and close-readiness decisions. Summary tests separately map
+`PlannedWriteTicket` and evaluated stored state without a Store fixture or
+policy reevaluation. Focused
 service tests verify terminal pre-evaluation, active-only current fact
 acquisition, post-selection evidence loading, and representative persisted,
 invalidated, approval-dependent, dry-run, and failure paths. Ordinary
@@ -74,10 +78,12 @@ planning family, identity-free issuance drafts, invariant-bearing
 cannot produce an insertion. They do not construct public responses or treat
 dry-run intent as a semantic planning fact. Prepare Write method tests own
 public error metadata, state-versioned reference projection, durable-ID
-allocation, dry-run issue and reuse outcomes, no-ticket results, and equality
-among issued or reused nested paths, top-level paths, and the source planned or
-stored scope. Committed issue tests also compare the persisted scope with that
-same response source, while replay retains exact response coverage.
+allocation, dry-run issue and reuse outcomes, and no-ticket results. They
+compare the issued or reused nested ticket, top-level result facts, typed
+planned or stored source, Store mutation input, and reloaded record for the
+currently exposed path, validity, expiry, Task, Change Unit, and approval-basis
+facts. No-ticket tests verify null ticket identity and reference fields and no
+insertion. Replay retains exact response coverage.
 
 Record Run follows this split by source responsibility. Request and fact
 acquisition, capture authority, evidence observation and reuse, artifact
@@ -90,7 +96,9 @@ admission, consumption, and no-effect rejection coverage lives in
 exercised through these owner scenarios and the Store commit boundary. These
 tests enter admission with a typed reusable ticket and matching exact-attempt
 compatibility proof, then carry only an admissible ticket into mutation
-planning and consumption. The
+planning and consumption. The committed product-write scenario also proves
+that the Run row, Run ticket-effect payload, and consumed ticket use the same
+admitted ticket identity. The
 small `methods/tests/record_run.rs` suite retains representative request
 orchestration, conversion to the neutral execution carrier and public result
 fields, semantic-error routing with dry-run and state-version metadata,

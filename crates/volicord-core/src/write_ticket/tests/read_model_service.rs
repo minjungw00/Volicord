@@ -51,10 +51,10 @@ fn read_model_acquires_typed_ticket_control_and_user_action_facts() -> Result<()
     let candidates = load_write_ticket_candidates(&store, &typed_task_id)?;
     assert_eq!(candidates.len(), 1);
     assert_eq!(
-        candidates[0].write_ticket_id.as_str(),
+        candidates[0].write_ticket_id().as_str(),
         "write_ticket_read_model"
     );
-    assert_eq!(candidates[0].ticket.basis_state_version, 4);
+    assert_eq!(candidates[0].semantic_facts().basis_state_version(), 4);
 
     let (task, workflow) = load_write_ticket_control_facts(&store, &typed_task_id)?;
     assert_eq!(task.scope_revision, 1);

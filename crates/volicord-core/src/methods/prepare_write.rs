@@ -129,55 +129,40 @@ impl PrepareWriteTicketProjection {
         write_decision_reasons: Vec<PublicWriteDecisionReason>,
         guarantee_display: Option<GuaranteeDisplay>,
     ) -> PrepareWriteResultFields {
-        match self {
-            Self::Issued { write_ticket, .. } => {
-                let path_patterns = write_ticket.path_patterns.clone();
-                PrepareWriteResultFields {
+        let (write_ticket_effect, write_ticket) = match self {
+            Self::Issued { write_ticket, .. } => (WriteTicketEffect::Issued, write_ticket),
+            Self::Reused { write_ticket, .. } => (WriteTicketEffect::Reused, write_ticket),
+            Self::None { path_patterns } => {
+                return PrepareWriteResultFields {
                     decision,
                     state: Some(state),
-                    write_ticket_id: Some(write_ticket.write_ticket_id.clone()),
-                    write_ticket_ref: Some(write_ticket.write_ticket_ref.clone()),
-                    write_ticket: Some(write_ticket),
-                    write_ticket_effect: WriteTicketEffect::Issued,
+                    write_ticket_id: None,
+                    write_ticket_ref: None,
+                    write_ticket: None,
+                    write_ticket_effect: WriteTicketEffect::None,
                     allowed_path_patterns: path_patterns.allowed,
                     denied_path_patterns: path_patterns.denied,
                     active_user_action_refs,
                     write_decision_reasons,
                     user_action_draft: None,
                     guarantee_display,
-                }
+                };
             }
-            Self::Reused { write_ticket, .. } => {
-                let path_patterns = write_ticket.path_patterns.clone();
-                PrepareWriteResultFields {
-                    decision,
-                    state: Some(state),
-                    write_ticket_id: Some(write_ticket.write_ticket_id.clone()),
-                    write_ticket_ref: Some(write_ticket.write_ticket_ref.clone()),
-                    write_ticket: Some(write_ticket),
-                    write_ticket_effect: WriteTicketEffect::Reused,
-                    allowed_path_patterns: path_patterns.allowed,
-                    denied_path_patterns: path_patterns.denied,
-                    active_user_action_refs,
-                    write_decision_reasons,
-                    user_action_draft: None,
-                    guarantee_display,
-                }
-            }
-            Self::None { path_patterns } => PrepareWriteResultFields {
-                decision,
-                state: Some(state),
-                write_ticket_id: None,
-                write_ticket_ref: None,
-                write_ticket: None,
-                write_ticket_effect: WriteTicketEffect::None,
-                allowed_path_patterns: path_patterns.allowed,
-                denied_path_patterns: path_patterns.denied,
-                active_user_action_refs,
-                write_decision_reasons,
-                user_action_draft: None,
-                guarantee_display,
-            },
+        };
+        let path_patterns = write_ticket.path_patterns.clone();
+        PrepareWriteResultFields {
+            decision,
+            state: Some(state),
+            write_ticket_id: Some(write_ticket.write_ticket_id.clone()),
+            write_ticket_ref: Some(write_ticket.write_ticket_ref.clone()),
+            write_ticket: Some(write_ticket),
+            write_ticket_effect,
+            allowed_path_patterns: path_patterns.allowed,
+            denied_path_patterns: path_patterns.denied,
+            active_user_action_refs,
+            write_decision_reasons,
+            user_action_draft: None,
+            guarantee_display,
         }
     }
 }
@@ -218,13 +203,16 @@ impl CoreService {
             Ok(prepared) => prepared,
             Err(response) => return Ok(response),
         };
-        let ticket_task_id = request.task_id.clone().unwrap_or_else(|| {
-            prepared
-                .context
-                .resolved_task_id
-                .clone()
-                .expect("prepare_write preflight resolves an exact Task")
-        });
+        let Some(ticket_task_id) = request
+            .task_id
+            .clone()
+            .or_else(|| prepared.context.resolved_task_id.clone())
+        else {
+            return Ok(no_active_task_response(
+                &request.envelope,
+                &prepared.context.project_state,
+            ));
+        };
         let planned = match plan_prepare_write(
             &prepared.store,
             &prepared.context.project_state,
@@ -578,11 +566,11 @@ fn project_reused_write_ticket(
     let write_ticket_ref = state_ref(
         StateRecordKind::WriteTicket,
         reusable.write_ticket_id().as_str(),
-        &semantic.project_id,
-        Some(&semantic.validity_basis.task_id),
+        semantic.project_id(),
+        Some(&semantic.validity_basis().task_id),
         Some(state_version),
     );
-    let attempt_scope = &semantic.attempt_scope;
+    let attempt_scope = semantic.attempt_scope();
     WriteTicket {
         write_ticket_id: reusable.write_ticket_id().clone(),
         write_ticket_ref,
@@ -597,10 +585,10 @@ fn project_reused_write_ticket(
         },
         path_patterns: project_write_ticket_path_scope(reusable.path_scope()),
         observed_paths: Vec::new(),
-        basis_state_version: semantic.basis_state_version,
-        validity_basis: semantic.validity_basis.clone(),
+        basis_state_version: semantic.basis_state_version(),
+        validity_basis: semantic.validity_basis().clone(),
         invalidation_reason: None,
-        idle_expires_at: semantic.idle_expires_at.clone(),
+        idle_expires_at: semantic.idle_expires_at().cloned(),
         guarantee_display,
     }
 }

@@ -231,7 +231,7 @@ pub(super) fn decide_record_run_policy(
                 || !normalized_observed_changes.sensitive_categories.is_empty()
         })
         .map(|ticket| {
-            let scope = &ticket.semantic_facts().attempt_scope;
+            let scope = ticket.semantic_facts().attempt_scope();
             SensitiveApprovalRequirement {
                 task_id: &request.task_id,
                 change_unit_id: &request.change_unit_id,
@@ -635,13 +635,14 @@ pub(super) fn assemble_record_run_mutation_plan(
         registered_artifacts,
         verified_invocation,
     } = assembly;
+    let admitted_write_ticket_id =
+        write_ticket_scope.map(|ticket| ticket.write_ticket_id().clone());
     let mut steps = vec![RecordRunMutation::Run(RunMutation::Insert(RunInsert {
         run_id: run_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
         change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
         scope_revision: task.scope_revision,
-        write_ticket_id: request
-            .write_ticket_id
+        write_ticket_id: admitted_write_ticket_id
             .as_ref()
             .map(|id| id.as_str().to_owned()),
         kind: request.kind,
@@ -652,7 +653,7 @@ pub(super) fn assemble_record_run_mutation_plan(
         observed_changes: normalized_observed_changes.clone(),
         evidence_updates: request.evidence_updates.clone(),
         write_ticket_effect: StoredRunWriteTicketEffect {
-            write_ticket_id: request.write_ticket_id.as_ref().cloned(),
+            write_ticket_id: admitted_write_ticket_id,
             effect: if write_ticket_scope.is_some() {
                 StoredRunWriteTicketEffectKind::Consumed
             } else {
@@ -696,7 +697,7 @@ pub(super) fn assemble_record_run_mutation_plan(
             WriteTicketMutation::Consume(WriteTicketConsumption {
                 write_ticket_id: ticket.write_ticket_id().as_str().to_owned(),
                 run_id: run_id.as_str().to_owned(),
-                expected_basis_state_version: semantic.basis_state_version,
+                expected_basis_state_version: semantic.basis_state_version(),
                 expected_write_authority_fingerprint: workflow_policy
                     .write_authority_fingerprint
                     .clone(),

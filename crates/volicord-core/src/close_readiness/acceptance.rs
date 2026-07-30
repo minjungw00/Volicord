@@ -651,7 +651,7 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         };
         let semantic = ticket.semantic_facts();
-        let validity_basis = &semantic.validity_basis;
+        let validity_basis = semantic.validity_basis();
         if validity_basis.task_id != request.task_id
             || validity_basis.change_unit_id != close_basis.change_unit_id
             || validity_basis.scope_revision != context.task.scope_revision
@@ -660,12 +660,12 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         }
         let allowed = semantic
-            .path_scope
+            .path_scope()
             .allowed()
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied = semantic.path_scope.denied();
+        let denied = semantic.path_scope().denied();
         if !paths_are_authorized(&observed.observed_changes.changed_paths, &allowed)
             || observed.observed_changes.changed_paths.iter().any(|path| {
                 denied
