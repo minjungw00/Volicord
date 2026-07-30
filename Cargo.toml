@@ -95,7 +95,7 @@ description_ko = "호출 범위 Product Repository 관찰, 플랫폼 파일시�
 kind = "infrastructure"
 production = true
 boundary = "core-facing"
-normal = ["volicord-types"]
+normal = ["volicord-platform-process", "volicord-types"]
 development = []
 build = []
 

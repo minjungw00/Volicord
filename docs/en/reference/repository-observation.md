@@ -45,6 +45,38 @@ ambient repository status, or tool name alone is not correlation.
 - **Observation unavailable** is a closed observation result that does not
   claim a complete repository delta.
 
+## Regular-File Content Evidence
+
+A directly observed regular file retains typed evidence for both content
+domains:
+
+- the SHA-256 identity of the exact worktree bytes read from the file; and
+- the canonical Git blob identity produced by streaming those same bytes
+  through Git's current path-aware clean conversion for the canonical Product
+  Repository-relative path.
+
+The conversion is read-only. It uses Git's repository, path, attributes,
+configuration, encoding, and clean-filter context without writing the object.
+The exact-byte hash and Git conversion consume one file stream. An immutable
+tree-derived regular file carries its canonical Git blob identity and no
+worktree-byte identity. Regular-file state also carries the executable bit.
+
+Regular-file comparison uses one centralized rule:
+
+- a regular file and any non-regular state differ;
+- executable-bit differences differ;
+- two directly observed worktree files compare by exact worktree-byte
+  identity;
+- any comparison involving a tree-derived regular file compares canonical Git
+  blob identity; and
+- two tree-derived regular files compare by canonical Git blob identity.
+
+Symbolic links retain exact typed target identity, and Gitlinks retain their
+canonical checked-out commit identity. Git conversion failure, filter failure,
+timeout, malformed output, containment failure, or resource-limit exhaustion
+produces observation unavailable rather than a successful partial or empty
+snapshot.
+
 ## Observation States
 
 ```schema
@@ -72,8 +104,8 @@ second `PostToolUse` event is rejected.
 
 Snapshot, outcome, delta, and bounded metadata decoders reject unknown fields,
 malformed Product Repository paths, invalid state combinations, noncanonical
-encoding, duplicate or unordered transitions, and digest mismatch as corrupt
-stored data.
+encoding, duplicate or unordered transitions, semantically empty transitions,
+and digest mismatch as corrupt stored data.
 
 ## Pre-Tool Aggregate
 

@@ -149,7 +149,7 @@ The lists are package-level allowlists by Cargo dependency kind. An em dash mean
 | `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-mcp-wire`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-mcp-protocol` | — | — | — |
 | `volicord-mcp-wire` | `volicord-mcp-protocol`, `volicord-types` | — | — |
-| `volicord-platform-fs` | `volicord-types` | — | — |
+| `volicord-platform-fs` | `volicord-platform-process`, `volicord-types` | — | — |
 | `volicord-platform-process` | — | — | — |
 | `volicord-release-integrity-tests` | `volicord-store`, `volicord-types` | — | — |
 | `volicord-release-smoke` | `volicord-mcp-protocol`, `volicord-test-process`, `volicord-types` | — | — |

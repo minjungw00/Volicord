@@ -7,13 +7,17 @@ use std::{
 
 use serde::{de, Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
-use volicord_types::{canonical::canonical_git_object_id, product_path::ProductRelativePath};
+use volicord_types::{
+    canonical::{canonical_git_object_id, GitObjectIdError},
+    product_path::ProductRelativePath,
+};
 
 use super::bounded::ObserverLimits;
 
-pub(crate) const SNAPSHOT_SERIALIZATION_DEPTH: usize = 4;
+pub(crate) const SNAPSHOT_SERIALIZATION_DEPTH: usize = 5;
 const OBSERVER_CONTRACT_NAME: &str = "volicord.product-repository-observer";
-const OBSERVER_CONTRACT_REVISION: &str = "net-path-state";
+const OBSERVER_CONTRACT_REVISION: &str =
+    "exact-worktree-bytes-and-path-aware-canonical-git-content";
 const MAX_UNAVAILABLE_DETAIL_BYTES: usize = 512;
 
 /// Content-derived SHA-256 identity for regular-file bytes or a link target.
@@ -50,6 +54,92 @@ impl<'de> Deserialize<'de> for ContentIdentity {
     }
 }
 
+/// Canonical lowercase SHA-1 or SHA-256 Git object identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct GitObjectIdentity(String);
+
+impl GitObjectIdentity {
+    /// Parses a supported Git object ID and stores its canonical lowercase spelling.
+    pub fn parse(value: impl Into<String>) -> Result<Self, GitObjectIdError> {
+        canonical_git_object_id(&value.into()).map(Self)
+    }
+
+    /// Returns the canonical lowercase Git object ID.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for GitObjectIdentity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        let identity = Self::parse(value.clone()).map_err(de::Error::custom)?;
+        if identity.as_str() == value {
+            Ok(identity)
+        } else {
+            Err(de::Error::custom("noncanonical Git object identity"))
+        }
+    }
+}
+
+/// Typed regular-file content evidence with an explicit observation source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RegularFileContentEvidence {
+    /// Exact worktree bytes and Git's path-aware clean-converted blob identity.
+    Worktree {
+        exact_worktree_bytes: ContentIdentity,
+        canonical_git_blob: GitObjectIdentity,
+    },
+    /// Canonical immutable-tree blob identity without fabricated worktree bytes.
+    GitTree {
+        canonical_git_blob: GitObjectIdentity,
+    },
+}
+
+impl RegularFileContentEvidence {
+    /// Exact worktree-byte identity when the file was directly observed.
+    pub fn exact_worktree_bytes(&self) -> Option<&ContentIdentity> {
+        match self {
+            Self::Worktree {
+                exact_worktree_bytes,
+                ..
+            } => Some(exact_worktree_bytes),
+            Self::GitTree { .. } => None,
+        }
+    }
+
+    /// Canonical Git blob identity shared by worktree and immutable-tree evidence.
+    pub fn canonical_git_blob(&self) -> &GitObjectIdentity {
+        match self {
+            Self::Worktree {
+                canonical_git_blob, ..
+            }
+            | Self::GitTree { canonical_git_blob } => canonical_git_blob,
+        }
+    }
+
+    fn semantically_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Worktree {
+                    exact_worktree_bytes: left,
+                    ..
+                },
+                Self::Worktree {
+                    exact_worktree_bytes: right,
+                    ..
+                },
+            ) => left == right,
+            _ => self.canonical_git_blob() == other.canonical_git_blob(),
+        }
+    }
+}
+
 /// Effective observable state of one Product Repository path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -58,13 +148,39 @@ pub enum ProductPathState {
     Absent,
     /// A regular file with deterministic content and executable-mode identity.
     RegularFile {
-        content: ContentIdentity,
+        content_evidence: RegularFileContentEvidence,
         executable: bool,
     },
     /// A symbolic link identified by its exact UTF-8 target bytes.
     SymbolicLink { target: ContentIdentity },
     /// A clean initialized Gitlink identified by the checked-out commit.
-    Gitlink { commit_oid: String },
+    Gitlink { commit_oid: GitObjectIdentity },
+}
+
+impl ProductPathState {
+    /// Compares effective path state in the correct content domain.
+    pub fn semantically_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Absent, Self::Absent) => true,
+            (
+                Self::RegularFile {
+                    content_evidence: left,
+                    executable: left_executable,
+                },
+                Self::RegularFile {
+                    content_evidence: right,
+                    executable: right_executable,
+                },
+            ) => left_executable == right_executable && left.semantically_eq(right),
+            (Self::SymbolicLink { target: left }, Self::SymbolicLink { target: right }) => {
+                left == right
+            }
+            (Self::Gitlink { commit_oid: left }, Self::Gitlink { commit_oid: right }) => {
+                left == right
+            }
+            _ => false,
+        }
+    }
 }
 
 /// Exact typed paths supplied for one tool invocation.
@@ -155,8 +271,8 @@ pub struct RepositoryObservationCoordinate {
     repository_identity: String,
     git_layout_identity: String,
     worktree_identity: String,
-    head_oid: Option<String>,
-    tree_oid: Option<String>,
+    head_oid: Option<GitObjectIdentity>,
+    tree_oid: Option<GitObjectIdentity>,
     status_identity: String,
 }
 
@@ -165,8 +281,8 @@ impl RepositoryObservationCoordinate {
         repository_identity: String,
         git_layout_identity: String,
         worktree_identity: String,
-        head_oid: Option<String>,
-        tree_oid: Option<String>,
+        head_oid: Option<GitObjectIdentity>,
+        tree_oid: Option<GitObjectIdentity>,
         status_identity: String,
     ) -> Self {
         Self {
@@ -196,12 +312,12 @@ impl RepositoryObservationCoordinate {
 
     /// Full HEAD object ID, or `None` for an unborn repository.
     pub fn head_oid(&self) -> Option<&str> {
-        self.head_oid.as_deref()
+        self.head_oid.as_ref().map(GitObjectIdentity::as_str)
     }
 
     /// Full HEAD tree object ID, or `None` for an unborn repository.
     pub fn tree_oid(&self) -> Option<&str> {
-        self.tree_oid.as_deref()
+        self.tree_oid.as_ref().map(GitObjectIdentity::as_str)
     }
 
     /// Opaque digest of the complete porcelain status coordinate.
@@ -320,8 +436,7 @@ impl RepositoryObservationSnapshot {
 }
 
 /// One exact before/after transition for a Product Repository path.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RepositoryPathTransition {
     path: ProductRelativePath,
     before: ProductPathState,
@@ -354,6 +469,33 @@ impl RepositoryPathTransition {
     /// Effective path state after the invocation.
     pub fn after(&self) -> &ProductPathState {
         &self.after
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RepositoryPathTransitionWire {
+    path: ProductRelativePath,
+    before: ProductPathState,
+    after: ProductPathState,
+}
+
+impl<'de> Deserialize<'de> for RepositoryPathTransition {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = RepositoryPathTransitionWire::deserialize(deserializer)?;
+        if wire.before.semantically_eq(&wire.after) {
+            return Err(de::Error::custom(
+                "repository delta contains a no-op transition",
+            ));
+        }
+        Ok(Self {
+            path: wire.path,
+            before: wire.before,
+            after: wire.after,
+        })
     }
 }
 
@@ -426,11 +568,6 @@ impl<'de> Deserialize<'de> for RepositoryDelta {
         let wire = RepositoryDeltaWire::deserialize(deserializer)?;
         let mut previous: Option<&ProductRelativePath> = None;
         for transition in &wire.transitions {
-            if transition.before == transition.after {
-                return Err(de::Error::custom(
-                    "repository delta contains a no-op transition",
-                ));
-            }
             if previous.is_some_and(|path| path >= &transition.path) {
                 return Err(de::Error::custom(
                     "repository delta paths are not strictly sorted",
@@ -601,25 +738,15 @@ pub(crate) fn validate_checkpoint(
         || !is_canonical_sha256_identity(&coordinate.git_layout_identity)
         || !is_canonical_sha256_identity(&coordinate.worktree_identity)
         || !is_canonical_sha256_identity(&coordinate.status_identity)
-        || coordinate
-            .head_oid
-            .as_deref()
-            .is_some_and(|value| canonical_git_object_id(value).is_err())
-        || coordinate
-            .tree_oid
-            .as_deref()
-            .is_some_and(|value| canonical_git_object_id(value).is_err())
-        || checkpoint
-            .observed_states
-            .values()
-            .any(|state| match state {
-                ProductPathState::Gitlink { commit_oid } => {
-                    canonical_git_object_id(commit_oid).is_err()
+        || checkpoint.observed_states.values().any(|state| {
+            matches!(
+                state,
+                ProductPathState::RegularFile {
+                    content_evidence: RegularFileContentEvidence::GitTree { .. },
+                    ..
                 }
-                ProductPathState::Absent
-                | ProductPathState::RegularFile { .. }
-                | ProductPathState::SymbolicLink { .. } => false,
-            })
+            )
+        })
         || !checkpoint
             .status_paths
             .iter()
@@ -647,8 +774,8 @@ fn encode_coordinate(encoder: &mut CanonicalEncoder, coordinate: &RepositoryObse
     encoder.string(&coordinate.repository_identity);
     encoder.string(&coordinate.git_layout_identity);
     encoder.string(&coordinate.worktree_identity);
-    encoder.optional_string(coordinate.head_oid.as_deref());
-    encoder.optional_string(coordinate.tree_oid.as_deref());
+    encoder.optional_string(coordinate.head_oid.as_ref().map(GitObjectIdentity::as_str));
+    encoder.optional_string(coordinate.tree_oid.as_ref().map(GitObjectIdentity::as_str));
     encoder.string(&coordinate.status_identity);
 }
 
@@ -683,11 +810,24 @@ fn encode_path_state(encoder: &mut CanonicalEncoder, state: &ProductPathState) {
     match state {
         ProductPathState::Absent => encoder.u8(0),
         ProductPathState::RegularFile {
-            content,
+            content_evidence,
             executable,
         } => {
             encoder.u8(1);
-            encoder.string(content.as_str());
+            match content_evidence {
+                RegularFileContentEvidence::Worktree {
+                    exact_worktree_bytes,
+                    canonical_git_blob,
+                } => {
+                    encoder.u8(0);
+                    encoder.string(exact_worktree_bytes.as_str());
+                    encoder.string(canonical_git_blob.as_str());
+                }
+                RegularFileContentEvidence::GitTree { canonical_git_blob } => {
+                    encoder.u8(1);
+                    encoder.string(canonical_git_blob.as_str());
+                }
+            }
             encoder.u8(u8::from(*executable));
         }
         ProductPathState::SymbolicLink { target } => {
@@ -696,7 +836,7 @@ fn encode_path_state(encoder: &mut CanonicalEncoder, state: &ProductPathState) {
         }
         ProductPathState::Gitlink { commit_oid } => {
             encoder.u8(3);
-            encoder.string(commit_oid);
+            encoder.string(commit_oid.as_str());
         }
     }
 }

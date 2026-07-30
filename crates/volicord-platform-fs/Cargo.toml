@@ -9,6 +9,7 @@ publish = false
 test-support = []
 
 [dependencies]
+volicord-platform-process = { path = "../volicord-platform-process" }
 volicord-types = { path = "../volicord-types" }
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }

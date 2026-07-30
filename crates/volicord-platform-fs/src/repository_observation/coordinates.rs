@@ -4,15 +4,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use volicord_types::{canonical::canonical_git_object_id, product_path::ProductRelativePath};
+use volicord_types::product_path::ProductRelativePath;
 
 use crate::capture_git_workspace_snapshot;
 
 use super::{
     bounded::{git_arguments, require_git_success, run_git, ObserverLimits},
     model::{
-        hash_fields, ContentIdentity, ObservationUnavailable, ObservationUnavailableReason,
-        RepositoryObservationCoordinate,
+        hash_fields, ContentIdentity, GitObjectIdentity, ObservationUnavailable,
+        ObservationUnavailableReason, RepositoryObservationCoordinate,
     },
 };
 
@@ -85,16 +85,26 @@ pub(crate) fn capture_coordinates(
     let status_identity = ContentIdentity::for_bytes(&status_output)
         .as_str()
         .to_owned();
-    let tree_oid = workspace
+    let head_oid = workspace
         .head_sha
-        .as_deref()
+        .map(GitObjectIdentity::parse)
+        .transpose()
+        .map_err(|_| {
+            ObservationUnavailable::new(
+                ObservationUnavailableReason::GitObjectUnavailable,
+                "Git returned a non-canonical HEAD coordinate",
+            )
+        })?;
+    let tree_oid = head_oid
+        .as_ref()
+        .map(GitObjectIdentity::as_str)
         .map(|head_oid| capture_tree_oid(&workspace.layout.repository_root, head_oid, limits))
         .transpose()?;
     let coordinate = RepositoryObservationCoordinate::new(
         repository_identity,
         git_layout_identity,
         workspace.worktree_id,
-        workspace.head_sha,
+        head_oid,
         tree_oid,
         status_identity,
     );
@@ -109,7 +119,7 @@ fn capture_tree_oid(
     repository_root: &Path,
     head_oid: &str,
     limits: &ObserverLimits,
-) -> Result<String, ObservationUnavailable> {
+) -> Result<GitObjectIdentity, ObservationUnavailable> {
     let expression = OsString::from(format!("{head_oid}^{{tree}}"));
     let output = require_git_success(
         run_git(
@@ -136,7 +146,7 @@ fn capture_tree_oid(
             "Git returned an invalid tree coordinate",
         ));
     }
-    canonical_git_object_id(oid).map_err(|_| {
+    GitObjectIdentity::parse(oid.to_owned()).map_err(|_| {
         ObservationUnavailable::new(
             ObservationUnavailableReason::GitObjectUnavailable,
             "Git returned a non-canonical tree coordinate",

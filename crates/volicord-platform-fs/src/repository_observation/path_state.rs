@@ -2,19 +2,21 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     fs::{self, File},
-    io::{self, Read},
+    io,
     path::Path,
 };
 
-use sha2::{Digest, Sha256};
-use volicord_types::{canonical::canonical_git_object_id, product_path::ProductRelativePath};
+use volicord_types::product_path::ProductRelativePath;
 
 use crate::{ObservedProductRepository, PlatformDiagnosticKind};
 
 use super::{
-    bounded::{git_arguments, hash_git_stdout, require_git_success, run_git, ObserverLimits},
+    bounded::{
+        git_arguments, require_git_success, run_git, run_git_with_file_stdin, ObserverLimits,
+    },
     model::{
-        ContentIdentity, ObservationUnavailable, ObservationUnavailableReason, ProductPathState,
+        ContentIdentity, GitObjectIdentity, ObservationUnavailable, ObservationUnavailableReason,
+        ProductPathState, RegularFileContentEvidence,
     },
 };
 
@@ -87,7 +89,6 @@ pub(crate) fn observe_tree_states(
     candidates: &BTreeSet<ProductRelativePath>,
     limits: &ObserverLimits,
     budget: &mut HashBudget<'_>,
-    blob_cache: &mut BTreeMap<String, ContentIdentity>,
 ) -> Result<BTreeMap<ProductRelativePath, ProductPathState>, ObservationUnavailable> {
     let mut states = candidates
         .iter()
@@ -135,18 +136,26 @@ pub(crate) fn observe_tree_states(
         }
         let state = match (mode, object_kind) {
             ("100644", "blob") => ProductPathState::RegularFile {
-                content: hash_tree_blob(repository_root, object_oid, limits, budget, blob_cache)?,
+                content_evidence: RegularFileContentEvidence::GitTree {
+                    canonical_git_blob: GitObjectIdentity::parse(object_oid.to_owned()).map_err(
+                        |_| git_object_unavailable("Git tree blob has a non-canonical object ID"),
+                    )?,
+                },
                 executable: false,
             },
             ("100755", "blob") => ProductPathState::RegularFile {
-                content: hash_tree_blob(repository_root, object_oid, limits, budget, blob_cache)?,
+                content_evidence: RegularFileContentEvidence::GitTree {
+                    canonical_git_blob: GitObjectIdentity::parse(object_oid.to_owned()).map_err(
+                        |_| git_object_unavailable("Git tree blob has a non-canonical object ID"),
+                    )?,
+                },
                 executable: true,
             },
             ("120000", "blob") => ProductPathState::SymbolicLink {
                 target: hash_tree_link_target(repository_root, object_oid, limits, budget)?,
             },
             ("160000", "commit") => ProductPathState::Gitlink {
-                commit_oid: canonical_git_object_id(object_oid).map_err(|_| {
+                commit_oid: GitObjectIdentity::parse(object_oid.to_owned()).map_err(|_| {
                     git_object_unavailable("Git tree returned a non-canonical Gitlink commit")
                 })?,
             },
@@ -178,9 +187,16 @@ fn observe_worktree_path(
     };
     let file_type = metadata.file_type();
     if file_type.is_file() {
-        let content = hash_regular_file(&absolute, metadata.len(), budget)?;
+        let content_evidence = hash_regular_file(
+            repository_root,
+            path,
+            &absolute,
+            metadata.len(),
+            limits,
+            budget,
+        )?;
         return Ok(ProductPathState::RegularFile {
-            content,
+            content_evidence,
             executable: executable_bit(&metadata),
         });
     }
@@ -209,36 +225,43 @@ fn observe_worktree_path(
 }
 
 fn hash_regular_file(
-    path: &Path,
+    repository_root: &Path,
+    relative_path: &ProductRelativePath,
+    absolute_path: &Path,
     expected_size: u64,
+    limits: &ObserverLimits,
     budget: &mut HashBudget<'_>,
-) -> Result<ContentIdentity, ObservationUnavailable> {
+) -> Result<RegularFileContentEvidence, ObservationUnavailable> {
     budget.ensure_file_size(expected_size)?;
-    let mut file =
-        File::open(path).map_err(|error| path_io_error("regular-file content", error))?;
-    let mut digest = Sha256::new();
-    let mut observed_size = 0_u64;
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|error| path_io_error("regular-file content", error))?;
-        if read == 0 {
-            break;
-        }
-        observed_size = observed_size
-            .checked_add(read as u64)
-            .ok_or_else(total_hash_limit)?;
-        if observed_size > budget.limits.max_file_bytes() {
-            return Err(ObservationUnavailable::new(
-                ObservationUnavailableReason::FileSizeLimitExceeded,
-                "a Product Repository file exceeds the configured per-file byte limit",
-            ));
-        }
-        budget.charge(read as u64)?;
-        digest.update(&buffer[..read]);
+    let file =
+        File::open(absolute_path).map_err(|error| path_io_error("regular-file content", error))?;
+    let mut arguments = git_arguments(&["hash-object"]);
+    arguments.push(OsString::from(format!("--path={}", relative_path.as_str())));
+    arguments.push(OsString::from("--stdin"));
+    let hashed = run_git_with_file_stdin(
+        repository_root,
+        &arguments,
+        file,
+        budget.remaining(),
+        limits,
+    )?;
+    budget.charge(hashed.source_bytes)?;
+    let output = require_git_success(hashed.output, "Git canonical-content observation")?;
+    let output = std::str::from_utf8(&output)
+        .map_err(|_| git_object_unavailable("Git canonical-content identity is not valid UTF-8"))?;
+    let object_oid = output.strip_suffix('\n').unwrap_or(output);
+    if object_oid.is_empty() || object_oid.contains(['\n', '\r']) {
+        return Err(git_object_unavailable(
+            "Git returned a malformed canonical-content identity",
+        ));
     }
-    Ok(ContentIdentity::from_digest(digest.finalize()))
+    let canonical_git_blob = GitObjectIdentity::parse(object_oid.to_owned()).map_err(|_| {
+        git_object_unavailable("Git returned a non-canonical canonical-content identity")
+    })?;
+    Ok(RegularFileContentEvidence::Worktree {
+        exact_worktree_bytes: hashed.exact_worktree_bytes,
+        canonical_git_blob,
+    })
 }
 
 fn observe_gitlink(
@@ -313,33 +336,9 @@ fn observe_gitlink(
     )?;
     let head = std::str::from_utf8(&head).map_err(|_| non_utf8_git_object())?;
     let head = head.strip_suffix('\n').unwrap_or(head);
-    let commit_oid = canonical_git_object_id(head)
+    let commit_oid = GitObjectIdentity::parse(head.to_owned())
         .map_err(|_| git_object_unavailable("Gitlink HEAD is not a canonical object ID"))?;
     Ok(ProductPathState::Gitlink { commit_oid })
-}
-
-fn hash_tree_blob(
-    repository_root: &Path,
-    object_oid: &str,
-    limits: &ObserverLimits,
-    budget: &mut HashBudget<'_>,
-    blob_cache: &mut BTreeMap<String, ContentIdentity>,
-) -> Result<ContentIdentity, ObservationUnavailable> {
-    if let Some(identity) = blob_cache.get(object_oid) {
-        return Ok(identity.clone());
-    }
-    canonical_git_object_id(object_oid)
-        .map_err(|_| git_object_unavailable("Git tree blob has a non-canonical object ID"))?;
-    let arguments = [
-        OsString::from("cat-file"),
-        OsString::from("blob"),
-        OsString::from(object_oid),
-    ];
-    let (identity, bytes) =
-        hash_git_stdout(repository_root, &arguments, budget.remaining(), limits)?;
-    budget.charge(bytes)?;
-    blob_cache.insert(object_oid.to_owned(), identity.clone());
-    Ok(identity)
 }
 
 fn hash_tree_link_target(
@@ -348,7 +347,7 @@ fn hash_tree_link_target(
     limits: &ObserverLimits,
     budget: &mut HashBudget<'_>,
 ) -> Result<ContentIdentity, ObservationUnavailable> {
-    canonical_git_object_id(object_oid)
+    GitObjectIdentity::parse(object_oid.to_owned())
         .map_err(|_| git_object_unavailable("Git link blob has a non-canonical object ID"))?;
     let output = require_git_success(
         run_git(

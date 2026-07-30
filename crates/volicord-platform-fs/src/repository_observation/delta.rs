@@ -59,14 +59,12 @@ pub(crate) fn calculate_delta(
         .cloned()
         .collect::<BTreeSet<_>>();
     let mut budget = HashBudget::new(observer.limits());
-    let mut blob_cache = BTreeMap::new();
     let before_tree_states = observe_tree_states(
         observer.repository_root(),
         before.coordinate.tree_oid(),
         &before_missing,
         observer.limits(),
         &mut budget,
-        &mut blob_cache,
     )?;
     let after_tree_states = observe_tree_states(
         observer.repository_root(),
@@ -74,14 +72,13 @@ pub(crate) fn calculate_delta(
         &after_missing,
         observer.limits(),
         &mut budget,
-        &mut blob_cache,
     )?;
 
     let mut transitions = Vec::new();
     for path in candidates {
         let before_state = snapshot_path_state(before, &before_tree_states, &path)?;
         let after_state = snapshot_path_state(after, &after_tree_states, &path)?;
-        if before_state != after_state {
+        if !before_state.semantically_eq(&after_state) {
             transitions.push(RepositoryPathTransition::new(
                 path,
                 before_state,

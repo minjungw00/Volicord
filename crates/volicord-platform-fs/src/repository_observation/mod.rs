@@ -10,8 +10,8 @@ mod tests;
 
 pub use bounded::ObserverLimits;
 pub use model::{
-    ContentIdentity, InvocationObservationPaths, ObservationUnavailable,
-    ObservationUnavailableReason, ProductPathState, RepositoryDelta,
+    ContentIdentity, GitObjectIdentity, InvocationObservationPaths, ObservationUnavailable,
+    ObservationUnavailableReason, ProductPathState, RegularFileContentEvidence, RepositoryDelta,
     RepositoryObservationCheckpoint, RepositoryObservationCoordinate,
     RepositoryObservationSnapshot, RepositoryPathTransition, SemanticObserverContractDigest,
 };

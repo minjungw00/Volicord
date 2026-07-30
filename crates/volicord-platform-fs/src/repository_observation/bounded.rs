@@ -1,6 +1,7 @@
 use std::{
     ffi::{OsStr, OsString},
-    io::{self, Read},
+    fs::File,
+    io::{self, Read, Write},
     path::Path,
     process::{Command, ExitStatus, Stdio},
     sync::{
@@ -12,10 +13,24 @@ use std::{
 };
 
 use sha2::{Digest, Sha256};
+use volicord_platform_process::ProcessContainment;
 
 use super::model::{ContentIdentity, ObservationUnavailable, ObservationUnavailableReason};
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+#[cfg(test)]
+thread_local! {
+    static TEST_GIT_GLOBAL_CONFIG: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_git_global_config(path: &Path) {
+    TEST_GIT_GLOBAL_CONFIG.with(|current| {
+        *current.borrow_mut() = Some(path.to_path_buf());
+    });
+}
 
 /// Explicit resource limits for one repository observer contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,7 +137,7 @@ impl ObserverLimits {
         self.max_total_hashed_bytes
     }
 
-    /// Maximum bytes hashed for one regular file, Git blob, or link target.
+    /// Maximum bytes hashed for one regular file or symbolic-link target.
     pub const fn max_file_bytes(&self) -> u64 {
         self.max_file_bytes
     }
@@ -173,6 +188,12 @@ pub(crate) struct GitOutput {
     pub(crate) stderr: Vec<u8>,
 }
 
+pub(crate) struct GitFileHashOutput {
+    pub(crate) output: GitOutput,
+    pub(crate) exact_worktree_bytes: ContentIdentity,
+    pub(crate) source_bytes: u64,
+}
+
 pub(crate) fn git_arguments(values: &[&str]) -> Vec<OsString> {
     values.iter().map(OsString::from).collect()
 }
@@ -189,19 +210,16 @@ pub(crate) fn run_git(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|error| {
-        ObservationUnavailable::new(
-            ObservationUnavailableReason::GitCommandUnavailable,
-            format!("Git could not be started: {error}"),
-        )
-    })?;
+    let (mut child, containment) = spawn_contained_git(command)?;
     let stdout = child.stdout.take().ok_or_else(|| {
+        terminate_and_reap(&containment, &mut child);
         ObservationUnavailable::new(
             ObservationUnavailableReason::GitCommandFailed,
             "Git stdout was not captured",
         )
     })?;
     let stderr = child.stderr.take().ok_or_else(|| {
+        terminate_and_reap(&containment, &mut child);
         ObservationUnavailable::new(
             ObservationUnavailableReason::GitCommandFailed,
             "Git stderr was not captured",
@@ -222,7 +240,12 @@ pub(crate) fn run_git(
         Arc::clone(&output_exceeded),
         limits.max_git_output_bytes,
     );
-    let status = wait_for_child(&mut child, limits.max_process_duration, &output_exceeded)?;
+    let status = wait_for_child(
+        &mut child,
+        &containment,
+        limits.max_process_duration,
+        &output_exceeded,
+    )?;
     let stdout = join_reader(stdout_reader)?;
     let stderr = join_reader(stderr_reader)?;
     if output_exceeded.load(Ordering::Acquire) {
@@ -252,32 +275,37 @@ pub(crate) fn require_git_success(
     ))
 }
 
-pub(crate) fn hash_git_stdout(
+pub(crate) fn run_git_with_file_stdin(
     repository_root: &Path,
     arguments: &[OsString],
+    file: File,
     remaining_total_hash_bytes: u64,
     limits: &ObserverLimits,
-) -> Result<(ContentIdentity, u64), ObservationUnavailable> {
+) -> Result<GitFileHashOutput, ObservationUnavailable> {
     ensure_process_input(arguments, limits)?;
     let mut command = git_command(repository_root);
     command
         .args(arguments)
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|error| {
+    let (mut child, containment) = spawn_contained_git(command)?;
+    let stdin = child.stdin.take().ok_or_else(|| {
+        terminate_and_reap(&containment, &mut child);
         ObservationUnavailable::new(
-            ObservationUnavailableReason::GitCommandUnavailable,
-            format!("Git could not be started: {error}"),
+            ObservationUnavailableReason::GitCommandFailed,
+            "Git stdin was not captured",
         )
     })?;
     let stdout = child.stdout.take().ok_or_else(|| {
+        terminate_and_reap(&containment, &mut child);
         ObservationUnavailable::new(
             ObservationUnavailableReason::GitCommandFailed,
             "Git stdout was not captured",
         )
     })?;
     let stderr = child.stderr.take().ok_or_else(|| {
+        terminate_and_reap(&containment, &mut child);
         ObservationUnavailable::new(
             ObservationUnavailableReason::GitCommandFailed,
             "Git stderr was not captured",
@@ -287,73 +315,95 @@ pub(crate) fn hash_git_stdout(
     let observed_bytes = Arc::new(AtomicUsize::new(0));
     let stop_requested = Arc::new(AtomicBool::new(false));
     let limit_reason = Arc::new(AtomicU8::new(0));
-    let stdout_reader = spawn_hash_reader(
-        stdout,
-        Arc::clone(&observed_bytes),
+    let stdin_writer = spawn_file_writer(
+        file,
+        stdin,
         Arc::clone(&stop_requested),
         Arc::clone(&limit_reason),
         remaining_total_hash_bytes,
-        limits,
+        limits.max_file_bytes,
     );
-    let stderr_reader = spawn_bounded_reader(
-        stderr,
-        observed_bytes,
+    let stdout_reader = spawn_bounded_reader(
+        stdout,
+        Arc::clone(&observed_bytes),
         Arc::clone(&stop_requested),
         limits.max_git_output_bytes,
     );
-    let status = wait_for_child(&mut child, limits.max_process_duration, &stop_requested)?;
-    let hashed = stdout_reader
-        .join()
-        .map_err(|_| {
-            ObservationUnavailable::new(
-                ObservationUnavailableReason::GitCommandFailed,
-                "the Git blob reader terminated unexpectedly",
-            )
-        })?
-        .map_err(|error| {
-            ObservationUnavailable::new(
-                ObservationUnavailableReason::GitCommandFailed,
-                format!("Git blob output could not be read: {error}"),
-            )
-        })?;
+    let stderr_reader = spawn_bounded_reader(
+        stderr,
+        Arc::clone(&observed_bytes),
+        Arc::clone(&stop_requested),
+        limits.max_git_output_bytes,
+    );
+    let status_result = wait_for_child(
+        &mut child,
+        &containment,
+        limits.max_process_duration,
+        &stop_requested,
+    );
+    let streamed = stdin_writer.join().map_err(|_| {
+        ObservationUnavailable::new(
+            ObservationUnavailableReason::GitCommandFailed,
+            "the Git input writer terminated unexpectedly",
+        )
+    })?;
+    let stdout = join_reader(stdout_reader)?;
     let stderr = join_reader(stderr_reader)?;
+    let status = status_result?;
     match limit_reason.load(Ordering::Acquire) {
         1 => {
             return Err(ObservationUnavailable::new(
-                ObservationUnavailableReason::GitOutputLimitExceeded,
-                "Git blob output exceeded its configured byte limit",
+                ObservationUnavailableReason::FileSizeLimitExceeded,
+                "a Product Repository file exceeds the configured per-file byte limit",
             ));
         }
         2 => {
             return Err(ObservationUnavailable::new(
-                ObservationUnavailableReason::FileSizeLimitExceeded,
-                "a Git blob exceeds the configured per-file byte limit",
-            ));
-        }
-        3 => {
-            return Err(ObservationUnavailable::new(
                 ObservationUnavailableReason::TotalHashBytesLimitExceeded,
-                "Git blob hashing exceeds the configured aggregate byte limit",
+                "repository hashing exceeds the configured aggregate byte limit",
             ));
         }
         _ => {}
     }
-    if stop_requested.load(Ordering::Acquire) {
+    if observed_bytes.load(Ordering::Acquire) > limits.max_git_output_bytes {
         return Err(ObservationUnavailable::new(
             ObservationUnavailableReason::GitOutputLimitExceeded,
-            "Git stderr exceeded its configured byte limit",
+            "Git output exceeded its configured byte limit",
         ));
     }
+    let (exact_worktree_bytes, source_bytes) = match streamed {
+        Ok(value) => value,
+        Err(FileStreamError::Read(error)) => {
+            return Err(ObservationUnavailable::new(
+                ObservationUnavailableReason::InaccessiblePath,
+                format!("Product Repository regular-file content observation failed: {error}"),
+            ));
+        }
+        Err(FileStreamError::Write(error)) => {
+            return Err(ObservationUnavailable::new(
+                ObservationUnavailableReason::GitCommandFailed,
+                format!("Git canonical-content input failed: {error}"),
+            ));
+        }
+    };
     if !status.success() {
         return Err(ObservationUnavailable::new(
-            ObservationUnavailableReason::GitObjectUnavailable,
+            ObservationUnavailableReason::GitCommandFailed,
             format!(
-                "Git blob content could not be read: {}",
+                "Git canonical-content conversion failed: {}",
                 String::from_utf8_lossy(&stderr).trim()
             ),
         ));
     }
-    Ok(hashed)
+    Ok(GitFileHashOutput {
+        output: GitOutput {
+            status,
+            stdout,
+            stderr,
+        },
+        exact_worktree_bytes,
+        source_bytes,
+    })
 }
 
 pub(crate) fn git_command(repository_root: &Path) -> Command {
@@ -376,6 +426,14 @@ pub(crate) fn git_command(repository_root: &Path) -> Command {
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("LC_ALL", "C");
+    #[cfg(test)]
+    TEST_GIT_GLOBAL_CONFIG.with(|path| {
+        if let Some(path) = path.borrow().as_ref() {
+            command
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", path);
+        }
+    });
     command
 }
 
@@ -400,21 +458,28 @@ pub(crate) fn ensure_process_input(
 
 fn wait_for_child(
     child: &mut std::process::Child,
+    containment: &ProcessContainment,
     duration: Duration,
     stop_requested: &AtomicBool,
 ) -> Result<ExitStatus, ObservationUnavailable> {
     let deadline = Instant::now() + duration;
     loop {
-        if let Some(status) = child.try_wait().map_err(git_wait_error)? {
-            return Ok(status);
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                containment.terminate_tree().map_err(containment_error)?;
+                return Ok(status);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                terminate_and_reap(containment, child);
+                return Err(git_wait_error(error));
+            }
         }
         if stop_requested.load(Ordering::Acquire) {
-            terminate_child(child);
-            return child.wait().map_err(git_wait_error);
+            return terminate_tree_and_reap(containment, child);
         }
         if Instant::now() >= deadline {
-            terminate_child(child);
-            let _ = child.wait();
+            terminate_tree_and_reap(containment, child)?;
             return Err(ObservationUnavailable::new(
                 ObservationUnavailableReason::ProcessTimeout,
                 "Git exceeded its configured process duration",
@@ -422,6 +487,19 @@ fn wait_for_child(
         }
         thread::sleep(PROCESS_POLL_INTERVAL);
     }
+}
+
+fn terminate_tree_and_reap(
+    containment: &ProcessContainment,
+    child: &mut std::process::Child,
+) -> Result<ExitStatus, ObservationUnavailable> {
+    let containment_result = containment.terminate_tree();
+    if containment_result.is_err() {
+        let _ = child.kill();
+    }
+    let status = child.wait().map_err(git_wait_error)?;
+    containment_result.map_err(containment_error)?;
+    Ok(status)
 }
 
 fn spawn_bounded_reader(
@@ -448,48 +526,54 @@ fn spawn_bounded_reader(
     })
 }
 
-fn spawn_hash_reader(
-    mut reader: impl Read + Send + 'static,
-    observed_bytes: Arc<AtomicUsize>,
+fn spawn_file_writer(
+    mut file: File,
+    mut stdin: std::process::ChildStdin,
     stop_requested: Arc<AtomicBool>,
     limit_reason: Arc<AtomicU8>,
     remaining_total_hash_bytes: u64,
-    limits: &ObserverLimits,
-) -> thread::JoinHandle<io::Result<(ContentIdentity, u64)>> {
-    let max_git_output_bytes = limits.max_git_output_bytes;
-    let max_file_bytes = limits.max_file_bytes;
+    max_file_bytes: u64,
+) -> thread::JoinHandle<Result<(ContentIdentity, u64), FileStreamError>> {
     thread::spawn(move || {
         let mut digest = Sha256::new();
         let mut hashed_bytes = 0_u64;
         let mut buffer = [0_u8; 64 * 1024];
         loop {
-            let read = reader.read(&mut buffer)?;
+            let read = file.read(&mut buffer).map_err(FileStreamError::Read)?;
             if read == 0 {
                 return Ok((
                     ContentIdentity::from_digest(digest.finalize()),
                     hashed_bytes,
                 ));
             }
-            let previous_output = observed_bytes.fetch_add(read, Ordering::AcqRel);
-            if previous_output.saturating_add(read) > max_git_output_bytes {
-                set_limit_reason(&limit_reason, 1);
-                stop_requested.store(true, Ordering::Release);
-                continue;
-            }
             hashed_bytes = hashed_bytes.saturating_add(read as u64);
             if hashed_bytes > max_file_bytes {
-                set_limit_reason(&limit_reason, 2);
+                set_limit_reason(&limit_reason, 1);
                 stop_requested.store(true, Ordering::Release);
-                continue;
+                return Ok((
+                    ContentIdentity::from_digest(digest.finalize()),
+                    hashed_bytes,
+                ));
             }
             if hashed_bytes > remaining_total_hash_bytes {
-                set_limit_reason(&limit_reason, 3);
+                set_limit_reason(&limit_reason, 2);
                 stop_requested.store(true, Ordering::Release);
-                continue;
+                return Ok((
+                    ContentIdentity::from_digest(digest.finalize()),
+                    hashed_bytes,
+                ));
             }
             digest.update(&buffer[..read]);
+            stdin
+                .write_all(&buffer[..read])
+                .map_err(FileStreamError::Write)?;
         }
     })
+}
+
+enum FileStreamError {
+    Read(io::Error),
+    Write(io::Error),
 }
 
 fn set_limit_reason(reason: &AtomicU8, value: u8) {
@@ -515,8 +599,38 @@ fn join_reader(
         })
 }
 
-fn terminate_child(child: &mut std::process::Child) {
+fn spawn_contained_git(
+    mut command: Command,
+) -> Result<(std::process::Child, ProcessContainment), ObservationUnavailable> {
+    let mut containment = ProcessContainment::new().map_err(containment_error)?;
+    containment.configure_command(&mut command);
+    let mut child = command.spawn().map_err(|error| {
+        ObservationUnavailable::new(
+            ObservationUnavailableReason::GitCommandUnavailable,
+            format!("Git could not be started: {error}"),
+        )
+    })?;
+    if let Err(error) = containment.attach(&child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(containment_error(error));
+    }
+    Ok((child, containment))
+}
+
+fn terminate_and_reap(containment: &ProcessContainment, child: &mut std::process::Child) {
+    let _ = containment.terminate_tree();
     let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn containment_error(
+    error: volicord_platform_process::PlatformProcessError,
+) -> ObservationUnavailable {
+    ObservationUnavailable::new(
+        ObservationUnavailableReason::GitCommandFailed,
+        format!("Git process containment failed: {error}"),
+    )
 }
 
 fn git_wait_error(error: io::Error) -> ObservationUnavailable {

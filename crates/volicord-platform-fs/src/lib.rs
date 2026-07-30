@@ -32,9 +32,9 @@ pub use mutation_lease::{
 };
 pub use product_path::{ObservedProductPath, ObservedProductPathState, ObservedProductRepository};
 pub use repository_observation::{
-    ContentIdentity, InvocationObservationPaths, ObservationUnavailable,
-    ObservationUnavailableReason, ObserverLimits, ProductPathState, RepositoryDelta,
-    RepositoryObservationCheckpoint, RepositoryObservationCoordinate,
+    ContentIdentity, GitObjectIdentity, InvocationObservationPaths, ObservationUnavailable,
+    ObservationUnavailableReason, ObserverLimits, ProductPathState, RegularFileContentEvidence,
+    RepositoryDelta, RepositoryObservationCheckpoint, RepositoryObservationCoordinate,
     RepositoryObservationSnapshot, RepositoryObserver, RepositoryPathTransition,
     SemanticObserverContractDigest,
 };

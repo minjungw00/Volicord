@@ -39,6 +39,34 @@ tool-use ID, 도구 이름, Connection, 프로젝트, Guard 이벤트는 해당 
 - **관찰 불가**는 완전한 저장소 delta가 있다고 주장하지 않는 닫힌 관찰
   결과입니다.
 
+## 일반 파일 콘텐츠 증거
+
+Worktree에서 직접 관찰한 일반 파일은 두 콘텐츠 영역의 타입이 지정된 증거를 모두
+보관합니다.
+
+- 파일에서 읽은 정확한 worktree 바이트의 SHA-256 식별값
+- 같은 바이트 스트림과 정규 Product Repository 상대 경로를 사용해 Git의 현재
+  경로별 clean 변환으로 얻은 정규 Git blob 식별값
+
+이 변환은 읽기 전용입니다. Git 객체를 쓰지 않고 저장소, 경로, attribute,
+configuration, encoding, clean filter 맥락을 사용합니다. 정확한 바이트 해시와 Git
+변환은 파일 스트림 하나를 함께 사용합니다. 변경 불가능한 tree에서 얻은 일반 파일은
+정규 Git blob 식별값만 가지며 worktree 바이트 식별값을 만들지 않습니다. 일반 파일
+상태는 실행 비트도 보관합니다.
+
+일반 파일 비교는 중앙화된 규칙 하나를 사용합니다.
+
+- 일반 파일과 일반 파일이 아닌 상태는 서로 다릅니다.
+- 실행 비트가 다르면 서로 다릅니다.
+- Worktree에서 직접 관찰한 상태끼리는 정확한 worktree 바이트 식별값을 비교합니다.
+- Tree에서 얻은 상태가 하나라도 있으면 정규 Git blob 식별값을 비교합니다.
+- Tree에서 얻은 일반 파일 상태끼리는 정규 Git blob 식별값을 비교합니다.
+
+Symbolic link는 타입이 지정된 정확한 대상 식별값을, Gitlink는 정규화된 checkout
+commit 식별값을 보관합니다. Git 변환 실패, filter 실패, 시간 초과, 잘못된 출력,
+프로세스 격리 실패, 자원 한도 소진은 성공한 일부 snapshot이나 빈 snapshot이 아니라
+관찰 불가 결과가 됩니다.
+
 ## 관찰 상태
 
 ```schema
@@ -66,7 +94,8 @@ Repository를 다시 scan하지 않고 저장된 terminal 결과를 반환합니
 
 스냅샷, 결과, delta, 제한된 metadata decoder는 알 수 없는 필드, 잘못된 Product
 Repository 경로, 유효하지 않은 상태 조합, 비정규 encoding, 중복되거나 정렬되지
-않은 transition, digest 불일치를 저장 데이터 손상으로 거부합니다.
+않은 transition, 의미상 비어 있는 transition, digest 불일치를 저장 데이터 손상으로
+거부합니다.
 
 ## Pre-tool aggregate
 

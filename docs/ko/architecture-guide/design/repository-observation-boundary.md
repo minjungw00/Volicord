@@ -8,11 +8,15 @@
 ## 설계
 
 `volicord-platform-fs`는 한도 안에서 안정적인 스냅샷을 capture하고 content와 mode를
-반영한 순 경로 전이를 계산합니다. Guard adapter는 정확한 typed Codex hook
-상관관계 하나를 decode하고 호출 대상이나 검토된 hint를 제공합니다. 정확한
-`PreToolUse` 스냅샷은 저장소 기준선이고 일치하는 `PostToolUse` 스냅샷은 저장소
-결과입니다. Store는 정확한 호스트 도구 호출마다 aggregate row 하나를 소유하고
-pre-tool 및 post-tool 변경을 원자적으로 적용합니다.
+반영한 순 경로 전이를 계산합니다. Worktree에서 직접 관찰한 일반 파일은 한도가 있는
+바이트 스트림 하나로 정확한 worktree 바이트 식별값을 만들고, 같은 스트림을 Git의
+현재 경로별 clean 변환에 전달해 정규 blob 식별값을 얻습니다. 변경 불가능한 tree의
+일반 파일은 정규 Git blob 식별값만 가집니다. 직접 관찰한 상태끼리는 정확한 worktree
+바이트를 비교하고 tree에서 얻은 상태가 하나라도 있으면 정규 Git 콘텐츠를
+비교합니다. Guard adapter는 정확한 typed Codex hook 상관관계 하나를 decode하고 호출
+대상이나 검토된 hint를 제공합니다. 정확한 `PreToolUse` 스냅샷은 저장소 기준선이고
+일치하는 `PostToolUse` 스냅샷은 저장소 결과입니다. Store는 정확한 호스트 도구 호출마다
+aggregate row 하나를 소유하고 pre-tool 및 post-tool 변경을 원자적으로 적용합니다.
 
 Core는 Store가 검증한 실제 미기록 변경만 사용합니다. 운영상 관찰 불가 진단은
 조정 및 닫기 준비 상태와 분리합니다.
@@ -24,6 +28,12 @@ Core는 Store가 검증한 실제 미기록 변경만 사용합니다. 운영상
 - 완전한 관찰 하나는 정확히 일치하는 pre/post hook 쌍 하나를 사용합니다.
 - Aggregate 상태는 정확히 `open`, `complete`, `unavailable` 중 하나입니다.
 - 결정적인 delta는 호환되는 안정적 스냅샷에서만 계산합니다.
+- 직접 관찰한 모든 일반 파일에는 정확한 worktree 바이트 식별값과 정규 Git blob
+  식별값이 있습니다.
+- Tree에서 얻은 모든 일반 파일에는 worktree 바이트 증거 없이 정규 Git blob 식별값이
+  있습니다.
+- 일반 파일 비교는 타입이 지정된 두 증거 출처에 따라 정확한 바이트 영역 또는 정규
+  Git 영역을 선택하며 실행 모드도 반영합니다.
 - 예상 쓰기는 정확히 자기 관찰과 완전한 delta에만 일치합니다.
 - 미기록 변경은 비어 있지 않은 관찰된 불일치 delta만 담습니다.
 - Replay는 저장된 terminal 결과를 사용하고 저장소를 다시 scan하지 않습니다.
@@ -32,20 +42,24 @@ Core는 Store가 검증한 실제 미기록 변경만 사용합니다. 운영상
 ## 책임 경계
 
 `volicord-host-contract`는 typed hook 상관관계와 정규 Product Repository 효과
-catalog를 담당합니다. `volicord-platform-fs`는 스냅샷 및 delta 관찰을 담당합니다.
-CLI Guard 모듈은 호스트 adaptation과 policy projection을 담당합니다.
+catalog를 담당합니다. `volicord-platform-fs`는 스냅샷 및 delta 관찰, 경로별 Git
+변환 정책, 한도가 있는 파일 스트리밍을 담당합니다. `volicord-platform-process`는
+Git 변환의 자식 프로세스 격리를 제공합니다. CLI Guard 모듈은 호스트
+adaptation과 policy projection을 담당합니다.
 `volicord-store`는 엄격한 aggregate 영속화, digest 검증, 원자적 pre/post 변경,
 정확한 예상 쓰기 일치, 미기록 변경 구체화를 담당합니다. Core는 검증된 미기록
 변경 사실의 조정 및 닫기 준비 상태 해석을 담당합니다.
 
 ## 실행 흐름
 
-1. Pre-tool adaptation이 정확한 hook 호출을 decode하고 안정적인 baseline을
-   capture합니다.
+1. Pre-tool adaptation이 정확한 hook 호출을 decode하고 직접 관찰한 worktree 일반
+   파일의 두 콘텐츠 식별값을 포함하는 안정적인 baseline을 capture합니다.
 2. Store가 pre-tool 이벤트, 호출 관찰, 정확한 예상 쓰기를 원자적으로 기록합니다.
-3. Post-tool adaptation이 같은 호출의 안정적인 결과를 capture합니다.
-4. Store가 open 관찰을 원자적으로 검증하고 post-tool 이벤트와 delta를 기록하며
-   예상 쓰기를 대조하고 불일치 미기록 변경을 만듭니다.
+3. Post-tool adaptation이 타입이 지정된 같은 콘텐츠 증거 계약으로 동일한 호출의
+   안정적인 결과를 capture합니다.
+4. Store가 open 관찰을 원자적으로 검증하고 post-tool 이벤트를 기록하며 의미상 비어
+   있는 저장 transition을 거부한 뒤 delta를 저장하고 예상 쓰기를 대조하고 불일치
+   미기록 변경을 만듭니다.
 5. Core가 조정과 닫기 준비 상태를 위해 검증된 미해결 변경을 읽습니다.
 6. 정확한 replay가 저장된 terminal 관찰 결과를 반환합니다.
 
@@ -54,7 +68,9 @@ CLI Guard 모듈은 호스트 adaptation과 policy projection을 담당합니다
 Write-capable 및 unknown-effect 호출은 baseline을 capture하거나 원자적으로 영속할 수
 없으면 거부합니다. No-product-write 호출은 명시적인 관찰 불가 상태와 함께 계속할
 수 있습니다. Baseline이 없거나 충돌하거나 손상됐거나 관찰 불가이면 빈 delta나
-미기록 변경으로 바꾸지 않습니다. Transaction 실패는 aggregate 전체를 rollback합니다.
+미기록 변경으로 바꾸지 않습니다. Git 변환, filter, 프로세스, 프로세스 격리, 잘못된
+출력, 자원 한도 실패는 관찰 불가 결과를 만듭니다. Transaction 실패는 aggregate
+전체를 rollback합니다.
 
 ## 범위 제외
 

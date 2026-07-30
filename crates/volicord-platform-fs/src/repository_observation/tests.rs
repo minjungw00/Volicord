@@ -1,16 +1,21 @@
 use std::{
+    env,
     error::Error,
     fs,
     path::{Path, PathBuf},
-    process::Command,
+    thread,
+    time::Duration,
 };
 
+use serde_json::json;
 use tempfile::TempDir;
 use volicord_types::product_path::ProductRelativePath;
 
 use super::{
-    InvocationObservationPaths, ObservationUnavailableReason, ObserverLimits, ProductPathState,
-    RepositoryObservationCheckpoint, RepositoryObserver,
+    bounded::{git_command, set_test_git_global_config},
+    ContentIdentity, GitObjectIdentity, InvocationObservationPaths, ObservationUnavailableReason,
+    ObserverLimits, ProductPathState, RegularFileContentEvidence, RepositoryDelta,
+    RepositoryObservationCheckpoint, RepositoryObserver, RepositoryPathTransition,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -25,6 +30,9 @@ impl GitFixture {
         let directory = tempfile::tempdir()?;
         let root = directory.path().join("repository");
         fs::create_dir(&root)?;
+        let global_config = directory.path().join("isolated-global.gitconfig");
+        fs::write(&global_config, b"")?;
+        set_test_git_global_config(&global_config);
         run_git(&root, &["init", "-q"])?;
         run_git(&root, &["symbolic-ref", "HEAD", "refs/heads/main"])?;
         run_git(&root, &["config", "user.name", "Volicord Observer Test"])?;
@@ -64,8 +72,17 @@ impl GitFixture {
         run_git(&self.root, arguments)
     }
 
+    fn git_stdout(&self, arguments: &[&str]) -> Result<String, Box<dyn Error>> {
+        let output = run_git_output(&self.root, arguments)?;
+        Ok(String::from_utf8(output)?.trim().to_owned())
+    }
+
     fn commit_all(&self, message: &str) -> Result<(), Box<dyn Error>> {
         self.git(&["add", "-A"])?;
+        self.commit_staged(message)
+    }
+
+    fn commit_staged(&self, message: &str) -> Result<(), Box<dyn Error>> {
         self.git(&[
             "-c",
             "commit.gpgsign=false",
@@ -310,6 +327,352 @@ fn staging_or_committing_existing_worktree_bytes_produces_no_delta() -> TestResu
     let committed = observer.snapshot(&InvocationObservationPaths::default())?;
     assert!(observer.delta(&before, &committed)?.is_empty());
     Ok(())
+}
+
+#[test]
+fn crlf_attribute_staging_and_commit_compare_in_the_canonical_git_domain() -> TestResult {
+    let fixture = GitFixture::new()?;
+    fixture.write(".gitattributes", b"tracked.txt text eol=crlf\n")?;
+    fixture.write("tracked.txt", b"base\r\n")?;
+    fixture.commit_all("crlf base")?;
+    fixture.write("tracked.txt", b"pre-existing\r\nworktree bytes\r\n")?;
+    let observer = fixture.observer()?;
+    let before = observer.snapshot(&InvocationObservationPaths::default())?;
+    let unchanged_bytes = fs::read(fixture.root.join("tracked.txt"))?;
+
+    fixture.git(&["add", "tracked.txt"])?;
+    let staged = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(fs::read(fixture.root.join("tracked.txt"))?, unchanged_bytes);
+    assert!(observer.delta(&before, &staged)?.is_empty());
+
+    fixture.commit_staged("stage unchanged CRLF bytes")?;
+    let committed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(fs::read(fixture.root.join("tracked.txt"))?, unchanged_bytes);
+    assert!(observer.delta(&before, &committed)?.is_empty());
+
+    fixture.write("tracked.txt", b"actual\r\ncontent change\r\n")?;
+    let changed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(
+        transition_paths(&observer.delta(&committed, &changed)?),
+        ["tracked.txt"]
+    );
+    Ok(())
+}
+
+#[test]
+fn core_autocrlf_staging_and_commit_preserve_unchanged_worktree_bytes() -> TestResult {
+    let fixture = GitFixture::new()?;
+    fixture.git(&["config", "core.autocrlf", "true"])?;
+    fixture.write(".gitattributes", b"tracked.txt text\n")?;
+    fixture.write("tracked.txt", b"base\r\n")?;
+    fixture.commit_all("autocrlf base")?;
+    fixture.write("tracked.txt", b"pre-existing\r\nautocrlf bytes\r\n")?;
+    let observer = fixture.observer()?;
+    let before = observer.snapshot(&InvocationObservationPaths::default())?;
+    let unchanged_bytes = fs::read(fixture.root.join("tracked.txt"))?;
+
+    fixture.git(&["add", "tracked.txt"])?;
+    let staged = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert!(observer.delta(&before, &staged)?.is_empty());
+    fixture.commit_staged("stage unchanged autocrlf bytes")?;
+    let committed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(fs::read(fixture.root.join("tracked.txt"))?, unchanged_bytes);
+    assert!(observer.delta(&before, &committed)?.is_empty());
+
+    fixture.write("tracked.txt", b"actual\r\nautocrlf change\r\n")?;
+    let changed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(
+        transition_paths(&observer.delta(&committed, &changed)?),
+        ["tracked.txt"]
+    );
+    Ok(())
+}
+
+#[test]
+fn working_tree_encoding_uses_git_conversion_for_cross_source_comparison() -> TestResult {
+    let fixture = GitFixture::new()?;
+    fixture.write(
+        ".gitattributes",
+        b"tracked.txt text working-tree-encoding=UTF-16LE\n",
+    )?;
+    fixture.write("tracked.txt", &utf16le("base\n"))?;
+    fixture.commit_all("encoded base")?;
+    fixture.write("tracked.txt", &utf16le("pre-existing encoded bytes\n"))?;
+    let observer = fixture.observer()?;
+    let before = observer.snapshot(&InvocationObservationPaths::default())?;
+    let unchanged_bytes = fs::read(fixture.root.join("tracked.txt"))?;
+
+    fixture.git(&["add", "tracked.txt"])?;
+    let staged = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert!(observer.delta(&before, &staged)?.is_empty());
+    fixture.commit_staged("stage unchanged encoded bytes")?;
+    let committed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(fs::read(fixture.root.join("tracked.txt"))?, unchanged_bytes);
+    assert!(observer.delta(&before, &committed)?.is_empty());
+
+    fixture.write("tracked.txt", &utf16le("actual encoded change\n"))?;
+    let changed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(
+        transition_paths(&observer.delta(&committed, &changed)?),
+        ["tracked.txt"]
+    );
+    Ok(())
+}
+
+#[test]
+fn clean_filter_preserves_source_domains_and_matches_the_committed_blob() -> TestResult {
+    let fixture = GitFixture::new()?;
+    fixture.write(".gitattributes", b"tracked.txt filter=volicord-normalize\n")?;
+    fixture.git(&[
+        "config",
+        "filter.volicord-normalize.clean",
+        "git stripspace",
+    ])?;
+    fixture.git(&[
+        "config",
+        "filter.volicord-normalize.smudge",
+        "git stripspace",
+    ])?;
+    fixture.git(&["config", "filter.volicord-normalize.required", "true"])?;
+    fixture.write("tracked.txt", b"base\n")?;
+    fixture.commit_all("filtered base")?;
+    fixture.write("tracked.txt", b"alpha\n\n")?;
+    let observer = fixture.observer()?;
+    let before = observer.snapshot(&InvocationObservationPaths::default())?;
+    let before_evidence = regular_file_evidence(&before, "tracked.txt")?.clone();
+    let unchanged_bytes = fs::read(fixture.root.join("tracked.txt"))?;
+
+    fixture.git(&["add", "tracked.txt"])?;
+    let staged = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert!(observer.delta(&before, &staged)?.is_empty());
+    fixture.commit_staged("stage unchanged filtered bytes")?;
+    let committed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(fs::read(fixture.root.join("tracked.txt"))?, unchanged_bytes);
+    assert!(observer.delta(&before, &committed)?.is_empty());
+    assert_eq!(
+        before_evidence.canonical_git_blob().as_str(),
+        fixture.git_stdout(&["rev-parse", "HEAD:tracked.txt"])?
+    );
+
+    let direct_paths =
+        InvocationObservationPaths::new(vec![product_path("tracked.txt")?], Vec::new());
+    let direct_before = observer.snapshot(&direct_paths)?;
+    fixture.write("tracked.txt", b"alpha\n")?;
+    let direct_after = observer.snapshot(&direct_paths)?;
+    let before_direct_evidence = regular_file_evidence(&direct_before, "tracked.txt")?;
+    let after_direct_evidence = regular_file_evidence(&direct_after, "tracked.txt")?;
+    assert_eq!(
+        before_direct_evidence.canonical_git_blob(),
+        after_direct_evidence.canonical_git_blob()
+    );
+    assert_ne!(
+        before_direct_evidence.exact_worktree_bytes(),
+        after_direct_evidence.exact_worktree_bytes()
+    );
+    assert_eq!(
+        transition_paths(&observer.delta(&direct_before, &direct_after)?),
+        ["tracked.txt"]
+    );
+
+    let identical = observer.snapshot(&direct_paths)?;
+    assert!(observer.delta(&direct_after, &identical)?.is_empty());
+    fixture.write("tracked.txt", b"beta\n\n")?;
+    let changed = observer.snapshot(&InvocationObservationPaths::default())?;
+    assert_eq!(
+        transition_paths(&observer.delta(&committed, &changed)?),
+        ["tracked.txt"]
+    );
+    Ok(())
+}
+
+#[test]
+fn regular_file_comparison_is_symmetric_across_worktree_and_tree_sources() -> TestResult {
+    let canonical = GitObjectIdentity::parse("a".repeat(40))?;
+    let different = GitObjectIdentity::parse("b".repeat(40))?;
+    let worktree = ProductPathState::RegularFile {
+        content_evidence: RegularFileContentEvidence::Worktree {
+            exact_worktree_bytes: ContentIdentity::for_bytes(b"worktree"),
+            canonical_git_blob: canonical.clone(),
+        },
+        executable: false,
+    };
+    let tree = ProductPathState::RegularFile {
+        content_evidence: RegularFileContentEvidence::GitTree {
+            canonical_git_blob: canonical,
+        },
+        executable: false,
+    };
+    let changed_tree = ProductPathState::RegularFile {
+        content_evidence: RegularFileContentEvidence::GitTree {
+            canonical_git_blob: different,
+        },
+        executable: false,
+    };
+
+    assert!(worktree.semantically_eq(&tree));
+    assert!(tree.semantically_eq(&worktree));
+    assert!(!worktree.semantically_eq(&changed_tree));
+    assert!(!changed_tree.semantically_eq(&worktree));
+    Ok(())
+}
+
+#[test]
+fn strict_regular_file_evidence_and_semantic_delta_validation_reject_corruption() -> TestResult {
+    let exact = ContentIdentity::for_bytes(b"same");
+    let canonical = "a".repeat(40);
+    let valid_worktree = json!({
+        "kind": "regular_file",
+        "content_evidence": {
+            "source": "worktree",
+            "exact_worktree_bytes": exact.as_str(),
+            "canonical_git_blob": canonical,
+        },
+        "executable": false,
+    });
+    let missing_canonical = json!({
+        "kind": "regular_file",
+        "content_evidence": {
+            "source": "worktree",
+            "exact_worktree_bytes": exact.as_str(),
+        },
+        "executable": false,
+    });
+    let missing_exact_worktree_bytes = json!({
+        "kind": "regular_file",
+        "content_evidence": {
+            "source": "worktree",
+            "canonical_git_blob": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+        "executable": false,
+    });
+    let fabricated_tree_worktree_evidence = json!({
+        "kind": "regular_file",
+        "content_evidence": {
+            "source": "git_tree",
+            "exact_worktree_bytes": exact.as_str(),
+            "canonical_git_blob": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+        "executable": false,
+    });
+    let malformed_object_id = json!({
+        "kind": "regular_file",
+        "content_evidence": {
+            "source": "git_tree",
+            "canonical_git_blob": "not-an-object-id",
+        },
+        "executable": false,
+    });
+    let noncanonical_object_id = json!({
+        "kind": "regular_file",
+        "content_evidence": {
+            "source": "git_tree",
+            "canonical_git_blob": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        },
+        "executable": false,
+    });
+    let former_regular_file_shape = json!({
+        "kind": "regular_file",
+        "content": exact.as_str(),
+        "executable": false,
+    });
+
+    assert!(serde_json::from_value::<ProductPathState>(valid_worktree.clone()).is_ok());
+    assert!(serde_json::from_value::<ProductPathState>(missing_canonical).is_err());
+    assert!(serde_json::from_value::<ProductPathState>(missing_exact_worktree_bytes).is_err());
+    assert!(serde_json::from_value::<ProductPathState>(fabricated_tree_worktree_evidence).is_err());
+    assert!(serde_json::from_value::<ProductPathState>(malformed_object_id).is_err());
+    assert!(serde_json::from_value::<ProductPathState>(noncanonical_object_id).is_err());
+    assert!(serde_json::from_value::<ProductPathState>(former_regular_file_shape).is_err());
+    assert!(serde_json::from_value::<ProductPathState>(json!({
+        "kind": "regular_file",
+        "content_evidence": {
+            "source": "git_tree",
+            "canonical_git_blob": "b".repeat(64),
+        },
+        "executable": false,
+    }))
+    .is_ok());
+
+    let semantic_no_op_transition = json!({
+        "path": "tracked.txt",
+        "before": valid_worktree,
+        "after": {
+            "kind": "regular_file",
+            "content_evidence": {
+                "source": "git_tree",
+                "canonical_git_blob": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            },
+            "executable": false,
+        },
+    });
+    assert!(
+        serde_json::from_value::<RepositoryPathTransition>(semantic_no_op_transition.clone())
+            .is_err()
+    );
+    let semantic_no_op = json!({
+        "transitions": [semantic_no_op_transition],
+    });
+    assert!(serde_json::from_value::<RepositoryDelta>(semantic_no_op).is_err());
+    Ok(())
+}
+
+#[test]
+fn required_clean_filter_failure_is_an_unavailable_observation() -> TestResult {
+    let fixture = GitFixture::new()?;
+    fixture.write(".gitattributes", b"tracked.txt filter=volicord-failing\n")?;
+    fixture.git(&[
+        "config",
+        "filter.volicord-failing.clean",
+        "git cat-file -e 0000000000000000000000000000000000000000",
+    ])?;
+    fixture.git(&["config", "filter.volicord-failing.required", "true"])?;
+    fixture.commit_all("failing filter configuration")?;
+    fixture.write("tracked.txt", b"must fail conversion\n")?;
+    let observer = fixture.observer()?;
+
+    assert_eq!(
+        observer
+            .snapshot(&InvocationObservationPaths::default())
+            .expect_err("required filter failure must not produce a snapshot")
+            .reason(),
+        ObservationUnavailableReason::GitCommandFailed
+    );
+    Ok(())
+}
+
+#[test]
+fn nonterminating_clean_filter_is_bounded_by_the_process_timeout() -> TestResult {
+    let fixture = GitFixture::new()?;
+    fixture.write(".gitattributes", b"tracked.txt filter=volicord-hanging\n")?;
+    let executable = env::current_exe()?;
+    let executable = executable.to_string_lossy().replace('\\', "/");
+    let filter = format!(
+        "\"{}\" --ignored --exact repository_observation::tests::nonterminating_filter_process --nocapture",
+        executable.replace('"', "\\\"")
+    );
+    fixture.git(&["config", "filter.volicord-hanging.clean", &filter])?;
+    fixture.git(&["config", "filter.volicord-hanging.required", "true"])?;
+    fixture.commit_all("hanging filter configuration")?;
+    fixture.write("tracked.txt", b"must time out\n")?;
+    let observer = RepositoryObserver::new(
+        &fixture.root,
+        ObserverLimits::default().with_max_process_duration(Duration::from_millis(150)),
+    )?;
+
+    assert_eq!(
+        observer
+            .snapshot(&InvocationObservationPaths::default())
+            .expect_err("nonterminating filter must not produce a snapshot")
+            .reason(),
+        ObservationUnavailableReason::ProcessTimeout
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "executed only as a contained clean-filter process"]
+fn nonterminating_filter_process() {
+    thread::sleep(Duration::from_secs(30));
 }
 
 #[test]
@@ -571,13 +934,15 @@ fn canonical_serialization_and_contract_digests_are_deterministic_and_bounded() 
 }
 
 fn run_git(repository_root: &Path, arguments: &[&str]) -> Result<(), Box<dyn Error>> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repository_root)
-        .args(arguments)
-        .output()?;
+    let output = run_git_output(repository_root, arguments)?;
+    let _ = output;
+    Ok(())
+}
+
+fn run_git_output(repository_root: &Path, arguments: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
+    let output = git_command(repository_root).args(arguments).output()?;
     if output.status.success() {
-        return Ok(());
+        return Ok(output.stdout);
     }
     Err(format!(
         "git {:?} failed: {}",
@@ -585,6 +950,26 @@ fn run_git(repository_root: &Path, arguments: &[&str]) -> Result<(), Box<dyn Err
         String::from_utf8_lossy(&output.stderr).trim()
     )
     .into())
+}
+
+fn utf16le(value: &str) -> Vec<u8> {
+    value
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect::<Vec<_>>()
+}
+
+fn regular_file_evidence<'a>(
+    snapshot: &'a super::RepositoryObservationSnapshot,
+    path: &str,
+) -> Result<&'a RegularFileContentEvidence, Box<dyn Error>> {
+    let path = product_path(path)?;
+    match snapshot.observed_states().get(&path) {
+        Some(ProductPathState::RegularFile {
+            content_evidence, ..
+        }) => Ok(content_evidence),
+        _ => Err(format!("snapshot did not directly observe regular file {path}").into()),
+    }
 }
 
 fn product_path(value: &str) -> Result<ProductRelativePath, Box<dyn Error>> {
