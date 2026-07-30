@@ -6,7 +6,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use tempfile::{Builder, TempDir};
+use volicord_test_support::IsolatedGitRepository;
 
 use crate::{
     catalog::{
@@ -426,70 +426,35 @@ pub fn validate_schedule_matrix(schedule: &[ScheduleEntry], repetitions: u32) ->
     Ok(())
 }
 
-pub fn materialize_repository(scenario: &ScenarioFixture) -> HarnessResult<TempDir> {
-    let directory = Builder::new()
-        .prefix("volicord-agent-evaluation-")
-        .tempdir()
-        .map_err(|error| {
-            HarnessError::new(format!(
-                "temporary repository could not be created: {error}"
-            ))
-        })?;
+pub fn materialize_repository(scenario: &ScenarioFixture) -> HarnessResult<IsolatedGitRepository> {
+    let repository = IsolatedGitRepository::new("volicord-agent-evaluation-").map_err(|error| {
+        HarnessError::new(format!(
+            "temporary repository could not be created: {error}"
+        ))
+    })?;
     for file in &scenario.initial_files {
-        let path = directory.path().join(&file.path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
-                HarnessError::new(format!("fixture directory could not be created: {error}"))
+        repository
+            .write(&file.path, file.content.as_bytes())
+            .map_err(|error| {
+                HarnessError::new(format!("fixture file could not be written: {error}"))
             })?;
-        }
-        fs::write(&path, file.content.as_bytes()).map_err(|error| {
-            HarnessError::new(format!("fixture file could not be written: {error}"))
-        })?;
     }
     if let Some(attribution) = &scenario.dirty_worktree_attribution {
-        run_repository_git(directory.path(), &["init", "-q"])?;
-        run_repository_git(
-            directory.path(),
-            &["config", "user.name", "Volicord Evaluation"],
-        )?;
-        run_repository_git(
-            directory.path(),
-            &["config", "user.email", "evaluation@volicord.invalid"],
-        )?;
-        run_repository_git(directory.path(), &["config", "commit.gpgsign", "false"])?;
-        run_repository_git(directory.path(), &["add", "--all"])?;
-        run_repository_git(
-            directory.path(),
-            &["commit", "-q", "-m", "evaluation fixture baseline"],
-        )?;
-        fs::write(
-            directory.path().join(&attribution.path),
-            attribution.preexisting_dirty_content.as_bytes(),
-        )
-        .map_err(|error| {
-            HarnessError::new(format!(
-                "dirty-worktree fixture file could not be written: {error}"
-            ))
-        })?;
+        repository
+            .commit_all("evaluation fixture baseline")
+            .map_err(|error| HarnessError::new(error.to_string()))?;
+        repository
+            .write(
+                &attribution.path,
+                attribution.preexisting_dirty_content.as_bytes(),
+            )
+            .map_err(|error| {
+                HarnessError::new(format!(
+                    "dirty-worktree fixture file could not be written: {error}"
+                ))
+            })?;
     }
-    Ok(directory)
-}
-
-fn run_repository_git(repository: &Path, args: &[&str]) -> HarnessResult<()> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repository)
-        .args(args)
-        .output()
-        .map_err(|error| HarnessError::new(format!("fixture Git could not run: {error}")))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(HarnessError::new(format!(
-            "fixture Git command failed with status {}",
-            output.status
-        )))
-    }
+    Ok(repository)
 }
 
 fn validate_observation(

@@ -45,7 +45,7 @@ use volicord_store::operational_sessions::{
     latest_current_managed_runtime_session, mcp_runtime_session_for_process,
     McpRuntimeSessionStart,
 };
-use volicord_test_support::TempRuntimeHome;
+use volicord_test_support::{IsolatedGitRepository, TempRuntimeHome};
 use volicord_types::diagnostics::DiagnosticFindingId;
 use volicord_types::guard_manifest::{
     guard_manifest_from_json, GuardManagedArtifact, GuardManagedOwnership, GuardManifest,
@@ -69,6 +69,7 @@ const CODEX_COMPATIBILITY_VERSION: &str = "0.108.0-alpha.12";
 const CODEX_COMPATIBILITY_REVISION: &str = "2025-06-18";
 const INTEGRATION_VERIFICATION_TURN_ID: &str = "future.turn.integration-verification";
 const INTEGRATION_VERIFICATION_TOOL_USE_ID: &str = "future.tool-use.guard-probe";
+const TRANSFORMED_TRACKED_PATH: &str = "fixtures/transformed-record.txt";
 const MCP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1405,14 +1406,28 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     let managed_guidance_path = managed_guidance.path();
     let managed_guidance_relative = managed_guidance_path.strip_prefix(&fixture.repo_root)?;
     let managed_guidance_after_setup = fs::read(managed_guidance_path)?;
-    let managed_guidance_status_after_setup = git_output(
-        &fixture.repo_root,
+    let managed_guidance_status_after_setup = fixture.git_output(
         &["status", "--porcelain", "--"],
         &[managed_guidance_relative.as_os_str()],
     )?;
     assert!(
         !managed_guidance_status_after_setup.trim().is_empty(),
         "setup must leave its tracked managed guidance update uncommitted"
+    );
+    fixture
+        .git
+        .write(TRANSFORMED_TRACKED_PATH, b"record=preexisting\r\n")?;
+    let transformed_bytes_before = fixture.git.worktree_bytes(TRANSFORMED_TRACKED_PATH)?;
+    let transformed_identity_before = fixture
+        .git
+        .canonical_worktree_blob_identity(TRANSFORMED_TRACKED_PATH)?;
+    let transformed_status_before = fixture.git_output(
+        &["status", "--porcelain", "--"],
+        &[OsStr::new(TRANSFORMED_TRACKED_PATH)],
+    )?;
+    assert!(
+        !transformed_status_before.trim().is_empty(),
+        "the transformed tracked fixture must remain dirty before verification"
     );
 
     let abandoned = volicord_test_support::start_test_mcp_runtime_session(
@@ -1630,13 +1645,32 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         "managed verification changed the setup-created guidance update"
     );
     assert_eq!(
-        git_output(
-            &fixture.repo_root,
+        fixture.git_output(
             &["status", "--porcelain", "--"],
             &[managed_guidance_relative.as_os_str()],
         )?,
         managed_guidance_status_after_setup,
         "managed verification changed the preexisting guidance worktree state"
+    );
+    assert_eq!(
+        fixture.git.worktree_bytes(TRANSFORMED_TRACKED_PATH)?,
+        transformed_bytes_before,
+        "managed verification changed transformed worktree bytes"
+    );
+    assert_eq!(
+        fixture
+            .git
+            .canonical_worktree_blob_identity(TRANSFORMED_TRACKED_PATH)?,
+        transformed_identity_before,
+        "managed verification changed transformed canonical content"
+    );
+    assert_eq!(
+        fixture.git_output(
+            &["status", "--porcelain", "--"],
+            &[OsStr::new(TRANSFORMED_TRACKED_PATH)],
+        )?,
+        transformed_status_before,
+        "managed verification inherited or changed the transformed dirty state"
     );
     assert_database_integrity(&fixture.runtime_home.join("registry.sqlite"))?;
     assert_database_integrity(&fixture.project_state_db_path())?;
@@ -2135,6 +2169,7 @@ fn guard_failures_are_current_and_structured() -> Result<(), Box<dyn Error>> {
 
 struct OperationalFixture {
     _temporary_root: TempRuntimeHome,
+    git: IsolatedGitRepository,
     runtime_home: PathBuf,
     codex_home: PathBuf,
     user_home: PathBuf,
@@ -2175,24 +2210,13 @@ impl OperationalFixture {
             managed_guidance_path,
             "# Product repository guidance\n\nPreserve this tracked baseline.\n",
         )?;
-        git_output(&repo_root, &["init", "-q"], &[])?;
-        git_output(
-            &repo_root,
-            &["config", "user.name", "Volicord Operational Test"],
-            &[],
+        let git = IsolatedGitRepository::initialize_at(&repo_root)?;
+        git.write(
+            ".gitattributes",
+            format!("{TRANSFORMED_TRACKED_PATH} text eol=crlf\n").as_bytes(),
         )?;
-        git_output(
-            &repo_root,
-            &["config", "user.email", "operational-test@volicord.invalid"],
-            &[],
-        )?;
-        git_output(&repo_root, &["config", "commit.gpgsign", "false"], &[])?;
-        git_output(&repo_root, &["add", "--all"], &[])?;
-        git_output(
-            &repo_root,
-            &["commit", "-q", "-m", "operational fixture baseline"],
-            &[],
-        )?;
+        git.write(TRANSFORMED_TRACKED_PATH, b"record=baseline\r\n")?;
+        git.commit_all("operational fixture baseline")?;
         let codex_name = if cfg!(windows) { "codex.exe" } else { "codex" };
         fs::copy(env::current_exe()?, path_dir.join(codex_name))?;
         let volicord_name = if cfg!(windows) {
@@ -2203,6 +2227,7 @@ impl OperationalFixture {
         fs::copy(env!("CARGO_BIN_EXE_volicord"), path_dir.join(volicord_name))?;
         Ok(Self {
             _temporary_root: temporary_root,
+            git,
             runtime_home,
             codex_home,
             user_home,
@@ -2250,9 +2275,16 @@ impl OperationalFixture {
             .env("PATH", search_path)
             .env(CODEX_VERSION_ENV, version)
             .current_dir(&self.repo_root);
+        self.git.apply_environment(&mut command);
         #[cfg(windows)]
         copy_required_windows_environment(&mut command);
         command
+    }
+
+    fn git_output(&self, arguments: &[&str], paths: &[&OsStr]) -> Result<String, Box<dyn Error>> {
+        let mut all_arguments = arguments.iter().map(OsStr::new).collect::<Vec<_>>();
+        all_arguments.extend_from_slice(paths);
+        Ok(String::from_utf8(self.git.git_os(&all_arguments)?.stdout)?)
     }
 
     fn run_init(
@@ -3031,6 +3063,7 @@ impl OperationalFixture {
             .env("HOME", &self.user_home)
             .env("USERPROFILE", &self.user_home)
             .env_remove("WSL_DISTRO_NAME");
+        self.git.apply_environment(&mut command);
         #[cfg(windows)]
         copy_required_windows_environment(&mut command);
         Ok(command)
@@ -3746,28 +3779,6 @@ fn json_rpc_responses(bytes: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {
         .filter(|line| !line.trim().is_empty())
         .map(|line| Ok(serde_json::from_str(line)?))
         .collect()
-}
-
-fn git_output(
-    repository: &Path,
-    args: &[&str],
-    path_args: &[&OsStr],
-) -> Result<String, Box<dyn Error>> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repository)
-        .args(args)
-        .args(path_args)
-        .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "Git command failed with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    Ok(String::from_utf8(output.stdout)?)
 }
 
 fn assert_database_integrity(path: &Path) -> Result<(), Box<dyn Error>> {

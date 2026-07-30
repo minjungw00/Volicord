@@ -14,6 +14,7 @@ use volicord_test_support::core_fixtures::{
     ObservationUserActionFixture, ResolveUserActionFixture, TaskOwnerJsonColumn,
     UpdateScopeFixture, UserActionFixture, DEFAULT_PRODUCT_PATH,
 };
+use volicord_test_support::IsolatedGitRepository;
 use volicord_types::ids::{
     AcceptanceCriterionId, AgentConnectionId, ArtifactInputId, EvidenceClaimId, ProjectId, RunId,
     TaskId, WriteTicketId,
@@ -1012,7 +1013,49 @@ fn unresolved_unrecorded_changes_block_close_without_mutation() -> Result<(), Bo
         after_evidence,
         "unrecorded_close",
     )?;
-    insert_unrecorded_change_fixture(&fixture, &task_id, "unrecorded_close")?;
+    let observation = insert_unrecorded_change_fixture(&fixture, &task_id, "unrecorded_close")?;
+    assert_eq!(
+        observation.state,
+        volicord_store::guards::RepositoryObservationState::Complete
+    );
+    let transition = &observation
+        .delta
+        .as_ref()
+        .expect("complete conformance delta")
+        .transitions()[0];
+    let (
+        volicord_platform_fs::ProductPathState::RegularFile {
+            content_evidence: before,
+            ..
+        },
+        volicord_platform_fs::ProductPathState::RegularFile {
+            content_evidence: after,
+            ..
+        },
+    ) = (transition.before(), transition.after())
+    else {
+        panic!("transformed conformance transition must remain a regular file");
+    };
+    assert!(matches!(
+        before,
+        volicord_platform_fs::RegularFileContentEvidence::Worktree { .. }
+    ));
+    assert!(matches!(
+        after,
+        volicord_platform_fs::RegularFileContentEvidence::GitTree { .. }
+    ));
+    assert_ne!(before.canonical_git_blob(), after.canonical_git_blob());
+    let terminal = observation
+        .terminal_result
+        .as_ref()
+        .expect("complete conformance terminal result");
+    assert_eq!(terminal.unrecorded_changes.len(), 1);
+    assert_eq!(
+        terminal.unrecorded_changes[0].observed_paths,
+        vec![volicord_types::product_path::ProductRelativePath::parse(
+            "src/export.rs"
+        )?]
+    );
     let before = fixture.counts()?;
 
     let check = service.check_close(
@@ -3992,28 +4035,21 @@ fn insert_unrecorded_change_fixture(
     fixture: &CoreFixture,
     task_id: &str,
     suffix: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<volicord_store::guards::RepositoryObservationRecord, Box<dyn Error>> {
     let connection_id = fixture.connection_id();
     let project_id = fixture.project_id();
     let repo_root = fixture.product_repo_path();
-    let git_init = std::process::Command::new("git")
-        .args([
-            "-C",
-            repo_root.to_str().expect("UTF-8 conformance repository"),
-            "init",
-            "-q",
-        ])
-        .output()?;
-    assert!(git_init.status.success());
+    let git = IsolatedGitRepository::initialize_at(&repo_root)?;
     let observed_path = volicord_types::product_path::ProductRelativePath::parse("src/export.rs")?;
+    git.write(".gitattributes", b"src/export.rs text eol=crlf\n")?;
+    git.write(observed_path.as_str(), b"record=baseline\r\n")?;
+    git.commit_all("conformance transformed baseline")?;
+    git.write(observed_path.as_str(), b"record=preexisting\r\n")?;
     let observer = volicord_platform_fs::RepositoryObserver::new(
         &repo_root,
         volicord_platform_fs::ObserverLimits::default(),
     )?;
-    let before = observer.snapshot(&volicord_platform_fs::InvocationObservationPaths::new(
-        vec![observed_path.clone()],
-        Vec::new(),
-    ))?;
+    let before = observer.snapshot(&volicord_platform_fs::InvocationObservationPaths::default())?;
     let guard_installation_id = format!("guard_installation_{suffix}");
     let policy_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
     let installation = volicord_store::guards::upsert_guard_installation(
@@ -4093,14 +4129,11 @@ fn insert_unrecorded_change_fixture(
             metadata: JsonObject::new(),
         },
     )?;
-    fs::create_dir_all(repo_root.join("src"))?;
-    fs::write(repo_root.join(observed_path.as_str()), b"unrecorded\n")?;
-    let after = observer.snapshot(&volicord_platform_fs::InvocationObservationPaths::new(
-        vec![observed_path],
-        Vec::new(),
-    ))?;
+    git.write(observed_path.as_str(), b"record=invocation\r\n")?;
+    git.commit_all("conformance transformed invocation")?;
+    let after = observer.snapshot(&volicord_platform_fs::InvocationObservationPaths::default())?;
     let delta = observer.delta(&before, &after)?;
-    volicord_store::guards::record_post_tool_repository_observation(
+    let stored = volicord_store::guards::record_post_tool_repository_observation(
         &fixture.mutation_context()?,
         project_id,
         volicord_store::guards::PostToolRepositoryObservationInsert {
@@ -4119,7 +4152,7 @@ fn insert_unrecorded_change_fixture(
             metadata: JsonObject::new(),
         },
     )?;
-    Ok(())
+    Ok(stored.observation)
 }
 
 fn latest_tool_invocation_binding(

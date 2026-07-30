@@ -3399,10 +3399,10 @@ mod tests {
     };
 
     use volicord_platform_fs::{
-        InvocationObservationPaths, ObserverLimits, RepositoryObservationCheckpoint,
-        RepositoryObserver,
+        InvocationObservationPaths, ObserverLimits, ProductPathState, RegularFileContentEvidence,
+        RepositoryObservationCheckpoint, RepositoryObserver,
     };
-    use volicord_test_support::TempRuntimeHome;
+    use volicord_test_support::{IsolatedGitRepository, TempRuntimeHome};
 
     use super::*;
     use crate::{
@@ -4182,6 +4182,7 @@ mod tests {
 
     struct PreparedRepositoryObservation {
         fixture: GuardFixture,
+        git: IsolatedGitRepository,
         project: ProjectRecord,
         integration_revision: String,
         correlation: HostNativeCorrelation,
@@ -4249,19 +4250,7 @@ mod tests {
                 Some("guard_installation_a"),
                 &correlation,
             )?;
-            let git_init = Command::new("git")
-                .args([
-                    "-C",
-                    project.repo_root.to_str().expect("UTF-8 fixture path"),
-                    "init",
-                    "-q",
-                ])
-                .output()?;
-            assert!(
-                git_init.status.success(),
-                "git init failed: {}",
-                String::from_utf8_lossy(&git_init.stderr)
-            );
+            let git = IsolatedGitRepository::initialize_at(&project.repo_root)?;
             let expected_path = ProductRelativePath::parse("src/lib.rs")?;
             let unmatched_path = ProductRelativePath::parse("src/extra.rs")?;
             let observer = RepositoryObserver::new(&project.repo_root, ObserverLimits::default())?;
@@ -4279,6 +4268,7 @@ mod tests {
             )?;
             Ok(Self {
                 fixture,
+                git,
                 project,
                 integration_revision: manifest.integration_revision.as_str().to_owned(),
                 correlation,
@@ -4456,6 +4446,155 @@ mod tests {
             })?;
             assert_eq!(count, expected, "{table}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn repository_observation_store_decodes_direct_and_tree_regular_file_evidence(
+    ) -> Result<(), Box<dyn Error>> {
+        let prepared = PreparedRepositoryObservation::new(
+            "repository-observation-regular-file-evidence",
+            "tool_call_regular_file_evidence",
+        )?;
+        prepared
+            .git
+            .write(".gitattributes", b"src/*.rs text eol=crlf\n")?;
+        prepared.git.write(
+            prepared.expected_path.as_str(),
+            b"record=expected-baseline\r\n",
+        )?;
+        prepared.git.write(
+            prepared.unmatched_path.as_str(),
+            b"record=unmatched-baseline\r\n",
+        )?;
+        prepared.git.commit_all("regular-file evidence baseline")?;
+        prepared.git.write(
+            prepared.expected_path.as_str(),
+            b"record=expected-before\r\n",
+        )?;
+        prepared.git.write(
+            prepared.unmatched_path.as_str(),
+            b"record=unmatched-before\r\n",
+        )?;
+        let before = prepared
+            .observer
+            .snapshot(&InvocationObservationPaths::default())?;
+        let mut pre = prepared.pre_input();
+        pre.checkpoint = Some(before.checkpoint());
+        record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            pre,
+        )?;
+
+        prepared.git.write(
+            prepared.expected_path.as_str(),
+            b"record=expected-after\r\n",
+        )?;
+        prepared.git.write(
+            prepared.unmatched_path.as_str(),
+            b"record=unmatched-after\r\n",
+        )?;
+        prepared.git.commit_all("regular-file evidence outcome")?;
+        let after = prepared
+            .observer
+            .snapshot(&InvocationObservationPaths::default())?;
+        let delta = prepared.observer.delta(&before, &after)?;
+        assert_eq!(delta.transitions().len(), 2);
+        for transition in delta.transitions() {
+            let (
+                ProductPathState::RegularFile {
+                    content_evidence: before,
+                    ..
+                },
+                ProductPathState::RegularFile {
+                    content_evidence: after,
+                    ..
+                },
+            ) = (transition.before(), transition.after())
+            else {
+                panic!("regular-file transition must remain typed");
+            };
+            assert!(matches!(
+                before,
+                RegularFileContentEvidence::Worktree { .. }
+            ));
+            assert!(matches!(after, RegularFileContentEvidence::GitTree { .. }));
+            assert_ne!(before.canonical_git_blob(), after.canonical_git_blob());
+        }
+        let stored = record_post_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            PostToolRepositoryObservationInsert {
+                guard_event: prepared.event("guard_post_a", "post_tool", "2026-07-30T00:00:04Z"),
+                repository_observation_id: prepared.observation_id.clone(),
+                observer_contract_digest: prepared.observer.contract_digest().as_str().to_owned(),
+                outcome: PostToolRepositoryObservationOutcome::Complete {
+                    post_snapshot: Box::new(after.checkpoint()),
+                    delta,
+                },
+                task_id: Some("task_guard_a".to_owned()),
+                metadata: serde_json::from_value(serde_json::json!({"phase": "post"}))
+                    .expect("object"),
+            },
+        )?;
+        let decoded = repository_observation(
+            prepared.fixture.runtime_home.path(),
+            "project_guard_a",
+            &prepared.observation_id,
+        )?
+        .expect("stored repository observation");
+        assert_eq!(decoded, stored.observation);
+        let checkpoint_json = serde_json::to_string(
+            decoded
+                .pre_snapshot
+                .as_ref()
+                .expect("direct worktree checkpoint"),
+        )?;
+        assert!(checkpoint_json.contains("\"source\":\"worktree\""));
+        let delta_json = serde_json::to_string(decoded.delta.as_ref().expect("stored delta"))?;
+        assert!(delta_json.contains("\"source\":\"git_tree\""));
+        Ok(())
+    }
+
+    #[test]
+    fn unrecorded_change_identity_is_stable_across_path_iteration_order(
+    ) -> Result<(), Box<dyn Error>> {
+        let prepared = PreparedRepositoryObservation::new(
+            "repository-observation-finding-order",
+            "tool_call_finding_order",
+        )?;
+        let post = prepared.post_input()?;
+        let PostToolRepositoryObservationOutcome::Complete { delta, .. } = &post.outcome else {
+            panic!("fixture post outcome must be complete");
+        };
+        let forward = [
+            prepared.expected_path.clone(),
+            prepared.unmatched_path.clone(),
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        let reverse = [
+            prepared.unmatched_path.clone(),
+            prepared.expected_path.clone(),
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        let forward_digest = delta.restricted_to(&forward).digest();
+        let reverse_digest = delta.restricted_to(&reverse).digest();
+        assert_eq!(forward_digest, reverse_digest);
+        assert_eq!(
+            repository_observation::stable_unrecorded_change_id(
+                "project_guard_a",
+                &prepared.observation_id,
+                forward_digest.as_str(),
+            ),
+            repository_observation::stable_unrecorded_change_id(
+                "project_guard_a",
+                &prepared.observation_id,
+                reverse_digest.as_str(),
+            )
+        );
         Ok(())
     }
 
@@ -4851,6 +4990,88 @@ mod tests {
                     SET pre_tool_guard_event_id = post_tool_guard_event_id
                   WHERE repository_observation_id = ?1",
                 [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        let post_snapshot_json = conn.query_row(
+            "SELECT post_snapshot_json
+               FROM repository_observations
+              WHERE repository_observation_id = ?1",
+            [&prepared.observation_id],
+            |row| row.get::<_, String>(0),
+        )?;
+        for mutation in [
+            "removed_regular_file_shape",
+            "missing_canonical_identity",
+            "malformed_canonical_identity",
+            "invalid_tree_evidence_combination",
+        ] {
+            let mut checkpoint: Value = serde_json::from_str(&post_snapshot_json)?;
+            let state = checkpoint
+                .pointer_mut("/observed_states/src~1lib.rs")
+                .and_then(Value::as_object_mut)
+                .expect("regular-file checkpoint state");
+            match mutation {
+                "removed_regular_file_shape" => {
+                    let exact = state
+                        .get("content_evidence")
+                        .and_then(|evidence| evidence.get("exact_worktree_bytes"))
+                        .cloned()
+                        .expect("exact worktree identity");
+                    state.remove("content_evidence");
+                    state.insert("content".to_owned(), exact);
+                }
+                "missing_canonical_identity" => {
+                    state
+                        .get_mut("content_evidence")
+                        .and_then(Value::as_object_mut)
+                        .expect("content evidence")
+                        .remove("canonical_git_blob");
+                }
+                "malformed_canonical_identity" => {
+                    state["content_evidence"]["canonical_git_blob"] =
+                        Value::String("NOT-A-CANONICAL-GIT-OBJECT".to_owned());
+                }
+                "invalid_tree_evidence_combination" => {
+                    state["content_evidence"]["source"] = Value::String("git_tree".to_owned());
+                }
+                _ => unreachable!("closed corruption fixture"),
+            }
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET post_snapshot_json = ?2
+                  WHERE repository_observation_id = ?1",
+                params![prepared.observation_id, serde_json::to_string(&checkpoint)?],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let delta_json = conn.query_row(
+                "SELECT delta_json
+                   FROM repository_observations
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+                |row| row.get::<_, String>(0),
+            )?;
+            let mut delta: Value = serde_json::from_str(&delta_json)?;
+            delta["transitions"][0]["after"] = delta["transitions"][0]["before"].clone();
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET delta_json = ?2
+                  WHERE repository_observation_id = ?1",
+                params![prepared.observation_id, serde_json::to_string(&delta)?],
             )?;
             assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
                 &tx,

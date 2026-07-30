@@ -15,7 +15,7 @@ const SEED: u64 = 20_260_716;
 fn catalog_covers_the_three_by_twelve_evaluation_surface() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 1);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 2);
 
     let actual = catalog
         .scenarios
@@ -152,17 +152,53 @@ fn dirty_worktree_fixture_materializes_a_stable_preexisting_change() {
             .expect("dirty fixture path should be readable"),
         attribution.preexisting_dirty_content
     );
-    let status = std::process::Command::new("git")
-        .arg("-C")
-        .arg(repository.path())
-        .args(["status", "--porcelain", "--", &attribution.path])
-        .output()
+    let status = repository
+        .git(&["status", "--porcelain", "--", &attribution.path])
         .expect("Git status should run");
     assert!(status.status.success());
     assert_eq!(
         String::from_utf8(status.stdout).expect("Git status should be UTF-8"),
         format!(" M {}\n", attribution.path)
     );
+}
+
+#[test]
+fn generic_transformed_content_fixture_uses_the_existing_attribution_metric() {
+    let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
+    let scenario = catalog
+        .scenarios
+        .iter()
+        .find(|scenario| scenario.scenario_id == "repository-transformation-attribution")
+        .expect("generic transformed-content scenario");
+    let attribution = scenario
+        .dirty_worktree_attribution
+        .as_ref()
+        .expect("generic repository-attribution expectation");
+    for forbidden in ["agents.md", "crlf", "guard_probe"] {
+        assert!(!scenario.scenario_id.to_lowercase().contains(forbidden));
+    }
+    let repository =
+        materialize_repository(scenario).expect("transformed repository should materialize");
+
+    assert_eq!(
+        repository
+            .worktree_bytes(&attribution.path)
+            .expect("transformed worktree bytes"),
+        attribution.preexisting_dirty_content.as_bytes()
+    );
+    let status = repository
+        .git(&["status", "--porcelain", "--", &attribution.path])
+        .expect("transformed Git status");
+    assert_eq!(
+        String::from_utf8(status.stdout).expect("Git status should be UTF-8"),
+        format!(" M {}\n", attribution.path)
+    );
+    let committed = repository
+        .git(&["cat-file", "-p", &format!("HEAD:{}", attribution.path)])
+        .expect("committed transformed blob");
+    assert_eq!(committed.stdout, b"record=baseline\n");
+    assert_eq!(attribution.minimum_true_positives, 1);
+    assert_eq!(attribution.maximum_false_positives, 0);
 }
 
 #[test]
@@ -254,7 +290,12 @@ impl TrialDriver for AggregateSyntheticDriver {
             sensitive_without_approval_allowed: 0,
             unrecorded_change_checks: if record { 100 } else { 0 },
             unrecorded_change_true_positives: u64::from(
-                record && request.trial.scenario_id == "dirty-worktree-same-path-attribution",
+                record
+                    && matches!(
+                        request.trial.scenario_id.as_str(),
+                        "dirty-worktree-same-path-attribution"
+                            | "repository-transformation-attribution"
+                    ),
             ),
             unrecorded_change_false_positives: 0,
             resume_authority_or_judgment_losses: 0,
@@ -273,7 +314,7 @@ fn complete_synthetic_driver_matrix_exercises_every_live_criterion() {
     assert_eq!(result.status, RunStatus::Completed);
     assert_eq!(
         result.schedule.len(),
-        EvaluationCondition::ALL.len() * (TaskGroup::ALL.len() + 1)
+        EvaluationCondition::ALL.len() * load_embedded_catalog().expect("catalog").scenarios.len()
     );
     assert_eq!(result.observations.len(), result.schedule.len());
     assert!(result.trial_failures.is_empty());
@@ -292,7 +333,10 @@ impl TrialDriver for MissingDirtyAttributionDriver {
         repository_root: &std::path::Path,
     ) -> Result<DriverObservation, DriverFailure> {
         let mut observation = AggregateSyntheticDriver.run_trial(request, repository_root)?;
-        if request.trial.scenario_id == "dirty-worktree-same-path-attribution" {
+        if matches!(
+            request.trial.scenario_id.as_str(),
+            "dirty-worktree-same-path-attribution" | "repository-transformation-attribution"
+        ) {
             observation.unrecorded_change_true_positives = 0;
         }
         Ok(observation)
@@ -305,7 +349,7 @@ fn live_runner_requires_dirty_worktree_true_positive_and_zero_false_positives() 
         .expect("missing attribution should produce an incomplete structured result");
 
     assert_eq!(result.status, RunStatus::Incomplete);
-    assert_eq!(result.trial_failures.len(), 1);
+    assert_eq!(result.trial_failures.len(), 2);
     assert!(result
         .trial_failures
         .iter()

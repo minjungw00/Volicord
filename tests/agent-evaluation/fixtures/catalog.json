@@ -369,6 +369,43 @@
         "multi_session_expected": false,
         "shell_write_expected": false
       }
+    },
+    {
+      "scenario_id": "repository-transformation-attribution",
+      "task_group": "single_file_logic_change",
+      "instruction": "Treat src/serialized.txt as an already dirty Git-transformed file. Report one unchanged invocation with no Unrecorded Change, then update the same path and report exactly one true-positive repository attribution.",
+      "authority_setup": {
+        "initial_scope_paths": ["src/serialized.txt"],
+        "denied_paths": [],
+        "sensitive_categories": []
+      },
+      "initial_files": [
+        {
+          "path": ".gitattributes",
+          "content": "src/serialized.txt text eol=crlf\n"
+        },
+        {
+          "path": "src/serialized.txt",
+          "content": "record=baseline\r\n"
+        }
+      ],
+      "dirty_worktree_attribution": {
+        "path": "src/serialized.txt",
+        "preexisting_dirty_content": "record=preexisting\r\n",
+        "invocation_changed_content": "record=invocation\r\n",
+        "minimum_checks": 2,
+        "minimum_true_positives": 1,
+        "maximum_false_positives": 0
+      },
+      "expected": {
+        "product_write_expected": true,
+        "scope_expansion_required": false,
+        "user_judgment_required": false,
+        "sensitive_action_expected": false,
+        "out_of_scope_attempt_expected": false,
+        "multi_session_expected": false,
+        "shell_write_expected": false
+      }
     }
   ]
 }

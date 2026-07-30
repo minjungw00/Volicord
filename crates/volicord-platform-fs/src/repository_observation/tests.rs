@@ -641,6 +641,26 @@ fn required_clean_filter_failure_is_an_unavailable_observation() -> TestResult {
 }
 
 #[test]
+fn injected_malformed_canonical_git_identities_are_unavailable() {
+    use super::path_state::parse_canonical_git_identity;
+
+    for output in [
+        b"".as_slice(),
+        b"abc\nextra\n".as_slice(),
+        b"ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD\n".as_slice(),
+        b"not-an-object-identity\n".as_slice(),
+        b"\xff\n".as_slice(),
+    ] {
+        let error = parse_canonical_git_identity(output)
+            .expect_err("malformed or noncanonical Git identity must be unavailable");
+        assert_eq!(
+            error.reason(),
+            ObservationUnavailableReason::GitObjectUnavailable
+        );
+    }
+}
+
+#[test]
 fn nonterminating_clean_filter_is_bounded_by_the_process_timeout() -> TestResult {
     let fixture = GitFixture::new()?;
     fixture.write(".gitattributes", b"tracked.txt filter=volicord-hanging\n")?;

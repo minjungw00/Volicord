@@ -6,9 +6,12 @@
 //! future runtime homes and fixture output.
 
 use std::{
+    ffi::OsStr,
     fmt::Write as _,
     fs,
+    io::Write as _,
     path::{Path, PathBuf},
+    process::{Command, Output, Stdio},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -65,6 +68,243 @@ use volicord_types::ids::{
 };
 use volicord_types::integration_revision::McpRuntimeSessionSource;
 use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile, WriteTicketStatus};
+
+/// Disposable Git repository with configuration isolated from the developer machine.
+#[derive(Debug)]
+pub struct IsolatedGitRepository {
+    root: PathBuf,
+    _repository_owner: Option<TempDir>,
+    _configuration_owner: TempDir,
+    global_config: PathBuf,
+}
+
+impl IsolatedGitRepository {
+    /// Creates and initializes one disposable repository.
+    pub fn new(prefix: &str) -> Result<Self, GitFixtureError> {
+        let repository_owner = Builder::new()
+            .prefix(prefix)
+            .tempdir()
+            .map_err(GitFixtureError::io)?;
+        let root = repository_owner.path().to_path_buf();
+        Self::initialize(root, Some(repository_owner))
+    }
+
+    /// Initializes an existing disposable directory as an isolated repository.
+    pub fn initialize_at(root: impl AsRef<Path>) -> Result<Self, GitFixtureError> {
+        Self::initialize(root.as_ref().to_path_buf(), None)
+    }
+
+    fn initialize(
+        root: PathBuf,
+        repository_owner: Option<TempDir>,
+    ) -> Result<Self, GitFixtureError> {
+        fs::create_dir_all(&root).map_err(GitFixtureError::io)?;
+        let configuration_owner = Builder::new()
+            .prefix("volicord-git-configuration-")
+            .tempdir()
+            .map_err(GitFixtureError::io)?;
+        let global_config = configuration_owner.path().join("global.gitconfig");
+        fs::write(&global_config, []).map_err(GitFixtureError::io)?;
+        let fixture = Self {
+            root,
+            _repository_owner: repository_owner,
+            _configuration_owner: configuration_owner,
+            global_config,
+        };
+        fixture.git(&["init", "-q"])?;
+        fixture.git(&["symbolic-ref", "HEAD", "refs/heads/main"])?;
+        for (key, value) in [
+            ("user.name", "Volicord Git Fixture"),
+            ("user.email", "git-fixture@volicord.invalid"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            fixture.set_local_config(key, value)?;
+        }
+        Ok(fixture)
+    }
+
+    /// Returns the disposable repository root.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Returns the disposable repository root.
+    pub fn path(&self) -> &Path {
+        self.root()
+    }
+
+    /// Applies the fixture's isolated Git environment to another process.
+    pub fn apply_environment(&self, command: &mut Command) {
+        command
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", &self.global_config)
+            .env("GIT_ATTR_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_DATE", "2000-01-01T00:00:00Z")
+            .env("GIT_COMMITTER_DATE", "2000-01-01T00:00:00Z")
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("GIT_NO_REPLACE_OBJECTS", "1")
+            .env("LC_ALL", "C")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
+            .env_remove("GIT_OBJECT_DIRECTORY")
+            .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+            .env_remove("GIT_TEMPLATE_DIR")
+            .env_remove("GIT_CONFIG_SYSTEM")
+            .env_remove("GIT_CEILING_DIRECTORIES")
+            .env_remove("GIT_DISCOVERY_ACROSS_FILESYSTEM")
+            .env_remove("GIT_PREFIX")
+            .env_remove("GIT_NAMESPACE")
+            .env_remove("GIT_CONFIG_COUNT");
+    }
+
+    /// Writes exact bytes at one repository-relative path.
+    pub fn write(&self, relative: impl AsRef<Path>, bytes: &[u8]) -> Result<(), GitFixtureError> {
+        let path = self.root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(GitFixtureError::io)?;
+        }
+        fs::write(path, bytes).map_err(GitFixtureError::io)
+    }
+
+    /// Reads exact worktree bytes at one repository-relative path.
+    pub fn worktree_bytes(&self, relative: impl AsRef<Path>) -> Result<Vec<u8>, GitFixtureError> {
+        fs::read(self.root.join(relative)).map_err(GitFixtureError::io)
+    }
+
+    /// Sets one repository-local Git configuration value.
+    pub fn set_local_config(&self, key: &str, value: &str) -> Result<(), GitFixtureError> {
+        self.git(&["config", "--local", key, value]).map(|_| ())
+    }
+
+    /// Runs Git with UTF-8 arguments and requires success.
+    pub fn git(&self, arguments: &[&str]) -> Result<Output, GitFixtureError> {
+        let arguments = arguments.iter().map(OsStr::new).collect::<Vec<_>>();
+        self.git_os(&arguments)
+    }
+
+    /// Runs Git with platform-native arguments and requires success.
+    pub fn git_os(&self, arguments: &[&OsStr]) -> Result<Output, GitFixtureError> {
+        let mut command = Command::new("git");
+        command.arg("-C").arg(&self.root).args(arguments);
+        self.apply_environment(&mut command);
+        let output = command.output().map_err(GitFixtureError::io)?;
+        if output.status.success() {
+            Ok(output)
+        } else {
+            Err(GitFixtureError::command(arguments, &output))
+        }
+    }
+
+    /// Stages every repository path.
+    pub fn stage_all(&self) -> Result<(), GitFixtureError> {
+        self.git(&["add", "--all"]).map(|_| ())
+    }
+
+    /// Creates one deterministic commit from the current index.
+    pub fn commit_staged(&self, message: &str) -> Result<(), GitFixtureError> {
+        self.git(&["commit", "-q", "--allow-empty", "-m", message])
+            .map(|_| ())
+    }
+
+    /// Stages all paths and creates one deterministic commit.
+    pub fn commit_all(&self, message: &str) -> Result<(), GitFixtureError> {
+        self.stage_all()?;
+        self.commit_staged(message)
+    }
+
+    /// Returns exact porcelain status bytes, including NUL separators.
+    pub fn status_bytes(&self) -> Result<Vec<u8>, GitFixtureError> {
+        Ok(self.git(&["status", "--porcelain", "-z"])?.stdout)
+    }
+
+    /// Returns the committed blob identity for one path at `HEAD`.
+    pub fn committed_blob_identity(&self, relative: &str) -> Result<String, GitFixtureError> {
+        self.git_stdout(&["rev-parse", &format!("HEAD:{relative}")])
+    }
+
+    /// Returns Git's path-aware canonical blob identity for exact worktree bytes.
+    pub fn canonical_worktree_blob_identity(
+        &self,
+        relative: &str,
+    ) -> Result<String, GitFixtureError> {
+        let bytes = self.worktree_bytes(relative)?;
+        let mut command = Command::new("git");
+        command
+            .arg("-C")
+            .arg(&self.root)
+            .arg("hash-object")
+            .arg(format!("--path={relative}"))
+            .arg("--stdin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        self.apply_environment(&mut command);
+        let mut child = command.spawn().map_err(GitFixtureError::io)?;
+        child
+            .stdin
+            .take()
+            .ok_or_else(|| GitFixtureError::new("Git canonical-input pipe is unavailable"))?
+            .write_all(&bytes)
+            .map_err(GitFixtureError::io)?;
+        let output = child.wait_with_output().map_err(GitFixtureError::io)?;
+        if !output.status.success() {
+            return Err(GitFixtureError::command(
+                &[OsStr::new("hash-object"), OsStr::new("--stdin")],
+                &output,
+            ));
+        }
+        String::from_utf8(output.stdout)
+            .map(|value| value.trim().to_owned())
+            .map_err(|error| {
+                GitFixtureError::new(format!("Git object identity is not UTF-8: {error}"))
+            })
+    }
+
+    fn git_stdout(&self, arguments: &[&str]) -> Result<String, GitFixtureError> {
+        String::from_utf8(self.git(arguments)?.stdout)
+            .map(|value| value.trim().to_owned())
+            .map_err(|error| GitFixtureError::new(format!("Git stdout is not UTF-8: {error}")))
+    }
+}
+
+/// Failure from a reusable disposable Git fixture.
+#[derive(Debug)]
+pub struct GitFixtureError {
+    detail: String,
+}
+
+impl GitFixtureError {
+    fn new(detail: impl Into<String>) -> Self {
+        Self {
+            detail: detail.into(),
+        }
+    }
+
+    fn io(error: std::io::Error) -> Self {
+        Self::new(error.to_string())
+    }
+
+    fn command(arguments: &[&OsStr], output: &Output) -> Self {
+        Self::new(format!(
+            "Git {:?} failed with {}: {}",
+            arguments,
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+impl std::fmt::Display for GitFixtureError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.detail)
+    }
+}
+
+impl std::error::Error for GitFixtureError {}
+
 /// Opens a raw existing Registry only for explicit fixture mutation.
 ///
 /// Production crates cannot obtain this writable handle. Tests outside this

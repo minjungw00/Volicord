@@ -139,7 +139,7 @@ The lists are package-level allowlists by Cargo dependency kind. An em dash mean
 
 | Package | Normal | Development | Build |
 |---|---|---|---|
-| `volicord-agent-evaluation` | — | — | — |
+| `volicord-agent-evaluation` | `volicord-test-support` | — | — |
 | `volicord-cli` | `volicord-command-model`, `volicord-core`, `volicord-host-contract`, `volicord-mcp`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-platform-process`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-store`, `volicord-test-support` | — |
 | `volicord-command-model` | — | — | — |
 | `volicord-conformance-tests` | — | `volicord-core`, `volicord-host-contract`, `volicord-platform-fs`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |

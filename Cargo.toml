@@ -256,7 +256,7 @@ description_ko = "독립형 에이전트 평가 카탈로그, 실행기, 스키�
 kind = "validation"
 production = false
 boundary = "neutral"
-normal = []
+normal = ["volicord-test-support"]
 development = []
 build = []
 

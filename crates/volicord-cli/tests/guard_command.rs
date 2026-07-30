@@ -4,15 +4,20 @@ use std::{
     error::Error,
     ffi::OsStr,
     fs,
+    io::Write as _,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
+    thread,
+    time::Duration,
 };
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{CoreService, GitWorkspaceContext, InvocationContext};
 use volicord_host_contract::{project_mcp_tool, McpServerKey};
-use volicord_platform_fs::capture_git_workspace_snapshot;
+use volicord_platform_fs::{
+    capture_git_workspace_snapshot, ProductPathState, RegularFileContentEvidence,
+};
 use volicord_store::bootstrap::{write_installation_profile, InstallationProfileRegistration};
 use volicord_store::guards::{
     repository_observation, upsert_guard_installation, GuardInstallationUpsert,
@@ -20,7 +25,7 @@ use volicord_store::guards::{
 };
 use volicord_test_support::{
     core_fixtures::{CoreFixture, UpdateScopeFixture},
-    seed_test_agent_session, test_guard_manifest_json,
+    seed_test_agent_session, test_guard_manifest_json, IsolatedGitRepository,
 };
 use volicord_types::{
     guard_manifest::{guard_manifest_from_json, GuardManifest},
@@ -37,6 +42,7 @@ fn run(args: &[&str]) -> Result<std::process::Output, Box<dyn Error>> {
 
 struct GuardRepositoryFixture {
     core: CoreFixture,
+    git: IsolatedGitRepository,
     manifest: GuardManifest,
 }
 
@@ -61,15 +67,7 @@ impl GuardRepositoryFixture {
                 metadata_json: "{}".to_owned(),
             },
         )?;
-        run_git(&repository, &["init", "-q"])?;
-        run_git(&repository, &["symbolic-ref", "HEAD", "refs/heads/main"])?;
-        run_git(&repository, &["config", "user.name", "Volicord Guard Test"])?;
-        run_git(
-            &repository,
-            &["config", "user.email", "guard-test@volicord.invalid"],
-        )?;
-        run_git(&repository, &["config", "core.autocrlf", "false"])?;
-        run_git(&repository, &["config", "commit.gpgsign", "false"])?;
+        let git = IsolatedGitRepository::initialize_at(&repository)?;
         for (path, content) in [
             ("tracked-dirty.txt", "tracked baseline\n"),
             ("clean-modify.txt", "clean baseline\n"),
@@ -83,11 +81,7 @@ impl GuardRepositoryFixture {
         ] {
             write_repository_file(&repository, path, content.as_bytes())?;
         }
-        run_git(&repository, &["add", "--all"])?;
-        run_git(
-            &repository,
-            &["commit", "-q", "-m", "guard fixture baseline"],
-        )?;
+        git.commit_all("guard fixture baseline")?;
 
         let policy_hash = format!("sha256:{:x}", Sha256::digest(b"{}"));
         let guard_installation_id = format!("guard_{prefix}");
@@ -109,11 +103,29 @@ impl GuardRepositoryFixture {
             },
         )?;
         let manifest = guard_manifest_from_json(&manifest_json)?;
-        Ok(Self { core, manifest })
+        Ok(Self {
+            core,
+            git,
+            manifest,
+        })
     }
 
     fn repository(&self) -> PathBuf {
         self.core.product_repo_path()
+    }
+
+    fn git(&self, arguments: &[&str]) -> Result<String, Box<dyn Error>> {
+        Ok(String::from_utf8(self.git.git(arguments)?.stdout)?)
+    }
+
+    fn git_with_paths(
+        &self,
+        arguments: &[&str],
+        paths: &[&OsStr],
+    ) -> Result<String, Box<dyn Error>> {
+        let mut all_arguments = arguments.iter().map(OsStr::new).collect::<Vec<_>>();
+        all_arguments.extend_from_slice(paths);
+        Ok(String::from_utf8(self.git.git_os(&all_arguments)?.stdout)?)
     }
 
     fn mcp_callable(&self, tool: AgentToolId) -> Result<String, Box<dyn Error>> {
@@ -127,15 +139,17 @@ impl GuardRepositoryFixture {
 
     fn invoke(&self, phase: GuardHookPhase, event: &Value) -> Result<Output, Box<dyn Error>> {
         let command_spec = self.manifest.runtime_commands.get(phase);
-        let mut child = Command::new(&command_spec.command)
+        let mut command = Command::new(&command_spec.command);
+        command
             .args(&command_spec.args)
             .current_dir(self.repository())
             .env("VOLICORD_HOME", self.core.runtime_home_path())
             .env("VOLICORD_MANAGED_WRAPPER", "codex-record")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+        self.git.apply_environment(&mut command);
+        let mut child = command.spawn()?;
         serde_json::to_writer(child.stdin.as_mut().ok_or("Guard stdin")?, event)?;
         drop(child.stdin.take());
         let output = child.wait_with_output()?;
@@ -343,38 +357,16 @@ fn write_repository_file(
     Ok(())
 }
 
-fn run_git(repository: &Path, args: &[&str]) -> Result<String, Box<dyn Error>> {
-    run_git_with_paths(repository, args, &[])
-}
-
-fn run_git_with_paths(
-    repository: &Path,
-    args: &[&str],
-    paths: &[&OsStr],
-) -> Result<String, Box<dyn Error>> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repository)
-        .args(args)
-        .args(paths)
-        .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "Git command failed with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    Ok(String::from_utf8(output.stdout)?)
-}
-
 fn assert_complete_paths(observation: &RepositoryObservationRecord, expected_paths: &[&str]) {
     assert_eq!(observation.state, RepositoryObservationState::Complete);
     let result = observation
         .terminal_result
         .as_ref()
         .expect("complete observation has a terminal result");
+    assert_eq!(
+        result.repository_observation_id,
+        observation.repository_observation_id
+    );
     assert_eq!(
         result
             .delta
@@ -386,6 +378,95 @@ fn assert_complete_paths(observation: &RepositoryObservationRecord, expected_pat
             .collect::<Vec<_>>(),
         expected_paths
     );
+}
+
+#[derive(Debug, Clone, Copy)]
+enum GitTransformation {
+    AttributesLineEnding,
+    AutomaticLineEnding,
+    WorktreeEncoding,
+    CleanFilter,
+}
+
+impl GitTransformation {
+    const ALL: [Self; 4] = [
+        Self::AttributesLineEnding,
+        Self::AutomaticLineEnding,
+        Self::WorktreeEncoding,
+        Self::CleanFilter,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::AttributesLineEnding => "attributes_line_ending",
+            Self::AutomaticLineEnding => "automatic_line_ending",
+            Self::WorktreeEncoding => "worktree_encoding",
+            Self::CleanFilter => "clean_filter",
+        }
+    }
+
+    fn bytes(self, value: &str) -> Vec<u8> {
+        match self {
+            Self::AttributesLineEnding | Self::AutomaticLineEnding => {
+                value.replace('\n', "\r\n").into_bytes()
+            }
+            Self::WorktreeEncoding => value.encode_utf16().flat_map(u16::to_le_bytes).collect(),
+            Self::CleanFilter => value.as_bytes().to_vec(),
+        }
+    }
+}
+
+fn configure_transformed_path(
+    fixture: &GuardRepositoryFixture,
+    transformation: GitTransformation,
+    path: &str,
+) -> Result<(), Box<dyn Error>> {
+    let attributes = match transformation {
+        GitTransformation::AttributesLineEnding => format!("{path} text eol=crlf\n"),
+        GitTransformation::AutomaticLineEnding => {
+            fixture.git.set_local_config("core.autocrlf", "true")?;
+            format!("{path} text\n")
+        }
+        GitTransformation::WorktreeEncoding => {
+            format!("{path} text working-tree-encoding=UTF-16LE\n")
+        }
+        GitTransformation::CleanFilter => {
+            fixture
+                .git
+                .set_local_config("filter.volicord-normalize.clean", "git stripspace")?;
+            fixture
+                .git
+                .set_local_config("filter.volicord-normalize.smudge", "git stripspace")?;
+            fixture
+                .git
+                .set_local_config("filter.volicord-normalize.required", "true")?;
+            format!("{path} filter=volicord-normalize\n")
+        }
+    };
+    fixture.git.write(".gitattributes", attributes.as_bytes())?;
+    fixture
+        .git
+        .write(path, &transformation.bytes("record=baseline\n"))?;
+    fixture.git.commit_all("transformed fixture baseline")?;
+    Ok(())
+}
+
+fn canonical_regular_file_identity(state: &ProductPathState) -> Option<&str> {
+    match state {
+        ProductPathState::RegularFile {
+            content_evidence, ..
+        } => Some(content_evidence.canonical_git_blob().as_str()),
+        _ => None,
+    }
+}
+
+fn current_test_filter_command(test_name: &str) -> Result<String, Box<dyn Error>> {
+    let executable = std::env::current_exe()?;
+    let executable = executable.to_string_lossy().replace('\\', "/");
+    Ok(format!(
+        "\"{}\" --ignored --exact {test_name} --nocapture",
+        executable.replace('"', "\\\"")
+    ))
 }
 
 #[test]
@@ -441,7 +522,7 @@ fn preexisting_dirty_tracked_and_untracked_state_stays_unattributed_across_calls
         "second-preexisting-untracked.txt",
         b"second preexisting untracked content\n",
     )?;
-    let status_before = run_git(&repository, &["status", "--porcelain"])?;
+    let status_before = fixture.git(&["status", "--porcelain"])?;
     let tracked_before = fs::read(repository.join("tracked-dirty.txt"))?;
     let untracked_before = fs::read(repository.join("preexisting-untracked.txt"))?;
     let second_tracked_before = fs::read(repository.join("clean-modify.txt"))?;
@@ -462,10 +543,7 @@ fn preexisting_dirty_tracked_and_untracked_state_stays_unattributed_across_calls
 
     assert_eq!(fixture.count("expected_writes")?, 0);
     assert_eq!(fixture.count("unrecorded_changes")?, 0);
-    assert_eq!(
-        run_git(&repository, &["status", "--porcelain"])?,
-        status_before
-    );
+    assert_eq!(fixture.git(&["status", "--porcelain"])?, status_before);
     assert_eq!(
         fs::read(repository.join("tracked-dirty.txt"))?,
         tracked_before
@@ -481,6 +559,206 @@ fn preexisting_dirty_tracked_and_untracked_state_stays_unattributed_across_calls
     assert_eq!(
         fs::read(repository.join("second-preexisting-untracked.txt"))?,
         second_untracked_before
+    );
+    Ok(())
+}
+
+#[test]
+fn transformed_dirty_bytes_committed_during_invocation_remain_unattributed(
+) -> Result<(), Box<dyn Error>> {
+    for transformation in GitTransformation::ALL {
+        let label = transformation.label();
+        let fixture = GuardRepositoryFixture::new(&format!("transformed_noop_{label}"))?;
+        let path = "transformed.txt";
+        configure_transformed_path(&fixture, transformation, path)?;
+        fixture
+            .git
+            .write(path, &transformation.bytes("record=preexisting\n"))?;
+        let bytes_before = fixture.git.worktree_bytes(path)?;
+        let status_before = fixture.git.status_bytes()?;
+        assert!(
+            !status_before.is_empty(),
+            "{label} fixture must start dirty"
+        );
+        let canonical_before = fixture.git.canonical_worktree_blob_identity(path)?;
+        let callable = fixture.mcp_callable(AgentToolId::STATUS)?;
+        let tool_use_id = format!("transformed-noop-{label}");
+
+        fixture.pre(&tool_use_id, &callable, json!({}))?;
+        fixture.git.git(&["add", "--", path])?;
+        fixture
+            .git
+            .commit_staged("record existing transformed bytes")?;
+        assert!(fixture.git.status_bytes()?.is_empty(), "{label}");
+        fixture.post(&tool_use_id, &callable, json!({}))?;
+
+        let observation = fixture.observation(&tool_use_id)?;
+        assert_complete_paths(&observation, &[]);
+        assert!(observation.pre_snapshot.is_some(), "{label}");
+        assert_eq!(fixture.git.worktree_bytes(path)?, bytes_before, "{label}");
+        assert_eq!(
+            fixture.git.committed_blob_identity(path)?,
+            canonical_before,
+            "{label}"
+        );
+        let terminal = observation
+            .terminal_result
+            .as_ref()
+            .expect("complete observation terminal result");
+        assert!(terminal.expected_write_matches.is_empty(), "{label}");
+        assert!(terminal.unrecorded_changes.is_empty(), "{label}");
+        let terminal_json = serde_json::to_string(terminal)?;
+        assert!(!terminal_json.contains("suppress"), "{terminal_json}");
+        assert!(!terminal_json.contains("heuristic"), "{terminal_json}");
+        assert_eq!(fixture.count("expected_writes")?, 0, "{label}");
+        assert_eq!(fixture.count("unrecorded_changes")?, 0, "{label}");
+
+        let oversized_path = fixture.repository().join("replay-must-not-scan.bin");
+        let oversized = fs::File::create(&oversized_path)?;
+        oversized.set_len(512 * 1024 * 1024 + 1)?;
+        fixture.post(&tool_use_id, &callable, json!({}))?;
+        fs::remove_file(oversized_path)?;
+        assert_eq!(fixture.observation(&tool_use_id)?, observation, "{label}");
+        assert_eq!(fixture.count("unrecorded_changes")?, 0, "{label}");
+    }
+    Ok(())
+}
+
+#[test]
+fn transformed_changes_committed_during_invocation_create_one_stable_finding(
+) -> Result<(), Box<dyn Error>> {
+    for transformation in GitTransformation::ALL {
+        let label = transformation.label();
+        let fixture = GuardRepositoryFixture::new(&format!("transformed_positive_{label}"))?;
+        let path = "transformed.txt";
+        configure_transformed_path(&fixture, transformation, path)?;
+        fixture
+            .git
+            .write(path, &transformation.bytes("record=preexisting\n"))?;
+        let before_bytes = fixture.git.worktree_bytes(path)?;
+        let before_identity = fixture.git.canonical_worktree_blob_identity(path)?;
+        let callable = fixture.mcp_callable(AgentToolId::STATUS)?;
+        let tool_use_id = format!("transformed-positive-{label}");
+
+        fixture.pre(&tool_use_id, &callable, json!({}))?;
+        fixture
+            .git
+            .write(path, &transformation.bytes("record=invocation\n"))?;
+        fixture.git.git(&["add", "--", path])?;
+        fixture
+            .git
+            .commit_staged("record transformed invocation change")?;
+        fixture.post(&tool_use_id, &callable, json!({}))?;
+
+        let observation = fixture.observation(&tool_use_id)?;
+        assert_complete_paths(&observation, &[path]);
+        let transition = &observation
+            .delta
+            .as_ref()
+            .expect("complete transformed delta")
+            .transitions()[0];
+        assert_ne!(
+            canonical_regular_file_identity(transition.before()),
+            canonical_regular_file_identity(transition.after()),
+            "{label}"
+        );
+        assert_ne!(fixture.git.worktree_bytes(path)?, before_bytes, "{label}");
+        assert_ne!(
+            fixture.git.committed_blob_identity(path)?,
+            before_identity,
+            "{label}"
+        );
+        let terminal = observation
+            .terminal_result
+            .as_ref()
+            .expect("complete observation terminal result");
+        assert_eq!(terminal.unrecorded_changes.len(), 1, "{label}");
+        assert_eq!(
+            terminal.unrecorded_changes[0]
+                .observed_paths
+                .iter()
+                .map(|path| path.as_str())
+                .collect::<Vec<_>>(),
+            [path],
+            "{label}"
+        );
+        assert_eq!(
+            observation.repository_observation_id,
+            fixture.core.conn()?.query_row(
+                "SELECT repository_observation_id
+                   FROM unrecorded_changes
+                  WHERE unrecorded_change_id = ?1",
+                [&terminal.unrecorded_changes[0].unrecorded_change_id],
+                |row| row.get::<_, String>(0),
+            )?,
+            "{label}"
+        );
+
+        let oversized_path = fixture.repository().join("replay-must-not-scan.bin");
+        let oversized = fs::File::create(&oversized_path)?;
+        oversized.set_len(512 * 1024 * 1024 + 1)?;
+        fixture.post(&tool_use_id, &callable, json!({}))?;
+        fs::remove_file(oversized_path)?;
+        assert_eq!(fixture.count("unrecorded_changes")?, 1, "{label}");
+
+        let no_op_id = format!("transformed-following-noop-{label}");
+        fixture.pre(&no_op_id, &callable, json!({}))?;
+        fixture.post(&no_op_id, &callable, json!({}))?;
+        assert_complete_paths(&fixture.observation(&no_op_id)?, &[]);
+        assert_eq!(fixture.count("unrecorded_changes")?, 1, "{label}");
+    }
+    Ok(())
+}
+
+#[test]
+fn directly_observed_filter_equivalent_byte_change_is_still_a_transition(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardRepositoryFixture::new("direct_filter_equivalent")?;
+    let path = "transformed.txt";
+    configure_transformed_path(&fixture, GitTransformation::CleanFilter, path)?;
+    fixture.git.write(path, b"record=alpha\n\n")?;
+    let callable = "Read";
+    let input = json!({"file_path": fixture.repository().join(path)});
+
+    fixture.pre("direct-filter-equivalent", callable, input.clone())?;
+    fixture.git.write(path, b"record=alpha\n")?;
+    fixture.post("direct-filter-equivalent", callable, input)?;
+
+    let observation = fixture.observation("direct-filter-equivalent")?;
+    assert_complete_paths(&observation, &[path]);
+    let transition = &observation
+        .delta
+        .as_ref()
+        .expect("direct transformed delta")
+        .transitions()[0];
+    let (
+        ProductPathState::RegularFile {
+            content_evidence: before,
+            ..
+        },
+        ProductPathState::RegularFile {
+            content_evidence: after,
+            ..
+        },
+    ) = (transition.before(), transition.after())
+    else {
+        panic!("both directly observed states must be regular files");
+    };
+    assert!(matches!(
+        before,
+        RegularFileContentEvidence::Worktree { .. }
+    ));
+    assert!(matches!(after, RegularFileContentEvidence::Worktree { .. }));
+    assert_ne!(before.exact_worktree_bytes(), after.exact_worktree_bytes());
+    assert_eq!(before.canonical_git_blob(), after.canonical_git_blob());
+    assert_eq!(
+        observation
+            .terminal_result
+            .as_ref()
+            .expect("terminal result")
+            .unrecorded_changes
+            .len(),
+        1
     );
     Ok(())
 }
@@ -531,11 +809,8 @@ fn invocation_changes_are_attributed_once_even_for_dirty_restore_and_commit_case
             "delta-restore" => write_repository_file(&repository, path, b"restore baseline\n")?,
             "delta-commit" => {
                 write_repository_file(&repository, path, b"committed during invocation\n")?;
-                run_git_with_paths(&repository, &["add", "--"], &[OsStr::new(path)])?;
-                run_git(
-                    &repository,
-                    &["commit", "-q", "-m", "commit during invocation"],
-                )?;
+                fixture.git_with_paths(&["add", "--"], &[OsStr::new(path)])?;
+                fixture.git(&["commit", "-q", "-m", "commit during invocation"])?;
             }
             _ => unreachable!("closed test case"),
         }
@@ -685,13 +960,139 @@ fn observer_resource_failure_is_explicit_not_an_empty_success() -> Result<(), Bo
 }
 
 #[test]
+fn complete_guard_path_contains_filter_failure_timeout_and_diagnostics(
+) -> Result<(), Box<dyn Error>> {
+    for (label, command, expected_reason) in [
+        (
+            "failure",
+            "git cat-file -e 0000000000000000000000000000000000000000".to_owned(),
+            "git_command_failed",
+        ),
+        (
+            "diagnostics",
+            current_test_filter_command("git_filter_emits_excessive_diagnostics")?,
+            "git_output_limit_exceeded",
+        ),
+        (
+            "timeout",
+            current_test_filter_command("git_filter_does_not_terminate")?,
+            "process_timeout",
+        ),
+    ] {
+        let fixture = GuardRepositoryFixture::new(&format!("conversion_{label}"))?;
+        let path = "conversion-input.txt";
+        fixture.git.write(
+            ".gitattributes",
+            format!("{path} filter=bounded\n").as_bytes(),
+        )?;
+        fixture
+            .git
+            .set_local_config("filter.bounded.clean", &command)?;
+        fixture
+            .git
+            .set_local_config("filter.bounded.required", "true")?;
+        fixture.git.commit_all("required conversion fixture")?;
+        fixture.git.write(path, b"conversion input\n")?;
+        let status_callable = fixture.mcp_callable(AgentToolId::STATUS)?;
+
+        let read_id = format!("conversion-read-{label}");
+        let read = fixture.pre(&read_id, &status_callable, json!({}))?;
+        assert!(
+            !String::from_utf8_lossy(&read.stdout).contains("permissionDecision"),
+            "{label}"
+        );
+        fixture.post(&read_id, &status_callable, json!({}))?;
+        let read_observation = fixture.observation(&read_id)?;
+        assert_eq!(
+            read_observation.state,
+            RepositoryObservationState::Unavailable,
+            "{label}"
+        );
+        assert_eq!(
+            read_observation
+                .unavailable_reason
+                .map(|reason| reason.as_str()),
+            Some(expected_reason),
+            "{label}"
+        );
+        assert!(read_observation.delta.is_none(), "{label}");
+        assert!(read_observation
+            .terminal_result
+            .as_ref()
+            .is_some_and(|result| result.delta.is_none()
+                && result.expected_write_matches.is_empty()
+                && result.unrecorded_changes.is_empty()));
+
+        let write_id = format!("conversion-write-{label}");
+        let denied = fixture.pre(
+            &write_id,
+            "Write",
+            json!({"file_path": fixture.repository().join(path)}),
+        )?;
+        let denied: Value = serde_json::from_slice(&denied.stdout)?;
+        assert_eq!(
+            denied.pointer("/hookSpecificOutput/permissionDecision"),
+            Some(&Value::String("deny".to_owned())),
+            "{label}: {denied}"
+        );
+        let write_observation = fixture.observation(&write_id)?;
+        assert_eq!(
+            write_observation.state,
+            RepositoryObservationState::Unavailable,
+            "{label}"
+        );
+        assert!(write_observation.delta.is_none(), "{label}");
+        assert_eq!(fixture.count("expected_writes")?, 0, "{label}");
+        assert_eq!(fixture.count("unrecorded_changes")?, 0, "{label}");
+        if label == "failure" {
+            let unknown = fixture.pre(
+                "conversion-unknown-failure",
+                "FutureTool",
+                json!({"target": fixture.repository().join(path)}),
+            )?;
+            let unknown: Value = serde_json::from_slice(&unknown.stdout)?;
+            assert_eq!(
+                unknown.pointer("/hookSpecificOutput/permissionDecision"),
+                Some(&Value::String("deny".to_owned())),
+                "{unknown}"
+            );
+            assert_eq!(
+                fixture.observation("conversion-unknown-failure")?.state,
+                RepositoryObservationState::Unavailable
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "executed only as a contained Git clean-filter process"]
+fn git_filter_emits_excessive_diagnostics() {
+    let mut stderr = std::io::stderr().lock();
+    let chunk = vec![b'x'; 16 * 1024];
+    for _ in 0..128 {
+        stderr.write_all(&chunk).expect("write diagnostic chunk");
+    }
+    stderr.flush().expect("flush diagnostics");
+}
+
+#[test]
+#[ignore = "executed only as a contained Git clean-filter process"]
+fn git_filter_does_not_terminate() {
+    thread::sleep(Duration::from_secs(30));
+}
+
+#[test]
 fn expected_writes_match_only_their_exact_observation_and_changed_paths(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = GuardRepositoryFixture::new("expected_writes")?;
     let repository = fixture.repository();
     let path_a = "src/export.rs";
     let path_b = "tests/export.rs";
-    fixture.prepare_write_ticket("expected", &[path_a, path_b])?;
+    configure_transformed_path(&fixture, GitTransformation::AttributesLineEnding, path_a)?;
+    fixture
+        .prepare_write_ticket("expected", &[path_a, path_b])
+        .map_err(|error| format!("transformed write-ticket setup failed: {error}"))?;
     let write_input = |path: &str| json!({"file_path": repository.join(path)});
 
     let empty_pre = fixture.pre("expected-empty", "Write", write_input(path_a))?;
@@ -700,10 +1101,20 @@ fn expected_writes_match_only_their_exact_observation_and_changed_paths(
         "{}",
         String::from_utf8_lossy(&empty_pre.stdout)
     );
-    fixture.post("expected-empty", "Write", write_input(path_a))?;
-    assert_complete_paths(&fixture.observation("expected-empty")?, &[]);
+    assert_eq!(fixture.count("expected_writes")?, 1);
+    fixture
+        .post("expected-empty", "Write", write_input(path_a))
+        .map_err(|error| format!("transformed empty post failed: {error}"))?;
+    assert_complete_paths(
+        &fixture
+            .observation("expected-empty")
+            .map_err(|error| format!("transformed empty observation failed: {error}"))?,
+        &[],
+    );
     assert_eq!(
-        fixture.expected_write_status("expected-empty")?,
+        fixture
+            .expected_write_status("expected-empty")
+            .map_err(|error| format!("transformed expected-write lookup failed: {error}"))?,
         ("pending".to_owned(), None)
     );
 
@@ -818,10 +1229,48 @@ fn expected_writes_match_only_their_exact_observation_and_changed_paths(
 }
 
 #[test]
+fn transformed_unchanged_commit_leaves_its_expected_write_pending() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardRepositoryFixture::new("transformed_expected_pending")?;
+    let path = "src/export.rs";
+    configure_transformed_path(&fixture, GitTransformation::AttributesLineEnding, path)?;
+    fixture.prepare_write_ticket("transformed_pending", &[path])?;
+    fixture.git.write(
+        path,
+        &GitTransformation::AttributesLineEnding.bytes("preexisting authorized bytes\n"),
+    )?;
+    let unchanged_bytes = fixture.git.worktree_bytes(path)?;
+    let input = json!({"file_path": fixture.repository().join(path)});
+
+    fixture.pre("transformed-expected-pending", "Write", input.clone())?;
+    fixture.git.git(&["add", "--", path])?;
+    fixture
+        .git
+        .commit_staged("stage unchanged authorized transformed bytes")?;
+    fixture.post("transformed-expected-pending", "Write", input)?;
+
+    let observation = fixture.observation("transformed-expected-pending")?;
+    assert_complete_paths(&observation, &[]);
+    assert!(observation
+        .terminal_result
+        .as_ref()
+        .is_some_and(|result| result.expected_write_matches.is_empty()
+            && result.unrecorded_changes.is_empty()));
+    assert_eq!(
+        fixture.expected_write_status("transformed-expected-pending")?,
+        ("pending".to_owned(), None)
+    );
+    assert_eq!(fixture.git.worktree_bytes(path)?, unchanged_bytes);
+    assert_eq!(fixture.count("unrecorded_changes")?, 0);
+    Ok(())
+}
+
+#[test]
 fn identical_filenames_in_distinct_repositories_do_not_cross_match() -> Result<(), Box<dyn Error>> {
     let first = GuardRepositoryFixture::new("repo_isolation_first")?;
     let second = GuardRepositoryFixture::new("repo_isolation_second")?;
     let path = "src/export.rs";
+    configure_transformed_path(&first, GitTransformation::AttributesLineEnding, path)?;
+    configure_transformed_path(&second, GitTransformation::AttributesLineEnding, path)?;
     first.prepare_write_ticket("first", &[path])?;
     second.prepare_write_ticket("second", &[path])?;
 

@@ -247,7 +247,17 @@ fn hash_regular_file(
     )?;
     budget.charge(hashed.source_bytes)?;
     let output = require_git_success(hashed.output, "Git canonical-content observation")?;
-    let output = std::str::from_utf8(&output)
+    let canonical_git_blob = parse_canonical_git_identity(&output)?;
+    Ok(RegularFileContentEvidence::Worktree {
+        exact_worktree_bytes: hashed.exact_worktree_bytes,
+        canonical_git_blob,
+    })
+}
+
+pub(super) fn parse_canonical_git_identity(
+    output: &[u8],
+) -> Result<GitObjectIdentity, ObservationUnavailable> {
+    let output = std::str::from_utf8(output)
         .map_err(|_| git_object_unavailable("Git canonical-content identity is not valid UTF-8"))?;
     let object_oid = output.strip_suffix('\n').unwrap_or(output);
     if object_oid.is_empty() || object_oid.contains(['\n', '\r']) {
@@ -255,13 +265,15 @@ fn hash_regular_file(
             "Git returned a malformed canonical-content identity",
         ));
     }
-    let canonical_git_blob = GitObjectIdentity::parse(object_oid.to_owned()).map_err(|_| {
+    let identity = GitObjectIdentity::parse(object_oid.to_owned()).map_err(|_| {
         git_object_unavailable("Git returned a non-canonical canonical-content identity")
     })?;
-    Ok(RegularFileContentEvidence::Worktree {
-        exact_worktree_bytes: hashed.exact_worktree_bytes,
-        canonical_git_blob,
-    })
+    if identity.as_str() != object_oid {
+        return Err(git_object_unavailable(
+            "Git returned a non-canonical canonical-content identity",
+        ));
+    }
+    Ok(identity)
 }
 
 fn observe_gitlink(

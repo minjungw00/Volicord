@@ -49,7 +49,7 @@ pub struct ObserverLimits {
 impl Default for ObserverLimits {
     fn default() -> Self {
         Self {
-            max_git_output_bytes: 512 * 1024 * 1024,
+            max_git_output_bytes: 1024 * 1024,
             max_process_input_bytes: 1024 * 1024,
             max_candidate_paths: 8_192,
             max_total_hashed_bytes: 2 * 1024 * 1024 * 1024,
