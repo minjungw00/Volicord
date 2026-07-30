@@ -8,6 +8,8 @@ publish = false
 [dev-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 volicord-core = { path = "../../crates/volicord-core" }
+volicord-host-contract = { path = "../../crates/volicord-host-contract" }
+volicord-platform-fs = { path = "../../crates/volicord-platform-fs" }
 volicord-store = { path = "../../crates/volicord-store" }
 volicord-test-support = { path = "../../crates/volicord-test-support" }
 volicord-types = { path = "../../crates/volicord-types" }

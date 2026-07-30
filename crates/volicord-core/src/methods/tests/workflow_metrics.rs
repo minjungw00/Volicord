@@ -72,7 +72,12 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     )?;
     assert_eq!(reused.response_value["write_ticket_effect"], "reused");
 
-    insert_guarded_unrecorded_change(&harness, &task_id, "core_metrics_first_write")?;
+    insert_guarded_unrecorded_change_at(
+        &harness,
+        &task_id,
+        "core_metrics_first_write",
+        "2026-06-18T00:00:01Z",
+    )?;
     clock.advance(Duration::seconds(2));
     let run_request = product_write_record_run_request(
         "req_core_metrics_first_write",

@@ -240,6 +240,8 @@ boundary = "neutral"
 normal = []
 development = [
     "volicord-core",
+    "volicord-host-contract",
+    "volicord-platform-fs",
     "volicord-store",
     "volicord-test-support",
     "volicord-types",

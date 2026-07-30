@@ -1585,6 +1585,8 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "volicord-core",
+ "volicord-host-contract",
+ "volicord-platform-fs",
  "volicord-store",
  "volicord-test-support",
  "volicord-types",

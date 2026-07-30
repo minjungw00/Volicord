@@ -1143,18 +1143,9 @@ CREATE TABLE repository_observations (
   CHECK (
     (
       state = 'open'
-      AND (
-        (
-          pre_tool_guard_event_id IS NOT NULL
-          AND pre_snapshot_json IS NOT NULL
-          AND pre_snapshot_digest IS NOT NULL
-        )
-        OR (
-          pre_tool_guard_event_id IS NULL
-          AND pre_snapshot_json IS NULL
-          AND pre_snapshot_digest IS NULL
-        )
-      )
+      AND pre_tool_guard_event_id IS NOT NULL
+      AND pre_snapshot_json IS NOT NULL
+      AND pre_snapshot_digest IS NOT NULL
       AND post_tool_guard_event_id IS NULL
       AND post_snapshot_json IS NULL
       AND post_snapshot_digest IS NULL

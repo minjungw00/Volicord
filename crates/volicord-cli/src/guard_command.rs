@@ -139,6 +139,8 @@ fn core_current_timestamp(store: &CoreProjectStore) -> StoreResult<UtcTimestamp>
 
 #[cfg(test)]
 mod admission_tests {
+    use std::process::Command;
+
     use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeSetup};
 
     use super::*;
@@ -287,6 +289,125 @@ mod admission_tests {
         assert_eq!(after_retry.state_version, before.state_version);
         Ok(())
     }
+
+    #[test]
+    fn exact_pre_tool_replay_returns_persisted_result_without_observer_rescan(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("guard-pre-replay-no-rescan")?;
+        let git_init = Command::new("git")
+            .args([
+                "-C",
+                fixture
+                    .product_repo_path()
+                    .to_str()
+                    .expect("UTF-8 fixture repository"),
+                "init",
+                "-q",
+            ])
+            .output()?;
+        assert!(git_init.status.success());
+        fs::create_dir_all(fixture.product_repo_path().join("src"))?;
+        fs::write(fixture.product_repo_path().join("src/lib.rs"), b"before\n")?;
+        let policy_path = GuardManagedArtifact::VolicordPolicy
+            .expected_path(&fixture.product_repo_path(), None)
+            .expect("fixture Guard policy path");
+        fs::create_dir_all(policy_path.parent().expect("policy parent"))?;
+        fs::write(&policy_path, "{}")?;
+        let policy_hash = sha256_text("{}");
+        let guard_installation_id = "guard_pre_replay";
+        volicord_store::guards::upsert_guard_installation(
+            &fixture.mutation_context()?,
+            volicord_store::guards::GuardInstallationUpsert {
+                guard_installation_id: guard_installation_id.to_owned(),
+                connection_internal_id: fixture.connection_id().to_owned(),
+                project_id: fixture.project_id().to_owned(),
+                manifest_json: volicord_test_support::test_guard_manifest_json(
+                    fixture.runtime_home_path(),
+                    &fixture.product_repo_path(),
+                    fixture.project_id(),
+                    fixture.connection_id(),
+                    guard_installation_id,
+                    &policy_hash,
+                ),
+            },
+        )?;
+        let event_path = fixture.product_repo_path().join("pre-tool-event.json");
+        fs::write(
+            &event_path,
+            serde_json::to_vec(&json!({
+                "hook_event_name": "PreToolUse",
+                "session_id": "session_pre_replay",
+                "turn_id": "turn_pre_replay",
+                "tool_use_id": "tool_pre_replay",
+                "tool_name": "Read",
+                "tool_input": {
+                    "file_path": fixture.product_repo_path().join("src/lib.rs")
+                }
+            }))?,
+        )?;
+        let invoke = || {
+            run_guard_command(
+                HookArgs {
+                    command: HookCommand::PreTool(HookEventArgs {
+                        event_file: Some(event_path.clone()),
+                        repo: Some(fixture.product_repo_path()),
+                        connection: Some(fixture.connection_id().to_owned()),
+                        guard_installation: Some(guard_installation_id.to_owned()),
+                        host: None,
+                        integration_profile: None,
+                        policy_hash: Some(policy_hash.clone()),
+                        output: Some(HookOutput::VolicordJson),
+                        host_output: None,
+                    }),
+                },
+                |name| {
+                    (name == "VOLICORD_HOME").then(|| OsString::from(fixture.runtime_home_path()))
+                },
+                fixture.product_repo_path().as_path(),
+            )
+        };
+        let first = invoke()?;
+        assert_eq!(first.exit_code, 0);
+        let before = fixture.conn()?.query_row(
+            "SELECT state, pre_snapshot_digest
+               FROM repository_observations",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        assert_eq!(before.0, "open");
+
+        fs::rename(
+            fixture.product_repo_path().join(".git"),
+            fixture.product_repo_path().join(".git-data"),
+        )?;
+        fs::write(
+            fixture.product_repo_path().join(".git"),
+            "gitdir: /nonexistent/volicord-replay-test\n",
+        )?;
+        let replay = invoke()?;
+        assert_eq!(replay.exit_code, 0);
+        let conn = fixture.conn()?;
+        let after = conn.query_row(
+            "SELECT state, pre_snapshot_digest
+               FROM repository_observations",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        assert_eq!(after, before);
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM repository_observations", [], |row| {
+                row.get::<_, i64>(0)
+            })?,
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM guard_events", [], |row| {
+                row.get::<_, i64>(0)
+            })?,
+            1
+        );
+        Ok(())
+    }
 }
 
 pub fn run_guard_command<F>(
@@ -399,7 +520,7 @@ where
                     Err(error) => return Err(error),
                 };
                 let subject = guard_subject(phase, &input, &envelope, &project);
-                if phase == GuardHookPhase::PostTool {
+                if matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
                     if let Some(mut replayed) =
                         replayed_guard_phase_result(context, &project, &envelope, phase, &subject)?
                     {
@@ -999,6 +1120,12 @@ fn replayed_guard_phase_result(
             envelope.event_id
         )));
     }
+    guard_phase_result_from_stored_event(&existing).map(Some)
+}
+
+fn guard_phase_result_from_stored_event(
+    existing: &volicord_store::guards::GuardEventRecord,
+) -> Result<GuardPhaseResult, GuardCommandError> {
     let decision = match existing.decision.as_str() {
         "allow" => GuardPolicyDecision::Continue,
         "deny" => GuardPolicyDecision::Deny,
@@ -1007,7 +1134,7 @@ fn replayed_guard_phase_result(
         _ => {
             return Err(GuardCommandError::Runtime(format!(
                 "guard event {} contains an unsupported stored decision",
-                envelope.event_id
+                existing.guard_event_id
             )))
         }
     };
@@ -1015,10 +1142,10 @@ fn replayed_guard_phase_result(
     if !result.is_object() {
         return Err(GuardCommandError::Runtime(format!(
             "guard event {} contains a malformed stored result",
-            envelope.event_id
+            existing.guard_event_id
         )));
     }
-    Ok(Some(GuardPhaseResult::new(decision, result)))
+    Ok(GuardPhaseResult::new(decision, result))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1309,27 +1436,33 @@ fn bind_guard_envelope(
         &envelope.correlation,
     )?;
     envelope.guard_installation_id = coordinates.guard_installation_id;
-    let session = observe_host_correlation(
-        context,
-        &project.project_id,
-        HostCorrelationObservation {
-            connection_internal_id: envelope.connection_id.clone(),
-            guard_installation_id: envelope.guard_installation_id.clone(),
-            correlation: envelope.correlation.clone(),
-            observed_at: envelope.occurred_at.clone(),
-        },
-    )?;
-    if session.session_id != coordinates.session_id
-        || session.project_integration_revision != coordinates.project_integration_revision
-    {
-        return Err(GuardCommandError::Runtime(
-            "Store returned a project Agent Session outside the derived current revision"
-                .to_owned(),
-        ));
+    if matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
+        envelope.session_id = Some(coordinates.session_id);
+        envelope.integration_revision = Some(coordinates.project_integration_revision);
+    } else {
+        let session = observe_host_correlation(
+            context,
+            &project.project_id,
+            HostCorrelationObservation {
+                connection_internal_id: envelope.connection_id.clone(),
+                guard_installation_id: envelope.guard_installation_id.clone(),
+                correlation: envelope.correlation.clone(),
+                observed_at: envelope.occurred_at.clone(),
+            },
+        )?;
+        if session.session_id != coordinates.session_id
+            || session.project_integration_revision != coordinates.project_integration_revision
+        {
+            return Err(GuardCommandError::Runtime(
+                "Store returned a project Agent Session outside the derived current revision"
+                    .to_owned(),
+            ));
+        }
+        envelope.session_id = Some(session.session_id);
+        envelope.integration_revision =
+            Some(session.project_integration_revision.as_str().to_owned());
     }
-    envelope.session_id = Some(session.session_id);
     envelope.policy_hash = current_policy_hash(project)?;
-    envelope.integration_revision = Some(session.project_integration_revision.as_str().to_owned());
     envelope.event_id = stable_id(
         "guard_event",
         &[
@@ -1448,23 +1581,26 @@ fn persist_guard_event(
         })
         .to_string(),
     };
-    if let Some(existing) = guard_event(runtime_home, &project.project_id, &envelope.event_id)? {
-        if guard_event_record_payload_sha256(&existing)?
-            == guard_event_insert_payload_sha256(&input, envelope.session_id.as_deref())?
+    if !matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
+        if let Some(existing) = guard_event(runtime_home, &project.project_id, &envelope.event_id)?
         {
-            observe_guard_probe_event_if_applicable(
-                context,
-                &project.project_id,
-                &envelope.event_id,
-                phase,
-                guard_input,
-            )?;
-            return Ok(());
+            if guard_event_record_payload_sha256(&existing)?
+                == guard_event_insert_payload_sha256(&input, envelope.session_id.as_deref())?
+            {
+                observe_guard_probe_event_if_applicable(
+                    context,
+                    &project.project_id,
+                    &envelope.event_id,
+                    phase,
+                    guard_input,
+                )?;
+                return Ok(());
+            }
+            return Err(GuardCommandError::Runtime(format!(
+                "guard event {} conflicts with a different payload hash",
+                envelope.event_id
+            )));
         }
-        return Err(GuardCommandError::Runtime(format!(
-            "guard event {} conflicts with a different payload hash",
-            envelope.event_id
-        )));
     }
     match phase_result.repository_observation.clone() {
         Some(RepositoryObservationMutation::Pre {
@@ -1475,7 +1611,7 @@ fn persist_guard_event(
             expected_write,
             metadata,
         }) => {
-            record_pre_tool_repository_observation(
+            let stored = record_pre_tool_repository_observation(
                 context,
                 &project.project_id,
                 PreToolRepositoryObservationInsert {
@@ -1488,6 +1624,9 @@ fn persist_guard_event(
                     metadata,
                 },
             )?;
+            if stored.replayed {
+                *phase_result = guard_phase_result_from_stored_event(&stored.guard_event)?;
+            }
         }
         Some(RepositoryObservationMutation::Post {
             repository_observation_id,
@@ -1508,8 +1647,7 @@ fn persist_guard_event(
                     metadata,
                 },
             )?;
-            phase_result.result =
-                serde_json::from_str(&stored.guard_event.result_json).map_err(json_error)?;
+            *phase_result = guard_phase_result_from_stored_event(&stored.guard_event)?;
         }
         None => {
             insert_guard_event(context, &project.project_id, input)?;

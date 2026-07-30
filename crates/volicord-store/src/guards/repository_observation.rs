@@ -7,7 +7,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_host_contract::HostNativeCorrelation;
 use volicord_platform_fs::{
-    ObservationUnavailableReason, RepositoryDelta, RepositoryObservationCheckpoint,
+    ObservationUnavailableReason, ObserverLimits, RepositoryDelta, RepositoryObservationCheckpoint,
+    SemanticObserverContractDigest,
 };
 use volicord_types::canonical::{canonical_json_string, is_canonical_sha256_digest};
 use volicord_types::product_path::ProductRelativePath;
@@ -15,12 +16,51 @@ use volicord_types::schema::JsonObject;
 use volicord_types::values::UtcTimestamp;
 
 use super::{
-    begin_immediate_transaction, current_guard_manifest, guard_correlation_fields,
-    guard_event_by_conn, guard_installation, open_guard_project, open_project_for_read,
-    strict_stored_timestamp, validate_guard_event_insert, validate_identifier,
-    validate_string_items, GuardCorrelationFields, GuardEventInsert, GuardEventRecord,
+    begin_immediate_transaction, current_guard_manifest, establish_host_correlation_in_transaction,
+    guard_correlation_fields, guard_event_by_conn, guard_event_from_conn, guard_installation,
+    open_guard_project, open_project_for_read, strict_stored_timestamp,
+    validate_guard_event_insert, validate_identifier, validate_string_items,
+    GuardCorrelationFields, GuardEventInsert, GuardEventRecord,
 };
 use crate::{RuntimeHomeMutationContext, StoreError, StoreResult};
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RepositoryObservationFaultPoint {
+    PreAfterCorrelation,
+    PreAfterGuardEvent,
+    PreAfterObservation,
+    PreAfterExpectedWrite,
+    PostAfterExpectedWriteReconciliation,
+    PostAfterUnrecordedChangeInsert,
+    PostAfterGuardEvent,
+    PostAfterObservation,
+}
+
+#[cfg(test)]
+thread_local! {
+    static REPOSITORY_OBSERVATION_FAULT_POINT:
+        std::cell::Cell<Option<RepositoryObservationFaultPoint>> =
+            const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) fn set_repository_observation_fault_point(
+    point: Option<RepositoryObservationFaultPoint>,
+) {
+    REPOSITORY_OBSERVATION_FAULT_POINT.set(point);
+}
+
+#[cfg(test)]
+fn inject_repository_observation_fault(point: RepositoryObservationFaultPoint) -> StoreResult<()> {
+    if REPOSITORY_OBSERVATION_FAULT_POINT.get() == Some(point) {
+        REPOSITORY_OBSERVATION_FAULT_POINT.set(None);
+        return Err(StoreError::InvalidInput {
+            detail: format!("injected repository-observation fault at {point:?}"),
+        });
+    }
+    Ok(())
+}
 
 /// Closed lifecycle state for one invocation-scoped repository observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,6 +239,15 @@ pub struct PostToolRepositoryObservationRecord {
     pub guard_event: GuardEventRecord,
     pub observation: RepositoryObservationRecord,
     pub result: RepositoryObservationResult,
+    pub replayed: bool,
+}
+
+/// Atomic PreToolUse aggregate result.
+#[derive(Debug, Clone)]
+pub struct PreToolRepositoryObservationRecord {
+    pub guard_event: GuardEventRecord,
+    pub observation: RepositoryObservationRecord,
+    pub replayed: bool,
 }
 
 /// Derives the stable identity for one exact native host tool invocation.
@@ -241,7 +290,7 @@ pub fn record_pre_tool_repository_observation(
     context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: PreToolRepositoryObservationInsert,
-) -> StoreResult<GuardEventRecord> {
+) -> StoreResult<PreToolRepositoryObservationRecord> {
     validate_pre_input(project_id, &input)?;
     let runtime_home = context.runtime_home().as_path();
     let fields = validate_guard_ownership(runtime_home, project_id, &input.guard_event)?;
@@ -289,12 +338,61 @@ pub fn record_pre_tool_repository_observation(
         &input.guard_event.connection_internal_id,
     )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
+    if let Some(existing) = repository_observation_from_conn(
+        &tx,
+        &project.project.project_id,
+        &input.repository_observation_id,
+    )? {
+        let pre_event_id = existing.pre_tool_guard_event_id.as_deref().ok_or_else(|| {
+            repository_observation_conflict(
+                &input.repository_observation_id,
+                "existing observation has no owning PreToolUse event",
+            )
+        })?;
+        let stored_event = guard_event_by_conn(&tx, &project.project.project_id, pre_event_id)?;
+        if !pre_tool_replay_matches(
+            &tx,
+            &project.project.project_id,
+            &fields,
+            &input,
+            &existing,
+            &stored_event,
+        )? {
+            return Err(repository_observation_conflict(
+                &input.repository_observation_id,
+                "PreToolUse replay conflicts with the persisted aggregate",
+            ));
+        }
+        tx.commit()?;
+        return Ok(PreToolRepositoryObservationRecord {
+            guard_event: stored_event,
+            observation: existing,
+            replayed: true,
+        });
+    }
+    establish_host_correlation_in_transaction(
+        &tx,
+        &project.project.project_id,
+        &fields.session_id,
+        &fields.project_integration_revision,
+        &input.guard_event.connection_internal_id,
+        input
+            .guard_event
+            .correlation
+            .as_ref()
+            .expect("validated exact tool correlation"),
+        &input.guard_event.occurred_at,
+    )?;
+    #[cfg(test)]
+    inject_repository_observation_fault(RepositoryObservationFaultPoint::PreAfterCorrelation)?;
     insert_guard_event_in_transaction(
         &tx,
         &project.project.project_id,
         &fields,
         &input.guard_event,
     )?;
+    #[cfg(test)]
+    inject_repository_observation_fault(RepositoryObservationFaultPoint::PreAfterGuardEvent)?;
     let state = if input.unavailable_reason.is_some() {
         RepositoryObservationState::Unavailable
     } else {
@@ -351,6 +449,8 @@ pub fn record_pre_tool_repository_observation(
             metadata_json,
         ],
     )?;
+    #[cfg(test)]
+    inject_repository_observation_fault(RepositoryObservationFaultPoint::PreAfterObservation)?;
     if let Some(expected_write) = input.expected_write {
         insert_expected_write_in_transaction(
             &tx,
@@ -359,12 +459,28 @@ pub fn record_pre_tool_repository_observation(
             expected_write,
         )?;
     }
+    #[cfg(test)]
+    inject_repository_observation_fault(RepositoryObservationFaultPoint::PreAfterExpectedWrite)?;
     tx.commit()?;
-    guard_event_by_conn(
+    let guard_event = guard_event_by_conn(
         &project.conn,
         &project.project.project_id,
         &input.guard_event.guard_event_id,
-    )
+    )?;
+    let observation = repository_observation_from_conn(
+        &project.conn,
+        &project.project.project_id,
+        &input.repository_observation_id,
+    )?
+    .ok_or_else(|| StoreError::NotFound {
+        entity: "repository_observation",
+        id: input.repository_observation_id,
+    })?;
+    Ok(PreToolRepositoryObservationRecord {
+        guard_event,
+        observation,
+        replayed: false,
+    })
 }
 
 /// Reads the unique observation for one exact native tool invocation.
@@ -435,17 +551,41 @@ pub fn record_post_tool_repository_observation(
         &input.repository_observation_id,
     )?;
     let mut already_unavailable = false;
+    let mut missing_observation = false;
     let existing = match existing {
         Some(existing) => {
+            if let Some(post_event_id) = existing.post_tool_guard_event_id.as_deref() {
+                let stored_event =
+                    guard_event_by_conn(&tx, &project.project.project_id, post_event_id)?;
+                if post_tool_replay_matches(&fields, &input, &existing, &stored_event)? {
+                    let result = existing.terminal_result.clone().ok_or_else(|| {
+                        StoreError::corrupt_owner_state_value(
+                            "repository_observations",
+                            existing.repository_observation_id.clone(),
+                            "terminal_result_json",
+                        )
+                    })?;
+                    tx.commit()?;
+                    return Ok(PostToolRepositoryObservationRecord {
+                        guard_event: stored_event,
+                        observation: existing,
+                        result,
+                        replayed: true,
+                    });
+                }
+                return Err(repository_observation_conflict(
+                    &input.repository_observation_id,
+                    "PostToolUse replay conflicts with the persisted terminal aggregate",
+                ));
+            }
             match existing.state {
                 RepositoryObservationState::Open => {}
                 RepositoryObservationState::Unavailable
-                    if existing.post_tool_guard_event_id.is_none()
-                        && matches!(
-                            input.outcome,
-                            PostToolRepositoryObservationOutcome::Unavailable { reason }
-                                if Some(reason) == existing.unavailable_reason
-                        ) =>
+                    if matches!(
+                        input.outcome,
+                        PostToolRepositoryObservationOutcome::Unavailable { reason }
+                            if Some(reason) == existing.unavailable_reason
+                    ) =>
                 {
                     already_unavailable = true;
                 }
@@ -469,12 +609,7 @@ pub fn record_post_tool_repository_observation(
                     id: input.repository_observation_id,
                 });
             };
-            insert_missing_observation_in_transaction(
-                &tx,
-                &project.project.project_id,
-                &fields,
-                &input,
-            )?;
+            missing_observation = true;
             RepositoryObservationRecord {
                 project_id: project.project.project_id.clone(),
                 repository_observation_id: input.repository_observation_id.clone(),
@@ -512,6 +647,21 @@ pub fn record_post_tool_repository_observation(
             id: input.repository_observation_id,
             detail: "PostToolUse coordinates do not match the open observation".to_owned(),
         });
+    }
+    if missing_observation {
+        establish_host_correlation_in_transaction(
+            &tx,
+            &project.project.project_id,
+            &fields.session_id,
+            &fields.project_integration_revision,
+            &input.guard_event.connection_internal_id,
+            input
+                .guard_event
+                .correlation
+                .as_ref()
+                .expect("validated exact tool correlation"),
+            &input.guard_event.occurred_at,
+        )?;
     }
 
     let (result, post_snapshot_json, post_snapshot_digest, delta_json, delta_digest, reason) =
@@ -556,6 +706,8 @@ pub fn record_post_tool_repository_observation(
         &fields,
         &input.guard_event,
     )?;
+    #[cfg(test)]
+    inject_repository_observation_fault(RepositoryObservationFaultPoint::PostAfterGuardEvent)?;
     let state = if reason.is_some() {
         RepositoryObservationState::Unavailable
     } else {
@@ -565,7 +717,40 @@ pub fn record_post_tool_repository_observation(
         canonical_json_string(&input.metadata).map_err(|error| StoreError::InvalidInput {
             detail: format!("repository-observation metadata cannot be serialized: {error}"),
         })?;
-    let changed = if already_unavailable {
+    let terminal_result_json =
+        canonical_json_string(&result).map_err(|error| StoreError::InvalidInput {
+            detail: format!("terminal result cannot be serialized: {error}"),
+        })?;
+    let changed = if missing_observation {
+        tx.execute(
+            "INSERT INTO repository_observations (
+                project_id, repository_observation_id, session_id,
+                connection_internal_id, host_turn_id, host_tool_use_id,
+                host_tool_name, guard_installation_id, observer_contract_digest,
+                post_tool_guard_event_id, state, unavailable_reason, started_at,
+                completed_at, terminal_result_json, metadata_json
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'unavailable',
+                ?11, ?12, ?12, ?13, ?14
+            )",
+            params![
+                project.project.project_id,
+                input.repository_observation_id,
+                fields.session_id,
+                input.guard_event.connection_internal_id,
+                fields.host_turn_id,
+                fields.host_tool_use_id,
+                fields.host_tool_name,
+                input.guard_event.guard_installation_id,
+                input.observer_contract_digest,
+                input.guard_event.guard_event_id,
+                reason.map(RepositoryObservationUnavailableReason::as_str),
+                input.guard_event.occurred_at,
+                terminal_result_json,
+                terminal_metadata,
+            ],
+        )?
+    } else if already_unavailable {
         tx.execute(
             "UPDATE repository_observations
                 SET post_tool_guard_event_id = ?3,
@@ -581,11 +766,7 @@ pub fn record_post_tool_repository_observation(
                 input.repository_observation_id,
                 input.guard_event.guard_event_id,
                 input.guard_event.occurred_at,
-                canonical_json_string(&result).map_err(|error| {
-                    StoreError::InvalidInput {
-                        detail: format!("terminal result cannot be serialized: {error}"),
-                    }
-                })?,
+                terminal_result_json,
                 terminal_metadata,
             ],
         )?
@@ -616,11 +797,7 @@ pub fn record_post_tool_repository_observation(
                 delta_digest,
                 reason.map(RepositoryObservationUnavailableReason::as_str),
                 input.guard_event.occurred_at,
-                canonical_json_string(&result).map_err(|error| {
-                    StoreError::InvalidInput {
-                        detail: format!("terminal result cannot be serialized: {error}"),
-                    }
-                })?,
+                terminal_result_json,
                 terminal_metadata,
             ],
         )?
@@ -632,6 +809,8 @@ pub fn record_post_tool_repository_observation(
             detail: "repository observation did not close exactly once".to_owned(),
         });
     }
+    #[cfg(test)]
+    inject_repository_observation_fault(RepositoryObservationFaultPoint::PostAfterObservation)?;
     tx.commit()?;
     let observation = repository_observation_from_conn(
         &project.conn,
@@ -648,6 +827,7 @@ pub fn record_post_tool_repository_observation(
         guard_event,
         observation,
         result,
+        replayed: false,
     })
 }
 
@@ -697,6 +877,216 @@ fn validate_guard_ownership(
     )
 }
 
+fn repository_observation_conflict(id: &str, detail: &str) -> StoreError {
+    StoreError::Conflict {
+        entity: "repository_observation",
+        id: id.to_owned(),
+        detail: detail.to_owned(),
+    }
+}
+
+fn guard_event_matches_insert(
+    stored: &GuardEventRecord,
+    project_id: &str,
+    fields: &GuardCorrelationFields,
+    input: &GuardEventInsert,
+    expected_result_json: &str,
+) -> bool {
+    stored.project_id == project_id
+        && stored.guard_event_id == input.guard_event_id
+        && stored.session_id.as_deref() == Some(fields.session_id.as_str())
+        && stored.correlation.as_ref() == input.correlation.as_ref()
+        && stored.connection_internal_id == input.connection_internal_id
+        && stored.guard_installation_id == input.guard_installation_id
+        && stored.policy_hash == input.policy_hash
+        && stored.integration_revision == input.integration_revision
+        && stored.event_kind == input.event_kind
+        && stored.contract_status == input.contract_status
+        && stored.decision == input.decision
+        && stored.subject_json == input.subject_json
+        && stored.result_json == expected_result_json
+        && stored.occurred_at == input.occurred_at
+        && stored.metadata_json == input.metadata_json
+}
+
+fn pre_tool_replay_matches(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    fields: &GuardCorrelationFields,
+    input: &PreToolRepositoryObservationInsert,
+    stored: &RepositoryObservationRecord,
+    stored_event: &GuardEventRecord,
+) -> StoreResult<bool> {
+    let immutable_observation_matches = stored.project_id == project_id
+        && stored.repository_observation_id == input.repository_observation_id
+        && stored.session_id == fields.session_id
+        && stored.connection_internal_id == input.guard_event.connection_internal_id
+        && stored.guard_installation_id == input.guard_event.guard_installation_id
+        && stored.observer_contract_digest == input.observer_contract_digest
+        && stored.pre_tool_guard_event_id.as_deref()
+            == Some(input.guard_event.guard_event_id.as_str())
+        && stored.correlation == *input.guard_event.correlation.as_ref().expect("validated")
+        && stored.pre_snapshot.as_ref() == input.checkpoint.as_ref()
+        && input
+            .unavailable_reason
+            .is_none_or(|reason| stored.unavailable_reason == Some(reason));
+    if !immutable_observation_matches
+        || !guard_event_matches_insert(
+            stored_event,
+            project_id,
+            fields,
+            &input.guard_event,
+            &input.guard_event.result_json,
+        )
+    {
+        return Ok(false);
+    }
+    expected_write_matches_input(
+        tx,
+        project_id,
+        &input.repository_observation_id,
+        input.expected_write.as_ref(),
+    )
+}
+
+fn expected_write_matches_input(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    repository_observation_id: &str,
+    input: Option<&RepositoryExpectedWriteInsert>,
+) -> StoreResult<bool> {
+    let stored = tx
+        .query_row(
+            "SELECT
+                expected_write_id, command_kind, expected_paths_json, task_id,
+                change_unit_id, write_ticket_ids_json, basis_state_version,
+                created_at, metadata_json
+               FROM expected_writes
+              WHERE project_id = ?1 AND repository_observation_id = ?2",
+            params![project_id, repository_observation_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some(input) = input else {
+        return Ok(stored.is_none());
+    };
+    let Some(stored) = stored else {
+        return Ok(false);
+    };
+    let expected_paths_json =
+        canonical_json_string(&input.expected_paths).map_err(|error| StoreError::InvalidInput {
+            detail: format!("expected-write paths cannot be serialized: {error}"),
+        })?;
+    let write_ticket_ids_json =
+        canonical_json_string(&input.write_ticket_ids).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: format!("write-ticket IDs cannot be serialized: {error}"),
+            }
+        })?;
+    let metadata_json =
+        canonical_json_string(&input.metadata).map_err(|error| StoreError::InvalidInput {
+            detail: format!("expected-write metadata cannot be serialized: {error}"),
+        })?;
+    Ok(stored
+        == (
+            input.expected_write_id.clone(),
+            input.command_kind.clone(),
+            expected_paths_json,
+            input.task_id.clone(),
+            input.change_unit_id.clone(),
+            write_ticket_ids_json,
+            input.basis_state_version,
+            input.created_at.to_canonical_string(),
+            metadata_json,
+        ))
+}
+
+fn post_tool_replay_matches(
+    fields: &GuardCorrelationFields,
+    input: &PostToolRepositoryObservationInsert,
+    stored: &RepositoryObservationRecord,
+    stored_event: &GuardEventRecord,
+) -> StoreResult<bool> {
+    let outcome_matches = match (&input.outcome, stored.state) {
+        (
+            PostToolRepositoryObservationOutcome::Complete {
+                post_snapshot,
+                delta,
+            },
+            RepositoryObservationState::Complete,
+        ) => {
+            stored.post_snapshot.as_ref() == Some(post_snapshot.as_ref())
+                && stored.delta.as_ref() == Some(delta)
+                && stored.unavailable_reason.is_none()
+        }
+        (
+            PostToolRepositoryObservationOutcome::Unavailable { reason },
+            RepositoryObservationState::Unavailable,
+        ) => stored.unavailable_reason == Some(*reason),
+        _ => false,
+    };
+    let immutable_observation_matches = stored.session_id == fields.session_id
+        && stored.connection_internal_id == input.guard_event.connection_internal_id
+        && stored.guard_installation_id == input.guard_event.guard_installation_id
+        && stored.observer_contract_digest == input.observer_contract_digest
+        && stored.post_tool_guard_event_id.as_deref()
+            == Some(input.guard_event.guard_event_id.as_str())
+        && stored.correlation == *input.guard_event.correlation.as_ref().expect("validated")
+        && stored.metadata == input.metadata
+        && outcome_matches;
+    if !immutable_observation_matches {
+        return Ok(false);
+    }
+    let terminal_result = stored.terminal_result.as_ref().ok_or_else(|| {
+        StoreError::corrupt_owner_state_value(
+            "repository_observations",
+            stored.repository_observation_id.clone(),
+            "terminal_result_json",
+        )
+    })?;
+    let mut result = input
+        .guard_event
+        .result_json
+        .parse::<Value>()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "PostToolUse Guard result must be a JSON object".to_owned(),
+        })?
+        .as_object()
+        .cloned()
+        .ok_or_else(|| StoreError::InvalidInput {
+            detail: "PostToolUse Guard result must be a JSON object".to_owned(),
+        })?;
+    result.insert(
+        "repository_observation".to_owned(),
+        serde_json::to_value(terminal_result).map_err(|error| StoreError::InvalidInput {
+            detail: format!("repository-observation result cannot be serialized: {error}"),
+        })?,
+    );
+    let expected_result_json =
+        canonical_json_string(&result).map_err(|error| StoreError::InvalidInput {
+            detail: format!("PostToolUse Guard result cannot be serialized: {error}"),
+        })?;
+    Ok(guard_event_matches_insert(
+        stored_event,
+        &stored.project_id,
+        fields,
+        &input.guard_event,
+        &expected_result_json,
+    ))
+}
+
 fn validate_pre_input(
     project_id: &str,
     input: &PreToolRepositoryObservationInsert,
@@ -714,9 +1104,10 @@ fn validate_pre_input(
                 .to_owned(),
         });
     }
-    if !is_canonical_sha256_digest(&input.observer_contract_digest) {
+    if !is_current_observer_contract(&input.observer_contract_digest) {
         return Err(StoreError::InvalidInput {
-            detail: "observer contract digest must be canonical sha256".to_owned(),
+            detail: "observer contract digest must select the current semantic observer contract"
+                .to_owned(),
         });
     }
     match (&input.checkpoint, input.unavailable_reason) {
@@ -763,9 +1154,10 @@ fn validate_post_input(
                 .to_owned(),
         });
     }
-    if !is_canonical_sha256_digest(&input.observer_contract_digest) {
+    if !is_current_observer_contract(&input.observer_contract_digest) {
         return Err(StoreError::InvalidInput {
-            detail: "observer contract digest must be canonical sha256".to_owned(),
+            detail: "observer contract digest must select the current semantic observer contract"
+                .to_owned(),
         });
     }
     if let PostToolRepositoryObservationOutcome::Complete {
@@ -796,19 +1188,32 @@ fn validate_expected_write(input: &RepositoryExpectedWriteInsert) -> StoreResult
             detail: "expected writes require a command kind and non-empty exact paths".to_owned(),
         });
     }
-    if input.expected_paths.iter().collect::<BTreeSet<_>>().len() != input.expected_paths.len() {
+    if input
+        .expected_paths
+        .windows(2)
+        .any(|pair| pair[0] >= pair[1])
+    {
         return Err(StoreError::InvalidInput {
-            detail: "expected-write paths must be unique".to_owned(),
+            detail: "expected-write paths must be strictly sorted and unique".to_owned(),
         });
     }
     validate_string_items("expected_writes.write_ticket_ids", &input.write_ticket_ids)?;
-    if input.write_ticket_ids.iter().collect::<BTreeSet<_>>().len() != input.write_ticket_ids.len()
+    if input.write_ticket_ids.is_empty()
+        || input
+            .write_ticket_ids
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
     {
         return Err(StoreError::InvalidInput {
-            detail: "expected-write ticket IDs must be unique".to_owned(),
+            detail: "expected-write ticket IDs must be strictly sorted and unique".to_owned(),
         });
     }
     Ok(())
+}
+
+fn is_current_observer_contract(value: &str) -> bool {
+    is_canonical_sha256_digest(value)
+        && value == SemanticObserverContractDigest::for_limits(&ObserverLimits::default()).as_str()
 }
 
 fn insert_guard_event_in_transaction(
@@ -898,44 +1303,6 @@ fn insert_expected_write_in_transaction(
     Ok(())
 }
 
-fn insert_missing_observation_in_transaction(
-    tx: &Transaction<'_>,
-    project_id: &str,
-    fields: &GuardCorrelationFields,
-    input: &PostToolRepositoryObservationInsert,
-) -> StoreResult<()> {
-    let metadata_json =
-        canonical_json_string(&input.metadata).map_err(|error| StoreError::InvalidInput {
-            detail: format!("repository-observation metadata cannot be serialized: {error}"),
-        })?;
-    tx.execute(
-        "INSERT INTO repository_observations (
-            project_id, repository_observation_id, session_id,
-            connection_internal_id, host_turn_id, host_tool_use_id,
-            host_tool_name, guard_installation_id, observer_contract_digest,
-            state, unavailable_reason, started_at, completed_at,
-            terminal_result_json, metadata_json
-        ) VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', NULL,
-            ?10, NULL, NULL, ?11
-        )",
-        params![
-            project_id,
-            input.repository_observation_id,
-            fields.session_id,
-            input.guard_event.connection_internal_id,
-            fields.host_turn_id,
-            fields.host_tool_use_id,
-            fields.host_tool_name,
-            input.guard_event.guard_installation_id,
-            input.observer_contract_digest,
-            input.guard_event.occurred_at,
-            metadata_json,
-        ],
-    )?;
-    Ok(())
-}
-
 type TerminalColumns = (
     RepositoryObservationResult,
     Option<String>,
@@ -1014,7 +1381,7 @@ fn terminal_result_in_transaction(
                         .collect();
                     if !covered.is_empty() {
                         let matched_paths = covered.iter().cloned().collect::<Vec<_>>();
-                        tx.execute(
+                        let changed = tx.execute(
                             "UPDATE expected_writes
                                 SET status = 'matched',
                                     matched_paths_json = ?3,
@@ -1035,6 +1402,13 @@ fn terminal_result_in_transaction(
                                 occurred_at,
                             ],
                         )?;
+                        if changed != 1 {
+                            return Err(StoreError::corrupt_owner_state_value(
+                                "expected_writes",
+                                expected.expected_write_id,
+                                "status",
+                            ));
+                        }
                         expected_results.push(RepositoryExpectedWriteMatchResult {
                             expected_write_id: expected.expected_write_id,
                             matched_paths,
@@ -1042,6 +1416,10 @@ fn terminal_result_in_transaction(
                     }
                 }
             }
+            #[cfg(test)]
+            inject_repository_observation_fault(
+                RepositoryObservationFaultPoint::PostAfterExpectedWriteReconciliation,
+            )?;
             let unmatched_paths = delta_paths
                 .difference(&covered)
                 .cloned()
@@ -1063,7 +1441,7 @@ fn terminal_result_in_transaction(
                         "net_product_repository_transition_during_invocation"
                 });
                 tx.execute(
-                    "INSERT OR IGNORE INTO unrecorded_changes (
+                    "INSERT INTO unrecorded_changes (
                         project_id, unrecorded_change_id, repository_observation_id,
                         task_id, status, summary, observed_paths_json,
                         unmatched_delta_digest, detection_json, detected_at,
@@ -1104,6 +1482,10 @@ fn terminal_result_in_transaction(
                     observed_paths,
                 });
             }
+            #[cfg(test)]
+            inject_repository_observation_fault(
+                RepositoryObservationFaultPoint::PostAfterUnrecordedChangeInsert,
+            )?;
             Ok((
                 RepositoryObservationResult {
                     observation_state: RepositoryObservationState::Complete,
@@ -1134,6 +1516,8 @@ struct ExactExpectedWrite {
     expected_write_id: String,
     expected_paths: Vec<ProductRelativePath>,
     task_id: String,
+    status: String,
+    matched_paths: Option<Vec<ProductRelativePath>>,
 }
 
 fn expected_write_for_observation(
@@ -1212,7 +1596,7 @@ fn expected_write_for_observation(
             let expected_paths = serde_json::from_str::<Vec<ProductRelativePath>>(&paths_json)
                 .map_err(|_| corrupt_json("expected_paths_json"))?;
             if expected_paths.is_empty()
-                || expected_paths.iter().collect::<BTreeSet<_>>().len() != expected_paths.len()
+                || expected_paths.windows(2).any(|pair| pair[0] >= pair[1])
                 || canonical_json_string(&expected_paths).ok().as_deref() != Some(&paths_json)
             {
                 return Err(corrupt_json("expected_paths_json"));
@@ -1221,7 +1605,7 @@ fn expected_write_for_observation(
                 .map_err(|_| corrupt_json("write_ticket_ids_json"))?;
             if write_ticket_ids.is_empty()
                 || write_ticket_ids.iter().any(|value| value.trim().is_empty())
-                || write_ticket_ids.iter().collect::<BTreeSet<_>>().len() != write_ticket_ids.len()
+                || write_ticket_ids.windows(2).any(|pair| pair[0] >= pair[1])
                 || canonical_json_string(&write_ticket_ids).ok().as_deref()
                     != Some(&write_ticket_ids_json)
             {
@@ -1233,7 +1617,7 @@ fn expected_write_for_observation(
                     let paths = serde_json::from_str::<Vec<ProductRelativePath>>(value)
                         .map_err(|_| corrupt_json("matched_paths_json"))?;
                     if paths.is_empty()
-                        || paths.iter().collect::<BTreeSet<_>>().len() != paths.len()
+                        || paths.windows(2).any(|pair| pair[0] >= pair[1])
                         || canonical_json_string(&paths).ok().as_deref() != Some(value)
                         || paths.iter().any(|path| !expected_paths.contains(path))
                     {
@@ -1277,13 +1661,15 @@ fn expected_write_for_observation(
                 expected_write_id,
                 expected_paths,
                 task_id,
+                status,
+                matched_paths,
             })
         },
     )
     .transpose()
 }
 
-fn stable_unrecorded_change_id(
+pub(super) fn stable_unrecorded_change_id(
     project_id: &str,
     repository_observation_id: &str,
     unmatched_delta_digest: &str,
@@ -1307,7 +1693,7 @@ struct RepositoryObservationRaw {
     repository_observation_id: String,
     session_id: String,
     connection_internal_id: String,
-    host_session_id: String,
+    host_session_id: Option<String>,
     host_turn_id: String,
     host_tool_use_id: String,
     host_tool_name: String,
@@ -1329,7 +1715,7 @@ struct RepositoryObservationRaw {
     metadata_json: String,
 }
 
-fn repository_observation_from_conn(
+pub(super) fn repository_observation_from_conn(
     conn: &Connection,
     project_id: &str,
     repository_observation_id: &str,
@@ -1347,7 +1733,7 @@ fn repository_observation_from_conn(
                 o.unavailable_reason, o.started_at, o.completed_at,
                 o.terminal_result_json, o.metadata_json
                FROM repository_observations AS o
-               JOIN host_sessions AS h
+               LEFT JOIN host_sessions AS h
                  ON h.project_id = o.project_id
                 AND h.session_id = o.session_id
                 AND h.connection_internal_id = o.connection_internal_id
@@ -1384,7 +1770,11 @@ fn repository_observation_from_conn(
             },
         )
         .optional()?;
-    raw.map(decode_repository_observation).transpose()
+    let record = raw.map(decode_repository_observation).transpose()?;
+    if let Some(record) = record.as_ref() {
+        validate_repository_observation_relationships(conn, record)?;
+    }
+    Ok(record)
 }
 
 fn decode_repository_observation(
@@ -1397,7 +1787,7 @@ fn decode_repository_observation(
     let corrupt_json = |field| {
         StoreError::corrupt_owner_state_json("repository_observations", record_ref.clone(), field)
     };
-    if !is_canonical_sha256_digest(&raw.observer_contract_digest) {
+    if !is_current_observer_contract(&raw.observer_contract_digest) {
         return Err(corrupt_value("observer_contract_digest"));
     }
     let state =
@@ -1530,6 +1920,7 @@ fn decode_repository_observation(
                     && summary.transition_count == delta.transitions().len()
                     && summary.paths.iter().cloned().collect::<BTreeSet<_>>() == delta_paths
                     && summary.paths.len() == delta_paths.len()
+                    && summary.paths.windows(2).all(|pair| pair[0] < pair[1])
             }
             _ => false,
         };
@@ -1547,6 +1938,10 @@ fn decode_repository_observation(
                     .all(|path| delta_paths.contains(path))
                 && matched.matched_paths.iter().collect::<BTreeSet<_>>().len()
                     == matched.matched_paths.len()
+                && matched
+                    .matched_paths
+                    .windows(2)
+                    .all(|pair| pair[0] < pair[1])
         }) && result.unrecorded_changes.iter().all(|change| {
             !change.unrecorded_change_id.trim().is_empty()
                 && is_canonical_sha256_digest(&change.unmatched_delta_digest)
@@ -1557,6 +1952,10 @@ fn decode_repository_observation(
                     .all(|path| delta_paths.contains(path))
                 && change.observed_paths.iter().collect::<BTreeSet<_>>().len()
                     == change.observed_paths.len()
+                && change
+                    .observed_paths
+                    .windows(2)
+                    .all(|pair| pair[0] < pair[1])
         });
         if result.observation_state != state
             || result.repository_observation_id != raw.repository_observation_id
@@ -1573,8 +1972,12 @@ fn decode_repository_observation(
     }
     let correlation =
         HostNativeCorrelation::CodexHookTool(volicord_host_contract::CodexHookToolCorrelation {
-            session_id: volicord_host_contract::HostSessionId::parse(&raw.host_session_id)
-                .map_err(|_| corrupt_value("host_session_id"))?,
+            session_id: volicord_host_contract::HostSessionId::parse(
+                raw.host_session_id
+                    .as_deref()
+                    .ok_or_else(|| corrupt_value("host_session_id"))?,
+            )
+            .map_err(|_| corrupt_value("host_session_id"))?,
             turn_id: volicord_host_contract::HostTurnId::parse(&raw.host_turn_id)
                 .map_err(|_| corrupt_value("host_turn_id"))?,
             tool_use_id: volicord_host_contract::HostToolUseId::parse(&raw.host_tool_use_id)
@@ -1612,6 +2015,253 @@ fn decode_repository_observation(
         terminal_result,
         metadata,
     })
+}
+
+fn validate_repository_observation_relationships(
+    conn: &Connection,
+    record: &RepositoryObservationRecord,
+) -> StoreResult<()> {
+    let corrupt_value = |field| {
+        StoreError::corrupt_owner_state_value(
+            "repository_observations",
+            record.repository_observation_id.clone(),
+            field,
+        )
+    };
+    let corrupt_json = |field| {
+        StoreError::corrupt_owner_state_json(
+            "repository_observations",
+            record.repository_observation_id.clone(),
+            field,
+        )
+    };
+    let pre_event = record
+        .pre_tool_guard_event_id
+        .as_deref()
+        .map(|event_id| {
+            linked_guard_event(
+                conn,
+                record,
+                event_id,
+                "pre_tool",
+                "pre_tool_guard_event_id",
+            )
+        })
+        .transpose()?;
+    let post_event = record
+        .post_tool_guard_event_id
+        .as_deref()
+        .map(|event_id| {
+            linked_guard_event(
+                conn,
+                record,
+                event_id,
+                "post_tool",
+                "post_tool_guard_event_id",
+            )
+        })
+        .transpose()?;
+    if let (Some(pre), Some(post)) = (&pre_event, &post_event) {
+        if pre.policy_hash != post.policy_hash
+            || pre.integration_revision != post.integration_revision
+            || post.occurred_at < pre.occurred_at
+        {
+            return Err(corrupt_value("post_tool_guard_event_id"));
+        }
+    }
+    match record.unavailable_reason {
+        Some(RepositoryObservationUnavailableReason::MissingOpenObservation) => {
+            if pre_event.is_some() || post_event.is_none() {
+                return Err(corrupt_value("pre_tool_guard_event_id"));
+            }
+        }
+        Some(_) if pre_event.is_none() => {
+            return Err(corrupt_value("pre_tool_guard_event_id"));
+        }
+        Some(_) => {}
+        None => {}
+    }
+    let expected_write = expected_write_for_observation(
+        conn,
+        &record.project_id,
+        &record.repository_observation_id,
+    )?;
+    let linked_unrecorded_changes = linked_unrecorded_changes(conn, record)?;
+    match record.state {
+        RepositoryObservationState::Open => {
+            if expected_write
+                .as_ref()
+                .is_some_and(|expected| expected.status != "pending")
+                || !linked_unrecorded_changes.is_empty()
+            {
+                return Err(corrupt_value("state"));
+            }
+        }
+        RepositoryObservationState::Unavailable => {
+            if expected_write.as_ref().is_some_and(|expected| {
+                record.unavailable_reason
+                    == Some(RepositoryObservationUnavailableReason::MissingOpenObservation)
+                    || expected.status != "pending"
+            }) || !linked_unrecorded_changes.is_empty()
+            {
+                return Err(corrupt_value("state"));
+            }
+        }
+        RepositoryObservationState::Complete => {
+            let result = record
+                .terminal_result
+                .as_ref()
+                .ok_or_else(|| corrupt_value("terminal_result_json"))?;
+            let expected_matches = expected_write
+                .as_ref()
+                .filter(|expected| expected.status == "matched")
+                .map(|expected| {
+                    vec![RepositoryExpectedWriteMatchResult {
+                        expected_write_id: expected.expected_write_id.clone(),
+                        matched_paths: expected.matched_paths.clone().expect("validated matched"),
+                    }]
+                })
+                .unwrap_or_default();
+            if result.expected_write_matches != expected_matches
+                || result.unrecorded_changes != linked_unrecorded_changes
+            {
+                return Err(corrupt_json("terminal_result_json"));
+            }
+        }
+    }
+    if let (Some(post), Some(result)) = (post_event, record.terminal_result.as_ref()) {
+        let value = serde_json::from_str::<Value>(&post.result_json)
+            .map_err(|_| corrupt_value("post_tool_guard_event_id"))?;
+        if canonical_json_string(&value).ok().as_deref() != Some(&post.result_json)
+            || value.get("repository_observation") != serde_json::to_value(result).ok().as_ref()
+        {
+            return Err(corrupt_value("post_tool_guard_event_id"));
+        }
+    }
+    Ok(())
+}
+
+fn linked_guard_event(
+    conn: &Connection,
+    record: &RepositoryObservationRecord,
+    event_id: &str,
+    expected_kind: &str,
+    field: &'static str,
+) -> StoreResult<GuardEventRecord> {
+    let corrupt = || {
+        StoreError::corrupt_owner_state_value(
+            "repository_observations",
+            record.repository_observation_id.clone(),
+            field,
+        )
+    };
+    let event = guard_event_from_conn(conn, &record.project_id, event_id)
+        .map_err(|_| corrupt())?
+        .ok_or_else(corrupt)?;
+    if event.project_id != record.project_id
+        || event.session_id.as_deref() != Some(record.session_id.as_str())
+        || event.connection_internal_id != record.connection_internal_id
+        || event.guard_installation_id != record.guard_installation_id
+        || event.correlation.as_ref() != Some(&record.correlation)
+        || event.event_kind != expected_kind
+        || event.contract_status != "compatible"
+        || canonical_json_object(&event.subject_json).is_none()
+        || canonical_json_object(&event.result_json).is_none()
+        || canonical_json_object(&event.metadata_json).is_none()
+        || strict_stored_timestamp("guard_events", event_id, "occurred_at", &event.occurred_at)
+            .is_err()
+    {
+        return Err(corrupt());
+    }
+    Ok(event)
+}
+
+fn linked_unrecorded_changes(
+    conn: &Connection,
+    record: &RepositoryObservationRecord,
+) -> StoreResult<Vec<RepositoryUnrecordedChangeResult>> {
+    let corrupt_value = |field| {
+        StoreError::corrupt_owner_state_value(
+            "repository_observations",
+            record.repository_observation_id.clone(),
+            field,
+        )
+    };
+    let corrupt_json = |field| {
+        StoreError::corrupt_owner_state_json(
+            "repository_observations",
+            record.repository_observation_id.clone(),
+            field,
+        )
+    };
+    let Some(delta) = record.delta.as_ref() else {
+        let count = conn.query_row(
+            "SELECT count(*)
+               FROM unrecorded_changes
+              WHERE project_id = ?1 AND repository_observation_id = ?2",
+            params![record.project_id, record.repository_observation_id],
+            |row| row.get::<_, u64>(0),
+        )?;
+        return if count == 0 {
+            Ok(Vec::new())
+        } else {
+            Err(corrupt_value("state"))
+        };
+    };
+    let delta_paths = delta
+        .transitions()
+        .iter()
+        .map(|transition| transition.path().clone())
+        .collect::<BTreeSet<_>>();
+    let mut stmt = conn.prepare(
+        "SELECT unrecorded_change_id, observed_paths_json, unmatched_delta_digest
+           FROM unrecorded_changes
+          WHERE project_id = ?1 AND repository_observation_id = ?2
+          ORDER BY unrecorded_change_id",
+    )?;
+    let rows = stmt.query_map(
+        params![record.project_id, record.repository_observation_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )?;
+    let mut results = Vec::new();
+    for row in rows {
+        let (id, paths_json, digest) = row?;
+        let paths = serde_json::from_str::<Vec<ProductRelativePath>>(&paths_json)
+            .map_err(|_| corrupt_json("terminal_result_json"))?;
+        let selected = paths.iter().cloned().collect::<BTreeSet<_>>();
+        if paths.is_empty()
+            || selected.len() != paths.len()
+            || selected.iter().cloned().collect::<Vec<_>>() != paths
+            || !selected.is_subset(&delta_paths)
+            || canonical_json_string(&paths).ok().as_deref() != Some(&paths_json)
+            || !is_canonical_sha256_digest(&digest)
+            || delta.restricted_to(&selected).digest().as_str() != digest
+            || stable_unrecorded_change_id(
+                &record.project_id,
+                &record.repository_observation_id,
+                &digest,
+            ) != id
+        {
+            return Err(corrupt_value("terminal_result_json"));
+        }
+        results.push(RepositoryUnrecordedChangeResult {
+            unrecorded_change_id: id,
+            unmatched_delta_digest: digest,
+            observed_paths: paths,
+        });
+    }
+    Ok(results)
+}
+
+fn canonical_json_object(value: &str) -> Option<JsonObject> {
+    let object = serde_json::from_str::<JsonObject>(value).ok()?;
+    (canonical_json_string(&object).ok().as_deref() == Some(value)).then_some(object)
 }
 
 fn decode_checkpoint(

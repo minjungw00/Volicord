@@ -369,7 +369,7 @@ The production meanings below apply only after the method reaches close-readines
 | `stale_cancellation_authority` | `user_action` | A cancellation `UserActionResolution` exists, but its Task, scope revision, Change Unit, or effective user-action basis is no longer current. |
 | `open_write_ticket` | `write_compatibility` | A write ticket for the selected Task remains open and unresolved. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
-| `unresolved_unrecorded_changes` | `connection_capability` | Confirmed unresolved Product Repository changes must be reconciled before close. Suspected changes warn and request verification without producing this blocker. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`. |
+| `unresolved_unrecorded_changes` | `connection_capability` | Unresolved Unrecorded Changes must be reconciled before close. Repository-observation unavailable diagnostics do not produce this blocker. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`. |
 | `evidence_claim_unsupported` | `evidence_claim` | A required close claim lacks supported evidence coverage. |
 | `evidence_claim_missing` | `evidence_claim` | A required close claim has no current evidence coverage record. |
 | `evidence_provenance_insufficient` | `evidence_provenance` | Required close evidence exists but lacks sufficient current source and assurance provenance. |
@@ -416,8 +416,9 @@ Method-specific blocker branches:
 
 Close-readiness Unrecorded Change rules:
 
-- Confirmed unresolved Product Repository changes remain visible and block close.
-  Suspected changes remain non-blocking warnings or verification requests.
+- Unresolved Unrecorded Changes remain visible and block close.
+  Repository-observation unavailable diagnostics remain separate and do not
+  produce this blocker.
 
 Non-claims:
 

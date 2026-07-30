@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use serde_json::Value;
 use volicord_host_contract::{
     CanonicalToolName, CodexGuardToolEffectContract, CodexHookPromptCorrelation,
@@ -12,7 +12,7 @@ use volicord_host_contract::{
     HostSessionId, HostToolUseId, HostTurnId,
 };
 use volicord_platform_fs::{
-    resolve_git_worktree_layout, ObserverLimits, SemanticObserverContractDigest,
+    resolve_git_worktree_layout, ObserverLimits, RepositoryDelta, SemanticObserverContractDigest,
 };
 use volicord_types::canonical::{
     canonical_json_sha256, canonical_json_string, is_canonical_sha256_digest,
@@ -235,9 +235,17 @@ struct UnrecordedChangeRaw {
     project_id: String,
     unrecorded_change_id: String,
     repository_observation_id: String,
-    session_id: String,
-    correlation: HostNativeCorrelation,
-    connection_internal_id: String,
+    session_id: Option<String>,
+    connection_internal_id: Option<String>,
+    host_session_id: Option<String>,
+    host_turn_id: Option<String>,
+    host_tool_use_id: Option<String>,
+    host_tool_name: Option<String>,
+    observation_state: Option<String>,
+    observation_delta_json: Option<String>,
+    observation_delta_digest: Option<String>,
+    observation_completed_at: Option<String>,
+    observation_terminal_result_json: Option<String>,
     task_id: Option<String>,
     status: String,
     summary: String,
@@ -726,17 +734,41 @@ fn establish_host_correlation(
 ) -> StoreResult<HostSessionRecord> {
     let mut project = open_guard_project(context, project_id, connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
+    establish_host_correlation_in_transaction(
+        &tx,
+        &project.project.project_id,
+        &coordinates.session_id,
+        &coordinates.project_integration_revision,
+        connection_internal_id,
+        correlation,
+        observed_at,
+    )?;
+    tx.commit()?;
+    host_session_by_conn(
+        &project.conn,
+        &project.project.project_id,
+        &coordinates.session_id,
+    )
+}
+
+fn establish_host_correlation_in_transaction(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    session_id: &str,
+    project_integration_revision: &str,
+    connection_internal_id: &str,
+    correlation: &HostNativeCorrelation,
+    observed_at: &str,
+) -> StoreResult<()> {
     let host_session_id = correlation.session_id().as_str();
-    if let Some(existing) =
-        host_session_from_conn(&tx, &project.project.project_id, &coordinates.session_id)?
-    {
+    if let Some(existing) = host_session_from_conn(tx, project_id, session_id)? {
         if existing.connection_internal_id != connection_internal_id
-            || existing.project_integration_revision != coordinates.project_integration_revision
+            || existing.project_integration_revision != project_integration_revision
             || existing.host_session_id != host_session_id
         {
             return Err(StoreError::Conflict {
                 entity: "host_session",
-                id: coordinates.session_id.clone(),
+                id: session_id.to_owned(),
                 detail: "host session is already bound to different owner coordinates".to_owned(),
             });
         }
@@ -767,12 +799,7 @@ fn establish_host_correlation(
             "UPDATE host_sessions
                 SET first_observed_at = ?3, last_observed_at = ?4
               WHERE project_id = ?1 AND session_id = ?2",
-            params![
-                project.project.project_id,
-                coordinates.session_id,
-                first,
-                last
-            ],
+            params![project_id, session_id, first, last],
         )?;
     } else {
         tx.execute(
@@ -782,10 +809,10 @@ fn establish_host_correlation(
                 first_observed_at, last_observed_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
             params![
-                project.project.project_id,
-                coordinates.session_id,
+                project_id,
+                session_id,
                 connection_internal_id,
-                coordinates.project_integration_revision,
+                project_integration_revision,
                 host_session_id,
                 observed_at,
             ],
@@ -795,13 +822,9 @@ fn establish_host_correlation(
     let existing_turn: Option<(String, String, String)> = tx
         .query_row(
             "SELECT connection_internal_id, first_observed_at, last_observed_at
-               FROM host_turns
+              FROM host_turns
               WHERE project_id = ?1 AND session_id = ?2 AND host_turn_id = ?3",
-            params![
-                project.project.project_id,
-                coordinates.session_id,
-                correlation.turn_id().as_str()
-            ],
+            params![project_id, session_id, correlation.turn_id().as_str()],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?;
@@ -830,8 +853,8 @@ fn establish_host_correlation(
                 SET first_observed_at = ?4, last_observed_at = ?5
               WHERE project_id = ?1 AND session_id = ?2 AND host_turn_id = ?3",
             params![
-                project.project.project_id,
-                coordinates.session_id,
+                project_id,
+                session_id,
                 correlation.turn_id().as_str(),
                 first,
                 last,
@@ -844,8 +867,8 @@ fn establish_host_correlation(
                 first_observed_at, last_observed_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
             params![
-                project.project.project_id,
-                coordinates.session_id,
+                project_id,
+                session_id,
                 connection_internal_id,
                 correlation.turn_id().as_str(),
                 observed_at,
@@ -857,13 +880,9 @@ fn establish_host_correlation(
         let existing_tool: Option<(String, String, String)> = tx
             .query_row(
                 "SELECT host_turn_id, host_tool_name, last_observed_at
-                   FROM host_tool_invocations
+                  FROM host_tool_invocations
                   WHERE project_id = ?1 AND session_id = ?2 AND host_tool_use_id = ?3",
-                params![
-                    project.project.project_id,
-                    coordinates.session_id,
-                    tool.tool_use_id.as_str()
-                ],
+                params![project_id, session_id, tool.tool_use_id.as_str()],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
@@ -886,12 +905,7 @@ fn establish_host_correlation(
                 "UPDATE host_tool_invocations
                     SET last_observed_at = ?4
                   WHERE project_id = ?1 AND session_id = ?2 AND host_tool_use_id = ?3",
-                params![
-                    project.project.project_id,
-                    coordinates.session_id,
-                    tool.tool_use_id.as_str(),
-                    last,
-                ],
+                params![project_id, session_id, tool.tool_use_id.as_str(), last,],
             )?;
         } else {
             tx.execute(
@@ -900,8 +914,8 @@ fn establish_host_correlation(
                     host_tool_use_id, host_tool_name, first_observed_at, last_observed_at
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
                 params![
-                    project.project.project_id,
-                    coordinates.session_id,
+                    project_id,
+                    session_id,
                     connection_internal_id,
                     tool.turn_id.as_str(),
                     tool.tool_use_id.as_str(),
@@ -911,12 +925,7 @@ fn establish_host_correlation(
             )?;
         }
     }
-    tx.commit()?;
-    host_session_by_conn(
-        &project.conn,
-        &project.project.project_id,
-        &coordinates.session_id,
-    )
+    Ok(())
 }
 
 fn earlier_timestamp<'a>(
@@ -1298,6 +1307,7 @@ pub fn insert_guard_event(
 #[derive(Debug)]
 struct GuardCorrelationFields {
     session_id: String,
+    project_integration_revision: String,
     host_turn_id: String,
     host_tool_use_id: Option<String>,
     host_tool_name: Option<String>,
@@ -1332,6 +1342,7 @@ fn guard_correlation_fields(
     )?;
     Ok(GuardCorrelationFields {
         session_id: coordinates.session_id,
+        project_integration_revision: coordinates.project_integration_revision,
         host_turn_id: host_turn_id.to_owned(),
         host_tool_use_id: host_tool_use_id.map(str::to_owned),
         host_tool_name: host_tool_name.map(str::to_owned),
@@ -1608,32 +1619,35 @@ pub(crate) fn unresolved_unrecorded_changes_from_conn(
         "SELECT
             u.project_id, u.unrecorded_change_id, u.repository_observation_id,
             o.session_id, o.connection_internal_id, h.host_session_id,
-            o.host_turn_id, o.host_tool_use_id, o.host_tool_name, u.task_id,
-            u.status, u.summary, u.observed_paths_json, u.unmatched_delta_digest,
-            u.detection_json, u.resolution_json, u.detected_at,
-            u.resolved_at, u.resolved_by_actor_source, u.metadata_json
+            o.host_turn_id, o.host_tool_use_id, o.host_tool_name, o.state,
+            o.delta_json, o.delta_digest, o.completed_at, o.terminal_result_json,
+            u.task_id, u.status, u.summary, u.observed_paths_json,
+            u.unmatched_delta_digest, u.detection_json, u.resolution_json,
+            u.detected_at, u.resolved_at, u.resolved_by_actor_source,
+            u.metadata_json
          FROM unrecorded_changes AS u
-         JOIN repository_observations AS o
+         LEFT JOIN repository_observations AS o
            ON o.project_id = u.project_id
           AND o.repository_observation_id = u.repository_observation_id
-         JOIN host_sessions AS h
+         LEFT JOIN host_sessions AS h
            ON h.project_id = o.project_id
           AND h.session_id = o.session_id
           AND h.connection_internal_id = o.connection_internal_id
         WHERE u.project_id = ?1
-          AND u.status = 'unresolved'
-          AND (?2 IS NULL OR o.connection_internal_id = ?2)
         ORDER BY volicord_utc_seconds(u.detected_at),
                  volicord_utc_subsec_nanos(u.detected_at),
                  u.unrecorded_change_id",
     )?;
-    let rows = stmt.query_map(
-        params![project_id, connection_internal_id],
-        unrecorded_change_raw_from_row,
-    )?;
+    let rows = stmt.query_map([project_id], unrecorded_change_raw_from_row)?;
     let mut records = Vec::new();
     for row in rows {
-        records.push(decode_unrecorded_change(row?)?);
+        let record = decode_unrecorded_change(row?)?;
+        if record.status == UnrecordedChangeStatus::Unresolved
+            && connection_internal_id
+                .is_none_or(|connection| record.connection_internal_id == connection)
+        {
+            records.push(record);
+        }
     }
     Ok(records)
 }
@@ -2962,15 +2976,17 @@ fn unrecorded_change_from_conn(
             "SELECT
             u.project_id, u.unrecorded_change_id, u.repository_observation_id,
             o.session_id, o.connection_internal_id, h.host_session_id,
-            o.host_turn_id, o.host_tool_use_id, o.host_tool_name, u.task_id,
-            u.status, u.summary, u.observed_paths_json, u.unmatched_delta_digest,
-            u.detection_json, u.resolution_json, u.detected_at,
-            u.resolved_at, u.resolved_by_actor_source, u.metadata_json
+            o.host_turn_id, o.host_tool_use_id, o.host_tool_name, o.state,
+            o.delta_json, o.delta_digest, o.completed_at, o.terminal_result_json,
+            u.task_id, u.status, u.summary, u.observed_paths_json,
+            u.unmatched_delta_digest, u.detection_json, u.resolution_json,
+            u.detected_at, u.resolved_at, u.resolved_by_actor_source,
+            u.metadata_json
          FROM unrecorded_changes AS u
-         JOIN repository_observations AS o
+         LEFT JOIN repository_observations AS o
            ON o.project_id = u.project_id
           AND o.repository_observation_id = u.repository_observation_id
-         JOIN host_sessions AS h
+         LEFT JOIN host_sessions AS h
            ON h.project_id = o.project_id
           AND h.session_id = o.session_id
           AND h.connection_internal_id = o.connection_internal_id
@@ -2998,32 +3014,32 @@ fn unrecorded_change_by_conn(
 }
 
 fn unrecorded_change_raw_from_row(row: &Row<'_>) -> rusqlite::Result<UnrecordedChangeRaw> {
-    let correlation = decode_hook_correlation(
-        Some("codex_hook_tool".to_owned()),
-        Some(row.get(5)?),
-        Some(row.get(6)?),
-        Some(row.get(7)?),
-        Some(row.get(8)?),
-    )?
-    .expect("repository observation always has tool correlation");
     Ok(UnrecordedChangeRaw {
         project_id: row.get(0)?,
         unrecorded_change_id: row.get(1)?,
         repository_observation_id: row.get(2)?,
         session_id: row.get(3)?,
-        correlation,
         connection_internal_id: row.get(4)?,
-        task_id: row.get(9)?,
-        status: row.get(10)?,
-        summary: row.get(11)?,
-        observed_paths_json: row.get(12)?,
-        unmatched_delta_digest: row.get(13)?,
-        detection_json: row.get(14)?,
-        resolution_json: row.get(15)?,
-        detected_at: row.get(16)?,
-        resolved_at: row.get(17)?,
-        resolved_by_actor_source: row.get(18)?,
-        metadata_json: row.get(19)?,
+        host_session_id: row.get(5)?,
+        host_turn_id: row.get(6)?,
+        host_tool_use_id: row.get(7)?,
+        host_tool_name: row.get(8)?,
+        observation_state: row.get(9)?,
+        observation_delta_json: row.get(10)?,
+        observation_delta_digest: row.get(11)?,
+        observation_completed_at: row.get(12)?,
+        observation_terminal_result_json: row.get(13)?,
+        task_id: row.get(14)?,
+        status: row.get(15)?,
+        summary: row.get(16)?,
+        observed_paths_json: row.get(17)?,
+        unmatched_delta_digest: row.get(18)?,
+        detection_json: row.get(19)?,
+        resolution_json: row.get(20)?,
+        detected_at: row.get(21)?,
+        resolved_at: row.get(22)?,
+        resolved_by_actor_source: row.get(23)?,
+        metadata_json: row.get(24)?,
     })
 }
 
@@ -3035,12 +3051,83 @@ fn decode_unrecorded_change(raw: UnrecordedChangeRaw) -> StoreResult<UnrecordedC
     let corrupt_json = |field| {
         StoreError::corrupt_owner_state_json("unrecorded_changes", record_ref.clone(), field)
     };
+    for (field, value) in [
+        ("project_id", raw.project_id.as_str()),
+        (
+            "repository_observation_id",
+            raw.repository_observation_id.as_str(),
+        ),
+        ("unrecorded_change_id", raw.unrecorded_change_id.as_str()),
+    ] {
+        validate_identifier(field, value).map_err(|_| corrupt_value(field))?;
+    }
+    if raw.summary.trim().is_empty() {
+        return Err(corrupt_value("summary"));
+    }
+    if let Some(task_id) = raw.task_id.as_deref() {
+        validate_identifier("task_id", task_id).map_err(|_| corrupt_value("task_id"))?;
+    }
+    let session_id = raw
+        .session_id
+        .ok_or_else(|| corrupt_value("repository_observation_id"))?;
+    let connection_internal_id = raw
+        .connection_internal_id
+        .ok_or_else(|| corrupt_value("repository_observation_id"))?;
+    let correlation = HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+        session_id: HostSessionId::parse(
+            raw.host_session_id
+                .ok_or_else(|| corrupt_value("repository_observation_id"))?,
+        )
+        .map_err(|_| corrupt_value("repository_observation_id"))?,
+        turn_id: HostTurnId::parse(
+            raw.host_turn_id
+                .ok_or_else(|| corrupt_value("repository_observation_id"))?,
+        )
+        .map_err(|_| corrupt_value("repository_observation_id"))?,
+        tool_use_id: HostToolUseId::parse(
+            raw.host_tool_use_id
+                .ok_or_else(|| corrupt_value("repository_observation_id"))?,
+        )
+        .map_err(|_| corrupt_value("repository_observation_id"))?,
+        tool_name: CanonicalToolName::parse(
+            raw.host_tool_name
+                .ok_or_else(|| corrupt_value("repository_observation_id"))?,
+        )
+        .map_err(|_| corrupt_value("repository_observation_id"))?,
+    });
+    let expected_observation_id = repository_observation_id(
+        &raw.project_id,
+        &connection_internal_id,
+        &session_id,
+        &correlation,
+    )
+    .map_err(|_| corrupt_value("repository_observation_id"))?;
+    if expected_observation_id != raw.repository_observation_id
+        || raw.observation_state.as_deref() != Some("complete")
+    {
+        return Err(corrupt_value("repository_observation_id"));
+    }
+    let delta_json = raw
+        .observation_delta_json
+        .as_deref()
+        .ok_or_else(|| corrupt_value("repository_observation_id"))?;
+    let delta_digest = raw
+        .observation_delta_digest
+        .as_deref()
+        .ok_or_else(|| corrupt_value("repository_observation_id"))?;
+    let delta = serde_json::from_str::<RepositoryDelta>(delta_json)
+        .map_err(|_| corrupt_value("repository_observation_id"))?;
+    if canonical_json_string(&delta).ok().as_deref() != Some(delta_json)
+        || delta.digest().as_str() != delta_digest
+    {
+        return Err(corrupt_value("repository_observation_id"));
+    }
     let status = serde_json::from_value::<UnrecordedChangeStatus>(Value::String(raw.status))
         .map_err(|_| corrupt_value("status"))?;
     let observed_paths = serde_json::from_str::<Vec<ProductRelativePath>>(&raw.observed_paths_json)
         .map_err(|_| corrupt_json("observed_paths_json"))?;
     if observed_paths.is_empty()
-        || observed_paths.iter().collect::<BTreeSet<_>>().len() != observed_paths.len()
+        || observed_paths.windows(2).any(|pair| pair[0] >= pair[1])
         || canonical_json_string(&observed_paths).ok().as_deref() != Some(&raw.observed_paths_json)
     {
         return Err(corrupt_json("observed_paths_json"));
@@ -3050,11 +3137,43 @@ fn decode_unrecorded_change(raw: UnrecordedChangeRaw) -> StoreResult<UnrecordedC
     }
     let detection = serde_json::from_str::<JsonObject>(&raw.detection_json)
         .map_err(|_| corrupt_json("detection_json"))?;
+    let expected_detection = serde_json::from_value::<JsonObject>(serde_json::json!({
+        "repository_observation_id": raw.repository_observation_id,
+        "transition_semantics": "net_product_repository_transition_during_invocation",
+        "unmatched_delta_digest": raw.unmatched_delta_digest,
+    }))
+    .expect("object literal");
+    if canonical_json_string(&detection).ok().as_deref() != Some(&raw.detection_json)
+        || detection != expected_detection
+    {
+        return Err(corrupt_json("detection_json"));
+    }
+    let selected_paths = observed_paths.iter().cloned().collect::<BTreeSet<_>>();
+    let delta_paths = delta
+        .transitions()
+        .iter()
+        .map(|transition| transition.path().clone())
+        .collect::<BTreeSet<_>>();
+    if !selected_paths.is_subset(&delta_paths)
+        || delta.restricted_to(&selected_paths).digest().as_str() != raw.unmatched_delta_digest
+        || repository_observation::stable_unrecorded_change_id(
+            &raw.project_id,
+            &raw.repository_observation_id,
+            &raw.unmatched_delta_digest,
+        ) != raw.unrecorded_change_id
+    {
+        return Err(corrupt_value("unmatched_delta_digest"));
+    }
     let resolution = raw
         .resolution_json
         .as_deref()
         .map(|value| {
-            serde_json::from_str::<JsonObject>(value).map_err(|_| corrupt_json("resolution_json"))
+            let object = serde_json::from_str::<JsonObject>(value)
+                .map_err(|_| corrupt_json("resolution_json"))?;
+            if canonical_json_string(&object).ok().as_deref() != Some(value) {
+                return Err(corrupt_json("resolution_json"));
+            }
+            Ok(object)
         })
         .transpose()?;
     let detected_at = strict_stored_timestamp(
@@ -3079,6 +3198,25 @@ fn decode_unrecorded_change(raw: UnrecordedChangeRaw) -> StoreResult<UnrecordedC
         .transpose()?;
     let metadata = serde_json::from_str::<JsonObject>(&raw.metadata_json)
         .map_err(|_| corrupt_json("metadata_json"))?;
+    if canonical_json_string(&metadata).ok().as_deref() != Some(&raw.metadata_json) {
+        return Err(corrupt_json("metadata_json"));
+    }
+    let observation_completed_at = strict_stored_timestamp(
+        "repository_observations",
+        &raw.repository_observation_id,
+        "completed_at",
+        raw.observation_completed_at
+            .as_deref()
+            .ok_or_else(|| corrupt_value("repository_observation_id"))?,
+    )
+    .map_err(|_| corrupt_value("repository_observation_id"))?;
+    if detected_at != observation_completed_at
+        || resolved_at
+            .as_ref()
+            .is_some_and(|resolved| resolved < &detected_at)
+    {
+        return Err(corrupt_value("detected_at"));
+    }
     let resolution_fields_valid = match status {
         UnrecordedChangeStatus::Unresolved => {
             resolution.is_none() && resolved_at.is_none() && resolved_by_actor_source.is_none()
@@ -3090,13 +3228,32 @@ fn decode_unrecorded_change(raw: UnrecordedChangeRaw) -> StoreResult<UnrecordedC
     if !resolution_fields_valid {
         return Err(corrupt_value("status"));
     }
+    let terminal_result_json = raw
+        .observation_terminal_result_json
+        .as_deref()
+        .ok_or_else(|| corrupt_value("repository_observation_id"))?;
+    let terminal_result = serde_json::from_str::<RepositoryObservationResult>(terminal_result_json)
+        .map_err(|_| corrupt_value("repository_observation_id"))?;
+    let expected_result = RepositoryUnrecordedChangeResult {
+        unrecorded_change_id: raw.unrecorded_change_id.clone(),
+        unmatched_delta_digest: raw.unmatched_delta_digest.clone(),
+        observed_paths: observed_paths.clone(),
+    };
+    if canonical_json_string(&terminal_result).ok().as_deref() != Some(terminal_result_json)
+        || terminal_result.repository_observation_id != raw.repository_observation_id
+        || !terminal_result
+            .unrecorded_changes
+            .contains(&expected_result)
+    {
+        return Err(corrupt_value("repository_observation_id"));
+    }
     Ok(UnrecordedChangeRecord {
         project_id: raw.project_id,
         unrecorded_change_id: raw.unrecorded_change_id,
         repository_observation_id: raw.repository_observation_id,
-        session_id: raw.session_id,
-        correlation: raw.correlation,
-        connection_internal_id: raw.connection_internal_id,
+        session_id,
+        correlation,
+        connection_internal_id,
         task_id: raw.task_id,
         status,
         summary: raw.summary,
@@ -3233,9 +3390,18 @@ pub(crate) fn test_guard_manifest_json(
 
 #[cfg(test)]
 mod tests {
-    use std::{error::Error, fs, process::Command};
+    use std::{
+        error::Error,
+        fs,
+        process::Command,
+        sync::{Arc, Barrier},
+        thread,
+    };
 
-    use volicord_platform_fs::{InvocationObservationPaths, ObserverLimits, RepositoryObserver};
+    use volicord_platform_fs::{
+        InvocationObservationPaths, ObserverLimits, RepositoryObservationCheckpoint,
+        RepositoryObserver,
+    };
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
@@ -4011,6 +4177,942 @@ mod tests {
         assert!(reset.observed_phases.is_empty());
         assert!(reset.incompatible_event_ids.is_empty());
         assert!(!reset.all_required_phases_observed());
+        Ok(())
+    }
+
+    struct PreparedRepositoryObservation {
+        fixture: GuardFixture,
+        project: ProjectRecord,
+        integration_revision: String,
+        correlation: HostNativeCorrelation,
+        observer: RepositoryObserver,
+        before: RepositoryObservationCheckpoint,
+        observation_id: String,
+        expected_path: ProductRelativePath,
+        unmatched_path: ProductRelativePath,
+    }
+
+    impl PreparedRepositoryObservation {
+        fn new(prefix: &str, tool_use_id: &str) -> Result<Self, Box<dyn Error>> {
+            let fixture = GuardFixture::new(prefix)?;
+            fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
+            fixture.insert_task("project_guard_a", "task_guard_a")?;
+            let project =
+                project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
+                    .expect("fixture project");
+            let connection =
+                agent_connection_record_read_only(fixture.runtime_home.path(), "conn_guard_a")?
+                    .expect("fixture connection");
+            let installation = upsert_guard_installation(
+                &fixture.context()?,
+                GuardInstallationUpsert {
+                    guard_installation_id: "guard_installation_a".to_owned(),
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    project_id: "project_guard_a".to_owned(),
+                    manifest_json: test_guard_manifest_json(
+                        &connection,
+                        "project_guard_a",
+                        &project.repo_root,
+                        "guard_installation_a",
+                        TEST_POLICY_HASH,
+                    ),
+                },
+            )?;
+            let manifest = guard_manifest_from_json(&installation.manifest_json)?;
+            let runtime_session_id =
+                start_guard_runtime(&fixture.context()?, "conn_guard_a", "2026-07-30T00:00:00Z")?;
+            bind_agent_session_runtime(
+                &fixture.context()?,
+                "project_guard_a",
+                AgentSessionRuntimeBinding {
+                    runtime_session_id,
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    guard_installation_id: Some("guard_installation_a".to_owned()),
+                    correlation: mcp_correlation(
+                        "session_guard_a",
+                        "thread_guard_a",
+                        "turn_guard_a",
+                    ),
+                    observed_at: "2026-07-30T00:00:01Z".to_owned(),
+                },
+            )?;
+            let correlation = tool_correlation(
+                "session_guard_a",
+                "turn_guard_tool_a",
+                tool_use_id,
+                "apply_patch",
+            );
+            let coordinates = current_project_agent_session_coordinates(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                "conn_guard_a",
+                Some("guard_installation_a"),
+                &correlation,
+            )?;
+            let git_init = Command::new("git")
+                .args([
+                    "-C",
+                    project.repo_root.to_str().expect("UTF-8 fixture path"),
+                    "init",
+                    "-q",
+                ])
+                .output()?;
+            assert!(
+                git_init.status.success(),
+                "git init failed: {}",
+                String::from_utf8_lossy(&git_init.stderr)
+            );
+            let expected_path = ProductRelativePath::parse("src/lib.rs")?;
+            let unmatched_path = ProductRelativePath::parse("src/extra.rs")?;
+            let observer = RepositoryObserver::new(&project.repo_root, ObserverLimits::default())?;
+            let before = observer
+                .snapshot(&InvocationObservationPaths::new(
+                    vec![expected_path.clone(), unmatched_path.clone()],
+                    Vec::new(),
+                ))?
+                .checkpoint();
+            let observation_id = repository_observation_id(
+                "project_guard_a",
+                "conn_guard_a",
+                &coordinates.session_id,
+                &correlation,
+            )?;
+            Ok(Self {
+                fixture,
+                project,
+                integration_revision: manifest.integration_revision.as_str().to_owned(),
+                correlation,
+                observer,
+                before,
+                observation_id,
+                expected_path,
+                unmatched_path,
+            })
+        }
+
+        fn event(&self, event_id: &str, kind: &str, occurred_at: &str) -> GuardEventInsert {
+            GuardEventInsert {
+                guard_event_id: event_id.to_owned(),
+                correlation: Some(self.correlation.clone()),
+                connection_internal_id: "conn_guard_a".to_owned(),
+                guard_installation_id: "guard_installation_a".to_owned(),
+                policy_hash: TEST_POLICY_HASH.to_owned(),
+                integration_revision: self.integration_revision.clone(),
+                event_kind: kind.to_owned(),
+                contract_status: "compatible".to_owned(),
+                decision: "allow".to_owned(),
+                subject_json: "{}".to_owned(),
+                result_json: r#"{"decision":"allow"}"#.to_owned(),
+                occurred_at: occurred_at.to_owned(),
+                metadata_json: format!(r#"{{"phase":"{kind}"}}"#),
+            }
+        }
+
+        fn pre_input(&self) -> PreToolRepositoryObservationInsert {
+            PreToolRepositoryObservationInsert {
+                guard_event: self.event("guard_pre_a", "pre_tool", "2026-07-30T00:00:03Z"),
+                repository_observation_id: self.observation_id.clone(),
+                observer_contract_digest: self.observer.contract_digest().as_str().to_owned(),
+                checkpoint: Some(self.before.clone()),
+                unavailable_reason: None,
+                expected_write: Some(RepositoryExpectedWriteInsert {
+                    expected_write_id: "expected_write_a".to_owned(),
+                    command_kind: "may_write_product".to_owned(),
+                    expected_paths: vec![self.expected_path.clone()],
+                    task_id: "task_guard_a".to_owned(),
+                    change_unit_id: "change_unit_guard_a".to_owned(),
+                    write_ticket_ids: vec!["write_ticket_a".to_owned()],
+                    basis_state_version: 0,
+                    created_at: UtcTimestamp::parse("2026-07-30T00:00:03Z").expect("test time"),
+                    metadata: JsonObject::new(),
+                }),
+                metadata: serde_json::from_value(serde_json::json!({"phase": "pre"}))
+                    .expect("object"),
+            }
+        }
+
+        fn post_input(&self) -> Result<PostToolRepositoryObservationInsert, Box<dyn Error>> {
+            fs::create_dir_all(self.project.repo_root.join("src"))?;
+            fs::write(
+                self.project.repo_root.join(self.expected_path.as_str()),
+                b"expected\n",
+            )?;
+            fs::write(
+                self.project.repo_root.join(self.unmatched_path.as_str()),
+                b"unmatched\n",
+            )?;
+            let after = self.observer.snapshot(&InvocationObservationPaths::new(
+                vec![self.expected_path.clone(), self.unmatched_path.clone()],
+                Vec::new(),
+            ))?;
+            let before = self.observer.restore_checkpoint(self.before.clone())?;
+            let delta = self.observer.delta(&before, &after)?;
+            Ok(PostToolRepositoryObservationInsert {
+                guard_event: self.event("guard_post_a", "post_tool", "2026-07-30T00:00:04Z"),
+                repository_observation_id: self.observation_id.clone(),
+                observer_contract_digest: self.observer.contract_digest().as_str().to_owned(),
+                outcome: PostToolRepositoryObservationOutcome::Complete {
+                    post_snapshot: Box::new(after.checkpoint()),
+                    delta,
+                },
+                task_id: Some("task_guard_a".to_owned()),
+                metadata: serde_json::from_value(serde_json::json!({"phase": "post"}))
+                    .expect("object"),
+            })
+        }
+
+        fn project_connection(&self) -> StoreResult<Connection> {
+            open_project_state_database_for_test(&self.project.state_db_path)
+        }
+    }
+
+    fn assert_corrupt_owner_state<T>(result: StoreResult<T>) {
+        assert!(matches!(
+            result,
+            Err(StoreError::CorruptOwnerStateJson { .. })
+                | Err(StoreError::CorruptOwnerStateValue { .. })
+                | Err(StoreError::CorruptOwnerStateInvariant { .. })
+        ));
+    }
+
+    #[test]
+    fn repository_observation_exact_replay_is_stable_and_conflicts_are_explicit(
+    ) -> Result<(), Box<dyn Error>> {
+        let prepared = PreparedRepositoryObservation::new(
+            "repository-observation-exact-replay",
+            "tool_call_replay",
+        )?;
+        let pre = prepared.pre_input();
+        let first = record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            pre.clone(),
+        )?;
+        assert!(!first.replayed);
+        let replay = record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            pre.clone(),
+        )?;
+        assert!(replay.replayed);
+        assert_eq!(
+            first.guard_event.guard_event_id,
+            replay.guard_event.guard_event_id
+        );
+
+        let mut conflicting_pre = pre;
+        conflicting_pre.guard_event.subject_json = r#"{"changed":true}"#.to_owned();
+        assert!(matches!(
+            record_pre_tool_repository_observation(
+                &prepared.fixture.context()?,
+                "project_guard_a",
+                conflicting_pre,
+            ),
+            Err(StoreError::Conflict { .. })
+        ));
+
+        let post = prepared.post_input()?;
+        let first = record_post_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            post.clone(),
+        )?;
+        assert!(!first.replayed);
+        let replay = record_post_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            post.clone(),
+        )?;
+        assert!(replay.replayed);
+        assert_eq!(first.result, replay.result);
+
+        let pre_after_post = record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            prepared.pre_input(),
+        )?;
+        assert!(pre_after_post.replayed);
+        let mut conflicting_post = post;
+        conflicting_post.guard_event.result_json =
+            r#"{"decision":"allow","extra":true}"#.to_owned();
+        assert!(matches!(
+            record_post_tool_repository_observation(
+                &prepared.fixture.context()?,
+                "project_guard_a",
+                conflicting_post,
+            ),
+            Err(StoreError::Conflict { .. })
+        ));
+
+        let conn = prepared.project_connection()?;
+        for (table, expected) in [
+            ("repository_observations", 1_i64),
+            ("guard_events", 2),
+            ("expected_writes", 1),
+            ("unrecorded_changes", 1),
+        ] {
+            let count = conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+            assert_eq!(count, expected, "{table}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repository_observation_faults_roll_back_every_pre_boundary() -> Result<(), Box<dyn Error>> {
+        use repository_observation::{
+            set_repository_observation_fault_point, RepositoryObservationFaultPoint,
+        };
+        for (index, point) in [
+            RepositoryObservationFaultPoint::PreAfterCorrelation,
+            RepositoryObservationFaultPoint::PreAfterGuardEvent,
+            RepositoryObservationFaultPoint::PreAfterObservation,
+            RepositoryObservationFaultPoint::PreAfterExpectedWrite,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let prepared = PreparedRepositoryObservation::new(
+                &format!("repository-observation-pre-rollback-{index}"),
+                &format!("tool_call_pre_rollback_{index}"),
+            )?;
+            set_repository_observation_fault_point(Some(point));
+            assert!(record_pre_tool_repository_observation(
+                &prepared.fixture.context()?,
+                "project_guard_a",
+                prepared.pre_input(),
+            )
+            .is_err());
+            set_repository_observation_fault_point(None);
+            let conn = prepared.project_connection()?;
+            for table in ["guard_events", "repository_observations", "expected_writes"] {
+                let count =
+                    conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                        row.get::<_, i64>(0)
+                    })?;
+                assert_eq!(count, 0, "{point:?} left a {table} row");
+            }
+            let tool_count = conn.query_row(
+                "SELECT count(*) FROM host_tool_invocations WHERE host_tool_use_id = ?1",
+                [format!("tool_call_pre_rollback_{index}")],
+                |row| row.get::<_, i64>(0),
+            )?;
+            assert_eq!(tool_count, 0, "{point:?} left normalized correlation");
+            assert!(
+                !record_pre_tool_repository_observation(
+                    &prepared.fixture.context()?,
+                    "project_guard_a",
+                    prepared.pre_input(),
+                )?
+                .replayed
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repository_observation_faults_roll_back_every_post_boundary() -> Result<(), Box<dyn Error>> {
+        use repository_observation::{
+            set_repository_observation_fault_point, RepositoryObservationFaultPoint,
+        };
+        for (index, point) in [
+            RepositoryObservationFaultPoint::PostAfterExpectedWriteReconciliation,
+            RepositoryObservationFaultPoint::PostAfterUnrecordedChangeInsert,
+            RepositoryObservationFaultPoint::PostAfterGuardEvent,
+            RepositoryObservationFaultPoint::PostAfterObservation,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let prepared = PreparedRepositoryObservation::new(
+                &format!("repository-observation-post-rollback-{index}"),
+                &format!("tool_call_post_rollback_{index}"),
+            )?;
+            record_pre_tool_repository_observation(
+                &prepared.fixture.context()?,
+                "project_guard_a",
+                prepared.pre_input(),
+            )?;
+            let post = prepared.post_input()?;
+            set_repository_observation_fault_point(Some(point));
+            assert!(record_post_tool_repository_observation(
+                &prepared.fixture.context()?,
+                "project_guard_a",
+                post.clone(),
+            )
+            .is_err());
+            set_repository_observation_fault_point(None);
+            let conn = prepared.project_connection()?;
+            let state = conn.query_row("SELECT state FROM repository_observations", [], |row| {
+                row.get::<_, String>(0)
+            })?;
+            assert_eq!(state, "open", "{point:?}");
+            let status = conn.query_row("SELECT status FROM expected_writes", [], |row| {
+                row.get::<_, String>(0)
+            })?;
+            assert_eq!(status, "pending", "{point:?}");
+            let post_events = conn.query_row(
+                "SELECT count(*) FROM guard_events WHERE event_kind = 'post_tool'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?;
+            assert_eq!(post_events, 0, "{point:?}");
+            let changes = conn.query_row("SELECT count(*) FROM unrecorded_changes", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+            assert_eq!(changes, 0, "{point:?}");
+            assert!(
+                !record_post_tool_repository_observation(
+                    &prepared.fixture.context()?,
+                    "project_guard_a",
+                    post,
+                )?
+                .replayed
+            );
+        }
+        Ok(())
+    }
+
+    fn concurrent_pre_record(
+        runtime_home: PathBuf,
+        input: PreToolRepositoryObservationInsert,
+        barrier: Arc<Barrier>,
+    ) -> thread::JoinHandle<StoreResult<PreToolRepositoryObservationRecord>> {
+        thread::spawn(move || {
+            let admission = TestRuntimeHomeAdmission::shared(runtime_home)?;
+            barrier.wait();
+            record_pre_tool_repository_observation(&admission.context()?, "project_guard_a", input)
+        })
+    }
+
+    fn concurrent_post_record(
+        runtime_home: PathBuf,
+        input: PostToolRepositoryObservationInsert,
+        barrier: Arc<Barrier>,
+    ) -> thread::JoinHandle<StoreResult<PostToolRepositoryObservationRecord>> {
+        thread::spawn(move || {
+            let admission = TestRuntimeHomeAdmission::shared(runtime_home)?;
+            barrier.wait();
+            record_post_tool_repository_observation(&admission.context()?, "project_guard_a", input)
+        })
+    }
+
+    #[test]
+    fn repository_observation_concurrency_deduplicates_exact_invocations_without_cross_match(
+    ) -> Result<(), Box<dyn Error>> {
+        let prepared = PreparedRepositoryObservation::new(
+            "repository-observation-concurrency",
+            "tool_call_concurrent",
+        )?;
+        let runtime_home = prepared.fixture.runtime_home.path().to_path_buf();
+        let pre = prepared.pre_input();
+        let barrier = Arc::new(Barrier::new(2));
+        let first = concurrent_pre_record(runtime_home.clone(), pre.clone(), barrier.clone());
+        let second = concurrent_pre_record(runtime_home.clone(), pre, barrier);
+        let mut replay_states = [
+            first.join().expect("first PreToolUse worker")?.replayed,
+            second.join().expect("second PreToolUse worker")?.replayed,
+        ];
+        replay_states.sort_unstable();
+        assert_eq!(replay_states, [false, true]);
+
+        let post = prepared.post_input()?;
+        let barrier = Arc::new(Barrier::new(2));
+        let first = concurrent_post_record(runtime_home.clone(), post.clone(), barrier.clone());
+        let second = concurrent_post_record(runtime_home.clone(), post, barrier);
+        let mut replay_states = [
+            first.join().expect("first PostToolUse worker")?.replayed,
+            second.join().expect("second PostToolUse worker")?.replayed,
+        ];
+        replay_states.sort_unstable();
+        assert_eq!(replay_states, [false, true]);
+
+        let distinct = |suffix: &str| -> StoreResult<PreToolRepositoryObservationInsert> {
+            let mut input = prepared.pre_input();
+            input.guard_event.guard_event_id = format!("guard_pre_{suffix}");
+            input.guard_event.correlation = Some(tool_correlation(
+                "session_guard_a",
+                "turn_guard_distinct",
+                &format!("tool_call_{suffix}"),
+                "apply_patch",
+            ));
+            input
+                .expected_write
+                .as_mut()
+                .expect("expected write")
+                .expected_write_id = format!("expected_write_{suffix}");
+            let correlation = input.guard_event.correlation.as_ref().expect("correlation");
+            let coordinates = current_project_agent_session_coordinates(
+                prepared.fixture.runtime_home.path(),
+                "project_guard_a",
+                "conn_guard_a",
+                Some("guard_installation_a"),
+                correlation,
+            )?;
+            input.repository_observation_id = repository_observation_id(
+                "project_guard_a",
+                "conn_guard_a",
+                &coordinates.session_id,
+                correlation,
+            )?;
+            Ok(input)
+        };
+        let barrier = Arc::new(Barrier::new(2));
+        let first = concurrent_pre_record(
+            runtime_home.clone(),
+            distinct("distinct_a")?,
+            barrier.clone(),
+        );
+        let second = concurrent_pre_record(runtime_home, distinct("distinct_b")?, barrier);
+        let first = first.join().expect("first distinct worker")?;
+        let second = second.join().expect("second distinct worker")?;
+        assert!(!first.replayed && !second.replayed);
+        assert_ne!(
+            first.observation.repository_observation_id,
+            second.observation.repository_observation_id
+        );
+        assert_ne!(
+            first.observation.correlation,
+            second.observation.correlation
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn unavailable_and_missing_pre_observations_are_terminal_and_replayable(
+    ) -> Result<(), Box<dyn Error>> {
+        let unavailable = PreparedRepositoryObservation::new(
+            "repository-observation-unavailable",
+            "tool_call_unavailable",
+        )?;
+        let mut pre = unavailable.pre_input();
+        pre.checkpoint = None;
+        pre.expected_write = None;
+        pre.unavailable_reason = Some(RepositoryObservationUnavailableReason::Observer(
+            volicord_platform_fs::ObservationUnavailableReason::UnstableRepository,
+        ));
+        let stored = record_pre_tool_repository_observation(
+            &unavailable.fixture.context()?,
+            "project_guard_a",
+            pre.clone(),
+        )?;
+        assert_eq!(
+            stored.observation.state,
+            RepositoryObservationState::Unavailable
+        );
+        assert!(
+            record_pre_tool_repository_observation(
+                &unavailable.fixture.context()?,
+                "project_guard_a",
+                pre,
+            )?
+            .replayed
+        );
+        let post = PostToolRepositoryObservationInsert {
+            guard_event: unavailable.event("guard_post_a", "post_tool", "2026-07-30T00:00:04Z"),
+            repository_observation_id: unavailable.observation_id.clone(),
+            observer_contract_digest: unavailable.observer.contract_digest().as_str().to_owned(),
+            outcome: PostToolRepositoryObservationOutcome::Unavailable {
+                reason: RepositoryObservationUnavailableReason::Observer(
+                    volicord_platform_fs::ObservationUnavailableReason::UnstableRepository,
+                ),
+            },
+            task_id: None,
+            metadata: serde_json::from_value(serde_json::json!({"phase": "post"})).expect("object"),
+        };
+        assert!(
+            !record_post_tool_repository_observation(
+                &unavailable.fixture.context()?,
+                "project_guard_a",
+                post.clone(),
+            )?
+            .replayed
+        );
+        assert!(
+            record_post_tool_repository_observation(
+                &unavailable.fixture.context()?,
+                "project_guard_a",
+                post,
+            )?
+            .replayed
+        );
+
+        let missing = PreparedRepositoryObservation::new(
+            "repository-observation-missing-pre",
+            "tool_call_missing_pre",
+        )?;
+        let post = PostToolRepositoryObservationInsert {
+            guard_event: missing.event("guard_post_missing", "post_tool", "2026-07-30T00:00:04Z"),
+            repository_observation_id: missing.observation_id.clone(),
+            observer_contract_digest: missing.observer.contract_digest().as_str().to_owned(),
+            outcome: PostToolRepositoryObservationOutcome::Unavailable {
+                reason: RepositoryObservationUnavailableReason::MissingOpenObservation,
+            },
+            task_id: None,
+            metadata: serde_json::from_value(serde_json::json!({"phase": "post"})).expect("object"),
+        };
+        let stored = record_post_tool_repository_observation(
+            &missing.fixture.context()?,
+            "project_guard_a",
+            post.clone(),
+        )?;
+        assert_eq!(
+            stored.observation.unavailable_reason,
+            Some(RepositoryObservationUnavailableReason::MissingOpenObservation)
+        );
+        assert!(stored.observation.pre_tool_guard_event_id.is_none());
+        assert!(stored.observation.post_tool_guard_event_id.is_some());
+        assert!(
+            record_post_tool_repository_observation(
+                &missing.fixture.context()?,
+                "project_guard_a",
+                post,
+            )?
+            .replayed
+        );
+        let conn = missing.project_connection()?;
+        for table in ["expected_writes", "unrecorded_changes"] {
+            assert_eq!(
+                conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                    row.get::<_, i64>(0)
+                })?,
+                0
+            );
+        }
+
+        let late_failure = PreparedRepositoryObservation::new(
+            "repository-observation-post-unavailable",
+            "tool_call_post_unavailable",
+        )?;
+        record_pre_tool_repository_observation(
+            &late_failure.fixture.context()?,
+            "project_guard_a",
+            late_failure.pre_input(),
+        )?;
+        let post = PostToolRepositoryObservationInsert {
+            guard_event: late_failure.event("guard_post_a", "post_tool", "2026-07-30T00:00:04Z"),
+            repository_observation_id: late_failure.observation_id.clone(),
+            observer_contract_digest: late_failure.observer.contract_digest().as_str().to_owned(),
+            outcome: PostToolRepositoryObservationOutcome::Unavailable {
+                reason: RepositoryObservationUnavailableReason::Observer(
+                    volicord_platform_fs::ObservationUnavailableReason::UnstableRepository,
+                ),
+            },
+            task_id: None,
+            metadata: serde_json::from_value(serde_json::json!({"phase": "post"})).expect("object"),
+        };
+        record_post_tool_repository_observation(
+            &late_failure.fixture.context()?,
+            "project_guard_a",
+            post,
+        )?;
+        assert!(
+            record_pre_tool_repository_observation(
+                &late_failure.fixture.context()?,
+                "project_guard_a",
+                late_failure.pre_input(),
+            )?
+            .replayed
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repository_observation_strict_reads_reject_corrupt_relationships(
+    ) -> Result<(), Box<dyn Error>> {
+        let prepared = PreparedRepositoryObservation::new(
+            "repository-observation-corruption",
+            "tool_call_corrupt",
+        )?;
+        record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            prepared.pre_input(),
+        )?;
+        let stored = record_post_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            prepared.post_input()?,
+        )?;
+        let change_id = stored.result.unrecorded_changes[0]
+            .unrecorded_change_id
+            .clone();
+        let mut conn = prepared.project_connection()?;
+        conn.execute_batch(
+            "PRAGMA foreign_keys = OFF;
+             PRAGMA ignore_check_constraints = ON;",
+        )?;
+
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET pre_tool_guard_event_id = post_tool_guard_event_id
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET observer_contract_digest = ?2
+                  WHERE repository_observation_id = ?1",
+                params![
+                    prepared.observation_id,
+                    format!("sha256:{}", "f".repeat(64))
+                ],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET delta_digest = ?2
+                  WHERE repository_observation_id = ?1",
+                params![
+                    prepared.observation_id,
+                    format!("sha256:{}", "e".repeat(64))
+                ],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET state = 'unknown'
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET state = 'open',
+                        pre_snapshot_json = NULL,
+                        pre_snapshot_digest = NULL,
+                        post_tool_guard_event_id = NULL,
+                        post_snapshot_json = NULL,
+                        post_snapshot_digest = NULL,
+                        delta_json = NULL,
+                        delta_digest = NULL,
+                        unavailable_reason = NULL,
+                        completed_at = NULL,
+                        terminal_result_json = NULL
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET post_snapshot_json = NULL,
+                        post_snapshot_digest = NULL
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET state = 'unavailable',
+                        unavailable_reason = 'unstable_repository'
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET pre_snapshot_json =
+                        replace(pre_snapshot_json, '\"kind\":\"absent\"', '\"kind\":\"unknown\"')
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET pre_snapshot_digest = ?2
+                  WHERE repository_observation_id = ?1",
+                params![
+                    prepared.observation_id,
+                    format!("sha256:{}", "d".repeat(64))
+                ],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET metadata_json = '{\"phase\": \"post\"}'
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE expected_writes
+                    SET repository_observation_id = 'repository_observation_missing'
+                  WHERE expected_write_id = 'expected_write_a'",
+                [],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE unrecorded_changes
+                    SET observed_paths_json = '[\"src/lib.rs\"]'
+                  WHERE unrecorded_change_id = ?1",
+                [&change_id],
+            )?;
+            assert_corrupt_owner_state(unrecorded_change_from_conn(
+                &tx,
+                "project_guard_a",
+                &change_id,
+            ));
+            tx.rollback()?;
+        }
+        for observed_paths_json in [
+            "[]",
+            "[\"src/extra.rs\",\"src/extra.rs\"]",
+            "[\"../escape\"]",
+        ] {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE unrecorded_changes
+                    SET observed_paths_json = ?2
+                  WHERE unrecorded_change_id = ?1",
+                params![change_id, observed_paths_json],
+            )?;
+            assert_corrupt_owner_state(unrecorded_change_from_conn(
+                &tx,
+                "project_guard_a",
+                &change_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE repository_observations
+                    SET state = 'unavailable'
+                  WHERE repository_observation_id = ?1",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(unrecorded_change_from_conn(
+                &tx,
+                "project_guard_a",
+                &change_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE unrecorded_changes
+                    SET repository_observation_id = 'repository_observation_missing'
+                  WHERE unrecorded_change_id = ?1",
+                [&change_id],
+            )?;
+            assert_corrupt_owner_state(unrecorded_change_from_conn(
+                &tx,
+                "project_guard_a",
+                &change_id,
+            ));
+            tx.rollback()?;
+        }
+        {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "DELETE FROM host_sessions
+                  WHERE project_id = 'project_guard_a'
+                    AND session_id = (
+                        SELECT session_id FROM repository_observations
+                         WHERE repository_observation_id = ?1
+                    )",
+                [&prepared.observation_id],
+            )?;
+            assert_corrupt_owner_state(repository_observation::repository_observation_from_conn(
+                &tx,
+                "project_guard_a",
+                &prepared.observation_id,
+            ));
+            tx.rollback()?;
+        }
         Ok(())
     }
 

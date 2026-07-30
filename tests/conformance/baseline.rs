@@ -3995,134 +3995,129 @@ fn insert_unrecorded_change_fixture(
 ) -> Result<(), Box<dyn Error>> {
     let connection_id = fixture.connection_id();
     let project_id = fixture.project_id();
-    let session_id = format!("agent_session_{suffix}");
-    let host_session_id = format!("host_session_{suffix}");
-    let host_turn_id = format!("host_turn_{suffix}");
-    let host_tool_use_id = format!("host_tool_use_{suffix}");
-    let observation_id = format!("repository_observation_{suffix}");
-    let pre_event_id = format!("guard_pre_{suffix}");
-    let post_event_id = format!("guard_post_{suffix}");
-    let conn = fixture.mutation_conn()?;
-    conn.execute(
-        "INSERT INTO host_sessions (
-            project_id, session_id, connection_internal_id,
-            project_integration_revision, host_session_id,
-            first_observed_at, last_observed_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-        rusqlite::params![
-            project_id,
-            session_id,
-            connection_id,
-            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            host_session_id,
-            "2026-06-30T00:04:58Z",
-        ],
+    let repo_root = fixture.product_repo_path();
+    let git_init = std::process::Command::new("git")
+        .args([
+            "-C",
+            repo_root.to_str().expect("UTF-8 conformance repository"),
+            "init",
+            "-q",
+        ])
+        .output()?;
+    assert!(git_init.status.success());
+    let observed_path = volicord_types::product_path::ProductRelativePath::parse("src/export.rs")?;
+    let observer = volicord_platform_fs::RepositoryObserver::new(
+        &repo_root,
+        volicord_platform_fs::ObserverLimits::default(),
     )?;
-    conn.execute(
-        "INSERT INTO host_turns (
-            project_id, session_id, connection_internal_id, host_turn_id,
-            first_observed_at, last_observed_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-        rusqlite::params![
-            project_id,
-            session_id,
-            connection_id,
-            host_turn_id,
-            "2026-06-30T00:04:58Z",
-        ],
-    )?;
-    conn.execute(
-        "INSERT INTO host_tool_invocations (
-            project_id, session_id, connection_internal_id, host_turn_id,
-            host_tool_use_id, host_tool_name, first_observed_at, last_observed_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, 'apply_patch', ?6, ?6)",
-        rusqlite::params![
-            project_id,
-            session_id,
-            connection_id,
-            host_turn_id,
-            host_tool_use_id,
-            "2026-06-30T00:04:58Z",
-        ],
-    )?;
-    for (event_id, event_kind, occurred_at) in [
-        (&pre_event_id, "pre_tool", "2026-06-30T00:04:59Z"),
-        (&post_event_id, "post_tool", "2026-06-30T00:05:00Z"),
-    ] {
-        conn.execute(
-            "INSERT INTO guard_events (
-                project_id, guard_event_id, session_id, connection_internal_id,
-                correlation_kind, host_turn_id, host_tool_use_id, host_tool_name,
-                guard_installation_id, policy_hash, integration_revision,
-                event_kind, contract_status, decision, subject_json, result_json,
-                occurred_at, metadata_json
-            ) VALUES (
-                ?1, ?2, ?3, ?4, 'codex_hook_tool', ?5, ?6, 'apply_patch',
-                ?7, ?8, ?9, ?10, 'compatible', 'allow', '{}', '{}', ?11, '{}'
-            )",
-            rusqlite::params![
+    let before = observer.snapshot(&volicord_platform_fs::InvocationObservationPaths::new(
+        vec![observed_path.clone()],
+        Vec::new(),
+    ))?;
+    let guard_installation_id = format!("guard_installation_{suffix}");
+    let policy_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    let installation = volicord_store::guards::upsert_guard_installation(
+        &fixture.mutation_context()?,
+        volicord_store::guards::GuardInstallationUpsert {
+            guard_installation_id: guard_installation_id.clone(),
+            connection_internal_id: connection_id.to_owned(),
+            project_id: project_id.to_owned(),
+            manifest_json: volicord_test_support::test_guard_manifest_json(
+                fixture.runtime_home_path(),
+                &repo_root,
                 project_id,
-                event_id,
-                session_id,
                 connection_id,
-                host_turn_id,
-                host_tool_use_id,
-                format!("guard_installation_{suffix}"),
-                "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-                "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-                event_kind,
-                occurred_at,
-            ],
-        )?;
-    }
-    conn.execute(
-        "INSERT INTO repository_observations (
-            project_id, repository_observation_id, session_id,
-            connection_internal_id, host_turn_id, host_tool_use_id,
-            host_tool_name, guard_installation_id, observer_contract_digest,
-            pre_tool_guard_event_id, post_tool_guard_event_id, state,
-            pre_snapshot_json, pre_snapshot_digest, post_snapshot_json,
-            post_snapshot_digest, delta_json, delta_digest, started_at,
-            completed_at, terminal_result_json, metadata_json
-        ) VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, 'apply_patch', ?7, ?8, ?9, ?10,
-            'complete', '{}', ?11, '{}', ?12, ?13, ?14, ?15, ?16, '{}', '{}'
-        )",
-        rusqlite::params![
-            project_id,
-            observation_id,
-            session_id,
-            connection_id,
-            host_turn_id,
-            host_tool_use_id,
-            format!("guard_installation_{suffix}"),
-            "sha256:4444444444444444444444444444444444444444444444444444444444444444",
-            pre_event_id,
-            post_event_id,
-            "sha256:5555555555555555555555555555555555555555555555555555555555555555",
-            "sha256:6666666666666666666666666666666666666666666666666666666666666666",
-            r#"{"paths":["src/export.rs"]}"#,
-            "sha256:7777777777777777777777777777777777777777777777777777777777777777",
-            "2026-06-30T00:04:59Z",
-            "2026-06-30T00:05:00Z",
-        ],
+                &guard_installation_id,
+                policy_hash,
+            ),
+        },
     )?;
-    conn.execute(
-        "INSERT INTO unrecorded_changes (
-            project_id, unrecorded_change_id, repository_observation_id,
-            task_id, status, summary, observed_paths_json,
-            unmatched_delta_digest, detection_json, detected_at, metadata_json
-        ) VALUES (?1, ?2, ?3, ?4, 'unresolved', ?5, ?6, ?7, '{}', ?8, '{}')",
-        rusqlite::params![
-            project_id,
-            format!("unrecorded_change_{suffix}"),
-            observation_id,
-            task_id,
-            "Observed unmatched Product Repository transition.",
-            r#"["src/export.rs"]"#,
-            "sha256:7777777777777777777777777777777777777777777777777777777777777777",
-            "2026-06-30T00:05:00Z",
-        ],
+    let manifest =
+        volicord_types::guard_manifest::guard_manifest_from_json(&installation.manifest_json)?;
+    let correlation = volicord_host_contract::HostNativeCorrelation::CodexHookTool(
+        volicord_host_contract::CodexHookToolCorrelation {
+            session_id: volicord_host_contract::HostSessionId::parse(format!(
+                "host_session_{suffix}"
+            ))?,
+            turn_id: volicord_host_contract::HostTurnId::parse(format!("host_turn_{suffix}"))?,
+            tool_use_id: volicord_host_contract::HostToolUseId::parse(format!(
+                "host_tool_use_{suffix}"
+            ))?,
+            tool_name: volicord_host_contract::CanonicalToolName::parse("apply_patch")?,
+        },
+    );
+    let coordinates = volicord_store::guards::current_project_agent_session_coordinates(
+        fixture.runtime_home_path(),
+        project_id,
+        connection_id,
+        Some(&guard_installation_id),
+        &correlation,
+    )?;
+    let observation_id = volicord_store::guards::repository_observation_id(
+        project_id,
+        connection_id,
+        &coordinates.session_id,
+        &correlation,
+    )?;
+    let event = |event_id: String, event_kind: &str, occurred_at: &str| {
+        volicord_store::guards::GuardEventInsert {
+            guard_event_id: event_id,
+            correlation: Some(correlation.clone()),
+            connection_internal_id: connection_id.to_owned(),
+            guard_installation_id: guard_installation_id.clone(),
+            policy_hash: policy_hash.to_owned(),
+            integration_revision: manifest.integration_revision.as_str().to_owned(),
+            event_kind: event_kind.to_owned(),
+            contract_status: "compatible".to_owned(),
+            decision: "allow".to_owned(),
+            subject_json: "{}".to_owned(),
+            result_json: r#"{"decision":"allow"}"#.to_owned(),
+            occurred_at: occurred_at.to_owned(),
+            metadata_json: "{}".to_owned(),
+        }
+    };
+    volicord_store::guards::record_pre_tool_repository_observation(
+        &fixture.mutation_context()?,
+        project_id,
+        volicord_store::guards::PreToolRepositoryObservationInsert {
+            guard_event: event(
+                format!("guard_pre_{suffix}"),
+                "pre_tool",
+                "2026-06-30T00:04:59Z",
+            ),
+            repository_observation_id: observation_id.clone(),
+            observer_contract_digest: observer.contract_digest().as_str().to_owned(),
+            checkpoint: Some(before.checkpoint()),
+            unavailable_reason: None,
+            expected_write: None,
+            metadata: JsonObject::new(),
+        },
+    )?;
+    fs::create_dir_all(repo_root.join("src"))?;
+    fs::write(repo_root.join(observed_path.as_str()), b"unrecorded\n")?;
+    let after = observer.snapshot(&volicord_platform_fs::InvocationObservationPaths::new(
+        vec![observed_path],
+        Vec::new(),
+    ))?;
+    let delta = observer.delta(&before, &after)?;
+    volicord_store::guards::record_post_tool_repository_observation(
+        &fixture.mutation_context()?,
+        project_id,
+        volicord_store::guards::PostToolRepositoryObservationInsert {
+            guard_event: event(
+                format!("guard_post_{suffix}"),
+                "post_tool",
+                "2026-06-30T00:05:00Z",
+            ),
+            repository_observation_id: observation_id,
+            observer_contract_digest: observer.contract_digest().as_str().to_owned(),
+            outcome: volicord_store::guards::PostToolRepositoryObservationOutcome::Complete {
+                post_snapshot: Box::new(after.checkpoint()),
+                delta,
+            },
+            task_id: Some(task_id.to_owned()),
+            metadata: JsonObject::new(),
+        },
     )?;
     Ok(())
 }

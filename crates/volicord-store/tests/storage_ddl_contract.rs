@@ -376,11 +376,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:3fc1939976439d74d6dc1b4115511dbd8eed7ede5156744f8e02ec682ab34648"
+        "sha256:c7185740b8d4e4b7b0cff4631db7d5d469d66de30245cf6b3066ee31e4efb7e1"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:31e7cac083f2e0d694f6df0a3c1c912e644923dccd3946065094269185702781"
+        "sha256:f01fcbb8c50c4f9f65b230857deac335e194ba90fc35b35a5885b1598fcde79f"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,12 +414,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:3fc1939976439d74d6dc1b4115511dbd8eed7ede5156744f8e02ec682ab34648\",",
+            "{\"canonical_ddl_digest\":\"sha256:c7185740b8d4e4b7b0cff4631db7d5d469d66de30245cf6b3066ee31e4efb7e1\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:31e7cac083f2e0d694f6df0a3c1c912e644923dccd3946065094269185702781\"}"
+            "\"integrity_constraints_digest\":\"sha256:f01fcbb8c50c4f9f65b230857deac335e194ba90fc35b35a5885b1598fcde79f\"}"
         )
     );
     Ok(())
