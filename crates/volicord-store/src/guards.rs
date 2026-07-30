@@ -1505,6 +1505,105 @@ pub fn guard_event(
         .map(Option::flatten)
 }
 
+/// Exact owner and native invocation coordinate for one pre-tool Guard event.
+#[derive(Debug, Clone, Copy)]
+pub struct PreToolGuardEventQuery<'a> {
+    pub project_id: &'a str,
+    pub connection_internal_id: &'a str,
+    pub session_id: &'a str,
+    pub guard_installation_id: &'a str,
+    pub policy_hash: &'a str,
+    pub integration_revision: &'a str,
+    pub not_after: &'a str,
+    pub correlation: &'a CodexHookToolCorrelation,
+}
+
+/// Reads the unique compatible pre-tool event for one exact native tool invocation.
+pub fn pre_tool_guard_event(
+    runtime_home: impl AsRef<Path>,
+    query: PreToolGuardEventQuery<'_>,
+) -> StoreResult<Option<GuardEventRecord>> {
+    for (field, value) in [
+        ("project_id", query.project_id),
+        ("connection_internal_id", query.connection_internal_id),
+        ("session_id", query.session_id),
+        ("guard_installation_id", query.guard_installation_id),
+        ("policy_hash", query.policy_hash),
+        ("integration_revision", query.integration_revision),
+        ("host_session_id", query.correlation.session_id.as_str()),
+        ("host_turn_id", query.correlation.turn_id.as_str()),
+        ("host_tool_use_id", query.correlation.tool_use_id.as_str()),
+        ("host_tool_name", query.correlation.tool_name.as_str()),
+    ] {
+        validate_identifier(field, value)?;
+    }
+    validate_timestamp_text("not_after", query.not_after)?;
+    let Some(project) = open_project_for_read(runtime_home, query.project_id)? else {
+        return Ok(None);
+    };
+    let mut stmt = project.conn.prepare(
+        "SELECT
+            e.project_id, e.guard_event_id, e.session_id,
+            e.connection_internal_id, e.correlation_kind, h.host_session_id,
+            e.host_turn_id, e.host_tool_use_id, e.host_tool_name,
+            e.guard_installation_id, e.policy_hash, e.integration_revision,
+            e.event_kind, e.contract_status, e.decision, e.subject_json,
+            e.result_json, e.occurred_at, e.metadata_json
+           FROM guard_events AS e
+           JOIN host_sessions AS h
+             ON h.project_id = e.project_id
+            AND h.session_id = e.session_id
+            AND h.connection_internal_id = e.connection_internal_id
+          WHERE e.project_id = ?1
+            AND e.connection_internal_id = ?2
+            AND e.session_id = ?3
+            AND e.guard_installation_id = ?4
+            AND e.policy_hash = ?5
+            AND e.integration_revision = ?6
+            AND e.correlation_kind = 'codex_hook_tool'
+            AND h.host_session_id = ?7
+            AND e.host_turn_id = ?8
+            AND e.host_tool_use_id = ?9
+            AND e.host_tool_name = ?10
+            AND e.event_kind = 'pre_tool'
+            AND e.contract_status = 'compatible'
+            AND (
+              volicord_utc_seconds(e.occurred_at) < volicord_utc_seconds(?11)
+              OR (
+                volicord_utc_seconds(e.occurred_at) = volicord_utc_seconds(?11)
+                AND volicord_utc_subsec_nanos(e.occurred_at)
+                    <= volicord_utc_subsec_nanos(?11)
+              )
+            )
+          ORDER BY e.guard_event_id
+          LIMIT 2",
+    )?;
+    let rows = stmt.query_map(
+        params![
+            project.project.project_id,
+            query.connection_internal_id,
+            query.session_id,
+            query.guard_installation_id,
+            query.policy_hash,
+            query.integration_revision,
+            query.correlation.session_id.as_str(),
+            query.correlation.turn_id.as_str(),
+            query.correlation.tool_use_id.as_str(),
+            query.correlation.tool_name.as_str(),
+            query.not_after,
+        ],
+        guard_event_from_row,
+    )?;
+    let mut records = collect_rows(rows)?;
+    if records.len() > 1 {
+        return Err(StoreError::InvalidInput {
+            detail: "native tool invocation has multiple compatible pre-tool Guard events"
+                .to_owned(),
+        });
+    }
+    Ok(records.pop())
+}
+
 /// Exact owner and native-turn coordinate for bounded integration-verification events.
 #[derive(Debug, Clone, Copy)]
 pub struct GuardIntegrationVerificationEventQuery<'a> {
@@ -4797,7 +4896,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: "guard_installation_a".to_owned(),
                 policy_hash: TEST_POLICY_HASH.to_owned(),
-                integration_revision,
+                integration_revision: integration_revision.clone(),
                 event_kind: "pre_tool".to_owned(),
                 contract_status: "compatible".to_owned(),
                 decision: "warn".to_owned(),
@@ -4808,6 +4907,38 @@ mod tests {
             },
         )?;
         assert_eq!(event.decision, "warn");
+        let HostNativeCorrelation::CodexHookTool(tool_coordinate) = &tool_correlation else {
+            unreachable!("fixture uses a tool correlation");
+        };
+        let queried = pre_tool_guard_event(
+            fixture.runtime_home.path(),
+            PreToolGuardEventQuery {
+                project_id: "project_guard_a",
+                connection_internal_id: "conn_guard_a",
+                session_id: &session_id,
+                guard_installation_id: "guard_installation_a",
+                policy_hash: TEST_POLICY_HASH,
+                integration_revision: &integration_revision,
+                not_after: "2026-06-30T00:03:00Z",
+                correlation: tool_coordinate,
+            },
+        )?
+        .expect("exact native invocation must resolve its pre-tool event");
+        assert_eq!(queried.guard_event_id, event.guard_event_id);
+        assert!(pre_tool_guard_event(
+            fixture.runtime_home.path(),
+            PreToolGuardEventQuery {
+                project_id: "project_guard_a",
+                connection_internal_id: "conn_guard_a",
+                session_id: &session_id,
+                guard_installation_id: "guard_installation_a",
+                policy_hash: TEST_POLICY_HASH,
+                integration_revision: &integration_revision,
+                not_after: "2026-06-30T00:02:59Z",
+                correlation: tool_coordinate,
+            },
+        )?
+        .is_none());
 
         let capture = insert_prompt_capture(
             &fixture.context()?,

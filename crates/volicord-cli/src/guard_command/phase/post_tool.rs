@@ -8,6 +8,10 @@ use std::{
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_host_contract::HostNativeCorrelation;
+use volicord_platform_fs::{
+    InvocationObservationPaths, ObserverLimits, RepositoryObservationCheckpoint, RepositoryObserver,
+};
 use volicord_store::{
     bootstrap::ProjectRecord,
     core_pipeline::{CoreProjectStore, RunObservedChangesRecord, RunStatus},
@@ -15,10 +19,11 @@ use volicord_store::{
         agent_session, insert_unrecorded_change, list_expected_writes_matched_by_post_event,
         list_pending_expected_writes, list_unresolved_unrecorded_changes,
         mark_expected_write_matched, post_tool_guard_events_for_session_since,
-        promote_suspected_unrecorded_change, recorded_run_write_ticket_consumption,
-        resolve_unrecorded_change, unrecorded_change, ExpectedWriteMatch, ExpectedWriteRecord,
-        GuardEventRecord, UnrecordedChangeInsert, UnrecordedChangePromotion,
-        UnrecordedChangeResolution, POST_TOOL_CORRELATION_EVENT_LIMIT,
+        pre_tool_guard_event, promote_suspected_unrecorded_change,
+        recorded_run_write_ticket_consumption, resolve_unrecorded_change, unrecorded_change,
+        ExpectedWriteMatch, ExpectedWriteRecord, GuardEventRecord, PreToolGuardEventQuery,
+        UnrecordedChangeInsert, UnrecordedChangePromotion, UnrecordedChangeResolution,
+        POST_TOOL_CORRELATION_EVENT_LIMIT,
     },
     RuntimeHomeMutationContext, StoreError,
 };
@@ -26,9 +31,10 @@ use volicord_types::canonical::{canonical_git_object_id, canonical_json_bare_sha
 use volicord_types::guard_outcome::GuardPolicyDecision;
 use volicord_types::ids::{ProjectId, TaskId};
 use volicord_types::product_path::ProductRelativePath;
+use volicord_types::tool_names::ProductRepositoryEffect;
 use volicord_types::values::{
-    ActorSource, MethodName, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis,
-    UtcTimestamp, WriteTicketStatus,
+    ActorSource, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis, UtcTimestamp,
+    WriteTicketStatus,
 };
 
 use super::GuardPhaseResult;
@@ -36,7 +42,7 @@ use crate::guard_command::{
     context::{guard_state_summary, ActiveWriteTicketSummary, GuardStateSummary},
     envelope::{event_time, GuardEnvelope},
     json_error,
-    mutation::{assess_reported_path, PathAssessment, ToolClassification},
+    mutation::{assess_reported_path, PathAssessment},
     render::{context_json, tool_observation_json},
     stable_id,
     tool_observation::{tool_observation, ToolObservation},
@@ -236,7 +242,10 @@ pub(in crate::guard_command) fn handle_post_tool(
 ) -> Result<GuardPhaseResult, GuardCommandError> {
     let runtime_home = context.runtime_home().as_path();
     let summary = guard_state_summary(context, project, envelope, input)?;
-    let mut observation = tool_observation(&input.raw_value, &project.repo_root);
+    let server = envelope.mcp_server.as_ref().ok_or_else(|| {
+        GuardCommandError::Runtime("Guard event has no typed MCP server binding".to_owned())
+    })?;
+    let mut observation = tool_observation(&input.raw_value, &project.repo_root, server)?;
     let observed_changes = observed_changes(runtime_home, project, envelope, &observation)?;
     observation.changed_paths = observed_changes.paths.clone();
     observation.changed_paths_reported =
@@ -298,19 +307,6 @@ fn record_post_tool_correlation(
     observed_changes: &ObservedChanges,
 ) -> Result<PostToolCorrelation, GuardCommandError> {
     let runtime_home = context.runtime_home().as_path();
-    if observation.tool_name.as_deref() == Some(MethodName::RecordRun.as_str()) {
-        return Ok(PostToolCorrelation {
-            matched_expected_writes: Vec::new(),
-            ticket_backed_observations: Vec::new(),
-            unrecorded_changes: Vec::new(),
-            resolved_suspected_changes: Vec::new(),
-            recorded_change_suppressions: Vec::new(),
-            recorded_change_suppression_outcome: SuppressionOutcome::Applied {
-                remaining_paths: Vec::new(),
-                suppressions: Vec::new(),
-            },
-        });
-    }
     let observed_paths = normalized_observed_paths(observation.changed_paths.iter());
     let recorded_change_suppression_outcome = if observed_paths.is_empty() {
         SuppressionOutcome::Applied {
@@ -318,10 +314,7 @@ fn record_post_tool_correlation(
             suppressions: Vec::new(),
         }
     } else if observed_changes.confidence == UnrecordedChangeConfidence::Confirmed
-        && matches!(
-            observed_changes.source,
-            "structured_host_changed_paths" | "git_worktree_diff"
-        )
+        && observed_changes.source == "repository_delta"
     {
         suppress_previously_recorded_changes(
             context,
@@ -785,12 +778,7 @@ fn promote_matching_suspected_changes(
 }
 
 fn possible_product_write(observation: &ToolObservation) -> bool {
-    observation.explicit_write_attempt
-        || matches!(
-            observation.classification,
-            ToolClassification::Mutating | ToolClassification::UnknownMutationRisk
-        )
-        || observation.effect() == "product_file_write"
+    observation.prospective_effect != ProductRepositoryEffect::NoProductWrite
 }
 
 fn correlated_path_identity(
@@ -1324,28 +1312,29 @@ fn parsed_timestamp(value: &str) -> Option<DateTime<Utc>> {
 }
 
 fn observed_changes(
-    _runtime_home: &Path,
+    runtime_home: &Path,
     project: &ProjectRecord,
-    _envelope: &GuardEnvelope,
+    envelope: &GuardEnvelope,
     observation: &ToolObservation,
 ) -> Result<ObservedChanges, GuardCommandError> {
-    if observation.changed_paths_reported {
+    if observation.prospective_effect == ProductRepositoryEffect::NoProductWrite {
         return Ok(ObservedChanges {
-            paths: observation.changed_paths.clone(),
-            confidence: UnrecordedChangeConfidence::Confirmed,
-            observation_confidence: "confirmed",
-            source: "structured_host_changed_paths",
-            confirms_no_change: observation.changed_paths.is_empty(),
+            paths: Vec::new(),
+            confidence: UnrecordedChangeConfidence::Suspected,
+            observation_confidence: "not_required",
+            source: "tool_effect_contract",
+            confirms_no_change: false,
         });
     }
-    if let Some(paths) = git_worktree_changed_paths(&project.repo_root) {
-        let confirms_no_change = paths.is_empty();
+    if let Some(paths) =
+        repository_delta_changed_paths(runtime_home, project, envelope).unwrap_or(None)
+    {
         return Ok(ObservedChanges {
+            confirms_no_change: paths.is_empty(),
             paths,
             confidence: UnrecordedChangeConfidence::Confirmed,
             observation_confidence: "confirmed",
-            source: "git_worktree_diff",
-            confirms_no_change,
+            source: "repository_delta",
         });
     }
     Ok(ObservedChanges {
@@ -1356,83 +1345,94 @@ fn observed_changes(
         } else {
             "unknown"
         },
-        source: "heuristic_event",
+        source: "repository_observer_unavailable",
         confirms_no_change: false,
     })
 }
 
-fn git_worktree_changed_paths(repo_root: &Path) -> Option<Vec<PathAssessment>> {
-    const MAX_GIT_STATUS_BYTES: usize = 1024 * 1024;
-    let output = Command::new("git")
-        .arg("--no-optional-locks")
-        .arg("-C")
-        .arg(repo_root)
-        .args([
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-            "--",
-            ".",
-        ])
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() || output.stdout.len() > MAX_GIT_STATUS_BYTES {
-        return None;
-    }
-    let mut paths = BTreeSet::new();
-    let mut fields = output.stdout.split(|byte| *byte == 0).peekable();
-    while let Some(field) = fields.next() {
-        if field.is_empty() || field.len() < 4 || field[2] != b' ' {
-            continue;
-        }
-        let status = &field[..2];
-        if let Ok(path) = std::str::from_utf8(&field[3..]) {
-            if !path.is_empty() {
-                paths.insert(path.to_owned());
-            }
-        }
-        if status.iter().any(|byte| matches!(*byte, b'R' | b'C')) {
-            if let Some(other) = fields
-                .next()
-                .and_then(|field| std::str::from_utf8(field).ok())
-            {
-                if !other.is_empty() {
-                    paths.insert(other.to_owned());
-                }
-            }
-        }
-    }
-    const EXCLUSIONS: &[&str] = &[
-        ".git",
-        ".hg",
-        ".svn",
-        ".jj",
-        ".volicord",
-        "target",
-        "node_modules",
-        "dist",
-        "build",
-        "coverage",
-        "vendor",
-    ];
-    Some(
-        paths
-            .into_iter()
-            .filter(|path| {
-                !EXCLUSIONS.iter().any(|excluded| {
-                    path == *excluded
-                        || path
-                            .strip_prefix(excluded)
-                            .is_some_and(|suffix| suffix.starts_with('/'))
-                })
-            })
-            .map(|path| assess_reported_path(repo_root, &path))
-            .collect(),
+fn repository_delta_changed_paths(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+) -> Result<Option<Vec<PathAssessment>>, GuardCommandError> {
+    let (
+        HostNativeCorrelation::CodexHookTool(correlation),
+        Some(session_id),
+        Some(guard_installation_id),
+        Some(policy_hash),
+        Some(integration_revision),
+    ) = (
+        &envelope.correlation,
+        envelope.session_id.as_deref(),
+        envelope.guard_installation_id.as_deref(),
+        envelope.policy_hash.as_deref(),
+        envelope.integration_revision.as_deref(),
     )
+    else {
+        return Ok(None);
+    };
+    let Some(pre_tool) = pre_tool_guard_event(
+        runtime_home,
+        PreToolGuardEventQuery {
+            project_id: &project.project_id,
+            connection_internal_id: &envelope.connection_id,
+            session_id,
+            guard_installation_id,
+            policy_hash,
+            integration_revision,
+            not_after: &envelope.occurred_at,
+            correlation,
+        },
+    )?
+    else {
+        return Ok(None);
+    };
+    let result: Value = serde_json::from_str(&pre_tool.result_json).map_err(json_error)?;
+    let Some(expected_snapshot_digest) = result
+        .pointer("/repository_observation/snapshot_digest")
+        .and_then(Value::as_str)
+    else {
+        return Ok(None);
+    };
+    let Some(checkpoint) = result.get("repository_observation_checkpoint").cloned() else {
+        return Ok(None);
+    };
+    let checkpoint: RepositoryObservationCheckpoint =
+        serde_json::from_value(checkpoint).map_err(json_error)?;
+    let invocation_paths = checkpoint.invocation_paths().iter().cloned().collect();
+    let observer = match RepositoryObserver::new(&project.repo_root, ObserverLimits::default()) {
+        Ok(observer) => observer,
+        Err(_) => return Ok(None),
+    };
+    let before = match observer.restore_checkpoint(checkpoint) {
+        Ok(snapshot) => snapshot,
+        Err(_) => return Ok(None),
+    };
+    if before
+        .semantic_digest()
+        .ok()
+        .is_none_or(|digest| digest.as_str() != expected_snapshot_digest)
+    {
+        return Ok(None);
+    }
+    let after = match observer.snapshot(&InvocationObservationPaths::new(
+        invocation_paths,
+        Vec::new(),
+    )) {
+        Ok(snapshot) => snapshot,
+        Err(_) => return Ok(None),
+    };
+    let delta = match observer.delta(&before, &after) {
+        Ok(delta) => delta,
+        Err(_) => return Ok(None),
+    };
+    Ok(Some(
+        delta
+            .transitions()
+            .iter()
+            .map(|transition| assess_reported_path(&project.repo_root, transition.path().as_str()))
+            .collect(),
+    ))
 }
 
 fn resolve_matching_suspected_no_change(

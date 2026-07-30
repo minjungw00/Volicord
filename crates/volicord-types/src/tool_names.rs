@@ -9,6 +9,38 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::values::{AgentConnectionMode, MethodName, OperationCategory};
 
+/// Prospective effect of one tool invocation on Product Repository files.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ProductRepositoryEffect {
+    /// The tool contract cannot write Product Repository files.
+    NoProductWrite,
+    /// The invocation may write Product Repository files.
+    MayWriteProduct,
+    /// The invocation contract cannot determine its Product Repository effect.
+    UnknownProductEffect,
+}
+
+impl ProductRepositoryEffect {
+    /// The complete closed effect vocabulary.
+    pub const ALL: [Self; 3] = [
+        Self::NoProductWrite,
+        Self::MayWriteProduct,
+        Self::UnknownProductEffect,
+    ];
+
+    /// Returns the stable semantic spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoProductWrite => "no_product_write",
+            Self::MayWriteProduct => "may_write_product",
+            Self::UnknownProductEffect => "unknown_product_effect",
+        }
+    }
+}
+
 /// Closed semantic roles used to select a tool for operational verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ToolVerificationRole {
@@ -200,6 +232,20 @@ impl AgentToolId {
         }
     }
 
+    /// Returns this tool's prospective Product Repository effect.
+    ///
+    /// Runtime Home, Core, and adapter-state mutation is independent of this
+    /// Product Repository boundary.
+    pub const fn product_repository_effect(self) -> ProductRepositoryEffect {
+        match self.0 {
+            AgentToolKind::Method(_)
+            | AgentToolKind::ListProjects
+            | AgentToolKind::BeginIntegrationVerification
+            | AgentToolKind::GuardProbe
+            | AgentToolKind::GetIntegrationVerification => ProductRepositoryEffect::NoProductWrite,
+        }
+    }
+
     /// Returns this tool's implementation owner.
     pub const fn owner(self) -> AgentToolOwner {
         match self.0 {
@@ -347,6 +393,18 @@ mod tests {
             assert!(tool.available_in(AgentConnectionMode::Workflow));
             assert!(tool.is_idempotent());
             assert_eq!(tool.method(), None);
+        }
+    }
+
+    #[test]
+    fn every_agent_tool_has_one_no_product_write_effect() {
+        assert_eq!(AgentToolId::ALL.len(), 16);
+        for tool in AgentToolId::ALL {
+            assert_eq!(
+                tool.product_repository_effect(),
+                ProductRepositoryEffect::NoProductWrite,
+                "{tool}"
+            );
         }
     }
 

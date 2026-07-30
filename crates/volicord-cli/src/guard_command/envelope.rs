@@ -2,7 +2,9 @@ use std::{path::Path, str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
-use volicord_host_contract::{CodexCommandHooks, HostContractError, HostNativeCorrelation};
+use volicord_host_contract::{
+    CodexCommandHooks, HostContractError, HostNativeCorrelation, McpServerKey,
+};
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile};
 
@@ -17,9 +19,11 @@ pub(super) struct GuardEnvelope {
     pub(super) session_id: Option<String>,
     pub(super) correlation: HostNativeCorrelation,
     pub(super) connection_id: String,
+    pub(super) mcp_server: Option<McpServerKey>,
     pub(super) guard_installation_id: Option<String>,
     pub(super) host_kind: String,
     pub(super) guard_mode: String,
+    pub(super) policy_hash: Option<String>,
     pub(super) integration_revision: Option<String>,
     pub(super) occurred_at: String,
 }
@@ -173,9 +177,11 @@ pub(super) fn guard_envelope(
         session_id: None,
         correlation,
         connection_id,
+        mcp_server: None,
         guard_installation_id,
         host_kind,
         guard_mode,
+        policy_hash: None,
         integration_revision: None,
         occurred_at,
     })
@@ -215,18 +221,6 @@ pub(super) fn event_string(value: &Value, paths: &[&[&str]]) -> Option<String> {
         }
     }
     None
-}
-
-pub(super) fn event_bool(value: &Value, paths: &[&[&str]]) -> Option<bool> {
-    paths
-        .iter()
-        .find_map(|path| value_at(value, path).and_then(Value::as_bool))
-}
-
-pub(super) fn event_i64(value: &Value, paths: &[&[&str]]) -> Option<i64> {
-    paths
-        .iter()
-        .find_map(|path| value_at(value, path).and_then(Value::as_i64))
 }
 
 fn current_timestamp() -> String {

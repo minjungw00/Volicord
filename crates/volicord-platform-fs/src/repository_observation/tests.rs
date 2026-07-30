@@ -10,7 +10,7 @@ use volicord_types::product_path::ProductRelativePath;
 
 use super::{
     InvocationObservationPaths, ObservationUnavailableReason, ObserverLimits, ProductPathState,
-    RepositoryObserver,
+    RepositoryObservationCheckpoint, RepositoryObserver,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -589,6 +589,36 @@ fn run_git(repository_root: &Path, arguments: &[&str]) -> Result<(), Box<dyn Err
 
 fn product_path(value: &str) -> Result<ProductRelativePath, Box<dyn Error>> {
     Ok(ProductRelativePath::parse(value.to_owned())?)
+}
+
+#[test]
+fn checkpoint_restores_only_under_the_same_observer_contract() -> Result<(), Box<dyn Error>> {
+    let repository = GitFixture::new()?;
+    repository.write("tracked.txt", b"before")?;
+    repository.commit_all("initial")?;
+    let observer = repository.observer()?;
+    let snapshot = observer.snapshot(&InvocationObservationPaths::new(
+        vec![product_path("tracked.txt")?],
+        Vec::new(),
+    ))?;
+    let checkpoint = snapshot.checkpoint();
+    let checkpoint_json = serde_json::to_value(&checkpoint)?;
+    let checkpoint: RepositoryObservationCheckpoint = serde_json::from_value(checkpoint_json)?;
+
+    assert_eq!(observer.restore_checkpoint(checkpoint.clone())?, snapshot);
+
+    let incompatible = RepositoryObserver::new(
+        &repository.root,
+        ObserverLimits::default().with_max_candidate_paths(8),
+    )?;
+    let error = incompatible
+        .restore_checkpoint(checkpoint)
+        .expect_err("different observer limits must reject the checkpoint");
+    assert_eq!(
+        error.reason(),
+        ObservationUnavailableReason::ObserverContractMismatch
+    );
+    Ok(())
 }
 
 fn transition_paths<const N: usize>(delta: &super::RepositoryDelta) -> [&str; N] {

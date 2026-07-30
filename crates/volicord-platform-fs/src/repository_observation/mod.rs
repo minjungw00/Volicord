@@ -12,7 +12,7 @@ pub use bounded::ObserverLimits;
 pub use model::{
     ContentIdentity, InvocationObservationPaths, ObservationUnavailable,
     ObservationUnavailableReason, ProductPathState, RepositoryDelta,
-    RepositoryObservationCoordinate, RepositoryObservationSnapshot, RepositoryPathTransition,
-    SemanticObserverContractDigest,
+    RepositoryObservationCheckpoint, RepositoryObservationCoordinate,
+    RepositoryObservationSnapshot, RepositoryPathTransition, SemanticObserverContractDigest,
 };
 pub use snapshot::RepositoryObserver;

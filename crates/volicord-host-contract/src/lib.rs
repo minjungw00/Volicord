@@ -1,7 +1,7 @@
 //! Dependency-safe contracts for host-native Codex wire data.
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     error::Error,
     fmt,
 };
@@ -11,14 +11,15 @@ use serde_json::{Map, Value};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use volicord_types::managed_mcp_client_info::validate_managed_host_native_session_id;
-use volicord_types::tool_names::{AgentToolId, IntegrationVerificationToolRole};
+use volicord_types::tool_names::{
+    AgentToolId, IntegrationVerificationToolRole, ProductRepositoryEffect,
+};
 
 const MAX_TOOL_NAME_BYTES: usize = 256;
 const MAX_HOST_CALLABLE_NAME_BYTES: usize = 64;
 const CALLABLE_NAME_HASH_LEN: usize = 12;
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
 const CODEX_MCP_TOOL_PREFIX: &str = "mcp__";
-const CODEX_GUARD_HOST_TOOLS: [&str; 4] = ["Bash", "apply_patch", "Edit", "Write"];
 const MAX_PRESENTATION_TEXT_BYTES: usize = 4_096;
 const MAX_SAFE_PAYLOAD_BYTES: usize = 65_536;
 const MAX_SAFE_PAYLOAD_DEPTH: usize = 32;
@@ -43,6 +44,7 @@ const CODEX_HOOKS_CONTRACT_CANONICAL: &str = concat!(
     "observation=synchronous,allowed-status-reads=1\n",
     "tool-matcher=union(host-tools,semantic-mcp-routing)\n",
     "host-tools=Bash,apply_patch,Edit,Write\n",
+    "product-repository-effects=canonical-tool-effect-catalog\n",
     "mcp-server-namespace=mcp__<normalized-server-key>__.*\n",
     "mcp-routing-fallback=exact-canonical-callables\n",
     "presentation=cwd?:string,transcript_path?:string\n",
@@ -140,9 +142,12 @@ impl HostContractProfileId {
 
     pub fn contract_digest(self) -> String {
         let canonical = match self {
-            Self::CodexMcpTurnMetadata => CODEX_MCP_CONTRACT_CANONICAL,
-            Self::CodexCommandHooks => CODEX_HOOKS_CONTRACT_CANONICAL,
-            Self::CodexMcpCallableNames => CODEX_MCP_CALLABLE_NAMES_CONTRACT_CANONICAL,
+            Self::CodexMcpTurnMetadata => CODEX_MCP_CONTRACT_CANONICAL.to_owned(),
+            Self::CodexCommandHooks => format!(
+                "{CODEX_HOOKS_CONTRACT_CANONICAL}tool-effect-catalog-digest={}\n",
+                CodexGuardToolEffectContract::semantic_digest().as_str()
+            ),
+            Self::CodexMcpCallableNames => CODEX_MCP_CALLABLE_NAMES_CONTRACT_CANONICAL.to_owned(),
         };
         format!("sha256:{:x}", Sha256::digest(canonical.as_bytes()))
     }
@@ -395,6 +400,527 @@ impl HostToolIdentity {
     }
 }
 
+/// Closed identity for every Codex-native tool routed through Guard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CodexNativeGuardTool {
+    Bash,
+    ApplyPatch,
+    Edit,
+    Write,
+}
+
+impl CodexNativeGuardTool {
+    /// The complete reviewed native Guard tool catalog.
+    pub const ALL: [Self; 4] = [Self::Bash, Self::ApplyPatch, Self::Edit, Self::Write];
+
+    /// Parses one exact reviewed native tool name.
+    pub fn parse(value: &CanonicalToolName) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|tool| tool.as_str() == value.as_str())
+    }
+
+    /// Returns the exact host tool name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Bash => "Bash",
+            Self::ApplyPatch => "apply_patch",
+            Self::Edit => "Edit",
+            Self::Write => "Write",
+        }
+    }
+
+    /// Returns the effect known from identity alone.
+    pub const fn identity_effect(self) -> ProductRepositoryEffect {
+        match self {
+            Self::Bash => ProductRepositoryEffect::UnknownProductEffect,
+            Self::ApplyPatch | Self::Edit | Self::Write => ProductRepositoryEffect::MayWriteProduct,
+        }
+    }
+
+    const fn input_contract(self) -> &'static str {
+        match self {
+            Self::Bash => "object.command:string/simple-command-v1",
+            Self::ApplyPatch => "object.patch:string/apply-patch-v1",
+            Self::Edit | Self::Write => "object.file_path:string",
+        }
+    }
+}
+
+/// Canonical identity resolved for one routed Codex Guard tool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuardToolIdentity {
+    CodexNative(CodexNativeGuardTool),
+    VolicordMcp(McpToolIdentity),
+    Foreign,
+}
+
+/// Why an exact target path set could not be decoded from a reviewed input contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolTargetPathUnavailableReason {
+    MissingRequiredField,
+    MalformedRequiredField,
+    MalformedPatch,
+    AmbiguousCommandTargets,
+    UnsupportedCommandSyntax,
+}
+
+impl ToolTargetPathUnavailableReason {
+    /// Returns the stable semantic spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingRequiredField => "missing_required_field",
+            Self::MalformedRequiredField => "malformed_required_field",
+            Self::MalformedPatch => "malformed_patch",
+            Self::AmbiguousCommandTargets => "ambiguous_command_targets",
+            Self::UnsupportedCommandSyntax => "unsupported_command_syntax",
+        }
+    }
+}
+
+/// Exact target-path decoding result for one typed tool input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolTargetPaths {
+    NotApplicable,
+    Exact(Vec<String>),
+    Unavailable(ToolTargetPathUnavailableReason),
+}
+
+impl ToolTargetPaths {
+    /// Returns exact raw target paths when the reviewed decoder produced them.
+    pub fn exact(&self) -> Option<&[String]> {
+        match self {
+            Self::Exact(paths) => Some(paths),
+            Self::NotApplicable | Self::Unavailable(_) => None,
+        }
+    }
+}
+
+/// One canonical prospective Product Repository assessment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductRepositoryToolEffectAssessment {
+    identity: GuardToolIdentity,
+    effect: ProductRepositoryEffect,
+    target_paths: ToolTargetPaths,
+    command: Option<String>,
+}
+
+impl ProductRepositoryToolEffectAssessment {
+    /// Canonical typed tool identity, or the explicit foreign identity branch.
+    pub fn identity(&self) -> &GuardToolIdentity {
+        &self.identity
+    }
+
+    /// Prospective Product Repository effect.
+    pub const fn effect(&self) -> ProductRepositoryEffect {
+        self.effect
+    }
+
+    /// Exact target-path decoding result.
+    pub fn target_paths(&self) -> &ToolTargetPaths {
+        &self.target_paths
+    }
+
+    /// Reviewed Bash command, when the typed input contract exposed one.
+    pub fn command(&self) -> Option<&str> {
+        self.command.as_deref()
+    }
+}
+
+/// Deterministic digest of the canonical tool-effect semantics.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SemanticToolEffectCatalogDigest(String);
+
+impl SemanticToolEffectCatalogDigest {
+    /// Returns the canonical algorithm-qualified digest.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Current Codex Guard Product Repository effect contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexGuardToolEffectContract {
+    catalog: McpToolCatalog,
+}
+
+impl CodexGuardToolEffectContract {
+    /// Builds the contract for one explicit MCP server registration.
+    pub fn for_server(server: &McpServerKey) -> Result<Self, HostContractError> {
+        Ok(Self {
+            catalog: McpToolCatalog::for_server(server, AgentToolId::ALL)?,
+        })
+    }
+
+    /// Resolves and assesses one routed tool through reviewed typed contracts.
+    pub fn assess(
+        &self,
+        tool_name: &CanonicalToolName,
+        tool_input: &Value,
+    ) -> ProductRepositoryToolEffectAssessment {
+        if let Some(tool) = CodexNativeGuardTool::parse(tool_name) {
+            return assess_codex_native_tool(tool, tool_input);
+        }
+        let identity = HostCallableName::parse(tool_name.as_str())
+            .ok()
+            .and_then(|callable| parse_callable_name(&callable, &self.catalog).ok());
+        match identity {
+            Some(identity) => ProductRepositoryToolEffectAssessment {
+                effect: identity.tool().product_repository_effect(),
+                identity: GuardToolIdentity::VolicordMcp(identity),
+                target_paths: ToolTargetPaths::NotApplicable,
+                command: None,
+            },
+            None => ProductRepositoryToolEffectAssessment {
+                identity: GuardToolIdentity::Foreign,
+                effect: ProductRepositoryEffect::UnknownProductEffect,
+                target_paths: ToolTargetPaths::NotApplicable,
+                command: None,
+            },
+        }
+    }
+
+    /// Returns the complete MCP callable catalog used for exact resolution.
+    pub fn mcp_catalog(&self) -> &McpToolCatalog {
+        &self.catalog
+    }
+
+    /// Returns the deterministic digest of all current effect entries and decoders.
+    pub fn semantic_digest() -> SemanticToolEffectCatalogDigest {
+        semantic_tool_effect_catalog_digest(&current_tool_effect_entries())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ToolEffectSemanticEntry {
+    identity: String,
+    effect_rule: String,
+    input_contract: String,
+}
+
+fn current_tool_effect_entries() -> Vec<ToolEffectSemanticEntry> {
+    let native = CodexNativeGuardTool::ALL
+        .into_iter()
+        .map(|tool| ToolEffectSemanticEntry {
+            identity: format!("codex-native:{}", tool.as_str()),
+            effect_rule: match tool {
+                CodexNativeGuardTool::Bash => "bounded-command-assessment".to_owned(),
+                _ => tool.identity_effect().as_str().to_owned(),
+            },
+            input_contract: tool.input_contract().to_owned(),
+        });
+    let mcp = AgentToolId::ALL
+        .into_iter()
+        .map(|tool| ToolEffectSemanticEntry {
+            identity: format!("volicord-mcp:{}", tool.wire_name()),
+            effect_rule: tool.product_repository_effect().as_str().to_owned(),
+            input_contract: "agent-tool-identity".to_owned(),
+        });
+    native.chain(mcp).collect()
+}
+
+fn semantic_tool_effect_catalog_digest(
+    entries: &[ToolEffectSemanticEntry],
+) -> SemanticToolEffectCatalogDigest {
+    let mut entries = entries.to_vec();
+    entries.sort_by(|left, right| left.identity.cmp(&right.identity));
+    let mut canonical = Vec::new();
+    append_digest_part(&mut canonical, "volicord.product-repository-tool-effects");
+    for entry in entries {
+        append_digest_part(&mut canonical, &entry.identity);
+        append_digest_part(&mut canonical, &entry.effect_rule);
+        append_digest_part(&mut canonical, &entry.input_contract);
+    }
+    SemanticToolEffectCatalogDigest(format!("sha256:{:x}", Sha256::digest(canonical)))
+}
+
+fn append_digest_part(canonical: &mut Vec<u8>, value: &str) {
+    canonical.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    canonical.extend_from_slice(value.as_bytes());
+}
+
+fn assess_codex_native_tool(
+    tool: CodexNativeGuardTool,
+    tool_input: &Value,
+) -> ProductRepositoryToolEffectAssessment {
+    match tool {
+        CodexNativeGuardTool::Bash => assess_bash_input(tool_input),
+        CodexNativeGuardTool::ApplyPatch => ProductRepositoryToolEffectAssessment {
+            identity: GuardToolIdentity::CodexNative(tool),
+            effect: tool.identity_effect(),
+            target_paths: decode_apply_patch_targets(tool_input),
+            command: None,
+        },
+        CodexNativeGuardTool::Edit | CodexNativeGuardTool::Write => {
+            ProductRepositoryToolEffectAssessment {
+                identity: GuardToolIdentity::CodexNative(tool),
+                effect: tool.identity_effect(),
+                target_paths: decode_exact_string_field(tool_input, "file_path"),
+                command: None,
+            }
+        }
+    }
+}
+
+fn assess_bash_input(tool_input: &Value) -> ProductRepositoryToolEffectAssessment {
+    let Some(object) = tool_input.as_object() else {
+        return bash_assessment(
+            ProductRepositoryEffect::UnknownProductEffect,
+            ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MalformedRequiredField),
+            None,
+        );
+    };
+    let Some(command_value) = object.get("command") else {
+        return bash_assessment(
+            ProductRepositoryEffect::UnknownProductEffect,
+            ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MissingRequiredField),
+            None,
+        );
+    };
+    let Some(command) = command_value
+        .as_str()
+        .filter(|command| !command.trim().is_empty() && command.trim() == *command)
+    else {
+        return bash_assessment(
+            ProductRepositoryEffect::UnknownProductEffect,
+            ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MalformedRequiredField),
+            None,
+        );
+    };
+    if !bash_has_simple_syntax(command) {
+        return bash_assessment(
+            ProductRepositoryEffect::UnknownProductEffect,
+            ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::UnsupportedCommandSyntax),
+            Some(command.to_owned()),
+        );
+    }
+    let words = command.split_ascii_whitespace().collect::<Vec<_>>();
+    if bash_is_read_only(&words) {
+        return bash_assessment(
+            ProductRepositoryEffect::NoProductWrite,
+            ToolTargetPaths::NotApplicable,
+            Some(command.to_owned()),
+        );
+    }
+    if bash_is_write_capable(&words) {
+        return bash_assessment(
+            ProductRepositoryEffect::MayWriteProduct,
+            bash_target_paths(&words),
+            Some(command.to_owned()),
+        );
+    }
+    bash_assessment(
+        ProductRepositoryEffect::UnknownProductEffect,
+        ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::UnsupportedCommandSyntax),
+        Some(command.to_owned()),
+    )
+}
+
+fn bash_assessment(
+    effect: ProductRepositoryEffect,
+    target_paths: ToolTargetPaths,
+    command: Option<String>,
+) -> ProductRepositoryToolEffectAssessment {
+    ProductRepositoryToolEffectAssessment {
+        identity: GuardToolIdentity::CodexNative(CodexNativeGuardTool::Bash),
+        effect,
+        target_paths,
+        command,
+    }
+}
+
+fn bash_has_simple_syntax(command: &str) -> bool {
+    !command.is_empty()
+        && command.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b' ' | b'\t'
+                        | b'_'
+                        | b'-'
+                        | b'.'
+                        | b'/'
+                        | b':'
+                        | b'@'
+                        | b'%'
+                        | b'+'
+                        | b'='
+                        | b','
+                )
+        })
+}
+
+fn bash_is_read_only(words: &[&str]) -> bool {
+    match words {
+        ["pwd", ..]
+        | ["ls", ..]
+        | ["cat", ..]
+        | ["grep", ..]
+        | ["wc", ..]
+        | ["head", ..]
+        | ["tail", ..]
+        | ["stat", ..] => true,
+        ["rg", arguments @ ..] => !arguments.iter().any(|argument| {
+            matches!(*argument, "--pre" | "--hostname-bin")
+                || argument.starts_with("--pre=")
+                || argument.starts_with("--hostname-bin=")
+        }),
+        ["git", subcommand, arguments @ ..] => {
+            matches!(
+                *subcommand,
+                "status"
+                    | "diff"
+                    | "log"
+                    | "show"
+                    | "rev-parse"
+                    | "ls-files"
+                    | "ls-tree"
+                    | "cat-file"
+                    | "check-ignore"
+            ) && !arguments.iter().any(|argument| {
+                matches!(
+                    *argument,
+                    "--output" | "--ext-diff" | "--textconv" | "--filters"
+                ) || argument.starts_with("--output=")
+            })
+        }
+        _ => false,
+    }
+}
+
+fn bash_is_write_capable(words: &[&str]) -> bool {
+    let Some(command) = words.first().copied() else {
+        return false;
+    };
+    if matches!(
+        command,
+        "rm" | "mv"
+            | "cp"
+            | "touch"
+            | "mkdir"
+            | "rmdir"
+            | "ln"
+            | "chmod"
+            | "chown"
+            | "truncate"
+            | "install"
+            | "tee"
+    ) {
+        return true;
+    }
+    match words {
+        ["sed", option, ..] => option.starts_with("-i"),
+        ["perl", option, ..] => option.starts_with("-pi"),
+        ["cargo", "fmt", ..] => true,
+        ["git", "add" | "commit" | "reset" | "clean" | "checkout" | "switch" | "rm" | "mv" | "apply"
+        | "merge" | "rebase" | "cherry-pick" | "restore", ..] => true,
+        _ => false,
+    }
+}
+
+fn bash_target_paths(words: &[&str]) -> ToolTargetPaths {
+    let Some(command) = words.first().copied() else {
+        return ToolTargetPaths::Unavailable(
+            ToolTargetPathUnavailableReason::MalformedRequiredField,
+        );
+    };
+    let operands = words[1..]
+        .iter()
+        .copied()
+        .filter(|word| *word == "--" || !word.starts_with('-'))
+        .filter(|word| *word != "--")
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let paths = match command {
+        "touch" | "mkdir" | "rmdir" | "rm" | "tee" => operands,
+        "cp" | "ln" | "install" if operands.len() == 2 => {
+            vec![operands[1].clone()]
+        }
+        "mv" if operands.len() == 2 => operands,
+        "cp" | "mv" | "ln" | "install" => {
+            return ToolTargetPaths::Unavailable(
+                ToolTargetPathUnavailableReason::AmbiguousCommandTargets,
+            );
+        }
+        "sed" | "perl" if !operands.is_empty() => operands,
+        _ => {
+            return ToolTargetPaths::Unavailable(
+                ToolTargetPathUnavailableReason::AmbiguousCommandTargets,
+            );
+        }
+    };
+    if paths.is_empty() {
+        ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MissingRequiredField)
+    } else {
+        ToolTargetPaths::Exact(paths)
+    }
+}
+
+fn decode_exact_string_field(tool_input: &Value, field: &'static str) -> ToolTargetPaths {
+    let Some(object) = tool_input.as_object() else {
+        return ToolTargetPaths::Unavailable(
+            ToolTargetPathUnavailableReason::MalformedRequiredField,
+        );
+    };
+    let Some(value) = object.get(field) else {
+        return ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MissingRequiredField);
+    };
+    match value
+        .as_str()
+        .filter(|path| !path.trim().is_empty() && path.trim() == *path)
+    {
+        Some(path) => ToolTargetPaths::Exact(vec![path.to_owned()]),
+        None => {
+            ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MalformedRequiredField)
+        }
+    }
+}
+
+fn decode_apply_patch_targets(tool_input: &Value) -> ToolTargetPaths {
+    let Some(object) = tool_input.as_object() else {
+        return ToolTargetPaths::Unavailable(
+            ToolTargetPathUnavailableReason::MalformedRequiredField,
+        );
+    };
+    let Some(patch) = object.get("patch") else {
+        return ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MissingRequiredField);
+    };
+    let Some(patch) = patch.as_str() else {
+        return ToolTargetPaths::Unavailable(
+            ToolTargetPathUnavailableReason::MalformedRequiredField,
+        );
+    };
+    let lines = patch.lines().collect::<Vec<_>>();
+    if lines.first().copied() != Some("*** Begin Patch")
+        || lines.last().copied() != Some("*** End Patch")
+    {
+        return ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MalformedPatch);
+    }
+    let mut paths = BTreeSet::new();
+    for line in &lines[1..lines.len().saturating_sub(1)] {
+        for prefix in [
+            "*** Update File: ",
+            "*** Add File: ",
+            "*** Delete File: ",
+            "*** Move to: ",
+        ] {
+            if let Some(path) = line.strip_prefix(prefix) {
+                if path.is_empty() || path.trim() != path {
+                    return ToolTargetPaths::Unavailable(
+                        ToolTargetPathUnavailableReason::MalformedPatch,
+                    );
+                }
+                paths.insert(path.to_owned());
+            }
+        }
+    }
+    if paths.is_empty() {
+        ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MalformedPatch)
+    } else {
+        ToolTargetPaths::Exact(paths.into_iter().collect())
+    }
+}
+
 /// Typed host-level routing for one command-hook event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostHookMatcherStrategy {
@@ -413,9 +939,9 @@ pub enum HostHookMatcherStrategy {
 impl HostHookMatcherStrategy {
     /// Builds the current Codex Guard tool-routing strategy.
     pub fn codex_guard(server: &McpServerKey) -> Result<Self, HostContractError> {
-        let identities = CODEX_GUARD_HOST_TOOLS
+        let identities = CodexNativeGuardTool::ALL
             .into_iter()
-            .map(HostToolIdentity::parse)
+            .map(|tool| HostToolIdentity::parse(tool.as_str()))
             .collect::<Result<Vec<_>, _>>()?;
         let catalog = McpToolCatalog::for_server(server, AgentToolId::ALL)?;
         let namespace_prefix = codex_mcp_server_namespace_prefix(server);
@@ -1229,5 +1755,27 @@ impl HostContractErrorCode {
             Self::UnknownCallableName => "unknown_callable_name",
             Self::UnknownMcpToolIdentity => "unknown_mcp_tool_identity",
         }
+    }
+}
+
+#[cfg(test)]
+mod product_repository_effect_digest_tests {
+    use super::*;
+
+    #[test]
+    fn semantic_tool_effect_catalog_digest_is_deterministic_and_entry_sensitive() {
+        let entries = current_tool_effect_entries();
+        let first = semantic_tool_effect_catalog_digest(&entries);
+        let mut reversed = entries.clone();
+        reversed.reverse();
+        assert_eq!(first, semantic_tool_effect_catalog_digest(&reversed));
+
+        let mut changed = entries;
+        changed[0].effect_rule.push_str("-changed");
+        assert_ne!(first, semantic_tool_effect_catalog_digest(&changed));
+        assert_eq!(
+            CodexGuardToolEffectContract::semantic_digest(),
+            semantic_tool_effect_catalog_digest(&current_tool_effect_entries())
+        );
     }
 }

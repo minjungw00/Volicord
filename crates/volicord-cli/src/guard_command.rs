@@ -11,8 +11,9 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_command_model::{HookArgs, HookCommand};
 use volicord_core::{Clock, CorePipelineError, SystemClock};
-use volicord_host_contract::{HostContractProfileId, HostNativeCorrelation};
+use volicord_host_contract::{HostContractProfileId, HostNativeCorrelation, McpServerKey};
 use volicord_store::{
+    agent_connections::agent_connection_record_read_only,
     bootstrap::{
         project_record_for_execution, project_record_for_execution_admitted, ProjectRecord,
     },
@@ -1212,8 +1213,10 @@ fn record_guard_workflow_metrics_best_effort(
                 .pointer("/context/active_task_effective_control_level")
                 .and_then(Value::as_str);
             let structured_product_write = confidence == Some(ObservationConfidence::Structured)
-                && result.pointer("/tool/effect").and_then(Value::as_str)
-                    == Some("product_file_write");
+                && result
+                    .pointer("/tool/prospective_product_repository_effect")
+                    .and_then(Value::as_str)
+                    == Some("may_write_product");
             if decision == GuardPolicyDecision::Deny
                 && structured_product_write
                 && matches!(task_level, Some("light" | "tracked"))
@@ -1233,7 +1236,7 @@ fn record_guard_workflow_metrics_best_effort(
                 .and_then(Value::as_str)
                 .and_then(workflow_observation_confidence);
             let effect = result
-                .pointer("/tool/effect")
+                .pointer("/tool/observed_product_repository_effect")
                 .and_then(Value::as_str)
                 .and_then(workflow_observation_effect);
             if let (Some(confidence), Some(effect)) = (confidence, effect) {
@@ -1304,11 +1307,9 @@ fn workflow_observation_confidence(value: &str) -> Option<ObservationConfidence>
 
 fn workflow_observation_effect(value: &str) -> Option<WorkflowMetricOutcome> {
     match value {
-        "read_only" => Some(WorkflowMetricOutcome::ReadOnly),
         "product_file_write" => Some(WorkflowMetricOutcome::ProductFileWrite),
-        "non_product_write" => Some(WorkflowMetricOutcome::NonProductWrite),
-        "external_effect" => Some(WorkflowMetricOutcome::ExternalEffect),
-        "unknown" => Some(WorkflowMetricOutcome::Unknown),
+        "no_product_write" => Some(WorkflowMetricOutcome::NonProductWrite),
+        "unknown_product_effect" => Some(WorkflowMetricOutcome::Unknown),
         _ => None,
     }
 }
@@ -1352,6 +1353,17 @@ fn bind_guard_envelope(
     envelope: &mut GuardEnvelope,
 ) -> Result<(), GuardCommandError> {
     let runtime_home = context.runtime_home().as_path();
+    let connection = agent_connection_record_read_only(runtime_home, &envelope.connection_id)?
+        .ok_or_else(|| {
+            GuardCommandError::Runtime(format!(
+                "Agent Connection not found while binding Guard event: {}",
+                envelope.connection_id
+            ))
+        })?;
+    envelope.mcp_server = Some(
+        McpServerKey::parse(connection.server_name)
+            .map_err(|error| GuardCommandError::Runtime(error.to_string()))?,
+    );
     let coordinates = current_project_agent_session_coordinates(
         runtime_home,
         &project.project_id,
@@ -1379,6 +1391,7 @@ fn bind_guard_envelope(
         ));
     }
     envelope.session_id = Some(session.session_id);
+    envelope.policy_hash = current_policy_hash(project)?;
     envelope.integration_revision = Some(session.project_integration_revision.as_str().to_owned());
     envelope.event_id = stable_id(
         "guard_event",
@@ -1475,6 +1488,16 @@ fn persist_guard_event(
         phase.as_str(),
         &subject_json,
     )?;
+    let mut persisted_result = phase_result.result.clone();
+    if let Some(checkpoint) = &phase_result.repository_observation_checkpoint {
+        persisted_result
+            .as_object_mut()
+            .expect("Guard phase results are JSON objects")
+            .insert(
+                "repository_observation_checkpoint".to_owned(),
+                serde_json::to_value(checkpoint).map_err(json_error)?,
+            );
+    }
     let input = GuardEventInsert {
         guard_event_id: envelope.event_id.clone(),
         correlation: Some(envelope.correlation.clone()),
@@ -1488,7 +1511,7 @@ fn persist_guard_event(
             .as_str()
             .to_owned(),
         subject_json,
-        result_json: object_text(phase_result.result.clone())?,
+        result_json: object_text(persisted_result)?,
         occurred_at: envelope.occurred_at.clone(),
         metadata_json: json!({
             "source": "volicord_guard_cli",

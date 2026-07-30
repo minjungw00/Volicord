@@ -4,12 +4,15 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_host_contract::{
-    parse_callable_name, project_mcp_tool, CanonicalToolName, CodexCommandHooks, CodexHookEvent,
-    CodexMcpTurnMetadata, HookObservationPolicy, HostCallableName, HostContractErrorCode,
+    parse_callable_name, project_mcp_tool, CanonicalToolName, CodexCommandHooks,
+    CodexGuardToolEffectContract, CodexHookEvent, CodexMcpTurnMetadata, CodexNativeGuardTool,
+    GuardToolIdentity, HookObservationPolicy, HostCallableName, HostContractErrorCode,
     HostContractProfileId, HostHookMatcherStrategy, HostNativeCorrelation, McpServerKey,
-    McpToolCatalog,
+    McpToolCatalog, ToolTargetPathUnavailableReason, ToolTargetPaths,
 };
-use volicord_types::tool_names::{AgentToolId, IntegrationVerificationToolRole};
+use volicord_types::tool_names::{
+    AgentToolId, IntegrationVerificationToolRole, ProductRepositoryEffect,
+};
 
 const REVIEWED_GUARD_PROBE_CALLABLE: &str = "mcp__volicord__volicord_guard_probe";
 
@@ -412,6 +415,223 @@ fn all_public_tools_form_one_collision_free_catalog_and_round_trip_exactly() {
         assert_eq!(
             parse_callable_name(identity.callable_name(), &catalog).unwrap(),
             identity.source().clone()
+        );
+    }
+}
+
+#[test]
+fn product_effect_contract_resolves_every_callable_through_the_current_catalog() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let contract = CodexGuardToolEffectContract::for_server(&server).unwrap();
+    for tool in AgentToolId::ALL {
+        let callable = contract
+            .mcp_catalog()
+            .require(&server, tool)
+            .unwrap()
+            .callable_name();
+        let assessment = contract.assess(
+            &CanonicalToolName::parse(callable.as_str()).unwrap(),
+            &json!({"unrelated": {"path": "src/lib.rs"}}),
+        );
+        assert!(matches!(
+            assessment.identity(),
+            GuardToolIdentity::VolicordMcp(identity) if identity.tool() == tool
+        ));
+        assert_eq!(
+            assessment.effect(),
+            tool.product_repository_effect(),
+            "{tool}"
+        );
+        assert_eq!(assessment.target_paths(), &ToolTargetPaths::NotApplicable);
+    }
+}
+
+#[test]
+fn foreign_and_unknown_callables_never_claim_a_volicord_identity() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let contract = CodexGuardToolEffectContract::for_server(&server).unwrap();
+    for name in [
+        "mcp__volicord__unknown",
+        "mcp__foreign__volicord_status",
+        "volicord.status",
+        "mcp__volicord__volicord_status_suffix",
+    ] {
+        let assessment = contract.assess(&CanonicalToolName::parse(name).unwrap(), &json!({}));
+        assert_eq!(assessment.identity(), &GuardToolIdentity::Foreign);
+        assert_eq!(
+            assessment.effect(),
+            ProductRepositoryEffect::UnknownProductEffect
+        );
+    }
+}
+
+#[test]
+fn current_codex_native_guard_tools_parse_exactly_once() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let contract = CodexGuardToolEffectContract::for_server(&server).unwrap();
+    for tool in CodexNativeGuardTool::ALL {
+        let input = match tool {
+            CodexNativeGuardTool::Bash => json!({"command": "git status --short"}),
+            CodexNativeGuardTool::ApplyPatch => json!({
+                "patch": "*** Begin Patch\n*** Update File: src/lib.rs\n*** End Patch"
+            }),
+            CodexNativeGuardTool::Edit | CodexNativeGuardTool::Write => {
+                json!({"file_path": "src/lib.rs"})
+            }
+        };
+        let assessment = contract.assess(&CanonicalToolName::parse(tool.as_str()).unwrap(), &input);
+        assert_eq!(assessment.identity(), &GuardToolIdentity::CodexNative(tool));
+    }
+    for name in ["bash", "ApplyPatch", "edit", "write"] {
+        let assessment = contract.assess(&CanonicalToolName::parse(name).unwrap(), &json!({}));
+        assert_eq!(assessment.identity(), &GuardToolIdentity::Foreign);
+    }
+}
+
+#[test]
+fn direct_native_tools_are_write_capable_and_decode_only_exact_targets() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let contract = CodexGuardToolEffectContract::for_server(&server).unwrap();
+    for tool in [
+        CodexNativeGuardTool::ApplyPatch,
+        CodexNativeGuardTool::Edit,
+        CodexNativeGuardTool::Write,
+    ] {
+        let input = match tool {
+            CodexNativeGuardTool::ApplyPatch => json!({
+                "patch": "*** Begin Patch\n*** Update File: src/lib.rs\n*** Move to: src/new.rs\n*** End Patch"
+            }),
+            CodexNativeGuardTool::Edit | CodexNativeGuardTool::Write => {
+                json!({"file_path": "src/lib.rs"})
+            }
+            CodexNativeGuardTool::Bash => unreachable!(),
+        };
+        let assessment = contract.assess(&CanonicalToolName::parse(tool.as_str()).unwrap(), &input);
+        assert_eq!(
+            assessment.effect(),
+            ProductRepositoryEffect::MayWriteProduct
+        );
+        assert!(matches!(
+            assessment.target_paths(),
+            ToolTargetPaths::Exact(paths) if !paths.is_empty()
+        ));
+    }
+
+    let recursively_discovered = contract.assess(
+        &CanonicalToolName::parse("Write").unwrap(),
+        &json!({
+            "metadata": {
+                "path": "src/path.rs",
+                "changed_paths": ["src/changed.rs"],
+                "observed_paths": ["src/observed.rs"],
+                "modified_paths": ["src/modified.rs"],
+                "file_path": "src/nested.rs"
+            }
+        }),
+    );
+    assert_eq!(
+        recursively_discovered.target_paths(),
+        &ToolTargetPaths::Unavailable(ToolTargetPathUnavailableReason::MissingRequiredField)
+    );
+}
+
+#[test]
+fn bash_assessment_is_bounded_to_reviewed_simple_semantics() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let contract = CodexGuardToolEffectContract::for_server(&server).unwrap();
+    for command in [
+        "pwd",
+        "ls -la",
+        "rg needle src",
+        "git status --short",
+        "git diff --stat",
+        "git log -1",
+        "git show HEAD",
+        "git rev-parse HEAD",
+    ] {
+        let assessment = contract.assess(
+            &CanonicalToolName::parse("Bash").unwrap(),
+            &json!({"command": command}),
+        );
+        assert_eq!(
+            assessment.effect(),
+            ProductRepositoryEffect::NoProductWrite,
+            "{command}"
+        );
+    }
+    for command in [
+        "touch src/lib.rs",
+        "rm src/lib.rs",
+        "mv old.rs new.rs",
+        "git restore src/lib.rs",
+        "cargo fmt",
+    ] {
+        let assessment = contract.assess(
+            &CanonicalToolName::parse("Bash").unwrap(),
+            &json!({"command": command}),
+        );
+        assert_eq!(
+            assessment.effect(),
+            ProductRepositoryEffect::MayWriteProduct,
+            "{command}"
+        );
+    }
+    for command in [
+        "cargo test",
+        "bash script.sh",
+        "python script.py",
+        "git status && touch marker",
+        "rg needle | tee result.txt",
+        "echo value > result.txt",
+        "$(git status)",
+        "git \"status\"",
+        "git 'status'",
+        "git diff --output=result.txt",
+        "git show --ext-diff HEAD",
+        "rg --pre=filter needle src",
+    ] {
+        let assessment = contract.assess(
+            &CanonicalToolName::parse("Bash").unwrap(),
+            &json!({"command": command}),
+        );
+        assert_eq!(
+            assessment.effect(),
+            ProductRepositoryEffect::UnknownProductEffect,
+            "{command}"
+        );
+    }
+}
+
+#[test]
+fn exact_target_decoders_reject_malformed_or_ambiguous_inputs() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let contract = CodexGuardToolEffectContract::for_server(&server).unwrap();
+    for (tool, input, reason) in [
+        (
+            "Edit",
+            json!({"file_path": ["src/lib.rs"]}),
+            ToolTargetPathUnavailableReason::MalformedRequiredField,
+        ),
+        (
+            "Write",
+            json!({"path": "src/lib.rs"}),
+            ToolTargetPathUnavailableReason::MissingRequiredField,
+        ),
+        (
+            "apply_patch",
+            json!({"patch": "*** Begin Patch\n*** Update File: src/lib.rs"}),
+            ToolTargetPathUnavailableReason::MalformedPatch,
+        ),
+        (
+            "Bash",
+            json!({"command": "cp first.rs second.rs target"}),
+            ToolTargetPathUnavailableReason::AmbiguousCommandTargets,
+        ),
+    ] {
+        let assessment = contract.assess(&CanonicalToolName::parse(tool).unwrap(), &input);
+        assert_eq!(
+            assessment.target_paths(),
+            &ToolTargetPaths::Unavailable(reason)
         );
     }
 }

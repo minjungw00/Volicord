@@ -5,9 +5,9 @@ use std::{
     path::PathBuf,
 };
 
-use serde::Serialize;
+use serde::{de, Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
-use volicord_types::product_path::ProductRelativePath;
+use volicord_types::{canonical::canonical_git_object_id, product_path::ProductRelativePath};
 
 use super::bounded::ObserverLimits;
 
@@ -36,9 +36,23 @@ impl ContentIdentity {
     }
 }
 
+impl<'de> Deserialize<'de> for ContentIdentity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        if is_canonical_sha256_identity(&value) {
+            Ok(Self(value))
+        } else {
+            Err(de::Error::custom("invalid content identity"))
+        }
+    }
+}
+
 /// Effective observable state of one Product Repository path.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProductPathState {
     /// No filesystem entry exists at the path.
     Absent,
@@ -119,8 +133,23 @@ impl SemanticObserverContractDigest {
     }
 }
 
+impl<'de> Deserialize<'de> for SemanticObserverContractDigest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        if is_canonical_sha256_identity(&value) {
+            Ok(Self(value))
+        } else {
+            Err(de::Error::custom("invalid observer contract digest"))
+        }
+    }
+}
+
 /// Stable Git and repository coordinates surrounding one snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RepositoryObservationCoordinate {
     repository_identity: String,
     git_layout_identity: String,
@@ -177,6 +206,24 @@ impl RepositoryObservationCoordinate {
     /// Opaque digest of the complete porcelain status coordinate.
     pub fn status_identity(&self) -> &str {
         &self.status_identity
+    }
+}
+
+/// Validated portable checkpoint for one observer-owned repository snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RepositoryObservationCheckpoint {
+    pub(crate) coordinate: RepositoryObservationCoordinate,
+    pub(crate) observed_states: BTreeMap<ProductRelativePath, ProductPathState>,
+    pub(crate) status_paths: BTreeSet<ProductRelativePath>,
+    pub(crate) invocation_paths: BTreeSet<ProductRelativePath>,
+    pub(crate) contract_digest: SemanticObserverContractDigest,
+}
+
+impl RepositoryObservationCheckpoint {
+    /// Typed invocation paths retained by the checkpoint.
+    pub fn invocation_paths(&self) -> &BTreeSet<ProductRelativePath> {
+        &self.invocation_paths
     }
 }
 
@@ -246,6 +293,17 @@ impl RepositoryObservationSnapshot {
     /// Deterministic content identity of [`Self::canonical_bytes`].
     pub fn semantic_digest(&self) -> Result<ContentIdentity, ObservationUnavailable> {
         Ok(ContentIdentity::for_bytes(&self.canonical_bytes()?))
+    }
+
+    /// Produces a portable checkpoint that can only be restored by a compatible observer.
+    pub fn checkpoint(&self) -> RepositoryObservationCheckpoint {
+        RepositoryObservationCheckpoint {
+            coordinate: self.coordinate.clone(),
+            observed_states: self.observed_states.clone(),
+            status_paths: self.status_paths.clone(),
+            invocation_paths: self.invocation_paths.clone(),
+            contract_digest: self.contract_digest.clone(),
+        }
     }
 }
 
@@ -439,6 +497,56 @@ pub(crate) fn hash_fields(fields: &[&str]) -> String {
         encoder.string(field);
     }
     ContentIdentity::for_bytes(&encoder.finish()).0
+}
+
+pub(crate) fn validate_checkpoint(
+    checkpoint: &RepositoryObservationCheckpoint,
+) -> Result<(), ObservationUnavailable> {
+    let coordinate = &checkpoint.coordinate;
+    if !is_canonical_sha256_identity(&coordinate.repository_identity)
+        || !is_canonical_sha256_identity(&coordinate.git_layout_identity)
+        || !is_canonical_sha256_identity(&coordinate.worktree_identity)
+        || !is_canonical_sha256_identity(&coordinate.status_identity)
+        || coordinate
+            .head_oid
+            .as_deref()
+            .is_some_and(|value| canonical_git_object_id(value).is_err())
+        || coordinate
+            .tree_oid
+            .as_deref()
+            .is_some_and(|value| canonical_git_object_id(value).is_err())
+        || checkpoint
+            .observed_states
+            .values()
+            .any(|state| match state {
+                ProductPathState::Gitlink { commit_oid } => {
+                    canonical_git_object_id(commit_oid).is_err()
+                }
+                ProductPathState::Absent
+                | ProductPathState::RegularFile { .. }
+                | ProductPathState::SymbolicLink { .. } => false,
+            })
+        || !checkpoint
+            .status_paths
+            .iter()
+            .chain(&checkpoint.invocation_paths)
+            .all(|path| checkpoint.observed_states.contains_key(path))
+    {
+        return Err(ObservationUnavailable::new(
+            ObservationUnavailableReason::ObserverContractMismatch,
+            "the repository observation checkpoint is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn is_canonical_sha256_identity(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 fn encode_coordinate(encoder: &mut CanonicalEncoder, coordinate: &RepositoryObservationCoordinate) {

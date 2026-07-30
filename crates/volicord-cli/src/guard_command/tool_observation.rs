@@ -1,27 +1,29 @@
 use std::path::Path;
 
 use serde_json::Value;
+use volicord_host_contract::{
+    CodexCommandHooks, CodexGuardToolEffectContract, CodexHookEvent, GuardToolIdentity,
+    McpServerKey, ToolTargetPathUnavailableReason, ToolTargetPaths,
+};
+use volicord_types::tool_names::ProductRepositoryEffect;
 
 use super::{
-    envelope::{event_bool, event_i64, event_string},
-    mutation::{
-        classify_tool, collect_path_assessments, collect_structured_path_assessments,
-        has_structured_changed_paths, PathAssessment, ToolClassification,
-    },
+    mutation::{assess_decoded_paths, PathAssessment},
+    GuardCommandError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ToolObservation {
     pub(super) tool_name: Option<String>,
+    pub(super) identity: GuardToolIdentity,
     pub(super) host_invocation_id: Option<String>,
     pub(super) command: Option<String>,
-    pub(super) classification: ToolClassification,
+    pub(super) prospective_effect: ProductRepositoryEffect,
+    pub(super) target_path_unavailable_reason: Option<ToolTargetPathUnavailableReason>,
     pub(super) paths: Vec<PathAssessment>,
     pub(super) structured_paths: Vec<PathAssessment>,
     pub(super) changed_paths: Vec<PathAssessment>,
     pub(super) changed_paths_reported: bool,
-    pub(super) explicit_write_attempt: bool,
-    pub(super) reported_effect: Option<String>,
     pub(super) exit_code: Option<i64>,
     pub(super) success: Option<bool>,
     pub(super) status: Option<String>,
@@ -29,10 +31,7 @@ pub(super) struct ToolObservation {
 
 impl ToolObservation {
     pub(super) fn deterministic_write_attempt(&self) -> bool {
-        (self.explicit_write_attempt
-            || self.structured_reported_effect() == Some("product_file_write")
-            || tool_name_is_direct_write(self.tool_name.as_deref())
-            || self.classification == ToolClassification::Mutating)
+        self.prospective_effect == ProductRepositoryEffect::MayWriteProduct
             && !self.structured_paths.is_empty()
     }
 
@@ -42,240 +41,212 @@ impl ToolObservation {
     }
 
     pub(super) fn confidence(&self) -> &'static str {
-        if self.changed_paths_reported || !self.changed_paths.is_empty() {
+        if self.changed_paths_reported {
             "confirmed"
-        } else if self.structured_reported_effect().is_some()
-            || self.deterministic_product_write_attempt()
-            || self.classification == ToolClassification::ReadOnly
-        {
+        } else if self.prospective_effect != ProductRepositoryEffect::UnknownProductEffect {
             "structured"
-        } else if matches!(
-            self.classification,
-            ToolClassification::Mutating | ToolClassification::UnknownMutationRisk
-        ) {
-            "heuristic"
         } else {
             "unknown"
         }
     }
 
-    pub(super) fn effect(&self) -> &'static str {
+    pub(super) fn observed_effect(&self) -> &'static str {
         if self.changed_paths.iter().any(|path| path.inside_repo) {
             "product_file_write"
         } else if self.changed_paths_reported {
-            if self.classification == ToolClassification::ReadOnly {
-                "read_only"
-            } else {
-                "unknown"
-            }
-        } else if let Some(effect) = self.structured_reported_effect() {
-            effect
-        } else if self.deterministic_product_write_attempt() {
-            "product_file_write"
-        } else if !self.structured_paths.is_empty()
-            && self.structured_paths.iter().all(|path| !path.inside_repo)
-            && (self.explicit_write_attempt || tool_name_is_direct_write(self.tool_name.as_deref()))
-        {
-            "non_product_write"
-        } else if self.classification == ToolClassification::ReadOnly {
-            "read_only"
+            "no_product_write"
         } else {
-            "unknown"
+            "unknown_product_effect"
         }
     }
 
-    pub(super) fn structured_reported_effect(&self) -> Option<&'static str> {
-        if self.structured_paths.is_empty() {
-            return None;
+    pub(super) fn target_path_status(&self) -> &'static str {
+        if self.target_path_unavailable_reason.is_some() {
+            "unavailable"
+        } else if self.structured_paths.is_empty() {
+            "not_applicable"
+        } else {
+            "exact"
         }
-        match self.reported_effect.as_deref() {
-            Some("read_only") => Some("read_only"),
-            Some("product_file_write") => Some("product_file_write"),
-            Some("non_product_write") => Some("non_product_write"),
-            Some("external_effect") => Some("external_effect"),
-            _ => None,
+    }
+
+    pub(super) fn identity_kind(&self) -> &'static str {
+        match self.identity {
+            GuardToolIdentity::CodexNative(_) => "codex_native",
+            GuardToolIdentity::VolicordMcp(_) => "volicord_mcp",
+            GuardToolIdentity::Foreign => "foreign",
+        }
+    }
+
+    pub(super) fn canonical_identity(&self) -> Option<&str> {
+        match &self.identity {
+            GuardToolIdentity::CodexNative(tool) => Some(tool.as_str()),
+            GuardToolIdentity::VolicordMcp(identity) => Some(identity.tool().wire_name()),
+            GuardToolIdentity::Foreign => None,
         }
     }
 }
 
-pub(super) fn tool_name_is_direct_write(tool_name: Option<&str>) -> bool {
-    tool_name
-        .map(|name| {
-            matches!(
-                name.to_ascii_lowercase().as_str(),
-                "edit" | "write" | "write_file" | "apply_patch" | "patch" | "notebook_edit"
+pub(super) fn tool_observation(
+    event: &Value,
+    repo_root: &Path,
+    server: &McpServerKey,
+) -> Result<ToolObservation, GuardCommandError> {
+    let event = CodexCommandHooks
+        .parse(event)
+        .map_err(|error| GuardCommandError::Runtime(error.to_string()))?;
+    let (correlation, tool_input, tool_response) = match event {
+        CodexHookEvent::PreToolUse {
+            correlation,
+            tool_input,
+            ..
+        } => (correlation, tool_input, None),
+        CodexHookEvent::PostToolUse {
+            correlation,
+            tool_input,
+            tool_response,
+            ..
+        } => (correlation, tool_input, Some(tool_response)),
+        CodexHookEvent::UserPromptSubmit { .. } => {
+            return Err(GuardCommandError::Runtime(
+                "tool observation requires a Codex tool hook event".to_owned(),
+            ));
+        }
+    };
+    let contract = CodexGuardToolEffectContract::for_server(server)
+        .map_err(|error| GuardCommandError::Runtime(error.to_string()))?;
+    let assessment = contract.assess(&correlation.tool_name, tool_input.as_value());
+    let paths = assess_decoded_paths(repo_root, assessment.target_paths().exact());
+    let target_path_unavailable_reason = match assessment.target_paths() {
+        ToolTargetPaths::Unavailable(reason) => Some(*reason),
+        ToolTargetPaths::NotApplicable | ToolTargetPaths::Exact(_) => None,
+    };
+    let (success, exit_code, status) = tool_response
+        .as_ref()
+        .and_then(|response| response.as_value().as_object())
+        .map(|response| {
+            (
+                response.get("success").and_then(Value::as_bool),
+                response.get("exit_code").and_then(Value::as_i64),
+                response
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
             )
         })
-        .unwrap_or(false)
-}
-
-pub(super) fn tool_observation(event: &Value, repo_root: &Path) -> ToolObservation {
-    let tool_name = event_string(
-        event,
-        &[
-            &["tool_name"],
-            &["tool", "name"],
-            &["tool_use", "name"],
-            &["tool"],
-        ],
-    );
-    let command = event_string(
-        event,
-        &[
-            &["command"],
-            &["tool_input", "command"],
-            &["input", "command"],
-            &["tool", "input", "command"],
-            &["tool", "arguments", "command"],
-            &["tool_use", "input", "command"],
-        ],
-    );
-    let classification = classify_tool(tool_name.as_deref(), command.as_deref());
-    let paths = collect_path_assessments(event, repo_root, false);
-    let structured_paths = collect_structured_path_assessments(event, repo_root, false);
-    let changed_paths = collect_path_assessments(event, repo_root, true);
-    let changed_paths_reported = has_structured_changed_paths(event);
-    let explicit_write_attempt = event_bool(
-        event,
-        &[
-            &["product_file_write_intended"],
-            &["write_attempt"],
-            &["mutates_files"],
-            &["tool_input", "product_file_write_intended"],
-            &["tool_input", "write_attempt"],
-            &["input", "product_file_write_intended"],
-            &["input", "write_attempt"],
-        ],
-    )
-    .unwrap_or(false);
-    let reported_effect = event_string(
-        event,
-        &[
-            &["effect"],
-            &["tool", "effect"],
-            &["tool_input", "effect"],
-            &["input", "effect"],
-            &["mutation", "effect"],
-        ],
-    )
-    .filter(|effect| {
-        matches!(
-            effect.as_str(),
-            "read_only" | "product_file_write" | "non_product_write" | "external_effect"
-        )
-    });
-    ToolObservation {
-        tool_name,
-        host_invocation_id: host_invocation_id(event),
-        command,
-        classification,
-        paths,
-        structured_paths,
-        changed_paths,
-        changed_paths_reported,
-        explicit_write_attempt,
-        reported_effect,
-        exit_code: event_i64(
-            event,
-            &[
-                &["exit_code"],
-                &["tool_response", "exit_code"],
-                &["tool_result", "exit_code"],
-                &["result", "exit_code"],
-                &["output", "exit_code"],
-            ],
-        ),
-        success: event_bool(
-            event,
-            &[
-                &["success"],
-                &["tool_response", "success"],
-                &["tool_result", "success"],
-                &["result", "success"],
-                &["output", "success"],
-            ],
-        ),
-        status: event_string(
-            event,
-            &[
-                &["status"],
-                &["tool_response", "status"],
-                &["tool_result", "status"],
-                &["result", "status"],
-                &["output", "status"],
-            ],
-        ),
-    }
-}
-
-pub(super) fn host_invocation_id(event: &Value) -> Option<String> {
-    event_string(
-        event,
-        &[
-            &["tool_call_id"],
-            &["tool_use_id"],
-            &["tool_invocation_id"],
-            &["invocation_id"],
-            &["call_id"],
-            &["tool", "call_id"],
-            &["tool", "id"],
-            &["tool_use", "id"],
-            &["tool_result", "tool_call_id"],
-            &["result", "tool_call_id"],
-        ],
-    )
+        .unwrap_or((None, None, None));
+    Ok(ToolObservation {
+        tool_name: Some(correlation.tool_name.as_str().to_owned()),
+        identity: assessment.identity().clone(),
+        host_invocation_id: Some(correlation.tool_use_id.as_str().to_owned()),
+        command: assessment.command().map(str::to_owned),
+        prospective_effect: assessment.effect(),
+        target_path_unavailable_reason,
+        paths: paths.clone(),
+        structured_paths: paths,
+        changed_paths: Vec::new(),
+        changed_paths_reported: false,
+        exit_code,
+        success,
+        status,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn event(tool_name: &str, tool_input: Value) -> Value {
+        serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-1",
+            "turn_id": "turn-1",
+            "tool_use_id": "tool-1",
+            "tool_name": tool_name,
+            "tool_input": tool_input
+        })
+    }
+
     #[test]
-    fn maintained_post_tool_fixtures_read_tool_response_success_and_exit_code() {
+    fn maintained_post_tool_fixture_uses_exact_response_fields() {
         let fixture = include_str!(
             "../../../../tests/conformance/codex-host/command-hooks/post-tool-use-bash.json"
         );
         let event: Value = serde_json::from_str(fixture).expect("fixture JSON");
-        let observation = tool_observation(&event, Path::new("/repo"));
+        let server = McpServerKey::parse("volicord").unwrap();
+        let observation = tool_observation(&event, Path::new("/repo"), &server).unwrap();
         assert_eq!(observation.success, Some(true));
         assert_eq!(observation.exit_code, Some(0));
+        assert_eq!(
+            observation.prospective_effect,
+            ProductRepositoryEffect::UnknownProductEffect
+        );
     }
 
     #[test]
-    fn unknown_tools_honor_closed_structured_effects_only_with_known_paths() {
-        let product = tool_observation(
-            &serde_json::json!({
-                "tool_name": "custom_host_tool",
-                "effect": "product_file_write",
-                "paths": ["src/lib.rs"]
-            }),
-            Path::new("/repo"),
-        );
-        assert!(product.deterministic_write_attempt());
-        assert!(product.deterministic_product_write_attempt());
-        assert_eq!(product.effect(), "product_file_write");
-        assert_eq!(product.confidence(), "structured");
-
+    fn exact_write_target_decoding_rejects_external_and_ignores_recursive_fields() {
+        let server = McpServerKey::parse("volicord").unwrap();
         let external = tool_observation(
-            &serde_json::json!({
-                "tool_name": "custom_host_tool",
-                "effect": "external_effect",
-                "paths": ["https://example.invalid/resource"]
-            }),
+            &event(
+                "Write",
+                serde_json::json!({"file_path": "/outside/file.rs"}),
+            ),
             Path::new("/repo"),
+            &server,
+        )
+        .unwrap();
+        assert_eq!(
+            external.prospective_effect,
+            ProductRepositoryEffect::MayWriteProduct
         );
-        assert!(!external.deterministic_write_attempt());
-        assert_eq!(external.effect(), "external_effect");
-        assert_eq!(external.confidence(), "structured");
+        assert_eq!(external.structured_paths.len(), 1);
+        assert!(!external.structured_paths[0].inside_repo);
 
-        let missing_paths = tool_observation(
-            &serde_json::json!({
-                "tool_name": "custom_host_tool",
-                "effect": "product_file_write"
-            }),
+        let recursive = tool_observation(
+            &event(
+                "Write",
+                serde_json::json!({
+                    "metadata": {
+                        "file_path": "src/lib.rs",
+                        "path": "src/path.rs",
+                        "changed_paths": ["src/changed.rs"]
+                    }
+                }),
+            ),
             Path::new("/repo"),
+            &server,
+        )
+        .unwrap();
+        assert!(recursive.structured_paths.is_empty());
+        assert_eq!(
+            recursive.target_path_unavailable_reason,
+            Some(ToolTargetPathUnavailableReason::MissingRequiredField)
         );
-        assert!(!missing_paths.deterministic_write_attempt());
-        assert_eq!(missing_paths.effect(), "unknown");
+    }
+
+    #[test]
+    fn known_mcp_runtime_mutations_are_not_product_write_attempts() {
+        let server = McpServerKey::parse("registered-server").unwrap();
+        let contract = CodexGuardToolEffectContract::for_server(&server).unwrap();
+        for tool in volicord_types::tool_names::AgentToolId::ALL {
+            let callable = contract
+                .mcp_catalog()
+                .require(&server, tool)
+                .unwrap()
+                .callable_name()
+                .as_str()
+                .to_owned();
+            let observation = tool_observation(
+                &event(&callable, serde_json::json!({})),
+                Path::new("/repo"),
+                &server,
+            )
+            .unwrap();
+            assert_eq!(
+                observation.prospective_effect,
+                ProductRepositoryEffect::NoProductWrite
+            );
+            assert!(!observation.deterministic_write_attempt());
+        }
     }
 }

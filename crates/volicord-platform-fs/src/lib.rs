@@ -34,8 +34,9 @@ pub use product_path::{ObservedProductPath, ObservedProductPathState, ObservedPr
 pub use repository_observation::{
     ContentIdentity, InvocationObservationPaths, ObservationUnavailable,
     ObservationUnavailableReason, ObserverLimits, ProductPathState, RepositoryDelta,
-    RepositoryObservationCoordinate, RepositoryObservationSnapshot, RepositoryObserver,
-    RepositoryPathTransition, SemanticObserverContractDigest,
+    RepositoryObservationCheckpoint, RepositoryObservationCoordinate,
+    RepositoryObservationSnapshot, RepositoryObserver, RepositoryPathTransition,
+    SemanticObserverContractDigest,
 };
 
 #[cfg(windows)]

@@ -203,16 +203,20 @@ pub(super) fn pending_user_action_summary_json(summary: &GuardPendingUserActionS
 pub(super) fn tool_observation_json(observation: &ToolObservation) -> Value {
     json!({
         "tool_name": observation.tool_name,
+        "tool_identity_kind": observation.identity_kind(),
+        "canonical_tool_identity": observation.canonical_identity(),
         "host_invocation_id": observation.host_invocation_id,
         "command": observation.command,
-        "classification": observation.classification.as_str(),
-        "effect": observation.effect(),
+        "prospective_product_repository_effect": observation.prospective_effect.as_str(),
+        "observed_product_repository_effect": observation.observed_effect(),
         "confidence": observation.confidence(),
+        "target_path_status": observation.target_path_status(),
+        "target_path_unavailable_reason": observation
+            .target_path_unavailable_reason
+            .map(|reason| reason.as_str()),
         "paths": path_assessments_json(&observation.paths),
         "structured_paths": path_assessments_json(&observation.structured_paths),
         "changed_paths": path_assessments_json(&observation.changed_paths),
-        "explicit_write_attempt": observation.explicit_write_attempt,
-        "reported_effect": observation.reported_effect,
         "exit_code": observation.exit_code,
         "success": observation.success,
         "status": observation.status

@@ -1,5 +1,10 @@
+use std::collections::BTreeSet;
+
 use chrono::Duration as ChronoDuration;
 use serde_json::{json, Value};
+use volicord_platform_fs::{
+    InvocationObservationPaths, ObserverLimits, RepositoryObservationCheckpoint, RepositoryObserver,
+};
 use volicord_store::{
     bootstrap::ProjectRecord,
     guards::{insert_expected_write, ExpectedWriteInsert, ExpectedWritePathPolicy},
@@ -7,6 +12,7 @@ use volicord_store::{
 };
 use volicord_types::guard_outcome::GuardPolicyDecision;
 use volicord_types::product_path::ProductRelativePath;
+use volicord_types::tool_names::ProductRepositoryEffect;
 use volicord_types::values::UtcTimestamp;
 
 use super::GuardPhaseResult;
@@ -14,10 +20,9 @@ use crate::guard_command::{
     args::GuardInput,
     context::{guard_state_summary, ActiveWriteTicketSummary, GuardReason, GuardStateSummary},
     envelope::{event_time, GuardEnvelope},
-    mutation::ToolClassification,
     render::{context_json, reasons_json, tool_observation_json, write_ticket_backing_json},
     stable_id,
-    tool_observation::{host_invocation_id, tool_observation, ToolObservation},
+    tool_observation::{tool_observation, ToolObservation},
     write_ticket::{normalized_observed_paths, write_ticket_coverage, WriteTicketCoverage},
     GuardCommandError, EXPECTED_WRITE_TTL_MINUTES,
 };
@@ -29,6 +34,12 @@ pub(in crate::guard_command) struct ExpectedWriteCandidate {
     write_ticket: ActiveWriteTicketSummary,
 }
 
+struct RepositoryObservationPreparation {
+    checkpoint: Option<RepositoryObservationCheckpoint>,
+    result: Value,
+    unavailable: bool,
+}
+
 pub(in crate::guard_command) fn handle_pre_tool(
     context: &RuntimeHomeMutationContext<'_>,
     project: &ProjectRecord,
@@ -36,8 +47,13 @@ pub(in crate::guard_command) fn handle_pre_tool(
     input: &GuardInput,
 ) -> Result<GuardPhaseResult, GuardCommandError> {
     let summary = guard_state_summary(context, project, envelope, input)?;
-    let observation = tool_observation(&input.raw_value, &project.repo_root);
-    let (decision, reasons) = pre_tool_decision(&summary, &observation);
+    let server = envelope.mcp_server.as_ref().ok_or_else(|| {
+        GuardCommandError::Runtime("Guard event has no typed MCP server binding".to_owned())
+    })?;
+    let observation = tool_observation(&input.raw_value, &project.repo_root, server)?;
+    let repository_observation = prepare_repository_observation(project, &observation);
+    let (decision, reasons) =
+        pre_tool_decision(&summary, &observation, repository_observation.unavailable);
     let write_ticket_backing = if tool_attempts_product_write(&observation) {
         write_ticket_backing_json(write_ticket_coverage(&summary, &observation))
     } else {
@@ -58,20 +74,24 @@ pub(in crate::guard_command) fn handle_pre_tool(
             "tool": tool_observation_json(&observation),
             "write_ticket_backing": write_ticket_backing,
             "expected_write": expected_write_json,
+            "repository_observation": repository_observation.result,
             "context": context_json(&summary),
             "enforcement_level": "cooperative_guard"
         }),
         expected_write,
-    ))
+    )
+    .with_repository_observation_checkpoint(repository_observation.checkpoint))
 }
 
 fn pre_tool_decision(
     summary: &GuardStateSummary,
     observation: &ToolObservation,
+    repository_observation_unavailable: bool,
 ) -> (GuardPolicyDecision, Vec<GuardReason>) {
     let mut reasons = Vec::new();
-    let product_file_write_attempt = observation.deterministic_product_write_attempt();
-    if observation.deterministic_write_attempt()
+    let product_file_write_attempt =
+        observation.prospective_effect == ProductRepositoryEffect::MayWriteProduct;
+    if product_file_write_attempt
         && observation
             .structured_paths
             .iter()
@@ -137,15 +157,17 @@ fn pre_tool_decision(
             }
         }
     }
-    if matches!(
-        observation.classification,
-        ToolClassification::UnknownMutationRisk | ToolClassification::Mutating
-    ) && !observation.deterministic_write_attempt()
-        && observation.structured_reported_effect().is_none()
-    {
+    if observation.prospective_effect == ProductRepositoryEffect::UnknownProductEffect {
         reasons.push(GuardReason {
             code: "unknown_effect_warning",
             message: "Volicord cannot determine this invocation's write paths from structured host facts; it is allowed with a warning and must be checked against actual post-tool changes.".to_owned(),
+            severity: "warn",
+        });
+    }
+    if repository_observation_unavailable {
+        reasons.push(GuardReason {
+            code: "repository_observation_unavailable",
+            message: "The pre-tool Product Repository checkpoint is unavailable, so post-tool change attribution may remain suspected.".to_owned(),
             severity: "warn",
         });
     }
@@ -159,26 +181,86 @@ fn pre_tool_decision(
     (decision, reasons)
 }
 
+fn prepare_repository_observation(
+    project: &ProjectRecord,
+    observation: &ToolObservation,
+) -> RepositoryObservationPreparation {
+    if observation.prospective_effect == ProductRepositoryEffect::NoProductWrite {
+        return RepositoryObservationPreparation {
+            checkpoint: None,
+            result: json!({
+                "required": false,
+                "status": "not_required",
+            }),
+            unavailable: false,
+        };
+    }
+    let invocation_paths = observation
+        .structured_paths
+        .iter()
+        .filter(|path| path.inside_repo)
+        .filter_map(|path| path.normalized.as_deref())
+        .map(|path| ProductRelativePath::parse(path.to_owned()))
+        .collect::<Result<BTreeSet<_>, _>>();
+    let invocation_paths = match invocation_paths {
+        Ok(paths) => paths.into_iter().collect(),
+        Err(error) => {
+            return RepositoryObservationPreparation {
+                checkpoint: None,
+                result: json!({
+                    "required": true,
+                    "status": "unavailable",
+                    "reason": error.reason(),
+                }),
+                unavailable: true,
+            };
+        }
+    };
+    let observer = match RepositoryObserver::new(&project.repo_root, ObserverLimits::default()) {
+        Ok(observer) => observer,
+        Err(error) => return unavailable_observation(error.reason().as_str()),
+    };
+    let snapshot = match observer.snapshot(&InvocationObservationPaths::new(
+        invocation_paths,
+        Vec::new(),
+    )) {
+        Ok(snapshot) => snapshot,
+        Err(error) => return unavailable_observation(error.reason().as_str()),
+    };
+    let snapshot_digest = match snapshot.semantic_digest() {
+        Ok(digest) => digest.as_str().to_owned(),
+        Err(error) => return unavailable_observation(error.reason().as_str()),
+    };
+    RepositoryObservationPreparation {
+        checkpoint: Some(snapshot.checkpoint()),
+        result: json!({
+            "required": true,
+            "status": "captured",
+            "contract_digest": observer.contract_digest().as_str(),
+            "snapshot_digest": snapshot_digest,
+        }),
+        unavailable: false,
+    }
+}
+
+fn unavailable_observation(reason: &str) -> RepositoryObservationPreparation {
+    RepositoryObservationPreparation {
+        checkpoint: None,
+        result: json!({
+            "required": true,
+            "status": "unavailable",
+            "reason": reason,
+        }),
+        unavailable: true,
+    }
+}
+
 fn tool_attempts_product_write(observation: &ToolObservation) -> bool {
-    observation.explicit_write_attempt
-        || observation.structured_reported_effect() == Some("product_file_write")
-        || observation.classification == ToolClassification::Mutating
-        || tool_name_implies_write(observation.tool_name.as_deref())
+    observation.prospective_effect == ProductRepositoryEffect::MayWriteProduct
 }
 
 fn confidently_expects_product_write(observation: &ToolObservation) -> bool {
     observation.deterministic_product_write_attempt()
-}
-
-fn tool_name_implies_write(tool_name: Option<&str>) -> bool {
-    tool_name
-        .map(|name| {
-            matches!(
-                name.to_ascii_lowercase().as_str(),
-                "edit" | "write" | "write_file" | "apply_patch" | "patch" | "notebook_edit"
-            )
-        })
-        .unwrap_or(false)
 }
 
 fn expected_write_candidate(
@@ -219,7 +301,7 @@ fn expected_write_candidate(
     };
     let created_at = event_time(&envelope.occurred_at)?;
     let expires_at = created_at + ChronoDuration::minutes(EXPECTED_WRITE_TTL_MINUTES);
-    let host_invocation_id = host_invocation_id(&input.raw_value);
+    let host_invocation_id = observation.host_invocation_id.clone();
     let expected_write_id = stable_id(
         "expected_write",
         &[
@@ -242,7 +324,7 @@ fn expected_write_candidate(
             pre_tool_guard_event_id: envelope.event_id.clone(),
             host_invocation_id,
             tool_name: observation.tool_name.clone(),
-            command_kind: observation.classification.as_str().to_owned(),
+            command_kind: observation.prospective_effect.as_str().to_owned(),
             path_policy: ExpectedWritePathPolicy::ExactPaths,
             expected_paths: typed_expected_paths,
             task_id,

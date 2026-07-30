@@ -11,8 +11,9 @@ use super::{
     coordinates::{capture_coordinates, CapturedCoordinates},
     delta::calculate_delta,
     model::{
-        ensure_candidate_limit, InvocationObservationPaths, ObservationUnavailable,
-        ObservationUnavailableReason, RepositoryDelta, RepositoryObservationSnapshot,
+        ensure_candidate_limit, validate_checkpoint, InvocationObservationPaths,
+        ObservationUnavailable, ObservationUnavailableReason, RepositoryDelta,
+        RepositoryObservationCheckpoint, RepositoryObservationSnapshot,
         SemanticObserverContractDigest, SNAPSHOT_SERIALIZATION_DEPTH,
     },
     path_state::{observe_worktree_states, HashBudget},
@@ -90,6 +91,32 @@ impl RepositoryObserver {
         after: &RepositoryObservationSnapshot,
     ) -> Result<RepositoryDelta, ObservationUnavailable> {
         calculate_delta(self, before, after)
+    }
+
+    /// Restores one validated checkpoint under this observer's root, limits, and semantics.
+    pub fn restore_checkpoint(
+        &self,
+        checkpoint: RepositoryObservationCheckpoint,
+    ) -> Result<RepositoryObservationSnapshot, ObservationUnavailable> {
+        if checkpoint.contract_digest != self.contract_digest {
+            return Err(ObservationUnavailable::new(
+                ObservationUnavailableReason::ObserverContractMismatch,
+                "the repository observation checkpoint uses a different observer contract",
+            ));
+        }
+        validate_checkpoint(&checkpoint)?;
+        ensure_candidate_limit(checkpoint.observed_states.len(), &self.limits)?;
+        let snapshot = RepositoryObservationSnapshot {
+            repository_root: self.repository_root.clone(),
+            coordinate: checkpoint.coordinate,
+            observed_states: checkpoint.observed_states,
+            status_paths: checkpoint.status_paths,
+            invocation_paths: checkpoint.invocation_paths,
+            contract_digest: checkpoint.contract_digest,
+            limits: self.limits.clone(),
+        };
+        snapshot.canonical_bytes()?;
+        Ok(snapshot)
     }
 
     pub(crate) fn repository_root(&self) -> &Path {
