@@ -31,8 +31,14 @@
       "reason": "Git owns the porcelain output format identifier."
     },
     {
-      "path": "crates/volicord-cli/src/guard_command/phase/post_tool.rs",
-      "needle": "--porcelain=v1",
+      "path": "crates/volicord-platform-fs/src/repository_observation/coordinates.rs",
+      "needle": "--porcelain=v2",
+      "classification": "external_standard",
+      "reason": "Git owns the porcelain output format identifier."
+    },
+    {
+      "path": "crates/volicord-platform-fs/src/repository_observation/path_state.rs",
+      "needle": "--porcelain=v2",
       "classification": "external_standard",
       "reason": "Git owns the porcelain output format identifier."
     },
@@ -125,6 +131,18 @@
       "needle": "VOLICORD_DIAGNOSTIC_V1",
       "classification": "product_contract",
       "reason": "The MCP bootstrap test verifies emission of the exact shared diagnostic envelope contract."
+    },
+    {
+      "path": "crates/volicord-host-contract/src/lib.rs",
+      "needle": "object.command:string/simple-command-v1",
+      "classification": "product_contract",
+      "reason": "The semantic command effect kind is an exact versioned Volicord product contract identifier."
+    },
+    {
+      "path": "crates/volicord-host-contract/src/lib.rs",
+      "needle": "object.patch:string/apply-patch-v1",
+      "classification": "product_contract",
+      "reason": "The semantic patch effect kind is an exact versioned Volicord product contract identifier."
     },
     {
       "path": "crates/volicord-types/src/ids.rs",

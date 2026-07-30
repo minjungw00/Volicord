@@ -360,6 +360,14 @@ separately selected `CodexCommandHooks` marker and `codex-command-hooks` profile
 prompt session/turn or tool session/turn/tool-use/tool-name correlation;
 command hooks have no thread coordinate.
 
+Each compatible Codex tool invocation owns at most one project-local
+repository observation on the exact project, Connection, session, turn,
+tool-use ID, and canonical tool-name coordinate. Pre-tool persistence records
+the baseline before a write-capable or unknown-effect invocation is allowed;
+post-tool persistence closes the same aggregate with a complete deterministic
+delta or a closed unavailable reason. Whole-worktree dirtiness and host path
+reports are not invocation deltas.
+
 Runtime source is also explicit. `managed_host` is created only by atomic
 one-time lease consumption; `manual_cli` identifies the public stdio or
 disposable CLI-conformance path; `cli_preflight` and `integration_probe` are

@@ -13,7 +13,7 @@ security guarantees, and value meanings.
 | [Agent Connection routing](agent-connection-routing.md) | Bind a managed stdio process to one current Connection and explicitly admitted Product Repository. |
 | [Core and adapter boundary](core-adapter-boundary.md) | Keep syntax, adapters, Core policy, Store, diagnostics, and repository tooling in distinct dependency layers. |
 | [State-bound Write Ticket validity](state-bound-write-ticket-validity.md) | Evaluate ticket reuse from current authority coordinates and consume the ticket with the protected mutation. |
-| [Observation confidence boundary](observation-confidence-boundary.md) | Keep structured path facts, uncertain observations, reconciliation, and typed diagnostics distinct. |
+| [Repository observation boundary](repository-observation-boundary.md) | Bind stable snapshots, deterministic invocation deltas, exact expected writes, and actual Unrecorded Changes. |
 | [External user-judgment authority](external-user-judgment-authority.md) | Keep user-owned resolution on the local User Channel outside the Agent Connection. |
 | [Static compact MCP tool list](static-compact-mcp-tool-list.md) | Project one closed, capability-aware tool catalog with compact runtime schemas. |
 | [Operation-result retrieval](operation-result-retrieval.md) | Read bounded exact pages from immutable replay responses without re-executing effects. |

@@ -35,13 +35,11 @@ The method never silently dismisses a bypass. An Agent Connection cannot mark an
 
 Resolving an Unrecorded Change removes it from the `unresolved_unrecorded_changes` close-blocker calculation. Resolution does not prove that the changed product files are correct, reviewed, tested, accepted for close, or acceptable as residual risk.
 
-Every finding carries `confidence=confirmed|suspected`. A confirmed unresolved
-Product Repository change contributes `unresolved_unrecorded_changes` and must
-be reconciled before close. A suspected finding is a warning and verification
-request, not a close blocker. Deterministic verification may promote it to
-`confirmed` or resolve it as not a product change, reverted, covered, or an
-invalid observation. An Agent Connection cannot lower confidence merely to
-remove a blocker.
+Every finding represents a complete observed non-empty Product Repository
+delta that was unmatched by its exact invocation's expected write. Every
+unresolved finding contributes `unresolved_unrecorded_changes` and must be
+reconciled before close. Observation-unavailable diagnostics are not findings
+and do not enter this method as synthetic paths.
 
 ## Required inputs
 
@@ -77,7 +75,7 @@ Request field notes:
 - `resolution_requests` may be omitted and defaults to `[]`.
 - `user_action_resolution_id` may be omitted or set to `null`; both forms mean that no user-action resolution was supplied for that entry.
 - `basis=accepted_by_user` requires `user_action_resolution_id` for an existing resolved, current `product_decision` user action for the same `Task`, linked to the unrecorded-change ref and recorded through a compatible User Channel with `actor_source=local_user`, `machine_action=accept`, and `resolution_outcome=accepted`.
-- Caller-supplied `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, or `invalid_observation` requests reject as agent-supplied system resolution bases. Core may still apply those bases itself when it can verify them deterministically.
+- Caller-supplied `reverted`, `covered_by_write_ticket`, or `recorded_as_expected_write` requests reject as agent-supplied system resolution bases. Core may still apply those bases itself when it can verify them deterministically.
 
 Nested owner links:
 
@@ -108,9 +106,10 @@ A committed `dry_run=false` result that has planned storage effects:
 A valid call with no storage mutations returns a read-only result and does not create a replay row, event, or state-version increment.
 
 Store strictly decodes persisted Unrecorded Change rows into typed status,
-confidence, Product Repository paths, actor, timestamp, and object facts before
-Core plans reconciliation. Core does not interpret their physical JSON or
-persisted closed-value spelling and does not create new observations.
+exact repository-observation identity, non-empty Product Repository paths,
+unmatched-delta digest, actor, timestamp, and object facts before Core plans
+reconciliation. Core does not interpret their physical JSON or persisted
+closed-value spelling and does not create new observations.
 Reconciliation changes
 do not consume or invalidate a write ticket unless a separate operation changes
 one of that ticket's explicit validity coordinates; their state-version
@@ -188,8 +187,6 @@ The result disclosure is not correctness proof, test sufficiency proof, human re
 
 Core-owned deterministic `basis` values:
 
-- `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
-- `not_product_change`: stored observation data contains no Product Repository path to reconcile.
 - `recorded_as_expected_write`: a recorded Run for the same `Task` already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers those paths.
 - `covered_by_write_ticket`: one compatible consumed write ticket or one current `active`, unconsumed, state-bound valid write ticket for the same Task deterministically covers the observed Product Repository paths. Optional idle-timeout validity is checked when configured; there is no fixed ticket lifetime.
 
@@ -197,7 +194,10 @@ User-owned basis:
 
 - `accepted_by_user`: a compatible resolved `product_decision` user action linked to the Unrecorded Change records that the local user accepts the observed change as intentional for the Task.
 
-`reverted` and `superseded_by_new_observation` are reserved and are not produced by the baseline method. A caller cannot select Core-owned bases as an agent dismissal. This method does not perform filesystem reversion or an extra filesystem probe to manufacture a resolution basis.
+`reverted` is reserved for a separately verified reversal and is not produced
+by the baseline method. A caller cannot select Core-owned bases as an agent
+dismissal. This method does not perform filesystem reversion or an extra
+filesystem probe to manufacture a resolution basis.
 
 For Unrecorded Changes that still require acceptance, Core creates pending
 `UserActionRequest` rows rather than accepting them. The method result exposes

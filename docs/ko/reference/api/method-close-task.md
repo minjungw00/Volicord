@@ -92,13 +92,13 @@ API 경계 블록:
 닫기 조건:
 
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
-- `intent=check`와 `intent=complete`의 닫기 준비 상태는 해당 `Task`의 쓰기 티켓이 활성이고 소비되지 않은 채 남아 있을 때 차단됩니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓 행은 오래된 권한 상태로 계속 표시되지만 그 자체로 닫기를 막지 않습니다. 범위 밖 Product Repository 경로를 포함한 확인된 미해결 미기록 변경은 별도 차단 사유로 유지됩니다. 고정 티켓 만료는 없습니다.
+- `intent=check`와 `intent=complete`의 닫기 준비 상태는 해당 `Task`의 쓰기 티켓이 활성이고 소비되지 않은 채 남아 있을 때 차단됩니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓 행은 오래된 권한 상태로 계속 표시되지만 그 자체로 닫기를 막지 않습니다. 범위 밖 Product Repository 경로를 포함한 미해결 Unrecorded Change는 별도 차단 사유로 유지됩니다. 고정 티켓 만료는 없습니다.
 - 유효한 `effective_control_level=observe` Task에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 닫기 준비 상태 결과는 `volicord.prepare_write`를 추천하지 않으며, 현재 결과나 닫기 근거가 없으면 호환되는 `volicord.record_run` 경로로 안내합니다.
 - 최종 수락은 유효 통제 수준과 권위 있는 프로젝트 정책을 따릅니다. `sensitive`와
   `tracked`는 호환되는 최종 수락을 요구하고 `observe`는 `not_required`를 사용합니다.
   `light`는 `policy_dependent`이며 현재 프로젝트 정책이 명시적으로 허용하고 민감 동작,
-  미해결 사용자 요구사항, 잔여 위험 수락 요구사항, 필수 Evidence 공백, 확인된 미기록
-  Product Repository 변경이 없는 등 정책 조건을 모두 계속 만족할 때만
+  미해결 사용자 요구사항, 잔여 위험 수락 요구사항, 필수 Evidence 공백, 미해결
+  Unrecorded Change가 없는 등 정책 조건을 모두 계속 만족할 때만
   `not_required`를 사용할 수 있습니다. 정책 강화는 이 판단 전에 유효 통제 수준을
   올리며 절대 낮추지 않습니다. 어떤 정책도 Evidence, 민감 승인, 위험 수락, 다른
   blocker를 면제하지 않습니다.
@@ -106,9 +106,9 @@ API 경계 블록:
   사용자 소유 승인도 필요합니다. 최종 수락은 어느 것도 대신하지 않습니다. 정확한
   근거를 기록하지 않았으면 닫기는 `missing_sensitive_action_basis`, 근거는 있지만
   승인이 더 이상 현재 상태가 아니면 `missing_sensitive_approval`을 보고합니다.
-- 확인된 미해결 미기록 변경은 조정으로 해결될 때까지 닫기를 막습니다. 의심 변경은
-  경고나 검증 요청으로 남으며 `confirmed`로 승격되지 않는 한
-  `unresolved_unrecorded_changes`를 만들지 않습니다.
+- 미해결 Unrecorded Change는 조정으로 해결될 때까지 닫기를 막습니다. 저장소 관찰을
+  사용할 수 없다는 진단은 별도로 남고 `unresolved_unrecorded_changes`를 만들지
+  않습니다.
 - 현재 수락 기준 중 `evidence_requirement=required`인 항목만 증거 닫기
   요구사항을 만듭니다. 각 항목에는 현재 상태이고 대상이 일치하는 증거 관찰
   출처가 필요합니다. `optional`, `not_required`, 보충 대상, 폐기된 대상은
@@ -372,7 +372,7 @@ API 경계 블록:
 | `stale_cancellation_authority` | `user_action` | 취소 `UserActionResolution`은 있지만 그 `Task`, 범위 리비전, Change Unit 또는 유효 사용자 행동 근거가 더 이상 현재 상태가 아닙니다. |
 | `open_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 열려 있고 아직 해결되지 않았습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
-| `unresolved_unrecorded_changes` | `connection_capability` | 확인된 미해결 Product Repository 변경은 닫기 전에 조정해야 합니다. 의심 변경은 이 차단 사유를 만들지 않고 경고와 검증 요청을 만듭니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함합니다. |
+| `unresolved_unrecorded_changes` | `connection_capability` | 미해결 Unrecorded Change는 닫기 전에 조정해야 합니다. 저장소 관찰을 사용할 수 없다는 진단은 이 차단 사유를 만들지 않습니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함합니다. |
 | `evidence_claim_unsupported` | `evidence_claim` | 필요한 닫기 주장이 지원되는 증거 범위를 갖지 못했습니다. |
 | `evidence_claim_missing` | `evidence_claim` | 필요한 닫기 주장에 대한 현재 증거 범위 기록이 없습니다. |
 | `evidence_provenance_insufficient` | `evidence_provenance` | 필요한 닫기 증거는 있지만 충분한 현재 출처와 보장 수준 출처가 없습니다. |
@@ -414,14 +414,14 @@ API 경계 블록:
 | 분기 | 생성 규칙 |
 |---|---|
 | `volicord.check_close` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
-| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 활성이고 소비되지 않은 쓰기 티켓과 확인된 미해결 미기록 변경이 포함됩니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓 행은 그 자체로 차단하지 않습니다. |
+| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 활성이고 소비되지 않은 쓰기 티켓과 미해결 Unrecorded Change가 포함됩니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓 행은 그 자체로 차단하지 않습니다. |
 | `intent=cancel` | 취소 권한 누락이나 비호환을 포함해 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 취소를 막지 않습니다. |
 | `intent=supersede` | 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 대체를 막지 않습니다. |
 
 닫기 준비 상태의 미기록 변경 규칙:
 
-- 확인된 미해결 Product Repository 변경은 계속 보이고 닫기를 막습니다. 의심 변경은
-  닫기를 막지 않는 경고나 검증 요청으로 남습니다.
+- 미해결 Unrecorded Change는 계속 보이고 닫기를 막습니다. 저장소 관찰 불가 진단은
+  별도로 표시되며 이 차단 사유가 아닙니다.
 
 비주장:
 

@@ -16,8 +16,7 @@ use volicord_types::canonical::canonical_json_bare_sha256;
 use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
 use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
 use volicord_types::values::{
-    AcceptancePolicy, PromptCaptureStatus, UnrecordedChangeConfidence,
-    WriteTicketInvalidationReason, WriteTicketStatus,
+    AcceptancePolicy, PromptCaptureStatus, WriteTicketInvalidationReason, WriteTicketStatus,
 };
 
 use super::{
@@ -53,7 +52,6 @@ pub(super) struct GuardStateSummary {
     pub(super) pending_user_actions: Vec<GuardPendingUserActionSummary>,
     pub(super) active_blocker_count: usize,
     pub(super) unresolved_unrecorded_change_count: usize,
-    pub(super) suspected_unrecorded_change_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,14 +240,7 @@ pub(super) fn guard_state_summary(
         &project.project_id,
         Some(&envelope.connection_id),
     )?;
-    let unresolved_unrecorded_change_count = unresolved_unrecorded_changes
-        .iter()
-        .filter(|record| record.confidence == UnrecordedChangeConfidence::Confirmed)
-        .count();
-    let suspected_unrecorded_change_count = unresolved_unrecorded_changes
-        .iter()
-        .filter(|record| record.confidence == UnrecordedChangeConfidence::Suspected)
-        .count();
+    let unresolved_unrecorded_change_count = unresolved_unrecorded_changes.len();
     let _ = input.raw_text.len();
     Ok(GuardStateSummary {
         project_id: project.project_id.clone(),
@@ -271,7 +262,6 @@ pub(super) fn guard_state_summary(
         pending_user_actions,
         active_blocker_count,
         unresolved_unrecorded_change_count,
-        suspected_unrecorded_change_count,
     })
 }
 

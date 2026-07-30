@@ -698,24 +698,6 @@ impl UnrecordedChangeStatus {
     }
 }
 
-/// Confidence assigned to an observed unrecorded Product Repository change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum UnrecordedChangeConfidence {
-    Confirmed,
-    Suspected,
-}
-
-impl UnrecordedChangeConfidence {
-    /// Returns the stable value name for this confidence.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Confirmed => "confirmed",
-            Self::Suspected => "suspected",
-        }
-    }
-}
-
 /// Confidence of one mutation-effect observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -745,9 +727,6 @@ pub enum UnrecordedChangeResolutionBasis {
     CoveredByWriteTicket,
     RecordedAsExpectedWrite,
     AcceptedByUser,
-    NotProductChange,
-    SupersededByNewObservation,
-    InvalidObservation,
 }
 
 impl UnrecordedChangeResolutionBasis {
@@ -758,9 +737,6 @@ impl UnrecordedChangeResolutionBasis {
             Self::CoveredByWriteTicket => "covered_by_write_ticket",
             Self::RecordedAsExpectedWrite => "recorded_as_expected_write",
             Self::AcceptedByUser => "accepted_by_user",
-            Self::NotProductChange => "not_product_change",
-            Self::SupersededByNewObservation => "superseded_by_new_observation",
-            Self::InvalidObservation => "invalid_observation",
         }
     }
 }
@@ -2056,8 +2032,8 @@ mod tests {
 
     use super::{
         AuthorityNextActor, ErrorCode, FailureCategory, ObservationConfidence, ObservedEffectKind,
-        RequestedControlLevel, TaskControlLevel, UnrecordedChangeConfidence, UtcTimestamp,
-        WriteTicketEffect, WriteTicketInvalidationReason, WriteTicketState, WriteTicketStatus,
+        RequestedControlLevel, TaskControlLevel, UtcTimestamp, WriteTicketEffect,
+        WriteTicketInvalidationReason, WriteTicketState, WriteTicketStatus,
     };
 
     #[test]
@@ -2134,10 +2110,6 @@ mod tests {
             (
                 serde_json::to_value(WriteTicketInvalidationReason::WorkspaceChanged).unwrap(),
                 json!("workspace_changed"),
-            ),
-            (
-                serde_json::to_value(UnrecordedChangeConfidence::Suspected).unwrap(),
-                json!("suspected"),
             ),
             (
                 serde_json::to_value(ObservationConfidence::Structured).unwrap(),

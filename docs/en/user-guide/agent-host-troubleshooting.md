@@ -370,9 +370,10 @@ and rebuild disposable development state when appropriate.
 ## Unrecorded Changes
 
 An Unrecorded Change is a bounded observation, not actor attribution. Follow
-the returned reconciliation action. Guard suppression may remove only
-owner-defined matching paths; an `Unavailable` suppression outcome must remain
-visible and must not be treated as an empty successful suppression.
+the returned reconciliation action. It contains only the unmatched portion of
+a complete invocation-scoped repository delta. An unavailable observation must
+remain a separate diagnostic and must not be treated as an empty delta or path
+finding.
 
 ## Repair Managed Configuration
 

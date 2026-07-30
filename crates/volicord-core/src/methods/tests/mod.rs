@@ -23,8 +23,8 @@ use volicord_store::{
     diagnostics::read_core_rejection_diagnostics,
     evidence_capture::MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
     guards::{
-        insert_unrecorded_change, unrecorded_change, upsert_guard_installation,
-        GuardInstallationUpsert, UnrecordedChangeInsert, UnrecordedChangeRecord,
+        repository_observation_id, unrecorded_change, upsert_guard_installation,
+        GuardInstallationUpsert, UnrecordedChangeRecord,
     },
     workflow_records::{project_write_authority_fingerprint, ProjectWorkflowPolicyUpsert},
     RuntimeHomeMutationContext,
@@ -33,6 +33,10 @@ use volicord_test_support::{
     open_project_fixture_database, with_test_runtime_home_setup, TempRuntimeHome,
     TestRuntimeHomeMutation,
     TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+};
+use volicord_test_support::{
+    CanonicalToolName, CodexHookToolCorrelation, HostNativeCorrelation, HostSessionId,
+    HostToolUseId, HostTurnId,
 };
 use volicord_types::ids::{
     prefixed_durable_id, DurableIdError, DurableIdGenerator, DurableIdKind, IdempotencyKey,
@@ -1297,22 +1301,147 @@ fn insert_project_unrecorded_change(
     observed_paths_json: &str,
 ) -> Result<String, Box<dyn Error>> {
     let unrecorded_change_id = format!("unrecorded_change_{suffix}");
-    let context = harness.service.context();
-    insert_unrecorded_change(
-        &context,
-        project_id,
-        UnrecordedChangeInsert {
-            unrecorded_change_id: unrecorded_change_id.clone(),
-            correlation: None,
-            connection_internal_id: CONNECTION_ID.to_owned(),
+    let host_session_id = format!("host_session_{suffix}");
+    let host_turn_id = format!("host_turn_{suffix}");
+    let host_tool_use_id = format!("host_tool_use_{suffix}");
+    let correlation = HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+        session_id: HostSessionId::parse(&host_session_id)?,
+        turn_id: HostTurnId::parse(&host_turn_id)?,
+        tool_use_id: HostToolUseId::parse(&host_tool_use_id)?,
+        tool_name: CanonicalToolName::parse("apply_patch")?,
+    });
+    let session_id = format!("agent_session_{suffix}");
+    let repository_observation_id =
+        repository_observation_id(project_id, CONNECTION_ID, &session_id, &correlation)?;
+    let pre_event_id = format!("guard_pre_{suffix}");
+    let post_event_id = format!("guard_post_{suffix}");
+    let digest = format!(
+        "sha256:{:x}",
+        Sha256::digest(observed_paths_json.as_bytes())
+    );
+    let state_db_path =
+        volicord_store::sqlite::project_state_db_path(&harness.runtime_home_path, project_id);
+    let conn = open_project_fixture_database(state_db_path)?;
+    conn.execute(
+        "INSERT INTO host_sessions (
+            project_id, session_id, connection_internal_id,
+            project_integration_revision, host_session_id,
+            first_observed_at, last_observed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        rusqlite::params![
+            project_id,
+            session_id,
+            CONNECTION_ID,
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            host_session_id,
+            "2026-06-30T00:04:58Z",
+        ],
+    )?;
+    conn.execute(
+        "INSERT INTO host_turns (
+            project_id, session_id, connection_internal_id, host_turn_id,
+            first_observed_at, last_observed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+        rusqlite::params![
+            project_id,
+            session_id,
+            CONNECTION_ID,
+            host_turn_id,
+            "2026-06-30T00:04:58Z",
+        ],
+    )?;
+    conn.execute(
+        "INSERT INTO host_tool_invocations (
+            project_id, session_id, connection_internal_id, host_turn_id,
+            host_tool_use_id, host_tool_name, first_observed_at, last_observed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, 'apply_patch', ?6, ?6)",
+        rusqlite::params![
+            project_id,
+            session_id,
+            CONNECTION_ID,
+            host_turn_id,
+            host_tool_use_id,
+            "2026-06-30T00:04:58Z",
+        ],
+    )?;
+    for (event_id, event_kind, occurred_at) in [
+        (&pre_event_id, "pre_tool", "2026-06-30T00:04:59Z"),
+        (&post_event_id, "post_tool", "2026-06-30T00:05:00Z"),
+    ] {
+        conn.execute(
+            "INSERT INTO guard_events (
+                project_id, guard_event_id, session_id, connection_internal_id,
+                correlation_kind, host_turn_id, host_tool_use_id, host_tool_name,
+                guard_installation_id, policy_hash, integration_revision,
+                event_kind, contract_status, decision, subject_json, result_json,
+                occurred_at, metadata_json
+            ) VALUES (
+                ?1, ?2, ?3, ?4, 'codex_hook_tool', ?5, ?6, 'apply_patch',
+                ?7, ?8, ?9, ?10, 'compatible', 'allow', '{}', '{}', ?11, '{}'
+            )",
+            rusqlite::params![
+                project_id,
+                event_id,
+                session_id,
+                CONNECTION_ID,
+                host_turn_id,
+                host_tool_use_id,
+                format!("guard_installation_{suffix}"),
+                "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+                event_kind,
+                occurred_at,
+            ],
+        )?;
+    }
+    conn.execute(
+        "INSERT INTO repository_observations (
+            project_id, repository_observation_id, session_id,
+            connection_internal_id, host_turn_id, host_tool_use_id,
+            host_tool_name, guard_installation_id, observer_contract_digest,
+            pre_tool_guard_event_id, post_tool_guard_event_id, state,
+            pre_snapshot_json, pre_snapshot_digest, post_snapshot_json,
+            post_snapshot_digest, delta_json, delta_digest, started_at,
+            completed_at, terminal_result_json, metadata_json
+        ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, 'apply_patch', ?7, ?8, ?9, ?10,
+            'complete', '{}', ?11, '{}', ?12, ?13, ?14, ?15, ?16, '{}', '{}'
+        )",
+        rusqlite::params![
+            project_id,
+            repository_observation_id,
+            session_id,
+            CONNECTION_ID,
+            host_turn_id,
+            host_tool_use_id,
+            format!("guard_installation_{suffix}"),
+            "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            pre_event_id,
+            post_event_id,
+            "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            format!(r#"{{"paths":{observed_paths_json}}}"#),
+            digest,
+            "2026-06-30T00:04:59Z",
+            "2026-06-30T00:05:00Z",
+        ],
+    )?;
+    conn.execute(
+        "INSERT INTO unrecorded_changes (
+            project_id, unrecorded_change_id, repository_observation_id,
+            task_id, status, summary, observed_paths_json,
+            unmatched_delta_digest, detection_json, detected_at, metadata_json
+        ) VALUES (?1, ?2, ?3, ?4, 'unresolved', ?5, ?6, ?7, '{}', ?8, '{}')",
+        rusqlite::params![
+            project_id,
+            unrecorded_change_id,
+            repository_observation_id,
             task_id,
-            confidence: UnrecordedChangeConfidence::Confirmed,
-            summary: "Product Repository change observed outside a recorded run.".to_owned(),
-            observed_paths: serde_json::from_str(observed_paths_json)?,
-            detection: JsonObject::new(),
-            detected_at: UtcTimestamp::parse("2026-06-30T00:05:00Z")?,
-            metadata: JsonObject::new(),
-        },
+            "Observed unmatched Product Repository transition.",
+            observed_paths_json,
+            digest,
+            "2026-06-18T00:00:01Z",
+        ],
     )?;
     Ok(unrecorded_change_id)
 }
@@ -2028,44 +2157,6 @@ fn assert_close_blocker(response_value: &Value, code: &str) {
         codes.iter().any(|candidate| candidate == code),
         "expected close blocker code {code}, got {codes:?}"
     );
-}
-
-fn close_blocker_by_code<'a>(response_value: &'a Value, code: &str) -> &'a Value {
-    let blockers = response_value
-        .get("blockers")
-        .or_else(|| response_value.get("close_blockers"))
-        .expect("blockers or close_blockers should be present")
-        .as_array()
-        .expect("blockers should be an array");
-    blockers
-        .iter()
-        .find(|blocker| blocker["code"] == code)
-        .unwrap_or_else(|| panic!("expected close blocker code {code}, got {blockers:?}"))
-}
-
-fn assert_close_blocker_resolution(response_value: &Value, code: &str) {
-    let blocker = close_blocker_by_code(response_value, code);
-    assert!(blocker.get("can_resolve_in_chat").is_none());
-    assert!(blocker.get("outside_chat_action_required").is_none());
-    let next_actions = blocker["next_actions"]
-        .as_array()
-        .expect("guard blocker next_actions should be an array");
-    assert!(
-        !next_actions.is_empty(),
-        "guard blocker should include a next action: {blocker:?}"
-    );
-    for action in next_actions {
-        assert!(
-            action["owner_method"].is_string(),
-            "workflow next action must identify its retry owner: {action:?}"
-        );
-        assert!(
-            action["allowed_operation_categories"]
-                .as_array()
-                .is_some_and(|categories| !categories.is_empty()),
-            "workflow next action must identify an allowed operation category: {action:?}"
-        );
-    }
 }
 
 fn assert_no_close_blocker(response_value: &Value, code: &str) {

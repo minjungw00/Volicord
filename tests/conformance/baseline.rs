@@ -7,7 +7,6 @@ use volicord_core::{
     CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,
     PipelineResponse,
 };
-use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, choice_user_action_resolution, observation_user_action_resolution,
     supported_evidence_update, unsupported_evidence_update, ArtifactOwnerJsonColumn,
@@ -29,8 +28,7 @@ use volicord_types::values::{
     ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
     EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
     JudgmentResolutionOutcome, OperationCategory, ResponseKind, StateRecordKind,
-    UnrecordedChangeConfidence, UserActionChannelKind, UserActionOptionAction,
-    UserActionRequiredFor, UtcTimestamp,
+    UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
 };
 use volicord_user_action_service::PendingUserActionFactsRequest;
 
@@ -3995,21 +3993,136 @@ fn insert_unrecorded_change_fixture(
     task_id: &str,
     suffix: &str,
 ) -> Result<(), Box<dyn Error>> {
-    insert_unrecorded_change(
-        &fixture.mutation_context()?,
-        fixture.project_id(),
-        UnrecordedChangeInsert {
-            unrecorded_change_id: format!("unrecorded_change_{suffix}"),
-            correlation: None,
-            connection_internal_id: fixture.connection_id().to_owned(),
-            task_id: Some(task_id.to_owned()),
-            confidence: UnrecordedChangeConfidence::Confirmed,
-            summary: "Product Repository change observed outside a recorded run.".to_owned(),
-            observed_paths: vec!["src/export.rs".parse()?],
-            detection: JsonObject::new(),
-            detected_at: UtcTimestamp::parse("2026-06-30T00:05:00Z")?,
-            metadata: JsonObject::new(),
-        },
+    let connection_id = fixture.connection_id();
+    let project_id = fixture.project_id();
+    let session_id = format!("agent_session_{suffix}");
+    let host_session_id = format!("host_session_{suffix}");
+    let host_turn_id = format!("host_turn_{suffix}");
+    let host_tool_use_id = format!("host_tool_use_{suffix}");
+    let observation_id = format!("repository_observation_{suffix}");
+    let pre_event_id = format!("guard_pre_{suffix}");
+    let post_event_id = format!("guard_post_{suffix}");
+    let conn = fixture.mutation_conn()?;
+    conn.execute(
+        "INSERT INTO host_sessions (
+            project_id, session_id, connection_internal_id,
+            project_integration_revision, host_session_id,
+            first_observed_at, last_observed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        rusqlite::params![
+            project_id,
+            session_id,
+            connection_id,
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            host_session_id,
+            "2026-06-30T00:04:58Z",
+        ],
+    )?;
+    conn.execute(
+        "INSERT INTO host_turns (
+            project_id, session_id, connection_internal_id, host_turn_id,
+            first_observed_at, last_observed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+        rusqlite::params![
+            project_id,
+            session_id,
+            connection_id,
+            host_turn_id,
+            "2026-06-30T00:04:58Z",
+        ],
+    )?;
+    conn.execute(
+        "INSERT INTO host_tool_invocations (
+            project_id, session_id, connection_internal_id, host_turn_id,
+            host_tool_use_id, host_tool_name, first_observed_at, last_observed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, 'apply_patch', ?6, ?6)",
+        rusqlite::params![
+            project_id,
+            session_id,
+            connection_id,
+            host_turn_id,
+            host_tool_use_id,
+            "2026-06-30T00:04:58Z",
+        ],
+    )?;
+    for (event_id, event_kind, occurred_at) in [
+        (&pre_event_id, "pre_tool", "2026-06-30T00:04:59Z"),
+        (&post_event_id, "post_tool", "2026-06-30T00:05:00Z"),
+    ] {
+        conn.execute(
+            "INSERT INTO guard_events (
+                project_id, guard_event_id, session_id, connection_internal_id,
+                correlation_kind, host_turn_id, host_tool_use_id, host_tool_name,
+                guard_installation_id, policy_hash, integration_revision,
+                event_kind, contract_status, decision, subject_json, result_json,
+                occurred_at, metadata_json
+            ) VALUES (
+                ?1, ?2, ?3, ?4, 'codex_hook_tool', ?5, ?6, 'apply_patch',
+                ?7, ?8, ?9, ?10, 'compatible', 'allow', '{}', '{}', ?11, '{}'
+            )",
+            rusqlite::params![
+                project_id,
+                event_id,
+                session_id,
+                connection_id,
+                host_turn_id,
+                host_tool_use_id,
+                format!("guard_installation_{suffix}"),
+                "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+                event_kind,
+                occurred_at,
+            ],
+        )?;
+    }
+    conn.execute(
+        "INSERT INTO repository_observations (
+            project_id, repository_observation_id, session_id,
+            connection_internal_id, host_turn_id, host_tool_use_id,
+            host_tool_name, guard_installation_id, observer_contract_digest,
+            pre_tool_guard_event_id, post_tool_guard_event_id, state,
+            pre_snapshot_json, pre_snapshot_digest, post_snapshot_json,
+            post_snapshot_digest, delta_json, delta_digest, started_at,
+            completed_at, terminal_result_json, metadata_json
+        ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, 'apply_patch', ?7, ?8, ?9, ?10,
+            'complete', '{}', ?11, '{}', ?12, ?13, ?14, ?15, ?16, '{}', '{}'
+        )",
+        rusqlite::params![
+            project_id,
+            observation_id,
+            session_id,
+            connection_id,
+            host_turn_id,
+            host_tool_use_id,
+            format!("guard_installation_{suffix}"),
+            "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            pre_event_id,
+            post_event_id,
+            "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            r#"{"paths":["src/export.rs"]}"#,
+            "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+            "2026-06-30T00:04:59Z",
+            "2026-06-30T00:05:00Z",
+        ],
+    )?;
+    conn.execute(
+        "INSERT INTO unrecorded_changes (
+            project_id, unrecorded_change_id, repository_observation_id,
+            task_id, status, summary, observed_paths_json,
+            unmatched_delta_digest, detection_json, detected_at, metadata_json
+        ) VALUES (?1, ?2, ?3, ?4, 'unresolved', ?5, ?6, ?7, '{}', ?8, '{}')",
+        rusqlite::params![
+            project_id,
+            format!("unrecorded_change_{suffix}"),
+            observation_id,
+            task_id,
+            "Observed unmatched Product Repository transition.",
+            r#"["src/export.rs"]"#,
+            "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+            "2026-06-30T00:05:00Z",
+        ],
     )?;
     Ok(())
 }

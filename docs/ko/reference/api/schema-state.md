@@ -304,7 +304,6 @@ Product Repository 변경에 대해 반환하는 공개 형태입니다.
 UnrecordedChangeFinding:
   unrecorded_change_ref: StateRecordRef
   status: string
-  confidence: string
   summary: string
   observed_paths: string[]
   detected_at: string
@@ -323,10 +322,12 @@ UnrecordedChangeResolutionSummary:
 
 - `unrecorded_change_ref`는 `record_kind=unrecorded_change`인 `StateRecordRef`를 사용합니다.
 - `status`는 제어 값 문자열입니다.
-- `confidence`는 `confirmed` 또는 `suspected`입니다. 미해결 `confirmed` finding만
-  닫기 차단 사유이며 `suspected` finding은 검증 대상으로 계속 보입니다.
+- 모든 미해결 finding은 완전히 관찰된 비어 있지 않은 불일치 저장소 delta를
+  근거로 하며 닫기 차단 사유입니다.
 - `summary`, `capture_basis`, `next_action.label`은 표시 문자열이며 정확성 증명이 아닙니다.
-- `observed_paths`는 Core가 안전하게 디코딩할 수 있을 때 Product Repository 상대 경로를 담습니다. 프롬프트 텍스트, 명령 텍스트, 셸 인수, 전체 민감 내용을 포함하지 않습니다.
+- `observed_paths`는 정확한 관찰의 불일치 delta에서 decode한 비어 있지 않은 정규
+  Product Repository 상대 경로 집합을 담습니다. 프롬프트 텍스트, 명령 텍스트,
+  셸 인수, 전체 민감 내용을 포함하지 않습니다.
 - `resolution_basis`는 미기록 변경이 해결된 이유를 분류합니다.
 - `resolved_by_actor_source=system`은 Core가 결정적 basis를 검증했다는 뜻입니다. `resolved_by_actor_source=local_user`는 호환 User Channel 판단이 권한을 제공했다는 뜻입니다.
 - `user_action_resolution_ref`는 사용자 소유 수락 해결일 때만 null이 아닙니다.

@@ -86,8 +86,7 @@ impl CoreProjectStore<'_> {
             "SELECT {UNRECORDED_CHANGE_OBSERVATION_COLUMNS}
                FROM unrecorded_changes
               WHERE project_id = ?1
-                AND task_id = ?2
-                AND confidence = 'confirmed'"
+                AND task_id = ?2"
         );
         let mut unrecorded = self.conn.prepare(&unrecorded_sql)?;
         let rows =

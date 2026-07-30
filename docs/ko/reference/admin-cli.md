@@ -1580,9 +1580,9 @@ volicord export authority-bundle --output "<path>" --repo "<repo>"
 volicord changes reconcile --repo "<repo>"
 ```
 
-조정은 공개 `volicord.reconcile_changes` 동작을 로컬 관리 흐름에 투영합니다. Guard
-suppression 실패는 명시적으로 남으며 `Unavailable` 결과를 비어 있는 성공으로 표시하지
-않습니다.
+조정은 공개 `volicord.reconcile_changes` 동작을 로컬 관리 흐름에 투영합니다. 저장소
+관찰을 사용할 수 없다는 진단은 별도로 명시하며 완전한 빈 delta나 Unrecorded Change로
+표시하지 않습니다.
 
 <a id="user-channel-commands"></a>
 ## User Channel 명령

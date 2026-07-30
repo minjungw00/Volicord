@@ -564,7 +564,6 @@ struct WorkflowMetricsReport {
     scope: &'static str,
     storage: DiagnosticsStorageReport,
     duration_measurements: WorkflowDurationMeasurements,
-    confirmed_unrecorded_false_positive_rate: WorkflowRateMeasurement,
     aggregates: Vec<WorkflowMetricAggregateRow>,
     redaction: WorkflowMetricsRedactionReport,
     authority_isolation: AuthorityIsolationReport,
@@ -592,14 +591,6 @@ struct WorkflowDistribution {
 }
 
 #[derive(Debug, Serialize)]
-struct WorkflowRateMeasurement {
-    status: &'static str,
-    numerator: Option<u64>,
-    denominator: Option<u64>,
-    value: Option<f64>,
-}
-
-#[derive(Debug, Serialize)]
 struct WorkflowMetricsRedactionReport {
     aggregate_only: bool,
     stores_or_returns_command_prompt_path_content_or_user_answer: bool,
@@ -611,33 +602,6 @@ fn workflow_metrics_report(
     let task_duration = distribution_measurement(&rows, "task_duration_micros");
     let first_write_duration =
         distribution_measurement(&rows, "first_product_write_duration_micros");
-    let false_positive_rows = rows
-        .iter()
-        .filter(|row| row.metric_kind == "confirmed_unrecorded_false_positive")
-        .collect::<Vec<_>>();
-    let false_positive_numerator = false_positive_rows
-        .iter()
-        .map(|row| row.value_total)
-        .sum::<u64>();
-    let classified_confirmed_findings = false_positive_rows
-        .iter()
-        .map(|row| row.sample_count)
-        .sum::<u64>();
-    let false_positive_rate = if classified_confirmed_findings > 0 {
-        WorkflowRateMeasurement {
-            status: "available",
-            numerator: Some(false_positive_numerator),
-            denominator: Some(classified_confirmed_findings),
-            value: Some(false_positive_numerator as f64 / classified_confirmed_findings as f64),
-        }
-    } else {
-        WorkflowRateMeasurement {
-            status: "measurement_pending",
-            numerator: None,
-            denominator: None,
-            value: None,
-        }
-    };
     Ok(WorkflowMetricsReport {
         status: if rows.is_empty() {
             "no_data"
@@ -650,7 +614,6 @@ fn workflow_metrics_report(
             task_duration_micros: task_duration,
             first_product_write_duration_micros: first_write_duration,
         },
-        confirmed_unrecorded_false_positive_rate: false_positive_rate,
         aggregates: rows,
         redaction: WorkflowMetricsRedactionReport {
             aggregate_only: true,
@@ -1292,10 +1255,6 @@ mod tests {
             report["duration_measurements"]["task_duration_micros"]["status"],
             "measurement_pending"
         );
-        assert_eq!(
-            report["confirmed_unrecorded_false_positive_rate"]["status"],
-            "measurement_pending"
-        );
         assert!(report["aggregates"]
             .as_array()
             .expect("aggregates")
@@ -1364,23 +1323,6 @@ mod tests {
             },
         )
         .expect("observation");
-        for sample in [0_u64, 1] {
-            record_workflow_metric_event(
-                &fixture.mutation_context().expect("mutation context"),
-                &WorkflowMetricEvent {
-                    session_id: session_id.clone(),
-                    metric_kind: WorkflowMetricKind::ConfirmedUnrecordedFalsePositive,
-                    value: sample,
-                    method_name: None,
-                    integration_profile: Some(IntegrationProfile::Record),
-                    decision: None,
-                    observation_confidence: None,
-                    outcome: None,
-                },
-            )
-            .expect("binary false-positive sample");
-        }
-
         let output = run_diagnostics_command(
             workflow_metrics_args(&fixture.product_repo_path()),
             env_for(fixture.runtime_home_path()),
@@ -1400,22 +1342,6 @@ mod tests {
         assert_eq!(
             report["duration_measurements"]["first_product_write_duration_micros"]["status"],
             "measurement_pending"
-        );
-        assert_eq!(
-            report["confirmed_unrecorded_false_positive_rate"]["status"],
-            "available"
-        );
-        assert_eq!(
-            report["confirmed_unrecorded_false_positive_rate"]["numerator"],
-            1
-        );
-        assert_eq!(
-            report["confirmed_unrecorded_false_positive_rate"]["denominator"],
-            2
-        );
-        assert_eq!(
-            report["confirmed_unrecorded_false_positive_rate"]["value"],
-            0.5
         );
         assert!(report["aggregates"]
             .as_array()

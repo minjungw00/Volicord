@@ -294,6 +294,10 @@ pub(crate) fn validated_agent_session_for_test_with_project_session(
                 "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             guard_installation_id: None,
             guard_policy_hash: None,
+            repository_observer_contract_digest:
+                "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            product_repository_effect_catalog_digest:
+                "sha256:4444444444444444444444444444444444444444444444444444444444444444",
         },
     )
     .expect("test project revision must be valid");

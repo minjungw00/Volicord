@@ -18,7 +18,7 @@
 - API 스키마 묶음: [API 코어 스키마](api/schema-core.md), [상태 스키마](api/schema-state.md), [아티팩트 스키마](api/schema-artifacts.md), [사용자 행동 스키마](api/schema-user-action.md), [판단 스키마](api/schema-judgment.md), [값 집합](api/schema-value-sets.md).
 - API 오류 묶음: [API 오류](api/errors.md). 오류 코드, 우선순위, 응답 처리 경로, 차단 사유 처리 경로, 기계 판독 세부사항으로 안내합니다.
 - 제품 전체 실패 범주와 영속 데이터 실패 경계: [실패 모델](failure-model.md).
-- 보수적인 기록 변경 억제 결과와 진단: [Guard 기록 변경 억제](guard-suppression.md).
+- 호출 범위 Product Repository 스냅샷, 결정적인 delta, 정확한 예상 쓰기 일치: [저장소 관찰](repository-observation.md).
 - 저장소 묶음: [저장소](storage.md). 기록, DDL, 효과, 아티팩트, 버전 관리로 안내합니다.
 - 연결, 상태 보기, 표시 경로: Agent Connection, Connection Projects, 현재 연결 맥락은 [Agent Connection 참조](agent-connection.md), User Channel과 런타임 위치 경계는 [런타임 경계](runtime-boundaries.md), 작업 범주 비보장은 [보안](security.md), 상태 보기는 [상태 보기와 템플릿](projection-and-templates.md), 렌더링 문구는 [템플릿 본문](template-bodies.md)에 있습니다.
 - 품질과 검증 경로: [적합성](conformance.md), [설계 품질](design-quality.md), 행동 기반 호스트 관찰은 [Agent Connection](agent-connection.md), 그 밖에는 질문에 맞는 메서드 또는 Core 담당 문서.
@@ -34,7 +34,7 @@
 - 사용자 행동 inbox CLI 동작은 [관리 CLI](admin-cli.md)에, User Channel과 Agent Connection 경계는 [Agent Connection 참조](agent-connection.md)에, inbox item 형태는 [사용자 행동 스키마](api/schema-user-action.md)에 있습니다.
 - 공개 오류 코드 의미는 [API 오류 코드](api/error-codes.md)에, 오류 우선순위는 [API 오류 우선순위](api/error-precedence.md)에, 응답 분기 처리 경로는 [API 오류 처리 경로](api/error-routing.md)에, 기계 판독용 오류 세부사항은 [API 오류 세부사항](api/error-details.md)에 있습니다.
 - 공통 Git 객체 ID 검증과 canonicalization은 [외부 계약](external-contracts.md)이 담당합니다. 구조적 거부, 정책상 비허용, 사용 불가, 저하, 손상을 여러 표면에서 구분하는 의미는 [실패 모델](failure-model.md)이 담당하며, API 응답 표시는 계속 API 오류 담당 문서에 남습니다.
-- 기록 변경 억제 결과, scan budget, fail-safe 경로와 reason 식별자는 [Guard 기록 변경 억제](guard-suppression.md)가 담당합니다.
+- 저장소 관찰 상태, 정확한 호출 상관관계, 관찰 불가 결과, 불일치 delta 생성은 [저장소 관찰](repository-observation.md)이 담당합니다.
 - 관리용 `volicord` 명령은 로컬 부트스트랩 명령이며 공개 Volicord API 메서드가 아닙니다. `volicord mcp serve`는 별도의 두 번째 메서드 목록을 담당하지 않고 수동 MCP stdio를 통해 공개 메서드 집합을 노출합니다.
 - 용어 조회는 선별된 독자용 용어를 다루는 [용어집](glossary.md)에서 시작하고, 구조화 용어와 식별자 통제는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을 사용합니다.
 

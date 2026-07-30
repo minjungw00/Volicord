@@ -154,12 +154,15 @@ The local CLI inbox reads the strict stored form and calls
 separate user-only mutation and never replaces the original request result.
 Guard prompt observations remain observations.
 
-## Guard Suppression
+## Invocation-Scoped Repository Observation
 
-Reconciliation calls the bounded suppression service. `Applied` contains exact
-remaining paths and suppression records. `Unavailable` preserves all observed
-paths, reason, scan budget, and observed count. Store failure or corrupt
-correlation never becomes an empty success.
+Pre-tool handling atomically records the exact Codex invocation, Guard event,
+stable Product Repository baseline, and any exact expected write before a
+write-capable or unknown-effect invocation is allowed. Post-tool handling
+closes that same observation with a stable outcome and deterministic net delta.
+Only the non-empty portion of a complete delta not covered by that invocation's
+expected write becomes an Unrecorded Change. An unavailable observation remains
+an explicit diagnostic and never becomes an empty delta or a path finding.
 
 ## Response Projection
 
@@ -178,4 +181,4 @@ validation.
 - [API Methods](../reference/api/methods.md)
 - [Storage Effects](../reference/storage-effects.md)
 - [Failure Model](../reference/failure-model.md)
-- [Guard Suppression](../reference/guard-suppression.md)
+- [Repository Observation](../reference/repository-observation.md)

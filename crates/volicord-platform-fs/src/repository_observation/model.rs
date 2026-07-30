@@ -111,7 +111,8 @@ impl InvocationObservationPaths {
 pub struct SemanticObserverContractDigest(String);
 
 impl SemanticObserverContractDigest {
-    pub(crate) fn for_limits(limits: &ObserverLimits) -> Self {
+    /// Derives the semantic observer identity for an exact limit set.
+    pub fn for_limits(limits: &ObserverLimits) -> Self {
         let mut encoder = CanonicalEncoder::new();
         encoder.string(OBSERVER_CONTRACT_NAME);
         encoder.string(OBSERVER_CONTRACT_REVISION);
@@ -225,6 +226,28 @@ impl RepositoryObservationCheckpoint {
     pub fn invocation_paths(&self) -> &BTreeSet<ProductRelativePath> {
         &self.invocation_paths
     }
+
+    /// Deterministic canonical bytes for the portable snapshot.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, ObservationUnavailable> {
+        validate_checkpoint(self)?;
+        Ok(encode_snapshot(
+            &self.contract_digest,
+            &self.coordinate,
+            &self.observed_states,
+            &self.status_paths,
+            &self.invocation_paths,
+        ))
+    }
+
+    /// Deterministic content identity for the portable snapshot.
+    pub fn semantic_digest(&self) -> Result<ContentIdentity, ObservationUnavailable> {
+        Ok(ContentIdentity::for_bytes(&self.canonical_bytes()?))
+    }
+
+    /// Observer semantic contract used to capture this snapshot.
+    pub fn contract_digest(&self) -> &SemanticObserverContractDigest {
+        &self.contract_digest
+    }
 }
 
 /// Stable invocation-scoped repository observation.
@@ -263,24 +286,13 @@ impl RepositoryObservationSnapshot {
                 "the configured serialization depth cannot represent a repository snapshot",
             ));
         }
-        let mut encoder = CanonicalEncoder::new();
-        encoder.string("repository_snapshot");
-        encoder.string(self.contract_digest.as_str());
-        encode_coordinate(&mut encoder, &self.coordinate);
-        encoder.usize(self.observed_states.len());
-        for (path, state) in &self.observed_states {
-            encoder.string(path.as_str());
-            encode_path_state(&mut encoder, state);
-        }
-        encoder.usize(self.status_paths.len());
-        for path in &self.status_paths {
-            encoder.string(path.as_str());
-        }
-        encoder.usize(self.invocation_paths.len());
-        for path in &self.invocation_paths {
-            encoder.string(path.as_str());
-        }
-        let bytes = encoder.finish();
+        let bytes = encode_snapshot(
+            &self.contract_digest,
+            &self.coordinate,
+            &self.observed_states,
+            &self.status_paths,
+            &self.invocation_paths,
+        );
         if bytes.len() > self.limits.max_serialized_bytes() {
             return Err(ObservationUnavailable::new(
                 ObservationUnavailableReason::SerializationSizeLimitExceeded,
@@ -308,7 +320,8 @@ impl RepositoryObservationSnapshot {
 }
 
 /// One exact before/after transition for a Product Repository path.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RepositoryPathTransition {
     path: ProductRelativePath,
     before: ProductPathState,
@@ -365,6 +378,21 @@ impl RepositoryDelta {
         self.transitions.is_empty()
     }
 
+    /// Retains only transitions whose paths occur in `paths`.
+    ///
+    /// The result preserves the canonical ordering and exact before/after states
+    /// from this complete delta.
+    pub fn restricted_to(&self, paths: &BTreeSet<ProductRelativePath>) -> Self {
+        Self {
+            transitions: self
+                .transitions
+                .iter()
+                .filter(|transition| paths.contains(transition.path()))
+                .cloned()
+                .collect(),
+        }
+    }
+
     /// Deterministic canonical bytes for this delta.
     pub fn canonical_bytes(&self) -> Vec<u8> {
         let mut encoder = CanonicalEncoder::new();
@@ -384,8 +412,40 @@ impl RepositoryDelta {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RepositoryDeltaWire {
+    transitions: Vec<RepositoryPathTransition>,
+}
+
+impl<'de> Deserialize<'de> for RepositoryDelta {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = RepositoryDeltaWire::deserialize(deserializer)?;
+        let mut previous: Option<&ProductRelativePath> = None;
+        for transition in &wire.transitions {
+            if transition.before == transition.after {
+                return Err(de::Error::custom(
+                    "repository delta contains a no-op transition",
+                ));
+            }
+            if previous.is_some_and(|path| path >= &transition.path) {
+                return Err(de::Error::custom(
+                    "repository delta paths are not strictly sorted",
+                ));
+            }
+            previous = Some(&transition.path);
+        }
+        Ok(Self {
+            transitions: wire.transitions,
+        })
+    }
+}
+
 /// Closed reason exact repository observation could not be completed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservationUnavailableReason {
     InvalidObserverLimits,
@@ -414,6 +474,33 @@ pub enum ObservationUnavailableReason {
 }
 
 impl ObservationUnavailableReason {
+    /// All current closed unavailable reasons.
+    pub const ALL: [Self; 23] = [
+        Self::InvalidObserverLimits,
+        Self::InvalidRepositoryRoot,
+        Self::NotGitRepository,
+        Self::GitLayoutUnavailable,
+        Self::GitCommandUnavailable,
+        Self::GitCommandFailed,
+        Self::ProcessTimeout,
+        Self::GitOutputLimitExceeded,
+        Self::ProcessInputLimitExceeded,
+        Self::CandidatePathLimitExceeded,
+        Self::TotalHashBytesLimitExceeded,
+        Self::FileSizeLimitExceeded,
+        Self::SerializationDepthLimitExceeded,
+        Self::SerializationSizeLimitExceeded,
+        Self::InvalidRelativePath,
+        Self::NonUtf8Path,
+        Self::PathOutsideRepository,
+        Self::InaccessiblePath,
+        Self::UnsupportedPathState,
+        Self::UnstableRepository,
+        Self::RepositoryIdentityChanged,
+        Self::ObserverContractMismatch,
+        Self::GitObjectUnavailable,
+    ];
+
     /// Stable implementation-facing reason.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -441,6 +528,13 @@ impl ObservationUnavailableReason {
             Self::ObserverContractMismatch => "observer_contract_mismatch",
             Self::GitObjectUnavailable => "git_object_unavailable",
         }
+    }
+
+    /// Parses one exact current unavailable reason.
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|reason| reason.as_str() == value)
     }
 }
 
@@ -556,6 +650,33 @@ fn encode_coordinate(encoder: &mut CanonicalEncoder, coordinate: &RepositoryObse
     encoder.optional_string(coordinate.head_oid.as_deref());
     encoder.optional_string(coordinate.tree_oid.as_deref());
     encoder.string(&coordinate.status_identity);
+}
+
+fn encode_snapshot(
+    contract_digest: &SemanticObserverContractDigest,
+    coordinate: &RepositoryObservationCoordinate,
+    observed_states: &BTreeMap<ProductRelativePath, ProductPathState>,
+    status_paths: &BTreeSet<ProductRelativePath>,
+    invocation_paths: &BTreeSet<ProductRelativePath>,
+) -> Vec<u8> {
+    let mut encoder = CanonicalEncoder::new();
+    encoder.string("repository_snapshot");
+    encoder.string(contract_digest.as_str());
+    encode_coordinate(&mut encoder, coordinate);
+    encoder.usize(observed_states.len());
+    for (path, state) in observed_states {
+        encoder.string(path.as_str());
+        encode_path_state(&mut encoder, state);
+    }
+    encoder.usize(status_paths.len());
+    for path in status_paths {
+        encoder.string(path.as_str());
+    }
+    encoder.usize(invocation_paths.len());
+    for path in invocation_paths {
+        encoder.string(path.as_str());
+    }
+    encoder.finish()
 }
 
 fn encode_path_state(encoder: &mut CanonicalEncoder, state: &ProductPathState) {

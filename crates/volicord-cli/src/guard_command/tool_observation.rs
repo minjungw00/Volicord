@@ -16,7 +16,6 @@ use super::{
 pub(super) struct ToolObservation {
     pub(super) tool_name: Option<String>,
     pub(super) identity: GuardToolIdentity,
-    pub(super) host_invocation_id: Option<String>,
     pub(super) command: Option<String>,
     pub(super) prospective_effect: ProductRepositoryEffect,
     pub(super) target_path_unavailable_reason: Option<ToolTargetPathUnavailableReason>,
@@ -30,26 +29,6 @@ pub(super) struct ToolObservation {
 }
 
 impl ToolObservation {
-    pub(super) fn deterministic_write_attempt(&self) -> bool {
-        self.prospective_effect == ProductRepositoryEffect::MayWriteProduct
-            && !self.structured_paths.is_empty()
-    }
-
-    pub(super) fn deterministic_product_write_attempt(&self) -> bool {
-        self.deterministic_write_attempt()
-            && self.structured_paths.iter().any(|path| path.inside_repo)
-    }
-
-    pub(super) fn confidence(&self) -> &'static str {
-        if self.changed_paths_reported {
-            "confirmed"
-        } else if self.prospective_effect != ProductRepositoryEffect::UnknownProductEffect {
-            "structured"
-        } else {
-            "unknown"
-        }
-    }
-
     pub(super) fn observed_effect(&self) -> &'static str {
         if self.changed_paths.iter().any(|path| path.inside_repo) {
             "product_file_write"
@@ -138,7 +117,6 @@ pub(super) fn tool_observation(
     Ok(ToolObservation {
         tool_name: Some(correlation.tool_name.as_str().to_owned()),
         identity: assessment.identity().clone(),
-        host_invocation_id: Some(correlation.tool_use_id.as_str().to_owned()),
         command: assessment.command().map(str::to_owned),
         prospective_effect: assessment.effect(),
         target_path_unavailable_reason,
@@ -246,7 +224,6 @@ mod tests {
                 observation.prospective_effect,
                 ProductRepositoryEffect::NoProductWrite
             );
-            assert!(!observation.deterministic_write_attempt());
         }
     }
 }

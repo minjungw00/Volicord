@@ -15,9 +15,10 @@ use crate::ids::{
     AcceptanceCriterionId, AgentConnectionId, AgentSessionId, ArtifactId, ArtifactInputId,
     BaselineRef, ChangeUnitId, EventId, EvidenceCaptureIntentId, EvidenceCaptureReceiptId,
     EvidenceClaimId, EvidenceObservationId, EvidenceProducerId, GuardEventId, GuardInstallationId,
-    IdempotencyKey, ProjectContinuityRecordId, ProjectId, PromptCaptureId, RecordId, RequestId,
-    RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId,
-    UserActionOptionId, UserActionRequestId, UserActionResolutionId, WriteTicketId,
+    IdempotencyKey, ProjectContinuityRecordId, ProjectId, PromptCaptureId, RecordId,
+    RepositoryObservationId, RequestId, RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId,
+    UnrecordedChangeId, UserActionOptionId, UserActionRequestId, UserActionResolutionId,
+    WriteTicketId,
 };
 use crate::product_path::ProductRelativePath;
 use crate::values::{
@@ -34,12 +35,12 @@ use crate::values::{
     PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, RedactionState, ResponseKind,
     RunKind, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
-    TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeConfidence,
-    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus,
-    UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-    UserActionStatus, UserActionVerificationBasis, UtcTimestamp, ValidatorSeverity,
-    ValidatorStatus, WorkPhase, WorkspaceVcs, WriteDecisionCategory, WriteTicketInvalidationReason,
-    WriteTicketState, WriteTicketStatus, PUBLIC_ERROR_CODE_CONTRACTS,
+    TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
+    UnrecordedChangeStatus, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis,
+    UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
+    WriteDecisionCategory, WriteTicketInvalidationReason, WriteTicketState, WriteTicketStatus,
+    PUBLIC_ERROR_CODE_CONTRACTS,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -1552,12 +1553,13 @@ pub struct PromptCapture {
 #[serde(deny_unknown_fields)]
 pub struct UnrecordedChange {
     pub unrecorded_change_id: UnrecordedChangeId,
+    pub repository_observation_id: RepositoryObservationId,
+    pub unmatched_delta_digest: String,
     pub project_id: ProjectId,
     pub session_id: RequiredNullable<AgentSessionId>,
     pub connection_id: AgentConnectionId,
     pub task_id: RequiredNullable<TaskId>,
     pub status: UnrecordedChangeStatus,
-    pub confidence: UnrecordedChangeConfidence,
     pub summary: String,
     pub observed_paths: Vec<String>,
     pub detection: JsonObject,
@@ -1574,7 +1576,6 @@ pub struct UnrecordedChange {
 pub struct UnrecordedChangeFinding {
     pub unrecorded_change_ref: StateRecordRef,
     pub status: UnrecordedChangeStatus,
-    pub confidence: UnrecordedChangeConfidence,
     pub summary: String,
     pub observed_paths: Vec<String>,
     pub detected_at: UtcTimestamp,

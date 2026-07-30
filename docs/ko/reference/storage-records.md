@@ -467,10 +467,13 @@ row는 proof evidence로 남지만 더 최신 failed attempt를 덮지 못합니
 managed MCP role과 같은 runtime session을 중복 제거하고 관련 verification ID를 모두
 보존합니다.
 
-Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guard suppression은
-제한된 정규 correlation 데이터만 읽고 정확한 `SuppressionOutcome`을 반환합니다. Store
-읽기 실패, 손상된 기록, budget 소진, 유효하지 않은 correlation은 `Unavailable`이며
-관찰 경로를 숨기지 않습니다.
+Repository observation, expected write, Unrecorded Change 기록은 프로젝트
+로컬입니다. 관찰 하나는 정규화한 프로젝트, Connection, host session, host turn, hook
+tool-use ID, 정규 tool-name 좌표에서 유일합니다. `open`에는 검증한 baseline이,
+`complete`에는 검증한 post snapshot과 결정적인 delta가 필요하며, `unavailable`에는
+닫힌 reason이 필요하고 완전한 delta가 없습니다. Expected write는 각각 그 정확한
+관찰에 속합니다. Unrecorded Change는 관찰에 연결되고 비어 있지 않은 정규 path 집합과
+unmatched-delta digest를 저장합니다.
 
 Prompt 관찰은 제한된 관찰 schema 아래에서만 저장할 수 있습니다. 사용자 choice,
 resolution 본문, 비공개 resolution form, credential을 담지 않습니다.

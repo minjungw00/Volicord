@@ -1,18 +1,39 @@
 use serde_json::Value;
 use volicord_platform_fs::RepositoryObservationCheckpoint;
+use volicord_store::guards::{
+    PostToolRepositoryObservationOutcome, RepositoryExpectedWriteInsert,
+    RepositoryObservationUnavailableReason,
+};
 use volicord_types::guard_outcome::GuardPolicyDecision;
-
-use self::pre_tool::ExpectedWriteCandidate;
+use volicord_types::schema::JsonObject;
 
 pub(super) mod post_tool;
 pub(super) mod pre_tool;
 
 #[derive(Debug, Clone)]
+pub(super) enum RepositoryObservationMutation {
+    Pre {
+        repository_observation_id: String,
+        observer_contract_digest: String,
+        checkpoint: Option<Box<RepositoryObservationCheckpoint>>,
+        unavailable_reason: Option<RepositoryObservationUnavailableReason>,
+        expected_write: Option<RepositoryExpectedWriteInsert>,
+        metadata: JsonObject,
+    },
+    Post {
+        repository_observation_id: String,
+        observer_contract_digest: String,
+        outcome: PostToolRepositoryObservationOutcome,
+        task_id: Option<String>,
+        metadata: JsonObject,
+    },
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct GuardPhaseResult {
     pub(super) decision: GuardPolicyDecision,
     pub(super) result: Value,
-    pub(super) expected_write: Option<ExpectedWriteCandidate>,
-    pub(super) repository_observation_checkpoint: Option<RepositoryObservationCheckpoint>,
+    pub(super) repository_observation: Option<RepositoryObservationMutation>,
 }
 
 impl GuardPhaseResult {
@@ -20,29 +41,19 @@ impl GuardPhaseResult {
         Self {
             decision,
             result,
-            expected_write: None,
-            repository_observation_checkpoint: None,
+            repository_observation: None,
         }
     }
 
-    pub(super) fn with_expected_write(
+    pub(super) fn with_repository_observation(
         decision: GuardPolicyDecision,
         result: Value,
-        expected_write: Option<ExpectedWriteCandidate>,
+        repository_observation: RepositoryObservationMutation,
     ) -> Self {
         Self {
             decision,
             result,
-            expected_write,
-            repository_observation_checkpoint: None,
+            repository_observation: Some(repository_observation),
         }
-    }
-
-    pub(super) fn with_repository_observation_checkpoint(
-        mut self,
-        checkpoint: Option<RepositoryObservationCheckpoint>,
-    ) -> Self {
-        self.repository_observation_checkpoint = checkpoint;
-        self
     }
 }

@@ -112,7 +112,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/core_pipeline/mutations.rs` | Grouped `CoreStorageMutation` routing, static aggregate dispatch, transaction-scoped mutation context, and typed aggregate application results. |
 | `crates/volicord-store/src/core_pipeline/commit.rs` | Replay and freshness gates, ordered aggregate delegation, one state-version advance and canonical commit timestamp, atomic event/replay/response persistence, rollback, and final commit outcome. |
 | `crates/volicord-store/src/core_pipeline/validation.rs` | Persisted-value and mutation-input validation shared by current Store owners. |
-| `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
+| `crates/volicord-store/src/guards.rs` and `crates/volicord-store/src/guards/repository_observation.rs` | Typed host-correlation normalization, MCP-only project anchors, prompt captures, and atomic invocation-scoped repository observations with exact expected-write matching. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent and producer records. |
 | `crates/volicord-store/src/artifacts.rs` | Artifact staging and durable body validation. |
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home selection and path-boundary validation, including propagation of typed platform diagnostics across runtime-path failures. |

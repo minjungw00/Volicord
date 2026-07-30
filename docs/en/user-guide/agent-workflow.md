@@ -235,10 +235,11 @@ malicious.
 
 Use `volicord.reconcile_changes` when available. If MCP is unavailable, route
 the user to `volicord changes reconcile`. Any user acceptance must go through a
-supported User Channel. Preserve the reported confidence: a suspected change
-calls for verification, not an agent-authored promotion to confirmed state.
-Report the Close Status and next action projected by the owner rather than
-turning every uncertain observation into a blocker.
+supported User Channel. The finding represents only the complete unmatched
+Product Repository delta during one exact invocation window; it does not
+attribute an actor or exclusive cause. Observation-unavailable diagnostics are
+separate and must not be restated as path findings. Report the Close Status and
+next action projected by the owner.
 
 <a id="report-status"></a>
 <a id="handle-close"></a>

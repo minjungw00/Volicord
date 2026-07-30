@@ -364,7 +364,8 @@ matrix를 정합니다.
   bounded get까지 비관리 source로 대신하지 않고 다루는
   `crates/volicord-cli/tests/operational_host_e2e.rs`
 - 안정적인 identity를 유지하는 반복 Guard 초기화와 관련 없는 repository content 보존
-- Guard 관찰과 미기록 변경 suppression 결과
+- 호출 범위 Guard 저장소 관찰, exact expected-write 일치, unmatched-delta
+  Unrecorded Change
 - Codex 구성 drift와 행동 probe 실패 보고
 - 성공, stdin 전달, 0이 아닌 종료, 시간 초과, 결정론적 stdout/stderr truncation,
   동시 stream, 자손이 유지하는 pipe, stdin 쓰기 실패 후 정리, 반복 정리, 네이티브

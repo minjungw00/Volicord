@@ -374,6 +374,23 @@ read-only. It does not probe writeability, create or update a runtime session,
 persist a finding, reconcile diagnostics, or write either the Runtime Home or
 Product Repository. Its JSON `side_effects` is therefore an empty array.
 
+## Guard Repository-Observation Effects
+
+A compatible `PreToolUse` operation uses one immediate project transaction to
+record the Guard event, normalized exact host invocation, repository baseline
+or terminal unavailable observation, and the invocation's exact expected
+write when warranted. Failure rolls back every row. A write-capable or
+unknown-effect invocation is allowed only after this transaction commits with
+a stable baseline; a denied invocation has no open observation.
+
+The matching `PostToolUse` operation uses one immediate project transaction to
+strictly verify the exact observation, record the Guard event, close the
+observation with a complete post snapshot and deterministic delta or an
+unavailable reason, match only that observation's expected write, and insert
+an Unrecorded Change only for a non-empty unmatched delta. Replay reads the
+stored terminal result and does not rescan the Product Repository. A
+conflicting second post event has no effect and is rejected.
+
 <a id="connection-integration-verification-effects"></a>
 ## Connection-Integration Verification Effects
 

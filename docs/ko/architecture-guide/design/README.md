@@ -12,7 +12,7 @@
 | [Agent Connection 라우팅](agent-connection-routing.md) | 관리 stdio 프로세스를 현재 Connection 하나와 명시적으로 승인된 Product Repository에 결속합니다. |
 | [Core와 어댑터 경계](core-adapter-boundary.md) | 문법, 어댑터, Core 정책, Store, 진단, 저장소 도구를 서로 다른 의존 계층에 둡니다. |
 | [상태 결속 Write Ticket 유효성](state-bound-write-ticket-validity.md) | 현재 권한 좌표에서 티켓 재사용을 평가하고 보호 대상 변경과 함께 티켓을 소비합니다. |
-| [관찰 신뢰도 경계](observation-confidence-boundary.md) | 구조화된 경로 사실, 불확실한 관찰, 조정, typed 진단을 구분합니다. |
+| [저장소 관찰 경계](repository-observation-boundary.md) | 안정적인 스냅샷, 결정적인 호출 delta, 정확한 예상 쓰기, 실제 미기록 변경을 결속합니다. |
 | [외부 사용자 판단 권한](external-user-judgment-authority.md) | 사용자 소유 해결을 Agent Connection 밖의 로컬 User Channel에 둡니다. |
 | [정적 압축 MCP 도구 목록](static-compact-mcp-tool-list.md) | 압축된 런타임 스키마와 함께 하나의 폐쇄형 capability 인식 도구 catalog를 투영합니다. |
 | [작업 결과 조회](operation-result-retrieval.md) | 효과를 다시 실행하지 않고 불변 replay 응답에서 한도가 있는 정확한 페이지를 읽습니다. |

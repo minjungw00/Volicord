@@ -107,8 +107,7 @@ pub(super) fn context_json(summary: &GuardStateSummary) -> Value {
             .map(pending_user_action_summary_json)
             .collect::<Vec<_>>(),
         "active_blocker_count": summary.active_blocker_count,
-        "unresolved_unrecorded_change_count": summary.unresolved_unrecorded_change_count,
-        "suspected_unrecorded_change_count": summary.suspected_unrecorded_change_count
+        "unresolved_unrecorded_change_count": summary.unresolved_unrecorded_change_count
     })
 }
 
@@ -205,11 +204,9 @@ pub(super) fn tool_observation_json(observation: &ToolObservation) -> Value {
         "tool_name": observation.tool_name,
         "tool_identity_kind": observation.identity_kind(),
         "canonical_tool_identity": observation.canonical_identity(),
-        "host_invocation_id": observation.host_invocation_id,
         "command": observation.command,
         "prospective_product_repository_effect": observation.prospective_effect.as_str(),
         "observed_product_repository_effect": observation.observed_effect(),
-        "confidence": observation.confidence(),
         "target_path_status": observation.target_path_status(),
         "target_path_unavailable_reason": observation
             .target_path_unavailable_reason

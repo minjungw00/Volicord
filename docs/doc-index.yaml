@@ -928,7 +928,7 @@ documents:
   - architecture-guide.design.agent-connection-routing
   - architecture-guide.design.core-adapter-boundary
   - architecture-guide.design.state-bound-write-ticket-validity
-  - architecture-guide.design.observation-confidence-boundary
+  - architecture-guide.design.repository-observation-boundary
   - architecture-guide.design.external-user-judgment-authority
   - architecture-guide.design.static-compact-mcp-tool-list
   - architecture-guide.design.evidence-capture-producer-finalization
@@ -971,18 +971,19 @@ documents:
   - reference.storage-ddl
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.design.observation-confidence-boundary
-  path_en: docs/en/architecture-guide/design/observation-confidence-boundary.md
-  path_ko: docs/ko/architecture-guide/design/observation-confidence-boundary.md
+- doc_id: architecture-guide.design.repository-observation-boundary
+  path_en: docs/en/architecture-guide/design/repository-observation-boundary.md
+  path_ko: docs/ko/architecture-guide/design/repository-observation-boundary.md
   kind: explanation
-  summary: Current design reference separating confirmed structured effects from heuristic observations
-    for pre-action enforcement, post-action reconciliation, and close projection.
+  summary: Current design reference for invocation-scoped Product Repository snapshots,
+    deterministic deltas, atomic Guard aggregation, exact expected-write matching, and actual
+    Unrecorded Changes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-29'
-  last_verified_on: '2026-07-29'
+  last_updated_on: '2026-07-30'
+  last_verified_on: '2026-07-30'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -994,6 +995,7 @@ documents:
   - implement
   depends_on:
   - reference.core-model
+  - reference.repository-observation
   - reference.admin-cli
   - reference.security
   - reference.api.method-reconcile-changes
@@ -1606,20 +1608,18 @@ documents:
   depends_on:
   - reference.api.error-routing
   - reference.storage-records
-- doc_id: reference.guard-suppression
-  path_en: docs/en/reference/guard-suppression.md
-  path_ko: docs/ko/reference/guard-suppression.md
+- doc_id: reference.repository-observation
+  path_en: docs/en/reference/repository-observation.md
+  path_ko: docs/ko/reference/repository-observation.md
   kind: reference
-  summary: Reference contract for Guard hook outcomes, typed recorded-change suppression,
-    conservative unavailable behavior, and machine-readable diagnostics.
+  summary: Reference contract for invocation-scoped Product Repository observations, exact
+    pre/post correlation, deterministic deltas, expected-write matching, and actual Unrecorded Changes.
   normative_level: contract
   translation_policy: semantic_parity
-  contracts:
-  - diagnostic.guard
   owner_area: runtime_security
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-25'
-  last_verified_on: '2026-07-25'
+  last_updated_on: '2026-07-30'
+  last_verified_on: '2026-07-30'
   primary_audience:
   - implementers
   - maintainers
@@ -1627,15 +1627,18 @@ documents:
   - implement
   - operate
   canonical_for:
-  - exact `SuppressionOutcome`, `RecordedChangeSuppression`, and `SuppressionUnavailableReason` shapes
-  - explicit 512-event scan budget and 513-candidate truncation detection
-  - fail-safe preservation of every observed path when suppression is unavailable
-  - machine-readable warning, diagnostic, and related-event reason projection
-  - subject-aware current Guard findings for exact artifacts, installations, phases, and events
-  - exact canonical Guard-probe matcher and correlated prompt/pre/post verification boundary
+  - exact repository-observation invocation coordinate and closed lifecycle states
+  - canonical baseline, post-tool outcome, deterministic delta, and strict digest verification
+  - atomic pre-tool and post-tool Guard aggregate effects
+  - exact observation-scoped expected-write matching
+  - actual non-empty unmatched-delta Unrecorded Change creation and replay idempotence
+  - observation-unavailable diagnostic and Unrecorded Change separation
   depends_on:
   - reference.failure-model
   - reference.runtime-boundaries
+  - reference.storage-records
+  - reference.storage-ddl
+  - reference.storage-effects
   - reference.api.schema-state
 - doc_id: reference.core-model
   path_en: docs/en/reference/core-model.md
@@ -2804,7 +2807,8 @@ documents:
   - immutable occurrence findings, subject-aware current-state finding upserts, atomic cause-edge replacement,
     current-report selection, current-coordinate queries, and MCP terminal-finding links
   - revision-scoped immutable host-session identity and Registry binding revision
-  - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
+  - workflow, replay, operation-result, Write Ticket, Guard event, repository-observation,
+    expected-write, and Unrecorded Change records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
   - strict UserAction request and immutable CLI resolution records
   depends_on:
@@ -2913,7 +2917,7 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and ordered eight-value enabled-capability list'
+  - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and complete ordered enabled-capability list'
   - one canonical SQLite format and fail-closed exact-open validation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - noncurrent-contract corruption, unavailable, and fresh-recreation storage boundaries

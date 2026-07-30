@@ -361,6 +361,21 @@ effect를 추가하지 않습니다. 활성 증거는 rollback-only Registry 및
 reconcile하거나 Runtime Home 또는 Product Repository에 쓰지 않습니다. 따라서 JSON
 `side_effects`는 빈 배열입니다.
 
+## Guard 저장소 관찰 효과
+
+호환되는 `PreToolUse` 연산은 immediate 프로젝트 transaction 하나에서 Guard event,
+정규화한 정확한 host invocation, 저장소 baseline 또는 terminal unavailable 관찰,
+필요한 경우 해당 호출의 exact expected write를 기록합니다. 실패하면 모든 row를
+rollback합니다. 쓰기 가능 또는 효과를 알 수 없는 호출은 안정적인 baseline과 함께 이
+transaction이 commit된 뒤에만 허용하며, 거부된 호출에는 open 관찰이 없습니다.
+
+일치하는 `PostToolUse` 연산은 immediate 프로젝트 transaction 하나에서 정확한 관찰을
+엄격히 검증하고 Guard event를 기록하며, 완전한 post snapshot과 결정적인 delta 또는
+unavailable reason으로 관찰을 닫습니다. 그 관찰의 expected write만 일치시키고 비어 있지
+않은 unmatched delta에만 Unrecorded Change를 삽입합니다. Replay는 저장된 terminal
+result를 읽고 Product Repository를 다시 scan하지 않습니다. 충돌하는 두 번째 post
+event는 효과 없이 거부합니다.
+
 <a id="connection-integration-verification-effects"></a>
 ## Connection-Integration 검증 효과
 

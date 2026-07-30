@@ -1701,8 +1701,9 @@ volicord changes reconcile --repo "<repo>"
 ```
 
 Reconciliation projects the public `volicord.reconcile_changes` behavior into a
-local administrative flow. Guard suppression failures remain explicit; an
-`Unavailable` outcome is not rendered as an empty successful suppression.
+local administrative flow. Repository-observation unavailability remains a
+separate explicit diagnostic and is not rendered as an empty complete delta or
+an Unrecorded Change.
 
 <a id="user-channel-commands"></a>
 ## User Channel Commands

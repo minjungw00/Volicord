@@ -92,18 +92,17 @@ Mutation conditions:
 Close condition:
 
 - `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their artifact and Run compatibility rules, and no close blocker remains.
-- `intent=check` and `intent=complete` close readiness block when a write ticket for the Task remains active and unconsumed. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows remain visible as stale authority state but do not block close by themselves. A confirmed unresolved Unrecorded Change, including an out-of-scope Product Repository path, remains a separate blocker. There is no fixed ticket expiry.
+- `intent=check` and `intent=complete` close readiness block when a write ticket for the Task remains active and unconsumed. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows remain visible as stale authority state but do not block close by themselves. An unresolved Unrecorded Change, including an out-of-scope Product Repository path, remains a separate blocker. There is no fixed ticket expiry.
 - A valid `effective_control_level=observe` Task has no write ticket or product-file write path. Its close-readiness result does not recommend `volicord.prepare_write`; missing current result or close-basis work routes to the compatible `volicord.record_run` path instead.
-- Final acceptance follows the effective control and authoritative project policy. `sensitive` and `tracked` require compatible final acceptance. `observe` uses `not_required`. `light` is `policy_dependent` and may use `not_required` only when the current project policy explicitly permits it and all policy conditions remain satisfied, including no sensitive action, no unresolved user requirement, no residual-risk acceptance requirement, no required evidence gap, and no confirmed unrecorded Product Repository change. Policy strengthening raises the effective control before this decision and never lowers it. No policy waives evidence, sensitive approval, risk acceptance, or another blocker.
+- Final acceptance follows the effective control and authoritative project policy. `sensitive` and `tracked` require compatible final acceptance. `observe` uses `not_required`. `light` is `policy_dependent` and may use `not_required` only when the current project policy explicitly permits it and all policy conditions remain satisfied, including no sensitive action, no unresolved user requirement, no residual-risk acceptance requirement, no required evidence gap, and no unresolved Unrecorded Change. Policy strengthening raises the effective control before this decision and never lowers it. No policy waives evidence, sensitive approval, risk acceptance, or another blocker.
 - Effective `sensitive` control also requires a ticket-backed exact sensitive-action
   basis and a current matching user-owned approval. Final acceptance does not
   replace either one. If the exact basis was never recorded, close reports
   `missing_sensitive_action_basis`; if the basis exists but its approval is no
   longer current, close reports `missing_sensitive_approval`.
-- Confirmed unresolved Unrecorded Changes block close until reconciliation
-  resolves them. Suspected changes remain warnings or verification requests
-  and do not produce `unresolved_unrecorded_changes` unless promoted to
-  `confirmed`.
+- Unresolved Unrecorded Changes block close until reconciliation resolves
+  them. Repository-observation unavailability remains a separate diagnostic
+  and does not produce `unresolved_unrecorded_changes`.
 - Only current acceptance criteria with `evidence_requirement=required` create
   evidence close requirements. Each must have current target-matching evidence
   observation provenance. Optional, `not_required`, supplemental, and retired
@@ -411,7 +410,7 @@ Method-specific blocker branches:
 | Branch | Production rule |
 |---|---|
 | `volicord.check_close` | Returns current close readiness blockers as response observation data. |
-| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes active unconsumed write tickets and confirmed unresolved Unrecorded Changes. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows do not block by themselves. |
+| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes active unconsumed write tickets and unresolved Unrecorded Changes. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows do not block by themselves. |
 | `intent=cancel` | Produces blockers only for cancellation-specific terminal constraints, including missing or incompatible cancellation authority. Completion-only evidence, final acceptance, or residual-risk gaps do not block cancellation by themselves. |
 | `intent=supersede` | Produces blockers only for supersession-specific terminal constraints. Completion-only evidence, final acceptance, or residual-risk gaps do not block supersession by themselves. |
 

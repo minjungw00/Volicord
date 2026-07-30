@@ -18,10 +18,6 @@ pub(super) fn assess_decoded_paths(
         .collect()
 }
 
-pub(super) fn assess_reported_path(repo_root: &Path, raw: &str) -> PathAssessment {
-    assess_path(repo_root, raw)
-}
-
 fn assess_path(repo_root: &Path, raw: &str) -> PathAssessment {
     let path = Path::new(raw);
     let (inside_repo, normalized) = if path.is_absolute() {

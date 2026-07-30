@@ -306,7 +306,6 @@ Meaning:
 UnrecordedChangeFinding:
   unrecorded_change_ref: StateRecordRef
   status: string
-  confidence: string
   summary: string
   observed_paths: string[]
   detected_at: string
@@ -325,10 +324,12 @@ Meaning:
 
 - `unrecorded_change_ref` uses `StateRecordRef` with `record_kind=unrecorded_change`.
 - `status` is a controlled value string.
-- `confidence` is `confirmed` or `suspected`. Only an unresolved confirmed
-  finding is a close blocker; suspected findings remain visible for verification.
+- Every unresolved finding is backed by a complete observed non-empty unmatched
+  repository delta and is a close blocker.
 - `summary`, `capture_basis`, and `next_action.label` are display strings, not proof of correctness.
-- `observed_paths` contains Product Repository relative paths when Core can safely decode them. It does not include prompt text, command text, shell arguments, or full sensitive content.
+- `observed_paths` contains a non-empty canonical Product Repository relative
+  path set decoded from the exact observation's unmatched delta. It does not
+  include prompt text, command text, shell arguments, or full sensitive content.
 - `resolution_basis` classifies why the finding became resolved.
 - `resolved_by_actor_source=system` means Core verified a deterministic basis; `resolved_by_actor_source=local_user` means a compatible User Channel judgment supplied the authority.
 - `user_action_resolution_ref` is non-null only for user-owned acceptance resolution.

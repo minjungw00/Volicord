@@ -112,7 +112,7 @@
 | `crates/volicord-store/src/core_pipeline/mutations.rs` | Grouped `CoreStorageMutation` routing, 정적 aggregate dispatch, transaction 범위 mutation context, typed aggregate 적용 결과. |
 | `crates/volicord-store/src/core_pipeline/commit.rs` | Replay 및 최신성 gate, 순서 있는 aggregate 위임, state-version 전진 한 번과 정규 commit timestamp 하나, 원자적 event·replay·response 영속화, rollback, 최종 commit 결과. |
 | `crates/volicord-store/src/core_pipeline/validation.rs` | 현재 Store 담당 모듈이 공유하는 저장 값 및 mutation 입력 검증. |
-| `crates/volicord-store/src/guards.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, phase별 Guard 관찰, prompt capture, 예상 쓰기, suppression 입력. |
+| `crates/volicord-store/src/guards.rs`와 `crates/volicord-store/src/guards/repository_observation.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, prompt capture, 호출 범위 저장소 관찰과 정확한 expected-write 일치의 원자적 처리. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent와 producer 레코드. |
 | `crates/volicord-store/src/artifacts.rs` | 아티팩트 staging과 영속 본문 검증. |
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home 선택과 경로 경계 검증, runtime-path failure를 거치는 typed 플랫폼 diagnostic 전파. |

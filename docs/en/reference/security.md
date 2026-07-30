@@ -124,9 +124,11 @@ structured result's guarantee boundary. A stale display cannot authorize work.
 
 Guard and reconciliation records are bounded observations. They do not prove
 who changed a file, malicious intent, complete monitoring, or prevention.
-Suppression may remove only exact owner-defined matching paths. An
-`Unavailable` suppression outcome remains visible and cannot be treated as a
-successful empty suppression.
+One exact invocation-scoped observation records only the net Product Repository
+transition between its persisted baseline and outcome. An exact expected write
+may cover only matching paths in that complete delta. An `unavailable`
+observation remains visible and cannot be treated as a complete empty delta or
+as evidence that no change occurred.
 
 ## Explicit Non-Guarantees
 

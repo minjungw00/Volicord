@@ -121,7 +121,7 @@ fn codex_context(
         }.to_owned()),
         GuardObservationOutcome::PersistenceUnavailable => Some(match phase {
             GuardHookPhase::PromptCapture => "[guard.event.persistence_unavailable] Volicord could not persist the prompt observation. The prompt continues; inspect Volicord diagnostics before relying on Guard readiness",
-            GuardHookPhase::PreTool => "[guard.event.persistence_unavailable] Volicord could not persist the pre-tool observation. The tool request continues because persistence failure alone is not a policy denial",
+            GuardHookPhase::PreTool => "[guard.event.persistence_unavailable] Volicord could not persist the required pre-tool repository observation, so the invocation is denied",
             GuardHookPhase::PostTool => "[guard.event.persistence_unavailable] Volicord could not persist the post-tool observation after the tool action. The completed action was not prevented or reversed",
         }.to_owned()),
         GuardObservationOutcome::CompatibleRecorded => match (phase, outcome.policy) {

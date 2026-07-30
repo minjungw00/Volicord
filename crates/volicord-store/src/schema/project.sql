@@ -910,6 +910,10 @@ CREATE TABLE guard_events (
   occurred_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, guard_event_id),
+  UNIQUE (
+    project_id, guard_event_id, session_id, connection_internal_id,
+    host_turn_id, host_tool_use_id, host_tool_name
+  ),
   CHECK (
     (
       correlation_kind IS NULL
@@ -968,17 +972,16 @@ CREATE TABLE prompt_captures (
 CREATE TABLE unrecorded_changes (
   project_id TEXT NOT NULL,
   unrecorded_change_id TEXT NOT NULL,
-  session_id TEXT,
-  connection_internal_id TEXT NOT NULL,
-  correlation_kind TEXT CHECK (correlation_kind = 'codex_hook_tool'),
-  host_turn_id TEXT,
-  host_tool_use_id TEXT,
-  host_tool_name TEXT,
+  repository_observation_id TEXT NOT NULL,
   task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('unresolved', 'resolved')),
-  confidence TEXT NOT NULL CHECK (confidence IN ('confirmed', 'suspected')),
   summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
-  observed_paths_json TEXT NOT NULL DEFAULT '[]',
+  observed_paths_json TEXT NOT NULL,
+  unmatched_delta_digest TEXT NOT NULL CHECK (
+    length(unmatched_delta_digest) = 71
+    AND substr(unmatched_delta_digest, 1, 7) = 'sha256:'
+    AND substr(unmatched_delta_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
   detection_json TEXT NOT NULL DEFAULT '{}',
   resolution_json TEXT,
   detected_at TEXT NOT NULL,
@@ -986,22 +989,8 @@ CREATE TABLE unrecorded_changes (
   resolved_by_actor_source TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, unrecorded_change_id),
-  CHECK (
-    (
-      correlation_kind IS NULL
-      AND session_id IS NULL
-      AND host_turn_id IS NULL
-      AND host_tool_use_id IS NULL
-      AND host_tool_name IS NULL
-    )
-    OR (
-      correlation_kind = 'codex_hook_tool'
-      AND session_id IS NOT NULL
-      AND host_turn_id IS NOT NULL
-      AND host_tool_use_id IS NOT NULL
-      AND host_tool_name IS NOT NULL
-    )
-  ),
+  UNIQUE (project_id, repository_observation_id, unmatched_delta_digest),
+  CHECK (observed_paths_json != '[]'),
   CHECK (
     (
       status = 'unresolved'
@@ -1017,6 +1006,193 @@ CREATE TABLE unrecorded_changes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
+  FOREIGN KEY (project_id, repository_observation_id)
+    REFERENCES repository_observations (project_id, repository_observation_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
+);
+
+CREATE INDEX idx_unrecorded_changes_status
+  ON unrecorded_changes (project_id, status, detected_at);
+CREATE INDEX idx_unrecorded_changes_observation
+  ON unrecorded_changes (project_id, repository_observation_id);
+CREATE INDEX idx_unrecorded_changes_task
+  ON unrecorded_changes (project_id, task_id, status);
+CREATE TABLE expected_writes (
+  project_id TEXT NOT NULL,
+  expected_write_id TEXT NOT NULL,
+  repository_observation_id TEXT NOT NULL,
+  command_kind TEXT NOT NULL CHECK (length(trim(command_kind)) > 0),
+  path_policy TEXT NOT NULL CHECK (path_policy IN ('exact_paths')),
+  expected_paths_json TEXT NOT NULL CHECK (expected_paths_json != '[]'),
+  task_id TEXT NOT NULL,
+  change_unit_id TEXT NOT NULL,
+  write_ticket_ids_json TEXT NOT NULL CHECK (write_ticket_ids_json != '[]'),
+  basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'matched')),
+  matched_paths_json TEXT,
+  created_at TEXT NOT NULL,
+  matched_at TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, expected_write_id),
+  UNIQUE (project_id, repository_observation_id),
+  CHECK (
+    (
+      status = 'pending'
+      AND matched_paths_json IS NULL
+      AND matched_at IS NULL
+    )
+    OR (
+      status = 'matched'
+      AND matched_paths_json IS NOT NULL
+      AND matched_paths_json != '[]'
+      AND matched_at IS NOT NULL
+    )
+  ),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
+  FOREIGN KEY (project_id, repository_observation_id)
+    REFERENCES repository_observations (project_id, repository_observation_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
+);
+
+CREATE INDEX idx_expected_writes_observation
+  ON expected_writes (project_id, repository_observation_id, status);
+CREATE INDEX idx_expected_writes_task
+  ON expected_writes (project_id, task_id, status);
+CREATE TABLE repository_observations (
+  project_id TEXT NOT NULL,
+  repository_observation_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL,
+  host_tool_use_id TEXT NOT NULL,
+  host_tool_name TEXT NOT NULL,
+  guard_installation_id TEXT NOT NULL,
+  observer_contract_digest TEXT NOT NULL CHECK (
+    length(observer_contract_digest) = 71
+    AND substr(observer_contract_digest, 1, 7) = 'sha256:'
+    AND substr(observer_contract_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  pre_tool_guard_event_id TEXT,
+  post_tool_guard_event_id TEXT,
+  state TEXT NOT NULL CHECK (state IN ('open', 'complete', 'unavailable')),
+  pre_snapshot_json TEXT,
+  pre_snapshot_digest TEXT CHECK (
+    pre_snapshot_digest IS NULL
+    OR (
+      length(pre_snapshot_digest) = 71
+      AND substr(pre_snapshot_digest, 1, 7) = 'sha256:'
+      AND substr(pre_snapshot_digest, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  post_snapshot_json TEXT,
+  post_snapshot_digest TEXT CHECK (
+    post_snapshot_digest IS NULL
+    OR (
+      length(post_snapshot_digest) = 71
+      AND substr(post_snapshot_digest, 1, 7) = 'sha256:'
+      AND substr(post_snapshot_digest, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  delta_json TEXT,
+  delta_digest TEXT CHECK (
+    delta_digest IS NULL
+    OR (
+      length(delta_digest) = 71
+      AND substr(delta_digest, 1, 7) = 'sha256:'
+      AND substr(delta_digest, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  unavailable_reason TEXT CHECK (
+    unavailable_reason IS NULL OR unavailable_reason IN (
+      'invalid_observer_limits',
+      'invalid_repository_root',
+      'not_git_repository',
+      'git_layout_unavailable',
+      'git_command_unavailable',
+      'git_command_failed',
+      'process_timeout',
+      'git_output_limit_exceeded',
+      'process_input_limit_exceeded',
+      'candidate_path_limit_exceeded',
+      'total_hash_bytes_limit_exceeded',
+      'file_size_limit_exceeded',
+      'serialization_depth_limit_exceeded',
+      'serialization_size_limit_exceeded',
+      'invalid_relative_path',
+      'non_utf8_path',
+      'path_outside_repository',
+      'inaccessible_path',
+      'unsupported_path_state',
+      'unstable_repository',
+      'repository_identity_changed',
+      'observer_contract_mismatch',
+      'git_object_unavailable',
+      'invocation_denied',
+      'missing_open_observation'
+    )
+  ),
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  terminal_result_json TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, repository_observation_id),
+  UNIQUE (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ),
+  CHECK (
+    (
+      state = 'open'
+      AND (
+        (
+          pre_tool_guard_event_id IS NOT NULL
+          AND pre_snapshot_json IS NOT NULL
+          AND pre_snapshot_digest IS NOT NULL
+        )
+        OR (
+          pre_tool_guard_event_id IS NULL
+          AND pre_snapshot_json IS NULL
+          AND pre_snapshot_digest IS NULL
+        )
+      )
+      AND post_tool_guard_event_id IS NULL
+      AND post_snapshot_json IS NULL
+      AND post_snapshot_digest IS NULL
+      AND delta_json IS NULL
+      AND delta_digest IS NULL
+      AND unavailable_reason IS NULL
+      AND completed_at IS NULL
+      AND terminal_result_json IS NULL
+    )
+    OR (
+      state = 'complete'
+      AND pre_tool_guard_event_id IS NOT NULL
+      AND pre_snapshot_json IS NOT NULL
+      AND pre_snapshot_digest IS NOT NULL
+      AND post_tool_guard_event_id IS NOT NULL
+      AND post_snapshot_json IS NOT NULL
+      AND post_snapshot_digest IS NOT NULL
+      AND delta_json IS NOT NULL
+      AND delta_digest IS NOT NULL
+      AND unavailable_reason IS NULL
+      AND completed_at IS NOT NULL
+      AND terminal_result_json IS NOT NULL
+    )
+    OR (
+      state = 'unavailable'
+      AND ((pre_snapshot_json IS NULL AND pre_snapshot_digest IS NULL)
+        OR (pre_snapshot_json IS NOT NULL AND pre_snapshot_digest IS NOT NULL))
+      AND (pre_snapshot_json IS NULL OR pre_tool_guard_event_id IS NOT NULL)
+      AND post_snapshot_json IS NULL
+      AND post_snapshot_digest IS NULL
+      AND delta_json IS NULL
+      AND delta_digest IS NULL
+      AND unavailable_reason IS NOT NULL
+      AND completed_at IS NOT NULL
+      AND terminal_result_json IS NOT NULL
+    )
+  ),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (
     project_id, session_id, connection_internal_id, host_turn_id,
     host_tool_use_id, host_tool_name
@@ -1024,7 +1200,20 @@ CREATE TABLE unrecorded_changes (
     project_id, session_id, connection_internal_id, host_turn_id,
     host_tool_use_id, host_tool_name
   ),
-  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
+  FOREIGN KEY (
+    project_id, pre_tool_guard_event_id, session_id, connection_internal_id,
+    host_turn_id, host_tool_use_id, host_tool_name
+  ) REFERENCES guard_events (
+    project_id, guard_event_id, session_id, connection_internal_id,
+    host_turn_id, host_tool_use_id, host_tool_name
+  ),
+  FOREIGN KEY (
+    project_id, post_tool_guard_event_id, session_id, connection_internal_id,
+    host_turn_id, host_tool_use_id, host_tool_name
+  ) REFERENCES guard_events (
+    project_id, guard_event_id, session_id, connection_internal_id,
+    host_turn_id, host_tool_use_id, host_tool_name
+  )
 );
 
 CREATE INDEX idx_host_sessions_connection
@@ -1048,74 +1237,10 @@ CREATE INDEX idx_prompt_captures_session
   ON prompt_captures (project_id, session_id, captured_at);
 CREATE INDEX idx_prompt_captures_connection
   ON prompt_captures (project_id, connection_internal_id, captured_at);
-CREATE INDEX idx_unrecorded_changes_status
-  ON unrecorded_changes (project_id, status, detected_at);
-CREATE INDEX idx_unrecorded_changes_connection
-  ON unrecorded_changes (project_id, connection_internal_id, status);
-CREATE INDEX idx_unrecorded_changes_task
-  ON unrecorded_changes (project_id, task_id, status);
-CREATE TABLE expected_writes (
-  project_id TEXT NOT NULL,
-  expected_write_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  correlation_kind TEXT NOT NULL CHECK (correlation_kind = 'codex_hook_tool'),
-  host_turn_id TEXT NOT NULL,
-  host_tool_use_id TEXT NOT NULL,
-  host_tool_name TEXT NOT NULL,
-  guard_installation_id TEXT,
-  pre_tool_guard_event_id TEXT NOT NULL,
-  host_invocation_id TEXT,
-  tool_name TEXT,
-  command_kind TEXT NOT NULL CHECK (length(trim(command_kind)) > 0),
-  path_policy TEXT NOT NULL CHECK (path_policy IN ('exact_paths')),
-  expected_paths_json TEXT NOT NULL DEFAULT '[]',
-  task_id TEXT NOT NULL,
-  change_unit_id TEXT NOT NULL,
-  write_ticket_ids_json TEXT NOT NULL DEFAULT '[]',
-  basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
-  status TEXT NOT NULL CHECK (status IN ('pending', 'matched')),
-  matched_post_tool_guard_event_id TEXT,
-  matched_paths_json TEXT,
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  matched_at TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, expected_write_id),
-  CHECK (
-    (
-      status = 'pending'
-      AND matched_post_tool_guard_event_id IS NULL
-      AND matched_paths_json IS NULL
-      AND matched_at IS NULL
-    )
-    OR (
-      status = 'matched'
-      AND matched_post_tool_guard_event_id IS NOT NULL
-      AND matched_paths_json IS NOT NULL
-      AND matched_at IS NOT NULL
-    )
-  ),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (
-    project_id, session_id, connection_internal_id, host_turn_id,
-    host_tool_use_id, host_tool_name
-  ) REFERENCES host_tool_invocations (
-    project_id, session_id, connection_internal_id, host_turn_id,
-    host_tool_use_id, host_tool_name
-  ),
-  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
-);
-
-CREATE INDEX idx_expected_writes_pending_connection
-  ON expected_writes (project_id, connection_internal_id, status, created_at);
-CREATE INDEX idx_expected_writes_session
-  ON expected_writes (project_id, session_id, status, created_at);
-CREATE INDEX idx_expected_writes_host_invocation
-  ON expected_writes (project_id, connection_internal_id, host_invocation_id, status)
-  WHERE host_invocation_id IS NOT NULL;
-CREATE INDEX idx_expected_writes_task
-  ON expected_writes (project_id, task_id, status);
+CREATE INDEX idx_repository_observations_state
+  ON repository_observations (project_id, state, started_at);
+CREATE INDEX idx_repository_observations_connection
+  ON repository_observations (project_id, connection_internal_id, state);
 CREATE TABLE project_workflow_policies (
   project_id TEXT PRIMARY KEY,
   policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord.workflow_policy'),

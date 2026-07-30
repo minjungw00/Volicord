@@ -73,6 +73,10 @@ opaque_string_type!(
     "Opaque Guard integration-verification run identifier."
 );
 opaque_string_type!(PromptCaptureId, "Opaque prompt-capture identifier.");
+opaque_string_type!(
+    RepositoryObservationId,
+    "Opaque invocation-scoped repository-observation identifier."
+);
 opaque_string_type!(UnrecordedChangeId, "Opaque unrecorded-change identifier.");
 opaque_string_type!(RequestId, "Opaque request identifier.");
 opaque_string_type!(IdempotencyKey, "Opaque idempotency-key identifier.");

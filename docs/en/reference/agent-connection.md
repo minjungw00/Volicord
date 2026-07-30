@@ -703,8 +703,13 @@ the relevant Guard verification IDs. Human and JSON projections expose the
 same role assignment.
 
 The project integration revision extends the Connection revision with the
-current project workflow-policy fingerprint and current Guard installation
-identity/policy hash, or explicit absence of Guard ownership. `host_sessions`
+current project workflow-policy fingerprint, current Guard installation
+identity/policy hash or explicit absence of Guard ownership, the repository
+observer semantic contract digest, and the canonical Product Repository
+effect-catalog digest. A change to either semantic digest changes the managed
+integration revision even when the hook command text is unchanged. Historical
+Guard events remain evidence for their recorded revision and cannot satisfy
+current-definition coverage. `host_sessions`
 retains the revision-scoped local session ID, Connection, exact native session,
 and observation times. `host_turns` retains turns shared by both contract
 sources. `host_tool_invocations` retains hook tool-use IDs and canonical tool

@@ -447,9 +447,9 @@ mod tests {
     use super::*;
 
     const CANONICAL_DDL_DIGEST: &str =
-        "sha256:5484dbad5df102ca36903749ca6b2f7393d5cdd3714175002dc62986af34a132";
+        "sha256:3fc1939976439d74d6dc1b4115511dbd8eed7ede5156744f8e02ec682ab34648";
     const INTEGRITY_CONSTRAINTS_DIGEST: &str =
-        "sha256:7f5266b4b7dc952f178d3aaafdb292cd6882dfb3b915f2346319b8c5297a9307";
+        "sha256:31e7cac083f2e0d694f6df0a3c1c912e644923dccd3946065094269185702781";
 
     #[test]
     fn canonical_schema_bytes_are_strict_and_crlf_changes_storage_identity() {

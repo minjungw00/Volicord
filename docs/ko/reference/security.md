@@ -106,9 +106,10 @@ Codex가 이를 읽었다는 증명이 아닙니다.
 ## Guard와 기록되지 않은 변경
 
 Guard와 조정 기록은 제한된 관찰입니다. 파일을 바꾼 actor, 악의, 완전한 감시, 예방을
-증명하지 않습니다. Suppression은 담당 문서가 정한 정확한 일치 경로만 제거할 수
-있습니다. `Unavailable` suppression 결과는 계속 표시해야 하며 성공한 빈 suppression으로
-취급할 수 없습니다.
+증명하지 않습니다. 정확한 호출 범위 관찰 하나는 영속 baseline과 outcome 사이의 net
+Product Repository transition만 기록합니다. Exact expected write는 그 완전한 delta
+안에서 일치하는 경로만 포함할 수 있습니다. `unavailable` 관찰은 계속 표시해야 하며
+완전한 빈 delta나 변경이 없었다는 증거로 취급할 수 없습니다.
 
 ## 명시적 비보장
 

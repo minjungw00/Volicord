@@ -69,7 +69,7 @@ Not allowed:
 | Readable-view freshness families | May be named as related diagnostics when the owner allows it. | A freshness diagnostic by itself is not a close-readiness blocker. |
 | State-version or idempotency conflict families | No close-readiness blocker representation. | These failures are rejected before close-readiness evaluation and stay with [API error precedence](error-precedence.md). |
 | State-bound write-ticket invalidation | A consuming attempt uses `WRITE_TICKET_INVALID`; close readiness may use the method-owned unresolved-ticket blocker. | `basis_state_version` and unrelated global state changes are not invalidation inputs. Stable invalidation reasons stay with the ticket/value-set owners. |
-| Unrecorded Product Repository changes | Only unresolved `confidence=confirmed` findings produce the reconciliation close blocker. | `suspected` findings remain warnings or verification requests and cannot be silently promoted, dismissed, or accepted by the agent. |
+| Unrecorded Product Repository changes | Every unresolved finding backed by a complete observed non-empty unmatched delta produces the reconciliation close blocker. | Observation-unavailable diagnostics remain separate and do not manufacture a path finding or blocker. |
 | Final acceptance | Route from effective control plus the authoritative project policy. | `tracked` and `sensitive` require acceptance; `observe` does not; `light` is policy-dependent and no blocker route can waive sensitive approval, evidence, residual-risk acceptance, or user authority. |
 
 ## Close method route

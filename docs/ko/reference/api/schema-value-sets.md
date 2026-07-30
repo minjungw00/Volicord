@@ -566,16 +566,6 @@ unresolved
 resolved
 ```
 
-`UnrecordedChangeFinding.confidence`는 아래 값을 사용합니다.
-
-```text
-confirmed
-suspected
-```
-
-미해결 `confirmed` 변경만 닫기를 막습니다. `suspected` 변경은 경고와 검증 요청을
-만듭니다.
-
 변경 관찰 confidence는 `confirmed`, `structured`, `heuristic`, `unknown`을
 사용합니다. 관찰 effect kind는 `read_only`, `product_file_write`,
 `non_product_write`, `external_effect`, `unknown`을 사용합니다.
@@ -588,9 +578,6 @@ reverted
 covered_by_write_ticket
 recorded_as_expected_write
 accepted_by_user
-not_product_change
-superseded_by_new_observation
-invalid_observation
 ```
 
 이 값들은 미기록 Product Repository 변경이 해결된 이유를 분류합니다. 제품 정확성,

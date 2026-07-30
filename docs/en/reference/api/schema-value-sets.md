@@ -559,16 +559,6 @@ unresolved
 resolved
 ```
 
-`UnrecordedChangeFinding.confidence` uses:
-
-```text
-confirmed
-suspected
-```
-
-Only unresolved `confirmed` changes block close. `suspected` changes warn and
-request verification.
-
 Mutation observation confidence uses `confirmed`, `structured`, `heuristic`,
 or `unknown`. Observed effect kind uses `read_only`, `product_file_write`,
 `non_product_write`, `external_effect`, or `unknown`.
@@ -581,9 +571,6 @@ reverted
 covered_by_write_ticket
 recorded_as_expected_write
 accepted_by_user
-not_product_change
-superseded_by_new_observation
-invalid_observation
 ```
 
 These values classify why an unrecorded Product Repository change finding is resolved. They do not prove correctness, evidence sufficiency, review completion, final acceptance, residual-risk acceptance, or security. Caller use is method-gated by [`volicord.reconcile_changes`](method-reconcile-changes.md); naming a basis does not authorize an agent-only dismissal.

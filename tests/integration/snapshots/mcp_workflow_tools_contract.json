@@ -1285,7 +1285,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:b4f4e22b4c93382c155177890a0f9b8d33a716e04a8e0ab136bf55c7f8a0d9af"
+        "sha256": "sha256:9913c6fba982e6b29317656b85156197d3791a6ea2830705e8c64bb86b56d277"
       },
       "name": "volicord.reconcile_changes",
       "output_schema": {
@@ -1386,7 +1386,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "UnrecordedChangeConfidence",
           "UnrecordedChangeFinding",
           "UnrecordedChangeRejection",
           "UnrecordedChangeResolutionBasis",
@@ -1405,7 +1404,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:859ee77fea5f525e92b8dce7bb9a5cd82737f77883d2cb1ac88a9178d5f7ed0b"
+        "sha256": "sha256:ecafec2a2f1231609361226b005a89434176ee71a0d368157093e2ab24fa9ced"
       }
     },
     {

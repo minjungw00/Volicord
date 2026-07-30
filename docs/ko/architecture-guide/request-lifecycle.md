@@ -138,11 +138,14 @@ resume 분기를 사용합니다. MCP adapter는 agent-safe summary와 현재 pr
 `volicord.resolve_user_action`을 호출합니다. Resolution은 별도 user-only mutation이며
 원래 요청 결과를 대신하지 않습니다. Guard prompt 관찰은 계속 관찰입니다.
 
-## Guard suppression
+## 호출 범위 저장소 관찰
 
-조정은 제한된 suppression service를 호출합니다. `Applied`는 정확한 remaining path와
-suppression record를 담습니다. `Unavailable`은 모든 observed path, reason, scan budget,
-observed count를 보존합니다. Store 실패나 손상 correlation이 빈 성공이 되지 않습니다.
+Pre-tool 처리는 쓰기 가능 또는 효과를 알 수 없는 호출을 허용하기 전에 정확한 Codex
+호출, Guard event, 안정적인 Product Repository baseline, 해당 호출의 exact expected
+write를 원자적으로 기록합니다. Post-tool 처리는 같은 관찰을 안정적인 outcome과
+결정적인 net delta로 닫습니다. 완전하고 비어 있지 않은 delta 가운데 해당 호출의
+expected write가 포함하지 않는 부분만 Unrecorded Change가 됩니다. 사용할 수 없는
+관찰은 명시적 진단으로 남으며 빈 delta나 경로 finding이 되지 않습니다.
 
 ## 응답 projection
 
@@ -159,4 +162,4 @@ rendering입니다. Compact schema와 summary view는 표시 detail을 생략할
 - [API 메서드](../reference/api/methods.md)
 - [저장 효과](../reference/storage-effects.md)
 - [실패 모델](../reference/failure-model.md)
-- [Guard suppression](../reference/guard-suppression.md)
+- [저장소 관찰](../reference/repository-observation.md)

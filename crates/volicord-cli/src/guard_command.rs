@@ -27,7 +27,9 @@ use volicord_store::{
     },
     guards::{
         current_project_agent_session_coordinates, guard_event, guard_installation,
-        insert_guard_event, observe_host_correlation, GuardEventInsert, HostCorrelationObservation,
+        insert_guard_event, observe_host_correlation, record_post_tool_repository_observation,
+        record_pre_tool_repository_observation, GuardEventInsert, HostCorrelationObservation,
+        PostToolRepositoryObservationInsert, PreToolRepositoryObservationInsert,
     },
     integration_verification::{
         observe_guard_probe_hook_event, observe_unbound_guard_probe_hook_event,
@@ -57,8 +59,6 @@ use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
 const DEFAULT_INTEGRATION_PROFILE: &str = "record";
-const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
-
 mod args;
 mod codex_output;
 mod context;
@@ -75,7 +75,7 @@ use envelope::{
     event_path_field, event_string, guard_envelope, is_managed_builtin_host, GuardEnvelope,
     GuardEnvelopeError,
 };
-use phase::{pre_tool::persist_expected_write, GuardPhaseResult};
+use phase::{GuardPhaseResult, RepositoryObservationMutation};
 use prompt_capture::handle_prompt_capture;
 use render::{render_guard_output, RenderedGuardOutput};
 
@@ -400,9 +400,17 @@ where
                 };
                 let subject = guard_subject(phase, &input, &envelope, &project);
                 if phase == GuardHookPhase::PostTool {
-                    if let Some(replayed) =
+                    if let Some(mut replayed) =
                         replayed_guard_phase_result(context, &project, &envelope, phase, &subject)?
                     {
+                        attach_guard_disclosure(&mut replayed.result);
+                        let outcome = compatible_hook_outcome(
+                            phase,
+                            replayed.decision,
+                            &options,
+                            Some(&envelope),
+                        );
+                        attach_hook_outcome(&mut replayed.result, &outcome);
                         record_guard_diagnostic_best_effort(
                             context,
                             &project,
@@ -419,12 +427,6 @@ where
                             replayed.decision,
                             &replayed.result,
                             true,
-                        );
-                        let outcome = compatible_hook_outcome(
-                            phase,
-                            replayed.decision,
-                            &options,
-                            Some(&envelope),
                         );
                         let rendered = render_guard_command_output(
                             context,
@@ -474,14 +476,6 @@ where
                 };
                 attach_guard_disclosure(&mut phase_result.result);
 
-                let outcome = compatible_hook_outcome(
-                    phase,
-                    phase_result.decision,
-                    &options,
-                    Some(&envelope),
-                );
-                attach_hook_outcome(&mut phase_result.result, &outcome);
-
                 if persist_guard_event(
                     context,
                     &project,
@@ -490,15 +484,20 @@ where
                         phase,
                         guard_input: &input,
                         subject,
-                        phase_result: &phase_result,
+                        phase_result: &mut phase_result,
                         options: &options,
                     },
                 )
                 .is_err()
                 {
+                    let persistence_policy = if phase == GuardHookPhase::PreTool {
+                        GuardPolicyDecision::Deny
+                    } else {
+                        phase_result.decision
+                    };
                     let persistence_outcome = GuardHookOutcome::new(
                         GuardObservationOutcome::PersistenceUnavailable,
-                        Some(phase_result.decision),
+                        Some(persistence_policy),
                         [GuardHookDiagnostic {
                             code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
                             facts: guard_diagnostic_facts(
@@ -526,39 +525,13 @@ where
                         exit_code: rendered.exit_code,
                     });
                 }
-                if let Some(expected_write) = phase_result.expected_write {
-                    if persist_expected_write(context, &project, expected_write).is_err() {
-                        let persistence_outcome = GuardHookOutcome::new(
-                            GuardObservationOutcome::PersistenceUnavailable,
-                            Some(phase_result.decision),
-                            [GuardHookDiagnostic {
-                                code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
-                                facts: guard_diagnostic_facts(
-                                    phase,
-                                    &options,
-                                    envelope.guard_installation_id.as_deref(),
-                                    envelope.integration_revision.as_deref(),
-                                    Some(&envelope.event_id),
-                                ),
-                            }],
-                            Some(GuardHostFeedback::Warning),
-                        );
-                        record_guard_findings_best_effort(context, &persistence_outcome);
-                        let rendered = render_guard_command_output(
-                            context,
-                            phase,
-                            &persistence_outcome,
-                            Some(&envelope),
-                            hook_outcome_result(&persistence_outcome),
-                            &options,
-                        )?;
-                        return Ok(GuardCommandOutcome {
-                            stdout: rendered.stdout,
-                            stderr: rendered.stderr,
-                            exit_code: rendered.exit_code,
-                        });
-                    }
-                }
+                let outcome = compatible_hook_outcome(
+                    phase,
+                    phase_result.decision,
+                    &options,
+                    Some(&envelope),
+                );
+                attach_hook_outcome(&mut phase_result.result, &outcome);
                 record_guard_findings_best_effort(context, &outcome);
                 record_guard_diagnostic_best_effort(
                     context,
@@ -1069,8 +1042,8 @@ fn record_guard_diagnostic_best_effort(
         .any(|reason| {
             reason.get("code").and_then(Value::as_str) == Some("authoritative_refresh_failed")
         });
-    let suppression_unavailable = result
-        .pointer("/recorded_change_suppression_outcome/status")
+    let repository_observation_unavailable = result
+        .pointer("/repository_observation/observation_state")
         .and_then(Value::as_str)
         == Some("unavailable");
     let prompt_capture_recorded = phase == GuardHookPhase::PromptCapture
@@ -1082,22 +1055,21 @@ fn record_guard_diagnostic_best_effort(
             .pointer("/recognized_user_action_command/replayed")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-    let product_file_write_count = (phase == GuardHookPhase::PostTool
-        && result
-            .pointer("/tool/changed_paths")
-            .and_then(Value::as_array)
-            .is_some_and(|paths| {
-                paths
-                    .iter()
-                    .any(|path| path.get("inside_repo").and_then(Value::as_bool) == Some(true))
-            })) as u64;
+    let product_file_write_count = if phase == GuardHookPhase::PostTool {
+        result
+            .pointer("/repository_observation/delta/transition_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    } else {
+        0
+    };
     let core_reached = prompt_capture_recorded;
     let core_committed = prompt_capture_recorded && !prompt_capture_replayed;
     let response_bytes = serde_json::to_vec(result)
         .map(|bytes| bytes.len() as u64)
         .unwrap_or(0);
     let elapsed = started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
-    let outcome = if authoritative_refresh_failure || suppression_unavailable {
+    let outcome = if authoritative_refresh_failure || repository_observation_unavailable {
         DiagnosticOutcome::Unavailable
     } else if result.get("allowed").and_then(Value::as_bool) == Some(false) {
         DiagnosticOutcome::Rejected
@@ -1190,29 +1162,34 @@ fn record_guard_workflow_metrics_best_effort(
 
     match phase {
         GuardHookPhase::PreTool => {
-            let confidence = result
-                .pointer("/tool/confidence")
+            let observation_quality = if result
+                .pointer("/tool/target_path_status")
                 .and_then(Value::as_str)
-                .and_then(workflow_observation_confidence);
+                == Some("exact")
+            {
+                ObservationConfidence::Structured
+            } else {
+                ObservationConfidence::Unknown
+            };
             let metric_decision = match decision {
                 GuardPolicyDecision::Continue => Some(WorkflowMetricDecision::Allow),
                 GuardPolicyDecision::ContinueWithWarning => Some(WorkflowMetricDecision::Warn),
                 GuardPolicyDecision::Deny => Some(WorkflowMetricDecision::Deny),
                 GuardPolicyDecision::ContinueWithContext => None,
             };
-            if let (Some(metric_decision), Some(confidence)) = (metric_decision, confidence) {
+            if let Some(metric_decision) = metric_decision {
                 record(
                     WorkflowMetricKind::PreToolDecision,
                     1,
                     Some(metric_decision),
-                    Some(confidence),
+                    Some(observation_quality),
                     None,
                 );
             }
             let task_level = result
                 .pointer("/context/active_task_effective_control_level")
                 .and_then(Value::as_str);
-            let structured_product_write = confidence == Some(ObservationConfidence::Structured)
+            let structured_product_write = observation_quality == ObservationConfidence::Structured
                 && result
                     .pointer("/tool/prospective_product_repository_effect")
                     .and_then(Value::as_str)
@@ -1231,36 +1208,35 @@ fn record_guard_workflow_metrics_best_effort(
             }
         }
         GuardHookPhase::PostTool => {
-            let confidence = result
-                .pointer("/tool/confidence")
-                .and_then(Value::as_str)
-                .and_then(workflow_observation_confidence);
-            let effect = result
-                .pointer("/tool/observed_product_repository_effect")
-                .and_then(Value::as_str)
-                .and_then(workflow_observation_effect);
-            if let (Some(confidence), Some(effect)) = (confidence, effect) {
+            let observation_state = result
+                .pointer("/repository_observation/observation_state")
+                .and_then(Value::as_str);
+            let transition_count = result
+                .pointer("/repository_observation/delta/transition_count")
+                .and_then(Value::as_u64);
+            if let Some(effect) = match (observation_state, transition_count) {
+                (Some("complete"), Some(0)) => Some(WorkflowMetricOutcome::NonProductWrite),
+                (Some("complete"), Some(_)) => Some(WorkflowMetricOutcome::ProductFileWrite),
+                (Some("unavailable"), _) => Some(WorkflowMetricOutcome::Unknown),
+                _ => None,
+            } {
                 record(
                     WorkflowMetricKind::ObservationAssessment,
                     1,
                     None,
-                    Some(confidence),
+                    Some(if observation_state == Some("complete") {
+                        ObservationConfidence::Confirmed
+                    } else {
+                        ObservationConfidence::Unknown
+                    }),
                     Some(effect),
                 );
             }
             let out_of_scope_count = result
-                .get("unrecorded_changes")
+                .pointer("/repository_observation/unrecorded_changes")
                 .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter(|change| {
-                    change.get("confidence").and_then(Value::as_str) == Some("confirmed")
-                        && matches!(
-                            change.get("correlation_status").and_then(Value::as_str),
-                            Some("out_of_scope_expected_write" | "out_of_scope_write_ticket")
-                        )
-                })
-                .count() as u64;
+                .map(|changes| changes.len() as u64)
+                .unwrap_or(0);
             if out_of_scope_count > 0 {
                 record(
                     WorkflowMetricKind::ConfirmedOutOfScopeWrite,
@@ -1270,47 +1246,8 @@ fn record_guard_workflow_metrics_best_effort(
                     Some(WorkflowMetricOutcome::Success),
                 );
             }
-            let suspected_resolved_no_change = result
-                .get("resolved_suspected_changes")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter(|change| {
-                    change.get("confidence").and_then(Value::as_str) == Some("suspected")
-                        && change.get("resolution_basis").and_then(Value::as_str)
-                            == Some("invalid_observation")
-                })
-                .count() as u64;
-            if suspected_resolved_no_change > 0 {
-                record(
-                    WorkflowMetricKind::SuspectedResolvedNoChange,
-                    suspected_resolved_no_change,
-                    None,
-                    None,
-                    Some(WorkflowMetricOutcome::Success),
-                );
-            }
         }
         GuardHookPhase::PromptCapture => {}
-    }
-}
-
-fn workflow_observation_confidence(value: &str) -> Option<ObservationConfidence> {
-    match value {
-        "confirmed" => Some(ObservationConfidence::Confirmed),
-        "structured" => Some(ObservationConfidence::Structured),
-        "heuristic" => Some(ObservationConfidence::Heuristic),
-        "unknown" => Some(ObservationConfidence::Unknown),
-        _ => None,
-    }
-}
-
-fn workflow_observation_effect(value: &str) -> Option<WorkflowMetricOutcome> {
-    match value {
-        "product_file_write" => Some(WorkflowMetricOutcome::ProductFileWrite),
-        "no_product_write" => Some(WorkflowMetricOutcome::NonProductWrite),
-        "unknown_product_effect" => Some(WorkflowMetricOutcome::Unknown),
-        _ => None,
     }
 }
 
@@ -1435,7 +1372,7 @@ struct GuardEventPersistence<'a> {
     phase: GuardHookPhase,
     guard_input: &'a GuardInput,
     subject: Value,
-    phase_result: &'a GuardPhaseResult,
+    phase_result: &'a mut GuardPhaseResult,
     options: &'a GuardOptions,
 }
 
@@ -1488,16 +1425,6 @@ fn persist_guard_event(
         phase.as_str(),
         &subject_json,
     )?;
-    let mut persisted_result = phase_result.result.clone();
-    if let Some(checkpoint) = &phase_result.repository_observation_checkpoint {
-        persisted_result
-            .as_object_mut()
-            .expect("Guard phase results are JSON objects")
-            .insert(
-                "repository_observation_checkpoint".to_owned(),
-                serde_json::to_value(checkpoint).map_err(json_error)?,
-            );
-    }
     let input = GuardEventInsert {
         guard_event_id: envelope.event_id.clone(),
         correlation: Some(envelope.correlation.clone()),
@@ -1511,7 +1438,7 @@ fn persist_guard_event(
             .as_str()
             .to_owned(),
         subject_json,
-        result_json: object_text(persisted_result)?,
+        result_json: object_text(phase_result.result.clone())?,
         occurred_at: envelope.occurred_at.clone(),
         metadata_json: json!({
             "source": "volicord_guard_cli",
@@ -1539,7 +1466,55 @@ fn persist_guard_event(
             envelope.event_id
         )));
     }
-    insert_guard_event(context, &project.project_id, input)?;
+    match phase_result.repository_observation.clone() {
+        Some(RepositoryObservationMutation::Pre {
+            repository_observation_id,
+            observer_contract_digest,
+            checkpoint,
+            unavailable_reason,
+            expected_write,
+            metadata,
+        }) => {
+            record_pre_tool_repository_observation(
+                context,
+                &project.project_id,
+                PreToolRepositoryObservationInsert {
+                    guard_event: input,
+                    repository_observation_id,
+                    observer_contract_digest,
+                    checkpoint: checkpoint.map(|checkpoint| *checkpoint),
+                    unavailable_reason,
+                    expected_write,
+                    metadata,
+                },
+            )?;
+        }
+        Some(RepositoryObservationMutation::Post {
+            repository_observation_id,
+            observer_contract_digest,
+            outcome,
+            task_id,
+            metadata,
+        }) => {
+            let stored = record_post_tool_repository_observation(
+                context,
+                &project.project_id,
+                PostToolRepositoryObservationInsert {
+                    guard_event: input,
+                    repository_observation_id,
+                    observer_contract_digest,
+                    outcome,
+                    task_id,
+                    metadata,
+                },
+            )?;
+            phase_result.result =
+                serde_json::from_str(&stored.guard_event.result_json).map_err(json_error)?;
+        }
+        None => {
+            insert_guard_event(context, &project.project_id, input)?;
+        }
+    }
     observe_guard_probe_event_if_applicable(
         context,
         &project.project_id,

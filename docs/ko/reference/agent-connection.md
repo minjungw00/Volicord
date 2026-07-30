@@ -630,8 +630,11 @@ Connection report context는 finding correlation뿐 아니라 check evidence에�
 보존합니다. Human과 JSON projection은 같은 role 배정을 표시합니다.
 
 프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
-fingerprint와 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
-부재를 더합니다. `host_sessions`는 revision 범위 로컬 session ID, Connection, 정확한
+fingerprint, 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
+부재, 저장소 관찰자 semantic contract digest, 정규 Product Repository effect-catalog
+digest를 더합니다. Hook 명령 text가 같아도 두 semantic digest 중 하나가 바뀌면 관리형
+통합 revision이 바뀝니다. 과거 Guard event는 기록 당시 revision의 증거로 남지만 현재
+정의의 coverage를 만족하지 못합니다. `host_sessions`는 revision 범위 로컬 session ID, Connection, 정확한
 native session, 관찰 시각을 보관합니다. `host_turns`는 두 계약 source가 함께 쓰는 turn을
 보관하고, `host_tool_invocations`는 hook tool-use ID와 정규 tool name을 보관합니다. Store는
 프로젝트를 결정하고 현재 Guard ownership을 검증한 뒤에만 Connection internal ID, 정확한

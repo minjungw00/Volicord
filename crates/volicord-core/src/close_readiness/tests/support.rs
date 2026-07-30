@@ -4,12 +4,15 @@ use volicord_store::core_pipeline::{
     ProjectStateHeader, TaskAutonomyBoundary, TaskRecord, TaskShapingFacts,
 };
 use volicord_store::guards::UnrecordedChangeRecord;
+use volicord_test_support::{
+    CanonicalToolName, CodexHookToolCorrelation, HostNativeCorrelation, HostSessionId,
+    HostToolUseId, HostTurnId,
+};
 use volicord_types::ids::{ProjectId, TaskId};
 use volicord_types::schema::JsonObject;
 use volicord_types::values::{
     AcceptancePolicy, PersistedCloseSummary, RequestedControlLevel, TaskControlLevel,
-    TaskLifecyclePhase, TaskMode, UnrecordedChangeConfidence, UnrecordedChangeStatus, UtcTimestamp,
-    WorkPhase,
+    TaskLifecyclePhase, TaskMode, UnrecordedChangeStatus, UtcTimestamp, WorkPhase,
 };
 
 pub(super) fn facts() -> CloseReadinessFacts {
@@ -84,14 +87,21 @@ pub(super) fn unresolved_change() -> UnrecordedChangeRecord {
     UnrecordedChangeRecord {
         project_id: "project_close_readiness".to_owned(),
         unrecorded_change_id: "unrecorded_close_readiness".to_owned(),
-        session_id: None,
-        correlation: None,
+        repository_observation_id: "repository_observation_close_readiness".to_owned(),
+        session_id: "session_close_readiness".to_owned(),
+        correlation: HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+            session_id: HostSessionId::parse("host_session_close_readiness").unwrap(),
+            turn_id: HostTurnId::parse("turn_close_readiness").unwrap(),
+            tool_use_id: HostToolUseId::parse("tool_use_close_readiness").unwrap(),
+            tool_name: CanonicalToolName::parse("apply_patch").unwrap(),
+        }),
         connection_internal_id: "connection_close_readiness".to_owned(),
         task_id: Some("task_close_readiness".to_owned()),
         status: UnrecordedChangeStatus::Unresolved,
-        confidence: UnrecordedChangeConfidence::Confirmed,
         summary: "unrecorded test change".to_owned(),
         observed_paths: vec!["src/lib.rs".parse().expect("valid path")],
+        unmatched_delta_digest:
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
         detection: JsonObject::new(),
         resolution: None,
         detected_at: UtcTimestamp::parse("2026-07-27T00:00:00Z").expect("valid timestamp"),

@@ -532,10 +532,14 @@ cannot override a newer failed attempt. Report context deduplicates their
 runtime session with managed MCP roles and retains all relevant verification
 IDs.
 
-Expected-write and unrecorded-change records are project-local. Guard
-suppression reads only bounded canonical correlation data and returns the exact
-`SuppressionOutcome`. Store-read failure, corrupt records, budget exhaustion,
-or invalid correlation yields `Unavailable`; no observed path is hidden.
+Repository observations, expected writes, and Unrecorded Changes are
+project-local. One observation is unique on its normalized project,
+Connection, host session, host turn, hook tool-use ID, and canonical tool-name
+coordinate. `open` requires a verified baseline; `complete` requires a verified
+post snapshot and deterministic delta; `unavailable` requires a closed reason
+and contains no complete delta. Each expected write belongs to that exact
+observation. Each Unrecorded Change links to it, contains a non-empty canonical
+path set, and stores the unmatched-delta digest.
 
 Prompt observations may be stored only under their bounded observation schema.
 They do not carry a user choice, resolution body, private resolution form, or

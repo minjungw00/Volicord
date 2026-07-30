@@ -429,7 +429,8 @@ Durable tests should cover, as applicable:
   non-managed source substitution;
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;
-- Guard observation and unrecorded-change suppression outcomes; and
+- invocation-scoped Guard repository observations, exact expected-write
+  matching, and unmatched-delta Unrecorded Changes; and
 - Codex configuration drift and behavior-probe failure reporting;
 - reusable bounded test child execution across success, stdin delivery,
   nonzero exit, timeout, deterministic stdout/stderr truncation, simultaneous

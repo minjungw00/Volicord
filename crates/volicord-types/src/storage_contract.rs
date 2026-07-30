@@ -15,7 +15,7 @@ pub const STORAGE_ENABLED_CAPABILITIES: &[&str] = &[
     "artifact_storage",
     "authority_event_chain",
     "exact_operation_result",
-    "guard_reconciliation",
+    "invocation_repository_observation",
     "managed_codex_connection",
     "operational_mcp_sessions",
     "project_continuity",

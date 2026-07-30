@@ -72,23 +72,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     )?;
     assert_eq!(reused.response_value["write_ticket_effect"], "reused");
 
-    let context = harness.service.context();
-    insert_unrecorded_change(
-        &context,
-        PROJECT_ID,
-        UnrecordedChangeInsert {
-            unrecorded_change_id: "unrecorded_core_metrics_first_write".to_owned(),
-            correlation: None,
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            task_id: Some(task_id.clone()),
-            confidence: UnrecordedChangeConfidence::Confirmed,
-            summary: "Confirmed product write observation for metric timing.".to_owned(),
-            observed_paths: vec!["src/export.rs".parse()?],
-            detection: JsonObject::new(),
-            detected_at: UtcTimestamp::parse("2026-06-18T00:00:01Z")?,
-            metadata: JsonObject::new(),
-        },
-    )?;
+    insert_guarded_unrecorded_change(&harness, &task_id, "core_metrics_first_write")?;
     clock.advance(Duration::seconds(2));
     let run_request = product_write_record_run_request(
         "req_core_metrics_first_write",
@@ -153,14 +137,6 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     assert_eq!(
         metric_total(&rows, "first_product_write_duration_micros"),
         1_000_000
-    );
-    assert_eq!(
-        metric_samples(&rows, "confirmed_unrecorded_false_positive"),
-        1
-    );
-    assert_eq!(
-        metric_total(&rows, "confirmed_unrecorded_false_positive"),
-        0
     );
     Ok(())
 }
@@ -299,53 +275,6 @@ fn user_roundtrip_metric_counts_one_committed_resolution() -> Result<(), Box<dyn
 
     let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
     assert_eq!(metric_total(&rows, "user_roundtrip"), 1);
-    Ok(())
-}
-
-#[test]
-fn corrupt_confirmed_observation_records_no_false_positive_metric() -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    let session_id = start_metrics_session(&harness, "session_core_reconcile_metrics")?;
-    record_guard_installation(&harness, "core_reconcile_metrics")?;
-    let (task_id, _) = create_task_with_change_unit(&harness, "core_reconcile_metrics")?;
-    let unrecorded_change_id = insert_guarded_unrecorded_change_with_paths(
-        &harness,
-        &task_id,
-        "core_reconcile_metrics",
-        r#"["src/export.rs"]"#,
-    )?;
-    harness.conn()?.execute(
-        "UPDATE unrecorded_changes
-            SET observed_paths_json = '[123]'
-          WHERE project_id = ?1
-            AND unrecorded_change_id = ?2",
-        rusqlite::params![PROJECT_ID, unrecorded_change_id],
-    )?;
-    let request = reconcile_changes_request(
-        "req_core_reconcile_metrics",
-        "idem_core_reconcile_metrics",
-        Some(2),
-        &task_id,
-        Vec::new(),
-    );
-
-    let response = harness.service.reconcile_changes(
-        request,
-        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
-    )?;
-    assert_owner_state_rejection(
-        &response,
-        "unrecorded_changes",
-        &unrecorded_change_id,
-        "observed_paths_json",
-        &harness.runtime_home_path,
-    );
-
-    let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
-    assert_eq!(
-        metric_total(&rows, "confirmed_unrecorded_false_positive"),
-        0
-    );
     Ok(())
 }
 

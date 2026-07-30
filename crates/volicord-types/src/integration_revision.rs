@@ -84,6 +84,8 @@ pub struct ProjectIntegrationRevisionBasis<'a> {
     pub policy_fingerprint: &'a str,
     pub guard_installation_id: Option<&'a str>,
     pub guard_policy_hash: Option<&'a str>,
+    pub repository_observer_contract_digest: &'a str,
+    pub product_repository_effect_catalog_digest: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -216,6 +218,11 @@ fn validate_project_basis(
     if !is_canonical_sha256_digest(basis.policy_fingerprint) {
         return Err(IntegrationRevisionError::InvalidDigest);
     }
+    if !is_canonical_sha256_digest(basis.repository_observer_contract_digest)
+        || !is_canonical_sha256_digest(basis.product_repository_effect_catalog_digest)
+    {
+        return Err(IntegrationRevisionError::InvalidDigest);
+    }
     match (basis.guard_installation_id, basis.guard_policy_hash) {
         (None, None) => Ok(()),
         (Some(installation_id), Some(policy_hash)) => {
@@ -297,25 +304,44 @@ mod tests {
 
         let policy_fingerprint = format!("sha256:{}", "a".repeat(64));
         let guard_policy_hash = format!("sha256:{}", "b".repeat(64));
+        let observer_digest = format!("sha256:{}", "c".repeat(64));
+        let effect_digest = format!("sha256:{}", "d".repeat(64));
         let project_basis = ProjectIntegrationRevisionBasis {
             connection_integration_revision: first.as_str(),
             project_id: "project.alpha",
             policy_fingerprint: &policy_fingerprint,
             guard_installation_id: Some("guard.alpha"),
             guard_policy_hash: Some(&guard_policy_hash),
+            repository_observer_contract_digest: &observer_digest,
+            product_repository_effect_catalog_digest: &effect_digest,
         };
         let project =
             IntegrationRevision::for_project(project_basis.clone()).expect("valid project basis");
         assert_eq!(
             project,
-            IntegrationRevision::for_project(project_basis).expect("same project basis")
+            IntegrationRevision::for_project(project_basis.clone()).expect("same project basis")
         );
+        let changed_observer = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+            repository_observer_contract_digest: &format!("sha256:{}", "e".repeat(64)),
+            ..project_basis.clone()
+        })
+        .expect("changed observer contract");
+        let changed_effect_catalog =
+            IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+                product_repository_effect_catalog_digest: &format!("sha256:{}", "f".repeat(64)),
+                ..project_basis
+            })
+            .expect("changed effect catalog");
+        assert_ne!(project, changed_observer);
+        assert_ne!(project, changed_effect_catalog);
         let recreated_project = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
             connection_integration_revision: recreated.as_str(),
             project_id: "project.alpha",
             policy_fingerprint: &format!("sha256:{}", "a".repeat(64)),
             guard_installation_id: Some("guard.alpha"),
             guard_policy_hash: Some(&format!("sha256:{}", "b".repeat(64))),
+            repository_observer_contract_digest: &observer_digest,
+            product_repository_effect_catalog_digest: &effect_digest,
         })
         .expect("recreated project basis");
         let other_project = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
@@ -324,6 +350,8 @@ mod tests {
             policy_fingerprint: &format!("sha256:{}", "a".repeat(64)),
             guard_installation_id: Some("guard.alpha"),
             guard_policy_hash: Some(&format!("sha256:{}", "b".repeat(64))),
+            repository_observer_contract_digest: &observer_digest,
+            product_repository_effect_catalog_digest: &effect_digest,
         })
         .expect("other project basis");
         let native_session = "native.session.same";

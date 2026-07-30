@@ -34,9 +34,6 @@ use crate::summary_text::{
     summary_card, write_ticket_summary_text, SummaryCardInput,
 };
 use crate::task_facts::{active_blocker_refs, current_close_basis};
-use crate::workflow_diagnostics::{
-    record_core_workflow_metric_best_effort, response_committed_fresh_effect,
-};
 use crate::write_ticket::current_validity::StoredWriteTicketEvaluation;
 use crate::write_ticket::service::{
     load_current_write_ticket_summary, load_evaluated_stored_write_tickets,
@@ -48,7 +45,6 @@ use volicord_store::core_pipeline::{
     ChangeUnitRecord, ContinuityMutation, CoreProjectStore, CoreStorageMutation,
     ProjectStateHeader, RunObservedChangesRecord, TaskRecord, UnrecordedChangeResolutionUpdate,
 };
-use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::guards::UnrecordedChangeRecord;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{
@@ -68,8 +64,8 @@ use volicord_types::values::OperationCategory;
 use volicord_types::values::{
     ActorSource, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
     NextActionKind, NextActionPresentationRole, PlannedBlockerSourceKind, StateRecordKind,
-    UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus,
-    UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
 };
 use volicord_user_action_service::{
     agent_safe_pending_user_action_summaries, construct_user_action,
@@ -88,7 +84,6 @@ struct ReconciliationPlan {
     event_payload: JsonObject,
     result_fields: ReconcileChangesResultFields,
     dry_run_summary: DryRunSummary,
-    confirmed_false_positive_samples: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,9 +189,7 @@ impl CoreService {
             );
         }
 
-        let confirmed_false_positive_samples = plan.confirmed_false_positive_samples;
-        let session_id = prepared.context.verified_invocation.session_id.clone();
-        let response = self.execute_prepared_request(
+        self.execute_prepared_request(
             prepared,
             commit_mutation_branch::<ReconcileChangesRequest>(CommitMutationBranch {
                 result_fields: plan.result_fields,
@@ -206,18 +199,7 @@ impl CoreService {
                 change_unit_id: None,
                 storage_mutations: plan.storage_mutations,
             }),
-        )?;
-        if response_committed_fresh_effect(&response) {
-            for sample in confirmed_false_positive_samples {
-                record_core_workflow_metric_best_effort(
-                    context,
-                    session_id.as_deref(),
-                    WorkflowMetricKind::ConfirmedUnrecordedFalsePositive,
-                    sample,
-                );
-            }
-        }
-        Ok(response)
+        )
     }
 }
 
@@ -544,32 +526,12 @@ fn plan_reconcile_changes(
         &close_plan.blockers,
         result_next_actions,
     )?;
-    let confirmed_false_positive_samples = planned_resolutions
-        .iter()
-        .filter(|resolution| {
-            resolution.record.confidence == UnrecordedChangeConfidence::Confirmed
-                && !matches!(
-                    resolution.basis,
-                    UnrecordedChangeResolutionBasis::AcceptedByUser
-                        | UnrecordedChangeResolutionBasis::SupersededByNewObservation
-                )
-        })
-        .map(|resolution| {
-            u64::from(matches!(
-                resolution.basis,
-                UnrecordedChangeResolutionBasis::InvalidObservation
-                    | UnrecordedChangeResolutionBasis::NotProductChange
-            ))
-        })
-        .collect();
-
     Ok(ReconciliationPlan {
         task_id: request.task_id,
         storage_mutations,
         event_payload,
         result_fields,
         dry_run_summary,
-        confirmed_false_positive_samples,
     })
 }
 
@@ -658,12 +620,6 @@ fn deterministic_resolution(
     write_tickets: &[StoredWriteTicketEvaluation],
 ) -> CoreResult<Option<ResolutionCandidate>> {
     let observed_paths = observed_paths(record);
-    if observed_paths.is_empty() {
-        return Ok(Some(system_resolution(
-            UnrecordedChangeResolutionBasis::NotProductChange,
-            "core_deterministic_not_product_change",
-        )));
-    }
     if runs.iter().any(|run| {
         run.status == volicord_store::core_pipeline::RunStatus::Recorded
             && run.observed_changes.product_file_write_observed
@@ -1048,7 +1004,6 @@ fn unrecorded_finding(
     Ok(UnrecordedChangeFinding {
         unrecorded_change_ref: unrecorded_change_ref(record, request, state_version),
         status: UnrecordedChangeStatus::Unresolved,
-        confidence: record.confidence,
         summary: record.summary.clone(),
         observed_paths: observed_paths(record),
         detected_at: record.detected_at.clone(),

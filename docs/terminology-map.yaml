@@ -28,7 +28,7 @@ canonical_for:
   - "Terminology boundaries among write ticket, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
   - "Terminology separation between the Record integration profile and per-Task requested and effective control levels."
   - "Terminology routing for project-owned workflow policy, normalized write-authority fingerprints, state-bound Write Ticket validity, structured invalidation reasons, and ticket reuse."
-  - "Terminology routing for observation confidence and confirmed versus suspected Unrecorded Changes."
+  - "Terminology routing for invocation-scoped repository observations and Unrecorded Changes."
   - "Terminology routing for compact MCP runtime schemas and owner-method-bearing `next_action` projections."
   - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and write ticket."
   - "Terminology routing for the canonical `ConnectionVerificationReport`, the selected-Connection schema-2 `DiagnosticReport`, the exact-read schema-1 `DiagnosticLookupReport`, their distinct statuses, and report-contained actions."
@@ -2361,11 +2361,6 @@ terms:
       - "unrecorded_change"
       - "unrecorded_changes"
       - "UnrecordedChangeFinding"
-      - "UnrecordedChangeConfidence"
-      - "Confirmed"
-      - "Suspected"
-      - "confirmed"
-      - "suspected"
     primary_owner:
       en: "docs/en/reference/api/method-reconcile-changes.md"
       ko: "docs/ko/reference/api/method-reconcile-changes.md"
@@ -2377,7 +2372,7 @@ terms:
     notes:
       - "Use Unrecorded Change when the concept is user-visible."
       - "Preserve exact schema/storage identifiers such as `UnrecordedChangeFinding` and `unrecorded_changes` in reference/API/storage contexts."
-      - "Preserve confirmed and suspected confidence rather than treating every observation as a close blocker."
+      - "Use Unrecorded Change only for a complete non-empty unmatched invocation-scoped repository delta."
   observation_confidence:
     category: "api_value_set"
     en: "observation confidence"
@@ -2396,7 +2391,6 @@ terms:
       - "ObservedEffectKind"
       - "MutationAssessment"
       - "PathAssessment"
-      - "UnrecordedChangeConfidence"
       - "Confirmed"
       - "Structured"
       - "Heuristic"
@@ -2405,7 +2399,6 @@ terms:
       - "ProductFileWrite"
       - "NonProductWrite"
       - "ExternalEffect"
-      - "Suspected"
       - "confirmed"
       - "structured"
       - "heuristic"
@@ -2414,7 +2407,6 @@ terms:
       - "product_file_write"
       - "non_product_write"
       - "external_effect"
-      - "suspected"
     primary_owner:
       en: "docs/en/reference/api/schema-value-sets.md"
       ko: "docs/ko/reference/api/schema-value-sets.md"

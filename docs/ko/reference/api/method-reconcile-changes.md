@@ -35,12 +35,10 @@
 
 미기록 변경을 해결하면 `unresolved_unrecorded_changes` 닫기 차단 사유 계산에서 빠집니다. 해결됐다는 사실만으로 제품 파일이 정확하거나, 검토 또는 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 뜻은 아닙니다.
 
-모든 finding은 `confidence=confirmed|suspected`를 가집니다. 확인된
-(`confirmed`) 미해결 Product Repository 변경은 `unresolved_unrecorded_changes`에
-기여하며 닫기 전에 조정해야 합니다. 의심(`suspected`) finding은 경고와 검증
-요청이지 닫기 차단 사유가 아닙니다. 결정적 검증은 이를 `confirmed`로 승격하거나
-제품 변경 아님, 되돌림, 이미 포함됨, 잘못된 관찰로 해결할 수 있습니다. Agent
-Connection은 차단 사유를 없애기 위해 confidence를 낮출 수 없습니다.
+모든 finding은 정확한 호출의 예상 쓰기와 일치하지 않은 완전히 관찰된 비어 있지
+않은 Product Repository delta를 나타냅니다. 모든 미해결 finding은
+`unresolved_unrecorded_changes`에 기여하며 닫기 전에 조정해야 합니다. 관찰 불가
+진단은 finding이 아니며 합성 경로로 이 메서드에 들어오지 않습니다.
 
 ## 필수 입력
 
@@ -76,7 +74,7 @@ Core는 현재 프로젝트와 `Task`의 미해결 미기록 변경도 함께 �
 - `resolution_requests`는 생략할 수 있으며 기본값은 `[]`입니다.
 - `user_action_resolution_id`는 생략하거나 `null`로 보낼 수 있습니다. 둘 다 해당 항목에 사용자 행동 resolution을 제공하지 않았다는 뜻입니다.
 - `basis=accepted_by_user`는 미기록 변경 참조에 연결된 기존 해결 사용자 행동을 `user_action_resolution_id`로 요구합니다. 그 행동은 같은 `Task`의 현재 `product_decision`이어야 하고, 호환 User Channel에서 `actor_source=local_user`, `machine_action=accept`, `resolution_outcome=accepted`로 기록되어야 합니다.
-- 호출자가 제공한 `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, `invalid_observation` 요청은 에이전트가 제공한 시스템 해결 근거로 거부됩니다. Core가 결정적으로 검증할 수 있으면 같은 근거를 직접 적용할 수는 있습니다.
+- 호출자가 제공한 `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write` 요청은 에이전트가 제공한 시스템 해결 근거로 거부됩니다. Core가 결정적으로 검증할 수 있으면 같은 근거를 직접 적용할 수는 있습니다.
 
 중첩 담당 문서:
 
@@ -106,10 +104,10 @@ Core는 현재 프로젝트와 `Task`의 미해결 미기록 변경도 함께 �
 
 저장 변경이 없는 유효한 호출은 읽기 전용 결과를 반환합니다. 재실행 행, 이벤트, 상태 버전 증가는 만들지 않습니다.
 
-Store는 지속 저장된 미기록 변경 row의 status, confidence, Product Repository 경로,
-actor, timestamp, object fact를 엄격하게 decode한 뒤 typed record를 Core에
-전달합니다. Core는 물리 JSON이나 저장된 폐쇄형 값의 철자를 해석하지 않으며 새
-관찰도 만들지 않습니다.
+Store는 지속 저장된 미기록 변경 row의 status, 정확한 저장소 관찰 identity,
+비어 있지 않은 Product Repository 경로, 불일치 delta digest, actor, timestamp,
+object fact를 엄격하게 decode한 뒤 typed record를 Core에 전달합니다. Core는 물리
+JSON이나 저장된 폐쇄형 값의 철자를 해석하지 않으며 새 관찰도 만들지 않습니다.
 조정 변경은 별도 동작이 티켓의 명시적 유효성
 좌표 중 하나를 바꾸지 않는 한 쓰기 티켓을 소비하거나 무효화하지 않습니다. 조정에
 따른 상태 버전 증가만으로는 티켓 유효성이 바뀌지 않습니다.
@@ -185,8 +183,6 @@ actor, timestamp, object fact를 엄격하게 decode한 뒤 typed record를 Core
 
 Core가 결정하는 해결 근거(`basis`):
 
-- `invalid_observation`: 저장된 관찰 데이터를 Product Repository 경로로 해석할 수 없습니다.
-- `not_product_change`: 저장된 관찰 데이터에 조정할 Product Repository 경로가 없습니다.
 - `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 포함하거나, 같은 `Task`의 결정적 예상 쓰기 상관관계가 그 경로를 포함합니다.
 - `covered_by_write_ticket`: 같은 `Task`의 호환되는 소비된 쓰기 티켓 하나 또는 현재 `active`이고 소비되지 않았으며 상태에 묶여 유효한 쓰기 티켓 하나가 관찰된 Product Repository 경로를 결정적으로 포함합니다. 선택적 idle timeout이 설정된 경우에만 이를 확인하며 고정 티켓 수명은 없습니다.
 
@@ -194,7 +190,10 @@ Core가 결정하는 해결 근거(`basis`):
 
 - `accepted_by_user`: 미기록 변경에 연결된 호환되는 해결된 `product_decision` 사용자 행동이 로컬 사용자가 해당 관찰 변경을 이 `Task`에서 의도된 변경으로 수락했음을 기록합니다.
 
-`reverted`와 `superseded_by_new_observation`은 예약 값이며 기준 메서드가 생성하지 않습니다. 호출자는 Core가 결정하는 해결 근거를 에이전트 묵살 사유로 선택할 수 없습니다. 이 메서드는 해결 근거를 만들기 위해 파일시스템을 되돌리거나 추가로 탐색하지 않습니다.
+`reverted`는 별도로 검증된 되돌림을 위한 예약 값이며 기준 메서드가 생성하지
+않습니다. 호출자는 Core가 결정하는 해결 근거를 에이전트 묵살 사유로 선택할 수
+없습니다. 이 메서드는 해결 근거를 만들기 위해 파일시스템을 되돌리거나 추가로
+탐색하지 않습니다.
 
 아직 수락이 필요한 미기록 변경은 Core가 임의로 수락하지 않습니다. 대신 대기 중인
 `UserActionRequest` 행을 만듭니다. 메서드 결과는

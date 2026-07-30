@@ -34,10 +34,10 @@ use volicord_types::tool_names::AgentToolId;
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 53);
-    assert_eq!(metadata.columns.len(), 597);
+    assert_eq!(metadata.tables.len(), 54);
+    assert_eq!(metadata.columns.len(), 604);
     assert_eq!(metadata.indexes.len(), 77);
-    assert_eq!(metadata.constraints.len(), 45);
+    assert_eq!(metadata.constraints.len(), 46);
     let runtime_home_columns = metadata
         .columns
         .iter()
@@ -376,11 +376,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:5484dbad5df102ca36903749ca6b2f7393d5cdd3714175002dc62986af34a132"
+        "sha256:3fc1939976439d74d6dc1b4115511dbd8eed7ede5156744f8e02ec682ab34648"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:7f5266b4b7dc952f178d3aaafdb292cd6882dfb3b915f2346319b8c5297a9307"
+        "sha256:31e7cac083f2e0d694f6df0a3c1c912e644923dccd3946065094269185702781"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,12 +414,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:5484dbad5df102ca36903749ca6b2f7393d5cdd3714175002dc62986af34a132\",",
+            "{\"canonical_ddl_digest\":\"sha256:3fc1939976439d74d6dc1b4115511dbd8eed7ede5156744f8e02ec682ab34648\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
-            "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
+            "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:7f5266b4b7dc952f178d3aaafdb292cd6882dfb3b915f2346319b8c5297a9307\"}"
+            "\"integrity_constraints_digest\":\"sha256:31e7cac083f2e0d694f6df0a3c1c912e644923dccd3946065094269185702781\"}"
         )
     );
     Ok(())

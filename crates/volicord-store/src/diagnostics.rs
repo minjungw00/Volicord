@@ -271,8 +271,6 @@ CREATE TABLE workflow_metric_events (
             'pre_tool_decision',
             'observation_assessment',
             'confirmed_out_of_scope_write',
-            'suspected_resolved_no_change',
-            'confirmed_unrecorded_false_positive',
             'confirmed_structured_write_deny',
             'sensitive_approval_missing_block',
             'completion_claim_suppressed'
@@ -720,8 +718,6 @@ pub enum WorkflowMetricKind {
     PreToolDecision,
     ObservationAssessment,
     ConfirmedOutOfScopeWrite,
-    SuspectedResolvedNoChange,
-    ConfirmedUnrecordedFalsePositive,
     ConfirmedStructuredWriteDeny,
     SensitiveApprovalMissingBlock,
     CompletionClaimSuppressed,
@@ -729,7 +725,7 @@ pub enum WorkflowMetricKind {
 
 impl WorkflowMetricKind {
     /// All supported workflow metric kinds in stable contract order.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 16] = [
         Self::TaskDurationMicros,
         Self::FirstProductWriteDurationMicros,
         Self::McpMethodCall,
@@ -743,8 +739,6 @@ impl WorkflowMetricKind {
         Self::PreToolDecision,
         Self::ObservationAssessment,
         Self::ConfirmedOutOfScopeWrite,
-        Self::SuspectedResolvedNoChange,
-        Self::ConfirmedUnrecordedFalsePositive,
         Self::ConfirmedStructuredWriteDeny,
         Self::SensitiveApprovalMissingBlock,
         Self::CompletionClaimSuppressed,
@@ -766,8 +760,6 @@ impl WorkflowMetricKind {
             Self::PreToolDecision => "pre_tool_decision",
             Self::ObservationAssessment => "observation_assessment",
             Self::ConfirmedOutOfScopeWrite => "confirmed_out_of_scope_write",
-            Self::SuspectedResolvedNoChange => "suspected_resolved_no_change",
-            Self::ConfirmedUnrecordedFalsePositive => "confirmed_unrecorded_false_positive",
             Self::ConfirmedStructuredWriteDeny => "confirmed_structured_write_deny",
             Self::SensitiveApprovalMissingBlock => "sensitive_approval_missing_block",
             Self::CompletionClaimSuppressed => "completion_claim_suppressed",
@@ -2476,8 +2468,6 @@ mod tests {
                 "pre_tool_decision",
                 "observation_assessment",
                 "confirmed_out_of_scope_write",
-                "suspected_resolved_no_change",
-                "confirmed_unrecorded_false_positive",
                 "confirmed_structured_write_deny",
                 "sensitive_approval_missing_block",
                 "completion_claim_suppressed",

@@ -13,6 +13,7 @@ volicord-test-support = { path = "../../crates/volicord-test-support" }
 volicord-types = { path = "../../crates/volicord-types" }
 volicord-user-action-service = { path = "../../crates/volicord-user-action-service" }
 serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [[test]]
 name = "baseline"

@@ -15,6 +15,10 @@ use std::{
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
+pub use volicord_host_contract::{
+    CanonicalToolName, CodexHookToolCorrelation, HostNativeCorrelation, HostSessionId,
+    HostToolUseId, HostTurnId,
+};
 use volicord_platform_fs::{
     RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
     RuntimeHomeMutationWaitPolicy,
