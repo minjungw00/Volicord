@@ -596,11 +596,11 @@ read-only semantic accessors and cannot construct, update, or destructure a
 persisted record. No public compatibility alias exists.
 
 The decoded `WriteTicketValidityBasis.approval_basis_refs` collection uses the
-dedicated `UserActionResolutionRef` contract. Store rejects a missing or
-non-`user_action_resolution` kind during typed JSON decoding. Aggregate
-validation then requires every reference's project and `Task` to equal the
-physical ticket owner, requires non-null produced-state metadata for persisted
-refs, and rejects duplicate full project/`Task`/resolution identities.
+dedicated `UserActionResolutionRef` contract. Typed JSON decoding requires the
+fixed `user_action_resolution` kind, complete project, `Task`, and resolution
+identity, and a concrete produced state version. Aggregate validation then
+requires every reference's project and `Task` to equal the physical ticket
+owner and rejects duplicate full project/`Task`/resolution identities.
 
 Other Store modules receive a complete typed Write Ticket or a focused typed
 view produced from that record. In particular, workflow-policy persistence

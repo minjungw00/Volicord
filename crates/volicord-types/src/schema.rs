@@ -1300,12 +1300,14 @@ enum UserActionResolutionRefRecordKind {
 ///     ProjectId::new("project"),
 ///     TaskId::new("task"),
 ///     UserActionResolutionId::new("resolution"),
-///     Some(7),
+///     7,
 /// );
 /// assert_eq!(reference.resolution_id().as_str(), "resolution");
+/// assert_eq!(reference.produced_at_state_version(), 7);
 /// ```
 ///
-/// External callers cannot select another record kind or omit Task ownership:
+/// External callers cannot select another record kind, omit Task ownership, or
+/// construct the reference without a concrete produced state version:
 ///
 /// ```compile_fail,E0451
 /// use volicord_types::{
@@ -1319,7 +1321,7 @@ enum UserActionResolutionRefRecordKind {
 ///     record_id: UserActionResolutionId::new("resolution"),
 ///     project_id: ProjectId::new("project"),
 ///     task_id: TaskId::new("task"),
-///     produced_at_state_version: Some(7).into(),
+///     produced_at_state_version: 7,
 /// };
 /// ```
 ///
@@ -1332,8 +1334,22 @@ enum UserActionResolutionRefRecordKind {
 /// let _ = UserActionResolutionRef {
 ///     record_id: UserActionResolutionId::new("resolution"),
 ///     project_id: ProjectId::new("project"),
-///     produced_at_state_version: Some(7).into(),
+///     produced_at_state_version: 7,
 /// };
+/// ```
+///
+/// ```compile_fail,E0308
+/// use volicord_types::{
+///     ids::{ProjectId, TaskId, UserActionResolutionId},
+///     schema::UserActionResolutionRef,
+/// };
+///
+/// let _ = UserActionResolutionRef::new(
+///     ProjectId::new("project"),
+///     TaskId::new("task"),
+///     UserActionResolutionId::new("resolution"),
+///     None,
+/// );
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -1342,7 +1358,7 @@ pub struct UserActionResolutionRef {
     record_id: UserActionResolutionId,
     project_id: ProjectId,
     task_id: TaskId,
-    produced_at_state_version: RequiredNullable<u64>,
+    produced_at_state_version: u64,
 }
 
 impl UserActionResolutionRef {
@@ -1351,14 +1367,14 @@ impl UserActionResolutionRef {
         project_id: ProjectId,
         task_id: TaskId,
         resolution_id: UserActionResolutionId,
-        produced_at_state_version: Option<u64>,
+        produced_at_state_version: u64,
     ) -> Self {
         Self {
             record_kind: UserActionResolutionRefRecordKind::UserActionResolution,
             record_id: resolution_id,
             project_id,
             task_id,
-            produced_at_state_version: produced_at_state_version.into(),
+            produced_at_state_version,
         }
     }
 
@@ -1378,8 +1394,8 @@ impl UserActionResolutionRef {
     }
 
     /// Returns projection-freshness metadata, which is not identity.
-    pub fn produced_at_state_version(&self) -> Option<u64> {
-        self.produced_at_state_version.as_ref().copied()
+    pub const fn produced_at_state_version(&self) -> u64 {
+        self.produced_at_state_version
     }
 
     /// Returns the immutable semantic resolution identity.

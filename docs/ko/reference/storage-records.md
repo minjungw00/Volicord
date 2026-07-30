@@ -523,11 +523,11 @@ transaction 안의 읽기는 정규 row projection, decoder, invariant validator
 갱신, destructure할 수 없습니다. 공개 호환 alias도 없습니다.
 
 Decode된 `WriteTicketValidityBasis.approval_basis_refs` 모음은 전용
-`UserActionResolutionRef` 계약을 사용합니다. Store는 type이 있는 JSON decoding
-중에 누락됐거나 `user_action_resolution`이 아닌 kind를 거부합니다. 이어지는
-aggregate 검증은 모든 참조의 프로젝트와 `Task`가 물리 ticket 소유자와 같은지,
-영속 참조의 produced-state metadata가 null이 아닌지 확인하고, 완전한
-프로젝트/`Task`/resolution identity 중복을 거부합니다.
+`UserActionResolutionRef` 계약을 사용합니다. 타입이 있는 JSON decoding은
+`user_action_resolution`으로 고정된 kind, 완전한 프로젝트, `Task`, resolution
+identity, 구체적인 produced state version을 요구합니다. 이어지는 aggregate
+검증은 모든 참조의 프로젝트와 `Task`가 물리 ticket 소유자와 같은지 확인하고,
+완전한 프로젝트/`Task`/resolution identity 중복을 거부합니다.
 
 다른 Store 모듈은 완전한 typed Write Ticket 또는 그 record에서 만든 집중된 typed
 view를 받습니다. 특히 workflow policy 영속화는 typed authority-binding view를

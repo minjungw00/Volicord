@@ -189,6 +189,31 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         response.response_value["write_ticket"]["validity_basis"]["write_authority_fingerprint"],
         project_write_authority_fingerprint(None)?
     );
+    let approval_basis_ref =
+        &response.response_value["write_ticket"]["validity_basis"]["approval_basis_refs"][0];
+    assert!(
+        approval_basis_ref["produced_at_state_version"]
+            .as_u64()
+            .is_some(),
+        "Core must emit a concrete produced state version for every Write Ticket approval ref"
+    );
+    let prepare_write_contract =
+        volicord_types::methods::public_method_contract(MethodName::PrepareWrite);
+    assert!(
+        prepare_write_contract.accepts_response(&response.response_value),
+        "the public Prepare Write response decoder must accept Core's concrete approval ref"
+    );
+    let mut null_approval_version = response.response_value.clone();
+    null_approval_version["write_ticket"]["validity_basis"]["approval_basis_refs"][0]
+        ["produced_at_state_version"] = Value::Null;
+    assert!(
+        serde_json::from_value::<PrepareWriteResult>(null_approval_version.clone()).is_err(),
+        "the public Prepare Write result decoder must reject a null approval ref version"
+    );
+    assert!(
+        !prepare_write_contract.accepts_response(&null_approval_version),
+        "the public Prepare Write response decoder must reject a null approval ref version"
+    );
     assert_eq!(response.response_value["base"]["state_version"], 5);
     assert_eq!(response.response_value["write_ticket_effect"], "issued");
     assert_eq!(

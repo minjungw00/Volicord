@@ -2515,7 +2515,7 @@ mod tests {
     }
 
     #[test]
-    fn user_action_resolution_ref_has_strict_typed_owner_identity() {
+    fn user_action_resolution_ref_has_strict_typed_owner_identity_and_version() {
         let valid = json!({
             "record_kind": "user_action_resolution",
             "record_id": "resolution-shared",
@@ -2525,6 +2525,14 @@ mod tests {
         });
         let schema = serde_json::to_value(schema_for!(UserActionResolutionRef))
             .expect("resolution reference schema should serialize");
+        assert!(schema["required"]
+            .as_array()
+            .expect("resolution reference schema should list required fields")
+            .contains(&json!("produced_at_state_version")));
+        assert_eq!(
+            schema["properties"]["produced_at_state_version"]["type"],
+            "integer"
+        );
         assert!(validate_json_schema(&schema, &valid).is_ok());
 
         let decoded: UserActionResolutionRef =
@@ -2532,19 +2540,29 @@ mod tests {
         assert_eq!(decoded.project_id().as_str(), "project-a");
         assert_eq!(decoded.task_id().as_str(), "task-a");
         assert_eq!(decoded.resolution_id().as_str(), "resolution-shared");
-        assert_eq!(decoded.produced_at_state_version(), Some(7));
+        assert_eq!(decoded.produced_at_state_version(), 7);
+        assert_eq!(
+            serde_json::to_value(&decoded).expect("resolution reference should serialize"),
+            json!({
+                "record_kind": "user_action_resolution",
+                "record_id": "resolution-shared",
+                "project_id": "project-a",
+                "task_id": "task-a",
+                "produced_at_state_version": 7
+            })
+        );
 
         let other_project = UserActionResolutionRef::new(
             ProjectId::new("project-b"),
             TaskId::new("task-a"),
             UserActionResolutionId::new("resolution-shared"),
-            Some(8),
+            8,
         );
         let other_task = UserActionResolutionRef::new(
             ProjectId::new("project-a"),
             TaskId::new("task-b"),
             UserActionResolutionId::new("resolution-shared"),
-            Some(9),
+            9,
         );
         assert_ne!(decoded.identity(), other_project.identity());
         assert_ne!(decoded.identity(), other_task.identity());
@@ -2562,6 +2580,46 @@ mod tests {
                 "record_id": "resolution-shared",
                 "project_id": "project-a",
                 "produced_at_state_version": 7
+            }),
+            json!({
+                "record_kind": "user_action_resolution",
+                "record_id": "resolution-shared",
+                "task_id": "task-a",
+                "produced_at_state_version": 7
+            }),
+            json!({
+                "record_kind": "user_action_resolution",
+                "project_id": "project-a",
+                "task_id": "task-a",
+                "produced_at_state_version": 7
+            }),
+            json!({
+                "record_kind": "user_action_resolution",
+                "record_id": "resolution-shared",
+                "project_id": "project-a",
+                "task_id": "task-a"
+            }),
+            json!({
+                "record_kind": "user_action_resolution",
+                "record_id": "resolution-shared",
+                "project_id": "project-a",
+                "task_id": "task-a",
+                "produced_at_state_version": null
+            }),
+            json!({
+                "record_kind": "user_action_resolution",
+                "record_id": "resolution-shared",
+                "project_id": "project-a",
+                "task_id": "task-a",
+                "produced_at_state_version": "7"
+            }),
+            json!({
+                "record_kind": "user_action_resolution",
+                "record_id": "resolution-shared",
+                "project_id": "project-a",
+                "task_id": "task-a",
+                "produced_at_state_version": 7,
+                "unexpected": true
             }),
         ] {
             assert!(validate_json_schema(&schema, &invalid).is_err());

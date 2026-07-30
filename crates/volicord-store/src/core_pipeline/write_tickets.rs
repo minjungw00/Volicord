@@ -787,15 +787,10 @@ fn validate_write_ticket_record(
         .validity_basis
         .approval_basis_refs
         .iter()
-        .any(|reference| {
-            nonempty_stored_identifier(reference.project_id().as_str()).is_none()
-                || nonempty_stored_identifier(reference.task_id().as_str()).is_none()
-                || nonempty_stored_identifier(reference.resolution_id().as_str()).is_none()
-                || reference.produced_at_state_version().is_none()
-        })
+        .any(|reference| nonempty_stored_identifier(reference.resolution_id().as_str()).is_none())
     {
         return Err(WriteTicketValidationFailure::Invariant(
-            WriteTicketInvariant::ApprovalReferenceMetadata,
+            WriteTicketInvariant::ApprovalResolutionIdentity,
         ));
     }
     let approval_identities = record
@@ -1287,7 +1282,7 @@ mod tests {
         assert_eq!(approval_ref.project_id().as_str(), "project");
         assert_eq!(approval_ref.task_id().as_str(), "task");
         assert_eq!(approval_ref.resolution_id().as_str(), "resolution");
-        assert_eq!(approval_ref.produced_at_state_version(), Some(6));
+        assert_eq!(approval_ref.produced_at_state_version(), 6);
         assert_eq!(
             record.created_by_user_action_resolution_id.as_deref(),
             Some("resolution")
@@ -1363,7 +1358,7 @@ mod tests {
                 ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalOwnerAgreement),
             ),
             (
-                "missing approval projection metadata",
+                "null approval projection metadata",
                 Box::new(|raw| {
                     raw.validity_basis_json =
                         validity_basis_with_approval_refs(json!([approval_ref(
@@ -1373,7 +1368,44 @@ mod tests {
                             Value::Null,
                         )]));
                 }),
-                ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalReferenceMetadata),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "missing approval projection metadata",
+                Box::new(|raw| {
+                    let mut reference = approval_ref("project", "task", "resolution", json!(6));
+                    reference
+                        .as_object_mut()
+                        .expect("approval fixture should be an object")
+                        .remove("produced_at_state_version");
+                    raw.validity_basis_json = validity_basis_with_approval_refs(json!([reference]));
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "invalid approval projection metadata type",
+                Box::new(|raw| {
+                    raw.validity_basis_json =
+                        validity_basis_with_approval_refs(json!([approval_ref(
+                            "project",
+                            "task",
+                            "resolution",
+                            json!("6"),
+                        )]));
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
+            ),
+            (
+                "unknown approval reference field",
+                Box::new(|raw| {
+                    let mut reference = approval_ref("project", "task", "resolution", json!(6));
+                    reference
+                        .as_object_mut()
+                        .expect("approval fixture should be an object")
+                        .insert("unexpected".to_owned(), json!(true));
+                    raw.validity_basis_json = validity_basis_with_approval_refs(json!([reference]));
+                }),
+                ExpectedCorruption::Json("validity_basis_json"),
             ),
             (
                 "empty approval resolution identity",
@@ -1386,7 +1418,7 @@ mod tests {
                             json!(6),
                         )]));
                 }),
-                ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalReferenceMetadata),
+                ExpectedCorruption::Invariant(WriteTicketInvariant::ApprovalResolutionIdentity),
             ),
             (
                 "duplicate approval resolution identity",

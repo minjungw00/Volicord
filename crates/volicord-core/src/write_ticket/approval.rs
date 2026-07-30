@@ -102,7 +102,7 @@ impl NonEmptyApprovalBasis {
                     identity.project_id.clone(),
                     identity.task_id.clone(),
                     identity.resolution_id.clone(),
-                    Some(produced_at_state_version),
+                    produced_at_state_version,
                 )
             })
             .collect()
@@ -396,7 +396,7 @@ mod tests {
             ProjectId::new("project-test"),
             TaskId::new("task-test"),
             UserActionResolutionId::new(resolution_id),
-            Some(6),
+            6,
         )
     }
 

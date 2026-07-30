@@ -68,14 +68,14 @@ UserActionResolutionRef:
   record_id: string
   project_id: string
   task_id: string
-  produced_at_state_version: integer | null
+  produced_at_state_version: integer
 ```
 
 `UserActionResolutionRef`는 승인 참조 전용 형태입니다. `record_kind`는
 `user_action_resolution`으로 고정되며, 필수 `project_id`, `task_id`,
 `record_id`가 완전한 resolution identity를 이룹니다.
-`produced_at_state_version`은 필수 null 허용 projection metadata로 남고 이
-identity에는 참여하지 않습니다.
+필수 `produced_at_state_version`은 이 참조를 만든 projection의 구체적인 프로젝트
+상태 버전이며 identity에는 참여하지 않습니다.
 
 담당 문서 링크:
 - `record_kind` 값: [기록과 참조 값](schema-value-sets.md#record-and-reference-values)
@@ -637,8 +637,8 @@ WriteDecisionReason:
   `UserActionResolutionRef` 값만 들어갑니다. 각 값은 티켓이 소유한 완전한
   프로젝트, `Task`, UserAction resolution identity 하나를 나타내며 중복
   identity는 유효하지 않습니다. 현재성 비교는 이 완전한 identity를 사용하며
-  범위가 없는 resolution ID만 비교하지 않습니다. 참조의
-  `produced_at_state_version`은 identity가 아니라 metadata입니다.
+  범위가 없는 resolution ID만 비교하지 않습니다. 각 참조에는 구체적인
+  `produced_at_state_version`이 있으며, 이 값은 identity가 아니라 metadata입니다.
 - `WriteTicketValidityBasis.write_authority_fingerprint`는 정확한 정규화 객체
   `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
   canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 각 값은 대응하는
