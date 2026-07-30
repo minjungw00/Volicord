@@ -620,6 +620,8 @@ fn test_state_record_ref(
     }
 }
 
+#[path = "../../write_ticket/tests/approval_consumer_conformance.rs"]
+mod approval_consumer_conformance;
 #[path = "../../close_readiness/tests/integration.rs"]
 mod close_readiness;
 mod close_task;
@@ -2749,6 +2751,7 @@ fn insert_active_write_ticket_with_timestamps(
             intended_operation: "local_sensitive_step",
             intended_paths: &["src/export.rs"],
             sensitive_categories: &[],
+            approval_basis_refs: Vec::new(),
         },
     )
 }
@@ -2763,6 +2766,7 @@ struct WriteTicketScopeFixture<'a> {
     intended_operation: &'a str,
     intended_paths: &'a [&'a str],
     sensitive_categories: &'a [&'a str],
+    approval_basis_refs: Vec<UserActionResolutionRef>,
 }
 
 fn insert_active_write_ticket_with_scope(
@@ -2793,7 +2797,7 @@ fn insert_active_write_ticket_with_scope(
                 baseline_ref: Some(BaselineRef::new("baseline_test")),
                 workspace_context_sha256: None,
                 write_authority_fingerprint,
-                approval_basis_refs: Vec::new(),
+                approval_basis_refs: input.approval_basis_refs.clone(),
             },
             path_scope: WriteTicketPathScope::new(intended_paths.clone(), Vec::new())?,
             attempt_scope: WriteTicketAttemptScope {
@@ -2810,7 +2814,10 @@ fn insert_active_write_ticket_with_scope(
                 baseline_ref: Some(BaselineRef::new("baseline_test")),
             },
             created_by_actor_source: ActorSource::agent_connection(CONNECTION_ID),
-            created_by_user_action_resolution_id: None,
+            created_by_user_action_resolution_id: input
+                .approval_basis_refs
+                .first()
+                .map(|reference| reference.resolution_id().clone()),
             idle_expires_at: Some(UtcTimestamp::parse(input.expires_at)?),
             created_at: UtcTimestamp::parse(input.created_at)?,
             metadata: Map::new(),

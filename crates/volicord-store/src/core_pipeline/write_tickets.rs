@@ -387,6 +387,53 @@ impl CoreProjectStore<'_> {
         )?;
         Ok(())
     }
+
+    /// Revokes an active Write Ticket for Store-valid semantic consumer fixtures.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn revoke_write_ticket_fixture(
+        &self,
+        write_ticket_id: &str,
+        invalidation_reason: WriteTicketInvalidationReason,
+        revoked_at: &UtcTimestamp,
+    ) -> StoreResult<()> {
+        let mut record =
+            write_ticket_record(&self.conn, &self.project.project_id, write_ticket_id)?
+                .ok_or_else(|| StoreError::NotFound {
+                    entity: "write_ticket",
+                    id: write_ticket_id.to_owned(),
+                })?;
+        if record.status != WriteTicketStatus::Active {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "write-ticket fixture `{write_ticket_id}` must be active before revocation"
+                ),
+            });
+        }
+        record.status = WriteTicketStatus::Revoked;
+        record.invalidation_reason = Some(invalidation_reason);
+        record.revoked_at = Some(revoked_at.clone());
+        validate_write_ticket_record(&record).map_err(|failure| StoreError::InvalidInput {
+            detail: format!("write-ticket fixture is internally inconsistent: {failure:?}"),
+        })?;
+        self.conn.execute(
+            "UPDATE write_tickets
+                SET status = ?3,
+                    invalidation_reason = ?4,
+                    revoked_at = ?5
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            params![
+                self.project.project_id,
+                write_ticket_id,
+                record.status.as_str(),
+                record
+                    .invalidation_reason
+                    .map(|reason| reason.as_str().to_owned()),
+                record.revoked_at.as_ref().map(ToString::to_string),
+            ],
+        )?;
+        Ok(())
+    }
 }
 
 fn active_write_tickets(

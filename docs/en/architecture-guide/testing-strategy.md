@@ -58,14 +58,34 @@ two or more compatible tickets, and mixed compatible/incompatible sets. They
 verify deterministic ambiguity identity ordering without treating that order
 as authority. Approval-owner tests pass raw UserAction authority facts only to
 the canonical approval owner and prove that its private current set yields a
-typed issuance basis or typed persisted-basis assessment. They cover the
-complete typed requirement, persisted-basis, and semantic change-reason matrix
-using Store-valid references. One shared semantic fixture table covers current
-approval, approval not required, newly required approval, stale resolution,
-changed approval scope, expiry, consumption, revocation, invalidation, and a
-current reusable ticket. It sends each fixture through the same canonical
-evaluation and verifies consistent summary, Prepare Write reuse, Record Run
-admission, and close-readiness decisions. Summary tests separately map
+typed issuance basis or typed persisted-basis assessment. These policy unit
+tests cover requirement construction, current sensitive-approval construction,
+Store-valid persisted-basis assessment, typed semantic change reasons, multiple
+approval references, and current and stale full resolution identities. They do
+not invoke or claim coverage of a consumer path.
+
+The Store-backed cross-consumer wiring conformance suite lives in
+`crates/volicord-core/src/write_ticket/tests/approval_consumer_conformance.rs`
+and is attached to the crate-private method integration harness. Its shared
+scenario table contains only source facts for current approval, approval not
+required, newly required approval, a stale resolution, changed approval scope,
+ticket expiry, consumption, revocation, exactly one compatible reusable
+ticket, and multiple compatible reusable tickets. Each scenario persists valid
+Task, Change Unit, UserAction request and resolution, and Write Ticket records
+as applicable. It invokes the actual `CoreService::status`,
+`CoreService::check_close`, `CoreService::prepare_write`, and
+`CoreService::record_run` paths and asserts their projected status, Store
+effects, admission result, and Write Ticket blocker identities. Record Run uses
+a freshly materialized copy of the same source facts so a preceding Prepare
+Write invalidation cannot replace its own admission evaluation. Fixture helpers
+do not compare approval references, construct resolution-ID sets, determine
+currentness, select compatible tickets, or reproduce invalidation reasons.
+With multiple compatible tickets, status projects one display-selected active
+summary while the persisted candidate set remains inspectable, close readiness
+projects one blocker for each current ticket, Prepare Write blocks without
+reuse, and Record Run admits only the ticket explicitly named for consumption.
+
+Summary tests separately map
 `PlannedWriteTicket` and evaluated stored state without a Store fixture or
 policy reevaluation. Focused
 service tests verify terminal pre-evaluation, active-only current fact

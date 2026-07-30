@@ -1000,6 +1000,7 @@ fn reconcile_changes_keeps_ambiguous_active_write_ticket_match_unresolved(
                 intended_operation: "local_sensitive_step",
                 intended_paths: &["src/export.rs"],
                 sensitive_categories: &[],
+                approval_basis_refs: Vec::new(),
             },
         )?;
     }

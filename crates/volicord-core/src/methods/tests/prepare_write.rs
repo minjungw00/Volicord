@@ -349,6 +349,7 @@ fn prepare_write_blocks_ambiguous_store_backed_compatible_tickets_without_select
                 intended_operation: "local_sensitive_step",
                 intended_paths: &["src/export.rs"],
                 sensitive_categories: &[],
+                approval_basis_refs: Vec::new(),
             },
         )?;
     }

@@ -167,6 +167,7 @@ fn service_projects_current_expiry_and_approval_invalidation() -> Result<(), Box
             intended_operation: "local_sensitive_step",
             intended_paths: &["src/export.rs"],
             sensitive_categories: &["network"],
+            approval_basis_refs: Vec::new(),
         },
     )?;
     let approval_store = approval_harness.store()?;

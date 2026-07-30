@@ -180,25 +180,6 @@ pub(crate) mod test_support {
         }
     }
 
-    pub(crate) fn active_facts_with_approval_basis(
-        write_ticket_id: &str,
-        attempt_scope: WriteTicketAttemptScope,
-        approval_basis_refs: Vec<volicord_types::schema::UserActionResolutionRef>,
-        idle_expires_at: UtcTimestamp,
-    ) -> StoredWriteTicketFacts {
-        let mut ticket = semantic_facts(7);
-        ticket.validity_basis.task_id = attempt_scope.task_id.clone();
-        ticket.validity_basis.change_unit_id = attempt_scope.change_unit_id.clone();
-        ticket.validity_basis.baseline_ref = attempt_scope.baseline_ref.clone();
-        ticket.validity_basis.approval_basis_refs = approval_basis_refs;
-        ticket.path_scope =
-            WriteTicketPathScope::new(attempt_scope.intended_paths.clone(), Vec::new())
-                .expect("test scope should be valid");
-        ticket.attempt_scope = attempt_scope;
-        ticket.idle_expires_at = Some(idle_expires_at);
-        stored_facts_from_semantic(write_ticket_id, WriteTicketStatus::Active, ticket)
-    }
-
     pub(crate) fn invalidated_facts(
         write_ticket_id: &str,
         invalidation: WriteTicketInvalidationReason,

@@ -983,6 +983,7 @@ fn record_run_rejects_write_ticket_sensitive_category_mismatch_without_consumpti
             intended_operation: "local_sensitive_step",
             intended_paths: &["src/export.rs"],
             sensitive_categories: &["network"],
+            approval_basis_refs: Vec::new(),
         },
     )?;
     enable_record_run_capabilities(&harness)?;

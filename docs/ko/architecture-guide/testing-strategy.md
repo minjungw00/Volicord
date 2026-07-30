@@ -52,12 +52,31 @@ ticket 둘 이상, 호환 후보와 비호환 후보가 섞인 집합을 구분�
 결정적인 모호성 identity 순서를 검증하되 그 순서를 권한으로 취급하지 않습니다.
 승인 담당자 테스트는 원시 UserAction 권한 fact를 정규 승인 담당자에게만 전달하고,
 그 비공개 현재 집합이 typed 발급 근거 또는 typed 영속 근거 평가를 만드는지
-검증합니다. Store가 검증한 참조를 사용해 typed 요구사항, 영속 근거, 의미 변경
-사유의 전체 matrix도 다룹니다. 하나의 공유 의미 fixture 표는 현재 승인, 승인이
-필요하지 않은 경우, 새로 필요해진 승인, 오래된 resolution, 변경된 승인 범위,
-만료, 소비, 철회, 무효화, 현재 재사용 가능한 ticket을 다룹니다. 각 fixture를 같은
-정규 평가에 통과시켜 summary, Prepare Write 재사용, Record Run 승인, 닫기 준비
-상태 판단이 일관됨을 검증합니다. Summary 테스트는 Store fixture나 정책 재평가 없이
+검증합니다. 이 정책 unit test는 요구사항 구성, 현재 민감 동작 승인 구성, Store가
+검증한 영속 근거 평가, typed 의미 변경 사유, 여러 승인 참조, 현재 및 오래된 전체
+resolution identity를 다룹니다. 소비자 경로를 호출하거나 그 경로의 coverage를
+주장하지 않습니다.
+
+Store 기반 교차 소비자 배선 적합성 suite는
+`crates/volicord-core/src/write_ticket/tests/approval_consumer_conformance.rs`에
+있으며 crate 비공개 메서드 통합 하네스에 연결됩니다. 공유 시나리오 표에는 현재
+승인, 승인이 필요하지 않은 경우, 새로 필요해진 승인, 오래된 resolution, 변경된 승인
+범위, ticket 만료, 소비, 철회, 호환되고 재사용 가능한 ticket 정확히 하나, 호환되고
+재사용 가능한 ticket 여러 개를 만드는 원본 fact만 둡니다. 각 시나리오는 필요한
+유효한 Task, Change Unit, UserAction 요청과 resolution, Write Ticket record를
+영속화합니다. 실제 `CoreService::status`, `CoreService::check_close`,
+`CoreService::prepare_write`, `CoreService::record_run` 경로를 호출하고 projection된
+상태, Store 효과, admission 결과, Write Ticket 차단 사유 identity를 검증합니다.
+Record Run은 앞선 Prepare Write 무효화가 자체 admission 평가를 대신하지 않도록 같은
+원본 fact를 새로 구체화한 fixture에서 실행합니다. Fixture helper는 승인 참조를
+비교하거나 resolution ID 집합을 구성하거나 현재 여부를 판단하거나 호환 ticket을
+선택하거나 무효화 사유를 재현하지 않습니다. 호환 ticket이 여러 개면 status는
+표시용으로 선택한 active summary 하나를 projection하되 영속 후보 집합은 계속 조회할
+수 있고, 닫기 준비 상태는 현재 ticket마다 차단 사유 하나를 projection합니다.
+Prepare Write는 재사용 없이 차단되며, Record Run은 요청이 소비 대상으로 명시한
+ticket만 승인합니다.
+
+Summary 테스트는 Store fixture나 정책 재평가 없이
 `PlannedWriteTicket`과 평가 완료 stored 상태를 각각 변환합니다. 집중 service
 테스트는 terminal 사전 평가, active에 한정한 현재 fact 취득, 선택 뒤 증거 읽기와
 영속, 무효화, approval-dependent, dry-run, 실패 경로의 대표 사례를 검증합니다.
