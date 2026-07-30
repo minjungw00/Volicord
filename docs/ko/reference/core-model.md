@@ -59,10 +59,12 @@ Volicord는 Volicord 기록을 다룹니다.
 
 - 쓰기 티켓은 상태에 결속된 제품 파일 변경 하나 또는 유효 `sensitive` 통제 아래의
   정확한 승인 결속 비제품 동작 하나에 Core가 쓰기 권한을 부여한 사실을 기록합니다.
-  반복된 `prepare_write`는 호환되고 아직 소비되지 않은 같은 티켓을 재사용할 수 있지만,
-  민감 재사용에는 정확한 동작과 프로젝트, `Task`, UserAction resolution ID로
-  이루어진 완전한 승인 resolution identity도 필요하며 경로, 승인, 권한을 넓히지는
-  않습니다.
+  반복된 `prepare_write`는 호환되고 아직 소비되지 않은 후보가 정확히 하나일 때만 그
+  티켓을 재사용할 수 있습니다. 호환 후보가 여러 개이면 모호하며 어느 후보에도 선택
+  권한을 부여하지 않습니다. Store 순서나 identity 순서는 진단을 안정화할 수 있지만
+  티켓을 고르지는 않습니다. 민감 재사용에는 정확한 동작과 프로젝트, `Task`,
+  UserAction resolution ID로 이루어진 완전한 승인 resolution identity도 필요하며
+  경로, 승인, 권한을 넓히지는 않습니다.
 - 티켓 유효성은 현재 `Task`, Change Unit, `scope_revision`, 기준선, workspace
   결속, 정규화된 현재 프로젝트 쓰기 권한 fingerprint, 승인 근거, 명시적 취소 상태,
   정책이 선택한 선택적 유휴 제한 시간에 의존합니다. 정책 결속이 없거나 다른 활성

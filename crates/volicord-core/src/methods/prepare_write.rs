@@ -834,6 +834,16 @@ fn project_write_decision_reasons(
                         Some(task_id),
                         Some(current_state_version),
                     ),
+                    WriteTicketRelatedRecord::WriteTicket {
+                        task_id,
+                        write_ticket_id,
+                    } => state_ref(
+                        StateRecordKind::WriteTicket,
+                        write_ticket_id.as_str(),
+                        project_id,
+                        Some(task_id),
+                        Some(current_state_version),
+                    ),
                 })
                 .collect(),
         })

@@ -185,6 +185,12 @@ mod tests {
             ]),
             PrepareWriteDecision::DecisionRequired
         );
+        assert_eq!(
+            prepare_write_decision(&[reason(
+                WriteTicketDecisionCode::CompatibleWriteTicketAmbiguous,
+            )]),
+            PrepareWriteDecision::Blocked
+        );
     }
 
     #[test]

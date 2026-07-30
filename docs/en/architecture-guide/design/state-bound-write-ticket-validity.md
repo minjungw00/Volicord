@@ -21,12 +21,19 @@ stored state. `approval.rs` is the single owner that constructs the canonical
 Write Ticket approval requirement, derives the invariant-bearing current
 sensitive-approval set, and assesses a Store-valid persisted approval basis as
 `NotRequired`, `Current`, or `Changed` with a typed reason.
-`selection.rs` chooses only among complete `StoredWriteTicketEvaluation`
-values. `summary.rs` has distinct planned and stored projection inputs, so a
-planned issuance never impersonates a stored evaluation. `service.rs`
-coordinates this persisted flow, partitions terminal and active records before
-loading current facts, selects one stored result, and loads evidence only for
-the selection.
+`selection.rs` owns two distinct policies. Historical and display-oriented
+summary selection chooses among complete `StoredWriteTicketEvaluation` values.
+Authority-bearing Prepare Write selection consumes the complete set of
+classified active candidates and returns
+`CompatibleWriteTicketSelection::None`,
+`CompatibleWriteTicketSelection::One(ReusableStoredWriteTicket)`, or
+`CompatibleWriteTicketSelection::Ambiguous(AmbiguousCompatibleWriteTickets)`.
+The ambiguity value retains at least two deterministically sorted identities
+for diagnostics; that order never selects authority. `summary.rs` has distinct
+planned and stored projection inputs, so a planned issuance never impersonates
+a stored evaluation. `service.rs` coordinates the persisted display flow,
+partitions terminal and active records before loading current facts, selects
+one stored result, and loads evidence only for the selection.
 `planning.rs` evaluates a focused `PrepareWriteInput` and returns typed
 semantic decision reasons, related record identities, common facts, candidate
 mutation facts, and exactly one `PrepareWriteTicketPlan` branch:
@@ -85,6 +92,15 @@ the same Store commit as the Run and its associated effects.
 - Terminal stored states cannot enter active currentness or admission logic.
 - Reuse accepts only `ReusableStoredWriteTicket`; protected mutation accepts
   only `AdmissibleStoredWriteTicket`.
+- Prepare Write reuses only `CompatibleWriteTicketSelection::One`; `None`,
+  `One`, and `Ambiguous` cannot collapse into an optional ticket.
+- Compatibility selection evaluates every classified active candidate.
+  Multiple compatible candidates retain all sorted identities for diagnostics
+  and authorize no candidate.
+- Store query order, ticket ID order, insertion order, and collection order do
+  not grant reuse authority.
+- Historical or display-oriented stored-state selection remains distinct from
+  authority-bearing compatibility selection.
 - Structural request and current Change Unit validation precede lookup.
 - Reuse does not widen paths, approvals, operations, or authority.
 - `approval.rs` alone constructs the current sensitive-approval identity set,
@@ -106,8 +122,9 @@ Prepare Write, that includes dry-run selection, durable ID allocation,
 state-versioned references, guarantee display, and conversion of typed
 planning, Store, and UserAction failures to public `PlanError` branches. The
 focused Write Ticket read boundary owns only typed fact acquisition. Approval
-construction and assessment, stored-only selection, and current validity are
-focused pure semantic policies. Planned summary projection accepts a
+construction and assessment, stored display selection, compatibility
+cardinality selection, and current validity are focused pure semantic
+policies. Planned summary projection accepts a
 `PlannedWriteTicket`; stored summary projection accepts a
 `StoredWriteTicketEvaluation` plus supplied evidence. Neither can read Store
 or recompute workflow, UserAction, or approval policy. The narrow service
@@ -151,24 +168,29 @@ row. Guard supplies observations but does not widen the ticket basis.
    workflow-policy, and UserAction facts. `approval.rs` produces the semantic
    assessment for each active candidate, and current-validity policy produces a
    reusable or invalidated active outcome.
-6. Pure selection considers only the resulting stored evaluations. After
-   selection the service loads its evidence and projects the stored summary.
-   Close readiness and the CLI guard receive the same evaluated stored state
-   and do not recompute approval currentness.
-7. Write Ticket planning returns common facts, mutation facts, and one closed
+6. Historical and display selection considers only complete stored
+   evaluations. After selection the service loads its evidence and projects
+   the stored summary. Close readiness and the CLI guard receive evaluated
+   stored state and do not recompute approval currentness.
+7. Prepare Write classifies every active candidate separately from stale
+   mutation facts. Compatibility selection consumes the complete classified
+   set and returns none, exactly one reusable ticket, or an ambiguity with
+   sorted identities. Only exactly one can enter reuse; ambiguity enters the
+   no-ticket decision path.
+8. Write Ticket planning returns common facts, mutation facts, and one closed
    issue, reuse, or no-ticket branch without inspecting dry-run intent or
    constructing public refs.
-8. For dry run, `prepare_write` projects a preview from that branch and stops.
+9. For dry run, `prepare_write` projects a preview from that branch and stops.
    For commit it preserves the branch as issued, reused, or none. Issued
    allocates the durable ID, materializes one `PlannedWriteTicket`, and derives
    nested result, top-level identity and paths, planned summary, and
    `WriteTicketInsert` from that value. Reused derives its result and stored
    summary from `ReusableStoredWriteTicket`; none derives only decision paths.
-9. For Record Run, evaluation produces an exact-attempt compatibility proof
+10. For Record Run, evaluation produces an exact-attempt compatibility proof
    while current-validity evaluation proves a `ReusableStoredWriteTicket`.
    `write_ticket/admission.rs` combines those matching proofs and returns
    `AdmissibleStoredWriteTicket`.
-10. Store commits consumption of that admissible ticket with the protected
+11. Store commits consumption of that admissible ticket with the protected
     mutation.
 
 ## Failure behavior
@@ -179,7 +201,9 @@ basis, or ambiguous ticket selection prevents reuse or consumption without a
 partial protected effect. The assessment distinguishes newly required
 approval, absent current resolution, changed approval scope, and a basis
 resolution that is no longer current. Exact replay does not consume the ticket
-again.
+again. Prepare Write ambiguity produces the method-owned no-ticket decision
+with sorted candidate identities; Store ordering remains diagnostic and does
+not resolve the ambiguity.
 Malformed physical fields and persisted cross-field disagreement are Store
 corruption. A checked Core state-conversion failure is an invariant failure,
 not a panic-based narrowing path. Expiry, path, operation, or current-policy
@@ -202,10 +226,11 @@ capability.
   and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
   typed fact acquisition, canonical approval requirement and current-set
   construction, typed approval assessment, terminal pre-evaluation,
-  active-only current-validity evaluation, stored-only selection, semantic
-  issuance-draft planning, validated `PlannedWriteTicket` materialization,
-  separate planned and stored summary projection, narrow persisted-summary
-  coordination, and reusable-to-admissible Record Run admission.
+  active-only current-validity evaluation, distinct display and
+  authority-bearing compatibility selection, semantic issuance-draft
+  planning, validated `PlannedWriteTicket` materialization, separate planned
+  and stored summary projection, narrow persisted-summary coordination, and
+  reusable-to-admissible Record Run admission.
 - [`crates/volicord-core/src/write_ticket/tests/read_model_service.rs`](../../../../crates/volicord-core/src/write_ticket/tests/read_model_service.rs):
   focused Store-backed fact acquisition and persisted-summary service coverage.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):

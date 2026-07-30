@@ -330,6 +330,93 @@ fn prepare_write_reuses_compatible_ticket_across_unrelated_state_increment(
 }
 
 #[test]
+fn prepare_write_blocks_ambiguous_store_backed_compatible_tickets_without_selecting_one(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_ticket_ambiguous")?;
+    let ticket_ids = ["write_ticket_z", "write_ticket_a"];
+    for (index, write_ticket_id) in ticket_ids.iter().enumerate() {
+        insert_active_write_ticket_with_scope(
+            &harness,
+            WriteTicketScopeFixture {
+                task_id: &task_id,
+                change_unit_id: &change_unit_id,
+                write_ticket_id,
+                basis_state_version: u64::try_from(index + 3)?,
+                created_at: "2026-06-18T00:00:00.000Z",
+                expires_at: "2026-06-18T00:15:00.000Z",
+                intended_operation: "local_sensitive_step",
+                intended_paths: &["src/export.rs"],
+                sensitive_categories: &[],
+            },
+        )?;
+    }
+    let before = harness.counts()?;
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_ticket_ambiguous",
+            "idem_prepare_ticket_ambiguous",
+            Some(before.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["decision"], "blocked");
+    assert_eq!(response.response_value["write_ticket_effect"], "none");
+    assert!(response.response_value["write_ticket_id"].is_null());
+    assert!(response.response_value["write_ticket_ref"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
+    assert_eq!(
+        response.response_value["write_decision_reasons"],
+        json!([{
+            "category": "write_compatibility",
+            "code": "compatible_write_ticket_ambiguous",
+            "message": "Multiple compatible active write tickets prevent authority selection.",
+            "related_refs": [
+                {
+                    "record_kind": "write_ticket",
+                    "record_id": "write_ticket_a",
+                    "project_id": PROJECT_ID,
+                    "task_id": task_id,
+                    "produced_at_state_version": before.state_version
+                },
+                {
+                    "record_kind": "write_ticket",
+                    "record_id": "write_ticket_z",
+                    "project_id": PROJECT_ID,
+                    "task_id": task_id,
+                    "produced_at_state_version": before.state_version
+                }
+            ]
+        }])
+    );
+    assert_latest_prepare_write_event(
+        &harness,
+        &response.response_value,
+        "blocked",
+        "compatible_write_ticket_ambiguous",
+    )?;
+
+    let after = harness.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.write_tickets, before.write_tickets);
+    for write_ticket_id in ticket_ids {
+        let record = harness
+            .store()?
+            .write_ticket_record(write_ticket_id)?
+            .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?;
+        assert_eq!(record.status(), WriteTicketStatus::Active);
+        assert!(record.invalidation_reason().is_none());
+        assert!(record.consumed_by_run_id().is_none());
+    }
+    Ok(())
+}
+
+#[test]
 fn prepare_write_replaces_active_ticket_with_mismatched_write_authority_binding(
 ) -> Result<(), Box<dyn Error>> {
     assert_prepare_write_replaces_policy_stale_ticket(

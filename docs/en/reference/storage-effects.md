@@ -611,8 +611,8 @@ Owner links:
 An original committed `dry_run=false` call with `decision=allowed` may:
 
 - issue one active write ticket from the materialized `Issued` branch or reuse
-  one compatible active, unconsumed ticket from the `Reused` branch; only
-  `Issued` supplies a typed Store insertion
+  exactly one compatible active, unconsumed ticket from the `Reused` branch;
+  only `Issued` supplies a typed Store insertion
 - append events
 - create a replay row
 - increment `project_state.state_version` once
@@ -621,6 +621,10 @@ Issue inserts one row. Reuse inserts no ticket and preserves its identifier;
 the event/replay/state-version effects still occur exactly once. Neither this
 increment nor an unrelated Core mutation invalidates the ticket. A non-allow
 decision does not revoke unrelated active tickets.
+When multiple active tickets are compatible, the committed non-allow branch
+does not insert, reuse, consume, or invalidate any compatible candidate. Store
+ordering may stabilize the candidate refs in diagnostics but does not select a
+ticket.
 
 For issuance, Core derives the nested result ticket, its top-level identity and
 path facts, and the fully typed Store mutation input from one validated

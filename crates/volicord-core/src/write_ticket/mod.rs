@@ -17,7 +17,7 @@ pub(crate) mod summary;
 
 use crate::pipeline::CorePipelineError;
 use volicord_store::StoreError;
-use volicord_types::ids::{ChangeUnitId, TaskId, UserActionRequestId};
+use volicord_types::ids::{ChangeUnitId, TaskId, UserActionRequestId, WriteTicketId};
 use volicord_types::values::{WriteDecisionCategory, WriteTicketInvalidationReason};
 use volicord_user_action_service::UserActionServiceError;
 
@@ -92,6 +92,7 @@ pub(crate) enum WriteTicketDecisionCode {
     EffectContractEffectNotAllowed,
     EffectContractPathNotAllowed,
     ProductWriteFlagMismatch,
+    CompatibleWriteTicketAmbiguous,
 }
 
 impl WriteTicketDecisionCode {
@@ -109,6 +110,7 @@ impl WriteTicketDecisionCode {
             Self::EffectContractEffectNotAllowed => "effect_contract_effect_not_allowed",
             Self::EffectContractPathNotAllowed => "effect_contract_path_not_allowed",
             Self::ProductWriteFlagMismatch => "product_write_flag_mismatch",
+            Self::CompatibleWriteTicketAmbiguous => "compatible_write_ticket_ambiguous",
         }
     }
 }
@@ -123,6 +125,10 @@ pub(crate) enum WriteTicketRelatedRecord {
     UserActionRequest {
         task_id: TaskId,
         request_id: UserActionRequestId,
+    },
+    WriteTicket {
+        task_id: TaskId,
+        write_ticket_id: WriteTicketId,
     },
 }
 

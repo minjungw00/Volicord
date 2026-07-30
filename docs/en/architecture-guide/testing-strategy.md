@@ -46,9 +46,14 @@ UserAction-resolution, and evidence acquisition plus Store-error propagation
 without asserting policy. Current-validity tests cover active, invalidated,
 consumed, revoked, and effective-expiry transitions; they also prove that
 terminal records complete before current-fact loading and every evaluated
-stored state retains a mandatory ticket ID. Selection tests accept only
-`StoredWriteTicketEvaluation` values and own stored-state precedence and
-tie-breaking. Approval-owner tests cover the complete typed requirement,
+stored state retains a mandatory ticket ID. Historical/display selection tests
+accept only `StoredWriteTicketEvaluation` values and own stored-state
+precedence and tie-breaking. Prepare Write compatibility-selection tests
+consume complete classified candidate sets and distinguish no active
+candidates, active but incompatible candidates, exactly one compatible ticket,
+two or more compatible tickets, and mixed compatible/incompatible sets. They
+verify deterministic ambiguity identity ordering without treating that order
+as authority. Approval-owner tests cover the complete typed requirement,
 current-set, persisted-basis, and semantic change-reason matrix using
 Store-valid references. One shared semantic fixture table covers current
 approval, approval not required, newly required approval, stale resolution,
@@ -83,7 +88,11 @@ compare the issued or reused nested ticket, top-level result facts, typed
 planned or stored source, Store mutation input, and reloaded record for the
 currently exposed path, validity, expiry, Task, Change Unit, and approval-basis
 facts. No-ticket tests verify null ticket identity and reference fields and no
-insertion. Replay retains exact response coverage.
+insertion. Store-backed Prepare Write ambiguity coverage persists multiple
+compatible active tickets, invokes the actual method path, verifies the
+method-owned blocked outcome and sorted candidate refs, and confirms no
+candidate was reused, consumed, invalidated, or selected. Replay retains exact
+response coverage.
 
 Record Run follows this split by source responsibility. Request and fact
 acquisition, capture authority, evidence observation and reuse, artifact

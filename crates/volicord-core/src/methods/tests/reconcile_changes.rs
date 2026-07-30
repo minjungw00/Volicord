@@ -978,3 +978,70 @@ fn reconcile_changes_resolves_deterministic_active_write_ticket() -> Result<(), 
     );
     Ok(())
 }
+
+#[test]
+fn reconcile_changes_keeps_ambiguous_active_write_ticket_match_unresolved(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    record_guard_installation(&harness, "reconcile_ticket_ambiguous")?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "reconcile_ticket_ambiguous")?;
+    let ticket_ids = ["write_ticket_z", "write_ticket_a"];
+    for (index, write_ticket_id) in ticket_ids.iter().enumerate() {
+        insert_active_write_ticket_with_scope(
+            &harness,
+            WriteTicketScopeFixture {
+                task_id: &task_id,
+                change_unit_id: &change_unit_id,
+                write_ticket_id,
+                basis_state_version: u64::try_from(index + 3)?,
+                created_at: "2026-06-18T00:00:00.000Z",
+                expires_at: "2026-06-18T00:15:00.000Z",
+                intended_operation: "local_sensitive_step",
+                intended_paths: &["src/export.rs"],
+                sensitive_categories: &[],
+            },
+        )?;
+    }
+    let unrecorded_change_id =
+        insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_ticket_ambiguous")?;
+
+    let response = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_ticket_ambiguous",
+            "idem_reconcile_ticket_ambiguous",
+            Some(2),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        response.response_value["unresolved_changes"][0]["unrecorded_change_ref"]["record_id"],
+        unrecorded_change_id
+    );
+    assert!(response.response_value["resolved_changes"]
+        .as_array()
+        .expect("resolved_changes should be an array")
+        .is_empty());
+    assert_eq!(
+        response.response_value["pending_user_action_summaries"]
+            .as_array()
+            .expect("pending summaries should be an array")
+            .len(),
+        1
+    );
+    assert_eq!(
+        unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
+        UnrecordedChangeStatus::Unresolved
+    );
+    for write_ticket_id in ticket_ids {
+        let record = harness
+            .store()?
+            .write_ticket_record(write_ticket_id)?
+            .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?;
+        assert_eq!(record.status(), WriteTicketStatus::Active);
+    }
+    Ok(())
+}

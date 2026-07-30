@@ -18,11 +18,17 @@ active stored candidate로 변환합니다. Invalidated, consumed, revoked recor
 stored 상태로 변환합니다. `approval.rs`는 정규 Write Ticket 승인 요구사항을
 구성하고, 불변 조건을 지키는 현재 민감 승인 집합을 파생하며, Store가 검증한 영속
 승인 근거를 typed 사유가 있는 `NotRequired`, `Current`, `Changed`로 평가하는 단일
-담당자입니다. `selection.rs`는 완결된 `StoredWriteTicketEvaluation` 값만 선택합니다.
-`summary.rs`는 planned 입력과 stored 입력을 구분하므로 발급 예정 ticket이 stored
-평가처럼 가장할 수 없습니다. `service.rs`는 현재 fact를 읽기 전에 terminal record와
-active record를 나누고, stored 결과 하나를 선택한 뒤 그 결과의 증거만 읽는 영속
-흐름을 조율합니다.
+담당자입니다. `selection.rs`는 서로 다른 policy 둘을 담당합니다. 과거 또는 표시용
+summary 선택은 완결된 `StoredWriteTicketEvaluation` 값 가운데 하나를 고릅니다.
+권한 효력이 있는 Prepare Write 선택은 분류가 끝난 전체 active 후보 집합을 소비하고
+`CompatibleWriteTicketSelection::None`,
+`CompatibleWriteTicketSelection::One(ReusableStoredWriteTicket)`,
+`CompatibleWriteTicketSelection::Ambiguous(AmbiguousCompatibleWriteTickets)` 가운데
+하나를 반환합니다. 모호성 값은 진단을 위해 결정적으로 정렬된 identity를 둘 이상
+보존하지만 그 순서로 권한을 선택하지 않습니다. `summary.rs`는 planned 입력과 stored
+입력을 구분하므로 발급 예정 ticket이 stored 평가처럼 가장할 수 없습니다.
+`service.rs`는 현재 fact를 읽기 전에 terminal record와 active record를 나누고,
+stored 결과 하나를 선택한 뒤 그 결과의 증거만 읽는 영속 표시 흐름을 조율합니다.
 `planning.rs`는 집중된 `PrepareWriteInput`을 평가하고 typed 의미 판단 사유,
 관련 record identity, 공통 fact, 후보 mutation fact와 정확히 하나의
 `PrepareWriteTicketPlan` 분기를 반환합니다. 분기는
@@ -76,6 +82,13 @@ Run mutation은 Run 및 관련 effect와 같은 Store commit에서 선택한 tic
 - Terminal stored 상태는 active currentness 또는 admission 로직에 들어갈 수 없습니다.
 - Reuse는 `ReusableStoredWriteTicket`만 받고 보호 대상 mutation은
   `AdmissibleStoredWriteTicket`만 받습니다.
+- Prepare Write는 `CompatibleWriteTicketSelection::One`만 재사용합니다. `None`,
+  `One`, `Ambiguous`를 optional ticket으로 축소할 수 없습니다.
+- 호환성 선택은 분류된 active 후보를 모두 평가합니다. 호환 후보가 여러 개이면
+  진단을 위해 정렬된 모든 identity를 유지하며 어느 후보에도 권한을 부여하지 않습니다.
+- Store query 순서, ticket ID 순서, insertion 순서, collection 순서는 재사용 권한을
+  부여하지 않습니다.
+- 과거 또는 표시용 stored-state 선택은 권한 효력이 있는 호환성 선택과 구분됩니다.
 - Structural request와 current Change Unit validation이 lookup보다 먼저입니다.
 - Reuse는 path, approval, operation, authority를 넓히지 않습니다.
 - `approval.rs`만 현재 민감 승인 identity 집합, Write Ticket 승인 요구사항, 의미
@@ -96,7 +109,8 @@ Core 메서드는 요청별 조율과 응답 구성을 담당합니다. Prepare 
 분기 선택, 영속 ID 할당, state-version이 있는 reference, 보장 표시, typed
 planning·Store·UserAction 실패를 공개 `PlanError` 분기로 바꾸는 작업도 여기에
 포함됩니다. 집중된 Write Ticket 읽기 경계는 typed fact 취득만 담당합니다. 승인
-구성과 평가, stored 전용 선택, 현재 유효성은 집중된 순수 의미 policy입니다.
+구성과 평가, stored 표시 선택, 호환성 cardinality 선택, 현재 유효성은 집중된 순수
+의미 policy입니다.
 Planned summary projection은 `PlannedWriteTicket`을 받고 stored summary projection은
 `StoredWriteTicketEvaluation`과 제공된 증거를 받습니다. 어느 쪽도 Store를 읽거나
 workflow, UserAction, 승인 policy를 다시 계산할 수 없습니다. 좁은 service는
@@ -133,23 +147,28 @@ query하거나 decode하지 않습니다. Guard는 observation을 제공하지�
 5. Active candidate가 있을 때만 service가 현재 Task, workflow policy, UserAction
    fact를 읽습니다. `approval.rs`가 각 active candidate의 의미 평가를 만들고 현재
    유효성 policy가 reusable 또는 invalidated active 결과를 만듭니다.
-6. 순수 선택은 완성된 stored 평가만 대상으로 합니다. Service는 선택 뒤 해당
-   ticket의 증거를 읽고 stored summary를 투영합니다. 닫기 준비 상태와 CLI guard는
-   같은 평가 완료 stored 상태를 받으며 승인 현재성을 다시 계산하지 않습니다.
-7. Write Ticket planning은 dry-run intent를 보거나 공개 ref를 구성하지 않고 공통
+6. 과거 및 표시 선택은 완결된 stored 평가만 대상으로 합니다. Service는 선택 뒤
+   해당 ticket의 증거를 읽고 stored summary를 투영합니다. 닫기 준비 상태와 CLI
+   guard는 평가 완료 stored 상태를 받으며 승인 현재성을 다시 계산하지 않습니다.
+7. Prepare Write는 모든 active 후보를 stale mutation fact와 구분해 분류합니다.
+   호환성 선택은 분류가 끝난 전체 집합을 소비하고 호환 후보 없음, 재사용 가능한
+   ticket 정확히 하나, 정렬된 identity가 있는 모호성 가운데 하나를 반환합니다.
+   정확히 하나인 경우만 재사용으로 들어가며 모호성은 ticket 없음 판단 경로로
+   들어갑니다.
+8. Write Ticket planning은 dry-run intent를 보거나 공개 ref를 구성하지 않고 공통
    fact, mutation fact, 발급·재사용·ticket 없음 가운데 하나인 폐쇄형 분기를
    반환합니다.
-8. `dry-run`이면 `prepare_write`가 해당 분기에서 미리보기를 투영하고 끝냅니다.
+9. `dry-run`이면 `prepare_write`가 해당 분기에서 미리보기를 투영하고 끝냅니다.
    커밋에서는 분기를 발급됨·재사용됨·없음으로 보존합니다. 발급됨은 영속 ID를
    할당하고 `PlannedWriteTicket` 하나를 구체화하며, 그 값에서 중첩 결과, 최상위
    identity와 경로, planned summary, `WriteTicketInsert`를 파생합니다. 재사용됨은
    `ReusableStoredWriteTicket`에서 결과와 stored summary를 파생하고, 없음은 판단
    경로만 파생합니다.
-9. Record Run에서는 현재 유효성 평가가 `ReusableStoredWriteTicket`임을 증명하는
+10. Record Run에서는 현재 유효성 평가가 `ReusableStoredWriteTicket`임을 증명하는
    동안 평가가 정확한 attempt 호환성 증명을 만듭니다.
    `write_ticket/admission.rs`는 서로 일치하는 두 증명을 결합해
    `AdmissibleStoredWriteTicket`을 반환합니다.
-10. Store가 이 admissible ticket의 consumption을 보호 대상 mutation과 함께
+11. Store가 이 admissible ticket의 consumption을 보호 대상 mutation과 함께
     commit합니다.
 
 ## 실패 동작
@@ -159,7 +178,8 @@ approval change, workspace mismatch, explicit revocation, incompatible basis, am
 ticket selection은 partial protected effect 없이 reuse 또는 consumption을
 막습니다. 평가는 새로 필요해진 승인, 현재 resolution 부재, 승인 범위 변경, 더
 이상 현재 상태가 아닌 근거 resolution을 구분합니다. Exact replay는 ticket을 다시
-소비하지 않습니다.
+소비하지 않습니다. Prepare Write 모호성은 정렬된 후보 identity와 함께 메서드 소유
+ticket 없음 판단을 만들며 Store 순서는 진단으로만 남고 모호성을 해결하지 않습니다.
 형식이 잘못된 물리 field와 영속 필드 간 불일치는 Store corruption입니다. 확인된
 Core 상태 변환 실패는 panic 기반 narrowing 경로가 아니라 invariant failure입니다.
 내부적으로 유효한 typed ticket을 기준으로 판단한 expiry, path, operation,
@@ -179,10 +199,10 @@ actor identity나 transferable capability가 아닙니다.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)와
   [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
   typed fact 취득, 정규 승인 요구사항과 현재 집합 구성, typed 승인 평가, terminal
-  사전 평가, active에 한정한 현재 유효성 평가, stored 전용 선택, 의미 발급 draft
-  계획, 검증된 `PlannedWriteTicket` 구체화, planned와 stored summary의 분리된
-  projection, 좁은 영속 summary 조율, reusable에서 admissible로 이어지는 보호 대상
-  Record Run 승인.
+  사전 평가, active에 한정한 현재 유효성 평가, 구분된 표시 선택과 권한 효력이 있는
+  호환성 선택, 의미 발급 draft 계획, 검증된 `PlannedWriteTicket` 구체화, planned와
+  stored summary의 분리된 projection, 좁은 영속 summary 조율, reusable에서
+  admissible로 이어지는 보호 대상 Record Run 승인.
 - [`crates/volicord-core/src/write_ticket/tests/read_model_service.rs`](../../../../crates/volicord-core/src/write_ticket/tests/read_model_service.rs):
   집중된 Store 기반 fact 취득 및 영속 summary service coverage.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):

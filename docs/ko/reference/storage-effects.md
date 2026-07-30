@@ -587,8 +587,8 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 `decision=allowed`인 재실행이 아닌 원래 커밋된 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - 구체화된 `Issued` 분기에서 활성 쓰기 티켓 하나를 발급하거나 `Reused` 분기에서
-  호환되는 활성 미소비 티켓 하나를 재사용합니다. Typed Store 삽입은 `Issued`만
-  제공합니다.
+  호환되는 활성 미소비 티켓이 정확히 하나일 때 그 티켓을 재사용합니다. Typed Store
+  삽입은 `Issued`만 제공합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -596,6 +596,9 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 발급은 행 하나를 삽입합니다. 재사용은 티켓을 삽입하지 않고 식별자를 보존하며
 이벤트/재실행/상태 버전 효과는 정확히 한 번 발생합니다. 이 증가나 관련 없는 Core
 변경은 티켓을 무효화하지 않습니다. 비허용 판단은 관련 없는 활성 티켓을 철회하지 않습니다.
+호환되는 활성 티켓이 여러 개이면 커밋된 비허용 분기는 호환 후보를 삽입, 재사용,
+소비, 무효화하지 않습니다. Store 순서는 진단의 후보 참조를 안정화할 수 있지만 티켓을
+선택하지 않습니다.
 
 발급 시 Core는 검증된 planned-ticket 값 하나와 그 `WriteTicketPathScope`에서
 중첩 결과 ticket, 최상위 identity와 경로 fact, 완전히 typed인 Store mutation 입력을

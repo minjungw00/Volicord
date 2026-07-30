@@ -37,18 +37,24 @@ non-product action for an effective `sensitive` Task, against:
 - required separate sensitive-action approval
 - verified invocation context
 
-When the check is allowed, the method first searches for a compatible active
-ticket. It reuses that ticket when its Task, Change Unit, `scope_revision`,
-baseline, workspace, approval basis, and non-null normalized project
-write-authority binding are current, its allowed paths cover all newly intended
-paths, its sensitive basis is equal or stronger, and it remains unconsumed.
+When the check is otherwise allowed, the method evaluates every active ticket
+for compatibility. It reuses a ticket only when exactly one candidate has a
+current Task, Change Unit, `scope_revision`, baseline, workspace, approval
+basis, and non-null normalized project write-authority binding, its allowed
+paths cover all newly intended paths, its sensitive basis is equal or stronger,
+and it remains unconsumed. With no compatible candidate, the method issues one
+open ticket. Multiple compatible candidates are ambiguous: the method returns
+a committed `decision=blocked` result with
+`code=compatible_write_ticket_ambiguous`, issues or reuses no ticket, and
+reports the candidate Write Ticket refs in deterministic identity order.
+Candidate order from the Store grants no authority.
 Core constructs the canonical Write Ticket approval requirement and typed
 current sensitive-approval set, then assesses the Store-valid persisted basis
 once. Reuse accepts a current basis or a basis that is not required and rejects
 a changed basis. Sensitive reuse additionally requires the exact normalized
 `intended_operation`; a reworded operation cannot borrow an earlier approval
 or ticket, while additional unrelated current approvals do not replace or
-invalidate its persisted basis. Otherwise it issues one open ticket. A ticket is a Volicord
+invalidate its persisted basis. A ticket is a Volicord
 authority record for the bounded product-write or sensitive-action intent within
 the current Task and Change Unit. A non-product sensitive ticket has
 `product_file_write_intended=false`; it binds the named operation, an empty
@@ -184,7 +190,8 @@ active ticket with `invalidation_reason=explicit_revoke`; dry-run and
 | Result | State-version effect | Write-ticket effect |
 |---|---|---|
 | Committed `decision=allowed`, new ticket | Increments `project_state.state_version` exactly once. | Issues one open ticket; `write_ticket_effect=issued`. |
-| Committed `decision=allowed`, compatible ticket found | Increments `project_state.state_version` exactly once. | Reuses the existing ticket; `write_ticket_effect=reused`; no ticket row is inserted. |
+| Committed `decision=allowed`, exactly one compatible ticket | Increments `project_state.state_version` exactly once. | Reuses that existing ticket; `write_ticket_effect=reused`; no ticket row is inserted. |
+| Committed `decision=blocked`, multiple compatible tickets | Increments `project_state.state_version` exactly once. | Issues or reuses no ticket; `write_ticket_effect=none`; compatible candidates remain active. |
 | Committed non-allow decision | Increments `project_state.state_version` exactly once. | Issues no write ticket; may invalidate selected stale active tickets with `explicit_revoke`. |
 | Pre-commit rejection or `dry_run` | Increments nothing. | Creates or invalidates no ticket. |
 
@@ -221,7 +228,13 @@ mutations remain outside that ticket branch. A `WriteTicketPathScope` owns the
 canonical typed allowed and denied paths for each issue or reuse branch;
 decision paths exist separately only in `NoTicket`. Planning does not inspect
 `dry_run`, allocate a durable ID, attach response state versions, or construct
-the public result.
+the public result. Before choosing that branch, compatibility selection returns
+exactly one of `None`, `One(ReusableStoredWriteTicket)`, or
+`Ambiguous(AmbiguousCompatibleWriteTickets)`. Only `One` can enter `Reuse`;
+`None` can enter `Issue` when the decision is otherwise allowed, and
+`Ambiguous` enters `NoTicket` with the method-owned blocked decision. The
+ambiguity value carries at least two sorted Write Ticket identities for
+diagnostics without selecting among them.
 
 A `dry_run` request projects its preview directly from the closed planning
 branch and stops at the method boundary. A committed call converts that branch
@@ -298,8 +311,8 @@ For `decision=allowed`:
 - `write_ticket_id`, `write_ticket_ref`, and `write_ticket` are non-null
 - `write_ticket_ref.record_kind` is `write_ticket`
 - `write_ticket.state` is `open`
-- `write_ticket_effect` is `issued` for new issuance or `reused` when an
-  existing compatible active ticket is selected
+- `write_ticket_effect` is `issued` for new issuance or `reused` when exactly
+  one compatible active ticket exists
 - `write_ticket.path_patterns.allowed` and top-level `allowed_path_patterns` contain the normalized repo-relative `intended_paths` allowed for this ticket
 - `write_ticket.path_patterns.denied` and top-level `denied_path_patterns` are `[]` for an allowed result
 - those nested and top-level path collections are equal projections of the
@@ -363,6 +376,7 @@ The production meanings below apply only when this method reaches a committed no
 | `effect_contract_effect_not_allowed` | `effect_contract` | The current Change Unit effect contract has a non-empty allowed-effect list that does not include `product_file_write`. |
 | `effect_contract_path_not_allowed` | `effect_contract` | One or more `intended_paths` are outside the current Change Unit effect contract `allowed_paths`. |
 | `product_write_flag_mismatch` | `write_compatibility` | `product_file_write_intended` does not match the intended operation or paths. |
+| `compatible_write_ticket_ambiguous` | `write_compatibility` | Multiple compatible active tickets prevent authority selection. The sorted `related_refs` identify all compatible candidates; their order does not grant authority. |
 
 Non-claims:
 
@@ -413,8 +427,9 @@ For `dry_run=true`, a valid preview:
 - returns `ToolDryRunResponse`
 - issues no committed write ticket
 - may describe a planned `write_ticket` effect such as `would_issue` in the `dry_run` summary when the preview would otherwise be allowed
-- may describe `would_reuse` as a planned effect when a compatible active
-  ticket exists; this is preview text, not a committed `WriteTicketEffect`
+- may describe `would_reuse` as a planned effect when exactly one compatible
+  active ticket exists; this is preview text, not a committed
+  `WriteTicketEffect`
 - keeps a prospective issuance as an identity-free semantic draft rather than
   materializing a ticket record or Store insertion
 - persists no write-decision state

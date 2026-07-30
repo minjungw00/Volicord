@@ -37,16 +37,21 @@
 - 필요한 별도 민감 동작 승인
 - 확인된 호출 맥락
 
-확인이 허용되면 먼저 호환되는 활성 티켓을 찾습니다. 그 티켓의 `Task`, Change
-Unit, `scope_revision`, 기준선, workspace, 승인 근거가 현재 상태이고 null이 아닌
-정규화 프로젝트 쓰기 권한 결속이 현재 값과 일치하며, 허용 경로가 새 intended path를
-모두 포함하고, 민감 근거가 같거나 더 강하고, 아직 소비되지 않았으면 재사용합니다.
+확인이 그 밖의 조건에서 허용되면 모든 활성 티켓의 호환성을 평가합니다. 후보 가운데
+정확히 하나만 `Task`, Change Unit, `scope_revision`, 기준선, workspace, 승인 근거가
+현재 상태이고 null이 아닌 정규화 프로젝트 쓰기 권한 결속이 현재 값과 일치하며, 허용
+경로가 새 intended path를 모두 포함하고, 민감 근거가 같거나 더 강하고, 아직 소비되지
+않았을 때 그 티켓을 재사용합니다. 호환 후보가 없으면 열린 티켓 하나를 발급합니다.
+호환 후보가 여러 개이면 모호한 상태입니다. 메서드는
+`code=compatible_write_ticket_ambiguous`가 있는 커밋된 `decision=blocked` 결과를
+반환하고 티켓을 발급하거나 재사용하지 않으며, 후보 Write Ticket 참조를 결정적인
+identity 순서로 보고합니다. Store가 반환한 후보 순서는 권한을 부여하지 않습니다.
 Core는 정규 Write Ticket 승인 요구사항과 typed 현재 민감 승인 집합을 구성한 뒤
 Store가 검증한 영속 근거를 한 번 평가합니다. 재사용은 현재 근거나 승인이 필요하지
 않은 근거를 허용하고 변경된 근거를 거절합니다. 민감 티켓을 재사용하려면 정규화된
 `intended_operation`도 정확히 같아야 합니다. 표현을 바꾼 동작은 이전 승인이나
 티켓을 빌려 쓸 수 없으며, 관련 없는 현재 승인이 추가되어도 영속 근거를 대체하거나
-무효화하지 않습니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
+무효화하지 않습니다. 티켓은 현재
 `Task`와 Change Unit 안에서 경계가 정해진 제품 쓰기 또는 민감 동작 의도를 나타내는
 Volicord 권한 기록입니다. 비제품 민감 티켓은
 `product_file_write_intended=false`이며 이름 붙은 동작, 빈 제품 경로 집합, 기준선,
@@ -173,7 +178,8 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 | 결과 | 상태 버전 효과 | 쓰기 티켓 효과 |
 |---|---|---|
 | 커밋된 `decision=allowed`, 새 티켓 | `project_state.state_version`을 정확히 한 번 올립니다. | 열린 티켓 하나를 발급하며 `write_ticket_effect=issued`입니다. |
-| 커밋된 `decision=allowed`, 호환 티켓 발견 | `project_state.state_version`을 정확히 한 번 올립니다. | 기존 티켓을 재사용하며 `write_ticket_effect=reused`이고 티켓 행을 추가하지 않습니다. |
+| 커밋된 `decision=allowed`, 호환 티켓 정확히 하나 | `project_state.state_version`을 정확히 한 번 올립니다. | 해당 기존 티켓을 재사용하며 `write_ticket_effect=reused`이고 티켓 행을 추가하지 않습니다. |
+| 커밋된 `decision=blocked`, 호환 티켓 여러 개 | `project_state.state_version`을 정확히 한 번 올립니다. | 티켓을 발급하거나 재사용하지 않고 `write_ticket_effect=none`이며, 호환 후보는 활성 상태로 남습니다. |
 | 커밋된 비허용 결정 | `project_state.state_version`을 정확히 한 번 올립니다. | 쓰기 티켓을 발급하지 않으며 선택된 오래된 활성 티켓을 `explicit_revoke`로 무효화할 수 있습니다. |
 | 커밋 전 거절 또는 `dry_run` | 올리지 않습니다. | 티켓을 만들거나 무효화하지 않습니다. |
 
@@ -206,6 +212,13 @@ Core 의미 계획은 `Issue(PlannedWriteTicketDraft)`,
 `WriteTicketPathScope` 하나가 정규 typed 허용 경로와 거부 경로를 소유하고,
 판단 경로는 `NoTicket` 분기에만 별도로 존재합니다. 계획은 `dry_run`을 검사하거나
 영속 ID를 할당하거나 응답 state version을 붙이거나 공개 결과를 구성하지 않습니다.
+이 분기를 고르기 전에 호환성 선택은 `None`,
+`One(ReusableStoredWriteTicket)`,
+`Ambiguous(AmbiguousCompatibleWriteTickets)` 가운데 정확히 하나를 반환합니다.
+`One`만 `Reuse`로 들어갈 수 있습니다. 다른 조건에서 결정이 허용될 때 `None`은
+`Issue`로 들어갈 수 있고, `Ambiguous`는 메서드 소유 차단 판단과 함께 `NoTicket`으로
+들어갑니다. 모호성 값은 후보를 고르지 않으면서 진단에 사용할 수 있도록 정렬된 Write
+Ticket identity를 둘 이상 보존합니다.
 
 `dry_run` 요청은 폐쇄형 계획 분기에서 미리보기를 직접 투영하고 메서드 경계에서
 끝납니다. 커밋 호출은 이 분기를 정확히 하나의
@@ -280,7 +293,7 @@ ticket을 stored 상태로 표현하지 않습니다.
 - `write_ticket_id`, `write_ticket_ref`, `write_ticket`은 `null`이 아닙니다.
 - `write_ticket_ref.record_kind`는 `write_ticket`입니다.
 - `write_ticket.state`는 `open`입니다.
-- `write_ticket_effect`는 새 발급이면 `issued`, 기존 호환 활성 티켓을 선택하면
+- `write_ticket_effect`는 새 발급이면 `issued`, 호환되는 활성 티켓이 정확히 하나이면
   `reused`입니다.
 - `write_ticket.path_patterns.allowed`와 최상위 `allowed_path_patterns`는 이 티켓에 허용된 정규화 저장소 상대 `intended_paths`를 담습니다.
 - `write_ticket.path_patterns.denied`와 최상위 `denied_path_patterns`는 허용 결과에서 `[]`입니다.
@@ -343,6 +356,7 @@ ticket을 stored 상태로 표현하지 않습니다.
 | `effect_contract_effect_not_allowed` | `effect_contract` | 현재 적용 Change Unit 효과 계약의 비어 있지 않은 허용 효과 목록에 `product_file_write`가 없습니다. |
 | `effect_contract_path_not_allowed` | `effect_contract` | 하나 이상의 `intended_paths`가 현재 적용 Change Unit 효과 계약의 `allowed_paths` 밖에 있습니다. |
 | `product_write_flag_mismatch` | `write_compatibility` | `product_file_write_intended`가 의도한 동작 또는 경로와 맞지 않습니다. |
+| `compatible_write_ticket_ambiguous` | `write_compatibility` | 호환되는 활성 티켓이 여러 개라서 권한을 선택할 수 없습니다. 정렬된 `related_refs`는 모든 호환 후보를 식별하며 그 순서는 권한을 부여하지 않습니다. |
 
 비주장:
 
@@ -391,8 +405,8 @@ advisor 모드 거절은 쓰기 결정, 쓰기 티켓, 이벤트, 재실행 행,
 - `ToolDryRunResponse`를 반환합니다.
 - 커밋된 쓰기 티켓을 발급하지 않습니다.
 - 미리보기가 허용될 경우 `dry_run` 요약에 `would_issue` 같은 계획된 `write_ticket` 효과를 설명할 수 있습니다.
-- 호환되는 활성 티켓이 있으면 계획된 효과를 `would_reuse`로 설명할 수 있습니다.
-  이는 미리보기 문구이지 커밋된 `WriteTicketEffect`가 아닙니다.
+- 호환되는 활성 티켓이 정확히 하나이면 계획된 효과를 `would_reuse`로 설명할 수
+  있습니다. 이는 미리보기 문구이지 커밋된 `WriteTicketEffect`가 아닙니다.
 - 발급 예정 값은 ticket record나 Store 삽입을 구체화하지 않고 ID가 없는 의미
   draft로 유지합니다.
 - 쓰기 결정 상태를 지속하지 않습니다.

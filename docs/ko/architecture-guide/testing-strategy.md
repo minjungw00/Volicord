@@ -42,9 +42,13 @@ read-model 테스트는 정책을 검증하지 않고 typed ticket, Task,
 workflow policy, UserAction resolution, 증거 취득과 Store 오류 전파를 다룹니다.
 현재 유효성 테스트는 active, invalidated, consumed, revoked, effective expiry
 전이를 다루며 terminal record가 현재 fact를 읽기 전에 완결되고 평가된 모든 stored
-상태가 필수 ticket ID를 유지함을 검증합니다. 선택 테스트는
+상태가 필수 ticket ID를 유지함을 검증합니다. 과거/표시 선택 테스트는
 `StoredWriteTicketEvaluation` 값만 받고 stored 상태 우선순위와 동률 해소를
-담당합니다. 승인 담당자 테스트는
+담당합니다. Prepare Write 호환성 선택 테스트는 분류가 끝난 전체 후보 집합을 받고,
+active 후보 없음, active지만 호환되지 않는 후보, 호환 ticket 정확히 하나, 호환
+ticket 둘 이상, 호환 후보와 비호환 후보가 섞인 집합을 구분합니다. 이 테스트는
+결정적인 모호성 identity 순서를 검증하되 그 순서를 권한으로 취급하지 않습니다.
+승인 담당자 테스트는
 Store가 검증한 참조를 사용해 typed 요구사항, 현재 집합, 영속 근거, 의미 변경
 사유의 전체 matrix를 다룹니다. 하나의 공유 의미 fixture 표는 현재 승인, 승인이
 필요하지 않은 경우, 새로 필요해진 승인, 오래된 resolution, 변경된 승인 범위,
@@ -74,8 +78,10 @@ dry-run 발급 및 재사용 결과, ticket 없음 결과를 담당합니다. �
 경로, 유효성, 만료, Task, Change Unit, 승인 근거 fact에 대해 발급 또는 재사용된
 중첩 ticket, 최상위 결과 fact, typed planned 또는 stored 원본, Store mutation
 입력, 다시 읽은 record를 비교합니다. Ticket 없음 테스트는 null ticket identity 및
-reference field와 insertion 부재를 검증합니다. Replay는 정확한 응답 coverage를
-유지합니다.
+reference field와 insertion 부재를 검증합니다. Store 기반 Prepare Write 모호성
+coverage는 호환되는 active ticket 여러 개를 영속화하고 실제 메서드 경로를 호출해
+메서드 소유 차단 결과와 정렬된 후보 참조를 검증하며, 어느 후보도 재사용, 소비,
+무효화, 선택되지 않았음을 확인합니다. Replay는 정확한 응답 coverage를 유지합니다.
 
 Record Run도 소스 책임에 따라 이 구분을 적용합니다. 요청 및 fact 취득, 캡처 권한,
 증거 관찰과 재사용, artifact 검증과 승격, typed mutation 계획, 의미 오류
