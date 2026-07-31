@@ -100,6 +100,16 @@ typed project records separately; human rendering is never converted through
 JSON. A command exposes verbose output only when it has a meaningful verbose
 projection.
 
+`policy show` reads one strictly decoded authoritative
+`ProjectWorkflowPolicy` and builds one typed `PolicyShowReport`. The report
+keeps Store authority, managed-file synchronization, active-Task escalation,
+and repair action as separate facts. Compact and verbose command-specific
+projections feed the neutral human primitives; JSON serializes the same report
+with its complete nested policy. Managed-file comparison uses the canonical
+policy fingerprint and remains read-only. `policy validate` similarly builds
+one typed successful validation result and projects either conclusion-first
+human text or that result's JSON.
+
 ## UserAction Workflow
 
 `inbox` asks Core for adapter-neutral pending facts. `volicord-types` derives

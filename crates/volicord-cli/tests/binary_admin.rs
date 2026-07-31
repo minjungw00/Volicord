@@ -25,12 +25,18 @@ use volicord_store::{
 use volicord_test_support::{
     with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
 };
+use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::connection_verification::ConnectionVerificationReport;
 use volicord_types::diagnostics::{
     DiagnosticCode, DiagnosticDomain, DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity,
     DiagnosticSource, DiagnosticStage, DiagnosticSubject, OccurrenceDiagnosticFinding,
 };
 use volicord_types::values::UtcTimestamp;
+use volicord_types::workflow_policy::{
+    ManagedPolicyFileStatus, PolicyShowActionCommand, PolicyShowReport, PolicyShowReportSchema,
+    PolicyShowStatus, PolicyValidationReport, PolicyValidationStatus, ProjectWorkflowPolicy,
+    WorkflowPolicySchema,
+};
 
 const GENERATED_SHAPE_ERROR: &str =
     "generated host-hook capability does not match the current exact shape";
@@ -2068,6 +2074,315 @@ fn verbose_connection_report_retains_the_full_diagnostic_renderer() -> Result<()
     Ok(())
 }
 
+#[test]
+fn policy_show_projects_complete_authority_in_every_output_without_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new_with_repo_directory(
+        "binary-policy-show",
+        "product-repository-with-a-deliberately-long-name-that-keeps-the-full-policy-path-readable",
+    )?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let managed_path = fixture.repo_root.join(".volicord").join("policy.json");
+    let candidate_path = fixture
+        ._temporary_root
+        .root_path()
+        .join("policy-candidate.json");
+    let mut candidate: Value = serde_json::from_slice(&fs::read(&managed_path)?)?;
+    candidate["workflow"]["default_direct_control"] = Value::String("light".to_owned());
+    candidate["workflow"]["default_work_control"] = Value::String("sensitive".to_owned());
+    candidate["workflow"]["light"]["enabled"] = Value::Bool(true);
+    candidate["workflow"]["light"]["max_intended_paths"] = Value::from(7_u64);
+    candidate["workflow"]["light"]["allowed_path_patterns"] = serde_json::json!(["src", "tests"]);
+    candidate["workflow"]["light"]["denied_path_patterns"] = serde_json::json!(["generated"]);
+    candidate["workflow"]["light"]["final_acceptance"] =
+        Value::String("policy_dependent".to_owned());
+    candidate["workflow"]["write_ticket"]["idle_timeout_minutes"] = Value::from(45_u64);
+    fs::write(&candidate_path, serde_json::to_vec_pretty(&candidate)?)?;
+
+    let apply = fixture.run_policy_apply(&candidate_path)?;
+    assert!(
+        apply.status.success(),
+        "policy apply failed: {}",
+        stderr(&apply)?
+    );
+
+    let before = fixture.all_contents()?;
+    let concise = fixture.run_policy_show(None)?;
+    let verbose = fixture.run_policy_show(Some("--verbose"))?;
+    let json = fixture.run_policy_show(Some("--json"))?;
+    let validate_human = fixture.run_policy_validate(&managed_path, false)?;
+    let validate_json = fixture.run_policy_validate(&managed_path, true)?;
+    assert_eq!(fixture.all_contents()?, before);
+
+    assert!(concise.status.success(), "{}", stderr(&concise)?);
+    assert_eq!(stderr(&concise)?, "");
+    let concise_text = stdout(&concise)?;
+    assert!(concise_text.starts_with("Workflow policy is active.\n\n"));
+    assert!(concise_text.contains(&format!("Repository: {}", fixture.repo_root.display())));
+    assert!(concise_text.contains("Authority: project database"));
+    assert!(concise_text.contains("Managed file: matches authority"));
+    assert!(concise_text.contains("Direct tasks: light"));
+    assert!(concise_text.contains("Work tasks: sensitive"));
+    assert!(concise_text.contains("Enabled: yes"));
+    assert!(concise_text.contains("Maximum intended paths: 7"));
+    assert!(concise_text.contains("Allowed path patterns: 2"));
+    assert!(concise_text.contains("Denied path patterns: 1"));
+    assert!(concise_text.contains("Final acceptance: policy dependent"));
+    assert!(concise_text.contains("Idle timeout: 45 minutes"));
+    assert!(concise_text.contains("Active Task escalation required: no"));
+
+    assert!(json.status.success(), "{}", stderr(&json)?);
+    assert_eq!(stderr(&json)?, "");
+    let report: PolicyShowReport = serde_json::from_slice(&json.stdout)?;
+    assert_eq!(report.schema, PolicyShowReportSchema::Current);
+    assert_eq!(report.status, PolicyShowStatus::Active);
+    assert_eq!(report.repository, fixture.repo_root.display().to_string());
+    assert_eq!(
+        report.authority.policy.schema,
+        WorkflowPolicySchema::Current
+    );
+    assert_eq!(
+        report
+            .authority
+            .policy
+            .workflow
+            .default_direct_control
+            .as_str(),
+        "light"
+    );
+    assert_eq!(
+        report
+            .authority
+            .policy
+            .workflow
+            .default_work_control
+            .as_str(),
+        "sensitive"
+    );
+    assert_eq!(
+        report
+            .authority
+            .policy
+            .workflow
+            .light
+            .allowed_path_patterns
+            .iter()
+            .map(|path| path.as_str())
+            .collect::<Vec<_>>(),
+        ["src", "tests"]
+    );
+    assert_eq!(
+        report.authority.policy.workflow.light.denied_path_patterns[0].as_str(),
+        "generated"
+    );
+    assert_eq!(
+        report
+            .authority
+            .policy
+            .workflow
+            .write_ticket
+            .idle_timeout_minutes,
+        Some(45)
+    );
+    assert_eq!(report.managed_file.status, ManagedPolicyFileStatus::Matches);
+    assert!(report.managed_file.matches_authority);
+    assert!(!report.active_task_requires_escalation);
+    assert!(report.actions.is_empty());
+
+    let nested_fingerprint = canonical_json_sha256(&report.authority.policy)?;
+    assert_eq!(
+        report.authority.policy_fingerprint,
+        nested_fingerprint.as_str()
+    );
+    assert_eq!(
+        report.managed_file.fingerprint.as_deref(),
+        Some(nested_fingerprint.as_str())
+    );
+    let managed_policy: ProjectWorkflowPolicy = serde_json::from_slice(&fs::read(&managed_path)?)?;
+    assert_eq!(managed_policy, report.authority.policy);
+    assert_eq!(
+        canonical_json_sha256(&managed_policy)?.as_str(),
+        report.authority.policy_fingerprint
+    );
+
+    assert!(verbose.status.success(), "{}", stderr(&verbose)?);
+    assert_eq!(stderr(&verbose)?, "");
+    let verbose_text = stdout(&verbose)?;
+    for expected in [
+        "Policy fingerprint:",
+        "Managed-file fingerprint:",
+        "Managed-file path:",
+        "Connection intent:",
+        "Host:",
+        "Selected profile:",
+        "Connection ID:",
+        "Guard installation ID:",
+        "MCP launch",
+        "Static environment",
+        "Host hooks",
+        "Pre-tool",
+        "Post-tool",
+        "Prompt capture",
+        "Path patterns",
+        "Allowed: [\"src\",\"tests\"]",
+        "Denied: [\"generated\"]",
+        "Idle timeout: 45 minutes",
+    ] {
+        assert!(
+            verbose_text.contains(expected),
+            "missing `{expected}` in:\n{verbose_text}"
+        );
+    }
+    assert!(verbose_text.contains(&report.authority.policy.connection_id));
+    assert!(verbose_text.contains(&report.authority.policy.guard_installation_id));
+    assert!(verbose_text.contains(&report.authority.policy.mcp.command));
+    assert!(verbose_text.contains(&serde_json::to_string(&report.authority.policy.mcp.args)?));
+    for (name, value) in &report.authority.policy.mcp.env {
+        assert!(verbose_text.contains(name));
+        assert!(verbose_text.contains(value));
+    }
+    for command in [
+        &report.authority.policy.host_hook.commands.pre_tool,
+        &report.authority.policy.host_hook.commands.post_tool,
+        &report.authority.policy.host_hook.commands.prompt_capture,
+    ] {
+        assert!(verbose_text.contains(&command.command));
+        assert!(verbose_text.contains(&serde_json::to_string(&command.args)?));
+    }
+
+    assert!(!concise_text.contains(&report.authority.policy.connection_id));
+    assert!(!concise_text.contains(&report.authority.policy.guard_installation_id));
+    assert!(!concise_text.contains(&report.authority.policy.mcp.command));
+    assert!(!concise_text.contains(&report.authority.policy_fingerprint));
+    assert!(!concise_text.contains("MCP launch"));
+    assert!(!concise_text.contains("Host hooks"));
+
+    assert!(validate_human.status.success());
+    assert_eq!(stderr(&validate_human)?, "");
+    let validation_text = stdout(&validate_human)?;
+    assert!(validation_text.starts_with("Policy is valid.\n\n"));
+    assert!(validation_text.contains(&format!("File: {}", managed_path.display())));
+    assert!(validation_text.contains("Schema: volicord.workflow_policy"));
+    assert!(validation_text.contains(&format!(
+        "Fingerprint: {}",
+        report.authority.policy_fingerprint
+    )));
+
+    assert!(validate_json.status.success());
+    assert_eq!(stderr(&validate_json)?, "");
+    let validation: PolicyValidationReport = serde_json::from_slice(&validate_json.stdout)?;
+    assert_eq!(validation.status, PolicyValidationStatus::Valid);
+    assert_eq!(validation.file, managed_path.display().to_string());
+    assert_eq!(validation.policy_schema, WorkflowPolicySchema::Current);
+    assert_eq!(
+        validation.policy_fingerprint,
+        report.authority.policy_fingerprint
+    );
+
+    fixture.insert_escalating_active_task()?;
+    let active_before = fixture.all_contents()?;
+    let active_json = fixture.run_policy_show(Some("--json"))?;
+    assert_eq!(fixture.all_contents()?, active_before);
+    assert!(active_json.status.success(), "{}", stderr(&active_json)?);
+    let active_report: PolicyShowReport = serde_json::from_slice(&active_json.stdout)?;
+    assert!(active_report.active_task_requires_escalation);
+    Ok(())
+}
+
+#[test]
+fn policy_show_reports_managed_file_states_without_repairing_them() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-policy-managed-file-states")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let managed_path = fixture.repo_root.join(".volicord").join("policy.json");
+
+    let matching = fixture.run_policy_show(Some("--json"))?;
+    assert!(matching.status.success(), "{}", stderr(&matching)?);
+    let matching: PolicyShowReport = serde_json::from_slice(&matching.stdout)?;
+    assert_eq!(
+        matching.managed_file.status,
+        ManagedPolicyFileStatus::Matches
+    );
+    assert!(matching.actions.is_empty());
+
+    let mut drifted: Value = serde_json::from_slice(&fs::read(&managed_path)?)?;
+    drifted["workflow"]["default_work_control"] = Value::String("sensitive".to_owned());
+    fs::write(&managed_path, serde_json::to_vec_pretty(&drifted)?)?;
+    let drifted_bytes = fs::read(&managed_path)?;
+    let mismatch = fixture.run_policy_show(Some("--json"))?;
+    assert_eq!(fs::read(&managed_path)?, drifted_bytes);
+    assert!(mismatch.status.success(), "{}", stderr(&mismatch)?);
+    let mismatch: PolicyShowReport = serde_json::from_slice(&mismatch.stdout)?;
+    assert_eq!(
+        mismatch.managed_file.status,
+        ManagedPolicyFileStatus::FingerprintMismatch
+    );
+    assert!(!mismatch.managed_file.matches_authority);
+    assert_eq!(mismatch.actions.len(), 1);
+    assert_eq!(
+        mismatch.actions[0].command,
+        PolicyShowActionCommand::PolicyApply
+    );
+    assert_ne!(
+        mismatch.managed_file.fingerprint.as_deref(),
+        Some(mismatch.authority.policy_fingerprint.as_str())
+    );
+    assert_eq!(
+        canonical_json_sha256(&mismatch.authority.policy)?.as_str(),
+        mismatch.authority.policy_fingerprint
+    );
+
+    fs::write(&managed_path, b"{")?;
+    let malformed_bytes = fs::read(&managed_path)?;
+    let malformed = fixture.run_policy_show(Some("--json"))?;
+    assert_eq!(fs::read(&managed_path)?, malformed_bytes);
+    assert!(malformed.status.success(), "{}", stderr(&malformed)?);
+    let malformed: PolicyShowReport = serde_json::from_slice(&malformed.stdout)?;
+    assert_eq!(
+        malformed.managed_file.status,
+        ManagedPolicyFileStatus::Malformed
+    );
+    assert!(!malformed.managed_file.matches_authority);
+    assert_eq!(malformed.actions.len(), 1);
+
+    fs::remove_file(&managed_path)?;
+    let missing = fixture.run_policy_show(Some("--json"))?;
+    assert!(!managed_path.exists());
+    assert!(missing.status.success(), "{}", stderr(&missing)?);
+    let missing: PolicyShowReport = serde_json::from_slice(&missing.stdout)?;
+    assert_eq!(
+        missing.managed_file.status,
+        ManagedPolicyFileStatus::Missing
+    );
+    assert!(!missing.managed_file.matches_authority);
+    assert_eq!(missing.actions.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn policy_show_fails_on_corrupt_store_authority_without_managed_file_fallback(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-policy-corrupt-authority")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let managed_path = fixture.repo_root.join(".volicord").join("policy.json");
+    let managed_before = fs::read(&managed_path)?;
+    let project = fixture.only_project();
+    rusqlite::Connection::open(&project.state_db_path)?.execute(
+        "UPDATE project_workflow_policies SET policy_json = '{}' WHERE project_id = ?1",
+        [&project.project_id],
+    )?;
+
+    let before = fixture.all_contents()?;
+    let output = fixture.run_policy_show(Some("--json"))?;
+    assert_eq!(fixture.all_contents()?, before);
+    assert!(!output.status.success());
+    assert_eq!(stdout(&output)?, "");
+    let failure = stderr(&output)?;
+    assert!(failure.contains("project_workflow_policies"));
+    assert!(failure.contains("policy_json"));
+    assert_eq!(fs::read(&managed_path)?, managed_before);
+    Ok(())
+}
+
 struct IsolatedInitFixture {
     _temporary_root: TempRuntimeHome,
     runtime_home: std::path::PathBuf,
@@ -2079,12 +2394,16 @@ struct IsolatedInitFixture {
 
 impl IsolatedInitFixture {
     fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+        Self::new_with_repo_directory(prefix, "product-repository")
+    }
+
+    fn new_with_repo_directory(prefix: &str, repo_directory: &str) -> Result<Self, Box<dyn Error>> {
         let temporary_root = TempRuntimeHome::new(prefix)?;
         let runtime_home = temporary_root.root_path().join("volicord-home");
         let codex_home = temporary_root.root_path().join("codex-home");
         let user_home = temporary_root.root_path().join("user-home");
         let empty_path = temporary_root.root_path().join("empty-path");
-        let repo_root = temporary_root.root_path().join("product-repository");
+        let repo_root = temporary_root.root_path().join(repo_directory);
         for directory in [&codex_home, &user_home, &empty_path, &repo_root] {
             fs::create_dir_all(directory)?;
         }
@@ -2167,6 +2486,92 @@ impl IsolatedInitFixture {
         json: bool,
     ) -> Result<std::process::Output, Box<dyn Error>> {
         self.run_connection_for_repo(operation, &self.repo_root, json)
+    }
+
+    fn run_policy_show(
+        &self,
+        output_flag: Option<&str>,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("policy")
+            .arg("show")
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        if let Some(output_flag) = output_flag {
+            command.arg(output_flag);
+        }
+        Ok(command.output()?)
+    }
+
+    fn run_policy_apply(&self, file: &Path) -> Result<std::process::Output, Box<dyn Error>> {
+        Ok(base_command()
+            .arg("policy")
+            .arg("apply")
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--file")
+            .arg(file)
+            .arg("--json")
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root)
+            .output()?)
+    }
+
+    fn run_policy_validate(
+        &self,
+        file: &Path,
+        json: bool,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("policy")
+            .arg("validate")
+            .arg("--file")
+            .arg(file)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        if json {
+            command.arg("--json");
+        }
+        Ok(command.output()?)
+    }
+
+    fn insert_escalating_active_task(&self) -> Result<(), Box<dyn Error>> {
+        let project = self.only_project();
+        let connection = rusqlite::Connection::open(&project.state_db_path)?;
+        connection.execute(
+            "INSERT INTO tasks (
+                project_id, task_id, created_by_actor_source, mode,
+                requested_control_level, effective_control_level, control_level_reason,
+                work_phase, acceptance_policy, acceptance_policy_reason,
+                lifecycle_phase, created_at, updated_at
+             ) VALUES (?1, 'task_policy_show_active', 'system', 'direct', 'auto', 'observe',
+                       'Initial observe control.', 'implementation', 'not_required',
+                       'Observe control needs no acceptance.', 'executing',
+                       '2026-07-31T00:00:00Z', '2026-07-31T00:00:00Z')",
+            [&project.project_id],
+        )?;
+        connection.execute(
+            "UPDATE project_state
+                SET active_task_id = 'task_policy_show_active'
+              WHERE project_id = ?1",
+            [&project.project_id],
+        )?;
+        Ok(())
     }
 
     fn run_connection_verbose(
@@ -2416,6 +2821,12 @@ impl IsolatedInitFixture {
             DatabaseInspection::Present(snapshot) => snapshot,
             other => panic!("expected registry snapshot, got {other:?}"),
         }
+    }
+
+    fn only_project(&self) -> volicord_store::inspection::ProjectInspectionRecord {
+        let snapshot = self.registry_snapshot();
+        assert_eq!(snapshot.projects.len(), 1);
+        snapshot.projects[0].clone()
     }
 
     fn install_codex_executable(&self) -> Result<(), Box<dyn Error>> {

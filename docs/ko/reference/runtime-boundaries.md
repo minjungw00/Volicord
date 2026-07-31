@@ -150,13 +150,16 @@ target에 결합된 `RuntimeHomeMutationContext`를 만들며 모든 변경 API�
 `ExclusiveSetup` permit에서 같은 Store context를 만들며 중첩된 공유 lease를 획득하지
 않습니다.
 
-Connection list와 status는 이러한 읽기 전용 open만 사용합니다. List는
-`SharedWriter`나 `ExclusiveSetup` lease 없이 현재 구성, Registry, project Store,
-Guard 상태에서 선택한 각 membership을 평가합니다. Process, MCP, writeability,
-reconciliation probe를 실행하지 않으며 Runtime Home, project, repository, 구성,
-보고서, 관찰, timestamp를 만들거나 갱신하지 않습니다. Membership 범위의 읽기 실패는
-행 범위 unavailable 상태로 남고 Runtime Home Registry 전체를 열거할 수 없으면 명령
-오류가 됩니다.
+Connection list, Connection status, `policy show`는 이러한 읽기 전용 open만
+사용합니다. List는 `SharedWriter`나 `ExclusiveSetup` lease 없이 현재 구성,
+Registry, project Store, Guard 상태에서 선택한 각 membership을 평가합니다.
+Policy show는 선택한 권위 있는 프로젝트 workflow policy record를 엄격하게 읽고,
+관리 파일 동기화 상태를 분류하기 위해 `.volicord/policy.json`을 별도로 읽습니다.
+어느 흐름도 process, MCP, writeability, reconciliation probe를 실행하지 않으며 Runtime
+Home, project, repository, 구성, 보고서, 관찰, timestamp 상태를 만들거나 갱신하지
+않습니다. 정책 drift가 있어도 검사 중에는 복구하지 않습니다. Membership 범위의 읽기
+실패는 행 범위 unavailable 상태로 남고 Runtime Home Registry 전체를 열거할 수 없으면
+명령 오류가 됩니다.
 
 Store가 `RuntimeHomeMutationContext`를 만든 뒤에는 그
 `CanonicalRuntimeHomePath`가 승인 안에서 수행하는 모든 변경 의존 읽기, plan,

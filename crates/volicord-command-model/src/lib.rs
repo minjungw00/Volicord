@@ -238,14 +238,16 @@ pub enum PolicyCommand {
 pub struct PolicyShowArgs {
     #[arg(long, value_parser = nonempty_path)]
     pub repo: PathBuf,
-    #[arg(long, required = true)]
-    pub json: bool,
+    #[command(flatten)]
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
 pub struct PolicyValidateArgs {
     #[arg(long, value_parser = nonempty_path)]
     pub file: PathBuf,
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -284,7 +286,7 @@ pub enum ConnectionCommand {
     Remove(ConnectionRemoveArgs),
 }
 
-#[derive(Debug, Args, Default)]
+#[derive(Debug, Args, Default, PartialEq, Eq)]
 pub struct ReportOutputArgs {
     #[arg(long, conflicts_with = "verbose")]
     pub json: bool,
@@ -1535,18 +1537,23 @@ mod tests {
 
         for path in [
             ["policy", "show"].as_slice(),
+            ["policy", "validate"].as_slice(),
             ["policy", "apply"].as_slice(),
         ] {
             let command = syntax
                 .iter()
                 .find(|command| command.components() == path)
                 .expect("policy syntax");
-            assert!(command.synopsis().contains("--json"));
             assert!(command
                 .arguments()
                 .iter()
                 .any(|argument| argument == "--json"));
         }
+        let policy_apply = syntax
+            .iter()
+            .find(|command| command.components() == ["policy", "apply"])
+            .expect("policy apply syntax");
+        assert!(policy_apply.synopsis().contains("--json"));
 
         let hidden = command_paths()
             .into_iter()
@@ -1805,15 +1812,7 @@ mod tests {
     }
 
     #[test]
-    fn required_arguments_and_conflicts_are_enforced_by_clap() {
-        let required =
-            Cli::try_parse_from(["volicord", "policy", "show", "--repo", "/workspace/product"])
-                .expect_err("policy show requires JSON output");
-        assert_eq!(
-            required.kind(),
-            clap::error::ErrorKind::MissingRequiredArgument
-        );
-
+    fn output_conflicts_are_enforced_by_clap() {
         let conflict = Cli::try_parse_from([
             "volicord",
             "connection",
@@ -2019,5 +2018,83 @@ mod tests {
         let error = Cli::try_parse_from(["volicord", "connection", "list", "--json", "--verbose"])
             .expect_err("list JSON and verbose output must be mutually exclusive");
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn policy_show_uses_the_shared_report_output_contract() {
+        for (flag, expected) in [
+            (None, ReportOutputArgs::default()),
+            (
+                Some("--verbose"),
+                ReportOutputArgs {
+                    json: false,
+                    verbose: true,
+                },
+            ),
+            (
+                Some("--json"),
+                ReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
+            ),
+        ] {
+            let mut arguments = vec!["volicord", "policy", "show", "--repo", "."];
+            if let Some(flag) = flag {
+                arguments.push(flag);
+            }
+            let parsed = Cli::try_parse_from(arguments).expect("policy show output should parse");
+            let Some(Command::Policy(PolicyArgs {
+                command: PolicyCommand::Show(PolicyShowArgs { output, .. }),
+            })) = parsed.command
+            else {
+                panic!("unexpected policy show command")
+            };
+            assert_eq!(output, expected);
+        }
+
+        let error = Cli::try_parse_from([
+            "volicord",
+            "policy",
+            "show",
+            "--repo",
+            ".",
+            "--verbose",
+            "--json",
+        ])
+        .expect_err("policy show JSON and verbose output must conflict");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn policy_validate_accepts_only_optional_json_output() {
+        for json in [false, true] {
+            let mut arguments = vec!["volicord", "policy", "validate", "--file", "policy.json"];
+            if json {
+                arguments.push("--json");
+            }
+            let parsed =
+                Cli::try_parse_from(arguments).expect("policy validation output should parse");
+            let Some(Command::Policy(PolicyArgs {
+                command:
+                    PolicyCommand::Validate(PolicyValidateArgs {
+                        json: parsed_json, ..
+                    }),
+            })) = parsed.command
+            else {
+                panic!("unexpected policy validate command")
+            };
+            assert_eq!(parsed_json, json);
+        }
+
+        assert!(Cli::try_parse_from([
+            "volicord",
+            "policy",
+            "validate",
+            "--file",
+            "policy.json",
+            "--verbose",
+        ])
+        .is_err());
     }
 }

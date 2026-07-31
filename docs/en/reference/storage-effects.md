@@ -330,6 +330,14 @@ whose normalized write-authority fingerprint is unchanged, has no ticket
 invalidation effect solely because policy apply ran. Exact command, file, and
 host behavior is an administrative-owner concern.
 
+`policy show` opens the selected Registry and project Store read-only, decodes
+the authoritative workflow-policy record, and reads the repository-managed
+policy file only to classify synchronization. `policy validate` reads only its
+selected input file. Neither command creates or updates a Store row, state
+version, authority event, report, observation, timestamp, Runtime Home file, or
+Product Repository file. A missing, malformed, mismatched, inaccessible, or
+corrupt value does not create a repair effect.
+
 Workflow metrics writes store aggregate counters, durations, serialized tool
 byte counts, and categorical outcomes only. These records never contain prompt,
 file, answer, or command bodies.

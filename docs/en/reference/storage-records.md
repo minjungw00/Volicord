@@ -111,6 +111,16 @@ Project-state records include:
   project sessions that retain their required thread and may precede their
   Registry runtime binding.
 
+`project_workflow_policies` is the authoritative project workflow-policy
+record family. Its canonical aggregate contains the project identity, exact
+`volicord.workflow_policy` schema identity, positive policy version, canonical
+JSON for the complete `ProjectWorkflowPolicy`, matching canonical fingerprint,
+closed source, and timestamps. Every read strictly decodes and validates the
+complete typed policy, canonical JSON, fingerprint, source, version, and
+timestamps before returning the record across the Store boundary. Any invalid
+or contradictory member is persisted-data `Corrupt`; Store does not return a
+partial policy, a default, or the repository-managed policy file as fallback.
+
 Prompt-related Guard records are observations only. They are not a UserAction
 resolution, user answer, verification basis, or authority source.
 

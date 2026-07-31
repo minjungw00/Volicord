@@ -103,6 +103,16 @@ Codex가 이를 읽었다는 증명이 아닙니다.
 기록이 아닙니다. 현재 typed 상태에서 도출하고 secret과 비공개 UserAction 내용을 빼며
 구조화된 결과의 보장 경계를 보존해야 합니다. 오래된 표시가 작업을 승인할 수 없습니다.
 
+### Workflow policy 검사
+
+권위 있는 workflow policy 전체는 검사할 수 있는 로컬 구성이며 credential이 아닙니다.
+`policy show --verbose`와 `policy show --json`은 정확한 MCP command, 인자 vector,
+정적 `mcp.env` entry를 표시할 수 있습니다. 현재의 엄격한 정책 계약은 이 정적 환경
+object에 문자열 값인 `VOLICORD_HOME`만 허용하며, 이 값은 로컬 Runtime Home
+binding이지 secret이 아닙니다. 명령은 호출한 process 환경을 열거하거나 다른 환경
+이름을 받아들이지 않습니다. 알 수 없거나 허용되지 않은 환경 member가 있는 정책은
+일부만 표시하거나 조용히 redact하지 않고 엄격한 decoding에서 실패합니다.
+
 ## Guard와 기록되지 않은 변경
 
 Guard와 조정 기록은 제한된 관찰입니다. 파일을 바꾼 actor, 악의, 완전한 감시, 예방을

@@ -99,6 +99,15 @@ operational-session 기록이 바뀌기 전에 거절합니다.
 - 정규화한 host session, turn, hook tool invocation과 필수 thread를 보관하고 Registry
   runtime binding보다 먼저 생길 수 있는 managed MCP project session
 
+`project_workflow_policies`는 권위 있는 프로젝트 workflow policy record
+family입니다. 정규 aggregate에는 프로젝트 identity, 정확한
+`volicord.workflow_policy` schema identity, 양의 policy version, 완전한
+`ProjectWorkflowPolicy`의 정규 JSON, 일치하는 정규 fingerprint, 닫힌 source,
+timestamp가 들어갑니다. 모든 read는 record를 Store 경계 밖으로 반환하기 전에 완전한
+typed 정책, 정규 JSON, fingerprint, source, version, timestamp를 엄격하게 decode하고
+검증합니다. 유효하지 않거나 서로 모순되는 member는 영속 데이터 `Corrupt`이며 Store는
+부분 정책, 기본값, 저장소 관리 정책 파일을 fallback으로 반환하지 않습니다.
+
 Prompt 관련 Guard 기록은 관찰일 뿐입니다. UserAction resolution, 사용자 답,
 verification basis, 권한 출처가 아닙니다.
 

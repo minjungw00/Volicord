@@ -11,7 +11,7 @@
 |---|---|
 | 여기에 표시된 생성 명령 트리, 옵션, 관계, 허용 selector 집합 | `stable` |
 | 아래 유지 구역에서 명시적으로 정의한 기계 판독 명령 필드와 닫힌 값 | `stable` |
-| 정책 검증·적용 및 증거 캡처 충족 명령 | `stable` |
+| 정책 검사·검증·적용 및 증거 캡처 충족 명령 | `stable` |
 | 현재 beta 관리 표면 | `beta` — 없음. 현재 관리 표면은 모두 다른 행에서 분류합니다. |
 | 사람용 형식과 진단 문구 | `diagnostic` |
 | 생성 Codex 구성 세부사항 | `internal` |
@@ -123,20 +123,22 @@ Usage: volicord policy <COMMAND>
 ### `volicord policy show`
 
 ```text
-Usage: volicord policy show --repo <REPO> --json
+Usage: volicord policy show [OPTIONS] --repo <REPO>
 
 Arguments and options:
   --repo <REPO>
   --json
+  --verbose
 ```
 
 ### `volicord policy validate`
 
 ```text
-Usage: volicord policy validate --file <FILE>
+Usage: volicord policy validate [OPTIONS] --file <FILE>
 
 Arguments and options:
   --file <FILE>
+  --json
 ```
 
 ### `volicord policy apply`
@@ -664,13 +666,77 @@ field 줄에 표시하고 정확히 newline 하나로 끝납니다.
 ## 정책 명령
 
 ```sh cli-example
+volicord policy show --repo "<repo>"
+volicord policy show --repo "<repo>" --verbose
 volicord policy show --repo "<repo>" --json
 volicord policy validate --file "<policy-file>"
+volicord policy validate --file "<policy-file>" --json
 volicord policy apply --repo "<repo>" --file "<policy-file>" --json
 ```
 
-검증은 효과가 없습니다. Apply는 담당 문서의 plan과 원자적 commit 경계를 사용하며 알 수
-없는 필드와 잘못된 값은 commit 전에 실패합니다.
+표시와 검증에는 효과가 없습니다. Apply는 담당 문서의 plan과 원자적 commit 경계를
+사용하며 알 수 없는 필드와 잘못된 값은 commit 전에 실패합니다.
+
+### 정책 검사 출력
+
+`policy show`는 선택한 프로젝트의 권위 있는 Store record에서 현재
+`ProjectWorkflowPolicy` 전체를 엄격하게 decode합니다. 권위 데이터가 손상되면 영속
+데이터 corruption 경계로 실패하며 관리 파일이나 생성 기본값을 대체 권위로 사용하지
+않습니다.
+
+출력 flag가 없으면 `Workflow policy is active.`로 시작하는 간결한 사람용 결과를
+표시합니다. 저장소 전체 경로, 권위 source, 관리 파일 동기화 요약, 정책 version,
+direct/work control 기본값, light control 설정, 의미 있는 허용·거부 path pattern
+개수, 쓰기 티켓 idle timeout, 활성 `Task`의 escalation 필요 여부를 포함합니다.
+Connection과 Guard 식별자, MCP 인자, hook command, fingerprint는 생략합니다.
+
+`--verbose`는 같은 사실에 더해 권위 및 관리 파일 fingerprint, 관리 파일 경로와
+schema, Connection intent, host, 선택한 profile, Connection ID, Guard installation
+ID, 정확한 MCP command와 인자 vector, 허용된 정적 환경 entry, 모든 host-hook phase의
+command와 인자 vector, 정확한 허용·거부 path pattern, 사용할 수 있는 repair action을
+표시합니다. 긴 경로와 값은 줄이지 않고 각각 독립된 field 줄에 둡니다.
+
+`--json`은 손실 없는 `PolicyShowReport` 하나만 직렬화합니다.
+
+```text
+schema: volicord.policy_show_report
+status: active
+repository
+authority:
+  source: project_database | volicord_init
+  policy_version
+  policy_fingerprint
+  policy: ProjectWorkflowPolicy
+managed_file:
+  path
+  status
+  schema
+  fingerprint
+  matches_authority
+active_task_requires_escalation
+actions[]
+```
+
+중첩된 `authority.policy`는 엄격한 정책 문서 전체이며
+`schema=volicord.workflow_policy`를 유지합니다. 바깥 report schema에는 이 정책 문서
+identity를 사용하지 않습니다. `policy_version`은 권위 revision이며 report 형식을
+선택하지 않습니다. 현재 관리 파일 status는 `matches`, `missing`, `malformed`,
+`permission_failure`, `binding_mismatch`, `fingerprint_mismatch`입니다.
+
+관리 `.volicord/policy.json` 파일은 별도로 검사하고 정규 fingerprint로 권위와
+비교합니다. 불일치, malformed 파일, 누락, binding 불일치, permission failure는
+권위 정책을 바꾸지 않으며 `volicord policy apply`를 위한 typed
+`repair_managed_policy` action을 추가합니다. 파일이 일치하면 repair action이
+없습니다. 검사는 파일을 복구하거나 Store record 또는 timestamp를 바꾸지 않습니다.
+
+### 정책 검증 출력
+
+`policy validate`는 선택한 파일을 변경하지 않고 엄격하게 검증합니다. 기본 사람용
+결과는 `Policy is valid.`로 시작하고 전체 파일 경로,
+`volicord.workflow_policy` schema, 정규 fingerprint를 표시합니다. `--json`은 같은
+typed 결과를 `status=valid`, `file`, `policy_schema`, `policy_fingerprint`로
+직렬화합니다. 유효하지 않은 입력은 현재 validation code, field path, message
+failure를 유지합니다.
 
 ### 정책 JSON 계약
 

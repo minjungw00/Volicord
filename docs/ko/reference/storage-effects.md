@@ -321,6 +321,13 @@ Prepare Write 미리보기 동작은 커밋 구체화에 사용하는 것과 같
 fingerprint가 같으면 정책 적용을 실행했다는 이유만으로 티켓을 무효화하지 않습니다.
 정확한 명령, 파일, host 동작은 관리 담당 문서의 관심사입니다.
 
+`policy show`는 선택한 Registry와 프로젝트 Store를 읽기 전용으로 열고 권위 있는
+workflow policy record를 decode하며, 동기화 상태를 분류하기 위해 저장소 관리 정책
+파일만 읽습니다. `policy validate`는 선택한 입력 파일만 읽습니다. 두 명령 모두 Store
+row, state version, authority event, report, observation, timestamp, Runtime Home 파일,
+Product Repository 파일을 만들거나 갱신하지 않습니다. 값이 없거나 malformed이거나
+불일치하거나 접근할 수 없거나 손상되어도 repair 효과를 만들지 않습니다.
+
 Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범주형
 outcome만 저장합니다. 이 기록은 prompt, file, answer, command 본문을 저장하지
 않습니다.

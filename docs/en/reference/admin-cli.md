@@ -11,7 +11,7 @@ stdio behavior remains with [MCP Transport](mcp-transport.md).
 |---|---|
 | Generated command tree, options, relationships, and accepted selector sets shown here | `stable` |
 | Machine-readable command fields and closed values explicitly defined in the maintained sections below | `stable` |
-| Policy validation/application and evidence-capture fulfillment commands | `stable` |
+| Policy inspection, validation/application, and evidence-capture fulfillment commands | `stable` |
 | Current beta administrative surface | `beta` — none; every current administrative surface is classified by another row |
 | Human-readable formatting and diagnostics prose | `diagnostic` |
 | Generated Codex configuration details | `internal` |
@@ -125,20 +125,22 @@ Usage: volicord policy <COMMAND>
 ### `volicord policy show`
 
 ```text
-Usage: volicord policy show --repo <REPO> --json
+Usage: volicord policy show [OPTIONS] --repo <REPO>
 
 Arguments and options:
   --repo <REPO>
   --json
+  --verbose
 ```
 
 ### `volicord policy validate`
 
 ```text
-Usage: volicord policy validate --file <FILE>
+Usage: volicord policy validate [OPTIONS] --file <FILE>
 
 Arguments and options:
   --file <FILE>
+  --json
 ```
 
 ### `volicord policy apply`
@@ -692,13 +694,82 @@ the other.
 ## Policy Commands
 
 ```sh cli-example
+volicord policy show --repo "<repo>"
+volicord policy show --repo "<repo>" --verbose
 volicord policy show --repo "<repo>" --json
 volicord policy validate --file "<policy-file>"
+volicord policy validate --file "<policy-file>" --json
 volicord policy apply --repo "<repo>" --file "<policy-file>" --json
 ```
 
-Validation has no effect. Apply uses the owner-defined plan and atomic commit
-boundary; unknown fields and invalid values fail before commit.
+Show and validation have no effect. Apply uses the owner-defined plan and
+atomic commit boundary; unknown fields and invalid values fail before commit.
+
+### Policy Inspection Output
+
+`policy show` strictly decodes the complete current `ProjectWorkflowPolicy`
+from the selected project's authoritative Store record. Corrupt authoritative
+data fails through the persisted-data corruption boundary; the managed file
+and generated defaults are never fallback authority.
+
+With no output flag, the command renders a concise human result headed
+`Workflow policy is active.` It includes the full repository path, authority
+source, managed-file synchronization summary, policy version, direct and work
+control defaults, light-control settings, meaningful allowed or denied
+path-pattern counts, write-ticket idle timeout, and whether the active `Task`
+requires escalation. It omits Connection and Guard identifiers, MCP arguments,
+hook commands, and fingerprints.
+
+`--verbose` renders those same facts plus the authority and managed-file
+fingerprints, managed-file path and schema, Connection intent, host, selected
+profile, Connection ID, Guard installation ID, exact MCP command and argument
+vector, permitted static environment entries, every host-hook phase command
+and argument vector, exact allowed and denied path patterns, and an available
+repair action. Long paths and values remain complete on their own field lines.
+
+`--json` serializes exactly one lossless `PolicyShowReport`:
+
+```text
+schema: volicord.policy_show_report
+status: active
+repository
+authority:
+  source: project_database | volicord_init
+  policy_version
+  policy_fingerprint
+  policy: ProjectWorkflowPolicy
+managed_file:
+  path
+  status
+  schema
+  fingerprint
+  matches_authority
+active_task_requires_escalation
+actions[]
+```
+
+The nested `authority.policy` is the complete strict policy document and keeps
+`schema=volicord.workflow_policy`; the outer report schema is never that
+policy-document identity. `policy_version` is the authoritative revision and
+does not select a report format. The current managed-file statuses are
+`matches`, `missing`, `malformed`, `permission_failure`, `binding_mismatch`,
+and `fingerprint_mismatch`.
+
+The managed `.volicord/policy.json` file is inspected separately and compared
+with authority by canonical fingerprint. A mismatch, malformed file, missing
+file, binding mismatch, or permission failure leaves the authoritative policy
+unchanged and adds the typed `repair_managed_policy` action for
+`volicord policy apply`. A matching file has no repair action. Inspection
+never repairs the file, changes Store records, or updates timestamps.
+
+### Policy Validation Output
+
+`policy validate` strictly validates the selected file without changing it.
+The default human result starts with `Policy is valid.` and then prints the
+complete file path, `volicord.workflow_policy` schema, and canonical
+fingerprint. `--json` serializes the same typed result with `status=valid`,
+`file`, `policy_schema`, and `policy_fingerprint`. Invalid input retains the
+current validation code, field path, and message failure.
 
 ### Policy JSON Contract
 

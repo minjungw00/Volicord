@@ -171,13 +171,17 @@ read-only opens remain available without it. Setup derives the same Store
 context from its one `ExclusiveSetup` permit and does not acquire a nested
 shared lease.
 
-Connection list and status use only those read-only opens. List evaluates each
-selected membership from current configuration, Registry, project Store, and
-Guard state without a `SharedWriter` or `ExclusiveSetup` lease. It runs no
-process, MCP, writeability, or reconciliation probe and creates or updates no
-Runtime Home, project, repository, configuration, report, observation, or
-timestamp. A membership-local read failure remains a row-local unavailable
-state; failure to enumerate the Runtime Home Registry remains a command error.
+Connection list, Connection status, and `policy show` use only those read-only
+opens. List evaluates each selected membership from current configuration,
+Registry, project Store, and Guard state without a `SharedWriter` or
+`ExclusiveSetup` lease. Policy show strictly reads the selected authoritative
+project workflow-policy record and separately reads
+`.volicord/policy.json` to classify managed-file synchronization. Neither flow
+runs a process, MCP, writeability, or reconciliation probe or creates or
+updates Runtime Home, project, repository, configuration, report, observation,
+or timestamp state. Policy drift never causes inspection-time repair. A
+membership-local read failure remains a row-local unavailable state; failure
+to enumerate the Runtime Home Registry remains a command error.
 
 Once Store creates `RuntimeHomeMutationContext`, its
 `CanonicalRuntimeHomePath` is the sole Runtime Home identity for every

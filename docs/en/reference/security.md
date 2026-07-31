@@ -120,6 +120,18 @@ are displays, not separate authority records. They must derive from current
 typed state, omit secrets and private UserAction content, and preserve the
 structured result's guarantee boundary. A stale display cannot authorize work.
 
+### Workflow-Policy Inspection
+
+The complete authoritative workflow policy is inspectable local configuration,
+not a credential. `policy show --verbose` and `policy show --json` may display
+its exact MCP command, argument vector, and static `mcp.env` entries. The
+current strict policy contract permits only string-valued `VOLICORD_HOME` in
+that static environment object; this value is a local Runtime Home binding, not
+a secret. The command does not enumerate the invoking process environment or
+accept additional environment names. A policy carrying an unknown or
+disallowed environment member fails strict decoding instead of being partially
+displayed or silently redacted.
+
 ## Guard And Unrecorded Changes
 
 Guard and reconciliation records are bounded observations. They do not prove

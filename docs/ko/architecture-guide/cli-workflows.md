@@ -85,6 +85,14 @@ fact, label, 빈 상태 문장, count, action을 선택합니다.
 완전한 typed 프로젝트 record를 별도로 직렬화하며 사람용 출력을 JSON을 거쳐 변환하지
 않습니다. 명령은 의미 있는 verbose 투영이 있을 때만 verbose 출력을 제공합니다.
 
+`policy show`는 엄격하게 decode한 권위 있는 `ProjectWorkflowPolicy` 하나를 읽고
+typed `PolicyShowReport` 하나를 만듭니다. Report는 Store 권위, 관리 파일 동기화,
+활성 Task escalation, repair action을 서로 다른 fact로 유지합니다. Compact와 verbose
+명령별 투영은 의미 중립 사람용 primitive에 전달하고 JSON은 완전한 중첩 정책을 포함한
+같은 report를 직렬화합니다. 관리 파일 비교는 정규 정책 fingerprint를 사용하며 읽기
+전용입니다. `policy validate`도 typed 성공 검증 결과 하나를 만들고 결론을 먼저
+표시하는 사람용 text 또는 그 결과의 JSON으로 투영합니다.
+
 ## UserAction 흐름
 
 `inbox`는 Core에 adapter-neutral pending fact를 요청합니다. `volicord-types`가 의미

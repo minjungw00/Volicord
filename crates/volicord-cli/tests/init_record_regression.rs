@@ -2296,12 +2296,14 @@ fn assert_valid_policy_without_policy_hash_args(repo_root: &Path) -> Result<(), 
         PolicyArgs {
             command: PolicyCommand::Validate(PolicyValidateArgs {
                 file: policy_path.clone(),
+                json: false,
             }),
         },
         |_| None,
         repo_root,
     )?;
-    assert!(report.starts_with("Policy schema: "));
+    assert!(report.starts_with("Policy is valid.\n\n"));
+    assert!(report.contains("Schema: volicord.workflow_policy"));
     let policy: Value = serde_json::from_slice(&fs::read(policy_path)?)?;
     let commands = policy["host_hook"]["commands"]
         .as_object()
