@@ -24,45 +24,29 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 개인 설정은 `--shared`를 뺍니다. 이후 상태, 검증, 복구, 제거 명령에도 같은 선택자를
 사용합니다.
 
+<a id="read-setup-output"></a>
 ## 설정 출력 읽기
 
 출력 플래그를 지정하지 않으면 `init`과 선택한 Connection의 생명주기 명령은 터미널에
-간결한 산문을 표시합니다. 새 설정을 commit했지만 관리 호스트 활동이 더 필요한 경우에는
-다음과 같은 대표 출력이 나타납니다.
+현재 보고서를 운영자가 읽을 수 있게 요약합니다. 먼저 설정 변경이 commit되었는지와 현재
+결과에 주의가 필요한지를 확인하고, 계산된 호스트 소유 activation 단계가 얼마나 남았는지
+봅니다. 선택한 Product Repository와 Connection mode를 확인하고, integration activation
+상태와 프로젝트 hook activation 상태를 서로 구분해 읽습니다.
 
-```text
-Setup committed; 4 host-owned activation steps remain.
+보고서는 passed, blocked, pending, failed check 개수를 각각 계산합니다. 이 개수로 전체
+진행 상황을 파악한 뒤 보고된 실행 순서대로 필수 호스트 소유 단계를 완료합니다. 실행 파일,
+Store 쓰기 가능성, protocol conformance, host compatibility에 관한 최신 probe 근거가 필요할
+때만 선택적인 active diagnostics를 실행합니다.
 
-Repository: <repo>
-Mode: workflow
-Checks: 5 ready, 4 waiting
-
-Waiting
-  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
-  Guard hook activity: pre_tool, post_tool, prompt_capture
-
-Required next steps
-  1. Restart or reload Codex in this repository.
-  2. Review the current project hooks.
-  3. Start a new Codex conversation and request: "Run the Volicord integration verification."
-  4. After the agent finishes, read connection status.
-
-Optional active diagnostics
-  Run `volicord connection verify` for fresh executable, writeability, and disposable conformance evidence.
-```
-
-개수와 구역은 현재 보고서에 따라 달라집니다. 모든 check, 지원용 식별자, 정확한 계획
-`target`, 보장 한계가 필요하면 `--verbose`를 사용합니다.
+현재 보고서를 더 자세히 진단할 때는 `--verbose`를 사용합니다.
 
 ```sh cli-example
 volicord connection verify codex --shared --repo "<repo>" --verbose
 ```
 
-Verbose 보기는 원시 JSON detail 줄 대신 구조화된 라벨을 사용합니다. 사람이 진단하는 데
-필요한 내용은 완전하게 제공하지만, MCP 도구 inventory처럼 큰 성공 컬렉션은 개수로 요약할
-수 있습니다. 전체 도구 inventory와 원시 중첩 사실을 포함한 손실 없는 기계 판독 보고서는
-`--json`을 사용합니다. 두 플래그는 함께 사용할 수 없습니다. 정확한 출력과 종료 동작은
-[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)는 정확한 concise 및
+verbose 출력, JSON 필드, 안정적인 enum 철자, check 상태 정의, 종료 동작, 현재 상태를 사용할
+수 없을 때의 동작을 규정하는 기준 문서입니다.
 
 ## 관리 변경 검토
 
@@ -96,9 +80,9 @@ volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
 ```
 
-`verify`는 선택한 관리 구성을 검사하고 현재 3상태 보고서를 반환합니다. 런타임 권한을
-발급하지 않습니다. 권한은 MCP project 호출마다 현재 Connection, membership, mode,
-권위 있는 관리 runtime/project session을 기준으로 검증합니다.
+`verify`는 설정과 준비 상태를 진단하는 명령으로 사용합니다. 현재 Connection과 session의
+권한 의미는 [검증된 에이전트 세션](../reference/agent-connection.md#validated-agent-session)이
+담당합니다.
 
 직접 프로세스 사전 점검에는 정확한 저장 식별자를 사용합니다.
 

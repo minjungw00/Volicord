@@ -325,9 +325,11 @@ platform.
 This command applies the canonical managed launcher, Connection, and current
 Guard setup before it reports one hierarchical `IntegrationActivationPlan`. A
 successful apply does not by itself prove that a reloaded managed host or the
-current hooks have run. Default init output presents the plan in one
-`Required next steps` section and keeps `Optional active diagnostics`
-separate.
+current hooks have run. Default init output distinguishes required activation
+work in execution order from diagnostics that obtain fresh probe evidence.
+Read [Agent Host Setup](agent-host-setup.md#read-setup-output) for the semantic
+interpretation and [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states)
+for the exact output contract.
 
 This shared setup requires the host launch environment to provide the same
 nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible

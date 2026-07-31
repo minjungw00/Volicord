@@ -26,46 +26,33 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 For a personal setup, omit `--shared`. Keep the same selector on later status,
 verify, repair, and removal commands.
 
+<a id="read-setup-output"></a>
 ## Read Setup Output
 
 Without an output flag, `init` and the selected-Connection lifecycle commands
-print concise terminal prose. A newly committed setup that still needs managed
-host activity looks like this representative output:
+summarize the current report for an operator. Start by determining whether
+setup changes were committed and whether the current result needs attention,
+then note the calculated number of host-owned activation steps that remain.
+Confirm the selected Product Repository and Connection mode, and read the
+integration activation state separately from the project-hook activation
+state.
 
-```text
-Setup committed; 4 host-owned activation steps remain.
+The report calculates separate totals for passed, blocked, pending, and failed
+checks. Use those totals to understand overall progress, then complete the
+required host-owned steps in the reported execution order. Run optional active
+diagnostics only when fresh executable, Store writeability,
+protocol-conformance, or host-compatibility probe evidence is needed.
 
-Repository: <repo>
-Mode: workflow
-Checks: 5 ready, 4 waiting
-
-Waiting
-  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
-  Guard hook activity: pre_tool, post_tool, prompt_capture
-
-Required next steps
-  1. Restart or reload Codex in this repository.
-  2. Review the current project hooks.
-  3. Start a new Codex conversation and request: "Run the Volicord integration verification."
-  4. After the agent finishes, read connection status.
-
-Optional active diagnostics
-  Run `volicord connection verify` for fresh executable, writeability, and disposable conformance evidence.
-```
-
-Counts and sections reflect the current report. Use `--verbose` when you need
-every check, support identifier, exact planned target, or assurance limit:
+Use `--verbose` when diagnosing the current report in more detail:
 
 ```sh cli-example
 volicord connection verify codex --shared --repo "<repo>" --verbose
 ```
 
-The verbose view uses structured labels instead of raw JSON detail lines. It is
-complete for human diagnosis, while large successful collections such as the
-MCP tool inventory may be summarized by count. Use `--json` for the lossless
-machine report, including full tool inventories and raw nested facts. The two
-flags cannot be used together. Exact output and exit behavior belong to
-[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states).
+The [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states)
+is the canonical source for exact concise and verbose output, JSON fields,
+stable enum spellings, check-status definitions, exit behavior, and behavior
+when current state is unavailable.
 
 ## Review Managed Changes
 
@@ -100,10 +87,9 @@ volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
 ```
 
-`verify` inspects the selected managed configuration and returns its current
-three-state report. It does not issue runtime authorization. Authorization is
-validated per MCP project call from the current Connection, membership, mode,
-and authoritative managed runtime/project sessions.
+Treat `verify` as a setup and readiness diagnostic. Current Connection and
+session authorization semantics belong to
+[Validated Agent Session](../reference/agent-connection.md#validated-agent-session).
 
 For a direct process preflight, use the exact stored identifiers:
 

@@ -402,8 +402,8 @@ documents:
   - cli.surface.public
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-29'
-  last_verified_on: '2026-07-29'
+  last_updated_on: '2026-07-31'
+  last_verified_on: '2026-07-31'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -542,8 +542,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-31'
+  last_verified_on: '2026-07-31'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:

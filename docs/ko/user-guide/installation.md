@@ -310,8 +310,9 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 이 명령은 정규 managed launcher, Connection, 현재 Guard 설정을 적용한 뒤 계층형
 `IntegrationActivationPlan` 하나를 보고합니다. 적용에 성공했다는 사실만으로 다시
 불러온 managed host나 현재 hook이 실행됐음이 증명되지는 않습니다. 기본 init 출력은
-plan을 `Required next steps` section 하나에 표시하고 `Optional active diagnostics`를
-분리합니다.
+실행 순서가 있는 필수 activation 작업과 최신 probe 근거를 얻는 진단을 구분합니다. 의미를
+해석할 때는 [에이전트 호스트 설정](agent-host-setup.md#read-setup-output)을, 정확한 출력 계약은
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)를 봅니다.
 
 이 공유 설정에서는 init이 선택한 것과 같은 비어 있지 않은 절대 경로
 `VOLICORD_HOME`을 호스트 시작 환경이 제공해야 합니다. 저장소에서 보이는 설정은 그
