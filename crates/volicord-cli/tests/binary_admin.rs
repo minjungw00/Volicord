@@ -34,8 +34,6 @@ use volicord_types::values::UtcTimestamp;
 
 const GENERATED_SHAPE_ERROR: &str =
     "generated host-hook capability does not match the current exact shape";
-const CONNECTION_LIST_TEXT_HEADER: &str =
-    "host\tintent\tmode\tenabled\tconnected_repositories\tverification_status\tissues\ttarget";
 
 type SqliteMasterRow = (String, String, Option<String>);
 
@@ -601,7 +599,7 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
             .keys()
             .map(String::as_str)
             .collect::<std::collections::BTreeSet<_>>(),
-        std::collections::BTreeSet::from(["connections", "limits"])
+        std::collections::BTreeSet::from(["connections", "generated_at", "limits"])
     );
     assert_eq!(report["limits"], init_report["limits"]);
     assert_eq!(report["limits"].as_array().map(Vec::len), Some(3));
@@ -616,31 +614,52 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
             .collect::<std::collections::BTreeSet<_>>(),
         std::collections::BTreeSet::from([
             "config_target",
-            "connected_projects",
-            "connected_repositories",
             "connection_id",
             "connection_intent",
             "enabled",
             "host_kind",
             "host_scope",
             "issues",
+            "memberships",
             "mode",
             "server_name",
-            "verification_report",
         ])
     );
-    serde_json::from_value::<ConnectionVerificationReport>(entry["verification_report"].clone())?;
     assert_eq!(entry["issues"], serde_json::json!([]));
-    assert!(!json_key_exists(&report, "metadata_state"));
-    assert!(!json_string_value_exists(&report, "current"));
-    assert!(!json_string_value_exists(&report, "degraded"));
-
+    let membership = &entry["memberships"][0];
+    assert_eq!(
+        membership
+            .as_object()
+            .expect("membership object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["current_state", "project_id", "project_name", "repository"])
+    );
+    assert_eq!(membership["repository"], path_text(&fixture.repo_root));
+    assert_eq!(membership["current_state"]["state"], "available");
+    assert_eq!(
+        membership["current_state"]["evaluated_at"],
+        report["generated_at"]
+    );
     let status = fixture.run_connection("status", true)?;
     let status_report: Value = serde_json::from_slice(&status.stdout)?;
     assert_eq!(status_report["operation"], "status");
     assert_eq!(
         status_report["connection"]["runtime_home"],
         path_text(&fixture.runtime_home)
+    );
+    assert_eq!(
+        membership["current_state"]["status"],
+        status_report["status"]
+    );
+    assert_eq!(
+        membership["current_state"]["activation"],
+        status_report["activation_state"]
+    );
+    assert_eq!(
+        membership["current_state"]["hook_activation"],
+        status_report["hook_activation_state"]
     );
 
     assert_eq!(
@@ -1124,7 +1143,8 @@ fn platform_default_does_not_discover_an_explicit_custom_home() -> Result<(), Bo
 }
 
 #[test]
-fn connection_list_synthesizes_a_missing_report_without_an_issue() -> Result<(), Box<dyn Error>> {
+fn connection_list_evaluates_current_state_without_persisting_a_missing_report(
+) -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-connection-list-missing-report")?;
     fixture.run(false)?;
     let connection_id = fixture.only_connection_id();
@@ -1135,10 +1155,13 @@ fn connection_list_synthesizes_a_missing_report_without_an_issue() -> Result<(),
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_slice(&output.stdout)?;
     let entry = &report["connections"][0];
-    assert_eq!(entry["verification_report"]["status"], "action_required");
     assert_eq!(
-        entry["verification_report"]["checks"][0]["id"],
-        "verification_not_run"
+        entry["memberships"][0]["current_state"]["state"],
+        "available"
+    );
+    assert_eq!(
+        entry["memberships"][0]["current_state"]["evaluated_at"],
+        report["generated_at"]
     );
     assert_eq!(entry["issues"], serde_json::json!([]));
     let stored = stored_verification_report(&fixture, &connection_id)?;
@@ -1161,11 +1184,21 @@ fn connection_list_reports_malformed_metadata_as_a_row_issue() -> Result<(), Box
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_slice(&output.stdout)?;
     let entry = &report["connections"][0];
-    assert!(entry["verification_report"].is_object());
+    assert_eq!(
+        entry["memberships"][0]["current_state"]["state"],
+        "unavailable"
+    );
+    assert_eq!(
+        entry["memberships"][0]["current_state"]["reason"],
+        "registration_metadata_corrupt"
+    );
+    assert!(entry["memberships"][0]["current_state"]
+        .get("status")
+        .is_none());
     assert_eq!(
         entry["issues"],
         serde_json::json!([{
-            "kind": "metadata_corrupt",
+            "kind": "registration_metadata_corrupt",
             "summary": "Persisted Agent Connection registration metadata is corrupt."
         }])
     );
@@ -1184,7 +1217,8 @@ fn connection_list_reports_malformed_metadata_as_a_row_issue() -> Result<(), Box
 }
 
 #[test]
-fn connection_list_reports_malformed_verification_as_a_row_issue() -> Result<(), Box<dyn Error>> {
+fn connection_list_reports_malformed_active_evidence_as_membership_unavailable(
+) -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-connection-list-verification-issue")?;
     fixture.run(false)?;
     let connection_id = fixture.only_connection_id();
@@ -1199,14 +1233,18 @@ fn connection_list_reports_malformed_verification_as_a_row_issue() -> Result<(),
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_slice(&output.stdout)?;
     let entry = &report["connections"][0];
-    assert!(entry["verification_report"].is_null());
+    assert_eq!(entry["issues"], serde_json::json!([]));
     assert_eq!(
-        entry["issues"],
-        serde_json::json!([{
-            "kind": "verification_report_corrupt",
-            "summary": "Persisted Agent Connection verification report is corrupt."
-        }])
+        entry["memberships"][0]["current_state"]["state"],
+        "unavailable"
     );
+    assert_eq!(
+        entry["memberships"][0]["current_state"]["reason"],
+        "persisted_active_verification_evidence_corrupt"
+    );
+    assert!(entry["memberships"][0]["current_state"]
+        .get("status")
+        .is_none());
     Ok(())
 }
 
@@ -1270,32 +1308,8 @@ fn connection_verify_replaces_a_command_bearing_report_without_changing_connecti
 }
 
 #[test]
-fn connection_list_orders_multiple_row_issues() -> Result<(), Box<dyn Error>> {
-    let fixture = IsolatedInitFixture::new("binary-connection-list-multiple-issues")?;
-    fixture.run(false)?;
-    let connection_id = fixture.only_connection_id();
-    set_connection_metadata(&fixture, &connection_id, "[]")?;
-    set_verification_report(&fixture, &connection_id, Some("{}"))?;
-
-    let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
-    assert_eq!(output.status.code(), Some(0));
-    let report: Value = serde_json::from_slice(&output.stdout)?;
-    let kinds = report["connections"][0]["issues"]
-        .as_array()
-        .expect("issues")
-        .iter()
-        .map(|issue| issue["kind"].as_str().expect("issue kind"))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        kinds,
-        vec!["metadata_corrupt", "verification_report_corrupt"]
-    );
-    Ok(())
-}
-
-#[test]
-fn connection_list_text_uses_issues_and_a_neutral_report_placeholder() -> Result<(), Box<dyn Error>>
-{
+fn connection_list_human_output_is_structured_tab_free_and_verbose_on_request(
+) -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-connection-list-text")?;
     fixture.run(false)?;
     let connection_id = fixture.only_connection_id();
@@ -1303,36 +1317,33 @@ fn connection_list_text_uses_issues_and_a_neutral_report_placeholder() -> Result
     let current = fixture.run_connection_list(Some(&fixture.repo_root), false)?;
     assert_eq!(current.status.code(), Some(0));
     let current_text = stdout(&current)?;
-    let mut current_lines = current_text.lines();
-    assert_eq!(current_lines.next(), Some(CONNECTION_LIST_TEXT_HEADER));
-    let current_columns = current_lines
-        .next()
-        .expect("connection row")
-        .split('\t')
-        .collect::<Vec<_>>();
-    assert!(matches!(
-        current_columns[5],
-        "complete" | "action_required" | "failed"
-    ));
-    assert_eq!(current_columns[6], "-");
+    assert!(current_text.starts_with("Connections (1)\n\ncodex\n"));
+    assert!(current_text.contains(&format!("Repository: {}", path_text(&fixture.repo_root))));
+    assert!(current_text.contains("Status: "));
+    assert!(current_text.contains("Checks: "));
+    assert!(!current_text.contains('\t'));
+    assert!(!current_text.contains("Connection ID: "));
+    assert!(!current_text.contains("Project ID: "));
+
+    let verbose = fixture.run_connection_list_verbose(Some(&fixture.repo_root))?;
+    assert_eq!(verbose.status.code(), Some(0));
+    let verbose_text = stdout(&verbose)?;
+    assert!(verbose_text.contains(&format!("Connection ID: {connection_id}")));
+    assert!(verbose_text.contains("Project ID: "));
+    assert!(verbose_text.contains("Configuration target: "));
+    assert!(verbose_text.contains("Integration revision: "));
+    assert!(verbose_text.contains("Evaluated at: "));
+    assert!(verbose_text.contains("Not applicable checks: "));
+    assert!(!verbose_text.contains('\t'));
 
     set_connection_metadata(&fixture, &connection_id, "{")?;
-    set_verification_report(&fixture, &connection_id, Some("{"))?;
     let corrupt = fixture.run_connection_list(Some(&fixture.repo_root), false)?;
     assert_eq!(corrupt.status.code(), Some(0));
     let corrupt_text = stdout(&corrupt)?;
-    let mut corrupt_lines = corrupt_text.lines();
-    assert_eq!(corrupt_lines.next(), Some(CONNECTION_LIST_TEXT_HEADER));
-    let corrupt_columns = corrupt_lines
-        .next()
-        .expect("connection row")
-        .split('\t')
-        .collect::<Vec<_>>();
-    assert_eq!(corrupt_columns[5], "-");
-    assert_eq!(
-        corrupt_columns[6],
-        "metadata_corrupt,verification_report_corrupt"
-    );
+    assert!(corrupt_text.contains("Current state: unavailable"));
+    assert!(corrupt_text.contains("Reason: registration metadata corrupt"));
+    assert!(corrupt_text.contains("Registration issue: "));
+    assert!(!corrupt_text.contains('\t'));
     Ok(())
 }
 
@@ -1347,18 +1358,55 @@ fn connection_list_filters_by_repository() -> Result<(), Box<dyn Error>> {
         shared_report["operation_details"]["result"]["disposition"],
         "committed"
     );
+    let shared_config_target = PathBuf::from(
+        shared_report["connection"]["config_target"]
+            .as_str()
+            .expect("shared config target"),
+    );
+    fs::remove_file(&shared_config_target)?;
+    fs::create_dir(&shared_config_target)?;
 
     let first = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
     assert_eq!(first.status.code(), Some(0));
     let first: Value = serde_json::from_slice(&first.stdout)?;
     assert_eq!(first["connections"].as_array().map(Vec::len), Some(1));
     assert_eq!(first["connections"][0]["connection_intent"], "personal");
+    assert_eq!(
+        first["connections"][0]["memberships"][0]["current_state"]["state"], "available",
+        "filtering must avoid evaluation of the unreadable shared configuration"
+    );
 
     let second = fixture.run_connection_list(Some(&other_repo), true)?;
     assert_eq!(second.status.code(), Some(0));
     let second: Value = serde_json::from_slice(&second.stdout)?;
     assert_eq!(second["connections"].as_array().map(Vec::len), Some(1));
     assert_eq!(second["connections"][0]["connection_intent"], "shared");
+    assert_eq!(
+        second["connections"][0]["memberships"][0]["current_state"]["state"],
+        "unavailable"
+    );
+    assert_eq!(
+        second["connections"][0]["memberships"][0]["current_state"]["reason"],
+        "managed_configuration_unavailable"
+    );
+
+    let all = fixture.run_connection_list(None, true)?;
+    assert_eq!(all.status.code(), Some(0));
+    let all: Value = serde_json::from_slice(&all.stdout)?;
+    assert_eq!(all["connections"].as_array().map(Vec::len), Some(2));
+    assert!(all["connections"]
+        .as_array()
+        .expect("connections")
+        .iter()
+        .any(|connection| connection["memberships"][0]["current_state"]["state"] == "available"));
+    assert!(all["connections"]
+        .as_array()
+        .expect("connections")
+        .iter()
+        .any(
+            |connection| connection["memberships"][0]["current_state"]["reason"]
+                == "managed_configuration_unavailable"
+        ));
     Ok(())
 }
 
@@ -2247,6 +2295,28 @@ impl IsolatedInitFixture {
         Ok(command.output()?)
     }
 
+    fn run_connection_list_verbose(
+        &self,
+        repo_root: Option<&Path>,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("connection")
+            .arg("list")
+            .arg("--home")
+            .arg(&self.runtime_home)
+            .arg("--verbose")
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        if let Some(repo_root) = repo_root {
+            command.arg("--repo").arg(repo_root);
+        }
+        Ok(command.output()?)
+    }
+
     fn run_shared_connection_add(
         &self,
         repo_root: &Path,
@@ -2517,18 +2587,5 @@ fn json_key_exists(value: &Value, key: &str) -> bool {
         }
         Value::Array(values) => values.iter().any(|value| json_key_exists(value, key)),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => false,
-    }
-}
-
-fn json_string_value_exists(value: &Value, expected: &str) -> bool {
-    match value {
-        Value::String(value) => value == expected,
-        Value::Array(values) => values
-            .iter()
-            .any(|value| json_string_value_exists(value, expected)),
-        Value::Object(object) => object
-            .values()
-            .any(|value| json_string_value_exists(value, expected)),
-        Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }

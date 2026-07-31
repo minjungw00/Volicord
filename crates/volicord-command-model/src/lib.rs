@@ -316,8 +316,8 @@ pub struct ConnectionListArgs {
     pub repo: Option<PathBuf>,
     #[command(flatten)]
     pub runtime_home: RuntimeHomeArgs,
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -2000,18 +2000,24 @@ mod tests {
     }
 
     #[test]
-    fn connection_list_keeps_its_collection_output_contract() {
+    fn connection_list_uses_the_shared_report_output_contract() {
         let parsed = Cli::try_parse_from(["volicord", "connection", "list", "--json"])
             .expect("list JSON should remain available");
         let Some(Command::Connection(ConnectionArgs {
-            command: ConnectionCommand::List(ConnectionListArgs { json: true, .. }),
+            command:
+                ConnectionCommand::List(ConnectionListArgs {
+                    output: ReportOutputArgs { json: true, .. },
+                    ..
+                }),
         })) = parsed.command
         else {
             panic!("unexpected list command")
         };
 
-        let error = Cli::try_parse_from(["volicord", "connection", "list", "--verbose"])
-            .expect_err("list must not gain selected-report verbose output");
-        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+        Cli::try_parse_from(["volicord", "connection", "list", "--verbose"])
+            .expect("list verbose output should use the shared report flag");
+        let error = Cli::try_parse_from(["volicord", "connection", "list", "--json", "--verbose"])
+            .expect_err("list JSON and verbose output must be mutually exclusive");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 }

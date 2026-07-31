@@ -181,6 +181,7 @@ Arguments and options:
   --repo <REPO>
   --home <HOME>
   --json
+  --verbose
 ```
 
 ### `volicord connection status`
@@ -847,8 +848,8 @@ details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구�
 Consumer는 사람용 summary를 parsing하지 않고 구조화된 check, finding, cause ID, action
 code, fact object를 사용합니다. `--verbose`와 `--json`은 함께 사용할 수 없는 사용법
 옵션입니다.
-`volicord connection list`는 별도의 간결한 컬렉션 projection을 유지하며
-`--verbose`를 받지 않습니다.
+`volicord connection list`는 별도의 컬렉션 projection을 유지하며, 서로 함께 사용할
+수 없는 `--json`과 `--verbose` 출력 선택을 다른 보고서 명령과 같이 받습니다.
 
 Schema 2의 최상위 형태는 다음과 같습니다.
 
@@ -982,12 +983,14 @@ Report limits
 
 ### Connection 목록 투영
 
-`volicord connection list`는 읽기 전용 컬렉션 목록입니다. 선택한 Connection
+`volicord connection list`는 읽기 전용 현재 상태 컬렉션입니다. 선택한 Connection
 하나나 운영 결과 하나를 다루지 않으므로 선택한 Connection용 `DiagnosticReport`
-projection을 사용하지 않습니다. JSON 문서의 최상위 구성원은 정확히 다음과 같습니다.
+projection을 사용하지 않습니다. JSON 문서에는 숫자 schema version field가 없으며
+최상위 구성원은 정확히 다음과 같습니다.
 
 ```schema
 ConnectionListReport:
+  generated_at: timestamp
   connections: ConnectionListEntry[]
   limits:
     - "Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion."
@@ -999,44 +1002,88 @@ ConnectionListEntry:
   host_scope: user | project
   mode: read_only | workflow
   enabled: bool
-  connected_projects: string[]
-  connected_repositories: string[]
-  verification_report: ConnectionVerificationReport | null
-  issues: ConnectionListIssue[]
   server_name: string
   config_target: string
+  memberships: ConnectionMembershipEntry[]
+  issues: ConnectionListIssue[]
 
 ConnectionListIssue:
-  kind: metadata_corrupt | verification_report_corrupt
+  kind: registration_metadata_corrupt
   summary: string
+
+ConnectionMembershipEntry:
+  project_id: string
+  project_name: string
+  repository: string
+  current_state: AvailableCurrentState | UnavailableCurrentState
+
+AvailableCurrentState:
+  state: available
+  status: complete | action_required | failed
+  activation: configured | host_reload_required |
+    hook_review_required_or_unknown | mcp_observation_required |
+    guard_verification_required | complete | failed
+  hook_activation: unknown | review_required_by_setup |
+    effective_by_observation | managed_by_policy |
+    bypassed_for_invocation | disabled
+  check_counts:
+    passed: integer
+    blocked: integer
+    pending: integer
+    failed: integer
+    not_applicable: integer
+  required_step_count: integer
+  primary_required_step: ConnectionRequiredStep | null
+  required_steps: ConnectionRequiredStep[]
+  integration_revision: string
+  evaluated_at: timestamp
+
+ConnectionRequiredStep:
+  id: ActivationStepId
+  instruction: string
+
+UnavailableCurrentState:
+  state: unavailable
+  reason: registration_metadata_corrupt |
+    persisted_active_verification_evidence_corrupt |
+    managed_configuration_unavailable | project_membership_unavailable |
+    project_store_unavailable | guard_state_unavailable |
+    runtime_session_state_unavailable | diagnostic_state_unavailable |
+    current_evaluation_inconsistent
+  summary: string
+  issues:
+    - summary: string
+      detail: string
 ```
 
-각 행의 `verification_report`는 정규
-[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)입니다.
-영속한 보고서가 없으면 목록은 `verification_not_run`을 포함하는 담당 문서 정의의 합성
-`action_required` 보고서를 사용하며, 읽는 것만으로 영속하지 않습니다. 영속 보고서가
-손상되어 디코딩할 수 없을 때만 `verification_report`가 `null`이고, 해당 행에
-`verification_report_corrupt` 문제가 하나 생깁니다. 영속 등록 메타데이터가
-유효하지 않으면 행을 숨기거나 검증 및 mode 명령의 엄격한 거부를 약화하지 않고
-`metadata_corrupt` 문제 하나를 추가합니다.
+사용 가능한 각 membership은 `volicord connection status --repo <REPO>`와 정확히 같은
+현재 평가기의 결과입니다. 평가기는 현재 관리 구성, 관리 runtime-session 근거, 선택한
+프로젝트의 Guard 상태, Product Repository Store 상태, trust, 사용할 수 있는 영속 활성
+검증 근거를 읽습니다. 영속 집계 보고서는 근거 입력일 뿐입니다. List는 이를 현재 상태로
+표시하지 않고, 표시용 대체 집계 보고서를 합성하지 않으며, 현재 projection을 영속하지
+않습니다. 한 invocation의 모든 membership은 `generated_at`을 `evaluated_at`으로
+공유합니다.
 
-문제 종류는 닫힌 snake-case 어휘입니다. 행에서는 종류 기준으로 정렬하고 중복을 제거하므로
-`metadata_corrupt`가 `verification_report_corrupt`보다 앞섭니다. 문제 요약은 제한된
-진단 문구이며 손상된 영속 JSON을 노출하지 않습니다. 행 문제는 영속 상태 손상을 보고할
-뿐 Connection 운영 상태가 아니며 목록 집계 상태를 만들지 않습니다.
+Membership 범위의 획득 또는 일관성 실패는 닫힌 reason 하나와 한도가 있는 안전한 문제
+세부사항을 가진 `state=unavailable`을 만듭니다. 다른 사용 가능한 membership을 숨기지
+않으며 stale 집계 상태로 fallback하지 않습니다. 잘못된 등록 metadata는 Connection에도
+닫힌 `registration_metadata_corrupt` 문제 하나를 추가합니다. 손상된 영속 JSON은
+노출하지 않습니다. Registry/Runtime Home 전체 열거 실패와 출력 직렬화 실패는 runtime
+오류 채널을 사용합니다.
 
-사람용 출력은 다음의 정확한 탭 구분 머리글을 유지합니다.
+사람용 renderer는 탭 구분 행 대신 구조화된 section과 field를 사용합니다. Concise 출력은
+등록 사실, Product Repository별 전용 경로 줄, 현재 status와 activation 상태,
+passed/blocked/pending/failed check 개수, 첫 번째 필수 action만 표시합니다.
+`--verbose`는 Connection 및 project ID, configuration target, integration revision,
+평가 timestamp, not-applicable 개수, 모든 필수 step, 한도가 있는 unavailable 상태
+세부사항을 추가합니다. 두 형식 모두 control 문자를 안전하게 표시하며 탭을 쓰지 않습니다.
 
-```text
-host	intent	mode	enabled	connected_repositories	verification_status	issues	target
-```
-
-보고서가 있으면 정규 검증 상태를 표시하고 손상된 보고서를 사용할 수 없으면 `-`를
-표시합니다. 문제 목록이 비어 있어도 `-`, 문제가 있으면 정렬된 종류를 표시합니다.
-저장소 필터링은 일치하는 각 Connection의 결정적인 전체 membership 필드를 보존합니다.
-일치 항목이 없어도 유효한 빈 목록입니다. 행 범위 문제를 보고할 때도 열거는 Registry나
-파일시스템을 쓰지 않고 종료 코드 `0`으로 성공합니다. Store 접근, 선택, 직렬화 실패는
-런타임 오류 채널을 사용합니다.
+`--repo`는 현재 평가 전에 membership 후보를 거릅니다. 일치하는 Connection에는 일치하는
+membership만 들어가며 일치 항목이 없어도 유효한 빈 컬렉션입니다. Membership 범위의
+unavailable 상태를 보고해도 열거는 종료 코드 `0`으로 성공합니다. Process나 MCP probe를
+실행하지 않고 writer lease를 얻지 않으며 writeability probe나 diagnostic reconcile을
+수행하지 않습니다. Registry, project Store, 파일, 보고서, 관찰, timestamp를 쓰지
+않습니다.
 
 `volicord connection mode`는 Connection mode와 소유한 모든 프로젝트 범위 Guard
 manifest를 revision 전환 하나로 다룹니다. CLI는 변경 전에 모든 Connection Project마다

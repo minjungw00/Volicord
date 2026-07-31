@@ -521,6 +521,14 @@ context에 정확한 현재 integration revision을 담습니다. 영속 verific
 실제 원인으로 반환하며 missing-record 치환이나
 `action.diagnostics.rebuild_current_observations` 안내를 만들지 않습니다.
 
+`volicord connection list`는 선택한 각 Connection Project membership에 같은 현재
+평가기를 독립적으로 적용합니다. Invocation 하나는 평가 timestamp 하나와 요청 범위
+Connection 근거를 제공하며, 현재 구성, runtime-session 근거, project Store 및 Guard
+상태는 각각 정확한 담당 읽기 경계를 따릅니다. Membership 범위의 unavailable 결과는
+닫힌 typed 값이며 영속되거나 합성된 집계 status가 될 수 없습니다. 성공한 형제
+membership을 숨기지도 않습니다. Repository filter는 이러한 현재 읽기보다 먼저
+membership을 선택합니다.
+
 선택적인 활성 검증은 plan이나 probe를 시작하기 전에 정확한 typed Connection integration
 revision을 확보합니다. Store는 같은 revision이 여전히 현재 상태일 때만 비교와 보고서 교체를 immediate
 Registry transaction 하나에서 수행합니다. 이 쓰기는 `verification_report_json`과 일반 row

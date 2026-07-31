@@ -386,7 +386,7 @@ impl CurrentConnectionEvaluationUnavailableCause {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(in crate::connection_command) struct CurrentConnectionEvaluationUnavailable {
     cause: CurrentConnectionEvaluationUnavailableCause,
     source: ConnectionCommandError,
@@ -401,6 +401,16 @@ impl CurrentConnectionEvaluationUnavailable {
             cause,
             source: source.into(),
         }
+    }
+
+    pub(in crate::connection_command) const fn cause(
+        &self,
+    ) -> CurrentConnectionEvaluationUnavailableCause {
+        self.cause
+    }
+
+    pub(in crate::connection_command) fn bounded_detail(&self) -> String {
+        self.source.to_string().chars().take(1_024).collect()
     }
 }
 
@@ -765,80 +775,113 @@ fn current_mcp_server_check(
     })
 }
 
-pub(in crate::connection_command) fn current_status_report(
+#[derive(Debug, Clone)]
+struct CurrentConnectionSharedInputs {
+    current_revision: IntegrationRevision,
+    persisted: Option<ConnectionVerificationReport>,
+    current_sessions: Vec<McpRuntimeSessionRecord>,
+    session_evidence: McpSessionEvidenceSelection,
+    latest_session: Option<McpRuntimeSessionRecord>,
+}
+
+/// Request-scoped inputs for one Connection's current membership evaluations.
+///
+/// The context intentionally has no process-global lifetime. Connection-level
+/// Persisted active evidence and runtime-session inputs are read at most once
+/// for every membership evaluated by one command invocation, while membership
+/// coordinates, project state, and Guard state remain membership local.
+pub(in crate::connection_command) struct CurrentConnectionEvaluationContext<'a, P>
+where
+    P: ConnectionProcess,
+{
+    runtime_home: &'a Path,
+    connection: &'a AgentConnectionRecord,
+    evaluated_at: UtcTimestamp,
+    process: &'a P,
+    shared: Option<Result<CurrentConnectionSharedInputs, CurrentConnectionEvaluationUnavailable>>,
+}
+
+impl<'a, P> CurrentConnectionEvaluationContext<'a, P>
+where
+    P: ConnectionProcess,
+{
+    pub(in crate::connection_command) fn new(
+        runtime_home: &'a Path,
+        connection: &'a AgentConnectionRecord,
+        evaluated_at: UtcTimestamp,
+        process: &'a P,
+    ) -> Self {
+        Self {
+            runtime_home,
+            connection,
+            evaluated_at,
+            process,
+            shared: None,
+        }
+    }
+
+    pub(in crate::connection_command) fn evaluate(
+        &mut self,
+        selected_membership: &ConnectionProjectRecord,
+    ) -> Result<VerificationReport, CurrentConnectionEvaluationUnavailable> {
+        parse_metadata(
+            &self.connection.metadata_json,
+            Some(selected_membership.project_id.as_str()),
+        )
+        .map_err(|error| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::RegistrationMetadataCorrupt,
+                error,
+            )
+        })?;
+        let runtime_home = self.runtime_home;
+        let connection = self.connection;
+        let evaluated_at = self.evaluated_at.clone();
+        let process = self.process;
+        let shared = self.shared_inputs()?;
+        current_status_report_with_inputs(
+            runtime_home,
+            connection,
+            selected_membership,
+            evaluated_at,
+            process,
+            shared,
+        )
+    }
+
+    fn shared_inputs(
+        &mut self,
+    ) -> Result<&CurrentConnectionSharedInputs, CurrentConnectionEvaluationUnavailable> {
+        if self.shared.is_none() {
+            self.shared = Some(current_connection_shared_inputs(
+                self.runtime_home,
+                self.connection,
+            ));
+        }
+        self.shared
+            .as_ref()
+            .expect("current Connection shared inputs were initialized")
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+}
+
+fn current_connection_shared_inputs(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
-    selected_membership: &ConnectionProjectRecord,
-    evaluated_at: UtcTimestamp,
-    process: &impl ConnectionProcess,
-) -> Result<VerificationReport, CurrentConnectionEvaluationUnavailable> {
-    parse_metadata(
-        &connection.metadata_json,
-        Some(selected_membership.project_id.as_str()),
-    )
-    .map_err(|error| {
-        unavailable(
-            CurrentConnectionEvaluationUnavailableCause::RegistrationMetadataCorrupt,
-            error,
-        )
-    })?;
+) -> Result<CurrentConnectionSharedInputs, CurrentConnectionEvaluationUnavailable> {
     let current_revision = connection_integration_revision(connection).map_err(|error| {
         unavailable(
             CurrentConnectionEvaluationUnavailableCause::IntegrationRevisionUnavailableOrInconsistent,
             ConnectionCommandError::from(error),
         )
     })?;
-    validate_current_membership_coordinate(
-        runtime_home,
-        connection,
-        selected_membership,
-        &current_revision,
-    )?;
-    CoreProjectStore::open_read_only(
-        runtime_home,
-        &ProjectId::new(selected_membership.project_id.clone()),
-    )
-    .map_err(|error| {
-        unavailable(
-            CurrentConnectionEvaluationUnavailableCause::ProjectStoreUnavailable,
-            ConnectionCommandError::from(error),
-        )
-    })?;
-
     let persisted = connection.verification_report().map_err(|error| {
         unavailable(
             CurrentConnectionEvaluationUnavailableCause::PersistedActiveVerificationEvidenceCorrupt,
             ConnectionCommandError::from(error),
         )
     })?;
-    let host_plan =
-        existing_host_plan(connection, runtime_home, process, Some(selected_membership)).map_err(
-            |error| {
-                unavailable(
-            CurrentConnectionEvaluationUnavailableCause::ManagedConfigurationUnreadableOrInvalid,
-            error,
-        )
-            },
-        )?;
-    let managed = codex::managed_identity_evaluation_for_plan(&host_plan).map_err(|error| {
-        unavailable(
-            CurrentConnectionEvaluationUnavailableCause::ManagedConfigurationUnreadableOrInvalid,
-            ConnectionCommandError::from(error),
-        )
-    })?;
-    let mut host = Verification::unobserved(&connection.config_target);
-    host.managed_config = managed.status;
-    host.managed_config_diagnostic = managed.diagnostic;
-    host.managed_config_details = managed.details;
-    if host_plan.host_scope == HostScope::Project {
-        host.project_trust = Some(codex::project_trust_diagnostic(
-            &codex_environment(process),
-            &selected_membership.project.repo_root,
-        ));
-    }
-    apply_persisted_host_executable_evidence(&mut host, persisted.as_ref())?;
-    let mcp_check = current_mcp_server_check(persisted.as_ref())?;
-
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)
             .map_err(|error| {
@@ -865,12 +908,82 @@ pub(in crate::connection_command) fn current_status_report(
                 )
             },
         )?;
+    Ok(CurrentConnectionSharedInputs {
+        current_revision,
+        persisted,
+        current_sessions,
+        session_evidence,
+        latest_session,
+    })
+}
+
+fn current_status_report_with_inputs(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    selected_membership: &ConnectionProjectRecord,
+    evaluated_at: UtcTimestamp,
+    process: &impl ConnectionProcess,
+    shared: &CurrentConnectionSharedInputs,
+) -> Result<VerificationReport, CurrentConnectionEvaluationUnavailable> {
+    let current_revision = &shared.current_revision;
+    validate_current_membership_coordinate(
+        runtime_home,
+        connection,
+        selected_membership,
+        current_revision,
+    )?;
+    CoreProjectStore::open_read_only(
+        runtime_home,
+        &ProjectId::new(selected_membership.project_id.clone()),
+    )
+    .map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ProjectStoreUnavailable,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+
+    let persisted = shared.persisted.as_ref();
+    let host_plan =
+        existing_host_plan(connection, runtime_home, process, Some(selected_membership)).map_err(
+            |error| {
+                unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ManagedConfigurationUnreadableOrInvalid,
+            error,
+        )
+            },
+        )?;
+    let managed = codex::managed_identity_evaluation_for_plan(&host_plan).map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ManagedConfigurationUnreadableOrInvalid,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+    if managed.status == ManagedConfigStatus::Unavailable {
+        return Err(unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ManagedConfigurationUnreadableOrInvalid,
+            ConnectionCommandError::runtime(managed.details),
+        ));
+    }
+    let mut host = Verification::unobserved(&connection.config_target);
+    host.managed_config = managed.status;
+    host.managed_config_diagnostic = managed.diagnostic;
+    host.managed_config_details = managed.details;
+    if host_plan.host_scope == HostScope::Project {
+        host.project_trust = Some(codex::project_trust_diagnostic(
+            &codex_environment(process),
+            &selected_membership.project.repo_root,
+        ));
+    }
+    apply_persisted_host_executable_evidence(&mut host, persisted)?;
+    let mcp_check = current_mcp_server_check(persisted)?;
+
     let host_findings = host_boundary_findings(
         connection,
         &host,
-        &current_sessions,
-        latest_session.as_ref(),
-        &current_revision,
+        &shared.current_sessions,
+        shared.latest_session.as_ref(),
+        current_revision,
         &evaluated_at,
     )
     .map_err(|error| {
@@ -921,9 +1034,9 @@ pub(in crate::connection_command) fn current_status_report(
     checks.extend(
         host_session_checks(
             &host,
-            &current_revision,
-            &session_evidence,
-            latest_session.as_ref(),
+            current_revision,
+            &shared.session_evidence,
+            shared.latest_session.as_ref(),
             &host_findings.tool_round_trip,
         )
         .map_err(|error| {
@@ -937,7 +1050,7 @@ pub(in crate::connection_command) fn current_status_report(
         runtime_home,
         connection,
         std::slice::from_ref(selected_membership),
-        &current_revision,
+        current_revision,
         &evaluated_at,
         Some(selected_membership),
     )
@@ -986,7 +1099,18 @@ pub(in crate::connection_command) fn current_status_report(
         runtime_home,
         connection,
         selected_membership,
-        &current_revision,
+        current_revision,
     )?;
     Ok(report)
+}
+
+pub(in crate::connection_command) fn current_status_report(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    selected_membership: &ConnectionProjectRecord,
+    evaluated_at: UtcTimestamp,
+    process: &impl ConnectionProcess,
+) -> Result<VerificationReport, CurrentConnectionEvaluationUnavailable> {
+    CurrentConnectionEvaluationContext::new(runtime_home, connection, evaluated_at, process)
+        .evaluate(selected_membership)
 }

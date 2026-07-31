@@ -10,7 +10,10 @@ mod verbose;
 mod diagnostic_projection_tests;
 
 pub(super) use common::cooperative_assurance_limits;
-pub(in crate::connection_command) use list::{display_project_roots, render_connections_output};
+pub(in crate::connection_command) use list::{
+    display_project_roots, render_connections_output, EvaluatedConnectionListEntry,
+    EvaluatedConnectionMembership,
+};
 pub(in crate::connection_command) use report::{
     render_command_report, render_setup_lease_busy, CommandConnection, CommandOperation,
     ConnectionCommandReport, RuntimeHomePublicationStatus, RuntimeHomeRollbackResult,

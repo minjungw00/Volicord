@@ -106,11 +106,7 @@ pub(super) fn connection_list_options(
     ParsedConnectionOptions {
         repo: args.repo,
         explicit_runtime_home: explicit_runtime_home(args.runtime_home, current_dir),
-        output: if args.json {
-            OutputFormat::Json
-        } else {
-            OutputFormat::Human(HumanOutputDetail::Concise)
-        },
+        output: output_format(args.output),
         ..ParsedConnectionOptions::default()
     }
 }
@@ -227,7 +223,10 @@ mod tests {
                 runtime_home: RuntimeHomeArgs {
                     home: Some(PathBuf::from("runtime-home")),
                 },
-                json: true,
+                output: ReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
             },
             &current_dir,
         );

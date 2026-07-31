@@ -150,6 +150,14 @@ target에 결합된 `RuntimeHomeMutationContext`를 만들며 모든 변경 API�
 `ExclusiveSetup` permit에서 같은 Store context를 만들며 중첩된 공유 lease를 획득하지
 않습니다.
 
+Connection list와 status는 이러한 읽기 전용 open만 사용합니다. List는
+`SharedWriter`나 `ExclusiveSetup` lease 없이 현재 구성, Registry, project Store,
+Guard 상태에서 선택한 각 membership을 평가합니다. Process, MCP, writeability,
+reconciliation probe를 실행하지 않으며 Runtime Home, project, repository, 구성,
+보고서, 관찰, timestamp를 만들거나 갱신하지 않습니다. Membership 범위의 읽기 실패는
+행 범위 unavailable 상태로 남고 Runtime Home Registry 전체를 열거할 수 없으면 명령
+오류가 됩니다.
+
 Store가 `RuntimeHomeMutationContext`를 만든 뒤에는 그
 `CanonicalRuntimeHomePath`가 승인 안에서 수행하는 모든 변경 의존 읽기, plan,
 Registry 조회, Core service, Store handle, diagnostic write, 효과, 응답의 유일한

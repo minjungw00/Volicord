@@ -513,10 +513,21 @@ no-effect when admission is unavailable. An idle server must not retain
 `SharedWriter`; admission is acquired per operation. Guard record-profile tests
 preserve cooperative host continuation while proving that the rejected hook is
 not counted as an observed phase and that a later hook records normally.
-Owner-defined read-only commands, including Connection status, diagnostic
+Owner-defined read-only commands, including Connection list and status, diagnostic
 lookup, project list/current, authority export, and MCP preflight, remain
 writer-lease-free and must preserve Runtime Home bytes, rows, state versions,
 and modification times.
+
+Connection-list lifecycle coverage compares each available membership with
+selected status at setup, managed-session, and complete stages; retains current
+`complete` when persisted active verification remains `action_required`; and
+proves independent complete and waiting memberships. Corruption and
+unavailability cases cover registration metadata, persisted active evidence,
+managed configuration, and project Store failures without hiding valid rows.
+Filter cases prove unselected memberships are not evaluated.
+JSON and human projections share the typed summary, one invocation timestamp,
+tab-free structured paths, compact primary action, and verbose-only IDs,
+revision, not-applicable counts, all steps, and bounded issue detail.
 
 Operational interoperability coverage accepts arbitrary bounded version
 strings, exercises initialize and tool-list milestones, checks required tools

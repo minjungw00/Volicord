@@ -116,7 +116,8 @@ use mcp_checks::mcp_server_finding_ids;
 use report_inputs::{assemble_connection_evaluation, canonical_verification_evaluation};
 pub(in crate::connection_command) use report_inputs::{
     current_status_report, effective_connection_report, report_with_hook_review_required,
-    CurrentConnectionEvaluationUnavailable,
+    CurrentConnectionEvaluationContext, CurrentConnectionEvaluationUnavailable,
+    CurrentConnectionEvaluationUnavailableCause,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

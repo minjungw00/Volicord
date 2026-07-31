@@ -46,7 +46,8 @@ mode-transition, or removal facts without creating another status tree. The
 JSON and text renderers consume that report, and binary exit handling reads its
 typed aggregate status. Rendering does not reconstruct a parallel state tree
 or parse its own output. Connection list retains a focused list projection that
-does not depend on the command-report state.
+does not depend on the command-report state, but every membership summary is
+produced by the same current evaluator as selected status.
 
 `connection status` reads current files and Store observations without running
 active probes or writing files, reports, observations, or timestamps. One
@@ -59,6 +60,13 @@ persisted report is an evidence input, not an aggregate-current-state cache.
 Registration, evidence, configuration, membership, project Store, Guard, and
 revision acquisition failures remain closed typed unavailable results for the
 command handler.
+
+`connection list` creates one request-scoped evaluation context per
+Connection, reuses Connection-level inputs where practical, and evaluates
+filtered memberships independently with one invocation timestamp. The
+repository filter runs before current evaluation. One unavailable membership
+is rendered beside successful memberships; a Runtime Home Registry enumeration
+failure still terminates the command. No context survives the invocation.
 
 `connection verify` performs current adapter and managed-configuration
 inspection, runs permitted local probes, reads actual managed-host and Guard

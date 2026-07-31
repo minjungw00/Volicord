@@ -574,6 +574,15 @@ the missing domain facts. An inline finding is returned as the actual cause
 and never receives missing-record substitution or
 `action.diagnostics.rebuild_current_observations` guidance.
 
+`volicord connection list` applies that same current evaluator independently
+to every selected Connection Project membership. One invocation supplies one
+evaluation timestamp and request-scoped Connection evidence; current
+configuration, runtime-session evidence, project Store and Guard state remain
+subject to their exact owner reads. A membership-local unavailable result is a
+closed typed value and cannot become a persisted or synthesized aggregate
+status. It does not suppress successful sibling memberships. Repository
+filtering selects memberships before these current reads.
+
 Optional active verification captures the exact typed Connection integration
 revision before it plans or probes. Store persists the resulting report only
 when that same revision is still current, using one immediate Registry

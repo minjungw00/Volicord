@@ -40,7 +40,8 @@ TOML로 직렬화하고 관리 entry를 다시 계약으로 parsing하며 허용
 result 하나가 다른 상태 트리를 만들지 않고 설정, mode 전환, 제거 사실을 담당합니다.
 JSON과 text renderer는 이 보고서를 소비하고 binary 종료 처리는 typed 집계 상태를 읽습니다.
 Rendering이 병렬 상태 트리를 다시 만들거나 자체 출력을 parsing하지 않습니다. Connection
-list는 명령 보고서 상태에 의존하지 않는 집중 list projection을 유지합니다.
+list는 명령 보고서 상태에 의존하지 않는 집중 list projection을 유지하지만 각
+membership summary는 선택한 status와 같은 현재 평가기에서 만듭니다.
 
 `connection status`는 활성 probe를 실행하거나 파일, 보고서, 관찰, timestamp를 쓰지
 않고 현재 파일과 Store 관찰을 읽습니다. 현재 평가 서비스 하나가 정확한 Runtime Home,
@@ -50,6 +51,12 @@ session, 선택한 프로젝트의 Guard, policy, trust, repository fact를 적�
 근거와 함께 조립합니다. 영속 보고서는 근거 입력이며 현재 집계 상태 cache가 아닙니다.
 등록, 근거, 구성, membership, 프로젝트 Store, Guard, revision 획득 실패는 명령 handler가
 소비하는 폐쇄형 typed unavailable 결과로 유지합니다.
+
+`connection list`는 Connection마다 요청 범위 평가 context 하나를 만들고 가능한
+Connection 범위 입력을 재사용하며, filter된 membership을 invocation timestamp 하나로
+독립적으로 평가합니다. Repository filter는 현재 평가보다 먼저 실행합니다. 사용할 수
+없는 membership 하나는 성공한 membership 옆에 표시하며 Runtime Home Registry 전체
+열거가 실패하면 명령을 종료합니다. 어떤 context도 invocation 뒤에 남지 않습니다.
 
 `connection verify`는 현재 adapter와 관리 구성을 검사하고 허용된 로컬 probe를 실행한 뒤
 실제 managed-host 및 Guard 관찰을 읽고 Store 담당 경로로 보고서를 최대 하나

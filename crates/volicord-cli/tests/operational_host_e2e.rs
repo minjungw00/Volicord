@@ -139,6 +139,7 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     status_tool_self_observation_preserves_missing_probe_reason()?;
     managed_launch_contracts_survive_filtered_environments()?;
     complete_managed_activation_journey_and_read_only_status()?;
+    connection_list_evaluates_multiple_memberships_independently()?;
     connection_mode_transition_rebinds_guard_revision()?;
     connection_mode_preflight_failure_preserves_connection()?;
     connection_removal_after_operational_observations()?;
@@ -147,6 +148,105 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     protocol_failures_are_authoritative()?;
     local_process_and_configuration_failures_are_structured()?;
     guard_failures_are_current_and_structured()?;
+    Ok(())
+}
+
+fn connection_list_evaluates_multiple_memberships_independently() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::initialized("operational-list-memberships")?;
+    let second_repo = fixture
+        ._temporary_root
+        .root_path()
+        .join("second-product-repository");
+    fs::create_dir_all(&second_repo)?;
+    let second_git = IsolatedGitRepository::initialize_at(&second_repo)?;
+    second_git.write("README.md", b"# Second Product Repository\n")?;
+    second_git.commit_all("second repository baseline")?;
+
+    let add = fixture.run_connection_add_for_repo(FUTURE_VERSION, &second_repo)?;
+    let add_report = assert_connection_report(&add, 0, "add", "action_required")?;
+    assert_eq!(
+        add_report["connection"]["repository"],
+        second_repo.to_string_lossy().as_ref()
+    );
+
+    let snapshot = fixture.registry_snapshot();
+    assert_eq!(snapshot.agent_connections.len(), 1);
+    assert_eq!(snapshot.connection_projects.len(), 2);
+    let connection_id = snapshot.agent_connections[0].connection_internal_id.clone();
+    let first_project = snapshot
+        .projects
+        .iter()
+        .find(|project| project.repo_root == fixture.repo_root)
+        .ok_or("first Product Repository")?;
+    let second_project = snapshot
+        .projects
+        .iter()
+        .find(|project| project.repo_root == second_repo)
+        .ok_or("second Product Repository")?;
+    let first_manifest = snapshot
+        .guard_installations
+        .iter()
+        .find(|installation| installation.project_id == first_project.project_id)
+        .map(|installation| guard_manifest_from_json(&installation.manifest_json))
+        .transpose()?
+        .ok_or("first Guard Installation")?;
+
+    let host_session_id = format!("{}.list-memberships", first_project.project_id);
+    fixture.run_successful_managed_mcp_with_guard(
+        &connection_id,
+        &first_project.project_id,
+        FUTURE_VERSION,
+        &host_session_id,
+        &first_manifest,
+    )?;
+
+    let before_list = fixture.content_snapshot()?;
+    let output = fixture.run_connection_list_all(FUTURE_VERSION, true, false)?;
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let memberships = report["connections"][0]["memberships"]
+        .as_array()
+        .ok_or("Connection memberships")?;
+    assert_eq!(memberships.len(), 2);
+    let first = memberships
+        .iter()
+        .find(|membership| membership["project_id"] == first_project.project_id)
+        .ok_or("first current membership")?;
+    let second = memberships
+        .iter()
+        .find(|membership| membership["project_id"] == second_project.project_id)
+        .ok_or("second current membership")?;
+    assert_eq!(first["current_state"]["state"], "available");
+    assert_eq!(first["current_state"]["status"], "complete");
+    assert_eq!(first["current_state"]["activation"], "complete");
+    assert_eq!(second["current_state"]["state"], "available");
+    assert_eq!(second["current_state"]["status"], "action_required");
+    assert_ne!(
+        second["current_state"]["activation"], "complete",
+        "the unobserved membership must retain its current activation work"
+    );
+    for membership in memberships {
+        assert_eq!(
+            membership["current_state"]["evaluated_at"],
+            report["generated_at"]
+        );
+    }
+
+    let filtered =
+        fixture.run_connection_list_for_repo(FUTURE_VERSION, true, false, &second_repo)?;
+    let filtered: Value = serde_json::from_slice(&filtered.stdout)?;
+    assert_eq!(
+        filtered["connections"][0]["memberships"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        filtered["connections"][0]["memberships"][0]["project_id"],
+        second_project.project_id
+    );
+    assert_eq!(fixture.content_snapshot()?, before_list);
     Ok(())
 }
 
@@ -1411,6 +1511,12 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         setup_status_report["activation_state"],
         "host_reload_required"
     );
+    let setup_list = fixture.run_connection_list(FUTURE_VERSION, true, false)?;
+    let setup_list_report = assert_connection_list_membership(&setup_list, "action_required")?;
+    assert_eq!(
+        setup_list_report["connections"][0]["memberships"][0]["current_state"]["activation"],
+        setup_status_report["activation_state"]
+    );
     let manifest = guard_manifest_from_json(&snapshot.guard_installations[0].manifest_json)?;
     assert_current_guard_projection(&fixture, &manifest)?;
     fixture.run_successful_managed_mcp(
@@ -1422,6 +1528,13 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     let managed_only = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let managed_only_report =
         assert_connection_report(&managed_only, 0, "status", "action_required")?;
+    let managed_only_list = fixture.run_connection_list(FUTURE_VERSION, true, false)?;
+    let managed_only_list_report =
+        assert_connection_list_membership(&managed_only_list, "action_required")?;
+    assert_eq!(
+        managed_only_list_report["connections"][0]["memberships"][0]["current_state"]["activation"],
+        managed_only_report["activation_state"]
+    );
     for check_id in [
         "host_reload",
         "managed_session_health",
@@ -1510,6 +1623,48 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
             .status(),
         volicord_types::connection_verification::ConnectionStatus::ActionRequired
     );
+    let before_complete_list = fixture.content_snapshot()?;
+    let complete_list = fixture.run_connection_list(FUTURE_VERSION, true, false)?;
+    let complete_list_report = assert_connection_list_membership(&complete_list, "complete")?;
+    let complete_list_state =
+        &complete_list_report["connections"][0]["memberships"][0]["current_state"];
+    assert_eq!(complete_list_state["activation"], "complete");
+    assert_eq!(
+        complete_list_state["hook_activation"],
+        "effective_by_observation"
+    );
+    assert_eq!(complete_list_state["required_step_count"], 0);
+    assert_eq!(complete_list_state["required_steps"], json!([]));
+    assert_eq!(
+        complete_list_state["evaluated_at"],
+        complete_list_report["generated_at"]
+    );
+    assert_eq!(
+        fixture.content_snapshot()?,
+        before_complete_list,
+        "connection list wrote state"
+    );
+    let human_list = fixture.run_connection_list(FUTURE_VERSION, false, false)?;
+    assert_eq!(human_list.status.code(), Some(0));
+    assert!(human_list.stderr.is_empty());
+    let human_list = String::from_utf8(human_list.stdout)?;
+    assert!(human_list.starts_with("Connections (1)\n\ncodex\n"));
+    assert!(human_list.contains(&format!("Repository: {}", fixture.repo_root.display())));
+    assert!(human_list.contains("Status: complete\n"));
+    assert!(human_list.contains("Activation: complete\n"));
+    assert!(!human_list.contains('\t'));
+
+    let verbose_list = fixture.run_connection_list(FUTURE_VERSION, false, true)?;
+    assert_eq!(verbose_list.status.code(), Some(0));
+    assert!(verbose_list.stderr.is_empty());
+    let verbose_list = String::from_utf8(verbose_list.stdout)?;
+    assert!(verbose_list.contains(&format!("Connection ID: {connection_id}\n")));
+    assert!(verbose_list.contains(&format!("Project ID: {project_id}\n")));
+    assert!(verbose_list.contains("Configuration target: "));
+    assert!(verbose_list.contains("Integration revision: "));
+    assert!(verbose_list.contains("Evaluated at: "));
+    assert!(verbose_list.contains("Not applicable checks: "));
+    assert!(!verbose_list.contains('\t'));
     let complete = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let complete_report = assert_connection_report(&complete, 0, "status", "complete")?;
     assert_eq!(complete_report["activation_state"], "complete");
@@ -2408,6 +2563,70 @@ impl OperationalFixture {
             .arg("--repo")
             .arg(&self.repo_root)
             .arg("--verbose");
+        Ok(command.output()?)
+    }
+
+    fn run_connection_list(
+        &self,
+        version: &str,
+        json: bool,
+        verbose: bool,
+    ) -> Result<Output, Box<dyn Error>> {
+        self.run_connection_list_for_repo(version, json, verbose, &self.repo_root)
+    }
+
+    fn run_connection_list_for_repo(
+        &self,
+        version: &str,
+        json: bool,
+        verbose: bool,
+        repo: &Path,
+    ) -> Result<Output, Box<dyn Error>> {
+        let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), version);
+        command
+            .arg("connection")
+            .arg("list")
+            .arg("--repo")
+            .arg(repo);
+        if json {
+            command.arg("--json");
+        }
+        if verbose {
+            command.arg("--verbose");
+        }
+        Ok(command.output()?)
+    }
+
+    fn run_connection_list_all(
+        &self,
+        version: &str,
+        json: bool,
+        verbose: bool,
+    ) -> Result<Output, Box<dyn Error>> {
+        let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), version);
+        command.arg("connection").arg("list");
+        if json {
+            command.arg("--json");
+        }
+        if verbose {
+            command.arg("--verbose");
+        }
+        Ok(command.output()?)
+    }
+
+    fn run_connection_add_for_repo(
+        &self,
+        version: &str,
+        repo: &Path,
+    ) -> Result<Output, Box<dyn Error>> {
+        let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), version);
+        command
+            .arg("connection")
+            .arg("add")
+            .arg("codex")
+            .arg("--repo")
+            .arg(repo)
+            .arg("--json");
         Ok(command.output()?)
     }
 
@@ -3671,6 +3890,47 @@ fn assert_connection_report(
         serde_json::to_string_pretty(&report).unwrap_or_default()
     );
     assert_canonical_connection_command_shape(&report);
+    Ok(report)
+}
+
+fn assert_connection_list_membership(
+    output: &Output,
+    status: &str,
+) -> Result<Value, Box<dyn Error>> {
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "unexpected list exit; stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected list stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        report
+            .as_object()
+            .expect("connection list report object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["connections", "generated_at", "limits"])
+    );
+    assert_eq!(
+        report["connections"][0]["memberships"][0]["current_state"]["state"],
+        "available"
+    );
+    assert_eq!(
+        report["connections"][0]["memberships"][0]["current_state"]["status"],
+        status
+    );
+    assert_eq!(
+        report["connections"][0]["memberships"][0]["current_state"]["evaluated_at"],
+        report["generated_at"]
+    );
     Ok(report)
 }
 

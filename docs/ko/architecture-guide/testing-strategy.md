@@ -436,10 +436,20 @@ MCP lifecycle 테스트는 runtime-session 생성 전에 setup을 시작하고, 
 유지합니다. 유휴 server는 `SharedWriter`를 계속 보유하면 안 되며 승인은 operation마다
 획득합니다. Guard record-profile 테스트는 협력적인 host 활동의 계속 진행을 보존하면서
 거부된 hook을 관찰 성공 phase로 세지 않고 이후 hook이 정상적으로 기록되는지
-증명합니다. Connection status, 진단 lookup, project list/current, authority export,
+증명합니다. Connection list와 status, 진단 lookup, project list/current, authority export,
 MCP preflight를 포함한 소유자 정의 read-only 명령은 writer lease 없이 계속 사용할 수
 있어야 하며 Runtime Home byte, row, `state_version`, modification time을 보존해야
 합니다.
+
+Connection-list lifecycle coverage는 setup, managed-session, complete 단계에서 사용 가능한
+각 membership을 선택한 status와 비교하고, 영속 활성 검증이 `action_required`인 채여도
+현재 `complete`를 유지하는지 확인하며, complete membership과 대기 중인 membership의
+독립성을 증명합니다. 손상 및 unavailable case는 유효한 행을 숨기지 않으면서 등록
+metadata, 영속 활성 근거, 관리 구성, project Store 실패를 다룹니다.
+Filter case는 선택하지 않은 membership을 평가하지 않는지 증명합니다. JSON과 사람용
+projection은 typed summary와 invocation timestamp 하나를 공유하고, 탭 없는 구조화된
+경로, compact primary action, verbose에서만 보이는 ID, revision, not-applicable 개수,
+모든 step, 한도가 있는 문제 세부사항을 확인합니다.
 
 운영 상호운용성 coverage는 제한 안의 임의 version 문자열을 받고, initialize와 도구 목록
 milestone을 실행하며, 필수 도구와 안전한 읽기 전용 호출, Guard artifact와 필수 phase 관찰,

@@ -118,7 +118,8 @@ use guidance::{
 };
 use output::{
     render_command_report, render_connections_output, render_setup_lease_busy, CommandConnection,
-    CommandOperation, ConnectionCommandReport, RuntimeHomePublicationStatus, SetupDisposition,
+    CommandOperation, ConnectionCommandReport, EvaluatedConnectionListEntry,
+    EvaluatedConnectionMembership, RuntimeHomePublicationStatus, SetupDisposition,
     SetupFailureDiagnostic,
 };
 use persisted_state::{decode_persisted_object, PERSISTED_CONNECTION_METADATA_CORRUPT_REASON};
@@ -137,7 +138,8 @@ use service::{
 };
 use verification::{
     current_status_report, current_timestamp, effective_connection_report, verify_connection,
-    CurrentConnectionEvaluationUnavailable, VerificationReport,
+    CurrentConnectionEvaluationContext, CurrentConnectionEvaluationUnavailable,
+    CurrentConnectionEvaluationUnavailableCause, VerificationReport,
 };
 
 const PATH_ENV: &str = "PATH";
@@ -427,21 +429,41 @@ pub fn run_connections_command(
         .as_deref()
         .map(|repo| resolve_connection_repo_root(current_dir, Some(repo)))
         .transpose()?;
+    let generated_at = current_timestamp();
     let mut rows = Vec::new();
     for connection in list_agent_connections_for_diagnostics(&runtime_home)? {
-        let projects = list_connection_projects_for_diagnostics(
+        let mut projects = list_connection_projects_for_diagnostics(
             &runtime_home,
             &connection.connection_internal_id,
         )?;
-        if repo_root.as_ref().is_none_or(|repo_root| {
-            projects
-                .iter()
-                .any(|project| project.project.repo_root == *repo_root)
-        }) {
-            rows.push((connection, projects));
+        if let Some(repo_root) = &repo_root {
+            projects.retain(|project| project.project.repo_root == *repo_root);
+            if projects.is_empty() {
+                continue;
+            }
         }
+        let mut evaluation_context = CurrentConnectionEvaluationContext::new(
+            &runtime_home,
+            &connection,
+            generated_at.clone(),
+            process,
+        );
+        let memberships = projects
+            .into_iter()
+            .map(|project| {
+                let evaluation = evaluation_context.evaluate(&project);
+                EvaluatedConnectionMembership {
+                    project,
+                    evaluation,
+                }
+            })
+            .collect();
+        rows.push(EvaluatedConnectionListEntry {
+            connection,
+            memberships,
+        });
     }
-    render_connections_output(connection_output_format(&parsed), &rows)
+    render_connections_output(connection_output_format(&parsed), generated_at, &rows)
 }
 
 pub fn run_connection_command(
@@ -1876,7 +1898,7 @@ mod persisted_metadata_tests {
     }
 
     #[test]
-    fn corrupt_verification_report_is_a_list_issue_then_verify_repairs_it(
+    fn corrupt_verification_report_makes_current_list_state_unavailable_then_verify_repairs_it(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = CoreFixture::new("connection-corrupt-verification-report")?;
         let repo_root = fixture.product_repo_path();
@@ -1900,18 +1922,25 @@ mod persisted_metadata_tests {
             ConnectionListArgs {
                 repo: Some(repo_root.clone()),
                 runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
-                json: true,
+                output: volicord_command_model::ReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
             },
             &repo_root,
             &mut process,
         )?;
         let list: Value = serde_json::from_str(&list)?;
         assert!(list.get("status").is_none());
-        assert!(list["connections"][0]["verification_report"].is_null());
         assert_eq!(
-            list["connections"][0]["issues"][0]["kind"],
-            "verification_report_corrupt"
+            list["connections"][0]["memberships"][0]["current_state"]["state"],
+            "unavailable"
         );
+        assert_eq!(
+            list["connections"][0]["memberships"][0]["current_state"]["reason"],
+            "persisted_active_verification_evidence_corrupt"
+        );
+        assert_eq!(list["connections"][0]["issues"], serde_json::json!([]));
 
         let select_args = || ConnectionSelectArgs {
             host: Some(volicord_command_model::CodexHost::Codex),
@@ -2112,6 +2141,26 @@ mod persisted_metadata_tests {
             .to_string()
             .contains("persisted_active_verification_evidence_corrupt"));
         assert!(!error.to_string().contains("\"status\": \"complete\""));
+        let list: Value = serde_json::from_str(&run_connections_command(
+            ConnectionListArgs {
+                repo: Some(repo_root.clone()),
+                runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
+                output: volicord_command_model::ReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
+            },
+            &repo_root,
+            &mut process,
+        )?)?;
+        let current_state = &list["connections"][0]["memberships"][0]["current_state"];
+        assert_eq!(current_state["state"], "unavailable");
+        assert_eq!(
+            current_state["reason"],
+            "persisted_active_verification_evidence_corrupt"
+        );
+        assert!(current_state.get("status").is_none());
+        assert!(list["connections"][0].get("verification_report").is_none());
         assert_eq!(process.preflight_calls, 0);
         assert_eq!(process.stdio_calls, 0);
         assert_eq!(fs::read(registry_path)?, registry_before);
@@ -2245,6 +2294,108 @@ mod persisted_metadata_tests {
         assert!(selected_error
             .to_string()
             .contains("project_store_unavailable"));
+
+        let list = |repo: Option<&Path>,
+                    output: volicord_command_model::ReportOutputArgs,
+                    process: &mut DiagnosticProcess|
+         -> Result<String, ConnectionCommandError> {
+            run_connections_command(
+                ConnectionListArgs {
+                    repo: repo.map(Path::to_path_buf),
+                    runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
+                    output,
+                },
+                &first_repo,
+                process,
+            )
+        };
+        let runtime_before_list = tree_snapshot(fixture.runtime_home_path())?;
+        let repositories_before_list = (tree_snapshot(&first_repo)?, tree_snapshot(&second_repo)?);
+        let all: Value = serde_json::from_str(&list(
+            None,
+            volicord_command_model::ReportOutputArgs {
+                json: true,
+                verbose: false,
+            },
+            &mut process,
+        )?)?;
+        let memberships = all["connections"][0]["memberships"]
+            .as_array()
+            .expect("both memberships remain visible");
+        assert_eq!(memberships.len(), 2);
+        let first_membership = memberships
+            .iter()
+            .find(|membership| membership["project_id"] == fixture.project_id())
+            .expect("first membership");
+        let second_membership = memberships
+            .iter()
+            .find(|membership| membership["project_id"] == second_project_id)
+            .expect("second membership");
+        assert_eq!(first_membership["current_state"]["state"], "available");
+        assert_eq!(
+            first_membership["current_state"]["status"],
+            first_with_other_store_unavailable["status"]
+        );
+        assert_eq!(
+            first_membership["current_state"]["activation"],
+            first_with_other_store_unavailable["activation_state"]
+        );
+        assert_eq!(
+            first_membership["current_state"]["hook_activation"],
+            first_with_other_store_unavailable["hook_activation_state"]
+        );
+        assert_eq!(
+            first_membership["current_state"]["evaluated_at"], all["generated_at"],
+            "every available membership must use the list invocation timestamp"
+        );
+        assert_eq!(second_membership["current_state"]["state"], "unavailable");
+        assert_eq!(
+            second_membership["current_state"]["reason"],
+            "project_store_unavailable"
+        );
+
+        let filtered: Value = serde_json::from_str(&list(
+            Some(&first_repo),
+            volicord_command_model::ReportOutputArgs {
+                json: true,
+                verbose: false,
+            },
+            &mut process,
+        )?)?;
+        assert_eq!(
+            filtered["connections"][0]["memberships"]
+                .as_array()
+                .map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            filtered["connections"][0]["memberships"][0]["current_state"]["state"], "available",
+            "the repository filter must run before the unavailable membership is evaluated"
+        );
+
+        let human = list(
+            None,
+            volicord_command_model::ReportOutputArgs {
+                json: false,
+                verbose: true,
+            },
+            &mut process,
+        )?;
+        assert!(human.starts_with("Connections (1)\n"));
+        assert!(human.contains(&format!("Repository: {}", path_text(&first_repo))));
+        assert!(human.contains(&format!("Repository: {}", path_text(&second_repo))));
+        assert!(human.contains("Status: "));
+        assert!(human.contains("Current state: unavailable"));
+        assert!(human.contains("Configuration target: "));
+        assert!(!human.contains('\t'));
+        assert_eq!(
+            tree_snapshot(fixture.runtime_home_path())?,
+            runtime_before_list
+        );
+        assert_eq!(
+            (tree_snapshot(&first_repo)?, tree_snapshot(&second_repo)?),
+            repositories_before_list
+        );
         fs::write(&second_project.state_db_path, second_store_before)?;
         assert_eq!(process.preflight_calls, 0);
         assert_eq!(process.stdio_calls, 0);

@@ -183,6 +183,7 @@ Arguments and options:
   --repo <REPO>
   --home <HOME>
   --json
+  --verbose
 ```
 
 ### `volicord connection status`
@@ -893,8 +894,8 @@ lossless machine representation. The accepted schema version is exactly `2`.
 Consumers use the structured checks, findings, cause IDs, action codes, and
 fact objects rather than parsing human summaries. `--verbose` and `--json` are
 mutually exclusive.
-`volicord connection list` retains its separate compact collection projection
-and does not accept `--verbose`.
+`volicord connection list` retains its separate collection projection and
+accepts the same mutually exclusive `--json` and `--verbose` output selection.
 
 The schema-2 top-level shape is:
 
@@ -1031,13 +1032,14 @@ Report limits
 
 ### Connection List Projection
 
-`volicord connection list` is a read-only collection inventory. It has no
+`volicord connection list` is a read-only current-state collection. It has no
 single selected Connection or single operational result, so it does not use
 the selected-Connection `DiagnosticReport` projection. Its JSON document has
-exactly these top-level members:
+no numeric schema-version field and has exactly these top-level members:
 
 ```schema
 ConnectionListReport:
+  generated_at: timestamp
   connections: ConnectionListEntry[]
   limits:
     - "Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion."
@@ -1049,47 +1051,92 @@ ConnectionListEntry:
   host_scope: user | project
   mode: read_only | workflow
   enabled: bool
-  connected_projects: string[]
-  connected_repositories: string[]
-  verification_report: ConnectionVerificationReport | null
-  issues: ConnectionListIssue[]
   server_name: string
   config_target: string
+  memberships: ConnectionMembershipEntry[]
+  issues: ConnectionListIssue[]
 
 ConnectionListIssue:
-  kind: metadata_corrupt | verification_report_corrupt
+  kind: registration_metadata_corrupt
   summary: string
+
+ConnectionMembershipEntry:
+  project_id: string
+  project_name: string
+  repository: string
+  current_state: AvailableCurrentState | UnavailableCurrentState
+
+AvailableCurrentState:
+  state: available
+  status: complete | action_required | failed
+  activation: configured | host_reload_required |
+    hook_review_required_or_unknown | mcp_observation_required |
+    guard_verification_required | complete | failed
+  hook_activation: unknown | review_required_by_setup |
+    effective_by_observation | managed_by_policy |
+    bypassed_for_invocation | disabled
+  check_counts:
+    passed: integer
+    blocked: integer
+    pending: integer
+    failed: integer
+    not_applicable: integer
+  required_step_count: integer
+  primary_required_step: ConnectionRequiredStep | null
+  required_steps: ConnectionRequiredStep[]
+  integration_revision: string
+  evaluated_at: timestamp
+
+ConnectionRequiredStep:
+  id: ActivationStepId
+  instruction: string
+
+UnavailableCurrentState:
+  state: unavailable
+  reason: registration_metadata_corrupt |
+    persisted_active_verification_evidence_corrupt |
+    managed_configuration_unavailable | project_membership_unavailable |
+    project_store_unavailable | guard_state_unavailable |
+    runtime_session_state_unavailable | diagnostic_state_unavailable |
+    current_evaluation_inconsistent
+  summary: string
+  issues:
+    - summary: string
+      detail: string
 ```
 
-For each row, `verification_report` is the canonical
-[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report).
-When no report has been persisted, the list uses the owner-defined synthesized
-`action_required` report with `verification_not_run`; reading it does not
-persist it. `verification_report` is `null` only when a persisted report is
-corrupt and cannot be decoded. The row then has one
-`verification_report_corrupt` issue. Invalid persisted registration metadata
-adds one `metadata_corrupt` issue without hiding the row or weakening the
-strict rejection used by verification and mode commands.
+Every available membership is the result of the exact current evaluator used
+by `volicord connection status --repo <REPO>`. The evaluator reads current
+managed configuration, managed runtime-session evidence, selected-project
+Guard state, Product Repository Store state, trust, and eligible persisted
+active-verification evidence. A persisted aggregate report is only an evidence
+input: list never displays it as current, never synthesizes a replacement
+aggregate for display, and never persists the current projection. Every
+membership in one invocation uses `generated_at` as `evaluated_at`.
 
-Issue kinds are a closed snake-case vocabulary. Rows sort and deduplicate them
-by kind, so `metadata_corrupt` precedes `verification_report_corrupt`. Issue
-summaries are bounded diagnostic text and never expose the malformed persisted
-JSON. Row issues describe persisted-state corruption; they are not a
-Connection operational status and do not create an aggregate list status.
+A membership-local acquisition or consistency failure produces
+`state=unavailable` with one closed reason and bounded safe issue detail. It
+does not hide other available memberships and never falls back to a stale
+aggregate. Invalid registration metadata also adds the one closed
+`registration_metadata_corrupt` Connection issue. Malformed persisted JSON is
+never exposed. Whole Registry/Runtime Home enumeration failure and output
+serialization failure use the runtime error channel.
 
-Human output keeps this exact tab-separated header:
+The human renderer uses structured sections and fields rather than a
+tab-separated row. Concise output shows registration facts, each Product
+Repository path on its own line, the current status and activation states,
+passed/blocked/pending/failed check counts, and only the primary required
+action. `--verbose` additionally shows Connection and project IDs, configuration
+target, integration revision, evaluation timestamp, not-applicable count, all
+required steps, and bounded unavailable-state detail. Both modes are
+control-character-safe and tab-free.
 
-```text
-host	intent	mode	enabled	connected_repositories	verification_status	issues	target
-```
-
-It renders the canonical verification status when a report is available, `-`
-when a corrupt report is unavailable, `-` for an empty issue list, and the
-ordered issue kinds otherwise. Repository filtering preserves the deterministic
-full membership fields on each matching Connection. An empty match is a valid
-empty inventory. Enumeration succeeds with exit `0` when row-local issues are
-reported and performs no Registry or filesystem write. Store access, selection,
-and serialization failures use the runtime error channel.
+`--repo` filters membership candidates before current evaluation. Matching
+Connections contain only matching memberships; an empty match is a valid empty
+collection. Enumeration succeeds with exit `0` when membership-local
+unavailability is reported. It runs no process or MCP probe, acquires no writer
+lease, performs no writeability probe or diagnostic reconciliation, and writes
+no Registry, project Store, file, report, observation, or timestamp.
 
 `volicord connection mode` treats Connection mode and every owned
 project-scoped Guard manifest as one revision transition. Before mutation, the
