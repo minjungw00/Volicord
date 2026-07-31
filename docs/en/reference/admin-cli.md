@@ -521,15 +521,60 @@ The default `volicord doctor` output is a conclusion-first compact diagnostic.
 It reports the Runtime Home, installation profile, project and Connection
 counts, selected profile, Guard and prompt-capture state, host-reload need,
 version, and source. Only actual warnings and failures appear as follow-up
-sections; skipped checks are not presented as warnings. Actions are labeled
-`recommended` when the installation is usable and `required` when attention is
-required.
+sections; skipped checks are not presented as warnings. When remediation is
+available, compact output presents exactly the plan's primary action. It says
+`Next action: none` only when the finalized remediation plan is empty.
 
 `volicord doctor --verbose` renders the same single collected report with full
 build provenance, every check and its structured details, structured findings,
-actions, and the diagnostic disclosure. Verbose rendering does not rerun
-checks or add probes. `--verbose` and `--json` conflict. The structured JSON
-shape, including the complete `SummaryCard`, remains unchanged.
+the primary action, all required and recommended actions in separate groups,
+and the diagnostic disclosure. Verbose rendering does not rerun checks or add
+probes. `--verbose` and `--json` conflict.
+
+Doctor finalizes one typed remediation plan after all checks, findings, and
+Doctor-owned direct remediation candidates have been collected.
+`DiagnosticFinding.actions` remains the source-level typed action collection
+owned by each diagnostic domain. Conditions without a separate finding owner
+may supply a Doctor-owned action only through the closed Doctor action
+registry. The finalized plan normalizes both sources by the typed
+`DiagnosticCode`; renderers do not add, classify, reorder, or deduplicate
+actions.
+
+Every top-level action has one shape: `code`, `summary`, optional `command`,
+`urgency`, `priority`, and bounded `provenance`. `urgency` is `required` or
+`recommended`; `priority` is `immediate`, `high`, `standard`, or `follow_up`.
+`provenance` identifies the source finding or Doctor check and is diagnostic
+context, not authority. Error-level finding remediation and direct remediation
+for a failed check are required. Warning-level finding remediation and direct
+warning follow-up are recommended. A warning with no registered action remains
+a warning without an invented remediation. Finding-owned actions receive
+`high`, `standard`, or `follow_up` priority from error, warning, or info
+severity respectively; each closed direct action declares its semantic urgency
+and priority. Priority strength is `immediate` before `high` before `standard`
+before `follow_up`.
+
+The JSON `actions` collection is the complete normalized plan.
+`actions_required` and `actions_recommended` are a disjoint partition of that
+collection, and every action code from `findings[].actions` is present in
+`actions`. A code appears at most once. Equal code and summary values merge;
+one exact command may enrich the same action, duplicate provenance is removed,
+required urgency wins, and the strongest typed priority wins. Different
+summaries or incompatible commands for the same code fail report assembly.
+
+The primary action is selected by required before recommended, stronger typed
+priority before weaker priority, and canonical action-code order as the final
+tie breaker. Input order, finding ID, hash iteration, and observation time do
+not select it. JSON `primary_next_action`, `summary_card.next`, compact
+`Next action`, and the verbose primary action all project that same action.
+When the plan is empty, the JSON primary action is `null` and both human and
+summary-card next-action text say `none`.
+
+`status_meaning` is selected from the typed command status, warning presence,
+and finalized remediation plan. It distinguishes a clean complete result,
+warnings with recommended remediation, warnings that require review but have
+no automatic remediation, action-required results with or without a defined
+required action, and failed results with or without a defined required
+remediation.
 
 `volicord doctor --json` keeps missing, invalid, unavailable, corrupt, and stale
 observations distinct. Its `states.installation_profile` value is `present`,

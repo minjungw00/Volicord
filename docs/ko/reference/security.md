@@ -113,6 +113,12 @@ JSON 출력은 더 많은 diagnostic 맥락을 노출할 수 있습니다. 적�
 생략하거나 비보장 설명을 더 적게 반복해도 긍정적 보장이 생기지 않습니다. 결과의 typed
 disclosure가 계속 권위 있는 경계입니다.
 
+Doctor action 표시는 finalized typed remediation plan 하나에서 도출합니다. Finding과
+check provenance는 한도가 있는 diagnostic 맥락이며 actor identity를 증명하거나 쓰기
+권한을 부여하거나 command를 승인하거나 remediation 실행을 보여 주지 않습니다. Compact
+출력은 primary action만 표시할 수 있고 verbose와 JSON 출력은 plan을 group 또는 구조화된
+형태로 표시하지만, 모든 형태는 같은 action identity, urgency, ordering을 보존합니다.
+
 ### Workflow policy 검사
 
 권위 있는 workflow policy 전체는 검사할 수 있는 로컬 구성이며 credential이 아닙니다.

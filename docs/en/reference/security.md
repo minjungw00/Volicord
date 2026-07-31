@@ -131,6 +131,13 @@ Omitting an inapplicable field or repeating fewer non-guarantee explanations
 does not create a positive guarantee; the typed disclosure remains
 authoritative for the result.
 
+Doctor action displays derive from one finalized typed remediation plan.
+Finding and check provenance is bounded diagnostic context and does not prove
+actor identity, grant write authority, approve a command, or show that a
+remediation ran. Compact output may show only the primary action, while verbose
+and JSON output show the plan's grouped or structured projections; every form
+preserves the same action identity, urgency, and ordering.
+
 ### Workflow-Policy Inspection
 
 The complete authoritative workflow policy is inspectable local configuration,

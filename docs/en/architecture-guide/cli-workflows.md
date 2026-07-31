@@ -149,8 +149,15 @@ resolution behavior belongs to
 `doctor`, status, and preflight collect read-only facts and report named next
 actions. Doctor collects one typed report per invocation. Compact output
 selects conclusion, current installation facts, real warnings or failures, and
-applicable actions; verbose output expands that same report to full check
-details, findings, build provenance, and disclosure without adding probes.
+one primary action. After collection, Doctor finalizes finding-owned typed
+actions and closed Doctor-owned direct candidates into one remediation plan.
+The plan merges by typed action code, computes urgency once, sorts by urgency,
+typed priority, and code, and fails on semantic-summary or exact-command
+conflicts. Verbose output expands that same plan into primary, required, and
+recommended action projections alongside full check details, findings, build
+provenance, and disclosure without adding probes. JSON serializes the same plan
+as its complete, partitioned, and primary projections. No renderer reconstructs
+actions from checks, findings, or prose.
 The privacy-footprint branch presents category claims as structured sections
 and bullets while JSON preserves its typed category and count projection.
 For connection-report commands, `dry_run` is an operation boolean and the

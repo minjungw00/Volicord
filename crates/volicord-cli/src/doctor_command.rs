@@ -52,16 +52,19 @@ use crate::{
         OperationalCheckState, OperationalDiagnostic,
     },
     policy_command::read_validated_policy_file,
-    presentation::{
-        ActionHint, BulletList, CollectionItem, Document, Element, Field, HumanValue, Section,
-        YesNo,
-    },
+    presentation::{ActionHint, BulletList, Document, Element, Field, HumanValue, Section, YesNo},
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
         paths_equivalent, volicord_binary_name, PATH_ENV,
     },
     summary_card::DIAGNOSTIC_SUMMARY_GUARANTEE,
+};
+
+mod remediation;
+
+use remediation::{
+    DoctorActionCandidate, DoctorDirectAction, DoctorRemediationAction, DoctorRemediationPlan,
 };
 
 const GUARD_FILES_CHECK_ID: &str = ConnectionCheckKind::GuardFiles.as_str();
@@ -154,31 +157,132 @@ impl DiagnosticCheck {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct DiagnosticAction {
-    id: String,
-    instruction: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    command: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 struct DoctorReport {
     status: CommandStatus,
+    status_meaning: DoctorStatusMeaning,
     runtime_home: PathBuf,
     build: BuildInfo,
     summary_card: SummaryCard,
     checks: Vec<DiagnosticCheck>,
-    actions: Vec<DiagnosticAction>,
     findings: Vec<DiagnosticFinding>,
+    remediation_plan: DoctorRemediationPlan,
 }
 
 impl DoctorReport {
-    fn warning_count(&self) -> usize {
-        self.checks
+    fn finalize(
+        status: CommandStatus,
+        runtime_home: PathBuf,
+        build: BuildInfo,
+        checks: Vec<DiagnosticCheck>,
+        findings: Vec<DiagnosticFinding>,
+        direct_action_candidates: Vec<DoctorActionCandidate>,
+    ) -> Result<Self, DoctorCommandError> {
+        let remediation_plan = DoctorRemediationPlan::finalize(&findings, direct_action_candidates)
+            .map_err(|error| DoctorCommandError::Runtime(error.to_string()))?;
+        let check_ids = checks
             .iter()
-            .filter(|check| check.status == "warning")
-            .count()
+            .map(|check| check.id.as_str())
+            .collect::<BTreeSet<_>>();
+        remediation_plan
+            .validate_check_provenance(&check_ids)
+            .map_err(|error| DoctorCommandError::Runtime(error.to_string()))?;
+        if status == CommandStatus::Complete && remediation_plan.has_required_actions() {
+            return Err(DoctorCommandError::Runtime(
+                "Doctor report is complete but its remediation plan contains a required action"
+                    .to_owned(),
+            ));
+        }
+        let status_meaning =
+            DoctorStatusMeaning::derive(status, warning_count(&checks), &remediation_plan);
+        let summary_card = doctor_summary_card(&checks, &remediation_plan);
+        Ok(Self {
+            status,
+            status_meaning,
+            runtime_home,
+            build,
+            summary_card,
+            checks,
+            findings,
+            remediation_plan,
+        })
+    }
+
+    fn warning_count(&self) -> usize {
+        warning_count(&self.checks)
+    }
+}
+
+fn warning_count(checks: &[DiagnosticCheck]) -> usize {
+    checks
+        .iter()
+        .filter(|check| check.status == "warning")
+        .count()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DoctorStatusMeaning {
+    CompleteReady,
+    CompleteRecommendedFollowUp,
+    CompleteWarningsWithRecommendedRemediation,
+    CompleteWarningsReviewOnly,
+    ActionRequiredRemediationAvailable,
+    ActionRequiredNoDefinedRemediation,
+    FailedRemediationAvailable,
+    FailedNoDefinedRemediation,
+}
+
+impl DoctorStatusMeaning {
+    fn derive(
+        status: CommandStatus,
+        warning_count: usize,
+        remediation_plan: &DoctorRemediationPlan,
+    ) -> Self {
+        let has_actions = !remediation_plan.is_empty();
+        let has_required_actions = remediation_plan.has_required_actions();
+        match status {
+            CommandStatus::Complete if warning_count == 0 && !has_actions => Self::CompleteReady,
+            CommandStatus::Complete if warning_count == 0 => Self::CompleteRecommendedFollowUp,
+            CommandStatus::Complete if has_actions => {
+                Self::CompleteWarningsWithRecommendedRemediation
+            }
+            CommandStatus::Complete => Self::CompleteWarningsReviewOnly,
+            CommandStatus::ActionRequired if has_required_actions => {
+                Self::ActionRequiredRemediationAvailable
+            }
+            CommandStatus::ActionRequired => Self::ActionRequiredNoDefinedRemediation,
+            CommandStatus::Failed if has_required_actions => Self::FailedRemediationAvailable,
+            CommandStatus::Failed => Self::FailedNoDefinedRemediation,
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::CompleteReady => {
+                "installation profile is usable; no warnings or remediation actions are present"
+            }
+            Self::CompleteRecommendedFollowUp => {
+                "installation profile is usable; recommended remediation is available"
+            }
+            Self::CompleteWarningsWithRecommendedRemediation => {
+                "installation profile is usable; warnings have recommended remediation actions"
+            }
+            Self::CompleteWarningsReviewOnly => {
+                "installation profile is usable; warnings require review and have no automatic remediation"
+            }
+            Self::ActionRequiredRemediationAvailable => {
+                "local remediation is required before Volicord workflows are usable"
+            }
+            Self::ActionRequiredNoDefinedRemediation => {
+                "local remediation is required, but no required remediation action is programmatically defined"
+            }
+            Self::FailedRemediationAvailable => {
+                "a blocking diagnostic failed; the remediation plan names the next action"
+            }
+            Self::FailedNoDefinedRemediation => {
+                "a blocking diagnostic failed without a programmatically defined required remediation action"
+            }
+        }
     }
 }
 
@@ -263,7 +367,7 @@ where
         });
     }
     let mut checks = Vec::new();
-    let mut actions = Vec::new();
+    let mut direct_action_candidates = Vec::new();
     let mut findings = Vec::new();
     let observed_at = doctor_current_timestamp();
 
@@ -276,9 +380,7 @@ where
             observed_at.clone(),
         )?);
     }
-    if let Some((diagnostic, facts)) =
-        inspect_runtime_home_path(&runtime_home, &mut checks, &mut actions)
-    {
+    if let Some((diagnostic, facts)) = inspect_runtime_home_path(&runtime_home, &mut checks) {
         findings.push(
             runtime_home_diagnostic_finding(
                 diagnostic,
@@ -295,6 +397,7 @@ where
     let mut project_count = None;
     let mut connection_count = None;
     let mut guard_installation_count = None;
+    let registry_is_missing = matches!(&inspection.registry, DatabaseInspection::Missing { .. });
 
     match &inspection.registry {
         DatabaseInspection::Missing { path } => {
@@ -302,7 +405,6 @@ where
                 DiagnosticCheck::failed("registry", "Runtime Home registry is missing")
                     .with_details(json!({ "path": path_text(path) })),
             );
-            actions.push(run_init_action());
             let diagnostic = RuntimeHomeDiagnostic::RegistryMissing;
             findings.push(
                 runtime_home_diagnostic_finding(
@@ -323,10 +425,19 @@ where
             project_count = Some(snapshot.projects.len());
             connection_count = Some(snapshot.agent_connections.len());
             guard_installation_count = Some(snapshot.guard_installations.len());
-            inspect_guard_installations(snapshot, &mut checks, &mut actions);
-            inspect_personal_local_git_tracking(snapshot, &mut checks, &mut actions);
-            inspect_integration_intent_drift(snapshot, &mut checks, &mut actions);
-            inspect_project_policy_authority(&runtime_home, snapshot, &mut checks, &mut actions);
+            inspect_guard_installations(snapshot, &mut checks, &mut direct_action_candidates);
+            inspect_personal_local_git_tracking(
+                snapshot,
+                &mut checks,
+                &mut direct_action_candidates,
+            );
+            inspect_integration_intent_drift(snapshot, &mut checks, &mut direct_action_candidates);
+            inspect_project_policy_authority(
+                &runtime_home,
+                snapshot,
+                &mut checks,
+                &mut direct_action_candidates,
+            );
         }
         DatabaseInspection::Unsupported { path, .. } => {
             absent_profile_state = "corrupt";
@@ -383,8 +494,12 @@ where
     }
 
     if let Some(profile) = profile {
-        for diagnostic in inspect_installation_profile(profile, &env_var, &mut checks, &mut actions)
-        {
+        for diagnostic in inspect_installation_profile(
+            profile,
+            &env_var,
+            &mut checks,
+            &mut direct_action_candidates,
+        ) {
             findings.push(doctor_installation_finding(
                 diagnostic,
                 observed_at.clone(),
@@ -399,10 +514,12 @@ where
                 }),
             ),
         );
-        if absent_profile_state == "missing"
-            && !actions.iter().any(|action| action.id == "run_init")
-        {
-            actions.push(run_init_action());
+        if absent_profile_state == "missing" && !registry_is_missing {
+            direct_action_candidates.push(direct_action_candidate(
+                DoctorDirectAction::InitializeConnection,
+                "installation_profile",
+                None,
+            ));
         }
         checks.push(DiagnosticCheck::skipped(
             "volicord_command",
@@ -438,15 +555,14 @@ where
     }
 
     let status = doctor_status(&checks);
-    let report = DoctorReport {
+    let report = DoctorReport::finalize(
         status,
         runtime_home,
         build,
-        summary_card: doctor_summary_card(status, &checks, &actions),
         checks,
-        actions,
         findings,
-    };
+        direct_action_candidates,
+    )?;
     Ok(CommandOutcome {
         status,
         output: render_doctor_output(options.output, &report)?,
@@ -657,7 +773,6 @@ fn privacy_does_not_prove() -> Vec<&'static str> {
 fn inspect_runtime_home_path(
     runtime_home: &Path,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
 ) -> Option<(RuntimeHomeDiagnostic, RuntimeHomeDiagnosticFacts)> {
     match fs::metadata(runtime_home) {
         Ok(metadata) if metadata.is_dir() => {
@@ -678,7 +793,6 @@ fn inspect_runtime_home_path(
                 )
                 .with_details(json!({ "path": path_text(runtime_home) })),
             );
-            actions.push(run_init_action());
             Some((
                 RuntimeHomeDiagnostic::InvalidPath,
                 RuntimeHomeDiagnosticFacts {
@@ -693,7 +807,6 @@ fn inspect_runtime_home_path(
                 DiagnosticCheck::failed("runtime_home_access", "Runtime Home directory is missing")
                     .with_details(json!({ "path": path_text(runtime_home) })),
             );
-            actions.push(run_init_action());
             Some((
                 RuntimeHomeDiagnostic::MissingPath,
                 RuntimeHomeDiagnosticFacts {
@@ -765,7 +878,7 @@ const MAX_LOCAL_POLICY_BYTES: u64 = 1024 * 1024;
 fn inspect_personal_local_git_tracking(
     snapshot: &RegistryInspectionSnapshot,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) {
     let connected_connections = snapshot
         .agent_connections
@@ -991,15 +1104,11 @@ fn inspect_personal_local_git_tracking(
             .is_some_and(|values| !values.is_empty())
         || truncated;
     let check = if has_warning {
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "protect_personal_local_files".to_owned(),
-                instruction: "Review the listed repositories, rerun init with the intended connection intent to restore repository-local excludes, and remove any listed local-only paths from the Git index without deleting their working-tree files."
-                    .to_owned(),
-                command: None,
-            },
-        );
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::ProtectPersonalLocalFiles,
+            "personal_local_git_tracking",
+            None,
+        ));
         DiagnosticCheck::warning(
             "personal_local_git_tracking",
             "local integration files need Git tracking follow-up",
@@ -1081,7 +1190,7 @@ const MAX_INTENT_DRIFT_FINDINGS: usize = 64;
 fn inspect_integration_intent_drift(
     snapshot: &RegistryInspectionSnapshot,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) {
     let mut projects = connected_enabled_projects(snapshot);
     projects.sort_by(|left, right| left.project_id.cmp(&right.project_id));
@@ -1099,7 +1208,6 @@ fn inspect_integration_intent_drift(
     let mut findings = Vec::new();
     let mut audit_errors = Vec::new();
     let active_installations = active_guard_installations(snapshot);
-    let mut first_repair_command = None;
 
     for project in &projects {
         let policy = match local_policy_audit(&project.repo_root) {
@@ -1117,8 +1225,6 @@ fn inspect_integration_intent_drift(
                 continue;
             }
         };
-        first_repair_command.get_or_insert_with(|| integration_repair_command(&policy, project));
-
         if policy.host != HostKind::Codex.as_str()
             || policy.selected_profile != IntegrationProfile::Record.as_str()
         {
@@ -1251,15 +1357,11 @@ fn inspect_integration_intent_drift(
         "max_findings": MAX_INTENT_DRIFT_FINDINGS,
     });
     if has_warning {
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_integration_intent_drift".to_owned(),
-                instruction: "Rerun Codex Record init with the intended connection intent so the local policy and enabled inventory converge."
-                    .to_owned(),
-                command: first_repair_command,
-            },
-        );
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::RepairIntegrationIntentDrift,
+            "integration_intent_drift",
+            None,
+        ));
         checks.push(
             DiagnosticCheck::warning(
                 "integration_intent_drift",
@@ -1299,7 +1401,7 @@ fn inspect_project_policy_authority(
     runtime_home: &Path,
     snapshot: &RegistryInspectionSnapshot,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) {
     let mut projects = connected_enabled_projects(snapshot);
     projects.sort_by(|left, right| left.project_id.cmp(&right.project_id));
@@ -1307,6 +1409,7 @@ fn inspect_project_policy_authority(
     let mut truncated = project_count > MAX_PERSONAL_GIT_PROJECTS;
     projects.truncate(MAX_PERSONAL_GIT_PROJECTS);
     let mut findings = Vec::new();
+    let mut repair_commands = BTreeSet::new();
     let policy_relative_path = match GuardManagedArtifact::VolicordPolicy.repository_relative_path()
     {
         Ok(path) => path,
@@ -1333,19 +1436,21 @@ fn inspect_project_policy_authority(
                     "status": state.as_str(),
                 }));
             }
-            push_unique_diagnostic_action(
-                actions,
-                DiagnosticAction {
-                    id: "repair_project_policy".to_owned(),
-                    instruction: "Inspect the authoritative project policy and apply one validated canonical policy file to repair the database/file mismatch."
-                        .to_owned(),
-                    command: Some(format!(
-                        "volicord policy show --repo {} --json",
-                        doctor_shell_word(&path_text(&project.repo_root))
-                    )),
-                },
-            );
+            repair_commands.insert(format!(
+                "volicord policy show --repo {} --json",
+                doctor_shell_word(&path_text(&project.repo_root))
+            ));
         }
+    }
+    if !findings.is_empty() {
+        let command = (repair_commands.len() == 1)
+            .then(|| repair_commands.into_iter().next())
+            .flatten();
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::RepairProjectPolicy,
+            "project_policy_authority",
+            command,
+        ));
     }
     let details = json!({
         "project_count": project_count,
@@ -1504,22 +1609,6 @@ fn active_guard_installations(
         .collect()
 }
 
-fn integration_repair_command(
-    policy: &LocalPolicyAudit,
-    project: &volicord_store::inspection::ProjectInspectionRecord,
-) -> String {
-    let shared = if policy.connection_intent == "shared" {
-        " --shared"
-    } else {
-        ""
-    };
-    format!(
-        "volicord init --host codex --repo {}{} --profile record",
-        doctor_shell_word(&path_text(&project.repo_root)),
-        shared,
-    )
-}
-
 fn doctor_shell_word(value: &str) -> String {
     if !value.is_empty()
         && value
@@ -1589,7 +1678,7 @@ fn git_path_predicate(
 fn inspect_guard_installations(
     snapshot: &RegistryInspectionSnapshot,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) {
     let installations = active_guard_installations(snapshot);
     if installations.is_empty() {
@@ -1742,15 +1831,11 @@ fn inspect_guard_installations(
         || !stale_files.is_empty()
         || !broken_files.is_empty();
     let file_check = if file_problem {
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_guard_files".to_owned(),
-                instruction: "Reinstall the Codex Record Guard files for the affected repository."
-                    .to_owned(),
-                command: Some("volicord init --host codex --repo PATH --profile record".to_owned()),
-            },
-        );
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::RepairGuardFiles,
+            GUARD_FILES_CHECK_ID,
+            None,
+        ));
         DiagnosticCheck::failed(
             GUARD_FILES_CHECK_ID,
             "one or more Codex Record Guard files are missing, stale, or broken",
@@ -1779,18 +1864,11 @@ fn inspect_guard_installations(
         file_findings.hook_path_safety_state().as_str(),
         "ok" | "not_recorded" | "not_checked" | "not_applicable"
     ) {
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_guard_hook_path_safety".to_owned(),
-                instruction:
-                    "Regenerate cwd-independent Codex Record Guard commands for the affected repository."
-                        .to_owned(),
-                command: Some(
-                    "volicord init --host codex --repo PATH --profile record".to_owned(),
-                ),
-            },
-        );
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::RepairGuardHookPathSafety,
+            GUARD_FILES_CHECK_ID,
+            None,
+        ));
     }
 
     if binding_invalid_count == 0
@@ -1990,7 +2068,7 @@ fn inspect_installation_profile<F>(
     profile: &InstallationProfileInspectionRecord,
     env_var: &F,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) -> Vec<InstallationDiagnostic>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
@@ -2022,14 +2100,18 @@ where
                 "default_connection_mode": profile.default_connection_mode,
             })),
         );
-        actions.push(run_init_action());
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::InitializeConnection,
+            "installation_profile",
+            None,
+        ));
     }
     if let Some(diagnostic) = inspect_command_path(
         "volicord_command",
         "volicord command",
         &PathBuf::from(&profile.volicord_command),
         checks,
-        actions,
+        direct_action_candidates,
     ) {
         diagnostics.push(diagnostic);
     }
@@ -2038,7 +2120,7 @@ where
         "MCP launch command",
         &PathBuf::from(&profile.volicord_mcp_command),
         checks,
-        actions,
+        direct_action_candidates,
     );
     let path_env = env_var(PATH_ENV);
     inspect_command_availability(
@@ -2047,7 +2129,7 @@ where
         &PathBuf::from(&profile.volicord_command),
         path_env.as_deref(),
         checks,
-        actions,
+        direct_action_candidates,
     );
     inspect_command_availability(
         "volicord_mcp_command_availability",
@@ -2055,10 +2137,19 @@ where
         &PathBuf::from(&profile.volicord_mcp_command),
         path_env.as_deref(),
         checks,
-        actions,
+        direct_action_candidates,
     );
-    inspect_path_or_shim(profile, path_env.as_deref(), checks, actions);
+    inspect_path_or_shim(
+        profile,
+        path_env.as_deref(),
+        checks,
+        direct_action_candidates,
+    );
     if installed_build_configuration_is_inconsistent(profile) {
+        checks.push(DiagnosticCheck::failed(
+            "installed_build_configuration",
+            "the running Volicord build and managed installation configuration are inconsistent",
+        ));
         diagnostics.push(InstallationDiagnostic::ManagedConfigurationInconsistent);
     }
     diagnostics.sort_by_key(|diagnostic| diagnostic.code());
@@ -2071,7 +2162,7 @@ fn inspect_command_path(
     label: &str,
     command: &Path,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) -> Option<InstallationDiagnostic> {
     if command.is_absolute() && is_executable_file(command) {
         checks.push(
@@ -2084,22 +2175,13 @@ fn inspect_command_path(
             DiagnosticCheck::failed(id, format!("{label} is missing or not executable"))
                 .with_details(json!({ "path": path_text(command) })),
         );
-        let (instruction, suggested_command) = if id == "volicord_command" {
-            (
-                "Invoke a working Volicord executable and rerun init; init replaces an inaccessible, non-executable, or relative installation-profile volicord command with that running executable.",
-                "volicord init --host codex --repo <path>",
-            )
-        } else {
-            (
-                "Select an executable MCP launch command, then rerun init with that command.",
-                "volicord init --host codex --repo <path> --mcp-command PATH",
-            )
-        };
-        actions.push(DiagnosticAction {
-            id: format!("repair_{id}"),
-            instruction: instruction.to_owned(),
-            command: Some(suggested_command.to_owned()),
-        });
+        if id != "volicord_command" {
+            direct_action_candidates.push(direct_action_candidate(
+                DoctorDirectAction::RepairMcpCommand,
+                id,
+                None,
+            ));
+        }
         if id != "volicord_command" {
             None
         } else if !command.exists() {
@@ -2130,7 +2212,7 @@ fn inspect_command_availability(
     profile_command: &Path,
     path_env: Option<&OsStr>,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) {
     let path_match = detect_command_on_path(command_name, path_env);
     let profile_command_directory_on_path = profile_command
@@ -2165,13 +2247,13 @@ fn inspect_command_availability(
             )
             .with_details(details),
         );
-        push_command_availability_action(actions);
+        push_command_availability_action(direct_action_candidates, id);
     } else {
         checks.push(
             DiagnosticCheck::warning(id, format!("{command_name} is not available on PATH"))
                 .with_details(details),
         );
-        push_command_availability_action(actions);
+        push_command_availability_action(direct_action_candidates, id);
     }
 }
 
@@ -2179,7 +2261,7 @@ fn inspect_path_or_shim(
     profile: &InstallationProfileInspectionRecord,
     path_env: Option<&OsStr>,
     checks: &mut Vec<DiagnosticCheck>,
-    actions: &mut Vec<DiagnosticAction>,
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
 ) {
     let bin_dir_on_path = path_directory_is_on_path(path_env, &profile.bin_dir);
     let volicord_link = profile.bin_dir.join(volicord_binary_name());
@@ -2212,17 +2294,11 @@ fn inspect_path_or_shim(
                 "agent_host_restart_or_reload_may_be_needed": true,
             })),
         );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_command_links".to_owned(),
-                instruction: format!(
-                    "Repair the command links in {} or reinstall the volicord executable on PATH; restart or reload existing agent hosts after command-link changes.",
-                    profile.bin_dir.display()
-                ),
-                command: None,
-            },
-        );
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::RepairCommandLinks,
+            "path_or_shim",
+            None,
+        ));
     } else if link_ready {
         checks.push(
             DiagnosticCheck::warning(
@@ -2234,20 +2310,14 @@ fn inspect_path_or_shim(
                 "agent_host_restart_or_reload_may_be_needed": true,
             })),
         );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "add_link_bin_to_path".to_owned(),
-                instruction: format!(
-                    "Add {} to PATH before starting new shells or agent hosts; restart or reload existing agent hosts after the PATH change.",
-                    profile.bin_dir.display()
-                ),
-                command: Some(format!(
-                    "export PATH=\"{}:$PATH\"",
-                    profile.bin_dir.display()
-                )),
-            },
-        );
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::AddCommandLinksToPath,
+            "path_or_shim",
+            Some(format!(
+                "export PATH={}:$PATH",
+                doctor_shell_word(&path_text(&profile.bin_dir))
+            )),
+        ));
     } else {
         checks.push(
             DiagnosticCheck::warning(
@@ -2259,16 +2329,11 @@ fn inspect_path_or_shim(
                 "agent_host_restart_or_reload_may_be_needed": true,
             })),
         );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "create_command_links".to_owned(),
-                instruction:
-                    "Install the volicord executable in a command directory you keep on PATH; restart or reload existing agent hosts after PATH or command-link changes."
-                        .to_owned(),
-                command: None,
-            },
-        );
+        direct_action_candidates.push(direct_action_candidate(
+            DoctorDirectAction::CreateCommandLinks,
+            "path_or_shim",
+            None,
+        ));
     }
 }
 
@@ -2348,19 +2413,17 @@ fn render_doctor_output(
 ) -> Result<String, DoctorCommandError> {
     match output {
         OutputFormat::Json => {
-            let actions_required = if report.status == CommandStatus::Complete {
-                Vec::new()
-            } else {
-                report.actions.iter().collect::<Vec<_>>()
-            };
-            let actions_recommended = if report.status == CommandStatus::Complete {
-                report.actions.iter().collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
+            let actions_required = report
+                .remediation_plan
+                .required_actions()
+                .collect::<Vec<_>>();
+            let actions_recommended = report
+                .remediation_plan
+                .recommended_actions()
+                .collect::<Vec<_>>();
             serde_json::to_string_pretty(&json!({
                 "status": report.status.as_str(),
-                "status_meaning": doctor_status_meaning(report.status, &report.checks),
+                "status_meaning": report.status_meaning.as_str(),
                 "build": &report.build,
                 "summary_card": &report.summary_card,
                 "disclosure": {
@@ -2373,14 +2436,14 @@ fn render_doctor_output(
                     ],
                 },
                 "runtime_home": path_text(&report.runtime_home),
-                "states": doctor_states_json(&report.runtime_home, &report.checks, &report.actions),
+                "states": doctor_states_json(&report.runtime_home, &report.checks),
                 "checks": &report.checks,
                 "findings": &report.findings,
                 "warning_count": report.warning_count(),
-                "actions": &report.actions,
+                "actions": report.remediation_plan.actions(),
                 "actions_required": actions_required,
                 "actions_recommended": actions_recommended,
-                "primary_next_action": primary_doctor_action_json(report.status, &report.actions),
+                "primary_next_action": report.remediation_plan.primary_action(),
             }))
             .map(|text| format!("{text}\n"))
             .map_err(|error| DoctorCommandError::Runtime(error.to_string()))
@@ -2426,7 +2489,7 @@ fn render_compact_doctor_text(report: &DoctorReport) -> String {
     if !problems.is_empty() {
         body.push(Section::new("Problems", vec![BulletList::new(problems).into()]).into());
     }
-    body.extend(doctor_action_elements(report.status, &report.actions));
+    body.extend(doctor_compact_action_elements(&report.remediation_plan));
     Document::new(doctor_headline(report), body).render()
 }
 
@@ -2470,10 +2533,7 @@ fn doctor_compact_facts(report: &DoctorReport) -> Vec<Element> {
         .into(),
         Field::new(
             "Host reload required",
-            HumanValue::YesNo(YesNo::from(doctor_host_reload_required(
-                &report.checks,
-                &report.actions,
-            ))),
+            HumanValue::YesNo(YesNo::from(doctor_host_reload_required(&report.checks))),
         )
         .into(),
         Field::new("Version", HumanValue::text(report.build.package_version)).into(),
@@ -2511,35 +2571,54 @@ fn doctor_build_source(build: &BuildInfo) -> String {
     format!("{} ({tree})", build.git_commit)
 }
 
-fn doctor_action_elements(status: CommandStatus, actions: &[DiagnosticAction]) -> Vec<Element> {
-    if actions.is_empty() {
+fn doctor_compact_action_elements(plan: &DoctorRemediationPlan) -> Vec<Element> {
+    let Some(action) = plan.primary_action() else {
         return vec![ActionHint::new("none").into()];
-    }
-    let requirement = if status == CommandStatus::Complete {
-        "recommended"
-    } else {
-        "required"
     };
-    vec![Section::new(
-        "Next actions",
-        actions
-            .iter()
-            .map(|action| {
-                let mut fields = vec![
-                    Field::new("Requirement", HumanValue::text(requirement)),
-                    Field::new(
-                        "Instruction",
-                        HumanValue::text(trimmed_sentence(&action.instruction)),
-                    ),
-                ];
-                if let Some(command) = &action.command {
-                    fields.push(Field::new("Command", HumanValue::text(command)));
-                }
-                CollectionItem::new(&action.id, fields).into()
-            })
-            .collect(),
-    )
-    .into()]
+    let mut elements = vec![
+        ActionHint::new(trimmed_sentence(action.summary())).into(),
+        Field::new("Action", HumanValue::text(action.code().as_str())).into(),
+        Field::new("Requirement", HumanValue::text(action.urgency().as_str())).into(),
+    ];
+    if let Some(command) = action.command() {
+        elements.push(Field::new("Command", HumanValue::text(command)).into());
+    }
+    elements
+}
+
+fn doctor_verbose_action_elements(plan: &DoctorRemediationPlan) -> Vec<Element> {
+    let Some(primary) = plan.primary_action() else {
+        return vec![ActionHint::new("none").into()];
+    };
+    let mut elements =
+        vec![Section::new("Primary action", vec![doctor_verbose_action_item(primary)]).into()];
+    let required = plan
+        .required_actions()
+        .map(doctor_verbose_action_item)
+        .collect::<Vec<_>>();
+    if !required.is_empty() {
+        elements.push(Section::new("Required actions", required).into());
+    }
+    let recommended = plan
+        .recommended_actions()
+        .map(doctor_verbose_action_item)
+        .collect::<Vec<_>>();
+    if !recommended.is_empty() {
+        elements.push(Section::new("Recommended actions", recommended).into());
+    }
+    elements
+}
+
+fn doctor_verbose_action_item(action: &DoctorRemediationAction) -> Element {
+    let mut fields = vec![
+        Field::new("Summary", HumanValue::text(action.summary())).into(),
+        Field::new("Urgency", HumanValue::text(action.urgency().as_str())).into(),
+        Field::new("Priority", HumanValue::text(action.priority().as_str())).into(),
+    ];
+    if let Some(command) = action.command() {
+        fields.push(Field::new("Command", HumanValue::text(command)).into());
+    }
+    Section::new(action.code().as_str(), fields).into()
 }
 
 fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCommandError> {
@@ -2632,7 +2711,7 @@ fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCom
             .into(),
         );
     }
-    body.extend(doctor_action_elements(report.status, &report.actions));
+    body.extend(doctor_verbose_action_elements(&report.remediation_plan));
     body.push(
         Section::new(
             "Output scope",
@@ -2727,11 +2806,7 @@ fn trimmed_sentence(value: &str) -> &str {
     value.trim().trim_end_matches('.')
 }
 
-fn doctor_states_json(
-    runtime_home: &Path,
-    checks: &[DiagnosticCheck],
-    actions: &[DiagnosticAction],
-) -> Value {
+fn doctor_states_json(runtime_home: &Path, checks: &[DiagnosticCheck]) -> Value {
     let mut states = json!({
         "runtime_home": doctor_runtime_home_state(runtime_home, checks),
         "installation_profile": doctor_installation_profile_state(checks),
@@ -2773,7 +2848,7 @@ fn doctor_states_json(
         "guard_status": doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID),
         "prompt_capture": doctor_prompt_capture_health(checks),
         "prompt_capture_status": doctor_prompt_capture_status(checks),
-        "host_reload_required": doctor_host_reload_required(checks, actions),
+        "host_reload_required": doctor_host_reload_required(checks),
     });
     if let Some(object) = states.as_object_mut() {
         object.insert(
@@ -3065,7 +3140,7 @@ fn doctor_mcp_config_state(checks: &[DiagnosticCheck]) -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
-fn doctor_host_reload_required(checks: &[DiagnosticCheck], _actions: &[DiagnosticAction]) -> bool {
+fn doctor_host_reload_required(checks: &[DiagnosticCheck]) -> bool {
     checks.iter().any(|check| {
         check
             .details
@@ -3083,27 +3158,9 @@ fn check_status<'a>(checks: &'a [DiagnosticCheck], id: &str) -> Option<&'a str> 
         .map(|check| check.status.as_str())
 }
 
-fn primary_doctor_action_json(status: CommandStatus, actions: &[DiagnosticAction]) -> Value {
-    let Some(action) = actions.first() else {
-        return Value::Null;
-    };
-    let requirement = if status == CommandStatus::Complete {
-        "recommended"
-    } else {
-        "required"
-    };
-    json!({
-        "id": &action.id,
-        "requirement": requirement,
-        "instruction": &action.instruction,
-        "command": &action.command,
-    })
-}
-
 fn doctor_summary_card(
-    status: CommandStatus,
     checks: &[DiagnosticCheck],
-    actions: &[DiagnosticAction],
+    remediation_plan: &DoctorRemediationPlan,
 ) -> SummaryCard {
     SummaryCard {
         task: "not_selected".to_owned(),
@@ -3115,11 +3172,8 @@ fn doctor_summary_card(
         changes: "not_selected".to_owned(),
         close_status: "not_selected".to_owned(),
         transport: "local CLI".to_owned(),
-        next: match actions.first() {
-            Some(action) if status == CommandStatus::Complete => {
-                format!("recommended: {}", action.instruction)
-            }
-            Some(action) => action.instruction.clone(),
+        next: match remediation_plan.primary_action() {
+            Some(action) => format!("{}: {}", action.urgency().as_str(), action.summary()),
             None => "none".to_owned(),
         },
         next_action: None,
@@ -3127,44 +3181,23 @@ fn doctor_summary_card(
     }
 }
 
-fn doctor_status_meaning(status: CommandStatus, checks: &[DiagnosticCheck]) -> &'static str {
-    match status {
-        CommandStatus::Complete if checks.iter().any(|check| check.status == "warning") => {
-            "installation profile is usable; warnings name recommended follow-up actions"
-        }
-        CommandStatus::Complete => "installation profile is usable",
-        CommandStatus::ActionRequired => {
-            "local init or profile repair is required before Volicord workflows are usable"
-        }
-        CommandStatus::Failed => "a blocking diagnostic failed before the profile is usable",
-    }
+fn direct_action_candidate(
+    action: DoctorDirectAction,
+    check_id: impl Into<String>,
+    command: Option<String>,
+) -> DoctorActionCandidate {
+    DoctorActionCandidate::direct(action, check_id, command)
 }
 
-fn run_init_action() -> DiagnosticAction {
-    DiagnosticAction {
-        id: "run_init".to_owned(),
-        instruction: "Initialize the Codex connection from the Product Repository.".to_owned(),
-        command: Some("volicord init --host codex --repo <path>".to_owned()),
-    }
-}
-
-fn push_command_availability_action(actions: &mut Vec<DiagnosticAction>) {
-    push_unique_diagnostic_action(
-        actions,
-        DiagnosticAction {
-            id: "make_profile_commands_available".to_owned(),
-            instruction:
-                "Install the volicord executable on PATH or update PATH so volicord resolves to the installation profile command; restart or reload existing agent hosts after PATH or command-link changes."
-                    .to_owned(),
-            command: None,
-        },
-    );
-}
-
-fn push_unique_diagnostic_action(actions: &mut Vec<DiagnosticAction>, action: DiagnosticAction) {
-    if !actions.iter().any(|existing| existing.id == action.id) {
-        actions.push(action);
-    }
+fn push_command_availability_action(
+    direct_action_candidates: &mut Vec<DoctorActionCandidate>,
+    check_id: &str,
+) {
+    direct_action_candidates.push(direct_action_candidate(
+        DoctorDirectAction::MakeProfileCommandsAvailable,
+        check_id,
+        None,
+    ));
 }
 
 #[cfg(test)]
@@ -3191,8 +3224,24 @@ mod tests {
 
     fn report(
         status: CommandStatus,
+        checks: Vec<DiagnosticCheck>,
+        direct_action_candidates: Vec<DoctorActionCandidate>,
+    ) -> DoctorReport {
+        report_with(
+            status,
+            complete_build(),
+            checks,
+            Vec::new(),
+            direct_action_candidates,
+        )
+    }
+
+    fn report_with(
+        status: CommandStatus,
+        build: BuildInfo,
         mut checks: Vec<DiagnosticCheck>,
-        actions: Vec<DiagnosticAction>,
+        findings: Vec<DiagnosticFinding>,
+        direct_action_candidates: Vec<DoctorActionCandidate>,
     ) -> DoctorReport {
         checks.splice(
             0..0,
@@ -3214,17 +3263,167 @@ mod tests {
                 host_detection_check(),
             ],
         );
-        DoctorReport {
+        DoctorReport::finalize(
             status,
-            runtime_home: PathBuf::from(
-                "/tmp/volicord doctor test/runtime home/with-a-deliberately-long-path",
-            ),
-            build: complete_build(),
-            summary_card: doctor_summary_card(status, &checks, &actions),
+            PathBuf::from("/tmp/volicord doctor test/runtime home/with-a-deliberately-long-path"),
+            build,
             checks,
-            actions,
-            findings: Vec::new(),
+            findings,
+            direct_action_candidates,
+        )
+        .expect("test Doctor report should finalize")
+    }
+
+    fn report_for_build(build: BuildInfo) -> DoctorReport {
+        let (check, diagnostic) = inspect_build_identity(&build);
+        let findings = diagnostic
+            .map(|diagnostic| {
+                doctor_installation_finding(
+                    diagnostic,
+                    UtcTimestamp::parse("2026-07-31T00:00:00Z")
+                        .expect("test observation timestamp"),
+                )
+                .expect("test installation finding")
+            })
+            .into_iter()
+            .collect();
+        report_with(
+            CommandStatus::Complete,
+            build,
+            vec![check],
+            findings,
+            Vec::new(),
+        )
+    }
+
+    fn action_codes(value: &Value, field: &str) -> BTreeSet<String> {
+        value[field]
+            .as_array()
+            .expect("action collection")
+            .iter()
+            .map(|action| {
+                action["code"]
+                    .as_str()
+                    .expect("typed action code")
+                    .to_owned()
+            })
+            .collect()
+    }
+
+    fn assert_cross_projection_parity(report: &DoctorReport) {
+        let json_text =
+            render_doctor_output(OutputFormat::Json, report).expect("Doctor JSON rendering");
+        let json: Value = serde_json::from_str(&json_text).expect("Doctor JSON");
+        let actions = action_codes(&json, "actions");
+        let required = action_codes(&json, "actions_required");
+        let recommended = action_codes(&json, "actions_recommended");
+        let union = required
+            .union(&recommended)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let intersection = required
+            .intersection(&recommended)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let finding_actions = json["findings"]
+            .as_array()
+            .expect("findings")
+            .iter()
+            .flat_map(|finding| {
+                finding["actions"]
+                    .as_array()
+                    .expect("finding actions")
+                    .iter()
+            })
+            .map(|action| {
+                action["code"]
+                    .as_str()
+                    .expect("finding action code")
+                    .to_owned()
+            })
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(actions, union);
+        assert!(intersection.is_empty());
+        assert!(finding_actions.is_subset(&actions));
+        assert_eq!(
+            json["primary_next_action"]["code"].as_str(),
+            report
+                .remediation_plan
+                .primary_action()
+                .map(|action| action.code().as_str())
+        );
+    }
+
+    #[test]
+    fn candidate_input_order_does_not_change_any_report_projection() {
+        let path_action = direct_action_candidate(
+            DoctorDirectAction::MakeProfileCommandsAvailable,
+            "path_or_shim",
+            None,
+        );
+        let personal_files_action = direct_action_candidate(
+            DoctorDirectAction::ProtectPersonalLocalFiles,
+            "personal_local_git_tracking",
+            None,
+        );
+        let checks = vec![
+            DiagnosticCheck::warning("path_or_shim", "command path needs follow-up"),
+            DiagnosticCheck::warning(
+                "personal_local_git_tracking",
+                "personal local files need protection",
+            ),
+        ];
+        let first = report(
+            CommandStatus::Complete,
+            checks.clone(),
+            vec![path_action.clone(), personal_files_action.clone()],
+        );
+        let second = report(
+            CommandStatus::Complete,
+            checks,
+            vec![personal_files_action, path_action],
+        );
+
+        for format in [
+            OutputFormat::Json,
+            OutputFormat::Compact,
+            OutputFormat::Verbose,
+        ] {
+            assert_eq!(
+                render_doctor_output(format, &first).expect("first Doctor projection"),
+                render_doctor_output(format, &second).expect("second Doctor projection")
+            );
         }
+    }
+
+    #[test]
+    fn report_finalization_propagates_remediation_conflicts() {
+        let candidate = direct_action_candidate(
+            DoctorDirectAction::MakeProfileCommandsAvailable,
+            "path_or_shim",
+            None,
+        );
+        let conflicting = candidate
+            .clone()
+            .with_summary("Perform an unrelated repair");
+        let result = DoctorReport::finalize(
+            CommandStatus::Complete,
+            PathBuf::from("/tmp/volicord-doctor-conflict-test"),
+            complete_build(),
+            vec![DiagnosticCheck::warning(
+                "path_or_shim",
+                "command path needs follow-up",
+            )],
+            Vec::new(),
+            vec![candidate, conflicting],
+        );
+
+        assert!(matches!(
+            result,
+            Err(DoctorCommandError::Runtime(detail))
+                if detail.contains("conflicting summaries")
+        ));
     }
 
     #[test]
@@ -3244,16 +3443,26 @@ mod tests {
                 "path_or_shim",
                 "the command is not currently on PATH",
             )],
-            vec![DiagnosticAction {
-                id: "repair_path".to_owned(),
-                instruction: "Make the command available.".to_owned(),
-                command: None,
-            }],
+            vec![direct_action_candidate(
+                DoctorDirectAction::MakeProfileCommandsAvailable,
+                "path_or_shim",
+                None,
+            )],
         );
         let warning_text = render_doctor_output(OutputFormat::Compact, &warning).unwrap();
+        let warning_verbose = render_doctor_output(OutputFormat::Verbose, &warning).unwrap();
+        assert_eq!(warning.remediation_plan.actions().len(), 1);
         assert!(warning_text.starts_with("Volicord is ready with 1 warning.\n\n"));
         assert!(warning_text.contains("Warnings\n  - the command is not currently on PATH"));
         assert!(warning_text.contains("Requirement: recommended"));
+        assert!(warning_text.contains(
+            "Make the installation-profile commands resolve on PATH and reload existing agent hosts after PATH or command-link changes"
+        ));
+        assert!(
+            warning_text.contains("Action: action.installation.make_profile_commands_available")
+        );
+        assert!(warning_verbose.contains("action.installation.make_profile_commands_available"));
+        assert!(warning_verbose.contains("\nRecommended actions\n"));
 
         let failed = report(
             CommandStatus::Failed,
@@ -3261,7 +3470,11 @@ mod tests {
                 "project_policy_authority",
                 "project policy authority is corrupt",
             )],
-            vec![run_init_action()],
+            vec![direct_action_candidate(
+                DoctorDirectAction::RepairProjectPolicy,
+                "project_policy_authority",
+                None,
+            )],
         );
         let failed_text = render_doctor_output(OutputFormat::Compact, &failed).unwrap();
         assert!(failed_text.starts_with("Volicord needs attention.\n\n"));
@@ -3307,6 +3520,113 @@ mod tests {
             assert!(!output.ends_with("\n\n"));
             assert!(!output.contains('\t'));
         }
+    }
+
+    #[test]
+    fn status_meaning_distinguishes_warnings_and_remediation_availability() {
+        let complete = report(CommandStatus::Complete, Vec::new(), Vec::new());
+        let warning_without_action = report(
+            CommandStatus::Complete,
+            vec![DiagnosticCheck::warning(
+                "build_identity",
+                "build source requires review",
+            )],
+            Vec::new(),
+        );
+        let warning_with_action = report(
+            CommandStatus::Complete,
+            vec![DiagnosticCheck::warning(
+                "path_or_shim",
+                "command path needs follow-up",
+            )],
+            vec![direct_action_candidate(
+                DoctorDirectAction::MakeProfileCommandsAvailable,
+                "path_or_shim",
+                None,
+            )],
+        );
+        let action_required_without_action = report(
+            CommandStatus::ActionRequired,
+            vec![DiagnosticCheck::failed(
+                "runtime_home_access",
+                "Runtime Home is unavailable",
+            )],
+            Vec::new(),
+        );
+        let action_required_with_action = report(
+            CommandStatus::ActionRequired,
+            vec![DiagnosticCheck::failed(
+                "runtime_home_access",
+                "Runtime Home is unavailable",
+            )],
+            vec![direct_action_candidate(
+                DoctorDirectAction::InitializeConnection,
+                "runtime_home_access",
+                None,
+            )],
+        );
+        let action_required_with_recommendation_only = report(
+            CommandStatus::ActionRequired,
+            vec![
+                DiagnosticCheck::failed("runtime_home_access", "Runtime Home is unavailable"),
+                DiagnosticCheck::warning("path_or_shim", "command path needs follow-up"),
+            ],
+            vec![direct_action_candidate(
+                DoctorDirectAction::MakeProfileCommandsAvailable,
+                "path_or_shim",
+                None,
+            )],
+        );
+        let failed_without_action = report(
+            CommandStatus::Failed,
+            vec![DiagnosticCheck::failed(
+                "project_policy_authority",
+                "policy authority is corrupt",
+            )],
+            Vec::new(),
+        );
+        let failed_with_action = report(
+            CommandStatus::Failed,
+            vec![DiagnosticCheck::failed(
+                "project_policy_authority",
+                "policy authority is corrupt",
+            )],
+            vec![direct_action_candidate(
+                DoctorDirectAction::RepairProjectPolicy,
+                "project_policy_authority",
+                None,
+            )],
+        );
+
+        assert_eq!(complete.status_meaning, DoctorStatusMeaning::CompleteReady);
+        assert_eq!(
+            warning_without_action.status_meaning,
+            DoctorStatusMeaning::CompleteWarningsReviewOnly
+        );
+        assert_eq!(
+            warning_with_action.status_meaning,
+            DoctorStatusMeaning::CompleteWarningsWithRecommendedRemediation
+        );
+        assert_eq!(
+            action_required_without_action.status_meaning,
+            DoctorStatusMeaning::ActionRequiredNoDefinedRemediation
+        );
+        assert_eq!(
+            action_required_with_action.status_meaning,
+            DoctorStatusMeaning::ActionRequiredRemediationAvailable
+        );
+        assert_eq!(
+            action_required_with_recommendation_only.status_meaning,
+            DoctorStatusMeaning::ActionRequiredNoDefinedRemediation
+        );
+        assert_eq!(
+            failed_without_action.status_meaning,
+            DoctorStatusMeaning::FailedNoDefinedRemediation
+        );
+        assert_eq!(
+            failed_with_action.status_meaning,
+            DoctorStatusMeaning::FailedRemediationAvailable
+        );
     }
 
     #[test]
@@ -3367,6 +3687,22 @@ mod tests {
     }
 
     #[test]
+    fn clean_exact_build_finalizes_with_no_remediation() {
+        let report = report_for_build(complete_build());
+        let compact = render_doctor_output(OutputFormat::Compact, &report).unwrap();
+        let json_text = render_doctor_output(OutputFormat::Json, &report).unwrap();
+        let json: Value = serde_json::from_str(&json_text).unwrap();
+
+        assert!(report.findings.is_empty());
+        assert_eq!(report.warning_count(), 0);
+        assert!(report.remediation_plan.is_empty());
+        assert_eq!(json["primary_next_action"], Value::Null);
+        assert_eq!(json["summary_card"]["next"], "none");
+        assert!(compact.contains("Next action: none"));
+        assert_cross_projection_parity(&report);
+    }
+
+    #[test]
     fn class_only_profile_passes_without_finding_or_action() {
         let mut build = complete_build();
         build.build_profile = None;
@@ -3387,12 +3723,25 @@ mod tests {
             }))
         );
         assert!(finding.is_none());
+
+        let report = report_for_build(build);
+        let compact = render_doctor_output(OutputFormat::Compact, &report).unwrap();
+        let json_text = render_doctor_output(OutputFormat::Json, &report).unwrap();
+        let json: Value = serde_json::from_str(&json_text).unwrap();
+        assert!(report.findings.is_empty());
+        assert_eq!(report.warning_count(), 0);
+        assert!(report.remediation_plan.is_empty());
+        assert_eq!(json["primary_next_action"], Value::Null);
+        assert_eq!(json["summary_card"]["next"], "none");
+        assert!(compact.contains("Next action: none"));
+        assert_cross_projection_parity(&report);
     }
 
     #[test]
     fn dirty_source_has_its_own_accurate_diagnostic() {
         let mut build = complete_build();
         build.git_dirty = Some(true);
+        build.build_id = build.deterministic_build_id();
 
         let (check, finding) = inspect_build_identity(&build);
         assert_eq!(check.status, "warning");
@@ -3404,6 +3753,27 @@ mod tests {
             finding,
             Some(InstallationDiagnostic::BuildSourceNotReproducible)
         );
+
+        let report = report_for_build(build);
+        let compact = render_doctor_output(OutputFormat::Compact, &report).unwrap();
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+        let json_text = render_doctor_output(OutputFormat::Json, &report).unwrap();
+        let json: Value = serde_json::from_str(&json_text).unwrap();
+        assert_eq!(report.findings.len(), 1);
+        assert!(report.remediation_plan.is_empty());
+        assert!(action_codes(&json, "actions").is_empty());
+        assert!(action_codes(&json, "actions_required").is_empty());
+        assert!(action_codes(&json, "actions_recommended").is_empty());
+        assert_eq!(json["primary_next_action"], Value::Null);
+        assert_eq!(json["summary_card"]["next"], "none");
+        assert_eq!(
+            json["status_meaning"],
+            "installation profile is usable; warnings require review and have no automatic remediation"
+        );
+        assert!(compact.contains("Next action: none"));
+        assert!(verbose.contains("Next action: none"));
+        assert!(!compact.contains("install_build_with_complete_provenance"));
+        assert_cross_projection_parity(&report);
     }
 
     #[test]
@@ -3411,6 +3781,7 @@ mod tests {
         let mut build = complete_build();
         build.git_commit = "unknown";
         build.metadata_source = "unknown";
+        build.build_id = build.deterministic_build_id();
 
         let (check, finding) = inspect_build_identity(&build);
         assert_eq!(check.status, "warning");
@@ -3418,6 +3789,41 @@ mod tests {
             finding,
             Some(InstallationDiagnostic::BuildIdentityUnavailable)
         );
+
+        let report = report_for_build(build);
+        let compact = render_doctor_output(OutputFormat::Compact, &report).unwrap();
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+        let json_text = render_doctor_output(OutputFormat::Json, &report).unwrap();
+        let json: Value = serde_json::from_str(&json_text).unwrap();
+        let expected_code = "action.installation.install_build_with_complete_provenance";
+        let expected_summary = "Install a Volicord build with complete provenance metadata";
+
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].actions().len(), 1);
+        assert_eq!(
+            report.findings[0].actions()[0].code().as_str(),
+            expected_code
+        );
+        assert_eq!(
+            action_codes(&json, "actions"),
+            BTreeSet::from([expected_code.to_owned()])
+        );
+        assert!(action_codes(&json, "actions_required").is_empty());
+        assert_eq!(
+            action_codes(&json, "actions_recommended"),
+            BTreeSet::from([expected_code.to_owned()])
+        );
+        assert_eq!(json["primary_next_action"]["code"], expected_code);
+        assert_eq!(
+            json["summary_card"]["next"],
+            format!("recommended: {expected_summary}")
+        );
+        assert!(compact.contains(expected_summary));
+        assert!(compact.contains(expected_code));
+        assert!(verbose.contains("\nPrimary action\n"));
+        assert!(verbose.contains("\nRecommended actions\n"));
+        assert!(verbose.contains(expected_code));
+        assert_cross_projection_parity(&report);
     }
 
     #[test]

@@ -28,9 +28,12 @@ diagnostic reconciliation, 보고서 영속화가 필요할 때만 `connection v
 
 ## 안정 Finding Code 사용
 
-`volicord doctor --json`에서는 `findings[].code`와 `findings[].actions[].code`를
-확인합니다. Connection status 또는 verification JSON에서는 `root_cause_ids`를 읽고
-`findings`에서 같은 ID를 찾은 뒤 최상위 `actions[].code`와
+`volicord doctor --json`에서는 정규화된 전체 최상위 `actions[].code`를 확인합니다.
+`actions_required`와 `actions_recommended`는 이 집합을 분할하고
+`primary_next_action`은 첫 단계를 식별합니다. Finding 소유 source action은
+`findings[].actions[].code`에도 표시되며 최상위 집합에 포함됩니다. Connection status 또는
+verification JSON에서는 `root_cause_ids`를 읽고 `findings`에서 같은 ID를 찾은 뒤 최상위
+`actions[].code`와
 `actions[].root_cause_ids`를 사용합니다. 출력된 finding ID, 값이 있으면 runtime-session ID,
 namespaced diagnostic code를 함께 보존합니다. 영어 summary, SQLite 메시지, 경로 문구,
 stderr 발췌로 실패를 분류하지 않습니다.

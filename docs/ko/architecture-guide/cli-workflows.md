@@ -129,9 +129,15 @@ Guard 진단으로 남으며 path finding으로 합성하지 않습니다. 정�
 
 `doctor`, status, preflight는 읽기 전용 사실을 모아 이름 붙은 다음 동작을 보고합니다.
 Doctor는 invocation마다 typed report 하나를 수집합니다. Compact 출력은 결론, 현재 설치
-fact, 실제 warning 또는 failure, 적용 가능한 action을 선택합니다. Verbose 출력은 probe를
-추가하지 않고 같은 report를 전체 check detail, finding, build provenance,
-disclosure까지 확장합니다. 개인정보 footprint 분기는 범주 주장을 구조화된 section과
+fact, 실제 warning 또는 failure, primary action 하나를 선택합니다. 수집이 끝나면 Doctor는
+finding 소유 typed action과 폐쇄형 Doctor 소유 direct candidate를 remediation plan
+하나로 finalize합니다. Plan은 typed action code로 합치고 urgency를 한 번 계산하며 urgency,
+typed priority, code 순서로 정렬하고 semantic summary 또는 exact command가 충돌하면
+실패합니다. Verbose 출력은 probe를 추가하지 않고 같은 plan을 primary, required,
+recommended action projection과 전체 check detail, finding, build provenance,
+disclosure까지 확장합니다. JSON은 같은 plan을 전체 collection, 서로 겹치지 않는 분할,
+primary projection으로 직렬화합니다. 어떤 renderer도 check, finding, 산문에서 action을
+다시 구성하지 않습니다. 개인정보 footprint 분기는 범주 주장을 구조화된 section과
 bullet로 표시하고 JSON은 typed 범주와 개수 projection을 보존합니다. Connection report
 명령에서 `dry_run`은 작업 boolean이며 집계 결과는 3상태로 유지됩니다. `--json`은 typed
 결과를 한 번 직렬화합니다. 사람용 text, log, diagnostic metadata를 권한 상태로 다시

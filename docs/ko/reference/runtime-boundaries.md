@@ -301,6 +301,12 @@ Runtime Home finding은 `runtime_home.path.missing`,
 사실만 남기며 환경 dump, 전체 환경 값, 파일시스템 내용, 제한 없는 경로 탐색 결과를
 남기지 않습니다.
 
+Doctor는 이 runtime 경계를 통과한 finding 소유 typed action을 읽고 관찰이 모두 끝난
+뒤에만 폐쇄형 Doctor 소유 direct action과 결합합니다. 그 remediation plan은 report
+projection입니다. Action provenance가 한도가 있는 finding 또는 check 좌표를 식별할 수는
+있지만 plan 구성과 compact, verbose, JSON 렌더링은 Runtime Home record를 만들거나
+Product Repository를 변경하거나 구성을 복구하거나 제안 command를 실행하지 않습니다.
+
 구조화된 build provenance는 package version, source metadata와 identity, tree 상태,
 target, Cargo profile class, 선택적인 정확한 Cargo profile, profile precision,
 optimization, debug 상태, 결정적인 상관관계 build ID 하나를 기록합니다. Identity에는

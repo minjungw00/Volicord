@@ -342,6 +342,14 @@ Installation findings use `installation.executable.missing`,
 facts only; they do not retain environment dumps, full environment values,
 filesystem contents, or unrestricted path discovery.
 
+Doctor reads finding-owned typed actions across these runtime boundaries and
+combines them with closed Doctor-owned direct actions only after observation is
+complete. The resulting remediation plan is a report projection: action
+provenance may identify bounded finding or check coordinates, but plan
+construction and compact, verbose, or JSON rendering do not create Runtime Home
+records, modify a Product Repository, repair configuration, or execute a
+suggested command.
+
 Structured build provenance records the package version, source metadata and
 identity, tree state, target, Cargo profile class, optional exact Cargo profile,
 profile precision, optimization, debug state, and one deterministic correlation

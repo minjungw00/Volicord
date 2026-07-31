@@ -296,6 +296,15 @@ machine-readable diagnostic identity. A domain's typed diagnostic kind selects
 that code and action policy; bounded human-readable detail remains separate
 from identity and is not stored or projected as another identity field.
 
+A finding action's typed `DiagnosticCode` and summary remain owned by that
+domain definition when an administrative report consumes the finding. A report
+may normalize the same semantic action with another typed source, enrich it
+with one compatible exact command, strengthen urgency under its command
+contract, and retain bounded provenance. It must reject a reused action code
+with a different summary or incompatible command instead of selecting one by
+input order. Report renderers do not reinterpret finding prose or create a
+second action meaning.
+
 `DiagnosticFinding` itself is not a writable lifecycle input. Store mutation
 accepts `OccurrenceDiagnosticFinding` for insertion,
 `CurrentDiagnosticFinding` for snapshot activation or refresh, and

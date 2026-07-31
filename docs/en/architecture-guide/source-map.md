@@ -248,7 +248,8 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/guard_integration/plan.rs` and `hosts/codex.rs` | Source templates for managed AGENTS and Codex rule guidance, including the nested integration-verification sequence and its stop and diagnostic boundaries. |
 | `crates/volicord-cli/src/guard_command/` | Explicit `codex-command-hooks` event decoding, semantic Guard-probe filtering, and bounded source-specific observations without routed MCP payload retention. |
 | `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution, with pre-admission syntax and repository targeting followed by admitted Registry/project selection, neutral Core fact consumption, shared UserAction presentation, one-snapshot candidate planning, diagnostics, Core effect, and terminal response rendering under the same mutation context. |
-| `crates/volicord-cli/src/doctor_command.rs` | Diagnostic fact collection and rendering. |
+| `crates/volicord-cli/src/doctor_command.rs` | Doctor diagnostic fact collection, pure report finalization, and compact, verbose, or JSON projection from one finalized report. |
+| `crates/volicord-cli/src/doctor_command/remediation.rs` | Typed Doctor action candidates, deterministic remediation-plan merge and conflict validation, urgency and priority policy, provenance, and primary-action ordering. |
 
 ## MCP Protocol Profiles
 

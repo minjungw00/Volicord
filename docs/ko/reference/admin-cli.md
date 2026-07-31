@@ -514,14 +514,56 @@ UserAction 개수, Unrecorded Changes, 다음 행동을 보고합니다. 활성 
 기본 `volicord doctor` 출력은 결론을 먼저 표시하는 간결한 진단입니다. Runtime Home,
 installation profile, project와 Connection 개수, 선택한 profile, Guard와 prompt-capture
 상태, host reload 필요 여부, version, source를 보고합니다. 실제 warning과 failure만
-후속 section에 표시하며 skipped check를 warning으로 표시하지 않습니다. 설치를 사용할
-수 있으면 action을 `recommended`, 주의가 필요하면 `required`로 표시합니다.
+후속 section에 표시하며 skipped check를 warning으로 표시하지 않습니다. 복구 동작이
+있으면 간결한 출력은 plan의 primary action 하나만 표시합니다. Finalized remediation
+plan이 비어 있을 때만 `Next action: none`이라고 표시합니다.
 
 `volicord doctor --verbose`는 한 번 수집한 같은 report를 사용해 전체 build provenance,
-모든 check와 구조화된 details, 구조화된 finding, action, diagnostic disclosure를
-렌더링합니다. Verbose 렌더링은 check를 다시 실행하거나 probe를 추가하지 않습니다.
-`--verbose`와 `--json`은 서로 충돌합니다. 완전한 `SummaryCard`를 포함한 구조화된 JSON
-형태는 바뀌지 않습니다.
+모든 check와 구조화된 details, 구조화된 finding, primary action, required와
+recommended action 전체를 나눈 group, diagnostic disclosure를 렌더링합니다. Verbose
+렌더링은 check를 다시 실행하거나 probe를 추가하지 않습니다. `--verbose`와 `--json`은
+서로 충돌합니다.
+
+Doctor는 모든 check, finding, Doctor 소유 direct remediation candidate를 수집한 뒤 typed
+remediation plan 하나를 finalize합니다. `DiagnosticFinding.actions`는 각 diagnostic
+domain이 담당하는 source-level typed action collection으로 유지합니다. 별도 finding
+담당자가 없는 condition은 폐쇄형 Doctor action registry를 통해서만 Doctor 소유 action을
+제공할 수 있습니다. Finalized plan은 두 source를 typed `DiagnosticCode`로
+정규화합니다. Renderer가 action을 추가하거나 분류하거나 순서를 정하거나 중복 제거하지
+않습니다.
+
+최상위 action은 모두 `code`, `summary`, 선택적 `command`, `urgency`, `priority`, 한도가
+있는 `provenance` 형태를 사용합니다. `urgency`는 `required` 또는 `recommended`이고,
+`priority`는 `immediate`, `high`, `standard`, `follow_up` 중 하나입니다.
+`provenance`는 source finding 또는 Doctor check를 식별하는 diagnostic 맥락이며 권한이
+아닙니다. Error-level finding의 remediation과 failed check를 위한 direct remediation은
+required입니다. Warning-level finding의 remediation과 direct warning follow-up은
+recommended입니다. 등록된 action이 없는 warning에는 임의의 remediation을 만들지
+않습니다. Finding 소유 action은 error, warning, info severity에 따라 각각 `high`,
+`standard`, `follow_up` priority를 받으며, 각 폐쇄형 direct action은 semantic
+urgency와 priority를 선언합니다. Priority 강도 순서는 `immediate`, `high`,
+`standard`, `follow_up`입니다.
+
+JSON `actions` collection은 정규화된 plan 전체입니다. `actions_required`와
+`actions_recommended`는 이 collection을 서로 겹치지 않게 분할하며,
+`findings[].actions`의 모든 action code는 `actions`에 있어야 합니다. Code 하나는 최대
+한 번만 나타납니다. Code와 summary가 같으면 하나로 합치고, exact command 하나로 같은
+action을 보강할 수 있으며, 중복 provenance를 제거합니다. Required urgency가 우선하고
+가장 강한 typed priority가 우선합니다. 같은 code에 summary가 다르거나 양립할 수 없는
+command가 둘이면 report assembly가 실패합니다.
+
+Primary action은 required를 recommended보다 먼저, 강한 typed priority를 약한
+priority보다 먼저, 마지막 동률 해소에는 정규 action-code 순서를 적용해 선택합니다.
+입력 순서, finding ID, hash iteration, 관찰 시각은 선택 기준이 아닙니다. JSON
+`primary_next_action`, `summary_card.next`, 간결한 `Next action`, verbose primary
+action은 모두 같은 action을 projection합니다. Plan이 비어 있으면 JSON primary action은
+`null`이고 사람용 출력과 summary card의 next-action text는 모두 `none`입니다.
+
+`status_meaning`은 typed command status, warning 존재 여부, finalized remediation
+plan에서 선택합니다. Warning과 action이 없는 완전한 결과, recommended remediation이
+있는 warning, 자동 remediation 없이 검토가 필요한 warning, 정의된 required action이
+있거나 없는 action-required 결과, 정의된 required remediation이 있거나 없는 failed
+결과를 서로 구분합니다.
 
 `volicord doctor --json`은 missing, invalid, unavailable, corrupt, stale 관찰을
 서로 구분합니다. `states.installation_profile` 값은 `present`, `missing`, `invalid`,

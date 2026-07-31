@@ -526,7 +526,13 @@ reports, sectioned privacy claims, exact terminal hygiene, and unchanged Store
 effect counters and authority snapshots. Pure renderer tests cover ready,
 warning, action-required or failed doctor states, skipped-check omission,
 structured verbose details, long paths, empty collections, and human/JSON
-factual parity.
+factual parity. Doctor remediation coverage supplies explicit findings and
+direct candidates to the pure report-finalization boundary. It verifies
+finding-action inclusion, direct-action inclusion, command enrichment,
+required-over-recommended urgency, deterministic priority and code ordering,
+conflict rejection, strict required/recommended partitioning, one primary
+action across JSON and human projections, warning-without-action wording, and
+no Store or Product Repository mutation during rendering.
 
 Connection-list lifecycle coverage compares each available membership with
 selected status at setup, managed-session, and complete stages; retains current

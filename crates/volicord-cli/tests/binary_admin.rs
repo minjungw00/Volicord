@@ -257,6 +257,127 @@ fn doctor_and_version_json_share_one_build_projection() -> Result<(), Box<dyn Er
 }
 
 #[test]
+fn doctor_remediation_projections_share_one_finalized_plan() -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("binary-doctor-remediation-plan")?;
+    let run_doctor = |mode: Option<&str>| -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command.arg("doctor").env("VOLICORD_HOME", fixture.path());
+        if let Some(mode) = mode {
+            command.arg(mode);
+        }
+        Ok(command.output()?)
+    };
+
+    let json_output = run_doctor(Some("--json"))?;
+    assert!(matches!(json_output.status.code(), Some(0 | 1)));
+    assert!(json_output.stderr.is_empty());
+    let report: Value = serde_json::from_slice(&json_output.stdout)?;
+    let codes = |field: &str| {
+        report[field]
+            .as_array()
+            .expect("Doctor action collection")
+            .iter()
+            .map(|action| {
+                action["code"]
+                    .as_str()
+                    .expect("Doctor action code")
+                    .to_owned()
+            })
+            .collect::<BTreeSet<_>>()
+    };
+    let actions = codes("actions");
+    let required = codes("actions_required");
+    let recommended = codes("actions_recommended");
+    assert_eq!(
+        report["actions"].as_array().expect("Doctor actions").len(),
+        actions.len()
+    );
+    assert_eq!(
+        report["actions_required"]
+            .as_array()
+            .expect("required Doctor actions")
+            .len(),
+        required.len()
+    );
+    assert_eq!(
+        report["actions_recommended"]
+            .as_array()
+            .expect("recommended Doctor actions")
+            .len(),
+        recommended.len()
+    );
+    assert_eq!(
+        actions,
+        required
+            .union(&recommended)
+            .cloned()
+            .collect::<BTreeSet<_>>()
+    );
+    assert!(required.is_disjoint(&recommended));
+
+    let finding_actions = report["findings"]
+        .as_array()
+        .expect("Doctor findings")
+        .iter()
+        .flat_map(|finding| {
+            finding["actions"]
+                .as_array()
+                .expect("finding actions")
+                .iter()
+        })
+        .map(|action| {
+            action["code"]
+                .as_str()
+                .expect("finding action code")
+                .to_owned()
+        })
+        .collect::<BTreeSet<_>>();
+    assert!(finding_actions.is_subset(&actions));
+    assert!(finding_actions.contains("action.runtime_home.initialize_registry"));
+    assert!(!actions.contains("action.setup.initialize_connection"));
+
+    let primary = report["primary_next_action"]
+        .as_object()
+        .expect("primary Doctor action");
+    let primary_code = primary["code"].as_str().expect("primary action code");
+    let primary_summary = primary["summary"].as_str().expect("primary action summary");
+    assert!(actions.contains(primary_code));
+    assert_eq!(
+        report["summary_card"]["next"],
+        format!(
+            "{}: {primary_summary}",
+            primary["urgency"].as_str().unwrap()
+        )
+    );
+
+    let compact_output = run_doctor(None)?;
+    assert!(matches!(compact_output.status.code(), Some(0 | 1)));
+    assert!(compact_output.stderr.is_empty());
+    let compact = String::from_utf8(compact_output.stdout)?;
+    assert!(compact.contains(&format!("Next action: {primary_summary}")));
+    assert!(compact.contains(&format!("Action: {primary_code}")));
+    for code in actions.iter().filter(|code| code.as_str() != primary_code) {
+        assert!(!compact.contains(code), "{compact}");
+    }
+
+    let verbose_output = run_doctor(Some("--verbose"))?;
+    assert!(matches!(verbose_output.status.code(), Some(0 | 1)));
+    assert!(verbose_output.stderr.is_empty());
+    let verbose = String::from_utf8(verbose_output.stdout)?;
+    assert!(verbose.contains("\nPrimary action\n"));
+    for code in &actions {
+        assert!(verbose.contains(code), "{verbose}");
+    }
+    if !required.is_empty() {
+        assert!(verbose.contains("\nRequired actions\n"));
+    }
+    if !recommended.is_empty() {
+        assert!(verbose.contains("\nRecommended actions\n"));
+    }
+    Ok(())
+}
+
+#[test]
 fn init_help_is_codex_record_only() -> Result<(), Box<dyn Error>> {
     let output = run(&["init", "--help"])?;
     assert!(output.status.success());

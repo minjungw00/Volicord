@@ -448,6 +448,12 @@ footprint를 반복 실행합니다. 활성 Task 없음의 명시적 상태, 적
 변하지 않은 Store effect counter와 authority snapshot을 검증합니다. 순수 renderer
 테스트는 ready, warning, action-required 또는 failed doctor 상태, skipped check 생략,
 구조화된 verbose detail, 긴 경로, 빈 collection, 사람용/JSON의 사실 동등성을 다룹니다.
+Doctor remediation coverage는 명시적인 finding과 direct candidate를 순수 report-finalization
+경계에 제공합니다. Finding action 포함, direct action 포함, command 보강,
+required-over-recommended urgency, 결정적인 priority 및 code ordering, 충돌 거부,
+required/recommended의 엄격한 분할, JSON과 사람용 projection 전체의 primary action 하나,
+action 없는 warning의 정확한 문구, 렌더링 중 Store 또는 Product Repository mutation이
+없음을 검증합니다.
 
 Connection-list lifecycle coverage는 setup, managed-session, complete 단계에서 사용 가능한
 각 membership을 선택한 status와 비교하고, 영속 활성 검증이 `action_required`인 채여도

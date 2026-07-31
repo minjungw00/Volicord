@@ -248,7 +248,8 @@
 | `crates/volicord-cli/src/guard_integration/plan.rs` 및 `hosts/codex.rs` | Nested integration-verification sequence, stop 규칙, diagnostic 경계를 포함한 managed AGENTS 및 Codex rule 안내 source template. |
 | `crates/volicord-cli/src/guard_command/` | 명시적인 `codex-command-hooks` event decoding, semantic Guard probe filtering, routing된 MCP payload를 보관하지 않는 한도 있는 source별 observation. |
 | `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. 승인 전에는 구문과 repository target만 처리하고, 같은 mutation context를 유지한 채 승인 뒤 Registry/project 선택, neutral Core fact 사용, 공유 UserAction presentation, 단일 snapshot 후보 계획, 진단, Core 효과, terminal 응답 표시를 수행합니다. |
-| `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |
+| `crates/volicord-cli/src/doctor_command.rs` | Doctor 진단 사실 수집, 순수 report finalization, finalized report 하나에서 compact, verbose, JSON projection 생성. |
+| `crates/volicord-cli/src/doctor_command/remediation.rs` | Typed Doctor action candidate, 결정적인 remediation-plan merge 및 충돌 검증, urgency와 priority 정책, provenance, primary-action ordering. |
 
 ## MCP 프로토콜 프로필
 

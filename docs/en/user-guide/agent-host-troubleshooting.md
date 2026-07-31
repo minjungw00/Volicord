@@ -31,8 +31,11 @@ not establish writeability or active conformance.
 
 ## Use The Stable Finding Code
 
-In `volicord doctor --json`, read `findings[].code` and
-`findings[].actions[].code`. In Connection status or verification JSON, read
+In `volicord doctor --json`, read the complete normalized top-level
+`actions[].code`; `actions_required` and `actions_recommended` partition that
+set, and `primary_next_action` identifies the first step. Finding-owned source
+actions remain visible under `findings[].actions[].code` and are included in
+the top-level set. In Connection status or verification JSON, read
 `root_cause_ids`, match those IDs in `findings`, and use the top-level
 `actions[].code` and `actions[].root_cause_ids`. Retain the emitted finding ID,
 runtime-session ID when present, and namespaced diagnostic code. Do not

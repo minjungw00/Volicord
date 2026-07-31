@@ -261,6 +261,14 @@ identity입니다. 각 domain의 typed diagnostic kind가 이 code와 action 정
 한도가 있는 사람이 읽는 세부사항은 identity와 분리되고 또 다른 identity field로 저장하거나
 projection하지 않습니다.
 
+관리 report가 finding을 소비해도 finding action의 typed `DiagnosticCode`와 summary는
+그 domain definition이 계속 담당합니다. Report는 같은 semantic action을 다른 typed
+source와 정규화하고, 양립하는 exact command 하나로 보강하고, 해당 command 계약에 따라
+urgency를 강화하며, 한도가 있는 provenance를 유지할 수 있습니다. 같은 action code를
+다른 summary나 양립할 수 없는 command에 다시 사용하면 입력 순서로 하나를 고르지 않고
+거부해야 합니다. Report renderer는 finding 산문을 다시 해석하거나 두 번째 action
+의미를 만들지 않습니다.
+
 `DiagnosticFinding` 자체는 쓰기 가능한 lifecycle 입력이 아닙니다. Store mutation은 삽입에
 `OccurrenceDiagnosticFinding`, snapshot 활성화 또는 갱신에
 `CurrentDiagnosticFinding`, 명시적 해소에 `CurrentDiagnosticKey`를 받습니다.
