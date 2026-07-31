@@ -108,6 +108,10 @@ Codex가 이를 읽었다는 증명이 아닙니다.
 생성 guidance, CLI 산문, MCP text content, 상태 요약, template은 표시이며 별도 권한
 기록이 아닙니다. 현재 typed 상태에서 도출하고 secret과 비공개 UserAction 내용을 빼며
 구조화된 결과의 보장 경계를 보존해야 합니다. 오래된 표시가 작업을 승인할 수 없습니다.
+간결한 사람용 출력은 해당 명령과 현재 branch에 적용되는 fact만 선택하고 verbose 또는
+JSON 출력은 더 많은 diagnostic 맥락을 노출할 수 있습니다. 적용되지 않는 필드를
+생략하거나 비보장 설명을 더 적게 반복해도 긍정적 보장이 생기지 않습니다. 결과의 typed
+disclosure가 계속 권위 있는 경계입니다.
 
 ### Workflow policy 검사
 

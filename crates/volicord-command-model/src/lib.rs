@@ -178,9 +178,9 @@ pub struct StatusArgs {
 
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
-    #[arg(long)]
-    pub json: bool,
-    #[arg(long)]
+    #[command(flatten)]
+    pub output: ReportOutputArgs,
+    #[arg(long, conflicts_with = "verbose")]
     pub privacy_footprint: bool,
 }
 
@@ -1542,6 +1542,10 @@ mod tests {
             .arguments()
             .iter()
             .any(|argument| argument == "--privacy-footprint"));
+        assert!(doctor
+            .arguments()
+            .iter()
+            .any(|argument| argument == "--verbose"));
 
         for path in [
             ["policy", "show"].as_slice(),
@@ -1838,6 +1842,25 @@ mod tests {
         ])
         .expect_err("selected Connection output modes conflict");
         assert_eq!(conflict.kind(), clap::error::ErrorKind::ArgumentConflict);
+
+        for arguments in [
+            ["volicord", "doctor", "--verbose", "--json"].as_slice(),
+            ["volicord", "doctor", "--privacy-footprint", "--verbose"].as_slice(),
+        ] {
+            let conflict = Cli::try_parse_from(arguments)
+                .expect_err("doctor output modes must remain mutually exclusive");
+            assert_eq!(conflict.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
+
+        for arguments in [
+            ["volicord", "doctor"].as_slice(),
+            ["volicord", "doctor", "--verbose"].as_slice(),
+            ["volicord", "doctor", "--json"].as_slice(),
+            ["volicord", "doctor", "--privacy-footprint"].as_slice(),
+            ["volicord", "doctor", "--privacy-footprint", "--json"].as_slice(),
+        ] {
+            Cli::try_parse_from(arguments).expect("supported doctor output mode must parse");
+        }
     }
 
     #[test]

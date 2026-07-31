@@ -93,6 +93,13 @@ typed `PolicyShowReport` 하나를 만듭니다. Report는 Store 권위, 관리 
 전용입니다. `policy validate`도 typed 성공 검증 결과 하나를 만들고 결론을 먼저
 표시하는 사람용 text 또는 그 결과의 JSON으로 투영합니다.
 
+Status 성격의 명령은 일반적인 사람용 `SummaryCard` renderer를 공유하지 않습니다.
+`volicord status`, inbox, doctor, changes reconciliation, Connection status는 각 typed
+명령 결과를 소비하고 해당 workflow에 적용되는 fact만 선택합니다. 소유자가 요구하는
+JSON에서는 공개 구조화 `SummaryCard`를 그대로 유지합니다. 사람용 projection은 없는
+collection 개수를 만들거나 선택하지 않은 필드를 placeholder로 바꾸거나 JSON을
+왕복하지 않습니다.
+
 ## UserAction 흐름
 
 `inbox`는 Core에 adapter-neutral pending fact를 요청합니다. `volicord-types`가 의미
@@ -121,9 +128,14 @@ Guard 진단으로 남으며 path finding으로 합성하지 않습니다. 정�
 ## 진단과 출력
 
 `doctor`, status, preflight는 읽기 전용 사실을 모아 이름 붙은 다음 동작을 보고합니다.
-Connection report 명령에서 `dry_run`은 작업 boolean이며 집계 결과는 3상태로 유지됩니다.
-`--json`은 typed 결과를 한 번 직렬화합니다. 사람용 text, log,
-diagnostic metadata를 권한 상태로 다시 parse하지 않습니다.
+Doctor는 invocation마다 typed report 하나를 수집합니다. Compact 출력은 결론, 현재 설치
+fact, 실제 warning 또는 failure, 적용 가능한 action을 선택합니다. Verbose 출력은 probe를
+추가하지 않고 같은 report를 전체 check detail, finding, build provenance,
+disclosure까지 확장합니다. 개인정보 footprint 분기는 범주 주장을 구조화된 section과
+bullet로 표시하고 JSON은 typed 범주와 개수 projection을 보존합니다. Connection report
+명령에서 `dry_run`은 작업 boolean이며 집계 결과는 3상태로 유지됩니다. `--json`은 typed
+결과를 한 번 직렬화합니다. 사람용 text, log, diagnostic metadata를 권한 상태로 다시
+parse하지 않습니다.
 
 Root `-V`/`--version` dispatch는 간결한 제품 identity만 렌더링합니다. 명시적인
 `version` 명령은 doctor와 MCP initialization metadata가 사용하는 것과 같은

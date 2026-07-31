@@ -187,6 +187,13 @@ Truthful projection rules:
 
 `include.evidence=true` or `include.close=true` and [`volicord.check_close`](method-close-task.md#volicordcheck_close) use the same close-readiness evidence-gate calculation. Therefore an evidence-only status result and check-close result at the same state version return the same `evidence_gate`; selecting close controls exposure of close fields, not a second gate calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment.
 
+The administrative CLI preserves this complete `StatusResult` and
+`SummaryCard` in `volicord status --json`. Its default human display is an
+adapter-owned applicability projection: it selects the no-active-Task or
+active-Task facts actually returned and does not synthesize absent collection
+counts. Human visibility is not a second method result and does not change the
+read-only effect or guarantee boundary.
+
 ## Method result fields
 
 `StatusResult` is the method-specific result branch for a successful status read. It carries `base: StatusResultBase`, whose only result effect is `read_only`, and these method-owned top-level fields:

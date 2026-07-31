@@ -441,6 +441,14 @@ MCP preflight를 포함한 소유자 정의 read-only 명령은 writer lease 없
 있어야 하며 Runtime Home byte, row, `state_version`, modification time을 보존해야
 합니다.
 
+Binary 수준의 맥락별 출력 coverage는 하나의 폐기 가능한 Runtime Home과 Product
+Repository에서 `volicord status`, compact/verbose/JSON doctor, 사람용/JSON 개인정보
+footprint를 반복 실행합니다. 활성 Task 없음의 명시적 상태, 적용 가능한 사람용 field,
+완전한 구조화 report, section으로 나눈 개인정보 주장, 정확한 terminal hygiene,
+변하지 않은 Store effect counter와 authority snapshot을 검증합니다. 순수 renderer
+테스트는 ready, warning, action-required 또는 failed doctor 상태, skipped check 생략,
+구조화된 verbose detail, 긴 경로, 빈 collection, 사람용/JSON의 사실 동등성을 다룹니다.
+
 Connection-list lifecycle coverage는 setup, managed-session, complete 단계에서 사용 가능한
 각 membership을 선택한 status와 비교하고, 영속 활성 검증이 `action_required`인 채여도
 현재 `complete`를 유지하는지 확인하며, complete membership과 대기 중인 membership의

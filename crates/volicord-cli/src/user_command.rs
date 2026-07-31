@@ -19,10 +19,10 @@ use volicord_types::ids::{
 };
 use volicord_types::methods::{
     ResolveUserActionRequest, ResolveUserActionResponse, StatusInclude, StatusRequest,
-    StatusResponse,
+    StatusResponse, StatusResult,
 };
 use volicord_types::schema::{
-    EvidenceTarget, SummaryCard, ToolEnvelope, UserActionResolutionChoice,
+    EvidenceTarget, SummaryCard, ToolEnvelope, ToolResultOrRejected, UserActionResolutionChoice,
     UserActionResolutionForm, UserActionResolutionInput,
 };
 use volicord_types::values::{
@@ -43,9 +43,9 @@ use crate::project_context::{
     registered_project_for_repo, registered_project_for_repo_admitted, resolve_repository_root,
     ProjectCommandError,
 };
-use crate::summary_card::{
-    count_state_text, render_close_and_next_action_totals_text, render_summary_card_text,
-    summary_card_from_response, USER_CHANNEL_SUMMARY_GUARANTEE,
+use crate::{
+    presentation::{ActionHint, CollectionItem, Document, Field, HumanValue, Section},
+    summary_card::{count_state_text, USER_CHANNEL_SUMMARY_GUARANTEE},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,8 +217,8 @@ where
         &ProjectId::new(&resolved.project_id),
     )?;
     let task_id = selected_or_active_task_id(&store, &parsed.task)?;
-    let response = status_response(&resolved, task_id.as_deref())?;
-    render_status_response(&response, parsed.output)
+    let (response, typed_response) = status_response(&resolved, task_id.as_deref())?;
+    render_status_response(&response, &typed_response, parsed.output)
 }
 
 fn command_inbox_list<F>(
@@ -258,7 +258,7 @@ where
 fn status_response(
     resolved: &ResolvedUserProject,
     task_id: Option<&str>,
-) -> Result<PipelineResponse, UserCommandError> {
+) -> Result<(PipelineResponse, StatusResponse), UserCommandError> {
     let response = CoreService::for_read_only(&resolved.runtime_home)
         .status(
             StatusRequest {
@@ -282,9 +282,9 @@ fn status_response(
             invocation(&resolved.project_id, OperationCategory::Read),
         )
         .map_err(UserCommandError::from)?;
-    serde_json::from_value::<StatusResponse>(response.response_value.clone())
+    let typed_response = serde_json::from_value::<StatusResponse>(response.response_value.clone())
         .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
-    Ok(response)
+    Ok((response, typed_response))
 }
 
 fn pending_user_action_facts(
@@ -777,22 +777,138 @@ fn invocation(project_id: &str, operation_category: OperationCategory) -> Invoca
 
 fn render_status_response(
     response: &PipelineResponse,
+    typed_response: &StatusResponse,
     output: OutputFormat,
 ) -> Result<String, UserCommandError> {
     if output == OutputFormat::Json {
         return pretty_response(response);
     }
-    if response_kind(response) != Some("result") {
-        return render_rejected_or_json(response);
+    match typed_response {
+        ToolResultOrRejected::Result(result) => Ok(render_status_result(result)),
+        ToolResultOrRejected::Rejected(_) => render_rejected_or_json(response),
     }
-    let mut output = String::from("User Channel status\n");
-    if let Some(card) = summary_card_from_response(&response.response_value) {
-        output.push_str(&render_summary_card_text(&card));
+}
+
+fn render_status_result(result: &StatusResult) -> String {
+    let profile = Field::new("Profile", HumanValue::text(&result.summary_card.profile)).into();
+    let pending_count = result.pending_user_action_summaries.len();
+    let changes = Field::new(
+        "Unrecorded changes",
+        HumanValue::text(&result.summary_card.changes),
+    )
+    .into();
+    let next = ActionHint::new(&result.summary_card.next).into();
+
+    let Some(task) = &result.active_task else {
+        return Document::new(
+            "No active Task.",
+            vec![
+                profile,
+                Field::new("Pending user actions", pending_count_value(pending_count)).into(),
+                changes,
+                next,
+            ],
+        )
+        .render();
+    };
+
+    let mut body = vec![profile];
+    let mut task_fields = Vec::new();
+    if let Some(lifecycle) = &task.lifecycle {
+        task_fields.push(Field::new(
+            "Lifecycle",
+            HumanValue::text(lifecycle.lifecycle_phase.as_str()),
+        ));
     }
-    output.push_str(&render_close_and_next_action_totals_text(
-        &response.response_value,
-    ));
-    Ok(output)
+    if let Some(work_phase) = task.work_phase {
+        let work_phase = match work_phase {
+            volicord_types::values::WorkPhase::Shaping => "shaping",
+            volicord_types::values::WorkPhase::Implementation => "implementation",
+        };
+        task_fields.push(Field::new("Work phase", HumanValue::text(work_phase)));
+    }
+    if let Some(goal) = task.goal_summary.as_deref() {
+        task_fields.push(Field::new("Goal", HumanValue::text(goal)));
+    }
+    if task_fields.is_empty() {
+        task_fields.push(Field::new(
+            "State",
+            HumanValue::text(&result.summary_card.task),
+        ));
+    }
+    body.push(CollectionItem::new("Task", task_fields).into());
+
+    body.push(
+        Section::new(
+            "Write Ticket",
+            vec![Field::new(
+                "Status",
+                HumanValue::text(&result.summary_card.write_ticket),
+            )
+            .into()],
+        )
+        .into(),
+    );
+
+    if result.evidence_summary.is_some() || result.evidence_gate.is_some() {
+        let mut evidence = Vec::new();
+        if let Some(summary) = result
+            .evidence_summary
+            .as_ref()
+            .and_then(|summary| summary.as_ref())
+        {
+            let status = match summary.status {
+                volicord_types::values::EvidenceStatus::Unknown => "unknown",
+                volicord_types::values::EvidenceStatus::Insufficient => "insufficient",
+                volicord_types::values::EvidenceStatus::Sufficient => "sufficient",
+                volicord_types::values::EvidenceStatus::Blocked => "blocked",
+            };
+            evidence.push(Field::new("Status", HumanValue::text(status)).into());
+            evidence.push(
+                Field::new(
+                    "Coverage items",
+                    HumanValue::Count(summary.coverage_items.len()),
+                )
+                .into(),
+            );
+        } else {
+            evidence.push(Field::new("Status", HumanValue::None).into());
+        }
+        if let Some(gate) = result.evidence_gate.as_ref().and_then(|gate| gate.as_ref()) {
+            evidence.push(Field::new("Gate", HumanValue::text(gate.state.as_str())).into());
+        }
+        body.push(Section::new("Evidence", evidence).into());
+    }
+
+    body.push(
+        Section::new(
+            "Pending UserActions",
+            vec![Field::new("Count", pending_count_value(pending_count)).into()],
+        )
+        .into(),
+    );
+    body.push(changes);
+
+    if result.close_state.is_some() || result.close_blockers.is_some() {
+        let mut close = Vec::new();
+        if let Some(state) = result.close_state {
+            close.push(Field::new("State", HumanValue::text(state.as_str())).into());
+        }
+        if let Some(blockers) = &result.close_blockers {
+            close.push(Field::new("Blockers", HumanValue::Count(blockers.len())).into());
+        }
+        body.push(Section::new("Close readiness", close).into());
+    }
+    body.push(next);
+    Document::new("Current Task status", body).render()
+}
+
+fn pending_count_value(count: usize) -> HumanValue {
+    if count == 0 {
+        HumanValue::None
+    } else {
+        HumanValue::Count(count)
+    }
 }
 
 fn render_inbox_response(
@@ -832,12 +948,28 @@ fn render_cli_inbox_response(
             .map(|text| format!("{text}\n"))
             .map_err(|error| UserCommandError::Runtime(error.to_string()));
     }
-    let mut text = String::from("User Action Inbox\n");
-    text.push_str(&render_summary_card_text(&response.summary_card));
     if response.pending_user_action_inbox_items.is_empty() {
-        text.push_str("No pending user actions.\n");
-        return Ok(text);
+        return Ok(Document::new(
+            "No pending user actions.",
+            vec![
+                Field::new("Task", HumanValue::text(&response.summary_card.task)).into(),
+                ActionHint::new("none").into(),
+            ],
+        )
+        .render());
     }
+    let mut text = Document::new(
+        format!(
+            "Pending user actions ({})",
+            response.pending_user_action_inbox_items.len()
+        ),
+        vec![
+            Field::new("Task", HumanValue::text(&response.summary_card.task)).into(),
+            Field::new("Channel", HumanValue::text("User Channel")).into(),
+        ],
+    )
+    .render();
+    text.push('\n');
     if let Some(line) =
         render_user_channel_availability_text(response.user_channel_availability.as_ref())
     {
@@ -1462,6 +1594,61 @@ mod tests {
                 )
             );
         }
+    }
+
+    #[test]
+    fn active_status_renders_only_applicable_typed_sections_and_counts(
+    ) -> Result<(), Box<dyn Error>> {
+        let pending = pending_choice_fixture("cli-status-contextual")?;
+        let store = CoreProjectStore::open_read_only(
+            pending.fixture.runtime_home_path(),
+            &ProjectId::new(pending.fixture.project_id()),
+        )?;
+        let task_id = store
+            .project_state()?
+            .active_task_id
+            .expect("fixture should have an active task");
+        let resolved = ResolvedUserProject {
+            runtime_home: pending.fixture.runtime_home_path().to_path_buf(),
+            project_id: pending.fixture.project_id().to_owned(),
+        };
+        let (_, typed) = status_response(&resolved, Some(&task_id))?;
+        let mut result = match typed {
+            ToolResultOrRejected::Result(result) => result,
+            ToolResultOrRejected::Rejected(rejection) => {
+                panic!("status should succeed: {rejection:?}")
+            }
+        };
+
+        assert_eq!(result.pending_user_action_summaries.len(), 1);
+        let text = render_status_result(&result);
+        for section in [
+            "Current Task status",
+            "Task",
+            "Write Ticket",
+            "Evidence",
+            "Pending UserActions",
+            "Unrecorded changes",
+            "Close readiness",
+            "Next action",
+        ] {
+            assert!(text.contains(section), "missing {section}: {text}");
+        }
+        assert!(text.contains("Count: 1"), "{text}");
+        assert!(!text.contains("not shown in this view"), "{text}");
+        assert!(!text.contains("pending (0)"), "{text}");
+
+        result.pending_user_action_summaries.clear();
+        result.close_state = None;
+        result.close_blockers = None;
+        let without_close = render_status_result(&result);
+        assert!(without_close.contains("Pending UserActions\n  Count: none"));
+        assert!(!without_close.contains("Close readiness"));
+        assert!(!without_close.contains("blockers (total)"));
+        assert!(without_close.ends_with('\n'));
+        assert!(!without_close.ends_with("\n\n"));
+        assert!(!without_close.contains('\t'));
+        Ok(())
     }
 
     #[test]

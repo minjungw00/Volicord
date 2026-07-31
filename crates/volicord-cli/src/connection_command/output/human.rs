@@ -17,26 +17,52 @@ use crate::connection_command::{
     guidance::{ConnectionUserInvocation, DiagnosticOperation},
     ConnectionCommandError, PlannedConnectionChange, PlannedConnectionChangeKind,
 };
+use crate::presentation::{Document, Field, HumanValue, Section};
 
 pub(super) fn render_command_report_concise(
     report: &ConnectionCommandReport,
 ) -> Result<String, ConnectionCommandError> {
     let counts = CheckCounts::from_report(report);
-    let mut sections = vec![headline(report, counts)];
+    let mut sections = vec![Document::new(
+        headline(report, counts),
+        vec![
+            Field::new(
+                "Repository",
+                HumanValue::text(report.connection.repository.as_str()),
+            )
+            .into(),
+            Field::new("Mode", HumanValue::text(report.connection.mode.as_str())).into(),
+            Field::new(
+                "Activation",
+                HumanValue::text(report.activation_state.as_str()),
+            )
+            .into(),
+            Field::new(
+                "Hook activation",
+                HumanValue::text(report.hook_activation_state.as_str()),
+            )
+            .into(),
+            Section::new(
+                "Checks",
+                vec![
+                    Field::new("Ready", HumanValue::Count(counts.ready)).into(),
+                    Field::new("Blocked", HumanValue::Count(counts.blocked)).into(),
+                    Field::new("Waiting", HumanValue::Count(counts.waiting)).into(),
+                    Field::new("Failed", HumanValue::Count(counts.failed)).into(),
+                ],
+            )
+            .into(),
+        ],
+    )
+    .render()
+    .trim_end()
+    .to_owned()];
     if report.operation == CommandOperation::Verify {
         sections.push(
             "Operation: active verification\nEvidence class: active_verification\nSide effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\nDoes not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts"
                 .to_owned(),
         );
     }
-    sections.push(format!(
-        "Repository: {}\nMode: {}\nActivation: {}\nHook activation: {}\nChecks: {}",
-        report.connection.repository,
-        report.connection.mode,
-        report.activation_state.as_str(),
-        report.hook_activation_state.as_str(),
-        counts.render(true)
-    ));
     if let Some(mcp) = render_mcp_verification_summary(&report.checks) {
         sections.push(mcp);
     }
@@ -450,13 +476,7 @@ impl CheckCounts {
         Self::from_checks(&report.checks)
     }
 
-    fn render(self, always_show_ready: bool) -> String {
-        if always_show_ready {
-            return format!(
-                "{} ready, {} blocked, {} waiting, {} failed",
-                self.ready, self.blocked, self.waiting, self.failed
-            );
-        }
+    fn render(self) -> String {
         let mut parts = Vec::new();
         if self.ready > 0 {
             parts.push(format!("{} ready", self.ready));
@@ -488,7 +508,7 @@ pub(super) fn headline(report: &ConnectionCommandReport, counts: CheckCounts) ->
             ConnectionStatus::Failed => "Codex connection needs attention.".to_owned(),
         },
         CommandOperation::Verify => {
-            let result = counts.render(false);
+            let result = counts.render();
             if result.is_empty() {
                 "Verification completed.".to_owned()
             } else {
@@ -898,13 +918,16 @@ mod tests {
     }
 
     macro_rules! assert_current_concise {
-        ($actual:expr, $previous:expr $(,)?) => {{
+        ($actual:expr, $headline:expr $(,)?) => {{
             let actual = $actual;
-            let previous = $previous;
-            assert_eq!(actual.lines().next(), previous.lines().next());
+            assert_eq!(actual.lines().next(), Some($headline));
             assert!(actual.contains("\nActivation: "), "{actual}");
             assert!(actual.contains("\nHook activation: "), "{actual}");
-            assert!(actual.contains("\nChecks: "), "{actual}");
+            assert!(actual.contains("\nChecks\n"), "{actual}");
+            assert!(actual.contains("\n  Ready: "), "{actual}");
+            assert!(actual.contains("\n  Blocked: "), "{actual}");
+            assert!(actual.contains("\n  Waiting: "), "{actual}");
+            assert!(actual.contains("\n  Failed: "), "{actual}");
             assert!(!actual.contains("action.host.observe_activity"), "{actual}");
             assert!(!actual.contains("\nNext\n"), "{actual}");
             assert!(!actual.contains("Host-owned activation steps"), "{actual}");
@@ -1009,15 +1032,7 @@ mod tests {
             vec![ready_check()],
             Vec::new(),
         );
-        assert_current_concise!(
-            concise(&complete),
-            concat!(
-                "Volicord setup is ready.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
-            )
-        );
+        assert_current_concise!(concise(&complete), "Volicord setup is ready.");
 
         let action_required = report(
             CommandOperation::Init,
@@ -1027,18 +1042,7 @@ mod tests {
         );
         assert_current_concise!(
             concise(&action_required),
-            concat!(
-                "Setup committed; 1 host-owned activation step remains.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",
-                "Waiting\n",
-                "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
-                "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
-                "Required next steps\n",
-                "  action.host.observe_activity: Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
-            )
+            "Setup committed; 1 host-owned activation step remains."
         );
 
         let failed = report(
@@ -1052,17 +1056,7 @@ mod tests {
         );
         assert_current_concise!(
             concise(&failed),
-            concat!(
-                "Volicord setup was committed, but verification failed.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
-                "Problems\n",
-                "  Managed Codex configuration is unavailable\n\n",
-                "Required next steps\n",
-                "  action.managed_config.repair: Repair the managed Codex configuration\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
-            )
+            "Volicord setup was committed, but verification failed."
         );
 
         let not_applied = ConnectionCommandReport::setup_failure(
@@ -1080,20 +1074,7 @@ mod tests {
         .unwrap();
         assert_current_concise!(
             concise(&not_applied),
-            concat!(
-                "Volicord setup failed before commit; existing state was preserved.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
-                "Problems\n",
-                "  setup.transaction_failed: Setup migration could not be completed\n",
-                "    Actual: preserved\n",
-                "    Expected: committed setup transaction\n",
-                "    Finding: finding.setup.transaction_failed\n\n",
-                "Required next steps\n",
-                "  action.connection.retry_setup: Resolve the typed setup failure and rerun the setup operation\n\n",
-                "Run the same setup command with --verbose for detailed diagnostics.\n",
-            )
+            "Volicord setup failed before commit; existing state was preserved."
         );
     }
 
@@ -1193,15 +1174,7 @@ mod tests {
             vec![ready_check()],
             Vec::new(),
         );
-        assert_current_concise!(
-            concise(&complete),
-            concat!(
-                "Codex connection is ready.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
-            )
-        );
+        assert_current_concise!(concise(&complete), "Codex connection is ready.");
 
         let action_required = report(
             CommandOperation::Status,
@@ -1211,18 +1184,7 @@ mod tests {
         );
         assert_current_concise!(
             concise(&action_required),
-            concat!(
-                "Codex connection is configured and waiting for activity.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",
-                "Waiting\n",
-                "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
-                "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
-                "Required next steps\n",
-                "  action.host.observe_activity: Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
-            )
+            "Codex connection is configured and waiting for activity."
         );
 
         let failed = report(
@@ -1231,18 +1193,7 @@ mod tests {
             vec![failed_check()],
             Vec::new(),
         );
-        assert_current_concise!(
-            concise(&failed),
-            concat!(
-                "Codex connection needs attention.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
-                "Problems\n",
-                "  Managed Codex configuration is unavailable\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
-            )
-        );
+        assert_current_concise!(concise(&failed), "Codex connection needs attention.");
     }
 
     #[test]
@@ -1255,22 +1206,7 @@ mod tests {
         );
         assert_current_concise!(
             concise(&action_required),
-            concat!(
-                "Verification completed: 5 ready, 4 waiting.\n\n",
-                "Operation: active verification\n",
-                "Evidence class: active_verification\n",
-                "Side effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\n",
-                "Does not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",
-                "Waiting\n",
-                "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
-                "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
-                "Required next steps\n",
-                "  action.host.observe_activity: Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /runtime --verbose` for detailed diagnostics.\n",
-            )
+            "Verification completed: 5 ready, 4 waiting."
         );
 
         let failed = report(
@@ -1477,14 +1413,7 @@ mod tests {
         .unwrap();
         assert_current_concise!(
             concise(&changed),
-            concat!(
-                "Connection mode changed from workflow to read_only.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: read_only\n",
-                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n\n",
-                "Required next steps\n",
-                "  action.host.reload_after_configuration_change: Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision revision_after\n",
-            )
+            "Connection mode changed from workflow to read_only."
         );
 
         let no_op = ConnectionCommandReport::mode_transition(
@@ -1498,15 +1427,7 @@ mod tests {
             Vec::new(),
         )
         .unwrap();
-        assert_current_concise!(
-            concise(&no_op),
-            concat!(
-                "Connection mode is already workflow.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
-            )
-        );
+        assert_current_concise!(concise(&no_op), "Connection mode is already workflow.");
 
         let mut changed_with_diagnostics = changed.clone();
         changed_with_diagnostics.status = ConnectionStatus::Failed;
@@ -1542,12 +1463,7 @@ mod tests {
         .unwrap();
         assert_current_concise!(
             concise(&final_membership),
-            concat!(
-                "Connection membership and Connection record were removed.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
-            )
+            "Connection membership and Connection record were removed."
         );
 
         let shared_membership = ConnectionCommandReport::removal(
@@ -1560,12 +1476,7 @@ mod tests {
         .unwrap();
         assert_current_concise!(
             concise(&shared_membership),
-            concat!(
-                "Connection membership was removed; the shared Connection remains in use.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
-            )
+            "Connection membership was removed; the shared Connection remains in use."
         );
 
         for applied in [&final_membership, &shared_membership] {
@@ -1613,26 +1524,7 @@ mod tests {
         .unwrap();
         assert_current_concise!(
             concise(&setup),
-            concat!(
-                "Volicord setup changes are ready to review.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 0 ready, 0 blocked, 6 waiting, 0 failed\n\n",
-                "Planned changes\n",
-                "  1 managed Codex configuration change\n",
-                "  2 Guard managed-file changes\n\n",
-                "Waiting\n",
-                "  Codex managed session\n",
-                "  Guard hook activity\n",
-                "  Guard managed-file plan was inspected\n",
-                "  In-chat MCP and Guard integration verification has not completed\n",
-                "  Managed Codex configuration plan was inspected\n",
-                "  Setup changes are ready to apply\n\n",
-                "Required next steps\n",
-                "  1. action.connection.apply_setup: Run init without --dry-run to apply the planned setup changes\n",
-                "  2. action.host.observe_activity: After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed\n\n",
-                "Run the same dry-run command with --verbose for detailed diagnostics.\n",
-            )
+            "Volicord setup changes are ready to review."
         );
 
         let removal = ConnectionCommandReport::removal_dry_run(
@@ -1657,24 +1549,7 @@ mod tests {
             ],
         )
         .unwrap();
-        assert_current_concise!(
-            concise(&removal),
-            concat!(
-                "Connection removal is ready to review.\n\n",
-                "Repository: /workspace/product\n",
-                "Mode: workflow\n",
-                "Checks: 0 ready, 0 blocked, 1 waiting, 0 failed\n\n",
-                "Planned changes\n",
-                "  1 managed Codex configuration change\n",
-                "  1 Guard Registry change\n",
-                "  1 Connection membership change\n\n",
-                "Waiting\n",
-                "  Selected Connection membership removal is ready to apply\n\n",
-                "Required next steps\n",
-                "  action.connection.apply_removal: Run connection remove without --dry-run to apply the planned removal\n\n",
-                "Run the same dry-run command with --verbose for detailed diagnostics.\n",
-            )
-        );
+        assert_current_concise!(concise(&removal), "Connection removal is ready to review.");
     }
 
     #[test]

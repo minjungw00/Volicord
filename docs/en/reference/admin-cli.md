@@ -87,6 +87,7 @@ Usage: volicord doctor [OPTIONS]
 
 Arguments and options:
   --json
+  --verbose
   --privacy-footprint
 ```
 
@@ -496,8 +497,39 @@ the recorded commit does not identify its working-tree changes. Unknown source
 identity or materially incomplete source, target, profile-class, optimization,
 or debug metadata makes the build identity unavailable.
 
+<a id="status-human-projection"></a>
+## Status Human Projection
+
+`volicord status --json` serializes the complete typed Core status response,
+including its `SummaryCard`. The default human output is a command-specific,
+applicability-based projection of that same result. With no active Task it says
+`No active Task.` and reports the profile, pending UserAction count,
+Unrecorded Changes, and next action. With an active Task it reports available
+Task lifecycle, work phase, and goal facts; Write Ticket status; evidence when
+the evidence projection is present; pending UserActions; Unrecorded Changes;
+close readiness when that projection is present; and the next action.
+
+The human projection does not print unrelated `SummaryCard` placeholders,
+convert an unselected field into “not shown,” or synthesize an array-derived
+count when the array was not returned. This output selection does not alter the
+typed Core response or its guarantee, and `volicord status` remains read-only.
+
 <a id="doctor-diagnostic-states"></a>
 ## Doctor Diagnostic States
+
+The default `volicord doctor` output is a conclusion-first compact diagnostic.
+It reports the Runtime Home, installation profile, project and Connection
+counts, selected profile, Guard and prompt-capture state, host-reload need,
+version, and source. Only actual warnings and failures appear as follow-up
+sections; skipped checks are not presented as warnings. Actions are labeled
+`recommended` when the installation is usable and `required` when attention is
+required.
+
+`volicord doctor --verbose` renders the same single collected report with full
+build provenance, every check and its structured details, structured findings,
+actions, and the diagnostic disclosure. Verbose rendering does not rerun
+checks or add probes. `--verbose` and `--json` conflict. The structured JSON
+shape, including the complete `SummaryCard`, remains unchanged.
 
 `volicord doctor --json` keeps missing, invalid, unavailable, corrupt, and stale
 observations distinct. Its `states.installation_profile` value is `present`,
@@ -534,7 +566,7 @@ A clean build with `profile_precision=class_only` passes the build-provenance
 check and creates no finding or action.
 
 The privacy-footprint view is selected explicitly and may be combined with
-`--json` when structured output is needed:
+`--json` when structured output is needed. It conflicts with `--verbose`:
 
 ```sh cli-example
 volicord doctor --privacy-footprint
@@ -566,6 +598,11 @@ exactly the five keys shown. This diagnostic reports categories and counts and
 never stored row bodies. The array entries and `doctor_output_scope` value are
 diagnostic explanations; the field names, `registry_state` values, and count
 keys above are the machine-readable contract.
+
+The human privacy projection uses separate `Runtime Home`, `Record counts`,
+`Stores`, `Does not store`, `Does not prove`, and `Output scope` sections.
+Category claims are individual bullets rather than a semicolon-compressed
+paragraph.
 
 The current privacy summary identifies storage for Runtime Home and
 installation metadata, Product Repository and Agent Connection registrations,

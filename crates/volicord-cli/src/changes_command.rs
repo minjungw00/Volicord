@@ -12,17 +12,18 @@ use volicord_store::{
     RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId, TaskId};
-use volicord_types::methods::{ReconcileChangesRequest, ReconcileChangesResponse};
-use volicord_types::schema::ToolEnvelope;
+use volicord_types::methods::{
+    ReconcileChangesRequest, ReconcileChangesResponse, ReconcileChangesResult,
+};
+use volicord_types::schema::{DryRunSummary, PreviewableToolResponse, ToolEnvelope};
 use volicord_types::values::{OperationCategory, UserActionChannelKind};
 
-use crate::disclosure::does_not_prove_line;
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
+use crate::presentation::{
+    ActionHint, BulletList, CollectionItem, Document, Field, HumanValue, Section,
+};
 use crate::project_context::{
     registered_project_for_repo_admitted, resolve_repository_root, ProjectCommandError,
-};
-use crate::summary_card::{
-    render_close_and_next_action_totals_text, render_summary_card_text, summary_card_from_response,
 };
 use volicord_command_model::{ChangesArgs, ChangesCommand, ChangesReconcileArgs};
 
@@ -163,10 +164,12 @@ fn command_reconcile_admitted(
             UserActionChannelKind::Cli,
         ),
     )?;
-    serde_json::from_value::<ReconcileChangesResponse>(response.response_value.clone())
-        .map_err(|error| ChangesCommandError::Runtime(error.to_string()))?;
+    let typed_response =
+        serde_json::from_value::<ReconcileChangesResponse>(response.response_value.clone())
+            .map_err(|error| ChangesCommandError::Runtime(error.to_string()))?;
     render_reconcile_response(
         &response,
+        &typed_response,
         if options.json {
             OutputFormat::Json
         } else {
@@ -185,102 +188,151 @@ fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {
 
 fn render_reconcile_response(
     response: &PipelineResponse,
+    typed_response: &ReconcileChangesResponse,
     output: OutputFormat,
 ) -> Result<String, ChangesCommandError> {
-    if response.response_value["base"]["response_kind"].as_str() == Some("rejected") {
-        let rendered = serde_json::to_string_pretty(&response.response_value)
-            .map(|value| format!("{value}\n"))
-            .map_err(|error| ChangesCommandError::Runtime(error.to_string()))?;
-        return Err(ChangesCommandError::FailureOutput(rendered));
-    }
     if output == OutputFormat::Json {
         return serde_json::to_string_pretty(&response.response_value)
             .map(|value| format!("{value}\n"))
             .map_err(|error| ChangesCommandError::Runtime(error.to_string()));
     }
-    if response.response_value["base"]["response_kind"].as_str() == Some("dry_run") {
-        return Ok(render_reconcile_dry_run_text(&response.response_value));
-    }
-    let mut output = String::from("Changes reconciliation\n");
-    if let Some(card) = summary_card_from_response(&response.response_value) {
-        output.push_str(&render_summary_card_text(&card));
-    }
-    output.push_str(&render_close_and_next_action_totals_text(
-        &response.response_value,
-    ));
-    Ok(output)
-}
-
-fn render_reconcile_dry_run_text(value: &serde_json::Value) -> String {
-    let mut output = String::from("Changes reconciliation (dry run)\n");
-    let summary = &value["dry_run_summary"];
-    let planned_effects = summary["planned_effects"]
-        .as_array()
-        .map(|values| values.as_slice())
-        .unwrap_or(&[]);
-    if planned_effects.is_empty() {
-        output.push_str("Planned: none\n");
-    } else {
-        for effect in planned_effects {
-            let target = text_value(effect.get("target_kind"));
-            let action = text_value(effect.get("action"));
-            let description = text_value(effect.get("description"));
-            output.push_str(&format!("Planned: {target}.{action}: {description}\n"));
+    match typed_response {
+        PreviewableToolResponse::Rejected(_) => {
+            let rendered = serde_json::to_string_pretty(&response.response_value)
+                .map(|value| format!("{value}\n"))
+                .map_err(|error| ChangesCommandError::Runtime(error.to_string()))?;
+            Err(ChangesCommandError::FailureOutput(rendered))
         }
+        PreviewableToolResponse::DryRun(response) => {
+            Ok(render_reconcile_dry_run_text(response.dry_run_summary()))
+        }
+        PreviewableToolResponse::Result(result) => Ok(render_reconcile_result_text(result)),
     }
-    let blockers = summary["would_blockers"]
-        .as_array()
-        .map(|values| values.as_slice())
-        .unwrap_or(&[]);
-    output.push_str(&format!(
-        "Close readiness blockers that would remain (total): {}\n",
-        blockers.len()
-    ));
-    if !blockers.is_empty() {
-        let codes = blockers
-            .iter()
-            .map(|blocker| text_value(blocker.get("code")))
-            .collect::<Vec<_>>()
-            .join(", ");
-        output.push_str(&format!(
-            "Close readiness blocker codes that would remain: {codes}\n"
-        ));
-    }
-    for diagnostic in summary["diagnostics"]
-        .as_array()
-        .map(|values| values.as_slice())
-        .unwrap_or(&[])
-        .iter()
-        .filter_map(serde_json::Value::as_str)
-    {
-        output.push_str(&format!("Diagnostic: {diagnostic}\n"));
-    }
-    let next_actions = summary["next_actions"]
-        .as_array()
-        .map(|values| values.as_slice())
-        .unwrap_or(&[]);
-    output.push_str(&format!(
-        "Projected next actions (total): {}\n",
-        next_actions.len()
-    ));
-    for action in next_actions {
-        output.push_str(&format!(
-            "Projected next action: {}\n",
-            text_value(action.get("label"))
-        ));
-    }
-    output.push_str(&does_not_prove_line(
-        "actor identity proof, intent proof, correctness proof, test sufficiency proof, human review completion, or that a product-file write occurred",
-    ));
-    output
 }
 
-fn text_value(value: Option<&serde_json::Value>) -> String {
-    match value {
-        Some(serde_json::Value::String(text)) => text.clone(),
-        Some(value) => value.to_string(),
-        None => "unknown".to_owned(),
+fn render_reconcile_result_text(result: &ReconcileChangesResult) -> String {
+    Document::new(
+        "Changes reconciliation",
+        vec![
+            Field::new(
+                "Unrecorded changes",
+                HumanValue::Count(result.unresolved_changes.len()),
+            )
+            .into(),
+            Field::new(
+                "Resolved changes",
+                HumanValue::Count(result.resolved_changes.len()),
+            )
+            .into(),
+            Field::new(
+                "Pending user actions",
+                HumanValue::Count(result.pending_user_action_summaries.len()),
+            )
+            .into(),
+            Field::new(
+                "Close readiness blockers",
+                HumanValue::Count(result.close_blockers.len()),
+            )
+            .into(),
+            ActionHint::new(&result.summary_card.next).into(),
+        ],
+    )
+    .render()
+}
+
+fn render_reconcile_dry_run_text(summary: &DryRunSummary) -> String {
+    let mut body = Vec::new();
+    if summary.planned_effects.is_empty() {
+        body.push(Field::new("Planned effects", HumanValue::None).into());
+    } else {
+        body.push(
+            Section::new(
+                "Planned effects",
+                summary
+                    .planned_effects
+                    .iter()
+                    .map(|effect| {
+                        CollectionItem::new(
+                            format!("{}.{}", effect.target_kind, effect.action),
+                            vec![Field::new(
+                                "Description",
+                                HumanValue::text(&effect.description),
+                            )],
+                        )
+                        .into()
+                    })
+                    .collect(),
+            )
+            .into(),
+        );
     }
+    body.push(
+        Field::new(
+            "Close readiness blockers that would remain",
+            HumanValue::Count(summary.would_blockers.len()),
+        )
+        .into(),
+    );
+    if !summary.would_blockers.is_empty() {
+        body.push(
+            Section::new(
+                "Blocker codes",
+                vec![BulletList::new(
+                    summary
+                        .would_blockers
+                        .iter()
+                        .map(|blocker| blocker.code.as_str()),
+                )
+                .into()],
+            )
+            .into(),
+        );
+    }
+    if !summary.diagnostics.is_empty() {
+        body.push(
+            Section::new(
+                "Diagnostics",
+                vec![BulletList::new(summary.diagnostics.iter().map(String::as_str)).into()],
+            )
+            .into(),
+        );
+    }
+    body.push(
+        Field::new(
+            "Projected next actions",
+            HumanValue::Count(summary.next_actions.len()),
+        )
+        .into(),
+    );
+    if !summary.next_actions.is_empty() {
+        body.push(
+            Section::new(
+                "Next actions",
+                vec![BulletList::new(
+                    summary
+                        .next_actions
+                        .iter()
+                        .map(|action| action.label.as_str()),
+                )
+                .into()],
+            )
+            .into(),
+        );
+    }
+    body.push(
+        Section::new(
+            "Output scope",
+            vec![Field::new(
+                "Does not prove",
+                HumanValue::text(
+                    "actor identity, intent, correctness, test sufficiency, human review completion, or that a product-file write occurred",
+                ),
+            )
+            .into()],
+        )
+        .into(),
+    );
+    Document::new("Changes reconciliation (dry run)", body).render()
 }
 
 fn generated_id(prefix: &str) -> String {
@@ -295,7 +347,6 @@ fn generated_id(prefix: &str) -> String {
 mod tests {
     use std::{error::Error, ffi::OsString, fs};
 
-    use serde_json::json;
     use volicord_test_support::{core_fixtures::CoreFixture, seed_test_agent_session};
     use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId};
     use volicord_types::schema::{GuaranteeDisclosure, ToolError, ToolRejectedResponse};
@@ -319,14 +370,16 @@ mod tests {
         .expect("typed rejection should serialize");
         let response = PipelineResponse {
             response_json: response_value.to_string(),
-            response_value,
+            response_value: response_value.clone(),
             operation_result_ref: None,
             verified_invocation: None,
             resolved_task_id: None,
             replayed: false,
         };
+        let typed_response: ReconcileChangesResponse =
+            serde_json::from_value(response_value).expect("typed rejection should deserialize");
 
-        let error = render_reconcile_response(&response, OutputFormat::Text)
+        let error = render_reconcile_response(&response, &typed_response, OutputFormat::Text)
             .expect_err("rejected Core response should fail the command");
         match error {
             ChangesCommandError::FailureOutput(output) => {
@@ -343,32 +396,6 @@ mod tests {
             }
             other => panic!("expected failure output, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn reconcile_renderer_uses_response_kind_instead_of_dry_run_metadata() {
-        let response_value = json!({
-            "base": {
-                "response_kind": "result",
-                "effect_kind": "read_only",
-                "dry_run": true,
-                "state_version": 3,
-                "events": []
-            }
-        });
-        let response = PipelineResponse {
-            response_json: response_value.to_string(),
-            response_value,
-            operation_result_ref: None,
-            verified_invocation: None,
-            resolved_task_id: None,
-            replayed: false,
-        };
-
-        let output = render_reconcile_response(&response, OutputFormat::Text)
-            .expect("result branch should render as a result");
-        assert!(output.starts_with("Changes reconciliation\n"));
-        assert!(!output.contains("Changes reconciliation (dry run)"));
     }
 
     #[test]

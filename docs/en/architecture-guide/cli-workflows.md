@@ -110,6 +110,14 @@ policy fingerprint and remains read-only. `policy validate` similarly builds
 one typed successful validation result and projects either conclusion-first
 human text or that result's JSON.
 
+Status-like commands do not share a generic human `SummaryCard` renderer.
+`volicord status`, inbox, doctor, changes reconciliation, and Connection status
+consume their typed command result and select only facts applicable to that
+workflow. The public structured `SummaryCard` remains intact in JSON where its
+owner requires it. Human projections do not manufacture missing collection
+counts, translate unselected fields into placeholders, or round-trip through
+JSON.
+
 ## UserAction Workflow
 
 `inbox` asks Core for adapter-neutral pending facts. `volicord-types` derives
@@ -139,10 +147,16 @@ resolution behavior belongs to
 ## Diagnostics And Output
 
 `doctor`, status, and preflight collect read-only facts and report named next
-actions. For connection-report commands, `dry_run` is an operation boolean and
-the aggregate remains three-state. `--json` serializes the typed
-result once. Human text, logs, and diagnostic metadata are not parsed back into
-authority state.
+actions. Doctor collects one typed report per invocation. Compact output
+selects conclusion, current installation facts, real warnings or failures, and
+applicable actions; verbose output expands that same report to full check
+details, findings, build provenance, and disclosure without adding probes.
+The privacy-footprint branch presents category claims as structured sections
+and bullets while JSON preserves its typed category and count projection.
+For connection-report commands, `dry_run` is an operation boolean and the
+aggregate remains three-state. `--json` serializes the typed result once.
+Human text, logs, and diagnostic metadata are not parsed back into authority
+state.
 
 Root `-V`/`--version` dispatch renders only the concise product identity.
 The explicit `version` command consumes the same `volicord-mcp::BuildInfo` as

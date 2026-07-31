@@ -518,6 +518,16 @@ lookup, project list/current, authority export, and MCP preflight, remain
 writer-lease-free and must preserve Runtime Home bytes, rows, state versions,
 and modification times.
 
+Binary-level contextual-output coverage also runs `volicord status`,
+compact/verbose/JSON doctor, and human/JSON privacy footprint repeatedly against
+one disposable Runtime Home and Product Repository. It verifies the explicit
+no-active-Task state, applicability-based human fields, complete structured
+reports, sectioned privacy claims, exact terminal hygiene, and unchanged Store
+effect counters and authority snapshots. Pure renderer tests cover ready,
+warning, action-required or failed doctor states, skipped-check omission,
+structured verbose details, long paths, empty collections, and human/JSON
+factual parity.
+
 Connection-list lifecycle coverage compares each available membership with
 selected status at setup, managed-session, and complete stages; retains current
 `complete` when persisted active verification remains `action_required`; and

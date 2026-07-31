@@ -85,6 +85,7 @@ Usage: volicord doctor [OPTIONS]
 
 Arguments and options:
   --json
+  --verbose
   --privacy-footprint
 ```
 
@@ -491,8 +492,36 @@ profile 이름을 기록하지 않았다는 뜻일 뿐이며 warning, 사용할 
 target, profile class, optimization, debug metadata가 실질적으로 불완전하면 build
 identity를 사용할 수 없습니다.
 
+<a id="status-human-projection"></a>
+## Status 사람용 projection
+
+`volicord status --json`은 `SummaryCard`를 포함한 완전한 typed Core status 응답을
+직렬화합니다. 기본 사람용 출력은 같은 결과를 명령에 맞게 적용 가능한 항목만
+projection합니다. 활성 Task가 없으면 `No active Task.`라고 명시하고 profile, 대기 중인
+UserAction 개수, Unrecorded Changes, 다음 행동을 보고합니다. 활성 Task가 있으면 사용할
+수 있는 Task lifecycle, work phase, goal 사실과 Write Ticket 상태, evidence projection이
+있을 때의 evidence, 대기 중인 UserAction, Unrecorded Changes, 해당 projection이 있을
+때의 닫기 준비 상태, 다음 행동을 보고합니다.
+
+사람용 projection은 관련 없는 `SummaryCard` placeholder를 출력하지 않고, 선택하지 않은
+필드를 “not shown”으로 바꾸지 않으며, 배열을 반환하지 않았을 때 그 배열의 개수를
+합성하지 않습니다. 이 출력 선택은 typed Core 응답이나 그 보장을 바꾸지 않으며
+`volicord status`는 계속 읽기 전용입니다.
+
 <a id="doctor-diagnostic-states"></a>
 ## Doctor 진단 상태
+
+기본 `volicord doctor` 출력은 결론을 먼저 표시하는 간결한 진단입니다. Runtime Home,
+installation profile, project와 Connection 개수, 선택한 profile, Guard와 prompt-capture
+상태, host reload 필요 여부, version, source를 보고합니다. 실제 warning과 failure만
+후속 section에 표시하며 skipped check를 warning으로 표시하지 않습니다. 설치를 사용할
+수 있으면 action을 `recommended`, 주의가 필요하면 `required`로 표시합니다.
+
+`volicord doctor --verbose`는 한 번 수집한 같은 report를 사용해 전체 build provenance,
+모든 check와 구조화된 details, 구조화된 finding, action, diagnostic disclosure를
+렌더링합니다. Verbose 렌더링은 check를 다시 실행하거나 probe를 추가하지 않습니다.
+`--verbose`와 `--json`은 서로 충돌합니다. 완전한 `SummaryCard`를 포함한 구조화된 JSON
+형태는 바뀌지 않습니다.
 
 `volicord doctor --json`은 missing, invalid, unavailable, corrupt, stale 관찰을
 서로 구분합니다. `states.installation_profile` 값은 `present`, `missing`, `invalid`,
@@ -526,7 +555,7 @@ Report의 최상위 `build` 값은 `volicord version --json`이 반환하는 것
 action을 만들지 않습니다.
 
 개인정보 footprint 보기는 명시적으로 선택하며, 구조화된 출력이 필요하면 `--json`과
-함께 사용할 수 있습니다.
+함께 사용할 수 있습니다. `--verbose`와는 서로 충돌합니다.
 
 ```sh cli-example
 volicord doctor --privacy-footprint
@@ -557,6 +586,10 @@ privacy_footprint:
 다섯 key만 가집니다. 이 diagnostic은 범주와 개수만 보고하며 저장된 row 본문은
 출력하지 않습니다. 배열 항목과 `doctor_output_scope` 값은 진단 설명입니다. 위의 필드
 이름, `registry_state` 값, 개수 key가 기계 판독 계약입니다.
+
+사람용 개인정보 projection은 `Runtime Home`, `Record counts`, `Stores`,
+`Does not store`, `Does not prove`, `Output scope`를 별도 section으로 사용합니다.
+범주별 주장은 semicolon으로 압축한 문단이 아니라 각각의 bullet로 표시합니다.
 
 현재 개인정보 요약은 Runtime Home 및 설치 metadata, Product Repository 및 Agent
 Connection 등록, Guard 설치와 한도가 있는 관찰 metadata, 사용하는 경우의 프로젝트

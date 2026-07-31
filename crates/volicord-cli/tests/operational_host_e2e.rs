@@ -1832,8 +1832,11 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(human.contains("Mode: workflow\n"));
     assert!(human.contains("Activation: complete\n"));
     assert!(human.contains("Hook activation: effective_by_observation\n"));
-    assert!(human.contains("Checks: "));
-    assert!(human.contains("0 blocked, 0 waiting, 0 failed\n"));
+    assert!(human.contains("\nChecks\n"));
+    assert!(human.contains("\n  Ready: "));
+    assert!(human.contains("\n  Blocked: 0\n"));
+    assert!(human.contains("\n  Waiting: 0\n"));
+    assert!(human.contains("\n  Failed: 0\n"));
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(!human.contains(check["id"].as_str().expect("check id")));
     }

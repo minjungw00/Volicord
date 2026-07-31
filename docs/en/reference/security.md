@@ -125,6 +125,11 @@ Generated guidance, CLI prose, MCP text content, status summaries, and templates
 are displays, not separate authority records. They must derive from current
 typed state, omit secrets and private UserAction content, and preserve the
 structured result's guarantee boundary. A stale display cannot authorize work.
+Concise human output may select only facts applicable to its command and
+current branch while verbose or JSON output exposes more diagnostic context.
+Omitting an inapplicable field or repeating fewer non-guarantee explanations
+does not create a positive guarantee; the typed disclosure remains
+authoritative for the result.
 
 ### Workflow-Policy Inspection
 

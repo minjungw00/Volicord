@@ -152,7 +152,7 @@ pub(in crate::connection_command) fn activation_plan_for_checks_with_hook_state(
             ) => {
                 add(
                     ActivationStepId::RepairManagedConfiguration,
-                    "Reinstall the current Volicord build, regenerate the managed integration, and inspect the separate Codex PATH probe",
+                    "Run the current Volicord setup command to repair or recreate the managed Codex configuration",
                     check,
                 );
             }

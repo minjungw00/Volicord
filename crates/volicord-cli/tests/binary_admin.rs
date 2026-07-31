@@ -23,7 +23,8 @@ use volicord_store::{
     sqlite::registry_db_path,
 };
 use volicord_test_support::{
-    with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
+    core_fixtures::CoreFixture, with_test_runtime_home_setup, TempRuntimeHome,
+    TestRuntimeHomeMutation,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::connection_verification::ConnectionVerificationReport;
@@ -384,6 +385,8 @@ fn usage_errors_are_exit_two_and_stderr_only() -> Result<(), Box<dyn Error>> {
     for args in [
         &["status", "--not-a-real-option"][..],
         &["policy", "validate", "--file"][..],
+        &["doctor", "--verbose", "--json"][..],
+        &["doctor", "--privacy-footprint", "--verbose"][..],
     ] {
         let output = run(args)?;
         assert_eq!(output.status.code(), Some(2));
@@ -417,6 +420,104 @@ fn json_machine_output_is_one_stdout_document() -> Result<(), Box<dyn Error>> {
     let value: Value = serde_json::from_str(&text)?;
     assert_eq!(value["status"], "complete");
     assert!(value["privacy_footprint"].is_object());
+    Ok(())
+}
+
+#[test]
+fn contextual_read_only_reports_preserve_authority_state() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("binary-contextual-read-only")?;
+    fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
+    let counts_before = fixture.counts()?;
+    let authority_before = fixture.authority_snapshot()?;
+
+    for json in [false, true] {
+        let mut command = base_command();
+        command
+            .arg("status")
+            .env("VOLICORD_HOME", fixture.runtime_home_path())
+            .current_dir(fixture.product_repo_path());
+        if json {
+            command.arg("--json");
+        }
+        let output = command.output()?;
+        assert!(output.status.success(), "{}", stderr(&output)?);
+        assert_eq!(stderr(&output)?, "");
+        if json {
+            let report: Value = serde_json::from_slice(&output.stdout)?;
+            assert_eq!(report["summary_card"]["task"], "none");
+            assert_eq!(report["summary_card"]["profile"], "record");
+            assert_eq!(report["active_task"], Value::Null);
+        } else {
+            let text = stdout(&output)?;
+            assert!(text.starts_with("No active Task.\n\n"), "{text}");
+            assert!(text.contains("Profile: record"), "{text}");
+            assert!(text.contains("Pending user actions: none"), "{text}");
+            assert!(text.contains("Next action: none"), "{text}");
+            assert!(!text.contains("not shown in this view"), "{text}");
+        }
+    }
+
+    for mode in [None, Some("--verbose"), Some("--json")] {
+        let mut command = base_command();
+        command
+            .arg("doctor")
+            .env("VOLICORD_HOME", fixture.runtime_home_path())
+            .current_dir(fixture.product_repo_path());
+        if let Some(mode) = mode {
+            command.arg(mode);
+        }
+        let output = command.output()?;
+        assert!(matches!(output.status.code(), Some(0 | 1)));
+        assert_eq!(stderr(&output)?, "");
+        if mode == Some("--json") {
+            let report: Value = serde_json::from_slice(&output.stdout)?;
+            assert!(report["checks"].is_array());
+            assert!(report["summary_card"].is_object());
+        } else {
+            let text = stdout(&output)?;
+            assert!(text.starts_with("Volicord "), "{text}");
+            assert!(!text.contains("not shown in this view"), "{text}");
+            if mode == Some("--verbose") {
+                assert!(text.contains("\nChecks\n"), "{text}");
+                assert!(text.contains("\nBuild provenance\n"), "{text}");
+                assert!(text.contains("\nOutput scope\n"), "{text}");
+            }
+        }
+    }
+
+    for json in [false, true] {
+        let mut command = base_command();
+        command
+            .args(["doctor", "--privacy-footprint"])
+            .env("VOLICORD_HOME", fixture.runtime_home_path());
+        if json {
+            command.arg("--json");
+        }
+        let output = command.output()?;
+        assert!(output.status.success(), "{}", stderr(&output)?);
+        assert_eq!(stderr(&output)?, "");
+        if json {
+            let report: Value = serde_json::from_slice(&output.stdout)?;
+            assert!(report["privacy_footprint"]["stores"].is_array());
+            assert!(report["privacy_footprint"]["does_not_store"].is_array());
+            assert!(report["privacy_footprint"]["does_not_prove"].is_array());
+        } else {
+            let text = stdout(&output)?;
+            for section in [
+                "Runtime Home",
+                "Record counts",
+                "Stores",
+                "Does not store",
+                "Does not prove",
+                "Output scope",
+            ] {
+                assert!(text.contains(section), "{text}");
+            }
+        }
+    }
+
+    assert_eq!(fixture.counts()?, counts_before);
+    assert_eq!(fixture.authority_snapshot()?, authority_before);
     Ok(())
 }
 
@@ -1646,7 +1747,11 @@ fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     assert!(text.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
     assert!(text.contains("Mode: workflow\nActivation: "));
     assert!(text.contains("\nHook activation: "));
-    assert!(text.contains("\nChecks: "));
+    assert!(text.contains("\nChecks\n"));
+    assert!(text.contains("\n  Ready: "));
+    assert!(text.contains("\n  Blocked: "));
+    assert!(text.contains("\n  Waiting: "));
+    assert!(text.contains("\n  Failed: "));
     assert!(text.contains("Waiting\n"));
     assert_eq!(text.matches("Required next steps\n").count(), 1);
     assert!(!text.contains("\nNext\n"));
@@ -1771,7 +1876,7 @@ fn connection_remove_human_output_reports_complete_connection_removal() -> Resul
     let text = stdout(&output)?;
     assert!(text.starts_with("Connection membership and Connection record were removed.\n\n"));
     assert!(text.contains(
-        "Mode: workflow\nActivation: configured\nHook activation: unknown\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
+        "Mode: workflow\nActivation: configured\nHook activation: unknown\n\nChecks\n  Ready: 1\n  Blocked: 0\n  Waiting: 0\n  Failed: 0\n"
     ));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Connection removed:"));
@@ -2083,7 +2188,7 @@ fn membership_only_remove_human_output_reports_connection_retention() -> Result<
         "Connection membership was removed; the shared Connection remains in use.\n\n"
     ));
     assert!(text.contains(
-        "Mode: workflow\nActivation: configured\nHook activation: unknown\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
+        "Mode: workflow\nActivation: configured\nHook activation: unknown\n\nChecks\n  Ready: 1\n  Blocked: 0\n  Waiting: 0\n  Failed: 0\n"
     ));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Remaining project count:"));

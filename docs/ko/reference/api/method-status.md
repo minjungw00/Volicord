@@ -180,6 +180,12 @@ Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤�
 
 `include.evidence=true` 또는 `include.close=true`와 [`volicord.check_close`](method-close-task.md#volicordcheck_close)는 같은 닫기 준비 상태 증거 gate 계산을 사용합니다. 따라서 같은 상태 버전의 증거 전용 status 결과와 check-close 결과는 같은 `evidence_gate`를 반환합니다. 닫기 선택 여부는 닫기 필드 노출만 제어하며 별도 gate 계산을 만들지 않습니다. `volicord.status`는 재실행 행, 이벤트, Core 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다.
 
+관리 CLI는 `volicord status --json`에서 이 완전한 `StatusResult`와 `SummaryCard`를
+보존합니다. 기본 사람용 표시는 adapter가 소유하는 적용 가능성 projection입니다.
+실제로 반환된 활성 Task 없음 또는 활성 Task fact를 선택하며 없는 collection 개수를
+합성하지 않습니다. 사람용 visibility는 두 번째 메서드 결과가 아니며 읽기 전용 효과나
+보장 경계를 바꾸지 않습니다.
+
 ## 메서드 결과 필드
 
 `StatusResult`는 성공적인 상태 조회에 대한 메서드별 결과 분기입니다. 이 결과는 결과 효과로 `read_only`만 허용하는 `base: StatusResultBase`와 아래 메서드 소유 최상위 필드를 담습니다.

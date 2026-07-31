@@ -52,12 +52,16 @@ use crate::{
         OperationalCheckState, OperationalDiagnostic,
     },
     policy_command::read_validated_policy_file,
+    presentation::{
+        ActionHint, BulletList, CollectionItem, Document, Element, Field, HumanValue, Section,
+        YesNo,
+    },
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
         paths_equivalent, volicord_binary_name, PATH_ENV,
     },
-    summary_card::{render_summary_card_text, DIAGNOSTIC_SUMMARY_GUARANTEE},
+    summary_card::DIAGNOSTIC_SUMMARY_GUARANTEE,
 };
 
 const GUARD_FILES_CHECK_ID: &str = ConnectionCheckKind::GuardFiles.as_str();
@@ -87,7 +91,8 @@ impl From<RuntimeHomeResolutionError> for DoctorCommandError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OutputFormat {
-    Text,
+    Compact,
+    Verbose,
     Json,
 }
 
@@ -157,6 +162,53 @@ struct DiagnosticAction {
     command: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct DoctorReport {
+    status: CommandStatus,
+    runtime_home: PathBuf,
+    build: BuildInfo,
+    summary_card: SummaryCard,
+    checks: Vec<DiagnosticCheck>,
+    actions: Vec<DiagnosticAction>,
+    findings: Vec<DiagnosticFinding>,
+}
+
+impl DoctorReport {
+    fn warning_count(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|check| check.status == "warning")
+            .count()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct PrivacyRecordCounts {
+    projects: usize,
+    agent_connections: usize,
+    connection_projects: usize,
+    guard_installations: usize,
+    project_state_databases: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct PrivacyFootprint {
+    registry_state: &'static str,
+    registry_db_path: String,
+    record_counts: Option<PrivacyRecordCounts>,
+    stores: Vec<&'static str>,
+    does_not_store: Vec<&'static str>,
+    does_not_prove: Vec<&'static str>,
+    doctor_output_scope: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct PrivacyFootprintReport {
+    status: &'static str,
+    runtime_home: String,
+    privacy_footprint: PrivacyFootprint,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProjectPolicyAuthorityState {
     Matches,
@@ -193,10 +245,12 @@ where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
     let options = DoctorOptions {
-        output: if args.json {
+        output: if args.output.json {
             OutputFormat::Json
+        } else if args.output.verbose {
+            OutputFormat::Verbose
         } else {
-            OutputFormat::Text
+            OutputFormat::Compact
         },
         privacy_footprint: args.privacy_footprint,
     };
@@ -384,16 +438,18 @@ where
     }
 
     let status = doctor_status(&checks);
+    let report = DoctorReport {
+        status,
+        runtime_home,
+        build,
+        summary_card: doctor_summary_card(status, &checks, &actions),
+        checks,
+        actions,
+        findings,
+    };
     Ok(CommandOutcome {
         status,
-        output: render_doctor_output(
-            options.output,
-            status,
-            &runtime_home,
-            &checks,
-            &actions,
-            &findings,
-        )?,
+        output: render_doctor_output(options.output, &report)?,
     })
 }
 
@@ -453,52 +509,93 @@ fn render_privacy_footprint_output(
     runtime_home: &Path,
     inspection: &RuntimeHomeInspection,
 ) -> Result<String, DoctorCommandError> {
-    let registry_state = privacy_registry_state(&inspection.registry);
-    let record_counts = privacy_record_counts(&inspection.registry);
-    let stores = privacy_stores();
-    let does_not_store = privacy_does_not_store();
-    let does_not_prove = privacy_does_not_prove();
+    let report = PrivacyFootprintReport {
+        status: CommandStatus::Complete.as_str(),
+        runtime_home: path_text(runtime_home),
+        privacy_footprint: PrivacyFootprint {
+            registry_state: privacy_registry_state(&inspection.registry),
+            registry_db_path: path_text(&inspection.registry_db_path),
+            record_counts: privacy_record_counts(&inspection.registry),
+            stores: privacy_stores(),
+            does_not_store: privacy_does_not_store(),
+            does_not_prove: privacy_does_not_prove(),
+            doctor_output_scope:
+                "Category and count summary only; stored row bodies are not printed.",
+        },
+    };
 
     match output {
-        OutputFormat::Json => serde_json::to_string_pretty(&json!({
-            "status": CommandStatus::Complete.as_str(),
-            "runtime_home": path_text(runtime_home),
-            "privacy_footprint": {
-                "registry_state": registry_state,
-                "registry_db_path": path_text(&inspection.registry_db_path),
-                "record_counts": record_counts,
-                "stores": stores,
-                "does_not_store": does_not_store,
-                "does_not_prove": does_not_prove,
-                "doctor_output_scope": "category and count summary only; this command does not print stored row bodies",
-            }
-        }))
-        .map(|text| format!("{text}\n"))
-        .map_err(|error| DoctorCommandError::Runtime(error.to_string())),
-        OutputFormat::Text => {
-            let counts = record_counts
-                .as_object()
-                .map(|counts| {
-                    counts
-                        .iter()
-                        .map(|(key, value)| format!("{key}={}", value.as_u64().unwrap_or(0)))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                })
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| "unavailable".to_owned());
-            Ok(format!(
-                "Volicord Runtime Home privacy footprint\nruntime_home: {}\nregistry_state: {}\nregistry_db_path: {}\nrecord_counts: {}\nstores: {}\ndoes_not_store: {}\ndoes_not_prove: {}\ndoctor_output_scope: category and count summary only; this command does not print stored row bodies\n",
-                runtime_home.display(),
-                registry_state,
-                inspection.registry_db_path.display(),
-                counts,
-                stores.join("; "),
-                does_not_store.join("; "),
-                does_not_prove.join("; "),
-            ))
-        }
+        OutputFormat::Json => serde_json::to_string_pretty(&report)
+            .map(|text| format!("{text}\n"))
+            .map_err(|error| DoctorCommandError::Runtime(error.to_string())),
+        OutputFormat::Compact => Ok(render_privacy_footprint_text(&report)),
+        OutputFormat::Verbose => Err(DoctorCommandError::Usage(
+            "--privacy-footprint and --verbose cannot be used together".to_owned(),
+        )),
     }
+}
+
+fn render_privacy_footprint_text(report: &PrivacyFootprintReport) -> String {
+    let footprint = &report.privacy_footprint;
+    let count_elements = footprint.record_counts.as_ref().map_or_else(
+        || vec![Field::new("Availability", HumanValue::text("unavailable")).into()],
+        |counts| {
+            vec![
+                Field::new("Projects", HumanValue::Count(counts.projects)).into(),
+                Field::new("Connections", HumanValue::Count(counts.agent_connections)).into(),
+                Field::new(
+                    "Connection memberships",
+                    HumanValue::Count(counts.connection_projects),
+                )
+                .into(),
+                Field::new(
+                    "Guard installations",
+                    HumanValue::Count(counts.guard_installations),
+                )
+                .into(),
+                Field::new(
+                    "Project state databases",
+                    HumanValue::Count(counts.project_state_databases),
+                )
+                .into(),
+            ]
+        },
+    );
+    Document::new(
+        "Volicord Runtime Home privacy footprint",
+        vec![
+            Section::new(
+                "Runtime Home",
+                vec![
+                    Field::new("Path", HumanValue::text(&report.runtime_home)).into(),
+                    Field::new("Registry", HumanValue::text(footprint.registry_state)).into(),
+                ],
+            )
+            .into(),
+            Section::new("Record counts", count_elements).into(),
+            Section::new(
+                "Stores",
+                vec![BulletList::new(footprint.stores.iter().copied()).into()],
+            )
+            .into(),
+            Section::new(
+                "Does not store",
+                vec![BulletList::new(footprint.does_not_store.iter().copied()).into()],
+            )
+            .into(),
+            Section::new(
+                "Does not prove",
+                vec![BulletList::new(footprint.does_not_prove.iter().copied()).into()],
+            )
+            .into(),
+            Section::new(
+                "Output scope",
+                vec![Field::new("Summary", HumanValue::text(footprint.doctor_output_scope)).into()],
+            )
+            .into(),
+        ],
+    )
+    .render()
 }
 
 fn privacy_registry_state(
@@ -513,16 +610,18 @@ fn privacy_registry_state(
     }
 }
 
-fn privacy_record_counts(registry: &DatabaseInspection<RegistryInspectionSnapshot>) -> Value {
+fn privacy_record_counts(
+    registry: &DatabaseInspection<RegistryInspectionSnapshot>,
+) -> Option<PrivacyRecordCounts> {
     match registry {
-        DatabaseInspection::Present(snapshot) => json!({
-            "projects": snapshot.projects.len(),
-            "agent_connections": snapshot.agent_connections.len(),
-            "connection_projects": snapshot.connection_projects.len(),
-            "guard_installations": snapshot.guard_installations.len(),
-            "project_state_databases": snapshot.projects.len(),
+        DatabaseInspection::Present(snapshot) => Some(PrivacyRecordCounts {
+            projects: snapshot.projects.len(),
+            agent_connections: snapshot.agent_connections.len(),
+            connection_projects: snapshot.connection_projects.len(),
+            guard_installations: snapshot.guard_installations.len(),
+            project_state_databases: snapshot.projects.len(),
         }),
-        _ => Value::Null,
+        _ => None,
     }
 }
 
@@ -2245,31 +2344,25 @@ fn host_detection_check() -> DiagnosticCheck {
 
 fn render_doctor_output(
     output: OutputFormat,
-    status: CommandStatus,
-    runtime_home: &Path,
-    checks: &[DiagnosticCheck],
-    actions: &[DiagnosticAction],
-    findings: &[DiagnosticFinding],
+    report: &DoctorReport,
 ) -> Result<String, DoctorCommandError> {
-    let summary_card = doctor_summary_card(status, checks, actions);
     match output {
         OutputFormat::Json => {
-            let build = volicord_mcp::build_info();
-            let actions_required = if status == CommandStatus::Complete {
+            let actions_required = if report.status == CommandStatus::Complete {
                 Vec::new()
             } else {
-                actions.iter().collect::<Vec<_>>()
+                report.actions.iter().collect::<Vec<_>>()
             };
-            let actions_recommended = if status == CommandStatus::Complete {
-                actions.iter().collect::<Vec<_>>()
+            let actions_recommended = if report.status == CommandStatus::Complete {
+                report.actions.iter().collect::<Vec<_>>()
             } else {
                 Vec::new()
             };
             serde_json::to_string_pretty(&json!({
-                "status": status.as_str(),
-                "status_meaning": doctor_status_meaning(status, checks),
-                "build": build,
-                "summary_card": &summary_card,
+                "status": report.status.as_str(),
+                "status_meaning": doctor_status_meaning(report.status, &report.checks),
+                "build": &report.build,
+                "summary_card": &report.summary_card,
                 "disclosure": {
                     "guarantee_class": "diagnostic_observation",
                     "non_guarantees": [
@@ -2279,161 +2372,350 @@ fn render_doctor_output(
                         "NotCorrectnessProof",
                     ],
                 },
-                "runtime_home": path_text(runtime_home),
-                "states": doctor_states_json(runtime_home, checks, actions),
-                "checks": checks,
-                "findings": findings,
-                "warning_count": checks.iter().filter(|check| check.status == "warning").count(),
-                "actions": actions,
+                "runtime_home": path_text(&report.runtime_home),
+                "states": doctor_states_json(&report.runtime_home, &report.checks, &report.actions),
+                "checks": &report.checks,
+                "findings": &report.findings,
+                "warning_count": report.warning_count(),
+                "actions": &report.actions,
                 "actions_required": actions_required,
                 "actions_recommended": actions_recommended,
-                "primary_next_action": primary_doctor_action_json(status, actions),
+                "primary_next_action": primary_doctor_action_json(report.status, &report.actions),
             }))
             .map(|text| format!("{text}\n"))
             .map_err(|error| DoctorCommandError::Runtime(error.to_string()))
         }
-        OutputFormat::Text => Ok(render_compact_doctor_text(
-            status,
-            runtime_home,
-            checks,
-            actions,
-            findings,
-        )),
+        OutputFormat::Compact => Ok(render_compact_doctor_text(report)),
+        OutputFormat::Verbose => render_verbose_doctor_text(report),
     }
 }
 
-fn render_compact_doctor_text(
-    status: CommandStatus,
-    runtime_home: &Path,
-    checks: &[DiagnosticCheck],
-    actions: &[DiagnosticAction],
-    findings: &[DiagnosticFinding],
-) -> String {
-    let mut text_summary_card = doctor_summary_card(status, checks, actions);
-    text_summary_card.next = doctor_next_summary_text(status, actions);
-    let mut text = format!("Volicord doctor {}\n\n", status.as_str());
-    text.push_str(&render_summary_card_text(&text_summary_card));
-    text.push_str("\nStatus:\n");
-    text.push_str(&format!(
-        "  Installation profile: {}\n  Runtime Home: {}\n  Commands: {}\n  Host reload required: {}\n",
-        doctor_status_meaning(status, checks),
-        display_state_text(&doctor_runtime_home_state(runtime_home, checks)),
-        display_state_text(doctor_command_state(checks)),
-        yes_no(doctor_host_reload_required(checks, actions)),
-    ));
-    text.push_str(&format!("\nRuntime Home:\n  {}\n", runtime_home.display()));
-    text.push_str(&format!("\nBuild:\n  {}\n", volicord_mcp::build_id()));
-    append_doctor_check_summary(&mut text, checks, actions);
-    if !findings.is_empty() {
-        text.push_str("\nStructured findings:\n");
-        for finding in findings {
-            text.push_str(&format!("  - {}\n", finding.code()));
+fn doctor_headline(report: &DoctorReport) -> String {
+    match report.status {
+        CommandStatus::Complete if report.warning_count() == 0 => "Volicord is ready.".to_owned(),
+        CommandStatus::Complete if report.warning_count() == 1 => {
+            "Volicord is ready with 1 warning.".to_owned()
+        }
+        CommandStatus::Complete => format!(
+            "Volicord is ready with {} warnings.",
+            report.warning_count()
+        ),
+        CommandStatus::ActionRequired | CommandStatus::Failed => {
+            "Volicord needs attention.".to_owned()
         }
     }
-    append_doctor_next_actions(&mut text, status, actions);
-    text.push_str(
-        "\nLimits:\n  Local setup diagnostics are not OS enforcement, write prevention, actor attribution proof, correctness proof, test sufficiency proof, or review completion.\n\nDiagnostics:\n  Run:\n    volicord doctor --json\n",
-    );
-    text
 }
 
-fn append_doctor_check_summary(
-    output: &mut String,
-    checks: &[DiagnosticCheck],
-    actions: &[DiagnosticAction],
-) {
-    output.push_str("\nChecks:\n");
-    for (label, value) in doctor_compact_check_rows(checks, actions) {
-        output.push_str(&format!("  {label}: {}\n", display_state_text(&value)));
-    }
-    let not_passed = checks
+fn render_compact_doctor_text(report: &DoctorReport) -> String {
+    let mut body = doctor_compact_facts(report);
+    let warnings = report
+        .checks
         .iter()
-        .filter(|check| check.status != "passed")
+        .filter(|check| check.status == "warning")
+        .map(|check| check.summary.as_str())
         .collect::<Vec<_>>();
-    if not_passed.is_empty() {
-        output.push_str("  Detailed diagnostics: passed\n");
-        return;
+    if !warnings.is_empty() {
+        body.push(Section::new("Warnings", vec![BulletList::new(warnings).into()]).into());
     }
-    output.push_str("  Follow-up diagnostics:\n");
-    for check in not_passed {
-        output.push_str(&format!(
-            "    - {} ({})\n",
-            check.summary,
-            display_state_text(&check.status)
-        ));
+    let problems = report
+        .checks
+        .iter()
+        .filter(|check| check.status == "failed")
+        .map(|check| check.summary.as_str())
+        .collect::<Vec<_>>();
+    if !problems.is_empty() {
+        body.push(Section::new("Problems", vec![BulletList::new(problems).into()]).into());
     }
+    body.extend(doctor_action_elements(report.status, &report.actions));
+    Document::new(doctor_headline(report), body).render()
 }
 
-fn doctor_compact_check_rows(
-    checks: &[DiagnosticCheck],
-    actions: &[DiagnosticAction],
-) -> Vec<(&'static str, String)> {
+fn doctor_compact_facts(report: &DoctorReport) -> Vec<Element> {
     vec![
-        (
+        Field::new(
+            "Runtime Home",
+            HumanValue::text(path_text(&report.runtime_home)),
+        )
+        .into(),
+        Field::new(
             "Installation profile",
-            doctor_installation_profile_state(checks).to_owned(),
-        ),
-        (
-            "Projects",
-            doctor_count_state(checks, "projects", "registered"),
-        ),
-        (
-            "Connections",
-            doctor_count_state(checks, "connections", "stored"),
-        ),
-        ("MCP configuration", doctor_mcp_config_state(checks)),
-        ("Profile", doctor_selected_profile_from_checks(checks)),
-        (
-            "Guard files",
-            doctor_check_state(checks, GUARD_FILES_CHECK_ID).to_owned(),
-        ),
-        (
-            "Hook observation",
-            doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID).to_owned(),
-        ),
-        ("Prompt capture", doctor_prompt_capture_status(checks)),
-        (
-            "Host reload",
-            yes_no(doctor_host_reload_required(checks, actions)).to_owned(),
-        ),
+            HumanValue::text(display_state_text(doctor_installation_profile_state(
+                &report.checks,
+            ))),
+        )
+        .into(),
+        doctor_count_field(&report.checks, "Projects", "projects"),
+        doctor_count_field(&report.checks, "Connections", "connections"),
+        Field::new(
+            "Selected profile",
+            HumanValue::text(display_state_text(&doctor_selected_profile_from_checks(
+                &report.checks,
+            ))),
+        )
+        .into(),
+        Field::new(
+            "Guard state",
+            HumanValue::text(display_state_text(doctor_check_state(
+                &report.checks,
+                GUARD_OBSERVATION_CHECK_ID,
+            ))),
+        )
+        .into(),
+        Field::new(
+            "Prompt capture",
+            HumanValue::text(display_state_text(&doctor_prompt_capture_status(
+                &report.checks,
+            ))),
+        )
+        .into(),
+        Field::new(
+            "Host reload required",
+            HumanValue::YesNo(YesNo::from(doctor_host_reload_required(
+                &report.checks,
+                &report.actions,
+            ))),
+        )
+        .into(),
+        Field::new("Version", HumanValue::text(report.build.package_version)).into(),
+        Field::new(
+            "Source",
+            HumanValue::text(doctor_build_source(&report.build)),
+        )
+        .into(),
     ]
 }
 
-fn append_doctor_next_actions(
-    output: &mut String,
-    status: CommandStatus,
-    actions: &[DiagnosticAction],
-) {
-    output.push_str("\nNext:\n");
+fn doctor_count_field(checks: &[DiagnosticCheck], label: &'static str, key: &str) -> Element {
+    let value = doctor_count(checks, key)
+        .map(HumanValue::Count)
+        .unwrap_or_else(|| HumanValue::text("unknown"));
+    Field::new(label, value).into()
+}
+
+fn doctor_count(checks: &[DiagnosticCheck], key: &str) -> Option<usize> {
+    checks
+        .iter()
+        .find(|check| check.id == "registry_counts")
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.get(key))
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+}
+
+fn doctor_build_source(build: &BuildInfo) -> String {
+    let tree = match build.git_dirty {
+        Some(false) => "clean",
+        Some(true) => "dirty",
+        None => "tree state not recorded",
+    };
+    format!("{} ({tree})", build.git_commit)
+}
+
+fn doctor_action_elements(status: CommandStatus, actions: &[DiagnosticAction]) -> Vec<Element> {
     if actions.is_empty() {
-        output.push_str("  none\n");
-        return;
+        return vec![ActionHint::new("none").into()];
     }
-    for (index, action) in actions.iter().enumerate() {
-        let prefix = if status == CommandStatus::Complete {
-            "Recommended: "
-        } else {
-            ""
-        };
-        output.push_str(&format!(
-            "  {}. {}{}\n",
-            index + 1,
-            prefix,
-            trimmed_sentence(&action.instruction)
-        ));
-        if let Some(command) = &action.command {
-            output.push_str(&format!("     Run:\n       {command}\n"));
-        }
+    let requirement = if status == CommandStatus::Complete {
+        "recommended"
+    } else {
+        "required"
+    };
+    vec![Section::new(
+        "Next actions",
+        actions
+            .iter()
+            .map(|action| {
+                let mut fields = vec![
+                    Field::new("Requirement", HumanValue::text(requirement)),
+                    Field::new(
+                        "Instruction",
+                        HumanValue::text(trimmed_sentence(&action.instruction)),
+                    ),
+                ];
+                if let Some(command) = &action.command {
+                    fields.push(Field::new("Command", HumanValue::text(command)));
+                }
+                CollectionItem::new(&action.id, fields).into()
+            })
+            .collect(),
+    )
+    .into()]
+}
+
+fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCommandError> {
+    let mut body = vec![
+        Section::new("Installation", doctor_compact_facts(report)).into(),
+        Section::new(
+            "Build provenance",
+            vec![
+                Field::new(
+                    "Package version",
+                    HumanValue::text(report.build.package_version),
+                )
+                .into(),
+                Field::new("Commit", HumanValue::text(report.build.git_commit)).into(),
+                Field::new(
+                    "Tree",
+                    HumanValue::text(match report.build.git_dirty {
+                        Some(false) => "clean",
+                        Some(true) => "dirty",
+                        None => "not recorded",
+                    }),
+                )
+                .into(),
+                Field::new(
+                    "Metadata source",
+                    HumanValue::text(report.build.metadata_source),
+                )
+                .into(),
+                Field::new("Target", HumanValue::text(report.build.target_triple)).into(),
+                Field::new(
+                    "Profile class",
+                    HumanValue::text(report.build.profile_class),
+                )
+                .into(),
+                Field::new(
+                    "Profile precision",
+                    HumanValue::text(report.build.profile_precision.as_str()),
+                )
+                .into(),
+                Field::new(
+                    "Exact Cargo profile",
+                    report
+                        .build
+                        .build_profile
+                        .map(HumanValue::text)
+                        .unwrap_or(HumanValue::None),
+                )
+                .into(),
+                Field::new("Optimization", HumanValue::text(report.build.opt_level)).into(),
+                Field::new(
+                    "Debug assertions",
+                    report
+                        .build
+                        .debug
+                        .map(|value| HumanValue::YesNo(YesNo::from(value)))
+                        .unwrap_or(HumanValue::None),
+                )
+                .into(),
+                Field::new("Build ID", HumanValue::text(&report.build.build_id)).into(),
+            ],
+        )
+        .into(),
+        Section::new(
+            "Checks",
+            report
+                .checks
+                .iter()
+                .map(doctor_check_element)
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+        .into(),
+    ];
+    if !report.findings.is_empty() {
+        body.push(
+            Section::new(
+                "Structured findings",
+                report
+                    .findings
+                    .iter()
+                    .map(|finding| {
+                        let value = serde_json::to_value(finding)
+                            .map_err(|error| DoctorCommandError::Runtime(error.to_string()))?;
+                        Ok(
+                            Section::new(finding.code().as_str(), json_value_elements(&value))
+                                .into(),
+                        )
+                    })
+                    .collect::<Result<Vec<_>, DoctorCommandError>>()?,
+            )
+            .into(),
+        );
+    }
+    body.extend(doctor_action_elements(report.status, &report.actions));
+    body.push(
+        Section::new(
+            "Output scope",
+            vec![Field::new(
+                "Disclosure",
+                HumanValue::text(
+                    "Local setup diagnostics are not OS enforcement, write prevention, actor attribution proof, correctness proof, test sufficiency proof, or review completion.",
+                ),
+            )
+            .into()],
+        )
+        .into(),
+    );
+    Ok(Document::verbose(doctor_headline(report), body).render())
+}
+
+fn doctor_check_element(check: &DiagnosticCheck) -> Result<Element, DoctorCommandError> {
+    let mut body = vec![
+        Field::new(
+            "Status",
+            HumanValue::text(display_state_text(&check.status)),
+        )
+        .into(),
+        Field::new("Summary", HumanValue::text(&check.summary)).into(),
+    ];
+    if let Some(details) = &check.details {
+        body.push(Section::new("Details", json_value_elements(details)).into());
+    }
+    Ok(Section::new(&check.id, body).into())
+}
+
+fn json_value_elements(value: &Value) -> Vec<Element> {
+    match value {
+        Value::Object(values) => values
+            .iter()
+            .map(|(key, value)| json_value_element(key, value))
+            .collect(),
+        value => vec![Field::new("Value", json_human_value(value)).into()],
     }
 }
 
-fn doctor_next_summary_text(status: CommandStatus, actions: &[DiagnosticAction]) -> String {
-    match actions.first() {
-        Some(action) if status == CommandStatus::Complete => {
-            format!("recommended: {}", trimmed_sentence(&action.instruction))
+fn json_value_element(key: &str, value: &Value) -> Element {
+    match value {
+        Value::Object(_) => Section::new(key, json_value_elements(value)).into(),
+        Value::Array(values) if values.is_empty() => Field::new(key, HumanValue::None).into(),
+        Value::Array(values)
+            if values
+                .iter()
+                .all(|value| !matches!(value, Value::Object(_) | Value::Array(_))) =>
+        {
+            Section::new(
+                key,
+                vec![BulletList::new(
+                    values
+                        .iter()
+                        .map(|value| json_human_value(value).to_string()),
+                )
+                .into()],
+            )
+            .into()
         }
-        Some(action) => trimmed_sentence(&action.instruction).to_owned(),
-        None => "none".to_owned(),
+        Value::Array(values) => Section::new(
+            key,
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| {
+                    Section::new(format!("Item {}", index + 1), json_value_elements(value)).into()
+                })
+                .collect(),
+        )
+        .into(),
+        value => Field::new(key, json_human_value(value)).into(),
+    }
+}
+
+fn json_human_value(value: &Value) -> HumanValue {
+    match value {
+        Value::Null => HumanValue::None,
+        Value::Bool(value) => HumanValue::YesNo(YesNo::from(*value)),
+        Value::Number(value) => HumanValue::text(value.to_string()),
+        Value::String(value) => HumanValue::text(value),
+        Value::Array(_) | Value::Object(_) => HumanValue::text(value.to_string()),
     }
 }
 
@@ -2879,14 +3161,6 @@ fn push_command_availability_action(actions: &mut Vec<DiagnosticAction>) {
     );
 }
 
-fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
-}
-
 fn push_unique_diagnostic_action(actions: &mut Vec<DiagnosticAction>, action: DiagnosticAction) {
     if !actions.iter().any(|existing| existing.id == action.id) {
         actions.push(action);
@@ -2913,6 +3187,183 @@ mod tests {
         };
         build.build_id = build.deterministic_build_id();
         build
+    }
+
+    fn report(
+        status: CommandStatus,
+        mut checks: Vec<DiagnosticCheck>,
+        actions: Vec<DiagnosticAction>,
+    ) -> DoctorReport {
+        checks.splice(
+            0..0,
+            [
+                DiagnosticCheck::passed("installation_profile", "installation profile is present")
+                    .with_details(json!({ "state": "present" })),
+                DiagnosticCheck::passed("registry_counts", "registry records counted")
+                    .with_details(json!({ "projects": 2, "connections": 1 })),
+                DiagnosticCheck::passed("control_surface", "record profile is selected")
+                    .with_details(json!({ "selected_profile": "record" })),
+                DiagnosticCheck::passed(
+                    GUARD_OBSERVATION_CHECK_ID,
+                    "Guard observations are current",
+                )
+                .with_details(json!({
+                    "prompt_capture_configured": 1,
+                    "prompt_capture_observed": 1,
+                })),
+                host_detection_check(),
+            ],
+        );
+        DoctorReport {
+            status,
+            runtime_home: PathBuf::from(
+                "/tmp/volicord doctor test/runtime home/with-a-deliberately-long-path",
+            ),
+            build: complete_build(),
+            summary_card: doctor_summary_card(status, &checks, &actions),
+            checks,
+            actions,
+            findings: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn compact_doctor_projects_ready_warning_and_failure_context() {
+        let ready = report(CommandStatus::Complete, Vec::new(), Vec::new());
+        let ready_text = render_doctor_output(OutputFormat::Compact, &ready).unwrap();
+        assert!(ready_text.starts_with("Volicord is ready.\n\n"));
+        assert!(ready_text.contains("Projects: 2"));
+        assert!(ready_text.contains("Connections: 1"));
+        assert!(ready_text.contains("Next action: none"));
+        assert!(!ready_text.contains("host_detection"));
+        assert!(!ready_text.contains("not shown in this view"));
+
+        let warning = report(
+            CommandStatus::Complete,
+            vec![DiagnosticCheck::warning(
+                "path_or_shim",
+                "the command is not currently on PATH",
+            )],
+            vec![DiagnosticAction {
+                id: "repair_path".to_owned(),
+                instruction: "Make the command available.".to_owned(),
+                command: None,
+            }],
+        );
+        let warning_text = render_doctor_output(OutputFormat::Compact, &warning).unwrap();
+        assert!(warning_text.starts_with("Volicord is ready with 1 warning.\n\n"));
+        assert!(warning_text.contains("Warnings\n  - the command is not currently on PATH"));
+        assert!(warning_text.contains("Requirement: recommended"));
+
+        let failed = report(
+            CommandStatus::Failed,
+            vec![DiagnosticCheck::failed(
+                "project_policy_authority",
+                "project policy authority is corrupt",
+            )],
+            vec![run_init_action()],
+        );
+        let failed_text = render_doctor_output(OutputFormat::Compact, &failed).unwrap();
+        assert!(failed_text.starts_with("Volicord needs attention.\n\n"));
+        assert!(failed_text.contains("Problems\n  - project policy authority is corrupt"));
+        assert!(failed_text.contains("Requirement: required"));
+    }
+
+    #[test]
+    fn doctor_modes_share_one_typed_report_without_losing_verbose_details() {
+        let report = report(
+            CommandStatus::Complete,
+            vec![
+                DiagnosticCheck::warning("build_identity", "source is dirty").with_details(json!({
+                    "nested": {
+                        "path": "/tmp/example path",
+                        "flags": [true, false],
+                    }
+                })),
+            ],
+            Vec::new(),
+        );
+        let compact = render_doctor_output(OutputFormat::Compact, &report).unwrap();
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+        let json_text = render_doctor_output(OutputFormat::Json, &report).unwrap();
+        let json: Value = serde_json::from_str(&json_text).unwrap();
+
+        assert_eq!(json["status"], report.status.as_str());
+        assert_eq!(json["warning_count"], report.warning_count());
+        assert_eq!(
+            json["checks"].as_array().unwrap().len(),
+            report.checks.len()
+        );
+        assert!(compact.contains("source is dirty"));
+        assert!(compact.contains(&path_text(&report.runtime_home)));
+        assert!(!compact.contains("nested"));
+        assert!(!compact.contains("Output scope"));
+        assert!(verbose.contains("build_identity"));
+        assert!(verbose.contains("nested"));
+        assert!(verbose.contains("path: /tmp/example path"));
+        assert!(verbose.contains("Output scope"));
+        for output in [&compact, &verbose, &json_text] {
+            assert!(output.ends_with('\n'));
+            assert!(!output.ends_with("\n\n"));
+            assert!(!output.contains('\t'));
+        }
+    }
+
+    #[test]
+    fn privacy_footprint_human_sections_and_json_are_factually_equivalent() {
+        let report = PrivacyFootprintReport {
+            status: "complete",
+            runtime_home:
+                "/tmp/runtime home/with spaces/and/a/deliberately/long/path/for/rendering"
+                    .to_owned(),
+            privacy_footprint: PrivacyFootprint {
+                registry_state: "present",
+                registry_db_path: "/tmp/runtime home/registry.sqlite".to_owned(),
+                record_counts: Some(PrivacyRecordCounts {
+                    projects: 3,
+                    agent_connections: 2,
+                    connection_projects: 4,
+                    guard_installations: 1,
+                    project_state_databases: 3,
+                }),
+                stores: privacy_stores(),
+                does_not_store: privacy_does_not_store(),
+                does_not_prove: privacy_does_not_prove(),
+                doctor_output_scope:
+                    "Category and count summary only; stored row bodies are not printed.",
+            },
+        };
+        let human = render_privacy_footprint_text(&report);
+        let json = serde_json::to_value(&report).unwrap();
+
+        for heading in [
+            "Runtime Home",
+            "Record counts",
+            "Stores",
+            "Does not store",
+            "Does not prove",
+            "Output scope",
+        ] {
+            assert!(human.contains(heading), "{human}");
+        }
+        for item in report
+            .privacy_footprint
+            .stores
+            .iter()
+            .chain(report.privacy_footprint.does_not_store.iter())
+            .chain(report.privacy_footprint.does_not_prove.iter())
+        {
+            assert!(human.contains(item), "{item}");
+        }
+        assert_eq!(json["privacy_footprint"]["record_counts"]["projects"], 3);
+        assert_eq!(
+            json["privacy_footprint"]["doctor_output_scope"],
+            report.privacy_footprint.doctor_output_scope
+        );
+        assert!(human.contains(&report.runtime_home));
+        assert!(human.ends_with('\n'));
+        assert!(!human.ends_with("\n\n"));
+        assert!(!human.contains('\t'));
     }
 
     #[test]
