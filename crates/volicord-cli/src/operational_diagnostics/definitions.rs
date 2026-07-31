@@ -80,14 +80,16 @@ pub enum InstallationDiagnostic {
     ExecutableMissing,
     ExecutableNotRunnable,
     BuildIdentityUnavailable,
+    BuildSourceNotReproducible,
     ManagedConfigurationInconsistent,
 }
 
 impl InstallationDiagnostic {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::ExecutableMissing,
         Self::ExecutableNotRunnable,
         Self::BuildIdentityUnavailable,
+        Self::BuildSourceNotReproducible,
         Self::ManagedConfigurationInconsistent,
     ];
 
@@ -96,6 +98,7 @@ impl InstallationDiagnostic {
             Self::ExecutableMissing => &INSTALLATION_EXECUTABLE_MISSING,
             Self::ExecutableNotRunnable => &INSTALLATION_EXECUTABLE_NOT_RUNNABLE,
             Self::BuildIdentityUnavailable => &INSTALLATION_BUILD_IDENTITY_UNAVAILABLE,
+            Self::BuildSourceNotReproducible => &INSTALLATION_BUILD_SOURCE_NOT_REPRODUCIBLE,
             Self::ManagedConfigurationInconsistent => {
                 &INSTALLATION_MANAGED_CONFIGURATION_INCONSISTENT
             }
@@ -336,10 +339,11 @@ pub enum OperationalDiagnostic {
 }
 
 impl OperationalDiagnostic {
-    pub const ALL: [Self; 38] = [
+    pub const ALL: [Self; 39] = [
         Self::Installation(InstallationDiagnostic::ExecutableMissing),
         Self::Installation(InstallationDiagnostic::ExecutableNotRunnable),
         Self::Installation(InstallationDiagnostic::BuildIdentityUnavailable),
+        Self::Installation(InstallationDiagnostic::BuildSourceNotReproducible),
         Self::Installation(InstallationDiagnostic::ManagedConfigurationInconsistent),
         Self::ManagedConfig(ManagedConfigDiagnostic::TomlParseFailure),
         Self::ManagedConfig(ManagedConfigDiagnostic::EntryMissing),
@@ -465,6 +469,15 @@ definition!(
     "installation",
     "installation_verification",
     "The installed Volicord build identity is unavailable",
+    DiagnosticSeverity::Warning
+);
+definition!(
+    INSTALLATION_BUILD_SOURCE_NOT_REPRODUCIBLE,
+    OperationalDiagnostic::Installation(InstallationDiagnostic::BuildSourceNotReproducible),
+    "installation.build_source.not_reproducible",
+    "installation",
+    "installation_verification",
+    "The installed Volicord build source is not reproducible from its recorded commit",
     DiagnosticSeverity::Warning
 );
 definition!(

@@ -50,7 +50,7 @@ Code 계열에 따라 집중 복구 경계를 선택합니다.
 |---|---|
 | `platform.*` | 지원 플랫폼 cell로 옮기거나 필수 플랫폼 관찰을 복구합니다. |
 | `runtime_home.*` | Action이 이름 붙인 대로 절대 Runtime Home 또는 경로 경계를 고치고 permission을 복구하거나, 명시적인 새 `--home`으로 지원 `init` 흐름을 실행합니다. Schema object를 제자리에서 복구하지 않습니다. |
-| `installation.*` | 실행 가능한 현재 Volicord build를 복구합니다. 있으면 `action.installation.reinstall_current_build`를 사용합니다. |
+| `installation.*` | 완전한 provenance metadata가 있는 실행 가능한 Volicord build를 복구합니다. 있으면 `action.installation.install_build_with_complete_provenance`를 사용합니다. Dirty-source 재현성 finding에는 자동 install action이 없습니다. |
 | `managed_config.*` | 같은 지원 `init` 복구를 실행합니다. Finding은 정적 환경 값이나 argument를 노출하지 않습니다. |
 | `store.sqlite.busy`, `store.sqlite.locked` | Database transaction을 잡고 있는 프로세스를 끝내거나 중지한 뒤 재시도합니다. |
 | `store.schema.mismatch`, `store.integrity.corruption_failure` | 기존 Runtime Home을 보존하고 지원되는 설정에는 명시적 `--home`으로 새 위치를 선택합니다. 검사는 읽기 전용이며 schema table을 직접 편집하지 않습니다. |

@@ -66,10 +66,7 @@ fn run() -> Result<(), String> {
 
     let explicit_profile = parse_explicit_profile(env::var_os("VOLICORD_BUILD_PROFILE"))?;
     let profile_class = cargo_ascii_value("PROFILE", &["debug", "release"]);
-    let (build_profile, profile_exact) = match explicit_profile {
-        Some(profile) => (profile, "true"),
-        None => (UNKNOWN.to_owned(), "false"),
-    };
+    let build_profile = explicit_profile.unwrap_or_else(|| UNKNOWN.to_owned());
     let opt_level = cargo_ascii_value("OPT_LEVEL", &["0", "1", "2", "3", "s", "z"]);
     let debug = cargo_ascii_value("DEBUG", &["true", "false"]);
     let target = cargo_nonempty_ascii_value("TARGET");
@@ -80,7 +77,6 @@ fn run() -> Result<(), String> {
     println!("cargo:rustc-env=VOLICORD_BUILD_TARGET={target}");
     println!("cargo:rustc-env=VOLICORD_BUILD_PROFILE={build_profile}");
     println!("cargo:rustc-env=VOLICORD_BUILD_PROFILE_CLASS={profile_class}");
-    println!("cargo:rustc-env=VOLICORD_BUILD_PROFILE_EXACT={profile_exact}");
     println!("cargo:rustc-env=VOLICORD_BUILD_OPT_LEVEL={opt_level}");
     println!("cargo:rustc-env=VOLICORD_BUILD_DEBUG={debug}");
     Ok(())

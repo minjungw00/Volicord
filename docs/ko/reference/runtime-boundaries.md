@@ -10,7 +10,7 @@
 |---|---|
 | Product Repository | 사용자 제품 파일과 명시적인 관리 프로젝트 구성을 담는 정규 Git 작업 트리입니다. |
 | Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 권위 있는 운영 session, 구조화된 diagnostic finding, 런타임 소유 아티팩트입니다. |
-| Volicord 설치 | 선택한 `volicord` 실행 파일과 build identity입니다. Runtime Home이 아닙니다. |
+| Volicord 설치 | 선택한 `volicord` 실행 파일, 제품 버전, 구조화된 build provenance입니다. Runtime Home이 아닙니다. |
 | 관리 Codex 구성 | 정확한 숨겨진 host launcher를 시작하는 사용자 또는 프로젝트 소유 구성입니다. 재사용 가능한 launch 권한을 담지 않으며 Core 권한이 아닙니다. |
 | 숨겨진 host launcher와 stdio adapter | 현재 관리 구성을 검증하고 one-time launch lease를 소비해 관리 stdio를 현재 Agent Connection 하나에 결속하는 로컬 프로세스 하나입니다. 네트워크 서비스가 아닙니다. |
 
@@ -290,9 +290,20 @@ Runtime Home finding은 `runtime_home.path.missing`,
 설치 finding은 `installation.executable.missing`,
 `installation.executable.not_runnable`,
 `installation.build_identity.unavailable`,
+`installation.build_source.not_reproducible`,
 `installation.managed_config.inconsistent`를 사용합니다. Finding에는 한도가 있는 범주형
 사실만 남기며 환경 dump, 전체 환경 값, 파일시스템 내용, 제한 없는 경로 탐색 결과를
 남기지 않습니다.
+
+구조화된 build provenance는 package version, source metadata와 identity, tree 상태,
+target, Cargo profile class, 선택적인 정확한 Cargo profile, profile precision,
+optimization, debug 상태, 결정적인 상관관계 build ID 하나를 기록합니다. Identity에는
+시간 요소가 없습니다. 다른 필수 차원을 모두 알고 source tree가 clean이면
+`profile_precision=class_only`도 사용할 수 있습니다. 정확한 Cargo profile 이름이
+없다는 사실만으로 identity를 사용할 수 없게 되지 않습니다. Dirty tree는 대신
+`installation.build_source.not_reproducible`을 선택합니다. Source identity가
+unknown이거나 source, target, profile class, optimization, debug metadata가
+실질적으로 불완전하면 `installation.build_identity.unavailable`을 선택합니다.
 
 `volicord mcp preflight`는 선택한 Runtime Home의 읽기 경계 안에 머뭅니다. 파일을
 만들거나 write transaction을 열거나 runtime session을 시작하지 않고 정규 관리 구성,

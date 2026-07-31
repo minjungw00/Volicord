@@ -43,7 +43,10 @@ pub use binding::{
     preflight_check, resolve_repository_discovery_runtime_home, resolve_runtime_home,
     resolve_runtime_home_from_env, run_preflight_check_from_env,
 };
-pub use build_info::{build_id, build_info, BuildInfo};
+pub use build_info::{
+    assess_build_provenance, build_id, build_info, BuildInfo, BuildProfilePrecision,
+    BuildProvenanceAssessment, BuildProvenanceGap,
+};
 pub use diagnostics::{bootstrap_diagnostic_envelope, diagnostic_codes};
 pub use errors::McpAdapterError;
 pub use managed_launch::{

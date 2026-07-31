@@ -10,7 +10,7 @@ managed Codex configuration, and the stdio MCP child process.
 |---|---|
 | Product Repository | The canonical Git work tree containing user product files and explicitly managed project configuration. |
 | Volicord Runtime Home | Local registry, project state, authoritative operational sessions, structured diagnostic findings, and runtime-owned artifacts. |
-| Volicord installation | The selected `volicord` executable and its build identity. It is not the Runtime Home. |
+| Volicord installation | The selected `volicord` executable, product version, and structured build provenance. It is not the Runtime Home. |
 | Managed Codex configuration | User- or project-owned configuration that starts the exact hidden host launcher. It contains no reusable launch authority and is not Core authority. |
 | Hidden host launcher and stdio adapter | One local process that validates current managed configuration, consumes a one-time launch lease, and binds managed stdio to one current Agent Connection. It is not a network service. |
 
@@ -329,10 +329,22 @@ input and is resolved before this environment-value rule is applied.
 
 Installation findings use `installation.executable.missing`,
 `installation.executable.not_runnable`,
-`installation.build_identity.unavailable`, and
+`installation.build_identity.unavailable`,
+`installation.build_source.not_reproducible`, and
 `installation.managed_config.inconsistent`. Findings retain bounded categorical
 facts only; they do not retain environment dumps, full environment values,
 filesystem contents, or unrestricted path discovery.
+
+Structured build provenance records the package version, source metadata and
+identity, tree state, target, Cargo profile class, optional exact Cargo profile,
+profile precision, optimization, debug state, and one deterministic correlation
+build ID. The identity contains no time component.
+`profile_precision=class_only` is usable when all other required dimensions are
+known and the source tree is clean; absence of the exact Cargo profile name
+alone is not an unavailable identity. A dirty tree instead selects
+`installation.build_source.not_reproducible`. Unknown source identity or
+materially incomplete source, target, profile-class, optimization, or debug
+metadata selects `installation.build_identity.unavailable`.
 
 `volicord mcp preflight` stays inside the selected Runtime Home's read boundary:
 it reads the canonical managed configuration, Registry, project state,

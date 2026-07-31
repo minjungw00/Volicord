@@ -215,6 +215,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-cli/src/main.rs` | Process entry, parsing through `volicord-command-model`, and administrative command dispatch. |
+| `crates/volicord-cli/src/version_command.rs` | Concise product-version output plus shared human-readable and typed JSON presentation of embedded build provenance. |
 | `crates/volicord-cli/src/mutation_admission.rs` | Exact Runtime Home resolution, per-operation `SharedWriter` acquisition, Store mutation-context construction, stable typed busy mapping, and lease retention for mutating CLI and Guard operations. |
 | `crates/volicord-cli/src/host_launch.rs` | Hidden same-process host launcher, exact current Codex entry revalidation, launch-lease issue/cleanup, and in-memory transition into managed stdio. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
@@ -271,6 +272,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-mcp/src/lib.rs` | Adapter-owned public entry points and canonical adapter result composition. Neutral method and tool identities remain at their `volicord-types` owner-module routes; MCP wire values are consumed directly from `volicord-mcp-wire`. |
+| `crates/volicord-mcp/src/build_info.rs` | Embedded build-provenance facts, deterministic build-correlation identity, and pure typed provenance assessment shared by administrative adapters. |
 | `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared hidden-launcher command and arguments, Runtime Home environment binding, strict launch-shape validation, public manual probe materialization, projection, and fingerprint inputs. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Per-message and per-tool `SharedWriter` acquisition, Store context construction, typed setup-busy propagation, and bounded lease lifetime across complete MCP effects. |
 | `crates/volicord-mcp/src/stdio.rs` | Public manual and in-memory lease-bound managed stdio facade. It selects the entry-path binding and delegates the connected stream without retaining protocol, lifecycle, or tool-dispatch implementations. |

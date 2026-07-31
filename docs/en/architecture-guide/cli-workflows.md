@@ -144,6 +144,15 @@ the aggregate remains three-state. `--json` serializes the typed
 result once. Human text, logs, and diagnostic metadata are not parsed back into
 authority state.
 
+Root `-V`/`--version` dispatch renders only the concise product identity.
+The explicit `version` command consumes the same `volicord-mcp::BuildInfo` as
+doctor and MCP initialization metadata, then selects concise text, a
+shared-presentation verbose document, or one typed JSON report. `volicord-mcp`
+owns embedded provenance, the deterministic correlation build ID, and the pure
+typed provenance assessment. Doctor maps that assessment to a passed check, a
+dirty-source reproducibility finding, or a materially incomplete identity
+finding without reconstructing the policy from strings.
+
 ## Boundaries
 
 - `volicord-command-model` depends only on Clap. It does not depend on Core,

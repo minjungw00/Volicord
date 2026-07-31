@@ -895,11 +895,11 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             "host_executable_missing",
             "installation.executable.missing",
             "installation",
-            Some("action.installation.reinstall_current_build"),
+            Some("action.installation.install_build_with_complete_provenance"),
             ConnectionCheckKind::HostExecutable,
             &[],
             None,
-            "action.installation.reinstall_current_build",
+            "action.installation.install_build_with_complete_provenance",
         ),
         DiagnosticMatrixScenario::observation(
             "host_peer_path_version_mismatch",

@@ -25,6 +25,7 @@ use volicord_cli::{
     project_context::{run_project_command, ProjectCommandError},
     setup_command::CommandOutcome,
     user_command::{run_inbox_command, run_status_command, UserCommandError},
+    version_command::{concise_version, run_version_command, VersionCommandError},
 };
 use volicord_command_model::{
     Cli, CodexHost, Command as CliCommand, McpArgs, McpBindingArgs, McpCommand,
@@ -106,13 +107,14 @@ where
         Err(error) => return Err(CliError::usage(error.to_string())),
     };
     if parsed.version {
-        return Ok(version());
+        return Ok(concise_version());
     }
     let command = parsed
         .command
         .expect("the clap declaration requires a command or --version");
 
     match command {
+        CliCommand::Version(options) => run_version_command(options).map_err(CliError::from),
         CliCommand::Doctor(options) => {
             command_outcome(run_doctor_command(options, &env_var, current_dir)?)
         }
@@ -323,14 +325,6 @@ fn mcp_serve(binding: McpBindingArgs) -> Result<String, CliError> {
     })
 }
 
-fn version() -> String {
-    let build = volicord_mcp::build_info();
-    format!(
-        "volicord {} (build_id={})\n",
-        build.package_version, build.build_id
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CliError {
     Usage(String),
@@ -511,6 +505,12 @@ impl From<EvidenceCommandError> for CliError {
     }
 }
 
+impl From<VersionCommandError> for CliError {
+    fn from(error: VersionCommandError) -> Self {
+        Self::Runtime(error.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -518,11 +518,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn version_and_help_do_not_require_runtime_home() {
+    fn version_commands_and_help_do_not_require_runtime_home() {
         let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
         let version = run_cli(["volicord", "--version"], |_| None, cwd)
             .expect("version should not need Runtime Home");
-        assert_eq!(version, super::version());
+        assert_eq!(version, concise_version());
+
+        let command_version = run_cli(["volicord", "version"], |_| None, cwd)
+            .expect("version command should not need Runtime Home");
+        assert_eq!(command_version, concise_version());
 
         let help = run_cli(["volicord", "--help"], |_| None, cwd)
             .expect("help should not need Runtime Home");

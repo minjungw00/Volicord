@@ -202,40 +202,62 @@ jobs:
           VOLICORD_BUILD_PROFILE: release
         run: cargo build --locked --release -p volicord-cli --bin volicord --target "${{ matrix.target }}"
 
-      - name: Verify exact build identity
+      - name: Verify product version and build provenance
         if: runner.os != 'Windows'
         env:
           TARGET: ${{ matrix.target }}
         run: |
           set -eu
           binary="target/$TARGET/release/volicord"
-          actual="$("$binary" --version)"
-          required=";git=$GITHUB_SHA;tree=clean;metadata_source=environment;target=$TARGET;profile=release;profile_class=release;profile_exact=true;"
-          case "$actual" in
-            "volicord "*" (build_id="*"$required"*")") ;;
-            *)
-              echo "release binary build identity mismatch" >&2
-              printf 'required identity segment: %s\n' "$required" >&2
-              printf 'actual:                    %s\n' "$actual" >&2
-              exit 1
-              ;;
+          product_version="$("$binary" --version)"
+          case "$product_version" in
+            "volicord "*) ;;
+            *) echo "release binary product version mismatch: $product_version" >&2; exit 1 ;;
           esac
+          report="$("$binary" version --json)"
+          printf '%s\n' "$report" | jq -e \
+            --arg sha "$GITHUB_SHA" \
+            --arg target "$TARGET" \
+            '.product_name == "Volicord"
+             and .package_version == .build.package_version
+             and .build.git_commit == $sha
+             and .build.git_dirty == false
+             and .build.metadata_source == "environment"
+             and .build.target_triple == $target
+             and .build.build_profile == "release"
+             and .build.profile_class == "release"
+             and .build.profile_precision == "exact"
+             and ((.build.build_id | type) == "string")
+             and ((.build.build_id | length) > 0)' >/dev/null
 
-      - name: Verify exact build identity (Windows)
+      - name: Verify product version and build provenance (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $target = "${{ matrix.target }}"
           $binary = "target/$target/release/volicord.exe"
-          $actual = (& $binary --version | Out-String).Trim()
+          $productVersion = (& $binary --version | Out-String).Trim()
           if ($LASTEXITCODE -ne 0) {
               throw "release binary --version failed with exit code $LASTEXITCODE"
           }
-          $sha = [regex]::Escape($env:GITHUB_SHA)
-          $escapedTarget = [regex]::Escape($target)
-          $pattern = "^volicord [^ ]+ \(build_id=[^;]+;git=$sha;tree=clean;metadata_source=environment;target=$escapedTarget;profile=release;profile_class=release;profile_exact=true;.*\)$"
-          if ($actual -notmatch $pattern) {
-              throw "release binary build identity mismatch`nrequired pattern: $pattern`nactual:           $actual"
+          if ($productVersion -notmatch '^volicord [^ ]+$') {
+              throw "release binary product version mismatch: $productVersion"
+          }
+          $report = (& $binary version --json | Out-String | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) {
+              throw "release binary version --json failed with exit code $LASTEXITCODE"
+          }
+          if ($report.product_name -ne "Volicord" `
+              -or $report.package_version -ne $report.build.package_version `
+              -or $report.build.git_commit -ne $env:GITHUB_SHA `
+              -or $report.build.git_dirty -ne $false `
+              -or $report.build.metadata_source -ne "environment" `
+              -or $report.build.target_triple -ne $target `
+              -or $report.build.build_profile -ne "release" `
+              -or $report.build.profile_class -ne "release" `
+              -or $report.build.profile_precision -ne "exact" `
+              -or [string]::IsNullOrWhiteSpace($report.build.build_id)) {
+              throw "release binary build provenance mismatch"
           }
 
       - name: Smoke test binary
@@ -362,24 +384,33 @@ jobs:
           cp Dockerfile.release "$context/Dockerfile"
           docker build -t "volicord:${{ github.sha }}" "$context"
 
-      - name: Verify exact binary bytes and build identity inside the image
+      - name: Verify exact binary bytes and build provenance inside the image
         run: |
           set -eu
           expected="$(awk '{print $1}' "$RUNNER_TEMP/volicord-docker-build-input/volicord.sha256")"
           actual_digest="$(docker run --rm --entrypoint sha256sum "volicord:${{ github.sha }}" /usr/local/bin/volicord | awk '{print $1}')"
           test "$actual_digest" = "$expected"
           target="x86_64-unknown-linux-gnu"
-          actual="$(docker run --rm "volicord:${{ github.sha }}" --version)"
-          required=";git=$GITHUB_SHA;tree=clean;metadata_source=environment;target=$target;profile=release;profile_class=release;profile_exact=true;"
-          case "$actual" in
-            "volicord "*" (build_id="*"$required"*")") ;;
-            *)
-              echo "container build identity mismatch" >&2
-              printf 'required identity segment: %s\n' "$required" >&2
-              printf 'actual:                    %s\n' "$actual" >&2
-              exit 1
-              ;;
+          product_version="$(docker run --rm "volicord:${{ github.sha }}" --version)"
+          case "$product_version" in
+            "volicord "*) ;;
+            *) echo "container product version mismatch: $product_version" >&2; exit 1 ;;
           esac
+          report="$(docker run --rm "volicord:${{ github.sha }}" version --json)"
+          printf '%s\n' "$report" | jq -e \
+            --arg sha "$GITHUB_SHA" \
+            --arg target "$target" \
+            '.product_name == "Volicord"
+             and .package_version == .build.package_version
+             and .build.git_commit == $sha
+             and .build.git_dirty == false
+             and .build.metadata_source == "environment"
+             and .build.target_triple == $target
+             and .build.build_profile == "release"
+             and .build.profile_class == "release"
+             and .build.profile_precision == "exact"
+             and ((.build.build_id | type) == "string")
+             and ((.build.build_id | length) > 0)' >/dev/null
 
       - name: Smoke test image
         run: docker run --rm "volicord:${{ github.sha }}" --help

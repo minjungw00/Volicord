@@ -56,7 +56,7 @@ Use the code family to choose the focused recovery:
 |---|---|
 | `platform.*` | Move to or restore observation of the supported platform cell. |
 | `runtime_home.*` | Correct the absolute Runtime Home or its path boundary, repair permissions, or use the supported `init` flow with a fresh explicit `--home` as named by the action. Do not repair schema objects in place. |
-| `installation.*` | Restore a runnable current Volicord build; use `action.installation.reinstall_current_build` when present. |
+| `installation.*` | Restore a runnable Volicord build with complete provenance metadata; use `action.installation.install_build_with_complete_provenance` when present. A dirty-source reproducibility finding has no automatic install action. |
 | `managed_config.*` | Run the same supported `init` repair. The finding never exposes static environment values or arguments. |
 | `store.sqlite.busy`, `store.sqlite.locked` | Finish or stop the process holding the database transaction, then retry. |
 | `store.schema.mismatch`, `store.integrity.corruption_failure` | Preserve the existing Runtime Home and select a fresh explicit `--home` for supported setup. Inspection is read-only; do not edit schema tables in place. |

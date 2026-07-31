@@ -45,6 +45,7 @@
     {
       "codes": [
         "installation.build_identity.unavailable",
+        "installation.build_source.not_reproducible",
         "installation.executable.missing",
         "installation.executable.not_runnable",
         "installation.managed_config.inconsistent"

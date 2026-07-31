@@ -67,6 +67,12 @@ thread/turn metadata는 diagnostic 또는 상관관계 사실이며 actor나 hum
 프로젝트 권한을 넓힐 수 없습니다. 내부 runtime ID와 revision 범위 프로젝트 session
 ID도 비공개 로컬 상관관계 좌표입니다.
 
+Package version과 구조화된 build provenance도 diagnostic 및 상관관계 사실입니다.
+다른 필수 provenance를 알고 있으면 profile-class precision만 있다는 사실이 이 경계를
+약화하지 않습니다. Dirty tree는 source 재현성을 명시적으로 제한하며, 완전해 보이는
+build metadata도 실행 파일이 신뢰할 수 있거나 변조되지 않았거나 정확하거나 수정되지
+않은 source에서 빌드됐다는 증명이 아닙니다.
+
 지원 MCP 프로세스는 stdin/stdout을 사용하고 네트워크 전송 listener를 열지 않습니다.
 이는 프로세스 topology 사실이며 네트워크 sandboxing이 아닙니다. Codex나 tool은
 독립적으로 네트워크를 사용할 수 있습니다.

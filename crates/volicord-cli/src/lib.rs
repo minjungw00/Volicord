@@ -29,3 +29,4 @@ mod setup_report;
 mod shell_path;
 mod summary_card;
 pub mod user_command;
+pub mod version_command;

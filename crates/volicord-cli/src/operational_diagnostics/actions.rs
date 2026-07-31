@@ -23,7 +23,7 @@ pub enum OperationalCheckState {
 /// Closed actions attached to CLI-owned findings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperationalRecommendedAction {
-    ReinstallCurrentBuild,
+    InstallBuildWithCompleteProvenance,
     RepairManagedConfiguration,
     ReloadHostAfterConfigurationChange,
     RepairGuard,
@@ -41,7 +41,9 @@ pub enum OperationalRecommendedAction {
 impl OperationalRecommendedAction {
     pub const fn code(self) -> &'static str {
         match self {
-            Self::ReinstallCurrentBuild => "action.installation.reinstall_current_build",
+            Self::InstallBuildWithCompleteProvenance => {
+                "action.installation.install_build_with_complete_provenance"
+            }
             Self::RepairManagedConfiguration => "action.managed_config.repair",
             Self::ReloadHostAfterConfigurationChange => {
                 "action.host.reload_after_configuration_change"
@@ -61,7 +63,9 @@ impl OperationalRecommendedAction {
 
     pub const fn summary(self) -> &'static str {
         match self {
-            Self::ReinstallCurrentBuild => "Reinstall the current Volicord build",
+            Self::InstallBuildWithCompleteProvenance => {
+                "Install a Volicord build with complete provenance metadata"
+            }
             Self::RepairManagedConfiguration => "Repair the managed host configuration",
             Self::ReloadHostAfterConfigurationChange => {
                 "Reload the host after applying the configuration change"
@@ -125,14 +129,14 @@ const fn recommended_actions(
         OperationalDiagnostic::Installation(InstallationDiagnostic::ExecutableMissing)
         | OperationalDiagnostic::Installation(InstallationDiagnostic::ExecutableNotRunnable)
         | OperationalDiagnostic::Installation(InstallationDiagnostic::BuildIdentityUnavailable) => {
-            &[Action::ReinstallCurrentBuild]
+            &[Action::InstallBuildWithCompleteProvenance]
+        }
+        OperationalDiagnostic::Installation(InstallationDiagnostic::BuildSourceNotReproducible) => {
+            &[]
         }
         OperationalDiagnostic::Installation(
             InstallationDiagnostic::ManagedConfigurationInconsistent,
-        ) => &[
-            Action::ReinstallCurrentBuild,
-            Action::RepairManagedConfiguration,
-        ],
+        ) => &[Action::RepairManagedConfiguration],
         OperationalDiagnostic::ManagedConfig(_) => &[Action::RepairManagedConfiguration],
         OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved) => {
             &[Action::TriggerGuardPhase]
@@ -177,7 +181,7 @@ mod tests {
     use crate::host_integration::verification::{ManagedConfigDiagnostic, ManagedConfigStatus};
 
     use super::*;
-    use crate::operational_diagnostics::facts::ManagedConfigurationFacts;
+    use crate::operational_diagnostics::facts::{InstallationFacts, ManagedConfigurationFacts};
 
     #[test]
     fn action_derivation_uses_definition_typed_facts_and_state_not_prose() {
@@ -190,5 +194,39 @@ mod tests {
         assert_eq!(failed[0].code().as_str(), "action.managed_config.repair");
         assert!(passed.is_empty());
         assert!(!definition.summary().contains("restart"));
+    }
+
+    #[test]
+    fn installation_actions_have_current_resolvable_owners() {
+        let facts = InstallationFacts::default();
+        let unavailable = actions_for(
+            InstallationDiagnostic::BuildIdentityUnavailable.definition(),
+            &facts,
+            OperationalCheckState::Failed,
+        );
+        let dirty = actions_for(
+            InstallationDiagnostic::BuildSourceNotReproducible.definition(),
+            &facts,
+            OperationalCheckState::Failed,
+        );
+        let inconsistent = actions_for(
+            InstallationDiagnostic::ManagedConfigurationInconsistent.definition(),
+            &facts,
+            OperationalCheckState::Failed,
+        );
+
+        assert_eq!(
+            unavailable[0].code().as_str(),
+            "action.installation.install_build_with_complete_provenance"
+        );
+        assert_eq!(
+            unavailable[0].summary(),
+            "Install a Volicord build with complete provenance metadata"
+        );
+        assert!(dirty.is_empty());
+        assert_eq!(
+            inconsistent[0].code().as_str(),
+            "action.managed_config.repair"
+        );
     }
 }

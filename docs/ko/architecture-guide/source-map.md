@@ -215,6 +215,7 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입, `volicord-command-model`을 통한 parsing, 관리 명령 디스패치. |
+| `crates/volicord-cli/src/version_command.rs` | 간결한 제품 버전 출력과 내장 build provenance의 공유 사람용 표시 및 typed JSON 표시. |
 | `crates/volicord-cli/src/mutation_admission.rs` | 정확한 Runtime Home 해석, 연산별 `SharedWriter` 획득, Store mutation context 구성, 안정적인 typed busy mapping, 변경 CLI 및 Guard 연산 전체의 lease 유지. |
 | `crates/volicord-cli/src/host_launch.rs` | 숨은 동일 프로세스 host launcher, 현재 Codex entry의 정확한 재검증, launch-lease 발급·정리, managed stdio로의 메모리 내 전환. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
@@ -271,6 +272,7 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-mcp/src/lib.rs` | 어댑터 소유 공개 진입점과 정규 adapter 결과 구성. Neutral 메서드와 도구 identity는 각 `volicord-types` 담당 모듈 경로에 남고 MCP wire 값은 `volicord-mcp-wire`에서 직접 소비합니다. |
+| `crates/volicord-mcp/src/build_info.rs` | 관리 어댑터가 공유하는 내장 build provenance fact, 결정적인 build 상관관계 identity, 순수 typed provenance 평가. |
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Message 및 tool별 `SharedWriter` 획득, Store context 구성, typed setup-busy 전파, 전체 MCP 효과 동안의 한정된 lease 수명. |
 | `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio facade. 진입 경로 binding을 선택하고 연결된 stream을 위임하며 protocol, lifecycle, tool dispatch 구현을 보유하지 않습니다. |

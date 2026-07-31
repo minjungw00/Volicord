@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_command_model::DoctorArgs;
+use volicord_mcp::{BuildInfo, BuildProvenanceAssessment};
 use volicord_store::{
     agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
     core_pipeline::CoreProjectStore,
@@ -212,7 +213,10 @@ where
     let mut findings = Vec::new();
     let observed_at = doctor_current_timestamp();
 
-    if let Some(diagnostic) = inspect_build_identity(&mut checks) {
+    let build = volicord_mcp::build_info();
+    let (build_check, build_diagnostic) = inspect_build_identity(&build);
+    checks.push(build_check);
+    if let Some(diagnostic) = build_diagnostic {
         findings.push(doctor_installation_finding(
             diagnostic,
             observed_at.clone(),
@@ -393,38 +397,55 @@ where
     })
 }
 
-fn inspect_build_identity(checks: &mut Vec<DiagnosticCheck>) -> Option<InstallationDiagnostic> {
-    let build = volicord_mcp::build_info();
-    let git_metadata_known = build.git_commit != "unknown"
-        && build.git_dirty.is_some()
-        && build.metadata_source != "unknown";
-    let compilation_metadata_known =
-        build.target_triple != "unknown" && build.opt_level != "unknown" && build.debug.is_some();
-    let exact_clean_identity = git_metadata_known
-        && build.git_dirty == Some(false)
-        && build.profile_exact
-        && build.build_profile.is_some()
-        && compilation_metadata_known;
-    let summary = if !git_metadata_known {
-        "build descriptor reports unknown Git metadata"
-    } else if build.git_dirty == Some(true) {
-        "build descriptor reports a dirty source tree without identifying its exact contents"
-    } else if !build.profile_exact || build.build_profile.is_none() {
-        "build descriptor reports only an approximate Cargo profile class"
-    } else if !compilation_metadata_known {
-        "build descriptor reports incomplete compilation metadata"
-    } else {
-        "build descriptor reports a clean source commit and exact build profile"
+fn inspect_build_identity(build: &BuildInfo) -> (DiagnosticCheck, Option<InstallationDiagnostic>) {
+    let assessment = build.assess_provenance();
+    let details = match &assessment {
+        BuildProvenanceAssessment::UsableCleanExactProfile => {
+            json!({ "state": "usable_clean", "profile_precision": "exact" })
+        }
+        BuildProvenanceAssessment::UsableCleanProfileClassOnly => {
+            json!({ "state": "usable_clean", "profile_precision": "class_only" })
+        }
+        BuildProvenanceAssessment::DirtySource { profile_precision } => json!({
+            "state": "dirty_source",
+            "profile_precision": profile_precision,
+        }),
+        BuildProvenanceAssessment::Unavailable { gaps } => json!({
+            "state": "unavailable",
+            "missing_or_incomplete": gaps,
+        }),
     };
-    let check = if exact_clean_identity {
-        DiagnosticCheck::passed("build_identity", summary)
-    } else {
-        DiagnosticCheck::warning("build_identity", summary)
+    let (check, diagnostic) = match assessment {
+        BuildProvenanceAssessment::UsableCleanExactProfile => (
+            DiagnosticCheck::passed(
+                "build_identity",
+                "build provenance identifies a clean source commit and exact Cargo profile",
+            ),
+            None,
+        ),
+        BuildProvenanceAssessment::UsableCleanProfileClassOnly => (
+            DiagnosticCheck::passed(
+                "build_identity",
+                "build provenance identifies a clean source commit; profile precision: class only",
+            ),
+            None,
+        ),
+        BuildProvenanceAssessment::DirtySource { .. } => (
+            DiagnosticCheck::warning(
+                "build_identity",
+                "build source is dirty; the recorded commit does not identify the working-tree changes",
+            ),
+            Some(InstallationDiagnostic::BuildSourceNotReproducible),
+        ),
+        BuildProvenanceAssessment::Unavailable { .. } => (
+            DiagnosticCheck::warning(
+                "build_identity",
+                "build identity is unavailable because required provenance metadata is incomplete",
+            ),
+            Some(InstallationDiagnostic::BuildIdentityUnavailable),
+        ),
     };
-    checks.push(check.with_details(
-        serde_json::to_value(build).expect("BuildInfo serialization should be infallible"),
-    ));
-    (!exact_clean_identity).then_some(InstallationDiagnostic::BuildIdentityUnavailable)
+    (check.with_details(details), diagnostic)
 }
 
 fn render_privacy_footprint_output(
@@ -2233,6 +2254,7 @@ fn render_doctor_output(
     let summary_card = doctor_summary_card(status, checks, actions);
     match output {
         OutputFormat::Json => {
+            let build = volicord_mcp::build_info();
             let actions_required = if status == CommandStatus::Complete {
                 Vec::new()
             } else {
@@ -2246,8 +2268,7 @@ fn render_doctor_output(
             serde_json::to_string_pretty(&json!({
                 "status": status.as_str(),
                 "status_meaning": doctor_status_meaning(status, checks),
-                "build_id": volicord_mcp::build_id(),
-                "build": volicord_mcp::build_info(),
+                "build": build,
                 "summary_card": &summary_card,
                 "disclosure": {
                     "guarantee_class": "diagnostic_observation",
@@ -2430,7 +2451,6 @@ fn doctor_states_json(
     actions: &[DiagnosticAction],
 ) -> Value {
     let mut states = json!({
-        "build_id": volicord_mcp::build_id(),
         "runtime_home": doctor_runtime_home_state(runtime_home, checks),
         "installation_profile": doctor_installation_profile_state(checks),
         "command_availability": doctor_command_state(checks),
@@ -2876,6 +2896,78 @@ fn push_unique_diagnostic_action(actions: &mut Vec<DiagnosticAction>, action: Di
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn complete_build() -> BuildInfo {
+        let mut build = BuildInfo {
+            package_version: "test-package-version",
+            git_commit: "0123456789abcdef0123456789abcdef01234567",
+            git_dirty: Some(false),
+            metadata_source: "repository",
+            target_triple: "test-target",
+            build_profile: Some("test-profile"),
+            profile_class: "test-class",
+            profile_precision: volicord_mcp::BuildProfilePrecision::Exact,
+            opt_level: "test-optimization",
+            debug: Some(false),
+            build_id: String::new(),
+        };
+        build.build_id = build.deterministic_build_id();
+        build
+    }
+
+    #[test]
+    fn class_only_profile_passes_without_finding_or_action() {
+        let mut build = complete_build();
+        build.build_profile = None;
+        build.profile_precision = volicord_mcp::BuildProfilePrecision::ClassOnly;
+        build.build_id = build.deterministic_build_id();
+
+        let (check, finding) = inspect_build_identity(&build);
+        assert_eq!(check.status, "passed");
+        assert_eq!(
+            check.summary,
+            "build provenance identifies a clean source commit; profile precision: class only"
+        );
+        assert_eq!(
+            check.details,
+            Some(json!({
+                "state": "usable_clean",
+                "profile_precision": "class_only",
+            }))
+        );
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn dirty_source_has_its_own_accurate_diagnostic() {
+        let mut build = complete_build();
+        build.git_dirty = Some(true);
+
+        let (check, finding) = inspect_build_identity(&build);
+        assert_eq!(check.status, "warning");
+        assert_eq!(
+            check.summary,
+            "build source is dirty; the recorded commit does not identify the working-tree changes"
+        );
+        assert_eq!(
+            finding,
+            Some(InstallationDiagnostic::BuildSourceNotReproducible)
+        );
+    }
+
+    #[test]
+    fn unknown_source_metadata_reports_unavailable_identity() {
+        let mut build = complete_build();
+        build.git_commit = "unknown";
+        build.metadata_source = "unknown";
+
+        let (check, finding) = inspect_build_identity(&build);
+        assert_eq!(check.status, "warning");
+        assert_eq!(
+            finding,
+            Some(InstallationDiagnostic::BuildIdentityUnavailable)
+        );
+    }
 
     #[test]
     fn host_detection_reports_codex_only() {

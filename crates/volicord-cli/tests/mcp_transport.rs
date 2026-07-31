@@ -328,7 +328,7 @@ fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_managed
         ";target=",
         ";profile=",
         ";profile_class=",
-        ";profile_exact=",
+        ";profile_precision=",
         ";opt=",
         ";debug=",
     ] {

@@ -40,6 +40,16 @@ Arguments and options:
   -V, --version
 ```
 
+### `volicord version`
+
+```text
+Usage: volicord version [OPTIONS]
+
+Arguments and options:
+  --json
+  --verbose
+```
+
 ### `volicord init`
 
 ```text
@@ -431,6 +441,56 @@ Arguments and options:
 선언된 명령 트리, 인수 요구사항, 옵션 관계와 맞지 않는 입력은 사용법 오류입니다.
 관리 명령 이름은 공개 API 메서드 이름이 아닙니다.
 
+<a id="version-and-build-provenance"></a>
+## 버전과 빌드 provenance
+
+`volicord -V`와 `volicord --version`은 제품 버전 한 줄만 정확히 출력합니다.
+
+```text
+volicord <package-version>
+```
+
+이 줄은 newline 하나로 끝나며 build ID, source revision, tree 상태, target,
+Cargo profile, optimization, debug metadata를 포함하지 않습니다. `volicord version`도
+같은 간결 출력을 사용합니다. `volicord version --verbose`는 공유 사람용 presentation
+primitive를 사용해 package version 다음에 `Source`와 `Build` section을 렌더링합니다.
+Source section은 commit, tree 상태, metadata source를 표시합니다. Build section은
+target, profile class, profile precision, 정확한 Cargo profile 또는 `not recorded`,
+optimization, debug assertion 상태를 표시합니다.
+
+`volicord version --json`은 typed report 하나만 출력합니다.
+
+```schema
+product_name: Volicord
+package_version: string
+build:
+  package_version: string
+  git_commit: string
+  git_dirty: boolean | null
+  metadata_source: repository | environment | unknown
+  target_triple: string
+  build_profile: string | null
+  profile_class: string
+  profile_precision: exact | class_only
+  opt_level: string
+  debug: boolean | null
+  build_id: string
+```
+
+최상위 package version은 제품 버전 사실입니다. `build`는 구조화된 build provenance
+projection 하나이며 결정적 build ID가 있는 유일한 위치입니다. `--json`과
+`--verbose`는 usage parsing에서 서로 충돌합니다.
+
+Build provenance 평가는 typed이며 기록된 package version, source metadata와 identity,
+tree 상태, target, profile class와 precision, optimization, debug 상태를 사용합니다.
+정확한 Cargo profile이 있는 clean build와 profile-class precision만 있는 clean build는
+모두 사용할 수 있는 provenance입니다. `profile_precision=class_only`는 정확한 Cargo
+profile 이름을 기록하지 않았다는 뜻일 뿐이며 warning, 사용할 수 없는 identity,
+재설치 조건이 아닙니다. Dirty source tree는 기록된 commit이 working-tree 변경을
+식별하지 못하므로 별도 재현성 제한입니다. Source identity가 unknown이거나 source,
+target, profile class, optimization, debug metadata가 실질적으로 불완전하면 build
+identity를 사용할 수 없습니다.
+
 <a id="doctor-diagnostic-states"></a>
 ## Doctor 진단 상태
 
@@ -451,6 +511,19 @@ doctor가 기본 policy를 대신 넣거나 어느 authority 복사본도 다시
 `volicord doctor --json`은 공유 `DiagnosticFinding` 형태의 `findings`도 반환합니다.
 Registry 조사에서는 임의의 SQLite 메시지를 projection하지 않습니다. SQLite 결과 code,
 조사 상태, 한도가 있는 범주형 사실로 finding을 선택하며 산문은 표시 맥락으로만 남습니다.
+
+Report의 최상위 `build` 값은 `volicord version --json`이 반환하는 것과 같은 구조화된
+`BuildInfo` projection입니다. 최상위나 `states` 아래에 build ID를 중복하지 않습니다.
+
+설치 build finding은 가용성과 재현성을 구분합니다.
+
+| Code | Typed 관찰 |
+|---|---|
+| `installation.build_identity.unavailable` | 필수 source, target, profile class, optimization, debug provenance를 사용할 수 없거나 실질적으로 불완전합니다. |
+| `installation.build_source.not_reproducible` | Source tree가 dirty이므로 기록된 commit이 working-tree 변경을 식별하지 못합니다. |
+
+`profile_precision=class_only`인 clean build는 build provenance check를 통과하며 finding이나
+action을 만들지 않습니다.
 
 개인정보 footprint 보기는 명시적으로 선택하며, 구조화된 출력이 필요하면 `--json`과
 함께 사용할 수 있습니다.
@@ -517,12 +590,15 @@ diagnostic 사실로 저장하지 않습니다.
 다음 단계가 알려졌으면 typed action을 붙입니다. 현재 action code에는
 `action.runtime_home.correct_path`, `action.runtime_home.initialize_registry`,
 `action.store.free_locked_database`,
-`action.installation.reinstall_current_build`,
+`action.installation.install_build_with_complete_provenance`,
 `action.managed_config.repair`, `action.guard.repair`,
 `action.guard.trigger_phase`,
 `action.host.reload_after_configuration_change`가 있습니다. Reload action은 구성 변경 뒤
 integration revision이 오래된 경우에만 사용합니다. 결정적인 구성 drift, schema mismatch,
-permission 실패에는 일반적인 restart action을 붙이지 않습니다.
+permission 실패에는 일반적인 restart action을 붙이지 않습니다. Installation action의
+뜻은 “완전한 provenance metadata가 있는 Volicord build를 설치합니다.”입니다.
+Class-only profile이나 dirty source에는 이 action을 붙이지 않으며 같은 build를 다시
+설치하라고 안내하지 않습니다.
 
 <a id="runtime-home-selection"></a>
 ## Runtime Home 선택

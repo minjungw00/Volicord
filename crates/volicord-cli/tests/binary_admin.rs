@@ -80,6 +80,7 @@ Usage: volicord
        volicord <COMMAND>
 
 Commands:
+  version      Show the Volicord version and build provenance
   init         Initialize a Codex Record connection
   status       Show current project workflow status
   doctor       Inspect the local installation and managed integrations
@@ -95,7 +96,7 @@ Commands:
   help         Print this message or the help of the given subcommand(s)
 
 Options:
-  -V, --version  Print the exact build identity
+  -V, --version  Print the Volicord version
   -h, --help     Print help
 ";
 
@@ -148,6 +149,109 @@ fn binary_help_exposes_current_codex_record_workflows() -> Result<(), Box<dyn Er
     assert!(output.status.success());
     assert_eq!(stdout(&output)?, ROOT_HELP);
     assert_eq!(stderr(&output)?, "");
+    Ok(())
+}
+
+#[test]
+fn root_version_options_print_exact_concise_product_identity() -> Result<(), Box<dyn Error>> {
+    let long = run(&["--version"])?;
+    let short = run(&["-V"])?;
+    let expected = format!("volicord {}\n", env!("CARGO_PKG_VERSION"));
+
+    assert!(long.status.success());
+    assert!(short.status.success());
+    assert_eq!(stdout(&long)?, expected);
+    assert_eq!(stdout(&short)?, expected);
+    assert_eq!(stderr(&long)?, "");
+    assert_eq!(stderr(&short)?, "");
+    Ok(())
+}
+
+#[test]
+fn explicit_version_command_supports_concise_verbose_and_json_reports() -> Result<(), Box<dyn Error>>
+{
+    let concise = run(&["version"])?;
+    assert!(concise.status.success());
+    assert_eq!(
+        stdout(&concise)?,
+        format!("volicord {}\n", env!("CARGO_PKG_VERSION"))
+    );
+
+    let verbose = run(&["version", "--verbose"])?;
+    assert!(verbose.status.success());
+    let verbose_text = stdout(&verbose)?;
+    assert!(verbose_text.starts_with(&format!(
+        "Volicord {}\n\nSource\n",
+        env!("CARGO_PKG_VERSION")
+    )));
+    for field in [
+        "  Commit: ",
+        "  Tree: ",
+        "  Metadata source: ",
+        "\nBuild\n",
+        "  Target: ",
+        "  Profile class: ",
+        "  Profile precision: ",
+        "  Exact Cargo profile: ",
+        "  Optimization: ",
+        "  Debug assertions: ",
+    ] {
+        assert!(
+            verbose_text.contains(field),
+            "missing verbose field {field}"
+        );
+    }
+
+    let json_output = run(&["version", "--json"])?;
+    assert!(json_output.status.success());
+    let report: Value = serde_json::from_slice(&json_output.stdout)?;
+    assert_eq!(report["product_name"], "Volicord");
+    assert_eq!(report["package_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        report["build"]["package_version"],
+        env!("CARGO_PKG_VERSION")
+    );
+    assert!(report["build"]["build_id"].is_string());
+    assert!(matches!(
+        report["build"]["profile_precision"].as_str(),
+        Some("exact" | "class_only")
+    ));
+    assert_eq!(
+        report
+            .as_object()
+            .expect("version report object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["build", "package_version", "product_name"])
+    );
+    Ok(())
+}
+
+#[test]
+fn doctor_and_version_json_share_one_build_projection() -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("binary-build-projection")?;
+    let version = run(&["version", "--json"])?;
+    let version: Value = serde_json::from_slice(&version.stdout)?;
+
+    let mut doctor_command = base_command();
+    let doctor = doctor_command
+        .args(["doctor", "--json"])
+        .env("VOLICORD_HOME", fixture.path())
+        .output()?;
+    let doctor: Value = serde_json::from_slice(&doctor.stdout)?;
+
+    assert_eq!(doctor["build"], version["build"]);
+    assert!(doctor["build"]["build_id"].is_string());
+    assert!(!doctor
+        .as_object()
+        .expect("doctor report object")
+        .contains_key("build_id"));
+    assert!(doctor["checks"].is_array());
+    assert!(!doctor["states"]
+        .as_object()
+        .expect("doctor states object")
+        .contains_key("build_id"));
     Ok(())
 }
 

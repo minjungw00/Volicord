@@ -80,6 +80,12 @@ supported workflow, but cannot widen Connection or project authority. Internal
 runtime and revision-scoped project session IDs are likewise private local
 correlation coordinates.
 
+Package version and structured build provenance are also diagnostic and
+correlation facts. Profile-class precision alone does not weaken that boundary
+when the other required provenance is known. A dirty tree explicitly limits
+source reproducibility, and complete-looking build metadata is not proof that
+the executable is trusted, untampered, correct, or built from unmodified source.
+
 The supported MCP process uses stdin/stdout and opens no network transport
 listener. This is a process topology fact, not network sandboxing: Codex or
 tools may use the network independently.

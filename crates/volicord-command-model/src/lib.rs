@@ -18,7 +18,7 @@ use clap::{
     args_conflicts_with_subcommands = true
 )]
 pub struct Cli {
-    /// Print the exact build identity.
+    /// Print the Volicord version.
     #[arg(
         short = 'V',
         long = "version",
@@ -44,6 +44,8 @@ impl Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Show the Volicord version and build provenance.
+    Version(VersionArgs),
     /// Initialize a Codex Record connection.
     Init(InitArgs),
     /// Show current project workflow status.
@@ -74,6 +76,12 @@ pub enum Command {
     /// Internal managed MCP host launcher.
     #[command(name = "_host-launch", hide = true)]
     HostLaunch(HostLaunchArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct VersionArgs {
+    #[command(flatten)]
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -1813,6 +1821,13 @@ mod tests {
 
     #[test]
     fn output_conflicts_are_enforced_by_clap() {
+        let version_conflict = Cli::try_parse_from(["volicord", "version", "--verbose", "--json"])
+            .expect_err("version output modes conflict");
+        assert_eq!(
+            version_conflict.kind(),
+            clap::error::ErrorKind::ArgumentConflict
+        );
+
         let conflict = Cli::try_parse_from([
             "volicord",
             "connection",

@@ -42,6 +42,16 @@ Arguments and options:
   -V, --version
 ```
 
+### `volicord version`
+
+```text
+Usage: volicord version [OPTIONS]
+
+Arguments and options:
+  --json
+  --verbose
+```
+
 ### `volicord init`
 
 ```text
@@ -434,6 +444,58 @@ Inputs that do not match the declared command tree, argument requirements, or
 option relationships are usage errors. Administrative command names are not
 public API method names.
 
+<a id="version-and-build-provenance"></a>
+## Version And Build Provenance
+
+`volicord -V` and `volicord --version` write exactly one product-version line:
+
+```text
+volicord <package-version>
+```
+
+The line ends with one newline and contains no build ID, source revision,
+tree state, target, Cargo profile, optimization, or debug metadata.
+`volicord version` uses the same concise output. `volicord version --verbose`
+renders the package version followed by `Source` and `Build` sections through
+the shared human-presentation primitives. The source section names the commit,
+tree state, and metadata source. The build section names the target, profile
+class, profile precision, exact Cargo profile or `not recorded`, optimization,
+and debug-assertion state.
+
+`volicord version --json` writes exactly one typed report:
+
+```schema
+product_name: Volicord
+package_version: string
+build:
+  package_version: string
+  git_commit: string
+  git_dirty: boolean | null
+  metadata_source: repository | environment | unknown
+  target_triple: string
+  build_profile: string | null
+  profile_class: string
+  profile_precision: exact | class_only
+  opt_level: string
+  debug: boolean | null
+  build_id: string
+```
+
+The top-level package version is the product-version fact. `build` is the
+single structured build-provenance projection and the only location for the
+deterministic build ID. `--json` and `--verbose` conflict at usage parsing.
+
+Build-provenance assessment is typed and uses the recorded package version,
+source metadata and identity, tree state, target, profile class and precision,
+optimization, and debug state. A clean build with an exact Cargo profile and a
+clean build with profile-class precision only are both usable provenance.
+`profile_precision=class_only` means only that the exact Cargo profile name was
+not recorded; it is not a warning, unavailable identity, or reinstall
+condition. A dirty source tree is a separate reproducibility limitation because
+the recorded commit does not identify its working-tree changes. Unknown source
+identity or materially incomplete source, target, profile-class, optimization,
+or debug metadata makes the build identity unavailable.
+
 <a id="doctor-diagnostic-states"></a>
 ## Doctor Diagnostic States
 
@@ -456,6 +518,20 @@ can never be reported as passed even when its inspected page has no finding.
 `DiagnosticFinding` shape. Its Registry inspection does not project arbitrary
 SQLite messages. SQLite result codes, inspection state, and bounded categorical
 facts select a finding; prose remains display-only context.
+
+The report has one top-level `build` value in the same structured `BuildInfo`
+projection returned by `volicord version --json`. It does not duplicate the
+build ID at the top level or under `states`.
+
+Installation build findings keep availability and reproducibility separate:
+
+| Code | Typed observation |
+|---|---|
+| `installation.build_identity.unavailable` | Required source, target, profile-class, optimization, or debug provenance is unavailable or materially incomplete. |
+| `installation.build_source.not_reproducible` | The source tree is dirty, so the recorded commit does not identify the working-tree changes. |
+
+A clean build with `profile_precision=class_only` passes the build-provenance
+check and creates no finding or action.
 
 The privacy-footprint view is selected explicitly and may be combined with
 `--json` when structured output is needed:
@@ -526,13 +602,15 @@ not diagnostic facts.
 Known recovery is attached as a typed action. Current action codes include
 `action.runtime_home.correct_path`, `action.runtime_home.initialize_registry`,
 `action.store.free_locked_database`,
-`action.installation.reinstall_current_build`,
+`action.installation.install_build_with_complete_provenance`,
 `action.managed_config.repair`, `action.guard.repair`,
 `action.guard.trigger_phase`, and
 `action.host.reload_after_configuration_change`. The reload action is reserved
 for a stale integration revision after a configuration change. Deterministic
 configuration drift, schema mismatch, and permission failure do not receive a
-generic restart action.
+generic restart action. The installation action means “Install a Volicord build
+with complete provenance metadata.” It is not attached to a class-only profile
+or dirty source and does not instruct the operator to reinstall the same build.
 
 <a id="runtime-home-selection"></a>
 ## Runtime Home Selection

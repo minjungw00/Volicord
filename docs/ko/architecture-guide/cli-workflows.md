@@ -125,6 +125,14 @@ Connection report 명령에서 `dry_run`은 작업 boolean이며 집계 결과�
 `--json`은 typed 결과를 한 번 직렬화합니다. 사람용 text, log,
 diagnostic metadata를 권한 상태로 다시 parse하지 않습니다.
 
+Root `-V`/`--version` dispatch는 간결한 제품 identity만 렌더링합니다. 명시적인
+`version` 명령은 doctor와 MCP initialization metadata가 사용하는 것과 같은
+`volicord-mcp::BuildInfo`를 소비한 뒤 간결 text, 공유 presentation의 verbose 문서,
+typed JSON report 하나 중 하나를 선택합니다. `volicord-mcp`가 embedded provenance,
+결정적인 상관관계 build ID, 순수 typed provenance 평가를 담당합니다. Doctor는 문자열에서
+정책을 다시 만들지 않고 이 평가를 통과 check, dirty-source 재현성 finding, 실질적으로
+불완전한 identity finding으로 mapping합니다.
+
 ## 경계
 
 - `volicord-command-model`은 Clap에만 의존합니다. Core, Store, MCP, CLI
