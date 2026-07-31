@@ -623,6 +623,42 @@ Codex 구성을 복구합니다. 제거는 일치하는 Volicord 관리 내용�
 프로젝트 선택은 등록된 정규 Git 작업 트리를 해결합니다. 모호한 선택은 실패하며 cwd와
 표시 이름으로 identity를 조용히 만들지 않습니다.
 
+기본적으로 `volicord project current`는 등록된 저장소를 다음과 같이 표시합니다.
+
+```text
+Current project
+
+Name: <project-name>
+Repository: <canonical-repository-path>
+Status: <status>
+```
+
+간결한 사람용 투영에서는 내부 프로젝트 식별자를 생략합니다. 현재 저장소가 등록되지
+않았으면 저장소가 등록되지 않았다는 결론, 정규 저장소 경로, 그리고
+`volicord project use`를 실행하라는 다음 행동 하나만 표시합니다.
+
+비어 있지 않은 `volicord project list` 결과는 현재의 정규 Registry 순서를 사용해
+다음과 같이 표시합니다.
+
+```text
+Projects (<count>)
+
+<project-name>
+  Status: <status>
+  Repository: <canonical-repository-path>
+```
+
+프로젝트가 더 있으면 각 프로젝트 이름 record를 반복하고 record 사이에 빈 줄 하나를
+둡니다. Inventory가 비어 있으면 `No projects are registered.`라는 분명한 문장을
+표시합니다. 프로젝트 이름 길이가 달라도 field 정렬은 바뀌지 않습니다. 프로젝트 상세
+및 collection의 사람용 출력은 긴 경로나 다른 값을 줄이지 않으며, 각 값을 독립된
+field 줄에 표시하고 정확히 newline 하나로 끝납니다.
+
+`project current`와 `project list`의 `--json`은 간결한 사람용 투영에서 생략하는
+내부 식별자와 경로를 포함한 완전하고 손실 없는 machine form으로 유지됩니다. 사람용
+출력과 JSON 출력은 같은 typed 프로젝트 record에서 만드는 별도 투영이며, 어느 쪽도
+다른 쪽을 직렬화한 뒤 다시 parsing하지 않습니다.
+
 <a id="project-workflow-policy-commands"></a>
 ## 정책 명령
 

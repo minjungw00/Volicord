@@ -2180,7 +2180,7 @@ mod init_planning_tests {
                 repo: Some(repo_root.clone()),
                 runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                 shared: true,
-                output: volicord_command_model::ConnectionReportOutputArgs {
+                output: volicord_command_model::ReportOutputArgs {
                     json: true,
                     verbose: false,
                 },

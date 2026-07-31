@@ -27,8 +27,8 @@ use volicord_cli::{
 };
 use volicord_command_model::{
     CodexHost, ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionMode,
-    ConnectionModeArgs, ConnectionReportOutputArgs, InitArgs, PolicyArgs, PolicyCommand,
-    PolicyValidateArgs, RecordProfile, RuntimeHomeArgs,
+    ConnectionModeArgs, InitArgs, PolicyArgs, PolicyCommand, PolicyValidateArgs, RecordProfile,
+    ReportOutputArgs, RuntimeHomeArgs,
 };
 use volicord_host_contract::{CodexMcpCorrelation, HostSessionId, HostThreadId, HostTurnId};
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
@@ -1456,7 +1456,7 @@ fn connection_add_explicit_read_only_rejects_workflow_before_mutation() -> Resul
                 shared: false,
                 read_only: true,
                 dry_run: false,
-                output: ConnectionReportOutputArgs {
+                output: ReportOutputArgs {
                     json: true,
                     verbose: false,
                 },
@@ -1739,7 +1739,7 @@ fn run_record_init(
             runtime_home: RuntimeHomeArgs::default(),
             mcp_command: None,
             dry_run: false,
-            output: ConnectionReportOutputArgs {
+            output: ReportOutputArgs {
                 json: true,
                 verbose: false,
             },
@@ -1870,7 +1870,7 @@ fn run_record_init_outcome(
             runtime_home: RuntimeHomeArgs::default(),
             mcp_command: None,
             dry_run: false,
-            output: ConnectionReportOutputArgs {
+            output: ReportOutputArgs {
                 json: true,
                 verbose: false,
             },
@@ -1901,7 +1901,7 @@ fn run_connection_add(
                 shared,
                 read_only,
                 dry_run,
-                output: ConnectionReportOutputArgs {
+                output: ReportOutputArgs {
                     json: true,
                     verbose: false,
                 },
@@ -2018,7 +2018,7 @@ fn run_record_init_dry_run(
             runtime_home: RuntimeHomeArgs::default(),
             mcp_command: None,
             dry_run: true,
-            output: ConnectionReportOutputArgs {
+            output: ReportOutputArgs {
                 json: true,
                 verbose: false,
             },
@@ -2045,7 +2045,7 @@ fn run_read_only_mode(
                 repo: Some(repo_root.to_path_buf()),
                 runtime_home: RuntimeHomeArgs::default(),
                 shared: false,
-                output: ConnectionReportOutputArgs {
+                output: ReportOutputArgs {
                     json: true,
                     verbose: false,
                 },

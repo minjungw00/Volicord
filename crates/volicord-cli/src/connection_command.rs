@@ -1918,7 +1918,7 @@ mod persisted_metadata_tests {
             repo: Some(repo_root.clone()),
             runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
             shared: false,
-            output: volicord_command_model::ConnectionReportOutputArgs {
+            output: volicord_command_model::ReportOutputArgs {
                 json: true,
                 verbose: false,
             },
@@ -1992,7 +1992,7 @@ mod persisted_metadata_tests {
                     repo: Some(repo_root.clone()),
                     runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                     shared: false,
-                    output: volicord_command_model::ConnectionReportOutputArgs {
+                    output: volicord_command_model::ReportOutputArgs {
                         json: true,
                         verbose: false,
                     },
@@ -2097,7 +2097,7 @@ mod persisted_metadata_tests {
                     repo: Some(repo_root.clone()),
                     runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                     shared: false,
-                    output: volicord_command_model::ConnectionReportOutputArgs {
+                    output: volicord_command_model::ReportOutputArgs {
                         json: true,
                         verbose: false,
                     },
@@ -2155,7 +2155,7 @@ mod persisted_metadata_tests {
                         repo: Some(repo.to_path_buf()),
                         runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                         shared: false,
-                        output: volicord_command_model::ConnectionReportOutputArgs {
+                        output: volicord_command_model::ReportOutputArgs {
                             json: true,
                             verbose: false,
                         },
@@ -2232,7 +2232,7 @@ mod persisted_metadata_tests {
                     repo: Some(second_repo.clone()),
                     runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                     shared: false,
-                    output: volicord_command_model::ConnectionReportOutputArgs {
+                    output: volicord_command_model::ReportOutputArgs {
                         json: true,
                         verbose: false,
                     },
@@ -2283,7 +2283,7 @@ mod persisted_metadata_tests {
             repo: Some(repo_root.clone()),
             runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
             shared: false,
-            output: volicord_command_model::ConnectionReportOutputArgs {
+            output: volicord_command_model::ReportOutputArgs {
                 json: true,
                 verbose: false,
             },

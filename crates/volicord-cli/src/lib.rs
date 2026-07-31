@@ -21,6 +21,7 @@ mod managed_block;
 pub mod mutation_admission;
 pub mod operational_diagnostics;
 pub mod policy_command;
+mod presentation;
 pub mod project_context;
 pub mod registration;
 pub mod setup_command;

@@ -15,7 +15,8 @@ use serde_json::Value;
 use support::binary_fixture::{base_command, prepare_runtime_home};
 use volicord_store::{
     bootstrap::{
-        initialize_runtime_home, write_installation_profile, InstallationProfileRegistration,
+        initialize_runtime_home, register_project, write_installation_profile,
+        InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     diagnostic_findings::insert_occurrence_finding,
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
@@ -183,6 +184,72 @@ fn every_connection_subcommand_help_exposes_runtime_home_selection() -> Result<(
             "{subcommand} help omitted --home"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn project_current_and_list_use_structured_human_output_in_canonical_order(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("binary-project-presentation")?;
+    let registrations = [
+        ("Zulu_Project", fixture.create_product_repo("z")?),
+        ("A", fixture.create_product_repo("a")?),
+        (
+            "Medium_Project",
+            fixture.create_product_repo("medium-project")?,
+        ),
+    ];
+    for (_, repo_root) in &registrations {
+        fs::create_dir(repo_root.join(".git"))?;
+    }
+    prepare_runtime_home(fixture.path(), Path::new(env!("CARGO_BIN_EXE_volicord")))?;
+    let mutation = TestRuntimeHomeMutation::acquire(fixture.path())?;
+    let context = mutation.context()?;
+    for (project_id, repo_root) in &registrations {
+        register_project(
+            &context,
+            ProjectRegistration {
+                project_id: (*project_id).to_owned(),
+                repo_root: repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+    }
+    drop(context);
+    drop(mutation);
+
+    let mut current_command = base_command();
+    let current = current_command
+        .args(["project", "current"])
+        .env("VOLICORD_HOME", fixture.path())
+        .current_dir(&registrations[0].1)
+        .output()?;
+    assert!(current.status.success(), "{}", stderr(&current)?);
+    assert_eq!(
+        stdout(&current)?,
+        format!(
+            "Current project\n\nName: Zulu_Project\nRepository: {}\nStatus: active\n",
+            registrations[0].1.display()
+        )
+    );
+
+    let mut list_command = base_command();
+    let list = list_command
+        .args(["project", "list"])
+        .env("VOLICORD_HOME", fixture.path())
+        .output()?;
+    assert!(list.status.success(), "{}", stderr(&list)?);
+    let list = stdout(&list)?;
+    assert!(list.starts_with("Projects (3)\n\nA\n"));
+    let a = list.find("\nA\n").expect("A project");
+    let medium = list.find("\nMedium_Project\n").expect("medium project");
+    let zulu = list.find("\nZulu_Project\n").expect("Zulu project");
+    assert!(a < medium && medium < zulu);
+    assert!(!list.contains('\t'));
+    assert!(list.ends_with('\n'));
+    assert!(!list.ends_with("\n\n"));
     Ok(())
 }
 

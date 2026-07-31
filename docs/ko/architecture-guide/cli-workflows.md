@@ -65,6 +65,19 @@ Project 명령은 등록된 정규 Git 작업 트리를 해결합니다. Policy 
 검증, 원자적 commit을 사용합니다. 두 명령 계열 모두 표시 이름에서 권한을 추론하거나
 알 수 없는 저장 값을 복구하지 않습니다.
 
+CLI crate는 headline, section, field, 중첩 record, bullet, 반복 collection item,
+action hint, yes/no 및 none/count 값, compact 또는 verbose detail을 위한 의미 중립
+사람용 presentation 어휘를 담당합니다. 이 어휘는 간격, 들여쓰기, control 문자를
+안전하게 표시하는 text, 마지막 newline 하나를 담당하지만 프로젝트, 정책, Core,
+Store, MCP, Guard, host 또는 제품 의미를 소유하지 않습니다. 각 명령별 투영이 제공할
+fact, label, 빈 상태 문장, count, action을 선택합니다.
+
+`project current`와 `project list`는 Store가 검증한 typed 프로젝트 record를 이
+사람용 primitive로 직접 투영합니다. 목록은 정규 Store 순서를 보존하고 반복 record를
+사용하므로 긴 값을 전용 field 줄에 완전하게 표시합니다. 두 명령의 `--json` 경로는
+완전한 typed 프로젝트 record를 별도로 직렬화하며 사람용 출력을 JSON을 거쳐 변환하지
+않습니다. 명령은 의미 있는 verbose 투영이 있을 때만 verbose 출력을 제공합니다.
+
 ## UserAction 흐름
 
 `inbox`는 Core에 adapter-neutral pending fact를 요청합니다. `volicord-types`가 의미

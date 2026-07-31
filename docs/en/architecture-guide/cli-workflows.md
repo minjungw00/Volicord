@@ -76,6 +76,22 @@ Project commands resolve canonical registered Git work trees. Policy apply uses
 plan, strict validation, and atomic commit. Neither command family infers
 authority from a display name or repairs unknown stored values.
 
+The CLI crate owns a semantics-neutral human-presentation vocabulary for
+headlines, sections, fields, nested records, bullets, repeated collection
+items, action hints, yes/no and none/count values, and compact or verbose
+detail. It owns spacing, indentation, control-character-safe text, and the
+single trailing newline, but it does not own project, policy, Core, Store, MCP,
+Guard, host, or product semantics. Each command-specific projection chooses
+which facts, labels, empty-state sentence, count, and action to provide.
+
+`project current` and `project list` project Store-validated typed project
+records directly into those human primitives. The list preserves the
+canonical Store order and uses repeated records, so long values remain
+complete on dedicated field lines. Their `--json` paths serialize the complete
+typed project records separately; human rendering is never converted through
+JSON. A command exposes verbose output only when it has a meaningful verbose
+projection.
+
 ## UserAction Workflow
 
 `inbox` asks Core for adapter-neutral pending facts. `volicord-types` derives

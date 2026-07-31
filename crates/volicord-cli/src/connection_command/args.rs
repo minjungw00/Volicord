@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use volicord_command_model::{
     CodexHost, ConnectionAddArgs, ConnectionListArgs, ConnectionModeArgs, ConnectionRemoveArgs,
-    ConnectionReportOutputArgs, ConnectionSelectArgs, InitArgs, RuntimeHomeArgs,
+    ConnectionSelectArgs, InitArgs, ReportOutputArgs, RuntimeHomeArgs,
 };
 use volicord_types::values::IntegrationProfile;
 
@@ -170,7 +170,7 @@ pub(super) fn connection_output_format(parsed: &ParsedConnectionOptions) -> Outp
     parsed.output
 }
 
-fn output_format(args: ConnectionReportOutputArgs) -> OutputFormat {
+fn output_format(args: ReportOutputArgs) -> OutputFormat {
     if args.json {
         OutputFormat::Json
     } else if args.verbose {
@@ -199,18 +199,18 @@ mod tests {
     #[test]
     fn report_output_flags_map_to_one_typed_selection() {
         assert_eq!(
-            output_format(ConnectionReportOutputArgs::default()),
+            output_format(ReportOutputArgs::default()),
             OutputFormat::Human(HumanOutputDetail::Concise)
         );
         assert_eq!(
-            output_format(ConnectionReportOutputArgs {
+            output_format(ReportOutputArgs {
                 json: false,
                 verbose: true,
             }),
             OutputFormat::Human(HumanOutputDetail::Verbose)
         );
         assert_eq!(
-            output_format(ConnectionReportOutputArgs {
+            output_format(ReportOutputArgs {
                 json: true,
                 verbose: false,
             }),

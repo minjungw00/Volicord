@@ -648,6 +648,45 @@ matching Volicord-managed content.
 Project selection resolves registered canonical Git work trees. Ambiguous
 selection fails; cwd and a display name do not silently create identity.
 
+By default, `volicord project current` renders a registered repository as:
+
+```text
+Current project
+
+Name: <project-name>
+Repository: <canonical-repository-path>
+Status: <status>
+```
+
+The concise human projection omits internal project identifiers. For an
+unregistered current repository, it instead states that the repository is not
+registered, prints the canonical repository path, and prints exactly one next
+action: run `volicord project use`.
+
+A non-empty `volicord project list` result uses the current canonical Registry
+order and renders:
+
+```text
+Projects (<count>)
+
+<project-name>
+  Status: <status>
+  Repository: <canonical-repository-path>
+```
+
+Each additional project repeats the project-name record with a blank line
+between records. An empty inventory renders the clear sentence
+`No projects are registered.` Project names of different lengths do not change
+field alignment. Human project detail and collection output does not truncate
+long paths or other values, places each value on its own field line, and ends
+in exactly one newline.
+
+For `project current` and `project list`, `--json` remains the complete,
+lossless machine form, including internal identifiers and paths that the
+concise human projection omits. Human and JSON output are separate projections
+of the same typed project records; neither projection serializes and reparses
+the other.
+
 <a id="project-workflow-policy-commands"></a>
 ## Policy Commands
 

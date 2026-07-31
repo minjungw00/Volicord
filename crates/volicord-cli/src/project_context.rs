@@ -18,7 +18,10 @@ use volicord_store::{
     RuntimeHomeMutationContext, StoreError,
 };
 
-use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
+use crate::{
+    mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError},
+    presentation::{ActionHint, CollectionItem, Document, Field, HumanValue},
+};
 
 const PROJECT_METADATA_CREATED_BY: &str = "volicord_cli_project_command";
 
@@ -376,16 +379,23 @@ fn render_current_output(
         }))
         .map(|text| format!("{text}\n"))
         .map_err(|error| ProjectCommandError::runtime(error.to_string())),
-        (OutputFormat::Text, Some(project)) => Ok(format!(
-            "project current\nname: {}\nrepo_root: {}\nstatus: {}\n",
-            project.project_name,
-            project.repo_root.display(),
-            project.status
-        )),
-        (OutputFormat::Text, None) => Ok(format!(
-            "project not registered\nrepo_root: {}\naction: run `volicord project use`\n",
-            repo_root.display()
-        )),
+        (OutputFormat::Text, Some(project)) => Ok(Document::new(
+            "Current project",
+            vec![
+                project_field("Name", &project.project_name),
+                project_field("Repository", path_text(&project.repo_root)),
+                project_field("Status", &project.status),
+            ],
+        )
+        .render()),
+        (OutputFormat::Text, None) => Ok(Document::new(
+            "Repository is not registered.",
+            vec![
+                project_field("Repository", path_text(repo_root)),
+                ActionHint::new("Run `volicord project use`.").into(),
+            ],
+        )
+        .render()),
     }
 }
 
@@ -400,19 +410,34 @@ fn render_list_output(
                 .map(|text| format!("{text}\n"))
                 .map_err(|error| ProjectCommandError::runtime(error.to_string()))
         }
+        OutputFormat::Text if projects.is_empty() => {
+            Ok(Document::new("No projects are registered.", Vec::new()).render())
+        }
         OutputFormat::Text => {
-            let mut text = String::from("name\trepo_root\tstatus\n");
-            for project in projects {
-                text.push_str(&format!(
-                    "{}\t{}\t{}\n",
-                    project.project_name,
-                    project.repo_root.display(),
-                    project.status
-                ));
-            }
-            Ok(text)
+            let count = HumanValue::Count(projects.len());
+            let items = projects
+                .iter()
+                .map(|project| {
+                    CollectionItem::new(
+                        &project.project_name,
+                        vec![
+                            Field::new("Status", HumanValue::text(&project.status)),
+                            Field::new(
+                                "Repository",
+                                HumanValue::text(path_text(&project.repo_root)),
+                            ),
+                        ],
+                    )
+                    .into()
+                })
+                .collect();
+            Ok(Document::new(format!("Projects ({count})"), items).render())
         }
     }
+}
+
+fn project_field(label: &str, value: impl Into<String>) -> crate::presentation::Element {
+    Field::new(label, HumanValue::text(value)).into()
 }
 
 fn render_forget_output(
@@ -466,6 +491,8 @@ fn path_text(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use volicord_platform_fs::{
         RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
         RuntimeHomeMutationWaitPolicy,
@@ -477,6 +504,172 @@ mod tests {
     use volicord_test_support::{with_test_runtime_home_setup, TempRuntimeHome};
 
     use super::*;
+
+    fn record(name: &str, repo_root: impl Into<PathBuf>) -> ProjectRecord {
+        let repo_root = repo_root.into();
+        ProjectRecord {
+            project_internal_id: format!("internal-{name}"),
+            project_id: format!("project-{name}"),
+            project_name: name.to_owned(),
+            project_alias: format!("alias-{name}"),
+            runtime_home_id: "runtime-home".to_owned(),
+            project_home: repo_root.join(".volicord"),
+            state_db_path: repo_root.join(".volicord/state.sqlite"),
+            repo_root,
+            status: ACTIVE_PROJECT_STATUS.to_owned(),
+            metadata_json: "{}".to_owned(),
+        }
+    }
+
+    fn assert_one_trailing_newline(output: &str) {
+        assert!(output.ends_with('\n'));
+        assert!(!output.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn current_human_and_json_project_the_same_registered_record() {
+        let project = record("Sandbox_Project", "/path/to/Sandbox_Project");
+        let human = render_current_output(OutputFormat::Text, Some(&project), &project.repo_root)
+            .expect("human rendering");
+        let machine = render_current_output(OutputFormat::Json, Some(&project), &project.repo_root)
+            .expect("JSON rendering");
+        let machine: Value = serde_json::from_str(&machine).expect("valid JSON");
+
+        assert_eq!(
+            human,
+            concat!(
+                "Current project\n",
+                "\n",
+                "Name: Sandbox_Project\n",
+                "Repository: /path/to/Sandbox_Project\n",
+                "Status: active\n",
+            )
+        );
+        assert_eq!(machine["project"]["project_name"], project.project_name);
+        assert_eq!(
+            machine["project"]["repo_root"],
+            path_text(&project.repo_root)
+        );
+        assert_eq!(machine["project"]["status"], project.status);
+        assert_eq!(
+            machine["project"]["project_internal_id"],
+            project.project_internal_id
+        );
+        assert!(!human.contains("internal-Sandbox_Project"));
+        assert!(!human.contains('\t'));
+        assert_one_trailing_newline(&human);
+    }
+
+    #[test]
+    fn current_unregistered_has_one_conclusion_path_and_action() {
+        let repo_root = Path::new("/path/to/unregistered-repository");
+        let human =
+            render_current_output(OutputFormat::Text, None, repo_root).expect("human rendering");
+        let machine =
+            render_current_output(OutputFormat::Json, None, repo_root).expect("JSON rendering");
+        let machine: Value = serde_json::from_str(&machine).expect("valid JSON");
+
+        assert_eq!(
+            human,
+            concat!(
+                "Repository is not registered.\n",
+                "\n",
+                "Repository: /path/to/unregistered-repository\n",
+                "Next action: Run `volicord project use`.\n",
+            )
+        );
+        assert_eq!(human.matches("Next action:").count(), 1);
+        assert_eq!(machine["status"], "not_registered");
+        assert_eq!(machine["repo_root"], path_text(repo_root));
+        assert_eq!(machine["action"], "volicord project use");
+        assert!(!human.contains('\t'));
+        assert_one_trailing_newline(&human);
+    }
+
+    #[test]
+    fn list_human_handles_one_and_several_different_length_records_in_input_order() {
+        let long_root = format!(
+            "/workspace/{}/Long_Project",
+            "complete-long-directory-segment/".repeat(12)
+        );
+        let one = record("Long_Project", &long_root);
+        let single = render_list_output(OutputFormat::Text, std::slice::from_ref(&one))
+            .expect("single project rendering");
+        assert_eq!(
+            single,
+            format!("Projects (1)\n\nLong_Project\n  Status: active\n  Repository: {long_root}\n")
+        );
+        assert!(single.contains(&long_root));
+
+        let projects = vec![
+            record("A", "/repos/a"),
+            record("Medium_Project", "/repos/medium"),
+            record("Very_Long_Project_Name", "/repos/very-long"),
+        ];
+        let human =
+            render_list_output(OutputFormat::Text, &projects).expect("project list rendering");
+        let machine =
+            render_list_output(OutputFormat::Json, &projects).expect("JSON list rendering");
+        let machine: Value = serde_json::from_str(&machine).expect("valid JSON");
+
+        assert_eq!(
+            human,
+            concat!(
+                "Projects (3)\n",
+                "\n",
+                "A\n",
+                "  Status: active\n",
+                "  Repository: /repos/a\n",
+                "\n",
+                "Medium_Project\n",
+                "  Status: active\n",
+                "  Repository: /repos/medium\n",
+                "\n",
+                "Very_Long_Project_Name\n",
+                "  Status: active\n",
+                "  Repository: /repos/very-long\n",
+            )
+        );
+        let positions = projects
+            .iter()
+            .map(|project| human.find(&project.project_name).expect("project name"))
+            .collect::<Vec<_>>();
+        assert!(positions.windows(2).all(|window| window[0] < window[1]));
+        for (index, project) in projects.iter().enumerate() {
+            assert_eq!(
+                machine["projects"][index]["project_internal_id"],
+                project.project_internal_id
+            );
+            assert_eq!(
+                machine["projects"][index]["project_name"],
+                project.project_name
+            );
+            assert_eq!(
+                machine["projects"][index]["repo_root"],
+                path_text(&project.repo_root)
+            );
+            assert!(!human.contains(&project.project_internal_id));
+        }
+        assert!(!human.contains('\t'));
+        assert_one_trailing_newline(&human);
+        assert_one_trailing_newline(&single);
+    }
+
+    #[test]
+    fn empty_list_is_a_clear_sentence_and_lossless_empty_json_collection() {
+        let human = render_list_output(OutputFormat::Text, &[]).expect("empty list rendering");
+        let machine = render_list_output(OutputFormat::Json, &[]).expect("empty JSON list");
+        let machine: Value = serde_json::from_str(&machine).expect("valid JSON");
+
+        assert_eq!(human, "No projects are registered.\n");
+        assert_eq!(
+            machine["projects"].as_array().map(Vec::len),
+            Some(0),
+            "JSON must keep the real empty collection"
+        );
+        assert!(!human.contains('\t'));
+        assert_one_trailing_newline(&human);
+    }
 
     #[test]
     fn project_writers_are_typed_no_effect_while_setup_is_exclusive_and_resume_after_release(

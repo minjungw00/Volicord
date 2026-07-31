@@ -149,7 +149,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub dry_run: bool,
     #[command(flatten)]
-    pub output: ConnectionReportOutputArgs,
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args, Default)]
@@ -285,7 +285,7 @@ pub enum ConnectionCommand {
 }
 
 #[derive(Debug, Args, Default)]
-pub struct ConnectionReportOutputArgs {
+pub struct ReportOutputArgs {
     #[arg(long, conflicts_with = "verbose")]
     pub json: bool,
     #[arg(long, conflicts_with = "json")]
@@ -307,7 +307,7 @@ pub struct ConnectionAddArgs {
     #[arg(long)]
     pub dry_run: bool,
     #[command(flatten)]
-    pub output: ConnectionReportOutputArgs,
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -331,7 +331,7 @@ pub struct ConnectionSelectArgs {
     #[arg(long)]
     pub shared: bool,
     #[command(flatten)]
-    pub output: ConnectionReportOutputArgs,
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -348,7 +348,7 @@ pub struct ConnectionModeArgs {
     #[arg(long)]
     pub shared: bool,
     #[command(flatten)]
-    pub output: ConnectionReportOutputArgs,
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -364,7 +364,7 @@ pub struct ConnectionRemoveArgs {
     #[arg(long)]
     pub dry_run: bool,
     #[command(flatten)]
-    pub output: ConnectionReportOutputArgs,
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -446,7 +446,7 @@ pub struct McpPreflightArgs {
     #[command(flatten)]
     pub binding: McpBindingArgs,
     #[command(flatten)]
-    pub output: ConnectionReportOutputArgs,
+    pub output: ReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -1700,7 +1700,7 @@ mod tests {
         }
     }
 
-    fn report_output_args(command: Command) -> ConnectionReportOutputArgs {
+    fn report_output_args(command: Command) -> ReportOutputArgs {
         match command {
             Command::Init(args) => args.output,
             Command::Connection(ConnectionArgs { command }) => match command {
@@ -1910,7 +1910,7 @@ mod tests {
                     host: Some(CodexHost::Codex),
                     mode: ConnectionMode::ReadOnly,
                     output:
-                        ConnectionReportOutputArgs {
+                        ReportOutputArgs {
                             json: true,
                             verbose: false,
                         },
