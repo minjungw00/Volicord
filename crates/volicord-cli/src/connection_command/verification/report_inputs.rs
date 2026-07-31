@@ -156,6 +156,7 @@ pub(super) fn assemble_connection_evaluation(
         connection,
         &evaluation.checks,
         &overlay,
+        &evaluation.metadata.evaluated_at,
     )?;
     evaluation.checks = finalize_check_graph(evaluation.checks, &findings)?;
     evaluation.activation_plan = Some(activation_plan_for_checks(&evaluation.checks)?);
@@ -184,28 +185,6 @@ pub(in crate::connection_command) fn effective_connection_report(
 ) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
     connection
         .effective_verification_report(current_timestamp())
-        .map_err(ConnectionCommandError::from)
-}
-
-pub(in crate::connection_command) fn connection_metadata_failure_report(
-    current: &ConnectionVerificationReport,
-) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
-    let mut checks = current
-        .checks()
-        .iter()
-        .filter(|check| check.id() != ConnectionCheckKind::ManagedConfig)
-        .cloned()
-        .collect::<Vec<_>>();
-    checks.push(canonical_check(
-        ConnectionCheckKind::ManagedConfig,
-        ConnectionCheckStatus::Failed,
-        "connection_metadata_invalid",
-        "Agent Connection metadata is invalid, so managed Codex configuration cannot be inspected",
-        None,
-        None,
-    )?);
-    let activation_plan = activation_plan_for_checks(&checks)?;
-    ConnectionVerificationReport::try_new(current.checked_at().clone(), checks, activation_plan)
         .map_err(ConnectionCommandError::from)
 }
 
@@ -303,6 +282,7 @@ pub(super) fn canonical_verification_evaluation(
     handshake: &McpVerification,
 ) -> Result<ConnectionEvaluation, ConnectionCommandError> {
     let runtime_home = context.runtime_home().as_path();
+    let evaluated_at = current_timestamp();
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
@@ -317,6 +297,7 @@ pub(super) fn canonical_verification_evaluation(
         &current_sessions,
         latest_session.as_ref(),
         &current_revision,
+        &evaluated_at,
     )?;
     let mut checks = vec![
         with_direct_causes(managed_config_check(host)?, host_findings.managed_config)?,
@@ -338,7 +319,15 @@ pub(super) fn canonical_verification_evaluation(
         runtime_home,
         &connection.connection_internal_id,
     )?;
-    let guard = guard_checks_for_connection(runtime_home, connection, &projects)?;
+    let guard = guard_checks_for_connection(
+        runtime_home,
+        connection,
+        &projects,
+        &current_revision,
+        &evaluated_at,
+        None,
+    )
+    .map_err(GuardCheckEvaluationUnavailable::into_source)?;
     checks.extend(guard.checks);
     let mut inline_findings = host_findings.current;
     inline_findings.extend(guard.inline_findings);
@@ -354,203 +343,650 @@ pub(super) fn canonical_verification_evaluation(
         },
         ConnectionEvaluationMetadata {
             kind: ConnectionEvaluationKind::Verify,
-            evaluated_at: current_timestamp(),
+            evaluated_at,
             integration_revision: current_revision,
         },
     )
 }
 
-pub(in crate::connection_command) fn current_status_host_diagnostic(
-    _runtime_home: &Path,
-    connection: &AgentConnectionRecord,
-    host_plan: Option<&HostPlan>,
-    projects: &[ConnectionProjectRecord],
-    process: &impl ConnectionProcess,
-) -> Result<Option<Verification>, ConnectionCommandError> {
-    let Some(host_plan) = host_plan else {
-        return Ok(None);
-    };
-    let evaluation = codex::managed_identity_evaluation_for_plan(host_plan)?;
-    let mut host = Verification::unobserved(&connection.config_target);
-    host.managed_config = evaluation.status;
-    host.managed_config_diagnostic = evaluation.diagnostic;
-    host.managed_config_details = evaluation.details;
-    if host_plan.host_scope == HostScope::Project {
-        if let Some(project) = projects.first() {
-            host.project_trust = Some(codex::project_trust_diagnostic(
-                &codex_environment(process),
-                &project.project.repo_root,
-            ));
-        }
-    }
-    Ok(Some(host))
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::connection_command) enum CurrentConnectionEvaluationUnavailableCause {
+    RegistrationMetadataCorrupt,
+    PersistedActiveVerificationEvidenceCorrupt,
+    ManagedConfigurationUnreadableOrInvalid,
+    ProjectMembershipUnavailable,
+    ProjectStoreUnavailable,
+    GuardStateUnavailable,
+    IntegrationRevisionUnavailableOrInconsistent,
+    RuntimeSessionStateUnavailable,
+    DiagnosticStateUnavailable,
+    EvaluationAssemblyUnavailable,
 }
 
-pub(in crate::connection_command) fn current_status_report(
-    runtime_home: &Path,
-    connection: &AgentConnectionRecord,
-    host_plan: Option<&HostPlan>,
-    projects: &[ConnectionProjectRecord],
-    process: &impl ConnectionProcess,
-) -> Result<VerificationReport, ConnectionCommandError> {
-    let current_host =
-        current_status_host_diagnostic(runtime_home, connection, host_plan, projects, process)?;
-    let persisted = connection.verification_report()?;
-    let Some(mut host) = current_host else {
-        let report = persisted.unwrap_or(effective_connection_report(connection)?);
-        return assemble_connection_evaluation(
-            runtime_home,
-            connection,
-            ConnectionEvaluation::try_new(
-                report.checks().to_vec(),
-                Vec::new(),
-                Vec::new(),
-                ConnectionEvaluationEvidence::CurrentStatus {
-                    managed_config: ManagedConfigStatus::Unknown,
-                    host_executable: HostExecutableStatus::NotChecked,
-                },
-                ConnectionEvaluationMetadata {
-                    kind: ConnectionEvaluationKind::Status,
-                    evaluated_at: current_timestamp(),
-                    integration_revision: connection_integration_revision(connection)?,
-                },
-            )?,
-        );
-    };
-    let stored_executable = persisted
-        .as_ref()
-        .and_then(|report| {
-            report
-                .checks()
-                .iter()
-                .find(|check| check.id() == ConnectionCheckKind::HostExecutable)
-        })
-        .cloned();
-    if let Some(check) = stored_executable.as_ref() {
-        host.host_executable = match check.status() {
-            ConnectionCheckStatus::Passed => HostExecutableStatus::Available,
-            ConnectionCheckStatus::Failed => HostExecutableStatus::Unavailable,
-            ConnectionCheckStatus::Pending
-            | ConnectionCheckStatus::Blocked
-            | ConnectionCheckStatus::NotApplicable => HostExecutableStatus::NotChecked,
-        };
-        host.host_executable_code = check
-            .code()
-            .unwrap_or("host_executable_not_checked")
-            .to_owned();
-        if let Some(details) = check.details().map(ConnectionCheckDetails::as_object) {
-            host.executable_path = details
-                .get("probe")
-                .and_then(Value::as_object)
-                .and_then(|probe| probe.get("discovered_path"))
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            host.host_version = details
-                .get("probe")
-                .and_then(Value::as_object)
-                .and_then(|probe| probe.get("version"))
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            host.host_executable_details = details
-                .get("diagnostic")
-                .and_then(Value::as_str)
-                .unwrap_or(check.summary())
-                .to_owned();
+impl CurrentConnectionEvaluationUnavailableCause {
+    pub(in crate::connection_command) const fn as_str(self) -> &'static str {
+        match self {
+            Self::RegistrationMetadataCorrupt => "registration_metadata_corrupt",
+            Self::PersistedActiveVerificationEvidenceCorrupt => {
+                "persisted_active_verification_evidence_corrupt"
+            }
+            Self::ManagedConfigurationUnreadableOrInvalid => {
+                "managed_configuration_unreadable_or_invalid"
+            }
+            Self::ProjectMembershipUnavailable => "project_membership_unavailable",
+            Self::ProjectStoreUnavailable => "project_store_unavailable",
+            Self::GuardStateUnavailable => "guard_state_unavailable",
+            Self::IntegrationRevisionUnavailableOrInconsistent => {
+                "integration_revision_unavailable_or_inconsistent"
+            }
+            Self::RuntimeSessionStateUnavailable => "runtime_session_state_unavailable",
+            Self::DiagnosticStateUnavailable => "diagnostic_state_unavailable",
+            Self::EvaluationAssemblyUnavailable => "evaluation_assembly_unavailable",
         }
     }
-    let stored_mcp = persisted
-        .as_ref()
-        .and_then(|report| {
-            report
-                .checks()
-                .iter()
-                .find(|check| check.id() == ConnectionCheckKind::McpServer)
-        })
+}
+
+#[derive(Debug)]
+pub(in crate::connection_command) struct CurrentConnectionEvaluationUnavailable {
+    cause: CurrentConnectionEvaluationUnavailableCause,
+    source: ConnectionCommandError,
+}
+
+impl CurrentConnectionEvaluationUnavailable {
+    fn new(
+        cause: CurrentConnectionEvaluationUnavailableCause,
+        source: impl Into<ConnectionCommandError>,
+    ) -> Self {
+        Self {
+            cause,
+            source: source.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for CurrentConnectionEvaluationUnavailable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "CURRENT_CONNECTION_EVALUATION_UNAVAILABLE: {}: {}",
+            self.cause.as_str(),
+            self.source
+        )
+    }
+}
+
+impl std::error::Error for CurrentConnectionEvaluationUnavailable {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PersistedMcpPreflightStatus {
+    Passed,
+    Failed,
+    Pending,
+}
+
+impl PersistedMcpPreflightStatus {
+    const fn into_step_status(self) -> StepStatus {
+        match self {
+            Self::Passed => StepStatus::Passed,
+            Self::Failed => StepStatus::Failed,
+            Self::Pending => StepStatus::Pending,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedMcpPreflightDetails {
+    status: PersistedMcpPreflightStatus,
+    code: String,
+    diagnostic: String,
+    evidence: Option<McpPreflightEvidence>,
+    finding_id: Option<String>,
+    diagnostic_code: Option<String>,
+    #[serde(rename = "failure_stage")]
+    _failure_stage: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedMcpServerDetails {
+    preflight: PersistedMcpPreflightDetails,
+    last_active_verification: Option<McpActiveVerificationEvidence>,
+}
+
+fn unavailable(
+    cause: CurrentConnectionEvaluationUnavailableCause,
+    source: impl Into<ConnectionCommandError>,
+) -> CurrentConnectionEvaluationUnavailable {
+    CurrentConnectionEvaluationUnavailable::new(cause, source)
+}
+
+fn persisted_evidence_corrupt(detail: impl Into<String>) -> CurrentConnectionEvaluationUnavailable {
+    unavailable(
+        CurrentConnectionEvaluationUnavailableCause::PersistedActiveVerificationEvidenceCorrupt,
+        ConnectionCommandError::runtime(detail),
+    )
+}
+
+fn validate_current_membership_coordinate(
+    runtime_home: &Path,
+    expected_connection: &AgentConnectionRecord,
+    expected_membership: &ConnectionProjectRecord,
+    expected_revision: &IntegrationRevision,
+) -> Result<(), CurrentConnectionEvaluationUnavailable> {
+    let connection = agent_connection_record_read_only(
+        runtime_home,
+        &expected_connection.connection_internal_id,
+    )
+    .map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::IntegrationRevisionUnavailableOrInconsistent,
+            ConnectionCommandError::from(error),
+        )
+    })?
+    .ok_or_else(|| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::IntegrationRevisionUnavailableOrInconsistent,
+            ConnectionCommandError::runtime("selected Agent Connection is no longer registered"),
+        )
+    })?;
+    let revision = connection_integration_revision(&connection).map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::IntegrationRevisionUnavailableOrInconsistent,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+    if revision != *expected_revision || connection != *expected_connection {
+        return Err(unavailable(
+            CurrentConnectionEvaluationUnavailableCause::IntegrationRevisionUnavailableOrInconsistent,
+            ConnectionCommandError::concurrent_modification(
+                "selected Agent Connection changed during current evaluation",
+            ),
+        ));
+    }
+    let memberships = list_connection_projects_read_only(
+        runtime_home,
+        &expected_connection.connection_internal_id,
+    )
+    .map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ProjectMembershipUnavailable,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+    let current = memberships
+        .iter()
+        .find(|membership| membership.project_id == expected_membership.project_id)
+        .ok_or_else(|| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::ProjectMembershipUnavailable,
+                ConnectionCommandError::runtime(
+                    "selected Product Repository membership is no longer registered",
+                ),
+            )
+        })?;
+    if current != expected_membership {
+        return Err(unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ProjectMembershipUnavailable,
+            ConnectionCommandError::concurrent_modification(
+                "selected Product Repository membership changed during current evaluation",
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn apply_persisted_host_executable_evidence(
+    host: &mut Verification,
+    persisted: Option<&ConnectionVerificationReport>,
+) -> Result<(), CurrentConnectionEvaluationUnavailable> {
+    let Some(check) = persisted.and_then(|report| {
+        report
+            .checks()
+            .iter()
+            .find(|check| check.id() == ConnectionCheckKind::HostExecutable)
+    }) else {
+        host.host_executable_code = "host_executable_not_verified".to_owned();
+        host.host_executable_details = "Codex executable has not been actively verified".to_owned();
+        return Ok(());
+    };
+    let details = check
+        .details()
+        .map(ConnectionCheckDetails::as_object)
         .cloned()
-        .unwrap_or(canonical_check(
+        .map(Value::Object)
+        .ok_or_else(|| {
+            persisted_evidence_corrupt(
+                "persisted host executable evidence is missing typed details",
+            )
+        })?;
+    let evidence =
+        serde_json::from_value::<HostExecutableProbeDetails>(details).map_err(|error| {
+            persisted_evidence_corrupt(format!(
+                "persisted host executable evidence is invalid: {error}"
+            ))
+        })?;
+    host.host_executable = evidence.status();
+    host.executable_path = evidence.probe().discovered_path.clone();
+    host.host_version = evidence.probe().version.clone();
+    host.host_executable_code = check
+        .code()
+        .unwrap_or(match evidence.status() {
+            HostExecutableStatus::Available => "host_executable_available",
+            HostExecutableStatus::Unavailable => "host_executable_unavailable",
+            HostExecutableStatus::NotChecked => "host_executable_not_checked",
+        })
+        .to_owned();
+    host.host_executable_details = evidence.diagnostic().to_owned();
+    Ok(())
+}
+
+fn preflight_evidence_passed(evidence: &McpPreflightEvidence) -> bool {
+    evidence.configuration() == McpEvidenceCheckStatus::Passed
+        && evidence.registry_read() == McpEvidenceCheckStatus::Passed
+        && evidence
+            .project_reads()
+            .iter()
+            .all(|project| project.state_read() == McpEvidenceCheckStatus::Passed)
+        && evidence.schema_validation() == McpEvidenceCheckStatus::Passed
+        && evidence.protocol_profiles() == McpEvidenceCheckStatus::Passed
+        && evidence.host_contracts() == McpEvidenceCheckStatus::Passed
+}
+
+fn active_evidence_passed(evidence: &McpActiveVerificationEvidence) -> bool {
+    evidence.registry_write() == McpEvidenceCheckStatus::Passed
+        && evidence
+            .project_writes()
+            .iter()
+            .all(|project| project.state_write() == McpEvidenceCheckStatus::Passed)
+        && evidence
+            .protocol_conformance()
+            .iter()
+            .all(|probe| probe.probe().status() == McpEvidenceCheckStatus::Passed)
+        && evidence
+            .host_compatibility()
+            .iter()
+            .all(|probe| probe.probe().status() == McpEvidenceCheckStatus::Passed)
+}
+
+fn active_evidence_diagnostic_code(evidence: &McpActiveVerificationEvidence) -> Option<&str> {
+    evidence
+        .protocol_conformance()
+        .iter()
+        .map(McpRevisionConformance::probe)
+        .chain(
+            evidence
+                .host_compatibility()
+                .iter()
+                .map(McpHostCompatibilityEvidence::probe),
+        )
+        .find(|probe| probe.status() == McpEvidenceCheckStatus::Failed)
+        .and_then(McpProbeEvidence::diagnostic_code)
+}
+
+fn persisted_mcp_finding_ids(
+    details: &PersistedMcpServerDetails,
+) -> Result<Vec<DiagnosticFindingId>, CurrentConnectionEvaluationUnavailable> {
+    let values = details
+        .preflight
+        .finding_id
+        .iter()
+        .map(String::as_str)
+        .chain(
+            details
+                .last_active_verification
+                .iter()
+                .flat_map(McpActiveVerificationEvidence::protocol_conformance)
+                .map(McpRevisionConformance::probe)
+                .filter_map(McpProbeEvidence::finding_id),
+        )
+        .chain(
+            details
+                .last_active_verification
+                .iter()
+                .flat_map(McpActiveVerificationEvidence::host_compatibility)
+                .map(McpHostCompatibilityEvidence::probe)
+                .filter_map(McpProbeEvidence::finding_id),
+        );
+    let mut ids = values
+        .map(|value| {
+            DiagnosticFindingId::parse(value.to_owned()).map_err(|error| {
+                persisted_evidence_corrupt(format!(
+                    "persisted MCP evidence has an invalid finding ID: {error}"
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
+fn current_mcp_server_check(
+    persisted: Option<&ConnectionVerificationReport>,
+) -> Result<ConnectionCheck, CurrentConnectionEvaluationUnavailable> {
+    let Some(check) = persisted.and_then(|report| {
+        report
+            .checks()
+            .iter()
+            .find(|check| check.id() == ConnectionCheckKind::McpServer)
+    }) else {
+        return canonical_check(
             ConnectionCheckKind::McpServer,
             ConnectionCheckStatus::Pending,
             "mcp_server_not_verified",
             "Volicord MCP server has not been actively verified",
             None,
             None,
-        )?);
-    let stored_mcp = if stored_mcp.status() == ConnectionCheckStatus::Blocked {
-        canonical_check(
-            ConnectionCheckKind::McpServer,
-            ConnectionCheckStatus::Pending,
-            "mcp_server_reverification_required",
-            "Volicord MCP server requires active verification after its blocker is resolved",
-            stored_mcp
-                .details()
-                .map(ConnectionCheckDetails::as_object)
-                .cloned()
-                .map(Value::Object),
-            None,
-        )?
-    } else {
-        stored_mcp
+        )
+        .map_err(|error| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+                error,
+            )
+        });
     };
-    let current_revision = connection_integration_revision(connection)?;
+    let value = check
+        .details()
+        .map(ConnectionCheckDetails::as_object)
+        .cloned()
+        .map(Value::Object)
+        .ok_or_else(|| {
+            persisted_evidence_corrupt("persisted MCP verification evidence is missing details")
+        })?;
+    let details = serde_json::from_value::<PersistedMcpServerDetails>(value).map_err(|error| {
+        persisted_evidence_corrupt(format!(
+            "persisted MCP verification evidence is invalid: {error}"
+        ))
+    })?;
+    if details.preflight.status == PersistedMcpPreflightStatus::Passed
+        && details
+            .preflight
+            .evidence
+            .as_ref()
+            .is_none_or(|evidence| !preflight_evidence_passed(evidence))
+    {
+        return Err(persisted_evidence_corrupt(
+            "persisted MCP preflight passed without complete passing evidence",
+        ));
+    }
+    let preflight = VerificationStep {
+        status: details.preflight.status.into_step_status(),
+        code: details.preflight.code.clone(),
+        details: details.preflight.diagnostic.clone(),
+        preflight_evidence: details.preflight.evidence.clone(),
+        process_id: None,
+        failure: None,
+        diagnostic: details
+            .preflight
+            .finding_id
+            .as_ref()
+            .zip(details.preflight.diagnostic_code.as_ref())
+            .map(|(finding_id, code)| McpPersistedDiagnostic {
+                finding_id: finding_id.clone(),
+                code: code.clone(),
+            }),
+    };
+    let active = details.last_active_verification.clone();
+    let step = match active.as_ref() {
+        Some(evidence) if active_evidence_passed(evidence) => VerificationStep::passed_with_code(
+            "mcp_server_ready",
+            "Persisted active MCP verification evidence passed",
+        ),
+        Some(evidence) => VerificationStep::failed_with_code(
+            active_evidence_diagnostic_code(evidence)
+                .unwrap_or("mcp_server_active_verification_failed"),
+            "Persisted active MCP verification evidence contains a failed observation",
+        ),
+        None => VerificationStep::pending("Active MCP verification has not run"),
+    };
+    let handshake = McpVerification {
+        step,
+        exchange: None,
+        active_evidence: active,
+    };
+    let causes = persisted_mcp_finding_ids(&details)?;
+    let check = mcp_server_check(&preflight, &handshake).map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+            error,
+        )
+    })?;
+    with_direct_causes(check, causes).map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+            error,
+        )
+    })
+}
+
+pub(in crate::connection_command) fn current_status_report(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    selected_membership: &ConnectionProjectRecord,
+    evaluated_at: UtcTimestamp,
+    process: &impl ConnectionProcess,
+) -> Result<VerificationReport, CurrentConnectionEvaluationUnavailable> {
+    parse_metadata(
+        &connection.metadata_json,
+        Some(selected_membership.project_id.as_str()),
+    )
+    .map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::RegistrationMetadataCorrupt,
+            error,
+        )
+    })?;
+    let current_revision = connection_integration_revision(connection).map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::IntegrationRevisionUnavailableOrInconsistent,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+    validate_current_membership_coordinate(
+        runtime_home,
+        connection,
+        selected_membership,
+        &current_revision,
+    )?;
+    CoreProjectStore::open_read_only(
+        runtime_home,
+        &ProjectId::new(selected_membership.project_id.clone()),
+    )
+    .map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ProjectStoreUnavailable,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+
+    let persisted = connection.verification_report().map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::PersistedActiveVerificationEvidenceCorrupt,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+    let host_plan =
+        existing_host_plan(connection, runtime_home, process, Some(selected_membership)).map_err(
+            |error| {
+                unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ManagedConfigurationUnreadableOrInvalid,
+            error,
+        )
+            },
+        )?;
+    let managed = codex::managed_identity_evaluation_for_plan(&host_plan).map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::ManagedConfigurationUnreadableOrInvalid,
+            ConnectionCommandError::from(error),
+        )
+    })?;
+    let mut host = Verification::unobserved(&connection.config_target);
+    host.managed_config = managed.status;
+    host.managed_config_diagnostic = managed.diagnostic;
+    host.managed_config_details = managed.details;
+    if host_plan.host_scope == HostScope::Project {
+        host.project_trust = Some(codex::project_trust_diagnostic(
+            &codex_environment(process),
+            &selected_membership.project.repo_root,
+        ));
+    }
+    apply_persisted_host_executable_evidence(&mut host, persisted.as_ref())?;
+    let mcp_check = current_mcp_server_check(persisted.as_ref())?;
+
     let current_sessions =
-        current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
+        current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)
+            .map_err(|error| {
+                unavailable(
+                    CurrentConnectionEvaluationUnavailableCause::RuntimeSessionStateUnavailable,
+                    ConnectionCommandError::from(error),
+                )
+            })?;
     let session_evidence =
-        McpSessionEvidenceSelection::select(&current_revision, &current_sessions)?;
+        McpSessionEvidenceSelection::select(&current_revision, &current_sessions).map_err(
+            |error| {
+                unavailable(
+                    CurrentConnectionEvaluationUnavailableCause::RuntimeSessionStateUnavailable,
+                    ConnectionCommandError::from(error),
+                )
+            },
+        )?;
     let latest_session =
-        latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
+        latest_managed_runtime_session(runtime_home, &connection.connection_internal_id).map_err(
+            |error| {
+                unavailable(
+                    CurrentConnectionEvaluationUnavailableCause::RuntimeSessionStateUnavailable,
+                    ConnectionCommandError::from(error),
+                )
+            },
+        )?;
     let host_findings = host_boundary_findings(
         connection,
         &host,
         &current_sessions,
         latest_session.as_ref(),
         &current_revision,
-    )?;
+        &evaluated_at,
+    )
+    .map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::RuntimeSessionStateUnavailable,
+            error,
+        )
+    })?;
     let mut checks = vec![
         with_direct_causes(
-            managed_config_check(&host)?,
+            managed_config_check(&host).map_err(|error| {
+                unavailable(
+                    CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+                    error,
+                )
+            })?,
             host_findings.managed_config.clone(),
-        )?,
-        stored_mcp,
+        )
+        .map_err(|error| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+                error,
+            )
+        })?,
+        mcp_check,
         with_direct_causes(
-            project_trust_check(&host)?,
+            project_trust_check(&host).map_err(|error| {
+                unavailable(
+                    CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+                    error,
+                )
+            })?,
             host_findings.project_trust.clone(),
-        )?,
+        )
+        .map_err(|error| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+                error,
+            )
+        })?,
+        host_executable_check(&host).map_err(|error| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+                error,
+            )
+        })?,
     ];
-    checks.push(stored_executable.unwrap_or(canonical_check(
-        ConnectionCheckKind::HostExecutable,
-        ConnectionCheckStatus::Pending,
-        "host_executable_not_verified",
-        "Codex executable has not been actively verified",
-        None,
-        None,
-    )?));
-    checks.extend(host_session_checks(
-        &host,
+    checks.extend(
+        host_session_checks(
+            &host,
+            &current_revision,
+            &session_evidence,
+            latest_session.as_ref(),
+            &host_findings.tool_round_trip,
+        )
+        .map_err(|error| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+                error,
+            )
+        })?,
+    );
+    let guard = guard_checks_for_connection(
+        runtime_home,
+        connection,
+        std::slice::from_ref(selected_membership),
         &current_revision,
-        &session_evidence,
-        latest_session.as_ref(),
-        &host_findings.tool_round_trip,
-    )?);
-    let guard = guard_checks_for_connection(runtime_home, connection, projects)?;
+        &evaluated_at,
+        Some(selected_membership),
+    )
+    .map_err(|error| {
+        let cause = match error.cause {
+            GuardCheckEvaluationUnavailableCause::ProjectStore => {
+                CurrentConnectionEvaluationUnavailableCause::ProjectStoreUnavailable
+            }
+            GuardCheckEvaluationUnavailableCause::GuardState => {
+                CurrentConnectionEvaluationUnavailableCause::GuardStateUnavailable
+            }
+        };
+        unavailable(cause, error.into_source())
+    })?;
     checks.extend(guard.checks);
     let mut inline_findings = host_findings.current;
     inline_findings.extend(guard.inline_findings);
-    assemble_connection_evaluation(
+    let evaluation = ConnectionEvaluation::try_new(
+        checks,
+        inline_findings,
+        guard.persisted_finding_seed_ids,
+        ConnectionEvaluationEvidence::CurrentStatus {
+            managed_config: host.managed_config,
+            host_executable: host.host_executable,
+        },
+        ConnectionEvaluationMetadata {
+            kind: ConnectionEvaluationKind::Status,
+            evaluated_at,
+            integration_revision: current_revision.clone(),
+        },
+    )
+    .map_err(|error| {
+        unavailable(
+            CurrentConnectionEvaluationUnavailableCause::EvaluationAssemblyUnavailable,
+            error,
+        )
+    })?;
+    let report =
+        assemble_connection_evaluation(runtime_home, connection, evaluation).map_err(|error| {
+            unavailable(
+                CurrentConnectionEvaluationUnavailableCause::DiagnosticStateUnavailable,
+                error,
+            )
+        })?;
+    validate_current_membership_coordinate(
         runtime_home,
         connection,
-        ConnectionEvaluation::try_new(
-            checks,
-            inline_findings,
-            guard.persisted_finding_seed_ids,
-            ConnectionEvaluationEvidence::CurrentStatus {
-                managed_config: host.managed_config,
-                host_executable: host.host_executable,
-            },
-            ConnectionEvaluationMetadata {
-                kind: ConnectionEvaluationKind::Status,
-                evaluated_at: current_timestamp(),
-                integration_revision: current_revision,
-            },
-        )?,
-    )
+        selected_membership,
+        &current_revision,
+    )?;
+    Ok(report)
 }

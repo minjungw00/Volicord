@@ -136,7 +136,8 @@ use service::{
     InitProvisioningRequest, ProvisionConnectionRequest,
 };
 use verification::{
-    current_status_report, effective_connection_report, verify_connection, VerificationReport,
+    current_status_report, current_timestamp, effective_connection_report, verify_connection,
+    CurrentConnectionEvaluationUnavailable, VerificationReport,
 };
 
 const PATH_ENV: &str = "PATH";
@@ -215,6 +216,12 @@ impl From<HostConfigError> for ConnectionCommandError {
 
 impl From<ConnectionVerificationError> for ConnectionCommandError {
     fn from(error: ConnectionVerificationError) -> Self {
+        Self::runtime(error.to_string())
+    }
+}
+
+impl From<CurrentConnectionEvaluationUnavailable> for ConnectionCommandError {
+    fn from(error: CurrentConnectionEvaluationUnavailable) -> Self {
         Self::runtime(error.to_string())
     }
 }
@@ -474,37 +481,11 @@ fn command_connection_status(
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
-    let mut report = effective_connection_report(&connection)?;
-    let persisted_metadata_corrupt = decode_persisted_object(&connection.metadata_json).is_none();
-    if persisted_metadata_corrupt {
-        report = verification::connection_metadata_failure_report(&report)?;
-        let (findings, integration_revision) =
-            current_report_findings(&runtime_home, &connection, &report)?;
-        let report = ConnectionCommandReport::from_verification(
-            CommandOperation::Status,
-            None,
-            &runtime_home,
-            CommandConnection::new(
-                &connection.connection_internal_id,
-                &connection.host_kind,
-                &connection.host_scope,
-                &connection.mode,
-                &selected_project.project.repo_root,
-                &connection.config_target,
-            ),
-            &report,
-        )
-        .with_diagnostic_findings(findings, Some(integration_revision));
-        let rendered = render_command_report(connection_output_format(&parsed), &report)?;
-        return command_output_result(rendered.status, rendered.output);
-    }
-    let host_plan =
-        existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
     let evaluation = current_status_report(
         &runtime_home,
         &connection,
-        Some(&host_plan),
-        &projects,
+        selected_project,
+        current_timestamp(),
         process,
     )?;
     let report = ConnectionCommandReport::from_verification(
@@ -1685,7 +1666,12 @@ mod persisted_metadata_tests {
     use std::{collections::BTreeMap, ffi::OsString, io, path::PathBuf};
 
     use volicord_store::{
-        agent_connections::{agent_connection_record, list_connection_projects},
+        agent_connections::{
+            add_connection_project, agent_connection_record, list_connection_projects,
+            replace_agent_connection_verification_report_if_revision,
+            ConnectionProjectRegistration,
+        },
+        bootstrap::{project_record_read_only, register_project, ProjectRegistration},
         guards::{list_guard_installations, upsert_guard_installation, GuardInstallationUpsert},
     };
     use volicord_test_support::{
@@ -2024,11 +2010,244 @@ mod persisted_metadata_tests {
         assert_eq!(output["operation"], "status");
         assert_eq!(output["operation_details"]["dry_run"], false);
         assert_eq!(output["status"], "failed");
+        assert!(output["findings"]
+            .as_array()
+            .is_some_and(|findings| !findings.is_empty()));
+        for finding in output["findings"].as_array().expect("current findings") {
+            assert_eq!(
+                finding["observed_at"], output["generated_at"],
+                "one current evaluation must use one generated-at coordinate"
+            );
+        }
         assert_eq!(process.preflight_calls, 0);
         assert_eq!(process.stdio_calls, 0);
         assert_eq!(fs::read(registry_path)?, registry_before);
         assert_eq!(tree_snapshot(fixture.runtime_home_path())?, runtime_before);
         assert_eq!(tree_snapshot(&repo_root)?, repository_before);
+        Ok(())
+    }
+
+    #[test]
+    fn corrupt_persisted_active_evidence_is_typed_and_never_falls_back_to_aggregate_state(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("connection-corrupt-active-evidence")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let connection =
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+                .expect("fixture connection");
+        let persisted_details = json!({
+            "preflight": {
+                "status": "failed",
+                "code": "mcp_server_preflight_failed",
+                "diagnostic": "persisted preflight failure",
+                "evidence": Value::Null,
+                "finding_id": Value::Null,
+                "diagnostic_code": Value::Null,
+                "failure_stage": Value::Null,
+            },
+            "last_active_verification": {
+                "corrupt": true
+            }
+        });
+        let checks = vec![
+            volicord_types::connection_verification::ConnectionCheck::try_new(
+                volicord_types::connection_verification::ConnectionCheckKind::McpServer,
+                volicord_types::connection_verification::ConnectionCheckStatus::Passed,
+                Vec::new(),
+                Some("mcp_server_ready".to_owned()),
+                "Stored aggregate state must not become current truth",
+                Some(
+                    volicord_types::connection_verification::ConnectionCheckDetails::try_new(
+                        persisted_details
+                            .as_object()
+                            .expect("persisted details fixture is an object")
+                            .clone(),
+                    )?,
+                ),
+                None,
+            )?,
+        ];
+        let persisted = ConnectionVerificationReport::try_new(
+            current_timestamp(),
+            checks.clone(),
+            verification::activation_plan_for_checks(&checks)?,
+        )?;
+        assert_eq!(
+            persisted.status(),
+            volicord_types::connection_verification::ConnectionStatus::Complete
+        );
+        replace_agent_connection_verification_report_if_revision(
+            &fixture.mutation_context()?,
+            fixture.connection_id(),
+            &connection_integration_revision(&connection)?,
+            Some(&persisted),
+        )?;
+        let registry_path = volicord_store::sqlite::registry_db_path(fixture.runtime_home_path());
+        let registry_before = fs::read(&registry_path)?;
+        let mut process = DiagnosticProcess {
+            runtime_home: fixture.runtime_home_path().to_path_buf(),
+            preflight_calls: 0,
+            stdio_calls: 0,
+        };
+        let error = run_connection_command(
+            ConnectionArgs {
+                command: ConnectionCommand::Status(ConnectionSelectArgs {
+                    host: Some(volicord_command_model::CodexHost::Codex),
+                    repo: Some(repo_root.clone()),
+                    runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
+                    shared: false,
+                    output: volicord_command_model::ConnectionReportOutputArgs {
+                        json: true,
+                        verbose: false,
+                    },
+                }),
+            },
+            &repo_root,
+            &mut process,
+        )
+        .expect_err("corrupt active evidence must make current evaluation unavailable");
+        assert!(matches!(error, ConnectionCommandError::Runtime(_)));
+        assert!(error
+            .to_string()
+            .contains("persisted_active_verification_evidence_corrupt"));
+        assert!(!error.to_string().contains("\"status\": \"complete\""));
+        assert_eq!(process.preflight_calls, 0);
+        assert_eq!(process.stdio_calls, 0);
+        assert_eq!(fs::read(registry_path)?, registry_before);
+        Ok(())
+    }
+
+    #[test]
+    fn selected_status_isolates_membership_state_and_shares_connection_evidence(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("connection-selected-membership")?;
+        let first_repo = fixture.product_repo_path();
+        fs::create_dir_all(first_repo.join(".git"))?;
+        let second_repo = fixture.create_product_repo("repo-secondary")?;
+        fs::create_dir_all(second_repo.join(".git"))?;
+        let second_project_id = "project_secondary";
+        register_project(
+            &fixture.mutation_context()?,
+            ProjectRegistration {
+                project_id: second_project_id.to_owned(),
+                repo_root: second_repo.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        add_connection_project(
+            &fixture.mutation_context()?,
+            ConnectionProjectRegistration {
+                connection_internal_id: fixture.connection_id().to_owned(),
+                project_id: second_project_id.to_owned(),
+            },
+        )?;
+
+        let status = |repo: &Path,
+                      process: &mut DiagnosticProcess|
+         -> Result<Value, Box<dyn std::error::Error>> {
+            let result = run_connection_command(
+                ConnectionArgs {
+                    command: ConnectionCommand::Status(ConnectionSelectArgs {
+                        host: Some(volicord_command_model::CodexHost::Codex),
+                        repo: Some(repo.to_path_buf()),
+                        runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
+                        shared: false,
+                        output: volicord_command_model::ConnectionReportOutputArgs {
+                            json: true,
+                            verbose: false,
+                        },
+                    }),
+                },
+                repo,
+                process,
+            );
+            let output = match result {
+                Ok(output) | Err(ConnectionCommandError::FailureOutput(output)) => output,
+                Err(error) => return Err(error.into()),
+            };
+            Ok(serde_json::from_str(&output)?)
+        };
+        let connection_check = |report: &Value, id: &str| {
+            report["checks"]
+                .as_array()
+                .and_then(|checks| checks.iter().find(|check| check["id"] == id))
+                .cloned()
+                .unwrap_or_else(|| panic!("missing Connection-level check {id}: {report}"))
+        };
+        let mut process = DiagnosticProcess {
+            runtime_home: fixture.runtime_home_path().to_path_buf(),
+            preflight_calls: 0,
+            stdio_calls: 0,
+        };
+        let first = status(&first_repo, &mut process)?;
+        let second = status(&second_repo, &mut process)?;
+        for id in [
+            "managed_config",
+            "host_executable",
+            "mcp_server",
+            "host_reload",
+            "managed_session_health",
+            "managed_capability_proof",
+        ] {
+            let first_check = connection_check(&first, id);
+            let second_check = connection_check(&second, id);
+            assert_eq!(first_check["status"], second_check["status"], "{id}");
+            assert_eq!(first_check["details"], second_check["details"], "{id}");
+        }
+        assert_ne!(
+            connection_check(&first, "project_trust")["details"]["repo_root"],
+            connection_check(&second, "project_trust")["details"]["repo_root"]
+        );
+
+        let second_project =
+            project_record_read_only(fixture.runtime_home_path(), second_project_id)?
+                .expect("second project");
+        let second_store_before = fs::read(&second_project.state_db_path)?;
+        fs::write(
+            &second_project.state_db_path,
+            b"unavailable project Store fixture",
+        )?;
+        let first_with_other_store_unavailable = status(&first_repo, &mut process)?;
+        for id in [
+            "managed_config",
+            "host_executable",
+            "mcp_server",
+            "host_reload",
+            "managed_session_health",
+            "managed_capability_proof",
+        ] {
+            assert_eq!(
+                connection_check(&first, id)["status"],
+                connection_check(&first_with_other_store_unavailable, id)["status"],
+                "{id}"
+            );
+        }
+        let selected_error = run_connection_command(
+            ConnectionArgs {
+                command: ConnectionCommand::Status(ConnectionSelectArgs {
+                    host: Some(volicord_command_model::CodexHost::Codex),
+                    repo: Some(second_repo.clone()),
+                    runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
+                    shared: false,
+                    output: volicord_command_model::ConnectionReportOutputArgs {
+                        json: true,
+                        verbose: false,
+                    },
+                }),
+            },
+            &second_repo,
+            &mut process,
+        )
+        .expect_err("selected unavailable project Store must fail current evaluation");
+        assert!(selected_error
+            .to_string()
+            .contains("project_store_unavailable"));
+        fs::write(&second_project.state_db_path, second_store_before)?;
+        assert_eq!(process.preflight_calls, 0);
+        assert_eq!(process.stdio_calls, 0);
         Ok(())
     }
 

@@ -149,9 +149,10 @@ pub(super) fn host_boundary_findings(
     current_sessions: &[McpRuntimeSessionRecord],
     latest_session: Option<&McpRuntimeSessionRecord>,
     current_revision: &IntegrationRevision,
+    evaluated_at: &UtcTimestamp,
 ) -> Result<HostBoundaryFindings, ConnectionCommandError> {
     let mut findings = HostBoundaryFindings::default();
-    let observed_at = current_timestamp();
+    let observed_at = evaluated_at.clone();
     if let Some(diagnostic) = host.managed_config_diagnostic {
         let subject = ManagedConfigurationTarget::for_connection(
             &connection.connection_internal_id,
@@ -415,6 +416,7 @@ pub(super) fn guard_boundary_findings(
     prompt_capture_observed: bool,
     observation_revision_mismatch_installation_ids: &[String],
     observed_at: UtcTimestamp,
+    current_revision: &IntegrationRevision,
 ) -> Result<GuardBoundaryFindings, ConnectionCommandError> {
     let mut findings = GuardBoundaryFindings::default();
     let mut current = Vec::new();
@@ -553,7 +555,6 @@ pub(super) fn guard_boundary_findings(
         )?);
     }
     for installation_id in observation_revision_mismatch_installation_ids {
-        let revision = connection_integration_revision(connection)?;
         let subject = IntegrationRevisionSubject::for_guard_installation(
             &connection.connection_internal_id,
             installation_id,
@@ -563,7 +564,7 @@ pub(super) fn guard_boundary_findings(
             connection,
             OperationalDiagnostic::Revision(RevisionDiagnostic::ObservationMismatch),
             &subject,
-            &IntegrationRevisionFacts::new(&revision, None),
+            &IntegrationRevisionFacts::new(current_revision, None),
             OperationalCheckState::Failed,
             observed_at.clone(),
         )?;

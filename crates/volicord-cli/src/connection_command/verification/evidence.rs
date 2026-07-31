@@ -1,6 +1,6 @@
 //! Typed evidence projected into MCP-related connection-check details.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use volicord_store::{
     integration_verification::{
@@ -21,7 +21,8 @@ use volicord_types::values::UtcTimestamp;
 use super::{HostExecutableStatus, Verification};
 use crate::host_integration::verification::HostExecutableProbe;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct HostExecutableProbeDetails {
     status: HostExecutableStatus,
     probe: HostExecutableProbe,
@@ -35,6 +36,18 @@ impl HostExecutableProbeDetails {
             probe: host.host_executable_probe(),
             diagnostic: host.host_executable_details.clone(),
         }
+    }
+
+    pub(super) const fn status(&self) -> HostExecutableStatus {
+        self.status
+    }
+
+    pub(super) fn probe(&self) -> &HostExecutableProbe {
+        &self.probe
+    }
+
+    pub(super) fn diagnostic(&self) -> &str {
+        &self.diagnostic
     }
 }
 

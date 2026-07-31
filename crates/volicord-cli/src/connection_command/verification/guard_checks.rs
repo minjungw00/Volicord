@@ -2,11 +2,58 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GuardCheckEvaluationUnavailableCause {
+    ProjectStore,
+    GuardState,
+}
+
+#[derive(Debug)]
+pub(super) struct GuardCheckEvaluationUnavailable {
+    pub(super) cause: GuardCheckEvaluationUnavailableCause,
+    source: ConnectionCommandError,
+}
+
+impl GuardCheckEvaluationUnavailable {
+    fn guard_state(source: impl Into<ConnectionCommandError>) -> Self {
+        Self {
+            cause: GuardCheckEvaluationUnavailableCause::GuardState,
+            source: source.into(),
+        }
+    }
+
+    fn project_store(source: impl Into<ConnectionCommandError>) -> Self {
+        Self {
+            cause: GuardCheckEvaluationUnavailableCause::ProjectStore,
+            source: source.into(),
+        }
+    }
+
+    pub(super) fn into_source(self) -> ConnectionCommandError {
+        self.source
+    }
+}
+
+impl From<ConnectionCommandError> for GuardCheckEvaluationUnavailable {
+    fn from(source: ConnectionCommandError) -> Self {
+        Self::guard_state(source)
+    }
+}
+
+impl From<StoreError> for GuardCheckEvaluationUnavailable {
+    fn from(source: StoreError) -> Self {
+        Self::guard_state(ConnectionCommandError::from(source))
+    }
+}
+
 pub(super) fn guard_checks_for_connection(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
-) -> Result<ConnectionCheckEvaluation, ConnectionCommandError> {
+    current_revision: &IntegrationRevision,
+    evaluated_at: &UtcTimestamp,
+    selected_membership: Option<&ConnectionProjectRecord>,
+) -> Result<ConnectionCheckEvaluation, GuardCheckEvaluationUnavailable> {
     let mut installations = Vec::new();
     for project in projects {
         installations.extend(list_guard_installations(
@@ -14,10 +61,6 @@ pub(super) fn guard_checks_for_connection(
             &connection.connection_internal_id,
             Some(&project.project_id),
         )?);
-    }
-    if installations.is_empty() {
-        installations =
-            list_guard_installations(runtime_home, &connection.connection_internal_id, None)?;
     }
 
     let mut audit = GuardAuditFacts::default();
@@ -46,7 +89,12 @@ pub(super) fn guard_checks_for_connection(
                 .push(installation.guard_installation_id.clone());
         }
         let observation =
-            guard_observation_summary(runtime_home, &installation.project_id, installation)?;
+            guard_observation_summary(runtime_home, &installation.project_id, installation)
+                .map_err(|error| {
+                    GuardCheckEvaluationUnavailable::project_store(ConnectionCommandError::from(
+                        error,
+                    ))
+                })?;
         required_phases.extend(observation.required_phases.iter().cloned());
         observed_phases.extend(observation.observed_phases.iter().cloned());
         incompatible_event_ids.extend(observation.incompatible_event_ids.iter().cloned());
@@ -173,16 +221,24 @@ pub(super) fn guard_checks_for_connection(
         &incompatible_event_ids,
         prompt_capture_observed,
         &observation_revision_mismatch_installation_ids,
-        current_timestamp(),
+        evaluated_at.clone(),
+        current_revision,
     )?;
 
-    let verification_observed_at = current_timestamp().to_canonical_string();
-    let current_revision = connection_integration_revision(connection)?;
-    let verification_run = latest_guard_integration_verification_for_connection(
-        runtime_home,
-        &connection.connection_internal_id,
-        &current_revision,
-    )?;
+    let verification_observed_at = evaluated_at.to_canonical_string();
+    let verification_run = match selected_membership {
+        Some(membership) => latest_guard_integration_verification_for_membership(
+            runtime_home,
+            &connection.connection_internal_id,
+            &membership.project_internal_id,
+            current_revision,
+        ),
+        None => latest_guard_integration_verification_for_connection(
+            runtime_home,
+            &connection.connection_internal_id,
+            current_revision,
+        ),
+    }?;
     let verification_workflow = verification_run
         .as_ref()
         .map(|run| {
@@ -198,11 +254,19 @@ pub(super) fn guard_checks_for_connection(
         .map(|run| guard_probe_observations(runtime_home, &run.verification_id))
         .transpose()?
         .unwrap_or_default();
-    let completed_proof = latest_completed_guard_integration_verification_for_connection(
-        runtime_home,
-        &connection.connection_internal_id,
-        &current_revision,
-    )?;
+    let completed_proof = match selected_membership {
+        Some(membership) => latest_completed_guard_integration_verification_for_membership(
+            runtime_home,
+            &connection.connection_internal_id,
+            &membership.project_internal_id,
+            current_revision,
+        ),
+        None => latest_completed_guard_integration_verification_for_connection(
+            runtime_home,
+            &connection.connection_internal_id,
+            current_revision,
+        ),
+    }?;
     let completed_proof_observations = completed_proof
         .as_ref()
         .map(|run| guard_probe_observations(runtime_home, &run.verification_id))
@@ -257,7 +321,7 @@ pub(super) fn guard_checks_for_connection(
                 observation.map(|value| value.stage),
                 *retry_policy,
                 observation.and_then(|value| value.observed_callable_name.clone()),
-                current_timestamp(),
+                evaluated_at.clone(),
             )?;
             let finding_id = finding.id().clone();
             guard_findings.current.push(finding);

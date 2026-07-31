@@ -8,20 +8,24 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use volicord_mcp::ManagedMcpInvocationPurpose;
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
     agent_connections::{
-        list_connection_projects_read_only, AgentConnectionRecord, ConnectionProjectRecord,
+        agent_connection_record_read_only, list_connection_projects_read_only,
+        AgentConnectionRecord, ConnectionProjectRecord,
     },
+    core_pipeline::CoreProjectStore,
     diagnostic_findings::{diagnostic_occurrences_for_runtime_session, insert_occurrence_finding},
     guards::{guard_observation_summary, list_guard_installations},
     integration_verification::{
         current_guard_integration_verification_workflow, guard_probe_observations,
         latest_completed_guard_integration_verification_for_connection,
+        latest_completed_guard_integration_verification_for_membership,
         latest_guard_integration_verification_for_connection,
+        latest_guard_integration_verification_for_membership,
         GuardIntegrationVerificationRunRecord,
     },
     operational_sessions::{
@@ -30,7 +34,7 @@ use volicord_store::{
         McpSessionEvidenceSelection, McpSessionMilestones,
     },
     sqlite::{project_state_database_write_capability, registry_database_write_capability},
-    RuntimeHomeMutationContext,
+    RuntimeHomeMutationContext, StoreError,
 };
 #[cfg(test)]
 use volicord_types::connection_verification::ConnectionStatus;
@@ -46,7 +50,7 @@ use volicord_types::diagnostics::{
     DiagnosticStage, DiagnosticSubject, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 use volicord_types::guard_manifest::GuardManagedArtifact;
-use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId};
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, ProjectId};
 use volicord_types::integration_revision::IntegrationRevision;
 use volicord_types::integration_verification::{
     GuardIntegrationVerificationStatus, GuardProbeObservationStage,
@@ -83,12 +87,12 @@ use crate::operational_diagnostics::{
 };
 
 use super::{
-    codex_environment,
+    codex_environment, existing_host_plan,
     mcp_process::{
         materialize_connection_invocation, run_connection_preflight, McpPersistedDiagnostic,
         McpProcessDiagnosticContext, McpProcessFailure, McpVerification,
     },
-    parse_host_kind, ConnectionCommandError, ConnectionProcess,
+    parse_host_kind, parse_metadata, ConnectionCommandError, ConnectionProcess,
 };
 
 mod dependency_graph;
@@ -111,8 +115,8 @@ pub(in crate::connection_command) use mcp_checks::mcp_server_check;
 use mcp_checks::mcp_server_finding_ids;
 use report_inputs::{assemble_connection_evaluation, canonical_verification_evaluation};
 pub(in crate::connection_command) use report_inputs::{
-    connection_metadata_failure_report, current_status_report, effective_connection_report,
-    report_with_hook_review_required,
+    current_status_report, effective_connection_report, report_with_hook_review_required,
+    CurrentConnectionEvaluationUnavailable,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -482,7 +486,7 @@ fn active_probe_evidence(
     )
 }
 
-fn current_timestamp() -> UtcTimestamp {
+pub(in crate::connection_command) fn current_timestamp() -> UtcTimestamp {
     let timestamp: DateTime<Utc> = SystemTime::now().into();
     UtcTimestamp::from_str(&timestamp.to_rfc3339_opts(chrono::SecondsFormat::Micros, true))
         .expect("current UTC timestamp must be canonical")

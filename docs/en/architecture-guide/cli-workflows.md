@@ -49,14 +49,26 @@ or parse its own output. Connection list retains a focused list projection that
 does not depend on the command-report state.
 
 `connection status` reads current files and Store observations without running
-active probes or writing files, reports, observations, or timestamps.
+active probes or writing files, reports, observations, or timestamps. One
+current-evaluation service owns the exact Runtime Home, Agent Connection,
+selected Connection Project membership, current integration revision, and
+caller-supplied evaluation timestamp. It assembles current managed
+configuration, runtime-session, selected-project Guard, policy, trust, and
+repository facts with eligible persisted active-verification evidence. The
+persisted report is an evidence input, not an aggregate-current-state cache.
+Registration, evidence, configuration, membership, project Store, Guard, and
+revision acquisition failures remain closed typed unavailable results for the
+command handler.
+
 `connection verify` performs current adapter and managed-configuration
 inspection, runs permitted local probes, reads actual managed-host and Guard
 observations, and commits at most one report through the Store owner. Executable
 path and version are diagnostic probe facts. Authoritative managed runtime and
 project sessions are recorded only by managed MCP lifecycle handling; the CLI
 self-test records `session_source=cli_preflight` and cannot authorize a
-managed-host call.
+managed-host call. Command handlers select coordinates and output mode, consume
+the typed evaluation result, and perform final presentation without rebuilding
+checks or activation state.
 
 ## Project And Policy Workflows
 

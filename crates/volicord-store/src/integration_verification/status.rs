@@ -20,7 +20,8 @@ use super::{
     observation::observations_for_run,
     row::{
         increment_status_read_count, latest_completed_run_for_connection,
-        latest_run_for_connection, mark_repair_required, parse_status, parse_timestamp, run_by_id,
+        latest_completed_run_for_membership, latest_run_for_connection, latest_run_for_membership,
+        mark_repair_required, parse_status, parse_timestamp, run_by_id,
     },
     GuardIntegrationVerificationCaller, GuardIntegrationVerificationRunRecord,
 };
@@ -98,6 +99,26 @@ pub fn latest_guard_integration_verification_for_connection(
     latest_run_for_connection(&conn, connection_internal_id, integration_revision.as_str())
 }
 
+/// Reads the newest verification row for one current Connection Project membership.
+pub fn latest_guard_integration_verification_for_membership(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+    project_internal_id: &str,
+    integration_revision: &IntegrationRevision,
+) -> StoreResult<Option<GuardIntegrationVerificationRunRecord>> {
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    latest_run_for_membership(
+        &conn,
+        connection_internal_id,
+        project_internal_id,
+        integration_revision.as_str(),
+    )
+}
+
 /// Reads the newest completed verification proof for the current Connection revision.
 pub fn latest_completed_guard_integration_verification_for_connection(
     runtime_home: impl AsRef<Path>,
@@ -112,6 +133,26 @@ pub fn latest_completed_guard_integration_verification_for_connection(
     latest_completed_run_for_connection(
         &conn,
         connection_internal_id,
+        integration_revision.as_str(),
+    )
+}
+
+/// Reads the newest completed proof for one current Connection Project membership.
+pub fn latest_completed_guard_integration_verification_for_membership(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+    project_internal_id: &str,
+    integration_revision: &IntegrationRevision,
+) -> StoreResult<Option<GuardIntegrationVerificationRunRecord>> {
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    latest_completed_run_for_membership(
+        &conn,
+        connection_internal_id,
+        project_internal_id,
         integration_revision.as_str(),
     )
 }

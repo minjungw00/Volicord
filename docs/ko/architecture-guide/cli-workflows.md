@@ -43,12 +43,21 @@ Rendering이 병렬 상태 트리를 다시 만들거나 자체 출력을 parsin
 list는 명령 보고서 상태에 의존하지 않는 집중 list projection을 유지합니다.
 
 `connection status`는 활성 probe를 실행하거나 파일, 보고서, 관찰, timestamp를 쓰지
-않고 현재 파일과 Store 관찰을 읽습니다. `connection verify`는 현재 adapter와 관리 구성을
-검사하고 허용된 로컬 probe를 실행한 뒤 실제 managed-host 및 Guard 관찰을 읽고 Store
-담당 경로로 보고서를 최대 하나 commit합니다. Executable path와 version은 diagnostic probe
-사실입니다. 권위 있는 관리 runtime/project session은 관리 MCP lifecycle 처리에서만 기록하며,
-CLI self-test는 `session_source=cli_preflight`를 기록하므로 managed-host 호출을 승인할 수
-없습니다.
+않고 현재 파일과 Store 관찰을 읽습니다. 현재 평가 서비스 하나가 정확한 Runtime Home,
+Agent Connection, 선택한 Connection Project membership, 현재 integration revision,
+호출자가 제공한 평가 timestamp를 담당합니다. 이 서비스는 현재 관리 구성, runtime
+session, 선택한 프로젝트의 Guard, policy, trust, repository fact를 적격한 영속 활성 검증
+근거와 함께 조립합니다. 영속 보고서는 근거 입력이며 현재 집계 상태 cache가 아닙니다.
+등록, 근거, 구성, membership, 프로젝트 Store, Guard, revision 획득 실패는 명령 handler가
+소비하는 폐쇄형 typed unavailable 결과로 유지합니다.
+
+`connection verify`는 현재 adapter와 관리 구성을 검사하고 허용된 로컬 probe를 실행한 뒤
+실제 managed-host 및 Guard 관찰을 읽고 Store 담당 경로로 보고서를 최대 하나
+commit합니다. Executable path와 version은 diagnostic probe 사실입니다. 권위 있는 관리
+runtime/project session은 관리 MCP lifecycle 처리에서만 기록하며, CLI self-test는
+`session_source=cli_preflight`를 기록하므로 managed-host 호출을 승인할 수 없습니다.
+명령 handler는 좌표와 출력 mode를 선택하고 typed 평가 결과를 소비한 뒤 check나 activation
+상태를 다시 만들지 않고 최종 표시를 수행합니다.
 
 ## 프로젝트와 정책 흐름
 

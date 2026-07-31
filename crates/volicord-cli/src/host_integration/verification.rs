@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,7 +42,7 @@ pub enum ManagedConfigDiagnostic {
     Unavailable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HostExecutableStatus {
     Available,
@@ -51,7 +51,8 @@ pub enum HostExecutableStatus {
 }
 
 /// Installation and manual-invocation aid observed from the current PATH.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HostExecutableProbe {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub discovered_path: Option<String>,

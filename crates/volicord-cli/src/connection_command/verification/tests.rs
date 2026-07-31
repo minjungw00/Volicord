@@ -1433,6 +1433,7 @@ fn inline_current_finding_resolves_before_store_without_missing_record_substitut
         &connection,
         &[check],
         &overlay,
+        &UtcTimestamp::parse("2026-07-23T01:02:03Z").expect("evaluation time"),
     )
     .expect("overlay projection");
     assert_eq!(findings.len(), 1);
@@ -1525,6 +1526,7 @@ fn mixed_inline_and_persisted_causes_form_one_bounded_graph() {
         &connection,
         &[check],
         &overlay,
+        &UtcTimestamp::parse("2026-07-23T02:03:04Z").expect("evaluation time"),
     )
     .expect("mixed graph");
 
@@ -1599,6 +1601,7 @@ fn explicitly_persisted_reference_deleted_from_store_gets_missing_record_finding
         &connection,
         &[check],
         &overlay,
+        &UtcTimestamp::parse("2026-07-23T03:04:06Z").expect("evaluation time"),
     )
     .expect("missing projection");
     assert_eq!(findings.len(), 1);

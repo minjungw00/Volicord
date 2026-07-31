@@ -1396,8 +1396,59 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert_eq!(snapshot.guard_installations.len(), 1);
     let connection_id = snapshot.agent_connections[0].connection_internal_id.clone();
     let project_id = snapshot.projects[0].project_id.clone();
+    let setup_report = fixture
+        .agent_connection_record(&snapshot.agent_connections[0])
+        .verification_report()?
+        .ok_or("setup must persist active-verification evidence")?;
+    assert_eq!(
+        setup_report.status(),
+        volicord_types::connection_verification::ConnectionStatus::ActionRequired
+    );
+    let setup_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
+    let setup_status_report =
+        assert_connection_report(&setup_status, 0, "status", "action_required")?;
+    assert_eq!(
+        setup_status_report["activation_state"],
+        "host_reload_required"
+    );
     let manifest = guard_manifest_from_json(&snapshot.guard_installations[0].manifest_json)?;
     assert_current_guard_projection(&fixture, &manifest)?;
+    fixture.run_successful_managed_mcp(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        "future.session.managed-only",
+    )?;
+    let managed_only = fixture.run_connection("status", FUTURE_VERSION, true)?;
+    let managed_only_report =
+        assert_connection_report(&managed_only, 0, "status", "action_required")?;
+    for check_id in [
+        "host_reload",
+        "managed_session_health",
+        "managed_capability_proof",
+    ] {
+        assert_check(&managed_only_report, check_id, "passed", None);
+    }
+    assert_check(
+        &managed_only_report,
+        "correlated_guard_verification",
+        "pending",
+        None,
+    );
+    assert_ne!(
+        managed_only_report["checks"],
+        serde_json::to_value(setup_report.checks())?,
+        "current managed-session evidence must replace the earlier setup aggregate"
+    );
+    assert_eq!(
+        fixture
+            .agent_connection_record(&fixture.registry_snapshot().agent_connections[0])
+            .verification_report()?
+            .ok_or("persisted setup report after current status")?
+            .status(),
+        volicord_types::connection_verification::ConnectionStatus::ActionRequired,
+        "read-only current status must not replace the persisted setup report"
+    );
     let managed_guidance = manifest
         .managed_files
         .iter()
@@ -1451,6 +1502,14 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         &manifest,
     )?;
 
+    assert_eq!(
+        fixture
+            .agent_connection_record(&fixture.registry_snapshot().agent_connections[0])
+            .verification_report()?
+            .ok_or("stale persisted setup report")?
+            .status(),
+        volicord_types::connection_verification::ConnectionStatus::ActionRequired
+    );
     let complete = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let complete_report = assert_connection_report(&complete, 0, "status", "complete")?;
     assert_eq!(complete_report["activation_state"], "complete");
@@ -1599,7 +1658,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         [&connection_id, managed_host_round_trip_tool().wire_name()],
         |row| row.get(0),
     )?;
-    assert_eq!(capability_proof_count, 1);
+    assert_eq!(capability_proof_count, 2);
     drop(registry);
     assert_canonical_connection_command_shape(&complete_report);
 

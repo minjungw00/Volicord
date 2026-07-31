@@ -156,6 +156,30 @@ impl McpPreflightEvidence {
     pub fn side_effects(&self) -> &[McpSideEffectKind] {
         &self.side_effects
     }
+
+    pub const fn configuration(&self) -> McpEvidenceCheckStatus {
+        self.configuration
+    }
+
+    pub const fn registry_read(&self) -> McpEvidenceCheckStatus {
+        self.registry_read
+    }
+
+    pub fn project_reads(&self) -> &[McpProjectReadEvidence] {
+        &self.project_reads
+    }
+
+    pub const fn schema_validation(&self) -> McpEvidenceCheckStatus {
+        self.schema_validation
+    }
+
+    pub const fn protocol_profiles(&self) -> McpEvidenceCheckStatus {
+        self.protocol_profiles
+    }
+
+    pub const fn host_contracts(&self) -> McpEvidenceCheckStatus {
+        self.host_contracts
+    }
 }
 
 /// One project-database writeability result from active verification.
@@ -244,6 +268,18 @@ impl McpProbeEvidence {
             finding_id,
         }
     }
+
+    pub const fn status(&self) -> McpEvidenceCheckStatus {
+        self.status
+    }
+
+    pub fn diagnostic_code(&self) -> Option<&str> {
+        self.diagnostic_code.as_deref()
+    }
+
+    pub fn finding_id(&self) -> Option<&str> {
+        self.finding_id.as_deref()
+    }
 }
 
 /// One production-revision conformance result.
@@ -261,6 +297,10 @@ impl McpRevisionConformance {
             revision: revision.into(),
             probe,
         }
+    }
+
+    pub fn probe(&self) -> &McpProbeEvidence {
+        &self.probe
     }
 }
 
@@ -285,6 +325,10 @@ impl McpHostCompatibilityEvidence {
             fixture: fixture.into(),
             probe,
         }
+    }
+
+    pub fn probe(&self) -> &McpProbeEvidence {
+        &self.probe
     }
 }
 
@@ -348,6 +392,22 @@ impl McpActiveVerificationEvidence {
 
     pub const fn source(&self) -> McpActiveVerificationSource {
         self.source
+    }
+
+    pub const fn registry_write(&self) -> McpEvidenceCheckStatus {
+        self.registry_write
+    }
+
+    pub fn project_writes(&self) -> &[McpProjectWriteEvidence] {
+        &self.project_writes
+    }
+
+    pub fn protocol_conformance(&self) -> &[McpRevisionConformance] {
+        &self.protocol_conformance
+    }
+
+    pub fn host_compatibility(&self) -> &[McpHostCompatibilityEvidence] {
+        &self.host_compatibility
     }
 }
 

@@ -11,7 +11,9 @@ use super::support::*;
 use crate::integration_verification::{
     get_guard_integration_verification,
     latest_completed_guard_integration_verification_for_connection,
-    latest_guard_integration_verification_for_connection, status::begin_result_from_record,
+    latest_completed_guard_integration_verification_for_membership,
+    latest_guard_integration_verification_for_connection,
+    latest_guard_integration_verification_for_membership, status::begin_result_from_record,
 };
 
 #[test]
@@ -156,6 +158,49 @@ fn newest_attempt_and_newest_completed_proof_are_selected_independently(
     assert_eq!(latest.status, "repair_required");
     assert_eq!(proof.verification_id, completed.verification_id);
     assert_eq!(proof.status, "complete");
+    Ok(())
+}
+
+#[test]
+fn membership_queries_never_substitute_another_projects_guard_run() -> Result<(), Box<dyn Error>> {
+    let fixture = VerificationFixture::new("guard-integration-status-membership")?;
+    let run = fixture.begin()?;
+    let completed = fixture.complete(&run.verification_id)?;
+    let revision = IntegrationRevision::parse(fixture.integration_revision.clone())?;
+
+    let latest = latest_guard_integration_verification_for_membership(
+        fixture.runtime_home.path(),
+        CONNECTION_ID,
+        &completed.project_internal_id,
+        &revision,
+    )?
+    .expect("selected membership attempt");
+    let proof = latest_completed_guard_integration_verification_for_membership(
+        fixture.runtime_home.path(),
+        CONNECTION_ID,
+        &completed.project_internal_id,
+        &revision,
+    )?
+    .expect("selected membership proof");
+    assert_eq!(latest.verification_id, completed.verification_id);
+    assert_eq!(proof.verification_id, completed.verification_id);
+
+    assert!(latest_guard_integration_verification_for_membership(
+        fixture.runtime_home.path(),
+        CONNECTION_ID,
+        "project_internal_unrelated",
+        &revision,
+    )?
+    .is_none());
+    assert!(
+        latest_completed_guard_integration_verification_for_membership(
+            fixture.runtime_home.path(),
+            CONNECTION_ID,
+            "project_internal_unrelated",
+            &revision,
+        )?
+        .is_none()
+    );
     Ok(())
 }
 

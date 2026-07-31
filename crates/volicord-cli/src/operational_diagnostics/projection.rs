@@ -198,6 +198,7 @@ pub(crate) fn current_report_findings_with_overlay(
     connection: &AgentConnectionRecord,
     checks: &[volicord_types::connection_verification::ConnectionCheck],
     overlay: &DiagnosticFindingOverlay,
+    evaluated_at: &UtcTimestamp,
 ) -> Result<(Vec<DiagnosticFinding>, IntegrationRevision), ConnectionCommandError> {
     let selected = checks
         .iter()
@@ -221,6 +222,7 @@ pub(crate) fn current_report_findings_with_overlay(
             0,
             &mut BTreeSet::new(),
             &mut findings,
+            evaluated_at,
         )?;
     }
     Ok((
@@ -248,7 +250,13 @@ pub(crate) fn current_report_findings(
             })
             .flat_map(|check| check.cause_finding_ids().iter().cloned()),
     );
-    current_report_findings_with_overlay(runtime_home, connection, report.checks(), &overlay)
+    current_report_findings_with_overlay(
+        runtime_home,
+        connection,
+        report.checks(),
+        &overlay,
+        report.checked_at(),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -261,6 +269,7 @@ fn resolve_overlay_reference(
     depth: usize,
     path: &mut BTreeSet<DiagnosticFindingId>,
     findings: &mut BTreeMap<DiagnosticFindingId, DiagnosticFinding>,
+    evaluated_at: &UtcTimestamp,
 ) -> Result<(), ConnectionCommandError> {
     if depth > MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH {
         return Err(ConnectionCommandError::runtime(format!(
@@ -313,6 +322,7 @@ fn resolve_overlay_reference(
                                 finding_id.clone(),
                                 connection,
                                 connection_integration_revision(connection)?,
+                                evaluated_at.clone(),
                             )?),
                             true,
                         )
@@ -359,6 +369,7 @@ fn resolve_overlay_reference(
                 depth + 1,
                 path,
                 findings,
+                evaluated_at,
             )?;
         }
     }
@@ -381,6 +392,7 @@ fn missing_diagnostic_record_finding(
     finding_id: DiagnosticFindingId,
     connection: &AgentConnectionRecord,
     integration_revision: IntegrationRevision,
+    evaluated_at: UtcTimestamp,
 ) -> Result<DiagnosticFinding, ConnectionCommandError> {
     let facts = DiagnosticFacts::project(&MissingDiagnosticRecordFacts {
         summary: "the verification check references a diagnostic finding that is not persisted",
@@ -404,7 +416,7 @@ fn missing_diagnostic_record_finding(
         DiagnosticSubject::try_new("finding", "persisted_record")
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
         facts,
-        super::current_timestamp(),
+        evaluated_at,
     )
     .and_then(|finding| {
         finding.with_actions(vec![DiagnosticAction::try_new(

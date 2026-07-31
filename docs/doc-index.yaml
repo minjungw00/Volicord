@@ -744,8 +744,8 @@ documents:
   - cli.surface.public
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-07-31'
+  last_verified_on: '2026-07-31'
   applies_to:
   - rust_workspace
   - mcp_initialize_profiles
