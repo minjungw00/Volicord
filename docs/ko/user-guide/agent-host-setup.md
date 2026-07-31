@@ -1,6 +1,6 @@
 # 에이전트 호스트 설정
 
-관리 Codex Agent Connection을 설치, 검증, 복구, 제거할 때 이 가이드를 사용합니다.
+관리 Codex Agent Connection을 설치, 점검, 진단, 복구, 제거할 때 이 가이드를 사용합니다.
 정확한 명령 계약은 [관리 CLI](../reference/admin-cli.md), 관리 운영 session 경계는
 [Agent Connection](../reference/agent-connection.md)이 담당합니다.
 
@@ -21,8 +21,8 @@
 volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
-개인 설정은 `--shared`를 뺍니다. 이후 상태, 검증, 복구, 제거 명령에도 같은 선택자를
-사용합니다.
+개인 설정은 `--shared`를 뺍니다. 이후 상태, 선택적 진단, 복구, 제거 명령에도 같은
+선택자를 사용합니다.
 
 <a id="read-setup-output"></a>
 ## 설정 출력 읽기
@@ -41,7 +41,7 @@ Store 쓰기 가능성, protocol conformance, host compatibility에 관한 최�
 현재 보고서를 더 자세히 진단할 때는 `--verbose`를 사용합니다.
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>" --verbose
+volicord connection status codex --shared --repo "<repo>" --verbose
 ```
 
 [관리 CLI](../reference/admin-cli.md#agent-connection-result-states)는 정확한 concise 및
@@ -70,19 +70,37 @@ volicord connection remove codex --repo "<repo>" --dry-run
 생략해도 `workflow`를 요청하는 것이 아닙니다. 기존 mode를 바꿀 때는 항상
 `volicord connection mode`를 사용합니다.
 
-## 검증
+## 준비 상태 확인
 
 Codex가 구성을 읽고 필요한 신뢰 동작을 마친 뒤 실행합니다.
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
 ```
 
-`verify`는 설정과 준비 상태를 진단하는 명령으로 사용합니다. 현재 Connection과 session의
-권한 의미는 [검증된 에이전트 세션](../reference/agent-connection.md#validated-agent-session)이
-담당합니다.
+`status`는 선택한 membership의 현재 상태를 읽습니다. 자세한 읽기 전용 보고서가 필요하면
+`--verbose`를 추가합니다. `list`는 선택된 각 membership을 독립적으로 평가하는 읽기 전용
+목록입니다. 두 명령 모두 활성 probe를 실행하거나 상태를 쓰지 않습니다.
+
+현재 `activation_plan.required_steps`를 보고된 순서대로 따릅니다. 현재 plan에서 활성 검증은
+`optional_diagnostics`에 있으므로 현재 상태를 읽거나 설명하는 데 필요하지 않습니다. 이후
+status 보고서가 활성 검증을 `required_steps`에 명시적으로 포함하면 반환된 그 현재 plan을
+따릅니다.
+
+### 선택적 활성 진단
+
+```sh cli-example
+volicord connection verify codex --shared --repo "<repo>"
+```
+
+최신 실행 파일 탐색, rollback 전용 Store 쓰기 가능성 probe, MCP preflight, 일회용 protocol
+conformance 및 host compatibility process, diagnostic reconciliation, 보고서 영속화가 필요할
+때만 `verify`를 사용합니다. 이 명령은 managed-host, session, hook 또는 Codex 대화에서
+얻어야 하는 Guard evidence를 대신하지 않습니다. 정확한 효과와 출력은
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 담당하고, 현재
+Connection과 session의 권한 의미는
+[검증된 에이전트 세션](../reference/agent-connection.md#validated-agent-session)이 담당합니다.
 
 직접 프로세스 사전 점검에는 정확한 저장 식별자를 사용합니다.
 

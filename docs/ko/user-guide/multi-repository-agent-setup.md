@@ -30,8 +30,23 @@ volicord connection status codex --repo /path/to/billing-api
 
 ```sh cli-example
 volicord connection list
-volicord connection verify codex
+volicord connection status codex --repo /path/to/acme-api
 ```
+
+`list`는 저장된 연결과 membership의 읽기 전용 목록입니다. `status`는 명시적으로 선택한
+membership 하나의 현재 상태를 읽습니다. 한 저장소의 프로젝트 범위 상태로 다른 저장소의
+상태를 판단할 수 없으므로 `--repo`를 바꿔 각 membership을 따로 확인합니다.
+
+### 선택적 활성 진단
+
+```sh cli-example
+volicord connection verify codex --repo /path/to/acme-api
+```
+
+선택한 membership에 관한 최신 실행 파일, Store, protocol, host probe 근거가 필요할 때만
+`verify`를 사용합니다. 현재 상태를 읽는 데 필요하지 않으며 managed-host, session, hook
+또는 Codex 대화에서 얻어야 하는 Guard evidence를 대신하지 않습니다. 정확한 효과는
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
 
 ## 에이전트 선택
 

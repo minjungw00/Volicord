@@ -22,24 +22,38 @@ Volicord-managed project files may include `.codex/config.toml`,
 
 ## 2. Complete The Codex Action
 
-Start or reload Codex in the selected repository. Complete any project-trust
-step that Codex presents, then confirm that the active session can discover the
+Follow the reported `activation_plan.required_steps` in order. Before its final
+status-read step, the plan may include starting or reloading Codex in the
+selected repository, completing any project-trust action, reviewing the current
+project hooks, and requesting the reported in-chat integration-verification
+step in a new conversation. Confirm that the active session can discover the
 `volicord.*` tools. Configuration on disk does not by itself prove that an
 already-running session loaded it.
 
-## 3. Verify The Connection
+## 3. Check Connection Readiness
 
 Use the same intent selector that initialized the connection:
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
 
-A `complete` verification result is a connection-readiness checkpoint. It does
-not prove that Codex followed instructions, that repository writes are
-sandboxed, or that a Task is ready to close. Follow any returned
-`action_required` item and verify again.
+A `complete` current-status result is a connection-readiness checkpoint. It
+does not prove that Codex followed instructions, that repository writes are
+sandboxed, or that a Task is ready to close. For `action_required`, complete
+the returned `activation_plan.required_steps`, then read status again.
+
+### Optional Active Diagnostics
+
+```sh cli-example
+volicord connection verify codex --shared --repo "<repo>"
+```
+
+`verify` is optional and is not needed to read or explain current state. Use it
+only for fresh executable, Store, protocol, or host probe evidence; it does not
+replace managed-host, session, hook, or in-chat Guard evidence. See
+[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states)
+for its exact effects.
 
 ## 4. Start Work
 

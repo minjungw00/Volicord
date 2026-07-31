@@ -173,11 +173,22 @@ workflow states, and then read connection status. Do not use shell sleep or
 poll loops or restart the workflow automatically in the same turn.
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
 
-Do not edit a verification result or infer readiness from configuration files.
+Do not edit a status result or infer readiness from configuration files.
+
+Active verification is separate optional diagnostics. Run it only when fresh
+executable, Store, protocol, or host probe evidence is needed:
+
+```sh cli-example
+volicord connection verify codex --shared --repo "<repo>"
+```
+
+It is not required after every `action_required` result and does not replace
+the current plan's managed-host, session, hook, or in-chat Guard steps. Exact
+effects belong to
+[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states).
 
 ## Guard Hook Reports A Warning But Continues
 
@@ -384,11 +395,13 @@ Rerun the same supported setup intent:
 
 ```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
-volicord connection verify codex --shared --repo "<repo>"
+volicord connection status codex --shared --repo "<repo>"
 ```
 
-Review every changed file. Repair must preserve unrelated Codex settings and
-repository content.
+Review every changed file, complete the returned
+`activation_plan.required_steps`, and read status again. Repair must preserve
+unrelated Codex settings and repository content. Do not routinely run active
+verification after repair; use it only when fresh probe evidence is needed.
 
 ## Partial Removal
 

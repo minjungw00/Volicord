@@ -159,11 +159,21 @@ verify`는 선택적인 active diagnostics이며 activation workflow가 아닙�
 시작하지 않습니다.
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
 
-검증 결과를 편집하거나 구성 파일만 보고 준비 상태를 추론하지 않습니다.
+상태 결과를 편집하거나 구성 파일만 보고 준비 상태를 추론하지 않습니다.
+
+활성 검증은 별도의 선택적 진단입니다. 최신 실행 파일, Store, protocol, host probe 근거가
+필요할 때만 실행합니다.
+
+```sh cli-example
+volicord connection verify codex --shared --repo "<repo>"
+```
+
+모든 `action_required` 결과 뒤에 필요한 명령은 아니며 현재 plan의 managed-host, session,
+hook 또는 Codex 대화에서 수행해야 하는 Guard 단계를 대신하지 않습니다. 정확한 효과는
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
 
 ## Guard Hook이 Warning을 내고 계속함
 
@@ -350,11 +360,12 @@ Unrecorded Change는 제한된 관찰이며 actor 귀속이 아닙니다. 반환
 
 ```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
-volicord connection verify codex --shared --repo "<repo>"
+volicord connection status codex --shared --repo "<repo>"
 ```
 
-변경된 모든 파일을 검토합니다. 복구는 관련 없는 Codex 설정과 저장소 내용을 보존해야
-합니다.
+변경된 모든 파일을 검토하고 반환된 `activation_plan.required_steps`를 완료한 뒤 상태를
+다시 읽습니다. 복구는 관련 없는 Codex 설정과 저장소 내용을 보존해야 합니다. 복구 뒤에
+활성 검증을 일상적으로 실행하지 말고 최신 probe 근거가 필요할 때만 사용합니다.
 
 ## 일부만 제거된 것처럼 보임
 

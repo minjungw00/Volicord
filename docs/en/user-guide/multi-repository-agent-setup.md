@@ -31,8 +31,25 @@ Inspect the resulting connection and memberships:
 
 ```sh cli-example
 volicord connection list
-volicord connection verify codex
+volicord connection status codex --repo /path/to/acme-api
 ```
+
+`list` is the read-only inventory of stored connections and memberships.
+`status` reads the current state for the one explicitly selected membership.
+One repository's project-scoped state does not establish another's, so inspect
+each membership separately by changing `--repo`.
+
+### Optional Active Diagnostics
+
+```sh cli-example
+volicord connection verify codex --repo /path/to/acme-api
+```
+
+Use `verify` only when fresh executable, Store, protocol, or host probe evidence
+is needed for the selected membership. It is not required to read current state
+and does not replace managed-host, session, hook, or in-chat Guard evidence.
+Its exact effects belong to
+[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states).
 
 ## Agent Selection
 

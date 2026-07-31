@@ -1,7 +1,7 @@
 # Agent Host Setup
 
-Use this guide to install, verify, repair, or remove the managed Codex Agent
-Connection. The exact command contract belongs to
+Use this guide to install, inspect, diagnose, repair, or remove the managed
+Codex Agent Connection. The exact command contract belongs to
 [Administrative CLI](../reference/admin-cli.md), and the managed operational
 session boundary belongs to [Agent Connection](../reference/agent-connection.md).
 
@@ -24,7 +24,7 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 For a personal setup, omit `--shared`. Keep the same selector on later status,
-verify, repair, and removal commands.
+optional diagnostics, repair, and removal commands.
 
 <a id="read-setup-output"></a>
 ## Read Setup Output
@@ -46,7 +46,7 @@ protocol-conformance, or host-compatibility probe evidence is needed.
 Use `--verbose` when diagnosing the current report in more detail:
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>" --verbose
+volicord connection status codex --shared --repo "<repo>" --verbose
 ```
 
 The [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states)
@@ -77,18 +77,39 @@ against an already read-only Connection are replay or repair operations. An
 omitted flag does not request `workflow`. Use `volicord connection mode` for
 every established-mode change.
 
-## Verify
+## Check Readiness
 
 After Codex has loaded the configuration and completed any trust action:
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
 ```
 
-Treat `verify` as a setup and readiness diagnostic. Current Connection and
-session authorization semantics belong to
+`status` reads the selected membership's current state; add `--verbose` for a
+detailed read-only report. `list` is a read-only inventory that evaluates each
+selected membership independently. Neither command runs active probes or
+writes state.
+
+Follow the current `activation_plan.required_steps` in their reported order.
+The current plan places active verification in `optional_diagnostics`, so it is
+not required to read or explain current state. If a later status report
+explicitly includes active verification in `required_steps`, follow that
+returned current plan.
+
+### Optional Active Diagnostics
+
+```sh cli-example
+volicord connection verify codex --shared --repo "<repo>"
+```
+
+Use `verify` only when fresh executable discovery, rollback-only Store
+writeability probes, MCP preflight, disposable protocol-conformance and
+host-compatibility processes, diagnostic reconciliation, and report
+persistence are needed. It does not replace managed-host, session, hook, or
+in-chat Guard evidence. Exact effects and output belong to
+[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states),
+while current Connection and session authorization semantics belong to
 [Validated Agent Session](../reference/agent-connection.md#validated-agent-session).
 
 For a direct process preflight, use the exact stored identifiers:

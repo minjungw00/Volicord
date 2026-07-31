@@ -22,22 +22,34 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 
 ## 2. Codex 동작 완료
 
-선택한 저장소에서 Codex를 시작하거나 다시 불러옵니다. Codex가 프로젝트 신뢰 단계를
-표시하면 완료하고, 현재 세션이 `volicord.*` 도구를 찾을 수 있는지 확인합니다.
-디스크의 구성만으로 이미 실행 중인 세션이 이를 읽었다고 증명할 수는 없습니다.
+보고된 `activation_plan.required_steps`를 순서대로 따릅니다. 마지막 상태 읽기 단계 전에는
+선택한 저장소에서 Codex 시작 또는 다시 불러오기, 프로젝트 신뢰 동작 완료, 현재 프로젝트
+hook 검토, 새 대화에서 보고된 integration-verification 단계 요청이 포함될 수 있습니다.
+현재 session이 `volicord.*` 도구를 찾을 수 있는지 확인합니다. 디스크의 구성만으로 이미
+실행 중인 session이 이를 읽었다고 증명할 수는 없습니다.
 
-## 3. 연결 검증
+## 3. 연결 준비 상태 확인
 
 연결을 초기화할 때 사용한 것과 같은 의도 선택자를 사용합니다.
 
 ```sh cli-example
-volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
 
-`complete` 검증 결과는 연결 준비 체크포인트입니다. Codex가 지침을 따랐음, 저장소
-쓰기가 sandbox로 격리됨, Task가 닫기 준비됨을 증명하지 않습니다. 반환된
-`action_required` 항목을 처리한 뒤 다시 검증합니다.
+`complete` 현재 상태 결과는 연결 준비 체크포인트입니다. Codex가 지침을 따랐음, 저장소
+쓰기가 sandbox로 격리됨, Task가 닫기 준비됨을 증명하지 않습니다. `action_required`이면
+반환된 `activation_plan.required_steps`를 완료한 뒤 상태를 다시 읽습니다.
+
+### 선택적 활성 진단
+
+```sh cli-example
+volicord connection verify codex --shared --repo "<repo>"
+```
+
+`verify`는 선택 사항이며 현재 상태를 읽거나 설명하는 데 필요하지 않습니다. 최신 실행 파일,
+Store, protocol, host probe 근거가 필요할 때만 사용합니다. 이 명령은 managed-host, session,
+hook 또는 Codex 대화에서 얻어야 하는 Guard evidence를 대신하지 않습니다. 정확한 효과는
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)를 봅니다.
 
 ## 4. 작업 시작
 
