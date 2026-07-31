@@ -1869,9 +1869,9 @@ fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("Mode: workflow\nActivation: "));
     assert!(text.contains("\nHook activation: "));
     assert!(text.contains("\nChecks\n"));
-    assert!(text.contains("\n  Ready: "));
+    assert!(text.contains("\n  Passed: "));
     assert!(text.contains("\n  Blocked: "));
-    assert!(text.contains("\n  Waiting: "));
+    assert!(text.contains("\n  Pending: "));
     assert!(text.contains("\n  Failed: "));
     assert!(text.contains("Waiting\n"));
     assert_eq!(text.matches("Required next steps\n").count(), 1);
@@ -1997,7 +1997,7 @@ fn connection_remove_human_output_reports_complete_connection_removal() -> Resul
     let text = stdout(&output)?;
     assert!(text.starts_with("Connection membership and Connection record were removed.\n\n"));
     assert!(text.contains(
-        "Mode: workflow\nActivation: configured\nHook activation: unknown\n\nChecks\n  Ready: 1\n  Blocked: 0\n  Waiting: 0\n  Failed: 0\n"
+        "Mode: workflow\nActivation: configured\nHook activation: unknown\n\nChecks\n  Passed: 1\n  Blocked: 0\n  Pending: 0\n  Failed: 0\n"
     ));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Connection removed:"));
@@ -2309,7 +2309,7 @@ fn membership_only_remove_human_output_reports_connection_retention() -> Result<
         "Connection membership was removed; the shared Connection remains in use.\n\n"
     ));
     assert!(text.contains(
-        "Mode: workflow\nActivation: configured\nHook activation: unknown\n\nChecks\n  Ready: 1\n  Blocked: 0\n  Waiting: 0\n  Failed: 0\n"
+        "Mode: workflow\nActivation: configured\nHook activation: unknown\n\nChecks\n  Passed: 1\n  Blocked: 0\n  Pending: 0\n  Failed: 0\n"
     ));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Remaining project count:"));

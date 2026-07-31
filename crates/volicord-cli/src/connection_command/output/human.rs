@@ -13,6 +13,10 @@ use super::report::{
     CommandOperation, ConnectionCommandReport, ConnectionCommandResult, RuntimeHomeRollbackResult,
     SetupDisposition,
 };
+use super::semantics::{
+    active_verification_summary, connection_status_label, hook_activation_label,
+    integration_activation_label, ConnectionCheckCounts,
+};
 use crate::connection_command::{
     guidance::{ConnectionUserInvocation, DiagnosticOperation},
     ConnectionCommandError, PlannedConnectionChange, PlannedConnectionChangeKind,
@@ -22,7 +26,7 @@ use crate::presentation::{Document, Field, HumanValue, Section};
 pub(super) fn render_command_report_concise(
     report: &ConnectionCommandReport,
 ) -> Result<String, ConnectionCommandError> {
-    let counts = CheckCounts::from_report(report);
+    let counts = ConnectionCheckCounts::from_checks(&report.checks);
     let mut sections = vec![Document::new(
         headline(report, counts),
         vec![
@@ -34,22 +38,21 @@ pub(super) fn render_command_report_concise(
             Field::new("Mode", HumanValue::text(report.connection.mode.as_str())).into(),
             Field::new(
                 "Activation",
-                HumanValue::text(report.activation_state.as_str()),
+                HumanValue::text(integration_activation_label(report.activation_state)),
             )
             .into(),
             Field::new(
                 "Hook activation",
-                HumanValue::text(report.hook_activation_state.as_str()),
+                HumanValue::text(hook_activation_label(report.hook_activation_state)),
             )
             .into(),
             Section::new(
                 "Checks",
-                vec![
-                    Field::new("Ready", HumanValue::Count(counts.ready)).into(),
-                    Field::new("Blocked", HumanValue::Count(counts.blocked)).into(),
-                    Field::new("Waiting", HumanValue::Count(counts.waiting)).into(),
-                    Field::new("Failed", HumanValue::Count(counts.failed)).into(),
-                ],
+                counts
+                    .concise_fields()
+                    .into_iter()
+                    .map(|(label, count)| Field::new(label, HumanValue::Count(count)).into())
+                    .collect(),
             )
             .into(),
         ],
@@ -63,7 +66,7 @@ pub(super) fn render_command_report_concise(
                 .to_owned(),
         );
     }
-    if let Some(mcp) = render_mcp_verification_summary(&report.checks) {
+    if let Some(mcp) = render_mcp_verification_summary(&report.checks)? {
         sections.push(mcp);
     }
     if let Some(guard) = render_guard_verification_summary(&report.checks) {
@@ -97,57 +100,16 @@ pub(super) fn render_command_report_concise(
     Ok(format!("{}\n", sections.join("\n\n")))
 }
 
-fn render_mcp_verification_summary(checks: &[ConnectionCheck]) -> Option<String> {
-    let details = checks
-        .iter()
-        .find(|check| check.id() == ConnectionCheckKind::McpServer)?
-        .details()?
-        .as_object();
-    if !details.contains_key("preflight") {
-        return None;
-    }
-    let Some(active) = details
-        .get("last_active_verification")
-        .and_then(Value::as_object)
-    else {
-        return Some("Storage writeability: not checked".to_owned());
-    };
-    let observed_at = active
-        .get("observed_at")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    let source = active
-        .get("source")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    let registry_write = active
-        .get("registry_write")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    let project_writes = active
-        .get("project_writes")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|project| {
-            Some(format!(
-                "{}={}",
-                project.get("project_id")?.as_str()?,
-                project.get("state_write")?.as_str()?
-            ))
-        })
-        .collect::<Vec<_>>();
-    let writeability = if project_writes.is_empty() {
-        registry_write.to_owned()
-    } else {
+fn render_mcp_verification_summary(
+    checks: &[ConnectionCheck],
+) -> Result<Option<String>, ConnectionCommandError> {
+    Ok(active_verification_summary(checks)?.map(|summary| {
         format!(
-            "Registry={registry_write}; projects {}",
-            project_writes.join(", ")
+            "Active verification: {}\nStorage writeability: {}",
+            summary.state.label(),
+            summary.storage_writeability.label()
         )
-    };
-    Some(format!(
-        "Active verification: {observed_at} ({source})\nStorage writeability: {writeability}"
-    ))
+    }))
 }
 
 fn render_guard_verification_summary(checks: &[ConnectionCheck]) -> Option<String> {
@@ -442,73 +404,15 @@ fn diagnostic_invocation_from_report(
     )
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct CheckCounts {
-    pub(super) ready: usize,
-    pub(super) blocked: usize,
-    pub(super) waiting: usize,
-    pub(super) failed: usize,
-    pub(super) not_applicable: usize,
-}
-
-impl CheckCounts {
-    fn from_checks(checks: &[ConnectionCheck]) -> Self {
-        let mut counts = Self {
-            ready: 0,
-            blocked: 0,
-            waiting: 0,
-            failed: 0,
-            not_applicable: 0,
-        };
-        for check in checks {
-            match check.status() {
-                ConnectionCheckStatus::Passed => counts.ready += 1,
-                ConnectionCheckStatus::Pending => counts.waiting += 1,
-                ConnectionCheckStatus::Failed => counts.failed += 1,
-                ConnectionCheckStatus::Blocked => counts.blocked += 1,
-                ConnectionCheckStatus::NotApplicable => counts.not_applicable += 1,
-            }
-        }
-        counts
-    }
-
-    pub(super) fn from_report(report: &ConnectionCommandReport) -> Self {
-        Self::from_checks(&report.checks)
-    }
-
-    fn render(self) -> String {
-        let mut parts = Vec::new();
-        if self.ready > 0 {
-            parts.push(format!("{} ready", self.ready));
-        }
-        if self.blocked > 0 {
-            parts.push(format!("{} blocked", self.blocked));
-        }
-        if self.waiting > 0 {
-            parts.push(format!("{} waiting", self.waiting));
-        }
-        if self.failed > 0 {
-            parts.push(format!("{} failed", self.failed));
-        }
-        parts.join(", ")
-    }
-}
-
-pub(super) fn headline(report: &ConnectionCommandReport, counts: CheckCounts) -> String {
+pub(super) fn headline(report: &ConnectionCommandReport, counts: ConnectionCheckCounts) -> String {
     match report.operation {
         CommandOperation::Init | CommandOperation::Add => setup_headline(report),
         CommandOperation::Status => match report.status {
             ConnectionStatus::Complete => "Codex connection is ready.".to_owned(),
-            ConnectionStatus::ActionRequired if counts.failed > 0 => {
-                "Codex connection needs a repair action.".to_owned()
-            }
-            ConnectionStatus::ActionRequired => {
-                "Codex connection is configured and waiting for activity.".to_owned()
-            }
-            ConnectionStatus::Failed => "Codex connection needs attention.".to_owned(),
+            status => format!("Codex connection: {}.", connection_status_label(status)),
         },
         CommandOperation::Verify => {
-            let result = counts.render();
+            let result = counts.render_nonzero();
             if result.is_empty() {
                 "Verification completed.".to_owned()
             } else {
@@ -924,9 +828,9 @@ mod tests {
             assert!(actual.contains("\nActivation: "), "{actual}");
             assert!(actual.contains("\nHook activation: "), "{actual}");
             assert!(actual.contains("\nChecks\n"), "{actual}");
-            assert!(actual.contains("\n  Ready: "), "{actual}");
+            assert!(actual.contains("\n  Passed: "), "{actual}");
             assert!(actual.contains("\n  Blocked: "), "{actual}");
-            assert!(actual.contains("\n  Waiting: "), "{actual}");
+            assert!(actual.contains("\n  Pending: "), "{actual}");
             assert!(actual.contains("\n  Failed: "), "{actual}");
             assert!(!actual.contains("action.host.observe_activity"), "{actual}");
             assert!(!actual.contains("\nNext\n"), "{actual}");
@@ -1184,7 +1088,7 @@ mod tests {
         );
         assert_current_concise!(
             concise(&action_required),
-            "Codex connection is configured and waiting for activity."
+            "Codex connection: action required."
         );
 
         let failed = report(
@@ -1193,7 +1097,7 @@ mod tests {
             vec![failed_check()],
             Vec::new(),
         );
-        assert_current_concise!(concise(&failed), "Codex connection needs attention.");
+        assert_current_concise!(concise(&failed), "Codex connection: failed.");
     }
 
     #[test]
@@ -1206,7 +1110,7 @@ mod tests {
         );
         assert_current_concise!(
             concise(&action_required),
-            "Verification completed: 5 ready, 4 waiting."
+            "Verification completed: 5 passed, 4 pending."
         );
 
         let failed = report(
@@ -1743,9 +1647,9 @@ mod tests {
         .unwrap();
         let checks = vec![failed, blocked_tools, blocked_round_trip];
         assert!(super::render_waiting_checks(&checks).is_empty());
-        let counts = super::CheckCounts::from_checks(&checks);
+        let counts = super::ConnectionCheckCounts::from_checks(&checks);
         assert_eq!(
-            (counts.ready, counts.blocked, counts.waiting, counts.failed),
+            (counts.passed, counts.blocked, counts.pending, counts.failed),
             (0, 2, 0, 1)
         );
     }
@@ -1814,6 +1718,7 @@ mod tests {
                 .output,
         )
         .unwrap();
+        assert!(before_human.contains("Active verification: not run"));
         assert!(before_human.contains("Storage writeability: not checked"));
         assert!(before_verbose.contains("Storage writeability: not checked"));
         let before_details = &before_json["checks"][0]["details"];
@@ -1860,11 +1765,11 @@ mod tests {
                 .output,
         )
         .unwrap();
-        assert!(
-            after_human.contains("Active verification: 2026-07-25T01:02:03Z (connection_verify)")
-        );
-        assert!(after_human
-            .contains("Storage writeability: Registry=passed; projects project_1=passed"));
+        assert!(after_human.contains("Active verification: passed"));
+        assert!(after_human.contains("Storage writeability: passed"));
+        for hidden in ["project_1", "connection_verify", "2026-07-25T01:02:03Z"] {
+            assert!(!after_human.contains(hidden), "{hidden}: {after_human}");
+        }
         assert!(after_verbose.contains("Active verification observed at: 2026-07-25T01:02:03Z"));
         assert!(after_verbose.contains("Active verification source: connection_verify"));
         assert!(after_verbose.contains("Registry writeability: passed"));
@@ -1878,5 +1783,112 @@ mod tests {
             after_details["preflight"]["evidence"]["writeability"]["status"],
             "not_checked"
         );
+
+        let failed_probe = json!({
+            "status": "failed",
+            "requested_revision": "2025-06-18",
+            "negotiated_revision": null,
+            "initialize": false,
+            "initialized_notification": false,
+            "schema_validation": false,
+            "tools_list_observed": false,
+            "tools_returned": null,
+            "required_tools_validated": false,
+            "safe_read_only_tool": "volicord.list_projects",
+            "safe_read_only_tool_completed": false,
+            "shutdown_completed": true,
+            "diagnostic_code": "probe_failed",
+            "failure_stage": "initialize"
+        });
+        let active_cases = [
+            (
+                {
+                    let mut evidence = active.clone();
+                    evidence["registry_write"] = json!("failed");
+                    evidence
+                },
+                "failed",
+                "failed",
+            ),
+            (
+                {
+                    let mut evidence = active.clone();
+                    evidence["project_writes"][0]["state_write"] = json!("failed");
+                    evidence
+                },
+                "failed",
+                "failed",
+            ),
+            (
+                {
+                    let mut evidence = active.clone();
+                    let mut probe = failed_probe.clone();
+                    probe["revision"] = json!("2025-06-18");
+                    evidence["protocol_conformance"] = json!([probe]);
+                    evidence
+                },
+                "failed",
+                "passed",
+            ),
+            (
+                {
+                    let mut evidence = active.clone();
+                    let mut probe = failed_probe;
+                    probe["profile"] = json!("codex-current");
+                    probe["fixture"] = json!("codex-current.json");
+                    evidence["host_compatibility"] = json!([probe]);
+                    evidence
+                },
+                "failed",
+                "passed",
+            ),
+        ];
+        for (evidence, expected_active, expected_storage) in active_cases {
+            let current = report(
+                CommandOperation::Status,
+                None,
+                vec![check(
+                    ConnectionCheckKind::McpServer,
+                    ConnectionCheckStatus::Passed,
+                    "MCP active verification state",
+                    Some(json!({
+                        "preflight": preflight.clone(),
+                        "last_active_verification": evidence,
+                    })),
+                )],
+                Vec::new(),
+            );
+            let output = concise(&current);
+            assert_eq!(output.matches("Active verification:").count(), 1);
+            assert_eq!(output.matches("Storage writeability:").count(), 1);
+            assert!(output.contains(&format!("Active verification: {expected_active}")));
+            assert!(output.contains(&format!("Storage writeability: {expected_storage}")));
+            assert!(!output.contains("project_1"));
+        }
+
+        let malformed = report(
+            CommandOperation::Status,
+            None,
+            vec![check(
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckStatus::Passed,
+                "Malformed MCP active verification state",
+                Some(json!({
+                    "preflight": preflight,
+                    "last_active_verification": {"corrupt": true},
+                })),
+            )],
+            Vec::new(),
+        );
+        let error = match render_command_report(
+            OutputFormat::Human(HumanOutputDetail::Concise),
+            &malformed,
+        ) {
+            Ok(_) => panic!("malformed active verification evidence must fail"),
+            Err(error) => error,
+        };
+        assert!(error
+            .to_string()
+            .contains("current MCP active-verification evidence is invalid"));
     }
 }

@@ -1,8 +1,8 @@
 use serde::Serialize;
 use volicord_types::{
     connection_verification::{
-        ActivationStep, ActivationStepId, ConnectionCheckStatus, ConnectionStatus,
-        HookActivationState, IntegrationActivationState,
+        ActivationStep, ActivationStepId, ConnectionStatus, HookActivationState,
+        IntegrationActivationState,
     },
     ids::{AgentConnectionId, ProjectId},
     integration_revision::IntegrationRevision,
@@ -13,6 +13,10 @@ use crate::presentation::{
     ActionHint, BulletList, Document, Element, Field, HumanValue, Section, YesNo,
 };
 
+use super::semantics::{
+    connection_status_label, hook_activation_label, integration_activation_label,
+    ConnectionCheckCounts,
+};
 use super::*;
 use crate::connection_command::args::HumanOutputDetail;
 
@@ -80,15 +84,6 @@ enum ConnectionMembershipCurrentState {
         summary: String,
         issues: Vec<CurrentStateIssue>,
     },
-}
-
-#[derive(Debug, Clone, Copy, Default, Serialize)]
-struct ConnectionCheckCounts {
-    passed: usize,
-    blocked: usize,
-    pending: usize,
-    failed: usize,
-    not_applicable: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -275,7 +270,7 @@ fn membership_entry(row: &EvaluatedConnectionMembership) -> ConnectionMembership
                     status: report.status(),
                     activation: report.activation_state(),
                     hook_activation: report.hook_activation_state(),
-                    check_counts: check_counts(report),
+                    check_counts: ConnectionCheckCounts::from_report(report),
                     required_step_count: required_steps.len(),
                     primary_required_step: required_steps.first().cloned(),
                     required_steps,
@@ -303,22 +298,6 @@ fn required_step(step: &ActivationStep) -> ConnectionRequiredStep {
         id: step.id(),
         instruction: step.instruction().to_owned(),
     }
-}
-
-fn check_counts(report: &ConnectionVerificationReport) -> ConnectionCheckCounts {
-    report
-        .checks()
-        .iter()
-        .fold(ConnectionCheckCounts::default(), |mut counts, check| {
-            match check.status() {
-                ConnectionCheckStatus::Passed => counts.passed += 1,
-                ConnectionCheckStatus::Blocked => counts.blocked += 1,
-                ConnectionCheckStatus::Pending => counts.pending += 1,
-                ConnectionCheckStatus::Failed => counts.failed += 1,
-                ConnectionCheckStatus::NotApplicable => counts.not_applicable += 1,
-            }
-            counts
-        })
 }
 
 fn render_connections_text(report: &ConnectionListReport, detail: HumanOutputDetail) -> String {
@@ -403,26 +382,20 @@ fn membership_section(
             ..
         } => {
             body.extend([
-                Field::new("Status", HumanValue::text(human_label(status.as_str()))).into(),
+                Field::new("Status", HumanValue::text(connection_status_label(*status))).into(),
                 Field::new(
                     "Activation",
-                    HumanValue::text(human_label(activation.as_str())),
+                    HumanValue::text(integration_activation_label(*activation)),
                 )
                 .into(),
                 Field::new(
                     "Hook activation",
-                    HumanValue::text(human_label(hook_activation.as_str())),
+                    HumanValue::text(hook_activation_label(*hook_activation)),
                 )
                 .into(),
                 Field::new(
                     "Checks",
-                    HumanValue::text(format!(
-                        "{} passed, {} blocked, {} pending, {} failed",
-                        check_counts.passed,
-                        check_counts.blocked,
-                        check_counts.pending,
-                        check_counts.failed
-                    )),
+                    HumanValue::text(check_counts.render_concise_inline()),
                 )
                 .into(),
                 Field::verbose(
@@ -487,4 +460,213 @@ pub(in crate::connection_command) fn display_project_roots(
         .map(|project| path_text(&project.project.repo_root))
         .collect::<Vec<_>>()
         .join(",")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use serde_json::Value;
+    use volicord_types::connection_verification::IntegrationActivationPlan;
+
+    use super::*;
+    use crate::connection_command::output::{
+        report::{CommandConnection, CommandOperation, ConnectionCommandReport},
+        semantics::ConnectionCheckCounts,
+    };
+
+    fn timestamp() -> UtcTimestamp {
+        UtcTimestamp::parse("2026-07-31T00:00:00Z").unwrap()
+    }
+
+    fn selected_report(
+        status: ConnectionStatus,
+        activation: IntegrationActivationState,
+        hook_activation: HookActivationState,
+    ) -> ConnectionCommandReport {
+        ConnectionCommandReport {
+            operation: CommandOperation::Status,
+            dry_run: false,
+            status,
+            activation_state: activation,
+            hook_activation_state: hook_activation,
+            runtime_home: "/runtime".to_owned(),
+            connection: CommandConnection::new(
+                "connection_1",
+                "codex",
+                "user",
+                "workflow",
+                Path::new("/workspace/product"),
+                "/home/user/.codex/config.toml",
+            ),
+            checks: Vec::new(),
+            activation_plan: IntegrationActivationPlan::empty(activation),
+            generated_at: timestamp(),
+            findings: Vec::new(),
+            integration_revision: None,
+            result: None,
+            planned_changes: None,
+            limits: Vec::new(),
+        }
+    }
+
+    fn inventory_report(
+        status: ConnectionStatus,
+        activation: IntegrationActivationState,
+        hook_activation: HookActivationState,
+    ) -> ConnectionListReport {
+        ConnectionListReport {
+            generated_at: timestamp(),
+            connections: vec![ConnectionListEntry {
+                connection_id: AgentConnectionId::new("connection_1"),
+                host_kind: "codex".to_owned(),
+                connection_intent: "personal".to_owned(),
+                host_scope: "user".to_owned(),
+                mode: "workflow".to_owned(),
+                enabled: true,
+                server_name: "volicord".to_owned(),
+                config_target: "/home/user/.codex/config.toml".to_owned(),
+                memberships: vec![ConnectionMembershipEntry {
+                    project_id: ProjectId::new("project_1"),
+                    project_name: "product".to_owned(),
+                    repository: "/workspace/product".to_owned(),
+                    current_state: ConnectionMembershipCurrentState::Available {
+                        status,
+                        activation,
+                        hook_activation,
+                        check_counts: ConnectionCheckCounts::default(),
+                        required_step_count: 0,
+                        primary_required_step: None,
+                        required_steps: Vec::new(),
+                        integration_revision: IntegrationRevision::parse(format!(
+                            "sha256:{}",
+                            "0".repeat(64)
+                        ))
+                        .unwrap(),
+                        evaluated_at: timestamp(),
+                    },
+                }],
+                issues: Vec::new(),
+            }],
+            limits: Vec::new(),
+        }
+    }
+
+    fn field_value<'a>(output: &'a str, field: &str) -> &'a str {
+        output
+            .lines()
+            .find_map(|line| line.trim_start().strip_prefix(&format!("{field}: ")))
+            .unwrap_or_else(|| panic!("missing {field:?} in {output}"))
+    }
+
+    #[test]
+    fn selected_status_and_inventory_share_nine_typed_state_projections() {
+        let cases = [
+            (
+                ConnectionStatus::Complete,
+                IntegrationActivationState::Complete,
+                HookActivationState::EffectiveByObservation,
+            ),
+            (
+                ConnectionStatus::ActionRequired,
+                IntegrationActivationState::HostReloadRequired,
+                HookActivationState::Unknown,
+            ),
+            (
+                ConnectionStatus::ActionRequired,
+                IntegrationActivationState::HookReviewRequiredOrUnknown,
+                HookActivationState::ReviewRequiredBySetup,
+            ),
+            (
+                ConnectionStatus::ActionRequired,
+                IntegrationActivationState::McpObservationRequired,
+                HookActivationState::EffectiveByObservation,
+            ),
+            (
+                ConnectionStatus::ActionRequired,
+                IntegrationActivationState::GuardVerificationRequired,
+                HookActivationState::EffectiveByObservation,
+            ),
+            (
+                ConnectionStatus::Failed,
+                IntegrationActivationState::Failed,
+                HookActivationState::Unknown,
+            ),
+            (
+                ConnectionStatus::Failed,
+                IntegrationActivationState::Failed,
+                HookActivationState::Disabled,
+            ),
+            (
+                ConnectionStatus::Complete,
+                IntegrationActivationState::Complete,
+                HookActivationState::ManagedByPolicy,
+            ),
+            (
+                ConnectionStatus::Complete,
+                IntegrationActivationState::Complete,
+                HookActivationState::BypassedForInvocation,
+            ),
+        ];
+
+        for (status, activation, hook_activation) in cases {
+            let selected = super::super::report::render_command_report(
+                OutputFormat::Human(HumanOutputDetail::Concise),
+                &selected_report(status, activation, hook_activation),
+            )
+            .unwrap()
+            .output;
+            let inventory_report = inventory_report(status, activation, hook_activation);
+            let inventory = render_connections_text(&inventory_report, HumanOutputDetail::Concise);
+
+            let status_label = connection_status_label(status);
+            assert!(selected.lines().next().unwrap().contains(status_label));
+            assert_eq!(field_value(&inventory, "Status"), status_label);
+            assert_eq!(
+                field_value(&inventory, "Checks"),
+                "0 passed, 0 blocked, 0 pending, 0 failed"
+            );
+            assert_eq!(
+                field_value(&selected, "Activation"),
+                field_value(&inventory, "Activation")
+            );
+            assert_eq!(
+                field_value(&selected, "Hook activation"),
+                field_value(&inventory, "Hook activation")
+            );
+            assert_eq!(
+                field_value(&selected, "Activation"),
+                integration_activation_label(activation)
+            );
+            assert_eq!(
+                field_value(&selected, "Hook activation"),
+                hook_activation_label(hook_activation)
+            );
+
+            for raw in [activation.as_str(), hook_activation.as_str()] {
+                if raw.contains('_') {
+                    assert!(!field_value(&selected, "Activation").contains(raw));
+                    assert!(!field_value(&selected, "Hook activation").contains(raw));
+                    assert!(!field_value(&inventory, "Activation").contains(raw));
+                    assert!(!field_value(&inventory, "Hook activation").contains(raw));
+                }
+            }
+
+            let inventory_json = serde_json::to_value(&inventory_report).unwrap();
+            let current = &inventory_json["connections"][0]["memberships"][0]["current_state"];
+            assert_eq!(current["status"], Value::String(status.as_str().to_owned()));
+            assert_eq!(
+                current["activation"],
+                Value::String(activation.as_str().to_owned())
+            );
+            assert_eq!(
+                current["hook_activation"],
+                Value::String(hook_activation.as_str().to_owned())
+            );
+            assert_eq!(
+                serde_json::to_value(status).unwrap(),
+                Value::String(status.as_str().to_owned())
+            );
+        }
+    }
 }

@@ -1650,7 +1650,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     let human_list = String::from_utf8(human_list.stdout)?;
     assert!(human_list.starts_with("Connections (1)\n\ncodex\n"));
     assert!(human_list.contains(&format!("Repository: {}", fixture.repo_root.display())));
-    assert!(human_list.contains("Status: complete\n"));
+    assert!(human_list.contains("Status: ready\n"));
     assert!(human_list.contains("Activation: complete\n"));
     assert!(!human_list.contains('\t'));
 
@@ -1831,11 +1831,11 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(human.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
     assert!(human.contains("Mode: workflow\n"));
     assert!(human.contains("Activation: complete\n"));
-    assert!(human.contains("Hook activation: effective_by_observation\n"));
+    assert!(human.contains("Hook activation: effective by observation\n"));
     assert!(human.contains("\nChecks\n"));
-    assert!(human.contains("\n  Ready: "));
+    assert!(human.contains("\n  Passed: "));
     assert!(human.contains("\n  Blocked: 0\n"));
-    assert!(human.contains("\n  Waiting: 0\n"));
+    assert!(human.contains("\n  Pending: 0\n"));
     assert!(human.contains("\n  Failed: 0\n"));
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(!human.contains(check["id"].as_str().expect("check id")));
@@ -1846,7 +1846,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(verbose.stderr.is_empty());
     let verbose = String::from_utf8(verbose.stdout)?;
     assert!(verbose.starts_with("Codex connection is ready.\n\nConnection\n"));
-    assert!(verbose.contains("\n\nSummary\n  Status: complete\n"));
+    assert!(verbose.contains("\n\nSummary\n  Status: ready\n"));
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(verbose.contains(check["summary"].as_str().expect("check summary")));
     }

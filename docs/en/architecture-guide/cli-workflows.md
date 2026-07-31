@@ -68,6 +68,16 @@ repository filter runs before current evaluation. One unavailable membership
 is rendered beside successful memberships; a Runtime Home Registry enumeration
 failure still terminates the command. No context survives the invocation.
 
+The Connection output adapter owns one typed human semantic projection shared
+by selected status and list. Exhaustive enum mappings select aggregate-status,
+integration-activation, hook-activation, and check-status phrases; one count
+projection supplies `passed`, `blocked`, `pending`, `failed`, and
+`not applicable` in that order. A present active-verification detail is
+strictly decoded as `McpActiveVerificationEvidence` before concise output
+derives its active-verification and Store-writeability conclusions. The generic
+presentation layer only lays out those selected labels and values. JSON keeps
+the stable underscore enum spellings and the complete typed evidence.
+
 `connection verify` performs current adapter and managed-configuration
 inspection, runs permitted local probes, reads actual managed-host and Guard
 observations, and commits at most one report through the Store owner. Executable

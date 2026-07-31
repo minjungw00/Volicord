@@ -58,6 +58,14 @@ Connection 범위 입력을 재사용하며, filter된 membership을 invocation 
 없는 membership 하나는 성공한 membership 옆에 표시하며 Runtime Home Registry 전체
 열거가 실패하면 명령을 종료합니다. 어떤 context도 invocation 뒤에 남지 않습니다.
 
+Connection 출력 adapter는 선택한 status와 list가 공유하는 typed 사람용 semantic
+projection 하나를 소유합니다. 완전한 enum mapping이 집계 status, integration activation,
+hook activation, check status 문구를 선택하고 count projection 하나가 `passed`, `blocked`,
+`pending`, `failed`, `not applicable` 순서로 값을 제공합니다. Concise 출력은 존재하는 활성
+검증 detail을 `McpActiveVerificationEvidence`로 엄격하게 decode한 뒤 활성 검증 및 Store
+쓰기 가능성 결론을 만듭니다. 일반 presentation 계층은 선택된 label과 값의 layout만
+담당합니다. JSON은 밑줄이 있는 안정적인 enum 표기와 완전한 typed 증거를 유지합니다.
+
 `connection verify`는 현재 adapter와 관리 구성을 검사하고 허용된 로컬 probe를 실행한 뒤
 실제 managed-host 및 Guard 관찰을 읽고 Store 담당 경로로 보고서를 최대 하나
 commit합니다. Executable path와 version은 diagnostic probe 사실입니다. 권위 있는 관리

@@ -947,7 +947,7 @@ integration generation을 증가시키지 않습니다.
 
 `volicord init`과 선택한 Connection을 다루는 `add`, `status`, `verify`, `mode`,
 `remove` 명령은 출력 선택 방식 하나를 공유합니다. 출력 플래그가 없으면 작업에 맞는
-결과, 선택한 저장소와 유효한 mode, `ready`/`blocked`/`waiting`/`failed` check 개수, 대기 관찰보다
+결과, 선택한 저장소와 유효한 mode, `passed`/`blocked`/`pending`/`failed` check 개수, 대기 관찰보다
 앞에 표시하는 현재 문제, 현재 다음 동작을 간결한 사람용 산문으로 보여 줍니다.
 실패 보고서의 각 문제는 독립 root finding이며 namespaced code, 한도가 있는 typed summary,
 가장 유용한 안전한 actual-versus-expected fact, 영향을 받은 blocked check, finding 또는
@@ -956,6 +956,15 @@ runtime-session 식별자를 포함합니다. `Required next steps` 구역 하�
 `Optional active diagnostics`는 분리합니다. Root finding에 typed remediation이 있으면
 일반적인 inspection step을 만들지 않습니다.
 사람용 라벨은 표시 문구이며 보고서나 check 상태를 추가하지 않습니다.
+
+모든 Connection 사람용 projection은 typed 어휘 하나를 사용합니다. 집계 상태
+`complete`, `action_required`, `failed`는 각각 `ready`, `action required`, `failed`로
+표시합니다. Integration activation은 `configured`, `host reload required`,
+`hook review required or unknown`, `MCP observation required`,
+`Guard verification required`, `complete`, `failed`로 표시합니다. Hook activation은
+`unknown`, `review required by setup`, `effective by observation`,
+`managed by policy`, `bypassed for this invocation`, `disabled`로 표시합니다. 밑줄이 있는
+표기는 정확한 JSON 값으로 유지하며 사람용 status field에는 사용하지 않습니다.
 
 정규 check 상태는 `passed`, `pending`, `failed`, `blocked`, `not_applicable`입니다. 각각
 성공적으로 완료됨, 실패한 prerequisite가 없는 상태에서 필요한 외부 관찰을 기다림, check
@@ -1113,7 +1122,14 @@ Verification completed: 1 blocked, 2 failed.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 0 ready, 1 blocked, 0 waiting, 2 failed
+Activation: failed
+Hook activation: unknown
+
+Checks
+  Passed: 0
+  Blocked: 1
+  Pending: 0
+  Failed: 2
 
 Problems
   mcp.protocol.unsupported_version: the child did not select the requested protocol revision
@@ -1152,7 +1168,7 @@ Summary
   Checks: 0 passed, 1 blocked, 0 pending, 2 failed, 0 not applicable
 
 Checks
-  [fail] Codex managed session
+  [failed] Codex managed session
     MCP child did not select the requested protocol revision
     Code: host_session_protocol_mismatch
     Depends on: process_startup
@@ -1167,7 +1183,7 @@ Checks
     Selected protocol: 2025-11-25
     Initialize: failed
 
-  [fail] Codex required tools
+  [failed] Codex required tools
     No current-revision managed-host session completed same-session required-tool validation
     Root findings: finding.runtime_session_01.protocol
 
@@ -1294,6 +1310,11 @@ passed/blocked/pending/failed check 개수, 첫 번째 필수 action만 표시�
 `--verbose`는 Connection 및 project ID, configuration target, integration revision,
 평가 timestamp, not-applicable 개수, 모든 필수 step, 한도가 있는 unavailable 상태
 세부사항을 추가합니다. 두 형식 모두 control 문자를 안전하게 표시하며 탭을 쓰지 않습니다.
+Status, integration activation, hook activation, check 개수 문구는 선택한 Connection
+출력과 같은 사람용 어휘를 사용합니다. 예를 들어 관찰이 완료된 membership은
+`Status: ready`, `Activation: complete`,
+`Hook activation: effective by observation`,
+`Checks: 9 passed, 0 blocked, 0 pending, 0 failed`로 표시합니다.
 
 `--repo`는 현재 평가 전에 membership 후보를 거릅니다. 일치하는 Connection에는 일치하는
 membership만 들어가며 일치 항목이 없어도 유효한 빈 컬렉션입니다. Membership 범위의
@@ -1716,10 +1737,18 @@ reconciliation, 검증 보고서 영속화입니다. 활성 검증도 관리 hos
 계층의 `last_active_verification` 아래에 투영합니다. 활성 실행 전에는 후자가 null입니다.
 Preflight 쓰기 가능성은 항상 `not_checked`로 남으며 활성 Registry 및 프로젝트 쓰기 결과가
 이를 교체하지 않습니다. 활성 구성원이 없으면 사람용 출력은
-`Storage writeability: not checked`라고 표시합니다. 활성 구성원이 있으면 verbose와 JSON
-출력은 활성 증거의 별도 `observed_at`, `source=connection_verify`, 쓰기 결과, conformance
-결과, side effect를 표시합니다. 결합된 결과는 유효하지 않으며 schema-version 또는
-host-version 분기로 evidence 형태를 선택하지 않습니다.
+`Storage writeability: not checked`와 `Active verification: not run`을 표시합니다. 현재
+활성 증거가 있으면 concise 출력은 `McpActiveVerificationEvidence`를 엄격하게 decode하고
+집계 결론인 `Active verification: passed|failed`와
+`Storage writeability: passed|failed`만 표시합니다. 모든 Store 결과가 통과해야 Store 쓰기
+가능성이 통과하고, 증거가 요구하는 모든 Store, protocol conformance, host compatibility
+결과가 통과해야 활성 검증이 통과합니다. 현재 증거가 잘못됐으면 알 수 없는 결론을
+표시하지 않고 rendering이 실패합니다. Concise 출력은 project 또는 Connection ID,
+source, timestamp, Store별 결과, protocol matrix, host fixture를 노출하지 않습니다.
+Verbose와 JSON 출력은 활성 증거의 별도 `observed_at`, `source=connection_verify`, project
+ID, 쓰기 결과, conformance 결과, host fixture, side effect를 유지합니다. 결합된 결과는
+유효하지 않으며 schema-version 또는 host-version 분기로 evidence 형태를 선택하지
+않습니다.
 
 `volicord connection verify codex`는 `ambient_hook_coverage`와
 `correlated_guard_verification`을 분리해 보고합니다. Concise 출력은 결과 둘과 terminal

@@ -993,7 +993,7 @@ increments the integration generation.
 `volicord init` and the selected-Connection `add`, `status`, `verify`, `mode`,
 and `remove` commands use one output selection. With neither output flag, they
 render concise human prose: an operation-aware result, selected repository and
-effective mode, `ready`/`blocked`/`waiting`/`failed` check counts, current
+effective mode, `passed`/`blocked`/`pending`/`failed` check counts, current
 problems before waiting observations, and current next actions. For a failed
 report, each problem is an independent root finding and includes its namespaced
 code, one bounded typed summary, the most useful safe actual-versus-expected
@@ -1003,6 +1003,16 @@ One `Required next steps` section projects the current topological suffix of
 A root finding that already carries a typed remediation does not produce a
 generic inspection step. Human labels are presentation wording; they do not
 add report or check statuses.
+
+All Connection human projections use one typed vocabulary. Aggregate
+`complete`, `action_required`, and `failed` statuses render as `ready`,
+`action required`, and `failed`. Integration activation renders as
+`configured`, `host reload required`, `hook review required or unknown`,
+`MCP observation required`, `Guard verification required`, `complete`, or
+`failed`. Hook activation renders as `unknown`, `review required by setup`,
+`effective by observation`, `managed by policy`, `bypassed for this
+invocation`, or `disabled`. The underscore spellings remain the exact JSON
+values and are not human status fields.
 
 The canonical check statuses are `passed`, `pending`, `failed`, `blocked`, and
 `not_applicable`. They mean, respectively: completed successfully; waiting for
@@ -1176,7 +1186,14 @@ Verification completed: 1 blocked, 2 failed.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 0 ready, 1 blocked, 0 waiting, 2 failed
+Activation: failed
+Hook activation: unknown
+
+Checks
+  Passed: 0
+  Blocked: 1
+  Pending: 0
+  Failed: 2
 
 Problems
   mcp.protocol.unsupported_version: the child did not select the requested protocol revision
@@ -1215,7 +1232,7 @@ Summary
   Checks: 0 passed, 1 blocked, 0 pending, 2 failed, 0 not applicable
 
 Checks
-  [fail] Codex managed session
+  [failed] Codex managed session
     MCP child did not select the requested protocol revision
     Code: host_session_protocol_mismatch
     Depends on: process_startup
@@ -1230,7 +1247,7 @@ Checks
     Selected protocol: 2025-11-25
     Initialize: failed
 
-  [fail] Codex required tools
+  [failed] Codex required tools
     No current-revision managed-host session completed same-session required-tool validation
     Root findings: finding.runtime_session_01.protocol
 
@@ -1360,7 +1377,12 @@ passed/blocked/pending/failed check counts, and only the primary required
 action. `--verbose` additionally shows Connection and project IDs, configuration
 target, integration revision, evaluation timestamp, not-applicable count, all
 required steps, and bounded unavailable-state detail. Both modes are
-control-character-safe and tab-free.
+control-character-safe and tab-free. Status, integration activation, hook
+activation, and check-count wording use the same human vocabulary as selected
+Connection output; for example a completed observed membership renders
+`Status: ready`, `Activation: complete`,
+`Hook activation: effective by observation`, and
+`Checks: 9 passed, 0 blocked, 0 pending, 0 failed`.
 
 `--repo` filters membership candidates before current evaluation. Matching
 Connections contain only matching memberships; an empty match is a valid empty
@@ -1833,10 +1855,21 @@ The `mcp_server` check projects immutable read-only evidence under `preflight`
 and the latest active evidence under the sibling
 `last_active_verification`. The latter is null before an active run. Preflight
 writeability always remains `not_checked`; active Registry and project write
-results never replace it. Human output says `Storage writeability: not checked`
-when the active member is absent. When present, verbose and JSON output show
-the active evidence's separate `observed_at`, `source=connection_verify`,
-write results, conformance results, and side effects. A combined result is
+results never replace it. Human output says
+`Storage writeability: not checked` when the active member is absent. Concise
+output pairs that conclusion with `Active verification: not run`. When current
+active evidence exists, concise output strictly decodes
+`McpActiveVerificationEvidence` and reports only the aggregate
+`Active verification: passed|failed` and
+`Storage writeability: passed|failed` conclusions. Every Store result must
+pass for Store writeability to pass, and every Store, protocol-conformance,
+and host-compatibility result required by the evidence must pass for active
+verification to pass. Malformed current evidence fails rendering rather than
+producing an unknown conclusion. Concise output does not expose project or
+Connection IDs, source, timestamp, per-Store results, protocol matrices, or
+host fixtures. Verbose and JSON output retain the active evidence's separate
+`observed_at`, `source=connection_verify`, project IDs, write results,
+conformance results, host fixtures, and side effects. A combined result is
 invalid, and no schema-version or host-version branch selects the evidence
 shape.
 

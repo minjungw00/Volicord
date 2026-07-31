@@ -1384,7 +1384,7 @@ fn pending_and_complete_reports_are_exact() {
     assert_eq!(json["root_cause_ids"], json!([]));
     assert_eq!(json["status"], "action_required");
     assert_eq!(json["checks"][0]["status"], "pending");
-    assert!(concise.contains("Checks\n  Ready: 0\n  Blocked: 0\n  Waiting: 1\n  Failed: 0"));
+    assert!(concise.contains("Checks\n  Passed: 0\n  Blocked: 0\n  Pending: 1\n  Failed: 0"));
     assert!(concise.contains("Restart or reload Codex and use the connection"));
     assert!(
         verbose.contains("Actual MCP peer: none observed") || !verbose.contains("Actual MCP peer:")
@@ -1405,10 +1405,10 @@ fn pending_and_complete_reports_are_exact() {
     let (concise, verbose, json) = projections(&complete);
     assert_eq!(
         concise,
-        "Verification completed: 1 ready.\n\nRepository: /workspace/product\nMode: workflow\nActivation: host_reload_required\nHook activation: unknown\n\nChecks\n  Ready: 1\n  Blocked: 0\n  Waiting: 0\n  Failed: 0\n\nOperation: active verification\nEvidence class: active_verification\nSide effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\nDoes not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts\n"
+        "Verification completed: 1 passed.\n\nRepository: /workspace/product\nMode: workflow\nActivation: host reload required\nHook activation: unknown\n\nChecks\n  Passed: 1\n  Blocked: 0\n  Pending: 0\n  Failed: 0\n\nOperation: active verification\nEvidence class: active_verification\nSide effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\nDoes not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts\n"
     );
     assert_eq!(json["status"], "complete");
     assert_eq!(json["root_cause_ids"], json!([]));
     assert_eq!(json["checks"][0]["details"]["observed_values"], json!([]));
-    assert!(verbose.contains("Status: complete"));
+    assert!(verbose.contains("Status: ready"));
 }

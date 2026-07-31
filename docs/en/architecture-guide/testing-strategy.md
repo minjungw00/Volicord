@@ -368,6 +368,18 @@ Durable tests should cover, as applicable:
 - `IntegrationActivationState` transitions through configured, reload, hook
   review/unknown, managed MCP observation, Guard verification, complete, and
   failed, with `project_trust` kept independent;
+- selected-status/list human-label parity for complete, host reload, hook
+  review/unknown, MCP observation, Guard verification, failed, hook disabled,
+  policy-managed hook, and invocation-bypassed hook states, while both JSON
+  projections retain stable underscore spellings;
+- the single Connection count projection for all-passed, pending, blocked,
+  failed, not-applicable, and mixed inputs; concise `Passed`, `Blocked`,
+  `Pending`, `Failed` fields; matching list vocabulary and ordering; and the
+  verbose not-applicable count;
+- concise active-verification projection for no evidence, all passed, Registry
+  failure, project-write failure, protocol-conformance failure,
+  host-compatibility failure, and strict malformed-evidence rejection, with
+  internal IDs absent from concise output and retained in verbose and JSON;
 - separate ambient and correlated Guard checks: ambient passed with correlated
   failed, ambient pending with no attempt, correlated complete,
   repair-required never projected as pending, and an older proof retained
@@ -543,7 +555,10 @@ managed configuration, and project Store failures without hiding valid rows.
 Filter cases prove unselected memberships are not evaluated.
 JSON and human projections share the typed summary, one invocation timestamp,
 tab-free structured paths, compact primary action, and verbose-only IDs,
-revision, not-applicable counts, all steps, and bounded issue detail.
+revision, not-applicable counts, all steps, and bounded issue detail. Repeated
+status and list reads also preserve Registry, project and diagnostic Stores,
+managed configuration, Product Repository content, Runtime Home reports, and
+timestamps.
 
 Operational interoperability coverage accepts arbitrary bounded version
 strings, exercises initialize and tool-list milestones, checks required tools

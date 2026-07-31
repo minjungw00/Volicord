@@ -4,6 +4,7 @@ mod common;
 mod human;
 mod list;
 mod report;
+mod semantics;
 mod verbose;
 
 #[cfg(test)]

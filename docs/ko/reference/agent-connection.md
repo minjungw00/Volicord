@@ -286,9 +286,21 @@ revision 및 host 호환성 결과를 기록하며, 자체 `observed_at`과
 `disposable_protocol_conformance`, `disposable_host_compatibility`입니다. 작업이 활성
 source와 분리된 증거 형태를 직접 선택하며 schema-version 정수, 숫자 host version,
 결합 형태 decoder로 선택하지 않습니다. 사람용, verbose, JSON projection은 이 구분을
-보존합니다. 활성 증거가
-없으면 `Storage writeability: not checked`라고 표시하고, 활성 증거가 있으면 별도 timestamp와
-source를 표시하며 그 쓰기 결과를 preflight 효과로 표시하지 않습니다.
+보존합니다. Concise Connection 출력은 존재하는 `McpActiveVerificationEvidence`를 엄격하게
+decode하여 현재 활성 검증 결론 하나와 Store 쓰기 가능성 결론 하나를 만듭니다. 활성
+증거가 없으면 `Active verification: not run`과
+`Storage writeability: not checked`를 표시합니다. Registry 쓰기 가능성과 포함된 모든
+프로젝트 쓰기 가능성 결과가 통과해야 Store 쓰기 가능성이 통과합니다. 이 결과들과 포함된
+모든 protocol conformance 및 host compatibility probe가 통과해야 활성 검증이 통과합니다.
+존재하는 증거가 잘못됐으면 오류입니다. Concise 출력은 ID, source, timestamp, Store별
+결과, protocol matrix, host fixture를 생략하고 verbose와 JSON은 이 정확한 typed
+세부사항을 유지하며 활성 쓰기 결과를 preflight 효과로 표시하지 않습니다.
+
+선택한 status와 Connection list는 같은 typed 사람용 어휘를 projection합니다. 집계
+status는 `ready`, `action required`, `failed`를 사용하고 integration 및 hook activation은
+의도적으로 공백을 넣은 문구를 사용합니다. Check 개수는 `passed`, `blocked`, `pending`,
+`failed` 순서를 사용하며 detail 수준에 포함될 때 `not applicable`을 마지막에 표시합니다.
+밑줄이 있는 안정적인 표기는 machine-readable JSON 및 저장 값으로 유지합니다.
 
 `ActivationStepId`는 현재 제품의 닫힌 어휘입니다. 정확한 값은 `reload_codex`,
 `review_project_hooks`, `request_integration_verification`,

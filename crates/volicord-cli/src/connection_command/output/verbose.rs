@@ -8,8 +8,12 @@ use volicord_types::diagnostics::DiagnosticFindingId;
 
 use crate::connection_command::managed_host_round_trip_tool;
 
+use super::semantics::{
+    connection_check_status_label, connection_status_label, hook_activation_label,
+    integration_activation_label, ConnectionCheckCounts,
+};
 use super::{
-    human::{headline, render_activation_plan, CheckCounts},
+    human::{headline, render_activation_plan},
     report::{
         projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
         ConnectionCommandResult, RuntimeHomeRollbackResult,
@@ -23,7 +27,7 @@ const MAX_INLINE_SCALARS: usize = 8;
 pub(super) fn render_command_report_verbose(
     report: &ConnectionCommandReport,
 ) -> Result<String, ConnectionCommandError> {
-    let counts = CheckCounts::from_report(report);
+    let counts = ConnectionCheckCounts::from_checks(&report.checks);
     let roots = projected_root_cause_ids(report)?;
     let mut sections = vec![headline(report, counts), render_connection(report)?];
     if report.operation == CommandOperation::Verify {
@@ -122,23 +126,23 @@ fn render_connection(report: &ConnectionCommandReport) -> Result<String, Connect
     Ok(output)
 }
 
-fn render_summary(report: &ConnectionCommandReport, counts: CheckCounts) -> String {
+fn render_summary(report: &ConnectionCommandReport, counts: ConnectionCheckCounts) -> String {
     let mut lines = vec![
         "Summary".to_owned(),
-        format!("  Status: {}", report.status.as_str()),
-        format!("  Activation: {}", report.activation_state.as_str()),
+        format!("  Status: {}", connection_status_label(report.status)),
+        format!(
+            "  Activation: {}",
+            integration_activation_label(report.activation_state)
+        ),
         format!(
             "  Hook activation: {}",
-            report.hook_activation_state.as_str()
+            hook_activation_label(report.hook_activation_state)
         ),
     ];
     if report.dry_run {
         lines.push("  Dry run: yes".to_owned());
     }
-    lines.push(format!(
-        "  Checks: {} passed, {} blocked, {} pending, {} failed, {} not applicable",
-        counts.ready, counts.blocked, counts.waiting, counts.failed, counts.not_applicable
-    ));
+    lines.push(format!("  Checks: {}", counts.render_verbose_inline()));
     lines.join("\n")
 }
 
@@ -198,13 +202,7 @@ fn render_check(report: &ConnectionCommandReport, check: &ConnectionCheck) -> St
 }
 
 fn check_status_label(status: ConnectionCheckStatus) -> &'static str {
-    match status {
-        ConnectionCheckStatus::Passed => "pass",
-        ConnectionCheckStatus::Pending => "wait",
-        ConnectionCheckStatus::Failed => "fail",
-        ConnectionCheckStatus::Blocked => "blocked",
-        ConnectionCheckStatus::NotApplicable => "n/a",
-    }
+    connection_check_status_label(status)
 }
 
 fn check_label(kind: ConnectionCheckKind) -> &'static str {
@@ -1986,10 +1984,10 @@ mod tests {
                 "  Dry run: yes\n",
                 "  Checks: 1 passed, 0 blocked, 1 pending, 1 failed, 0 not applicable\n\n",
                 "Checks\n",
-                "  [pass] Guard managed files\n",
+                "  [passed] Guard managed files\n",
                 "    Guard managed files match current expectations\n",
                 "    Guard Installation IDs: guard_1\n\n",
-                "  [wait] Codex managed session\n",
+                "  [pending] Codex managed session\n",
                 "    Codex initialize has not completed\n",
                 "    Code: host_session_initialize_pending\n",
                 "    Observed at: 2026-07-20T00:00:00Z\n",
@@ -2005,7 +2003,7 @@ mod tests {
                 "    Actual MCP peer version: 1.2.3\n",
                 "    Requested protocol: 2025-11-25\n",
                 "    Initialize: pending\n\n",
-                "  [fail] Managed Codex configuration\n",
+                "  [failed] Managed Codex configuration\n",
                 "    Managed Codex configuration differs from the canonical entry\n",
                 "    Code: managed_config_mismatch\n",
                 "    Target: /home/user/.codex/config.toml\n",
@@ -2082,7 +2080,7 @@ mod tests {
                 "  Status: action_required\n",
                 "  Checks: 0 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable\n\n",
                 "Checks\n",
-                "  [wait] Codex managed session\n",
+                "  [pending] Codex managed session\n",
                 "    Managed host connection use has not been observed\n",
                 "    Code: host_session_not_observed\n",
                 "    Depends on: process_startup\n",
@@ -2134,10 +2132,10 @@ mod tests {
                 "  Config target: /home/user/.codex/config.toml\n",
                 "  Runtime home: /runtime\n\n",
                 "Summary\n",
-                "  Status: complete\n",
+                "  Status: ready\n",
                 "  Checks: 0 passed, 0 blocked, 0 pending, 0 failed, 1 not applicable\n\n",
                 "Checks\n",
-                "  [n/a] Project trust\n",
+                "  [not applicable] Project trust\n",
                 "    No separate project trust action applies to this connection scope\n\n",
                 "Report limits\n",
                 "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
@@ -2192,7 +2190,7 @@ mod tests {
                 "  Status: failed\n",
                 "  Checks: 0 passed, 0 blocked, 0 pending, 1 failed, 0 not applicable\n\n",
                 "Checks\n",
-                "  [fail] Volicord MCP server\n",
+                "  [failed] Volicord MCP server\n",
                 "    Volicord MCP server self-test failed\n",
                 "    Code: mcp_server_tools_list_failed\n",
                 "    Depends on: managed_config\n",
@@ -2245,7 +2243,7 @@ mod tests {
                 "  Status: action_required\n",
                 "  Checks: 1 passed, 0 blocked, 0 pending, 0 failed, 0 not applicable\n\n",
                 "Checks\n",
-                "  [pass] Connection mode transition\n",
+                "  [passed] Connection mode transition\n",
                 "    Connection mode transition was applied\n",
                 "    Previous mode: workflow\n",
                 "    Current mode: read_only\n",
@@ -2299,7 +2297,7 @@ mod tests {
                 "  Dry run: yes\n",
                 "  Checks: 0 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable\n\n",
                 "Checks\n",
-                "  [wait] Connection removal\n",
+                "  [pending] Connection removal\n",
                 "    Selected Connection membership removal is ready to apply\n",
                 "    Code: connection_removal_planned\n",
                 "    Membership: planned for removal\n",
@@ -2925,25 +2923,25 @@ mod tests {
         );
         let output = rendered(&report);
         for expected in [
-            "  [fail] Codex executable\n",
+            "  [failed] Codex executable\n",
             "    Version: 1.2.3\n",
             "    Path: /opt/codex/bin/codex\n",
             "    Probe diagnostic: process exited with status 1\n",
-            "  [fail] Codex required tools\n",
+            "  [failed] Codex required tools\n",
             "    Tools/list observed at: 2026-07-20T03:00:00Z\n",
             "    Returned tools: 1\n",
             "    Required tools: failed\n",
-            "  [wait] Setup plan\n",
+            "  [pending] Setup plan\n",
             "    Planned state: changes ready to apply\n",
             "    guard_managed_file: 2\n",
             "    managed_host_configuration: 1\n",
-            "  [fail] Read-only tool round trip\n",
+            "  [failed] Read-only tool round trip\n",
             "    Expected verification tool: volicord.list_projects\n",
             "    Observed verification tool: volicord.status\n",
             "    Verification tool observed at: 2026-07-20T04:00:00Z\n",
             "    Call completed: yes\n",
             "    Terminal finding: finding.tool_contract_mismatch\n",
-            "  [wait] Connection verification\n",
+            "  [pending] Connection verification\n",
             "    Connection verification has not been run\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}\n{output}");

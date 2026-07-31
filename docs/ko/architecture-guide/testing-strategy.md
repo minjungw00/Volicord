@@ -319,6 +319,15 @@ matrix를 정합니다.
 - `project_trust`를 독립적으로 유지하면서 configured, reload, hook review/unknown,
   managed MCP observation, Guard verification, complete, failed를 지나는
   `IntegrationActivationState` 전환
+- complete, host reload, hook review/unknown, MCP observation, Guard verification,
+  failed, hook disabled, policy-managed hook, invocation-bypassed hook 상태에서 선택한
+  status와 list의 사람용 label parity 및 두 JSON projection의 안정적인 밑줄 표기 유지
+- all-passed, pending, blocked, failed, not-applicable, mixed 입력을 위한 단일 Connection
+  count projection, concise `Passed`, `Blocked`, `Pending`, `Failed` field, 같은 list 어휘와
+  순서, verbose not-applicable 개수
+- 증거 없음, 전체 통과, Registry 실패, 프로젝트 쓰기 실패, protocol conformance 실패,
+  host compatibility 실패, 잘못된 증거의 엄격한 거부를 위한 concise 활성 검증 projection,
+  concise 출력의 내부 ID 생략 및 verbose와 JSON의 ID 유지
 - ambient와 correlated Guard check의 분리, 즉 ambient passed와 correlated failed의
   동시 표현, attempt가 없을 때 ambient pending, correlated complete, repair-required를
   pending으로 projection하지 않음, 더 오래된 proof가 더 최신 failed attempt를 숨기지
@@ -463,7 +472,9 @@ metadata, 영속 활성 근거, 관리 구성, project Store 실패를 다룹니
 Filter case는 선택하지 않은 membership을 평가하지 않는지 증명합니다. JSON과 사람용
 projection은 typed summary와 invocation timestamp 하나를 공유하고, 탭 없는 구조화된
 경로, compact primary action, verbose에서만 보이는 ID, revision, not-applicable 개수,
-모든 step, 한도가 있는 문제 세부사항을 확인합니다.
+모든 step, 한도가 있는 문제 세부사항을 확인합니다. Status와 list를 반복해서 읽어도
+Registry, project 및 diagnostic Store, 관리 configuration, Product Repository 내용,
+Runtime Home 보고서와 timestamp가 보존되는지도 검증합니다.
 
 운영 상호운용성 coverage는 제한 안의 임의 version 문자열을 받고, initialize와 도구 목록
 milestone을 실행하며, 필수 도구와 안전한 읽기 전용 호출, Guard artifact와 필수 phase 관찰,

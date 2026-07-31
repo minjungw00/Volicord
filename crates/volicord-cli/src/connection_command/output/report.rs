@@ -1761,6 +1761,6 @@ mod tests {
         );
         assert!(text.output.contains("  Activation: failed\n"));
         assert!(text.output.contains("  Hook activation: unknown\n"));
-        assert!(text.output.contains("[fail] Managed Codex configuration"));
+        assert!(text.output.contains("[failed] Managed Codex configuration"));
     }
 }

@@ -313,10 +313,24 @@ side-effect values are `rollback_only_registry_write_probe`,
 `disposable_host_compatibility`. The operation selects the active source and
 the separate evidence shape directly; schema-version integers, numeric host
 versions, and combined-shape decoding do not select them. Human, verbose, and
-JSON projections preserve this distinction. With no active evidence they say
-`Storage writeability: not checked`; with active evidence they show its
-separate timestamp and source and do not label its write result as a preflight
-effect.
+JSON projections preserve this distinction. Concise Connection output strictly
+decodes a present `McpActiveVerificationEvidence` into one current
+active-verification conclusion and one Store-writeability conclusion. With no
+active evidence it says `Active verification: not run` and
+`Storage writeability: not checked`. Registry writeability and every included
+project writeability result must pass for Store writeability to pass. Those
+results plus every included protocol-conformance and host-compatibility probe
+must pass for active verification to pass. Malformed present evidence is an
+error. Concise output omits IDs, source, timestamp, individual Store results,
+protocol matrices, and host fixtures; verbose and JSON retain those exact
+typed details and never label an active write result as a preflight effect.
+
+Selected status and Connection list project the same typed human vocabulary:
+aggregate status is `ready`, `action required`, or `failed`; integration and
+hook activation use intentional space-separated phrases; and check counts use
+`passed`, `blocked`, `pending`, `failed`, then `not applicable` when the detail
+level includes it. Stable underscore spellings remain the machine-readable
+JSON and stored values.
 
 `ActivationStepId` is the closed current-product vocabulary:
 `reload_codex`, `review_project_hooks`, `request_integration_verification`,
