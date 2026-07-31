@@ -535,7 +535,16 @@ compact/verbose/JSON doctor, and human/JSON privacy footprint repeatedly against
 one disposable Runtime Home and Product Repository. It verifies the explicit
 no-active-Task state, applicability-based human fields, complete structured
 reports, sectioned privacy claims, exact terminal hygiene, and unchanged Store
-effect counters and authority snapshots. Pure renderer tests cover ready,
+effect counters and authority snapshots. Focused privacy coverage captures
+stdout directly as bytes in both modes. It requires valid UTF-8 and JSON,
+compares every category string and the output-scope scalar with the canonical
+typed definition and human section, protects the complete diagnostics sentence
+including `when diagnostics are present`, enforces one claim occurrence and one
+trailing human newline, and rejects tabs or other control corruption. The same
+fixture compares all persisted entries, file bytes, and modification times
+before and after each command, covering the Registry, diagnostics and project
+Stores, Product Repository, managed configuration, installation profile, Hook
+files, and persisted verification reports. Pure renderer tests cover ready,
 warning, action-required or failed doctor states, skipped-check omission,
 structured verbose details, long paths, empty collections, and human/JSON
 factual parity. Doctor remediation coverage supplies explicit findings and

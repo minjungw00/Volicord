@@ -454,7 +454,15 @@ Binary 수준의 맥락별 출력 coverage는 하나의 폐기 가능한 Runtime
 Repository에서 `volicord status`, compact/verbose/JSON doctor, 사람용/JSON 개인정보
 footprint를 반복 실행합니다. 활성 Task 없음의 명시적 상태, 적용 가능한 사람용 field,
 완전한 구조화 report, section으로 나눈 개인정보 주장, 정확한 terminal hygiene,
-변하지 않은 Store effect counter와 authority snapshot을 검증합니다. 순수 renderer
+변하지 않은 Store effect counter와 authority snapshot을 검증합니다. 집중 개인정보
+coverage는 두 mode의 stdout을 바이트로 직접 수집합니다. 유효한 UTF-8과 JSON을 요구하고,
+모든 범주 문자열 및 출력 범위 스칼라를 정규 typed 정의와 사람용 section에 대조하며,
+`when diagnostics are present`를 포함한 완전한 diagnostics 문장을 보호합니다. 또한 각
+주장이 정확히 한 번 나타나는지와 사람용 출력의 마지막 newline이 하나인지 확인하고 tab이나
+다른 control 문자 손상을 거부합니다. 같은 fixture는 각 명령 전후의 모든 영속 entry,
+파일 바이트, modification time을 대조합니다. 여기에는 Registry, diagnostics 및 project
+Store, Product Repository, 관리 구성, installation profile, Hook 파일, 영속 verification
+report가 포함됩니다. 순수 renderer
 테스트는 ready, warning, action-required 또는 failed doctor 상태, skipped check 생략,
 구조화된 verbose detail, 긴 경로, 빈 collection, 사람용/JSON의 사실 동등성을 다룹니다.
 Doctor remediation coverage는 명시적인 finding과 direct candidate를 순수 report-finalization

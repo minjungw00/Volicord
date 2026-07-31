@@ -629,9 +629,22 @@ privacy_footprint:
 출력하지 않습니다. 배열 항목과 `doctor_output_scope` 값은 진단 설명입니다. 위의 필드
 이름, `registry_state` 값, 개수 key가 기계 판독 계약입니다.
 
+`stores`, `does_not_store`, `does_not_prove`는 서로 다른 의미 범주입니다. 각 개인정보
+주장은 폐쇄형 내부 식별자 하나, 범주 하나, 현재의 정규 영어 문구 하나, 범주 안에서의
+결정적인 위치 하나를 가집니다. `does_not_store`에는 이름을 밝힌 Volicord Store가 어떤
+정보나 내용을 저장하지 않는다는 문장만 들어갑니다. 출력 범위는 개인정보 주장 범주가
+아닙니다. `doctor_output_scope`는 별도 typed 스칼라이며 `Category and count summary only;
+stored row bodies are not printed.`라는 출력 범위 문장을 단독으로 담당합니다.
+
+하나의 정규 typed 개인정보 footprint 정의가 범주 배정, 주장 순서, 주장 문구, 출력 범위
+문구를 담당합니다. Doctor는 그 정의에서 typed report 하나를 구성합니다. 사람용 출력과
+JSON 출력은 같은 report를 소비하며 렌더러별 치환 없이 정규 UTF-8 문구를 그대로
+내보냅니다. 내부 주장 식별자는 JSON 형태에 투영하지 않습니다.
+
 사람용 개인정보 projection은 `Runtime Home`, `Record counts`, `Stores`,
 `Does not store`, `Does not prove`, `Output scope`를 별도 section으로 사용합니다.
-범주별 주장은 semicolon으로 압축한 문단이 아니라 각각의 bullet로 표시합니다.
+범주별 주장은 semicolon으로 압축한 문단이 아니라 각각의 bullet로 표시합니다. 출력 범위
+문장은 `Output scope` 아래에만 나타납니다.
 
 현재 개인정보 요약은 Runtime Home 및 설치 metadata, Product Repository 및 Agent
 Connection 등록, Guard 설치와 한도가 있는 관찰 metadata, 사용하는 경우의 프로젝트

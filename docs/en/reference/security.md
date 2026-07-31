@@ -138,6 +138,14 @@ remediation ran. Compact output may show only the primary action, while verbose
 and JSON output show the plan's grouped or structured projections; every form
 preserves the same action identity, urgency, and ordering.
 
+Doctor privacy-footprint displays likewise derive from one canonical typed
+definition and one typed report. Every claim belongs to exactly one of
+`stores`, `does_not_store`, or `does_not_prove`; `doctor_output_scope` is a
+separate scalar and the sole output-scope statement. A `does_not_store` claim is
+bounded to the Store it names and does not imply that a Product Repository or
+another Volicord Store cannot contain corresponding authority metadata. Human
+and JSON output preserve the same canonical UTF-8 claim text.
+
 ### Workflow-Policy Inspection
 
 The complete authoritative workflow policy is inspectable local configuration,

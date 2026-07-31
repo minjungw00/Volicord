@@ -295,6 +295,165 @@ struct PrivacyRecordCounts {
     project_state_databases: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrivacyFootprintClaimKind {
+    Stores,
+    DoesNotStore,
+    DoesNotProve,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+enum PrivacyFootprintClaimId {
+    RuntimeHomeMetadata,
+    ProductRepositoryRegistrations,
+    GuardObservationMetadata,
+    ProjectStateRecords,
+    DiagnosticObservations,
+    GuardPromptCapture,
+    DiagnosticPayloads,
+    ActorAttribution,
+    WritePrevention,
+    TamperProofAudit,
+    FullFilesystemMonitoring,
+    OperatingSystemEnforcementOrIsolation,
+    ProductAssurance,
+}
+
+impl PrivacyFootprintClaimId {
+    const fn kind(self) -> PrivacyFootprintClaimKind {
+        match self {
+            Self::RuntimeHomeMetadata
+            | Self::ProductRepositoryRegistrations
+            | Self::GuardObservationMetadata
+            | Self::ProjectStateRecords
+            | Self::DiagnosticObservations => PrivacyFootprintClaimKind::Stores,
+            Self::GuardPromptCapture | Self::DiagnosticPayloads => {
+                PrivacyFootprintClaimKind::DoesNotStore
+            }
+            Self::ActorAttribution
+            | Self::WritePrevention
+            | Self::TamperProofAudit
+            | Self::FullFilesystemMonitoring
+            | Self::OperatingSystemEnforcementOrIsolation
+            | Self::ProductAssurance => PrivacyFootprintClaimKind::DoesNotProve,
+        }
+    }
+
+    const fn text(self) -> &'static str {
+        match self {
+            Self::RuntimeHomeMetadata => {
+                "Runtime Home identity, registry path, storage profile, installation profile, command paths, and setup metadata"
+            }
+            Self::ProductRepositoryRegistrations => {
+                "Product Repository registrations, project home paths, project state database paths, and Agent Connection records"
+            }
+            Self::GuardObservationMetadata => {
+                "Codex Record Guard installation records, capability metadata, policy hashes, hook observation timestamps, and prompt-capture availability state"
+            }
+            Self::ProjectStateRecords => {
+                "project state records for tasks, change units, write tickets, evidence metadata, close-readiness records, User Channel actions, and artifacts when those features are used"
+            }
+            Self::DiagnosticObservations => {
+                "bounded diagnostics.sqlite session, connection, project, transport, host, build, tool, categorical outcome, counter, byte-size, and latency observations when diagnostics are present"
+            }
+            Self::GuardPromptCapture => {
+                "Guard prompt-capture observations do not include raw prompt text by default"
+            }
+            Self::DiagnosticPayloads => {
+                "diagnostics.sqlite does not store prompt bodies, Product Repository paths or file contents, error bodies, secrets, or user-action question, choice, rationale, note, or observation-summary text"
+            }
+            Self::ActorAttribution => "actor attribution",
+            Self::WritePrevention => "write prevention",
+            Self::TamperProofAudit => "tamper-proof audit",
+            Self::FullFilesystemMonitoring => "full filesystem monitoring",
+            Self::OperatingSystemEnforcementOrIsolation => {
+                "OS enforcement or security isolation"
+            }
+            Self::ProductAssurance => {
+                "product correctness, test sufficiency, human review, final acceptance, or residual-risk acceptance"
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PrivacyFootprintClaim {
+    id: PrivacyFootprintClaimId,
+}
+
+impl PrivacyFootprintClaim {
+    const fn new(id: PrivacyFootprintClaimId) -> Self {
+        Self { id }
+    }
+
+    const fn kind(self) -> PrivacyFootprintClaimKind {
+        self.id.kind()
+    }
+
+    const fn text(self) -> &'static str {
+        self.id.text()
+    }
+}
+
+const PRIVACY_FOOTPRINT_CLAIMS: [PrivacyFootprintClaim; 13] = [
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::RuntimeHomeMetadata),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::ProductRepositoryRegistrations),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::GuardObservationMetadata),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::ProjectStateRecords),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::DiagnosticObservations),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::GuardPromptCapture),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::DiagnosticPayloads),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::ActorAttribution),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::WritePrevention),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::TamperProofAudit),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::FullFilesystemMonitoring),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::OperatingSystemEnforcementOrIsolation),
+    PrivacyFootprintClaim::new(PrivacyFootprintClaimId::ProductAssurance),
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PrivacyFootprintDefinition {
+    claims: &'static [PrivacyFootprintClaim],
+    doctor_output_scope: &'static str,
+}
+
+impl PrivacyFootprintDefinition {
+    const fn current() -> Self {
+        Self {
+            claims: &PRIVACY_FOOTPRINT_CLAIMS,
+            doctor_output_scope:
+                "Category and count summary only; stored row bodies are not printed.",
+        }
+    }
+
+    fn claim_texts(self, kind: PrivacyFootprintClaimKind) -> Vec<&'static str> {
+        self.claims
+            .iter()
+            .copied()
+            .filter(|claim| claim.kind() == kind)
+            .map(PrivacyFootprintClaim::text)
+            .collect()
+    }
+
+    fn project(
+        self,
+        registry_state: &'static str,
+        registry_db_path: String,
+        record_counts: Option<PrivacyRecordCounts>,
+    ) -> PrivacyFootprint {
+        PrivacyFootprint {
+            registry_state,
+            registry_db_path,
+            record_counts,
+            stores: self.claim_texts(PrivacyFootprintClaimKind::Stores),
+            does_not_store: self.claim_texts(PrivacyFootprintClaimKind::DoesNotStore),
+            does_not_prove: self.claim_texts(PrivacyFootprintClaimKind::DoesNotProve),
+            doctor_output_scope: self.doctor_output_scope,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct PrivacyFootprint {
     registry_state: &'static str,
@@ -625,19 +784,15 @@ fn render_privacy_footprint_output(
     runtime_home: &Path,
     inspection: &RuntimeHomeInspection,
 ) -> Result<String, DoctorCommandError> {
+    let definition = PrivacyFootprintDefinition::current();
     let report = PrivacyFootprintReport {
         status: CommandStatus::Complete.as_str(),
         runtime_home: path_text(runtime_home),
-        privacy_footprint: PrivacyFootprint {
-            registry_state: privacy_registry_state(&inspection.registry),
-            registry_db_path: path_text(&inspection.registry_db_path),
-            record_counts: privacy_record_counts(&inspection.registry),
-            stores: privacy_stores(),
-            does_not_store: privacy_does_not_store(),
-            does_not_prove: privacy_does_not_prove(),
-            doctor_output_scope:
-                "Category and count summary only; stored row bodies are not printed.",
-        },
+        privacy_footprint: definition.project(
+            privacy_registry_state(&inspection.registry),
+            path_text(&inspection.registry_db_path),
+            privacy_record_counts(&inspection.registry),
+        ),
     };
 
     match output {
@@ -739,35 +894,6 @@ fn privacy_record_counts(
         }),
         _ => None,
     }
-}
-
-fn privacy_stores() -> Vec<&'static str> {
-    vec![
-        "Runtime Home identity, registry path, storage profile, installation profile, command paths, and setup metadata",
-        "Product Repository registrations, project home paths, project state database paths, and Agent Connection records",
-        "Codex Record Guard installation records, capability metadata, policy hashes, hook observation timestamps, and prompt-capture availability state",
-        "project state records for tasks, change units, write tickets, evidence metadata, close-readiness records, User Channel actions, and artifacts when those features are used",
-        "bounded diagnostics.sqlite session, connection, project, transport, host, build, tool, categorical outcome, counter, byte-size, and latency observations when diagnostics are present",
-    ]
-}
-
-fn privacy_does_not_store() -> Vec<&'static str> {
-    vec![
-        "Guard prompt-capture observations do not include raw prompt text by default",
-        "diagnostics.sqlite does not store prompt bodies, Product Repository paths or file contents, error bodies, secrets, or user-action question, choice, rationale, note, or observation-summary text",
-        "doctor --privacy-footprint reports categories and counts, not stored row bodies",
-    ]
-}
-
-fn privacy_does_not_prove() -> Vec<&'static str> {
-    vec![
-        "actor attribution",
-        "write prevention",
-        "tamper-proof audit",
-        "full filesystem monitoring",
-        "OS enforcement or security isolation",
-        "product correctness, test sufficiency, human review, final acceptance, or residual-risk acceptance",
-    ]
 }
 
 fn inspect_runtime_home_path(
@@ -3630,28 +3756,67 @@ mod tests {
     }
 
     #[test]
+    fn privacy_footprint_definition_has_one_ordered_category_per_claim() {
+        let definition = PrivacyFootprintDefinition::current();
+        let mut identities = BTreeSet::new();
+        let mut texts = BTreeSet::new();
+
+        assert_eq!(
+            definition.claims.len(),
+            PrivacyFootprintClaimId::ProductAssurance as usize + 1
+        );
+        for (index, claim) in definition.claims.iter().copied().enumerate() {
+            assert_eq!(claim.id as usize, index);
+            assert!(identities.insert(claim.id), "duplicate claim: {claim:?}");
+            assert!(
+                texts.insert(claim.text()),
+                "duplicate canonical text: {}",
+                claim.text()
+            );
+            assert!(!claim.text().is_empty());
+            assert!(!claim.text().chars().any(char::is_control));
+            assert_ne!(claim.text(), definition.doctor_output_scope);
+        }
+
+        let projection = definition.project("present", "registry.sqlite".to_owned(), None);
+        for (kind, actual) in [
+            (PrivacyFootprintClaimKind::Stores, &projection.stores),
+            (
+                PrivacyFootprintClaimKind::DoesNotStore,
+                &projection.does_not_store,
+            ),
+            (
+                PrivacyFootprintClaimKind::DoesNotProve,
+                &projection.does_not_prove,
+            ),
+        ] {
+            assert_eq!(*actual, definition.claim_texts(kind));
+        }
+        assert_eq!(
+            projection.doctor_output_scope,
+            definition.doctor_output_scope
+        );
+    }
+
+    #[test]
     fn privacy_footprint_human_sections_and_json_are_factually_equivalent() {
+        let definition = PrivacyFootprintDefinition::current();
         let report = PrivacyFootprintReport {
             status: "complete",
             runtime_home:
                 "/tmp/runtime home/with spaces/and/a/deliberately/long/path/for/rendering"
                     .to_owned(),
-            privacy_footprint: PrivacyFootprint {
-                registry_state: "present",
-                registry_db_path: "/tmp/runtime home/registry.sqlite".to_owned(),
-                record_counts: Some(PrivacyRecordCounts {
+            privacy_footprint: definition.project(
+                "present",
+                "/tmp/runtime home/registry.sqlite".to_owned(),
+                Some(PrivacyRecordCounts {
                     projects: 3,
                     agent_connections: 2,
                     connection_projects: 4,
                     guard_installations: 1,
                     project_state_databases: 3,
                 }),
-                stores: privacy_stores(),
-                does_not_store: privacy_does_not_store(),
-                does_not_prove: privacy_does_not_prove(),
-                doctor_output_scope:
-                    "Category and count summary only; stored row bodies are not printed.",
-            },
+            ),
         };
         let human = render_privacy_footprint_text(&report);
         let json = serde_json::to_value(&report).unwrap();

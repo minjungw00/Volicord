@@ -168,8 +168,12 @@ recommended action projections alongside full check details, findings, build
 provenance, and disclosure without adding probes. JSON serializes the same plan
 as its complete, partitioned, and primary projections. No renderer reconstructs
 actions from checks, findings, or prose.
-The privacy-footprint branch presents category claims as structured sections
-and bullets while JSON preserves its typed category and count projection.
+The privacy-footprint branch constructs one report from a canonical typed
+definition. Closed claim identities select exactly one of `stores`,
+`does_not_store`, or `does_not_prove` and determine category order; the separate
+`doctor_output_scope` scalar owns output scope. Human sections and bullets and
+the JSON category-and-count projection consume that report and preserve the
+same canonical UTF-8 claim text.
 For connection-report commands, `dry_run` is an operation boolean and the
 aggregate remains three-state. `--json` serializes the typed result once.
 Human text, logs, and diagnostic metadata are not parsed back into authority

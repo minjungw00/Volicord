@@ -145,8 +145,11 @@ typed priority, code 순서로 정렬하고 semantic summary 또는 exact comman
 recommended action projection과 전체 check detail, finding, build provenance,
 disclosure까지 확장합니다. JSON은 같은 plan을 전체 collection, 서로 겹치지 않는 분할,
 primary projection으로 직렬화합니다. 어떤 renderer도 check, finding, 산문에서 action을
-다시 구성하지 않습니다. 개인정보 footprint 분기는 범주 주장을 구조화된 section과
-bullet로 표시하고 JSON은 typed 범주와 개수 projection을 보존합니다. Connection report
+다시 구성하지 않습니다. 개인정보 footprint 분기는 정규 typed 정의에서 report 하나를
+구성합니다. 폐쇄형 주장 식별자가 `stores`, `does_not_store`, `does_not_prove` 중 정확히
+하나를 선택하고 범주 안의 순서를 결정하며, 별도 `doctor_output_scope` 스칼라가 출력
+범위를 담당합니다. 사람용 section과 bullet, JSON의 범주 및 개수 projection은 그 report를
+소비하고 같은 정규 UTF-8 주장 문구를 보존합니다. Connection report
 명령에서 `dry_run`은 작업 boolean이며 집계 결과는 3상태로 유지됩니다. `--json`은 typed
 결과를 한 번 직렬화합니다. 사람용 text, log, diagnostic metadata를 권한 상태로 다시
 parse하지 않습니다.

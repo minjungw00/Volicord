@@ -158,7 +158,10 @@ record를 엄격하게 읽고 관리 파일 동기화 상태를 분류하기 위
 `.volicord/policy.json`을 별도로 읽습니다. `volicord status`는 읽기 전용 Core status
 호출을 수행합니다. Doctor는 invocation마다 한도가 있는 로컬 설치 검사를 한 번
 수행합니다. Compact, verbose, JSON 렌더링은 probe를 추가하지 않으며 개인정보
-footprint는 저장된 row 본문 없이 범주와 개수를 읽습니다.
+footprint는 저장된 row 본문 없이 범주와 개수를 읽습니다. Typed 정의 하나가 모든 주장을
+`stores`, `does_not_store`, `does_not_prove` 중 정확히 하나에 배정하고, 별도
+`doctor_output_scope` 스칼라만 출력 범위 문장을 담당합니다. 사람용 렌더링과 JSON
+렌더링은 report 하나를 소비하고 정의의 정규 UTF-8 문구를 보존합니다.
 
 이러한 읽기 전용 명령은 Runtime Home, project, repository, authority, report, 관찰,
 timestamp 상태를 만들거나 갱신하지 않습니다. Connection list, Connection status,

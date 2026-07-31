@@ -644,10 +644,25 @@ never stored row bodies. The array entries and `doctor_output_scope` value are
 diagnostic explanations; the field names, `registry_state` values, and count
 keys above are the machine-readable contract.
 
+`stores`, `does_not_store`, and `does_not_prove` are distinct semantic
+categories. Each privacy claim has one closed internal identity, one category,
+one canonical current English text, and one deterministic position within its
+category. `does_not_store` contains only statements about information or
+content that the named Volicord Store does not store. Output scope is not a
+privacy claim category: `doctor_output_scope` is a separate typed scalar and
+the sole owner of the output-scope statement `Category and count summary only;
+stored row bodies are not printed.`
+
+One canonical typed privacy-footprint definition owns the category assignments,
+claim order, claim text, and output-scope text. Doctor constructs one typed
+report from that definition. Human and JSON output consume that same report and
+emit its canonical UTF-8 text without renderer-specific rewriting. Internal
+claim identities are not projected into the JSON shape.
+
 The human privacy projection uses separate `Runtime Home`, `Record counts`,
 `Stores`, `Does not store`, `Does not prove`, and `Output scope` sections.
 Category claims are individual bullets rather than a semicolon-compressed
-paragraph.
+paragraph. The output-scope statement appears only under `Output scope`.
 
 The current privacy summary identifies storage for Runtime Home and
 installation metadata, Product Repository and Agent Connection registrations,

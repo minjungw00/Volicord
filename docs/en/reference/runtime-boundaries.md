@@ -180,7 +180,11 @@ separately reads `.volicord/policy.json` to classify managed-file
 synchronization. `volicord status` performs a read-only Core status call.
 Doctor performs its bounded local installation inspection once per invocation;
 compact, verbose, and JSON rendering do not add probes, and the privacy
-footprint reads categories and counts without stored row bodies.
+footprint reads categories and counts without stored row bodies. Its one typed
+definition assigns every claim to exactly one of `stores`, `does_not_store`, or
+`does_not_prove`, while the separate `doctor_output_scope` scalar alone owns the
+output-scope statement. Human and JSON rendering consume one report and preserve
+the definition's canonical UTF-8 text.
 
 These read-only commands do not create or update Runtime Home, project,
 repository, authority, report, observation, or timestamp state. Connection

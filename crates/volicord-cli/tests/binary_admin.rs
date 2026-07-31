@@ -545,6 +545,102 @@ fn json_machine_output_is_one_stdout_document() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn privacy_footprint_direct_bytes_match_one_canonical_read_only_report(
+) -> Result<(), Box<dyn Error>> {
+    const CANONICAL_DIAGNOSTICS_CLAIM: &str = "bounded diagnostics.sqlite session, connection, project, transport, host, build, tool, categorical outcome, counter, byte-size, and latency observations when diagnostics are present";
+    const CANONICAL_OUTPUT_SCOPE: &str =
+        "Category and count summary only; stored row bodies are not printed.";
+
+    let fixture = IsolatedInitFixture::new("binary-privacy-footprint-bytes")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    assert!(fixture
+        .registry_snapshot()
+        .agent_connections
+        .iter()
+        .all(|connection| connection.verification_report_json.is_some()));
+    let state_before = directory_state(fixture._temporary_root.root_path())?;
+
+    let human_output = fixture.run_privacy_footprint(false)?;
+    assert!(human_output.status.success(), "{}", stderr(&human_output)?);
+    assert_eq!(stderr(&human_output)?, "");
+    assert_eq!(
+        directory_state(fixture._temporary_root.root_path())?,
+        state_before
+    );
+
+    let json_output = fixture.run_privacy_footprint(true)?;
+    assert!(json_output.status.success(), "{}", stderr(&json_output)?);
+    assert_eq!(stderr(&json_output)?, "");
+    assert_eq!(
+        directory_state(fixture._temporary_root.root_path())?,
+        state_before
+    );
+
+    let human = std::str::from_utf8(&human_output.stdout)?;
+    let json_text = std::str::from_utf8(&json_output.stdout)?;
+    let json: Value = serde_json::from_str(json_text)?;
+    let footprint = json["privacy_footprint"]
+        .as_object()
+        .expect("typed privacy_footprint object");
+    let stores = json_string_array(&footprint["stores"]);
+    let does_not_store = json_string_array(&footprint["does_not_store"]);
+    let does_not_prove = json_string_array(&footprint["does_not_prove"]);
+    let output_scope = footprint["doctor_output_scope"]
+        .as_str()
+        .expect("typed doctor_output_scope string");
+    let unique_claims = stores
+        .iter()
+        .chain(does_not_store.iter())
+        .chain(does_not_prove.iter())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        unique_claims.len(),
+        stores.len() + does_not_store.len() + does_not_prove.len()
+    );
+    assert_eq!(output_scope, CANONICAL_OUTPUT_SCOPE);
+    assert!(!unique_claims.contains(output_scope));
+
+    let stores_section = human_section(human, "Stores", "Does not store");
+    let does_not_store_section = human_section(human, "Does not store", "Does not prove");
+    let does_not_prove_section = human_section(human, "Does not prove", "Output scope");
+    let output_scope_section = human
+        .split_once("\nOutput scope\n")
+        .expect("Output scope section")
+        .1;
+    for (claims, section) in [
+        (&stores, stores_section),
+        (&does_not_store, does_not_store_section),
+        (&does_not_prove, does_not_prove_section),
+    ] {
+        for claim in claims {
+            assert!(section.contains(claim), "missing canonical claim: {claim}");
+            assert_eq!(human.matches(claim).count(), 1, "duplicate claim: {claim}");
+        }
+    }
+    assert!(output_scope_section.contains(output_scope));
+    assert!(!does_not_store_section.contains(output_scope));
+    assert_eq!(human.matches(output_scope).count(), 1);
+    assert!(stores.contains(&CANONICAL_DIAGNOSTICS_CLAIM));
+    assert!(human.contains(CANONICAL_DIAGNOSTICS_CLAIM));
+    assert!(json_output
+        .stdout
+        .windows(CANONICAL_DIAGNOSTICS_CLAIM.len())
+        .any(|bytes| bytes == CANONICAL_DIAGNOSTICS_CLAIM.as_bytes()));
+
+    assert_eq!(
+        human.len() - human.trim_end_matches('\n').len(),
+        1,
+        "human output must have exactly one trailing newline"
+    );
+    assert!(!human.contains('\t'));
+    assert!(human
+        .chars()
+        .all(|character| character == '\n' || !character.is_control()));
+    Ok(())
+}
+
+#[test]
 fn contextual_read_only_reports_preserve_authority_state() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("binary-contextual-read-only")?;
     fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
@@ -2752,6 +2848,22 @@ impl IsolatedInitFixture {
         self.run_init_with_output(dry_run, Some("--json"))
     }
 
+    fn run_privacy_footprint(&self, json: bool) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .args(["doctor", "--privacy-footprint"])
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        if json {
+            command.arg("--json");
+        }
+        Ok(command.output()?)
+    }
+
     fn run_init_with_output(
         &self,
         dry_run: bool,
@@ -3193,6 +3305,60 @@ fn directory_contents(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn
     let mut output = BTreeMap::new();
     visit(root, root, &mut output)?;
     Ok(output)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct DirectoryState {
+    entries: BTreeSet<PathBuf>,
+    contents: BTreeMap<PathBuf, Vec<u8>>,
+    modified: BTreeMap<PathBuf, std::time::SystemTime>,
+}
+
+fn directory_state(root: &Path) -> Result<DirectoryState, Box<dyn Error>> {
+    fn visit(
+        root: &Path,
+        current: &Path,
+        modified: &mut BTreeMap<PathBuf, std::time::SystemTime>,
+    ) -> Result<(), Box<dyn Error>> {
+        for entry in fs::read_dir(current)? {
+            let entry = entry?;
+            let path = entry.path();
+            let relative = path.strip_prefix(root)?.to_path_buf();
+            modified.insert(relative, fs::symlink_metadata(&path)?.modified()?);
+            if entry.file_type()?.is_dir() {
+                visit(root, &path, modified)?;
+            }
+        }
+        Ok(())
+    }
+
+    let mut modified = BTreeMap::new();
+    visit(root, root, &mut modified)?;
+    Ok(DirectoryState {
+        entries: directory_entries(root)?,
+        contents: directory_contents(root)?,
+        modified,
+    })
+}
+
+fn json_string_array(value: &Value) -> Vec<&str> {
+    value
+        .as_array()
+        .expect("typed privacy claim array")
+        .iter()
+        .map(|claim| claim.as_str().expect("typed privacy claim string"))
+        .collect()
+}
+
+fn human_section<'a>(text: &'a str, heading: &str, next_heading: &str) -> &'a str {
+    let start = format!("\n{heading}\n");
+    let end = format!("\n{next_heading}\n");
+    text.split_once(&start)
+        .unwrap_or_else(|| panic!("missing human section {heading}"))
+        .1
+        .split_once(&end)
+        .unwrap_or_else(|| panic!("missing human section {next_heading}"))
+        .0
 }
 
 fn directory_entries(root: &Path) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {

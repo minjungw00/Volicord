@@ -119,6 +119,13 @@ check provenance는 한도가 있는 diagnostic 맥락이며 actor identity를 �
 출력은 primary action만 표시할 수 있고 verbose와 JSON 출력은 plan을 group 또는 구조화된
 형태로 표시하지만, 모든 형태는 같은 action identity, urgency, ordering을 보존합니다.
 
+Doctor의 개인정보 footprint 표시도 정규 typed 정의 하나와 typed report 하나에서
+도출합니다. 모든 주장은 `stores`, `does_not_store`, `does_not_prove` 중 정확히 하나에
+속하고 `doctor_output_scope`는 별도 스칼라이자 유일한 출력 범위 문장입니다.
+`does_not_store` 주장은 이름을 밝힌 Store 범위에만 적용되며 Product Repository나 다른
+Volicord Store에 대응하는 권한 metadata가 전혀 없다는 뜻이 아닙니다. 사람용 출력과 JSON
+출력은 같은 정규 UTF-8 주장 문구를 보존합니다.
+
 ### Workflow policy 검사
 
 권위 있는 workflow policy 전체는 검사할 수 있는 로컬 구성이며 credential이 아닙니다.
