@@ -179,6 +179,13 @@ status, 개인정보 footprint, policy show는 MCP, writeability, reconciliation
 범위의 읽기 실패는 행 범위 unavailable 상태로 남고 Runtime Home Registry 전체를
 열거할 수 없으면 명령 오류가 됩니다.
 
+Connection status는 하나의 보고서 시각을 평가하지만 그 평가를 영속 증거로 만들지
+않습니다. `generated_at`은 평가 시각을 식별하고 check의 `observed_at`은 check 담당자가
+선택한 결정적 영속 증거 시각으로 유지됩니다. 따라서 반복 읽기의 보고서 시각은 달라도
+증거 timestamp와 detail은 같을 수 있습니다. Connection list도 각 membership의
+`evaluated_at`을 batch 평가 시각으로 유지하며 선택한 check의 증거 시각으로 바꾸지
+않습니다.
+
 Store가 `RuntimeHomeMutationContext`를 만든 뒤에는 그
 `CanonicalRuntimeHomePath`가 승인 안에서 수행하는 모든 변경 의존 읽기, plan,
 Registry 조회, Core service, Store handle, diagnostic write, 효과, 응답의 유일한

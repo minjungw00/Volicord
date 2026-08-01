@@ -159,12 +159,8 @@ pub fn latest_completed_guard_integration_verification_for_membership(
 
 /// Projects the persisted workflow state without consuming an observation read.
 pub fn current_guard_integration_verification_workflow(
-    runtime_home: impl AsRef<Path>,
     run: &GuardIntegrationVerificationRunRecord,
-    observed_at: &str,
 ) -> StoreResult<IntegrationVerificationWorkflowState> {
-    let _ = runtime_home.as_ref();
-    parse_timestamp("observed_at", observed_at)?;
     workflow_state_from_record(run, parse_status(&run.status)?)
 }
 
@@ -202,42 +198,84 @@ pub(super) fn workflow_state_from_record(
     run: &GuardIntegrationVerificationRunRecord,
     status: GuardIntegrationVerificationStatus,
 ) -> StoreResult<IntegrationVerificationWorkflowState> {
-    let completed_at = || {
-        run.completed_at
-            .as_deref()
-            .ok_or_else(|| StoreError::CorruptStoredValue {
-                database_kind: "registry",
-                field: "guard_integration_verification_runs.completed_at",
-            })
-            .and_then(|value| parse_timestamp("completed_at", value))
-    };
+    let created_at = stored_run_timestamp("created_at", &run.created_at)?;
+    let acknowledged_at = run
+        .probe_acknowledged_at
+        .as_deref()
+        .map(|value| stored_run_timestamp("probe_acknowledged_at", value))
+        .transpose()?;
+    let completed_at = run
+        .completed_at
+        .as_deref()
+        .map(|value| stored_run_timestamp("completed_at", value))
+        .transpose()?;
+    if acknowledged_at
+        .as_ref()
+        .is_some_and(|value| value < &created_at)
+        || completed_at
+            .as_ref()
+            .is_some_and(|value| value < &created_at)
+        || acknowledged_at
+            .as_ref()
+            .zip(completed_at.as_ref())
+            .is_some_and(|(acknowledged, completed)| acknowledged > completed)
+    {
+        return Err(StoreError::corrupt_stored_value(
+            "registry",
+            "guard_integration_verification_runs.lifecycle_timestamp_order",
+        ));
+    }
     match status {
-        GuardIntegrationVerificationStatus::AwaitingProbe => {
+        GuardIntegrationVerificationStatus::AwaitingProbe
+            if acknowledged_at.is_none() && completed_at.is_none() =>
+        {
             Ok(IntegrationVerificationWorkflowState::AwaitingProbe {
                 tool: GuardProbeToolReference::new(),
             })
         }
         GuardIntegrationVerificationStatus::AwaitingObservation => {
-            let acknowledged_at = run.probe_acknowledged_at.as_deref().ok_or_else(|| {
-                StoreError::corrupt_stored_value(
+            if completed_at.is_some() {
+                return Err(StoreError::corrupt_stored_value(
                     "registry",
-                    "guard_integration_verification_runs.probe_acknowledged_at",
-                )
-            })?;
+                    "guard_integration_verification_runs.completed_at",
+                ));
+            }
             Ok(IntegrationVerificationWorkflowState::AwaitingObservation {
                 tool: IntegrationVerificationStatusToolReference::new(),
-                acknowledged_at: parse_timestamp("probe_acknowledged_at", acknowledged_at)?,
+                acknowledged_at: acknowledged_at.ok_or_else(|| {
+                    StoreError::corrupt_stored_value(
+                        "registry",
+                        "guard_integration_verification_runs.probe_acknowledged_at",
+                    )
+                })?,
                 remaining_status_reads: run
                     .allowed_status_reads
                     .saturating_sub(run.status_read_count),
             })
         }
         GuardIntegrationVerificationStatus::Complete => {
+            if acknowledged_at.is_none() {
+                return Err(StoreError::corrupt_stored_value(
+                    "registry",
+                    "guard_integration_verification_runs.probe_acknowledged_at",
+                ));
+            }
             Ok(IntegrationVerificationWorkflowState::Complete {
-                completed_at: completed_at()?,
+                completed_at: completed_at.ok_or_else(|| {
+                    StoreError::corrupt_stored_value(
+                        "registry",
+                        "guard_integration_verification_runs.completed_at",
+                    )
+                })?,
             })
         }
         GuardIntegrationVerificationStatus::RepairRequired => {
+            let _terminal_at = completed_at.ok_or_else(|| {
+                StoreError::corrupt_stored_value(
+                    "registry",
+                    "guard_integration_verification_runs.completed_at",
+                )
+            })?;
             let reason = run
                 .repair_reason
                 .as_deref()
@@ -278,7 +316,22 @@ pub(super) fn workflow_state_from_record(
                 finding,
             })
         }
+        GuardIntegrationVerificationStatus::AwaitingProbe => Err(StoreError::corrupt_stored_value(
+            "registry",
+            "guard_integration_verification_runs.awaiting_probe_timestamps",
+        )),
     }
+}
+
+fn stored_run_timestamp(field: &'static str, value: &str) -> StoreResult<UtcTimestamp> {
+    UtcTimestamp::parse(value).map_err(|_| StoreError::CorruptStoredValue {
+        database_kind: "registry",
+        field: match field {
+            "created_at" => "guard_integration_verification_runs.created_at",
+            "probe_acknowledged_at" => "guard_integration_verification_runs.probe_acknowledged_at",
+            _ => "guard_integration_verification_runs.completed_at",
+        },
+    })
 }
 
 fn current_coordinate_repair(

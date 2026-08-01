@@ -175,11 +175,7 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
         "guard_event_historical_post",
     )?;
     assert!(matches!(
-        current_guard_integration_verification_workflow(
-            fixture.runtime_home.path(),
-            &fixture.record(&run.verification_id)?,
-            "2026-07-23T00:00:04.100Z",
-        )?,
+        current_guard_integration_verification_workflow(&fixture.record(&run.verification_id)?)?,
         IntegrationVerificationWorkflowState::AwaitingObservation { .. }
     ));
 
@@ -217,11 +213,7 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
         "guard_event_post_before_ack",
     )?;
     assert!(matches!(
-        current_guard_integration_verification_workflow(
-            fixture.runtime_home.path(),
-            &fixture.record(&run.verification_id)?,
-            "2026-07-23T00:00:04.200Z",
-        )?,
+        current_guard_integration_verification_workflow(&fixture.record(&run.verification_id)?)?,
         IntegrationVerificationWorkflowState::AwaitingObservation { .. }
     ));
     Ok(())

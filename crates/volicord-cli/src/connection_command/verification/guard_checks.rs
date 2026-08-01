@@ -235,7 +235,6 @@ pub(super) fn guard_checks_for_connection(
         current_revision,
     )?;
 
-    let verification_observed_at = evaluated_at.to_canonical_string();
     let verification_run = match selected_membership {
         Some(membership) => latest_guard_integration_verification_for_membership(
             runtime_home,
@@ -251,13 +250,7 @@ pub(super) fn guard_checks_for_connection(
     }?;
     let verification_workflow = verification_run
         .as_ref()
-        .map(|run| {
-            current_guard_integration_verification_workflow(
-                runtime_home,
-                run,
-                &verification_observed_at,
-            )
-        })
+        .map(current_guard_integration_verification_workflow)
         .transpose()?;
     let verification_observations = verification_run
         .as_ref()
@@ -310,6 +303,9 @@ pub(super) fn guard_checks_for_connection(
         .map_err(ConnectionCommandError::runtime)?;
     let correlated_evidence =
         CorrelatedGuardVerificationEvidence::new(latest_attempt_evidence, latest_proof_evidence);
+    let verification_evidence_at = correlated_evidence
+        .decisive_evidence_timestamp(verification_status)
+        .map_err(ConnectionCommandError::runtime)?;
     let verification_causes = match (verification_run.as_ref(), verification_workflow.as_ref()) {
         (
             Some(run),
@@ -436,7 +432,7 @@ pub(super) fn guard_checks_for_connection(
             ))?),
             observed_at.as_deref(),
         )?, ambient_coverage_causes)?,
-        with_direct_causes(canonical_check(
+        with_direct_causes(canonical_check_at(
             ConnectionCheckKind::CorrelatedGuardVerification,
             verification_status,
             match verification_status {
@@ -462,8 +458,7 @@ pub(super) fn guard_checks_for_connection(
                 }
             },
             Some(typed_details(&correlated_evidence)?),
-            (verification_status == ConnectionCheckStatus::Passed)
-                .then_some(verification_observed_at.as_str()),
+            verification_evidence_at,
         )?, verification_causes)?,
     ])?;
     Ok(ConnectionCheckEvaluation {

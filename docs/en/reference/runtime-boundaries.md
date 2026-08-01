@@ -206,6 +206,14 @@ inspection-time repair. A membership-local read failure remains a row-local
 unavailable state; failure to enumerate the Runtime Home Registry remains a
 command error.
 
+Connection status evaluates one report time without turning that evaluation
+into persisted evidence. Its `generated_at` identifies the evaluation, while a
+check's `observed_at` remains the decisive persisted evidence time selected by
+the check owner. Repeated reads may therefore have different report times and
+the same evidence timestamp and details. Connection list likewise keeps each
+membership's `evaluated_at` as the batch evaluation time rather than replacing
+it with a selected check's evidence time.
+
 Once Store creates `RuntimeHomeMutationContext`, its
 `CanonicalRuntimeHomePath` is the sole Runtime Home identity for every
 mutation-dependent read, plan, Registry lookup, Core service, Store handle,

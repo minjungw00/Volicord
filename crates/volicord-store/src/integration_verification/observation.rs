@@ -11,11 +11,15 @@ use volicord_types::integration_verification::{
     GuardProbeEventRelevance, GuardProbeObservationStage,
 };
 use volicord_types::tool_names::{AgentToolId, IntegrationVerificationToolRole};
-use volicord_types::values::GuardHookPhase;
+use volicord_types::values::{GuardHookPhase, UtcTimestamp};
 
 use super::{
     correlation::refresh_guard_integration_verification_for_event,
-    row::{active_run_for_acquisition, parse_timestamp, ActiveAcquisitionRunLookup},
+    row::{
+        active_run_for_acquisition, parse_status, parse_timestamp, run_by_id,
+        ActiveAcquisitionRunLookup,
+    },
+    status::workflow_state_from_record,
     GuardIntegrationVerificationRunRecord,
 };
 use crate::{
@@ -231,7 +235,62 @@ pub fn guard_probe_observations(
         return Ok(Vec::new());
     }
     let conn = crate::sqlite::open_registry_database_read_only(path)?;
-    observations_for_run(&conn, verification_id)
+    let observations = observations_for_run(&conn, verification_id)?;
+    if let Some(run) = run_by_id(&conn, verification_id)? {
+        workflow_state_from_record(&run, parse_status(&run.status)?)?;
+        validate_stored_observations(&run, &observations)?;
+    }
+    Ok(observations)
+}
+
+fn validate_stored_observations(
+    run: &GuardIntegrationVerificationRunRecord,
+    observations: &[GuardProbeObservationRecord],
+) -> StoreResult<()> {
+    let created_at = stored_observation_timestamp("run_created_at", &run.created_at)?;
+    let completed_at = run
+        .completed_at
+        .as_deref()
+        .map(|value| stored_observation_timestamp("run_completed_at", value))
+        .transpose()?;
+    for observation in observations {
+        if observation.verification_id != run.verification_id
+            || observation.expected_agent_tool_id != run.expected_probe_tool
+            || observation.expected_host_callable_name != run.expected_host_callable_name
+            || observation.guard_installation_id != run.guard_installation_id
+            || observation.integration_revision != run.integration_revision
+        {
+            return Err(StoreError::corrupt_stored_value(
+                "registry",
+                "guard_probe_observations.verification_identity",
+            ));
+        }
+        let observed_at = stored_observation_timestamp("observed_at", &observation.observed_at)?;
+        if observed_at < created_at
+            || completed_at
+                .as_ref()
+                .is_some_and(|terminal_at| observed_at > *terminal_at)
+        {
+            return Err(StoreError::corrupt_stored_value(
+                "registry",
+                "guard_probe_observations.lifecycle_timestamp_order",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn stored_observation_timestamp(field: &'static str, value: &str) -> StoreResult<UtcTimestamp> {
+    UtcTimestamp::parse(value).map_err(|_| {
+        StoreError::corrupt_stored_value(
+            "registry",
+            match field {
+                "run_created_at" => "guard_integration_verification_runs.created_at",
+                "run_completed_at" => "guard_integration_verification_runs.completed_at",
+                _ => "guard_probe_observations.observed_at",
+            },
+        )
+    })
 }
 
 pub(super) fn record_probe_acknowledgement(

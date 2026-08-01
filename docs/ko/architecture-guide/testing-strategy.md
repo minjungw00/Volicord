@@ -337,6 +337,10 @@ matrix를 정합니다.
   동시 표현, attempt가 없을 때 ambient pending, correlated complete, repair-required를
   pending으로 projection하지 않음, 더 오래된 proof가 더 최신 failed attempt를 숨기지
   않음
+- awaiting-probe, awaiting-observation, complete, repair-required, no-run 상태마다 typed 영속
+  lifecycle 사실에서 상관관계 Guard 증거 시각 선택, 엄격한 시간 순서와 attempt/proof
+  identity 불일치 실패, 보고서 시각이 달라지는 읽기 전용 status 평가에서도 증거 시각과
+  detail 유지 및 Store 비변경, 목록 평가 시각 분리, verbose/JSON timestamp 일치
 - concise, verbose, JSON 사이 Guard report parity, 최상위 Guard runtime session과
   verification ID, managed/Guard session role의 정규 중복 제거, 복구 가능한 failed
   check의 `action_required` 집계, 모든 typed repair reason 및 acquisition stage의 안정적인

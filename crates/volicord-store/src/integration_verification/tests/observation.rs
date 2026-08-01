@@ -17,6 +17,7 @@ use crate::integration_verification::{
     observation::classify_routed_tool_relevance, observe_unbound_guard_probe_hook_event,
     GuardProbeHookEvidence, UnboundGuardProbeHookObservation,
 };
+use crate::{sqlite::registry_db_path, StoreError};
 
 #[test]
 fn current_pre_and_post_events_record_bounded_stages_and_complete() -> Result<(), Box<dyn Error>> {
@@ -81,6 +82,33 @@ fn current_pre_and_post_events_record_bounded_stages_and_complete() -> Result<()
         )?
         .workflow,
         IntegrationVerificationWorkflowState::Complete { .. }
+    ));
+    Ok(())
+}
+
+#[test]
+fn observation_before_attempt_creation_is_corrupt_data() -> Result<(), Box<dyn Error>> {
+    let fixture = VerificationFixture::new("guard-observation-invalid-chronology")?;
+    let run = fixture.begin()?;
+    fixture.acknowledge(&run.verification_id, ACK_AT)?;
+    let conn = crate::sqlite::open_registry_database_for_test(registry_db_path(
+        fixture.runtime_home.path(),
+    ))?;
+    conn.execute(
+        "UPDATE guard_probe_observations
+            SET observed_at = '2026-07-23T00:00:02Z'
+          WHERE verification_id = ?1
+            AND stage = 'probe_acknowledged'",
+        [&run.verification_id],
+    )?;
+    drop(conn);
+
+    assert!(matches!(
+        guard_probe_observations(fixture.runtime_home.path(), &run.verification_id),
+        Err(StoreError::CorruptStoredValue {
+            field: "guard_probe_observations.lifecycle_timestamp_order",
+            ..
+        })
     ));
     Ok(())
 }

@@ -251,6 +251,12 @@ step 하나에는 dependency edge를 최대 16개, root finding reference를 최
 있습니다. 보고서는 check를 최대 64개 포함하고 activation plan은 필수 및 선택 step을
 합쳐 최대 32개 포함합니다. 직렬화한 보고서는 최대 64 KiB입니다.
 
+`checked_at`은 보고서를 평가한 하나의 논리적 시각을 기록합니다. CLI는 현재 진단
+보고서에서 같은 평가 시각을 `generated_at`으로 투영합니다. 반면 check의 선택적
+`observed_at`은 그 check를 결정한 영속 증거가 실제로 관찰되었거나 현재 상태에 도달한
+시각을 기록합니다. 보고서 평가 시각으로 이 값을 채우지 않습니다. 현재 결정적 증거가
+없는 check는 `observed_at`을 생략합니다.
+
 Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로 UTF-8 byte
 오름차순 정렬합니다. Activation step은 `prerequisites`의 결정적 위상 순서를 사용하고,
 서로 독립인 step은 현재 workflow 순서로 정합니다. 직렬화 ID 표기는 정렬 규칙이
@@ -827,6 +833,24 @@ prompt/pre/post phase의 일반 coverage만 증명합니다.
 `CorrelatedGuardAttemptEvidence`는 verification, runtime session, host session과 turn,
 event, 기대·관찰 callable, acquisition stage, repair, retry, timestamp 사실을 포함한 최신
 현재 attempt를 보존합니다. `CorrelatedGuardProof`는 최신 완료 현재 proof를 보존합니다.
+
+상관관계 check의 `observed_at`은 이 typed record에서 다음과 같이 선택합니다.
+
+- `awaiting_probe`는 최신 attempt 생성 시각을 사용합니다.
+- `awaiting_observation`은 실제로 존재하는 적용 가능한 acquisition 관찰, probe
+  acknowledgement, attempt 생성 시각 가운데 가장 늦은 시각을 사용합니다.
+- `complete`는 완료된 현재 proof를 요구하고 그 proof의 완료 시각을 사용합니다.
+- `repair_required`는 최신 attempt가 terminal repair 상태로 전이한 시각을 사용합니다.
+- 현재 run이 없으면 `observed_at`을 생략합니다.
+
+이 선택에는 보고서 평가 시각을 사용하지 않습니다. 통과한 check의 attempt와 proof는
+같은 verification, Connection, Connection Project membership, integration revision,
+managed runtime session, native host session과 turn, Guard Installation, policy, hook
+definition을 식별해야 합니다. 생성 시각은 acknowledgement나 terminal 완료보다 늦을 수
+없고 acknowledgement는 terminal 완료보다 늦을 수 없습니다. 적용 가능한 acquisition
+관찰은 생성 전이나 terminal 전이 후에 있을 수 없으며, 완료 attempt와 proof는 같은 완료
+시각을 가져야 합니다. 필요한 영속 사실이 누락되거나 형식, 시간 순서, identity가 맞지
+않으면 데이터 손상이며 `checked_at`이나 `generated_at`으로 대체하지 않습니다.
 
 Attempt가 없거나 deferred host policy에서 실제로 진행 중인 attempt는 `pending`입니다.
 `complete`는 `passed`이고 `repair_required`는 typed recoverability와 action을 가진

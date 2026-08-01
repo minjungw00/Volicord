@@ -273,6 +273,13 @@ root-finding references. A report contains at most 64 checks and an activation
 plan contains at most 32 total required and optional steps. The serialized
 report is at most 64 KiB.
 
+`checked_at` records the one logical time at which the report was evaluated.
+The CLI projects that same evaluation instant as `generated_at` in its current
+diagnostic report. A check's optional `observed_at` instead records when the
+decisive persisted evidence for that check was observed or reached its current
+state. It is not filled from report evaluation time. A check with no current
+decisive evidence omits `observed_at`.
+
 Checks are sorted by the stable snake-case spelling of `ConnectionCheckKind` in
 ascending UTF-8 byte order. Activation steps use deterministic topological
 ordering over `prerequisites`, with the current workflow order resolving
@@ -934,6 +941,28 @@ phase. `CorrelatedGuardAttemptEvidence` retains the latest current attempt,
 including verification, runtime-session, host-session, host-turn, event,
 expected/observed callable, acquisition-stage, repair, retry, and timestamp
 facts. `CorrelatedGuardProof` retains the latest completed current proof.
+
+The correlated check selects its `observed_at` from those typed records:
+
+- `awaiting_probe` uses the latest attempt's creation time;
+- `awaiting_observation` uses the latest actual applicable acquisition
+  observation, probe acknowledgement, or attempt creation time;
+- `complete` requires the completed current proof and uses that proof's
+  completion time;
+- `repair_required` uses the latest attempt's terminal repair-transition time;
+  and
+- no current run omits `observed_at`.
+
+The selection never uses report evaluation time. A passed check requires the
+attempt and proof to identify the same verification, Connection, Connection
+Project membership, integration revision, managed runtime session, native
+host session and turn, Guard Installation, policy, and hook definition.
+Creation cannot follow acknowledgement or terminal completion;
+acknowledgement cannot follow terminal completion; applicable acquisition
+observations cannot precede creation or follow the terminal transition; and a
+completed attempt and its proof must carry the same completion time. Missing,
+malformed, chronologically invalid, or identity-inconsistent persisted facts
+are corrupt data and never fall back to `checked_at` or `generated_at`.
 
 No attempt, or an active attempt under a deferred host policy, is `pending`.
 `complete` is `passed`. `repair_required` is always `failed` with typed

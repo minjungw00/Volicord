@@ -444,6 +444,14 @@ deadline, 허용 및 소비한 status read 수, 생성 및 cleanup 시각, ackno
 좌표 갱신, 두 번째 probe acknowledgement, terminal 변경, terminal-to-active 전이는
 거부합니다. Cleanup 시각은 보관 범위만 제한합니다.
 
+엄격한 projection은 이 lifecycle field를 `UtcTimestamp` 값으로 parse하고 시간 순서를
+검증합니다. 생성 시각은 acknowledgement나 terminal 완료보다 늦을 수 없고,
+acknowledgement는 생성보다 빠르거나 terminal 완료보다 늦을 수 없습니다. 영속 acquisition
+관찰은 소유 run의 생성보다 빠르거나 terminal 전이보다 늦을 수 없습니다. `complete`에는
+완료 timestamp와 일치하는 완료 proof가 필요하고 `repair_required`에는 terminal 완료
+timestamp가 필요합니다. 저장 시각이 누락되거나 형식 또는 관계가 맞지 않으면 호출자 관찰
+시각이나 보고서 평가 시각으로 대체하지 않고 영속 담당 데이터 손상으로 처리합니다.
+
 Registry의 `guard_probe_observations`는 acquisition 경계를 상관관계가 확인된 완료와
 분리해 기록합니다. 폐쇄형 `stage` 값은 `probe_acknowledged`,
 `unrelated_routed_tool`, `hook_event_not_observed`, `hook_payload_incompatible`,
@@ -475,6 +483,13 @@ Active는 pending, complete는 passed, `repair_required`는 failed입니다. 더
 row는 proof evidence로 남지만 더 최신 failed attempt를 덮지 못합니다. Report context는
 managed MCP role과 같은 runtime session을 중복 제거하고 관련 verification ID를 모두
 보존합니다.
+
+Typed attempt와 proof projection이 correlated check의 증거 timestamp 선택을 담당합니다.
+`awaiting_probe`에서는 attempt 생성 시각, `awaiting_observation`에서는 적용 가능한 최신
+acquisition 관찰, acknowledgement, 생성 시각 가운데 가장 늦은 값,
+`complete`에서는 일치하는 proof 완료 시각, `repair_required`에서는 terminal 완료 시각이
+결정적입니다. Run이 없으면 check 관찰 시각도 없습니다. Store는 이 영속 workflow 상태를
+projection하기 위해 보고서 평가 timestamp를 받지 않습니다.
 
 Repository observation, expected write, Unrecorded Change 기록은 프로젝트
 로컬입니다. 관찰 하나는 정규화한 프로젝트, Connection, host session, host turn, hook

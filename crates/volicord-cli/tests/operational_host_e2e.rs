@@ -1397,6 +1397,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         })
         .ok_or("initial correlated_guard_verification check")?;
     assert!(initial_correlated["details"]["latest_attempt"].is_null());
+    assert!(initial_correlated.get("observed_at").is_none());
     assert_eq!(init_report["activation_state"], "host_reload_required");
     assert_eq!(
         init_report["hook_activation_state"],
@@ -1709,6 +1710,16 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
                 .find(|check| check["id"] == "correlated_guard_verification")
         })
         .ok_or("correlated_guard_verification check")?;
+    let guard_evidence_observed_at = guard_verification["observed_at"]
+        .as_str()
+        .ok_or("correlated Guard evidence timestamp")?
+        .to_owned();
+    let guard_evidence_details = guard_verification["details"].clone();
+    let complete_generated_at = complete_report["generated_at"].clone();
+    assert_ne!(
+        guard_verification["observed_at"], complete_report["generated_at"],
+        "proof evidence time must not be replaced by report evaluation time"
+    );
     let latest_attempt = &guard_verification["details"]["latest_attempt"];
     assert!(latest_attempt["verification_id"].is_string());
     assert!(latest_attempt["runtime_session_id"].is_string());
@@ -1778,6 +1789,21 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         .as_str()
         .ok_or("complete runtime-session ID")?;
     let registry = rusqlite::Connection::open(fixture.runtime_home.join("registry.sqlite"))?;
+    let persisted_guard_completed_at: String = registry.query_row(
+        "SELECT completed_at
+           FROM guard_integration_verification_runs
+          WHERE verification_id = ?1",
+        [latest_attempt["verification_id"]
+            .as_str()
+            .ok_or("complete verification ID")?],
+        |row| row.get(0),
+    )?;
+    assert_eq!(guard_evidence_observed_at, persisted_guard_completed_at);
+    assert_eq!(latest_proof["completed_at"], persisted_guard_completed_at);
+    assert_ne!(
+        complete_list_state["evaluated_at"], persisted_guard_completed_at,
+        "list evaluated_at must remain the batch evaluation time"
+    );
     let complete_session_source: String = registry.query_row(
         "SELECT session_source FROM mcp_runtime_sessions WHERE runtime_session_id = ?1",
         [complete_runtime_session_id],
@@ -1819,7 +1845,24 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
 
     let before_status = fixture.content_snapshot()?;
     let repeated = fixture.run_connection("status", FUTURE_VERSION, true)?;
-    assert_connection_report(&repeated, 0, "status", "complete")?;
+    let repeated_report = assert_connection_report(&repeated, 0, "status", "complete")?;
+    let repeated_guard = repeated_report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "correlated_guard_verification")
+        })
+        .ok_or("repeated correlated_guard_verification check")?;
+    assert_ne!(repeated_report["generated_at"], complete_generated_at);
+    assert_eq!(
+        repeated_guard["observed_at"], guard_evidence_observed_at,
+        "read-only status changed the persisted evidence time"
+    );
+    assert_eq!(
+        repeated_guard["details"], guard_evidence_details,
+        "read-only status changed the persisted evidence details"
+    );
     let after_status = fixture.content_snapshot()?;
     assert_eq!(after_status, before_status, "connection status wrote state");
 
@@ -1854,6 +1897,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(verbose.contains("    Expected verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Observed verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Verification tool observed at:"));
+    assert!(verbose.contains(&format!("    Observed at: {guard_evidence_observed_at}")));
     assert!(!verbose.contains("Details: {"));
     assert!(!verbose.contains("\":["));
     assert_eq!(

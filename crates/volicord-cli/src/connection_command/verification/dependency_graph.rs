@@ -361,6 +361,26 @@ pub(super) fn canonical_check(
     details: Option<Value>,
     observed_at: Option<&str>,
 ) -> Result<ConnectionCheck, ConnectionCommandError> {
+    let observed_at = observed_at
+        .map(|value| {
+            UtcTimestamp::from_str(value).map_err(|_| {
+                ConnectionCommandError::runtime(format!(
+                    "connection check observation time is invalid: {value}"
+                ))
+            })
+        })
+        .transpose()?;
+    canonical_check_at(id, status, code, summary, details, observed_at)
+}
+
+pub(super) fn canonical_check_at(
+    id: ConnectionCheckKind,
+    status: ConnectionCheckStatus,
+    code: &str,
+    summary: &str,
+    details: Option<Value>,
+    observed_at: Option<UtcTimestamp>,
+) -> Result<ConnectionCheck, ConnectionCommandError> {
     let details = details
         .map(compact_json_value)
         .map(|value| {
@@ -370,15 +390,6 @@ pub(super) fn canonical_check(
                 ));
             };
             ConnectionCheckDetails::try_new(object).map_err(ConnectionCommandError::from)
-        })
-        .transpose()?;
-    let observed_at = observed_at
-        .map(|value| {
-            UtcTimestamp::from_str(value).map_err(|_| {
-                ConnectionCommandError::runtime(format!(
-                    "connection check observation time is invalid: {value}"
-                ))
-            })
         })
         .transpose()?;
     ConnectionCheck::try_new(

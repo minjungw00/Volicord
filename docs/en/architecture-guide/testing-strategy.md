@@ -391,6 +391,12 @@ Durable tests should cover, as applicable:
   failed, ambient pending with no attempt, correlated complete,
   repair-required never projected as pending, and an older proof retained
   without hiding a newer failed attempt;
+- correlated Guard evidence time selected from typed persisted lifecycle facts
+  for awaiting-probe, awaiting-observation, complete, repair-required, and no-run
+  states; strict chronology and attempt/proof identity mismatch failure; stable
+  evidence time and details across read-only status evaluations with changing
+  report times and no Store writes; list evaluation-time separation; and
+  verbose/JSON timestamp parity;
 - Guard report parity across concise, verbose, and JSON; top-level Guard
   runtime sessions and verification IDs; canonical deduplication of managed
   and Guard session roles; recoverable failed aggregation to

@@ -9,12 +9,13 @@ use volicord_types::integration_verification::{
 
 use super::support::*;
 use crate::integration_verification::{
-    get_guard_integration_verification,
+    current_guard_integration_verification_workflow, get_guard_integration_verification,
     latest_completed_guard_integration_verification_for_connection,
     latest_completed_guard_integration_verification_for_membership,
     latest_guard_integration_verification_for_connection,
     latest_guard_integration_verification_for_membership, status::begin_result_from_record,
 };
+use crate::{sqlite::registry_db_path, StoreError};
 
 #[test]
 fn nonterminal_projection_distinguishes_probe_and_observation() -> Result<(), Box<dyn Error>> {
@@ -201,6 +202,35 @@ fn membership_queries_never_substitute_another_projects_guard_run() -> Result<()
         )?
         .is_none()
     );
+    Ok(())
+}
+
+#[test]
+fn completed_run_missing_its_completion_timestamp_is_corrupt_data() -> Result<(), Box<dyn Error>> {
+    let fixture = VerificationFixture::new("guard-integration-status-missing-completion")?;
+    let run = fixture.begin()?;
+    let conn = crate::sqlite::open_registry_database_for_test(registry_db_path(
+        fixture.runtime_home.path(),
+    ))?;
+    conn.execute_batch("PRAGMA ignore_check_constraints = ON")?;
+    conn.execute(
+        "UPDATE guard_integration_verification_runs
+            SET status = 'complete', probe_acknowledged_at = ?2,
+                completed_at = NULL, matched_pre_tool_event_id = 'guard_event_pre',
+                matched_post_tool_event_id = 'guard_event_post'
+          WHERE verification_id = ?1",
+        rusqlite::params![run.verification_id, ACK_AT],
+    )?;
+    drop(conn);
+
+    let corrupt = fixture.record(&run.verification_id)?;
+    assert!(matches!(
+        current_guard_integration_verification_workflow(&corrupt),
+        Err(StoreError::CorruptStoredValue {
+            field: "guard_integration_verification_runs.completed_at",
+            ..
+        })
+    ));
     Ok(())
 }
 

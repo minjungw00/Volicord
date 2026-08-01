@@ -1147,6 +1147,14 @@ truncation metadata가 들어갑니다. 관찰 부재는 필드 부재 또는 �
 `failed` check, 차단된 관찰은 root ID가 있는 `blocked` check로 나타냅니다. 이 상태들을
 같은 빈 값으로 합치지 않습니다.
 
+`generated_at`은 현재 명령에서 보고서를 평가한 하나의 논리적 시각입니다. 각 check의
+선택적 `observed_at`은 Agent Connection 담당 문서가 정의한 결정적 증거 시각이며 이 평가
+시각이 아닙니다. 특히 완료된 `correlated_guard_verification` check는 영속 proof 완료
+시각을 사용합니다. 읽기 전용 status를 반복하면 `generated_at`은 달라질 수 있지만 해당
+check timestamp와 증거 detail은 유지되며 Store에 쓰지 않습니다. Verbose의 `Observed at`은
+JSON check 구성원과 같은 timestamp를 표시합니다. Concise 출력에는 이 timestamp를
+추가하지 않습니다.
+
 대표적인 간결한 protocol mismatch 결과는 다음과 같습니다.
 
 ```text
@@ -1328,6 +1336,9 @@ UnavailableCurrentState:
 표시하지 않고, 표시용 대체 집계 보고서를 합성하지 않으며, 현재 projection을 영속하지
 않습니다. 한 invocation의 모든 membership은 `generated_at`을 `evaluated_at`으로
 공유합니다.
+
+`evaluated_at`은 계속 목록 batch 평가 시각입니다. 선택한 check의 증거 시각으로 바꾸지
+않습니다.
 
 Membership 범위의 획득 또는 일관성 실패는 닫힌 reason 하나와 한도가 있는 안전한 문제
 세부사항을 가진 `state=unavailable`을 만듭니다. 다른 사용 가능한 membership을 숨기지

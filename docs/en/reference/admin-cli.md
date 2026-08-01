@@ -1216,6 +1216,15 @@ is `[]`; a failed observation is a `failed` check with a finding; and a blocked
 observation is a `blocked` check with its root IDs. These states are not
 collapsed into the same empty value.
 
+`generated_at` is the current command's one logical report-evaluation time.
+Each check's optional `observed_at` is the decisive evidence time defined by
+the Agent Connection owner, not that evaluation time. In particular, a
+completed `correlated_guard_verification` check uses its persisted proof
+completion time. Repeating read-only status output may change `generated_at`
+while preserving that check timestamp and its evidence details, and the read
+does not write the Store. Verbose `Observed at` renders the same timestamp as
+the JSON check member. Concise output does not add this timestamp.
+
 A representative concise protocol-mismatch result is:
 
 ```text
@@ -1398,6 +1407,9 @@ active-verification evidence. A persisted aggregate report is only an evidence
 input: list never displays it as current, never synthesizes a replacement
 aggregate for display, and never persists the current projection. Every
 membership in one invocation uses `generated_at` as `evaluated_at`.
+
+`evaluated_at` remains the list batch-evaluation time. It is not replaced with
+the evidence time of any selected check.
 
 A membership-local acquisition or consistency failure produces
 `state=unavailable` with one closed reason and bounded safe issue detail. It

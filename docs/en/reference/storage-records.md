@@ -507,6 +507,16 @@ each state's exact nullable fields. Coordinate updates, a second probe
 acknowledgement, terminal mutation, and terminal-to-active transition are
 rejected. Cleanup time only bounds retention.
 
+Strict projection parses these lifecycle fields as `UtcTimestamp` values and
+validates their order. Creation cannot follow acknowledgement or terminal
+completion; acknowledgement cannot precede creation or follow terminal
+completion; and a persisted acquisition observation cannot precede creation or
+follow the terminal transition of its owning run. `complete` requires its
+completion timestamp and matching completed proof. `repair_required` requires
+its terminal completion timestamp. Missing, malformed, or inconsistent stored
+times are corrupt persisted owner data rather than an invitation to use a
+caller observation or report-evaluation time.
+
 Registry `guard_probe_observations` records the acquisition boundary separately
 from correlated completion. Its closed `stage` values are
 `probe_acknowledged`, `unrelated_routed_tool`, `hook_event_not_observed`,
@@ -542,6 +552,14 @@ determines the correlated check: active is pending, complete is passed, and
 cannot override a newer failed attempt. Report context deduplicates their
 runtime session with managed MCP roles and retains all relevant verification
 IDs.
+
+The typed attempt and proof projections own the correlated check's evidence
+timestamp selection. Attempt creation is decisive for `awaiting_probe`; the
+latest applicable acquisition observation, acknowledgement, or creation is
+decisive for `awaiting_observation`; the matching proof completion is decisive
+for `complete`; and terminal completion is decisive for `repair_required`.
+No run supplies no check observation time. Store does not receive a report
+evaluation timestamp merely to project this persisted workflow state.
 
 Repository observations, expected writes, and Unrecorded Changes are
 project-local. One observation is unique on its normalized project,
