@@ -66,7 +66,7 @@ use volicord_types::values::UtcTimestamp;
 
 use crate::guard_integration::audit::{
     guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
-    GuardArtifactIssue, GuardAuditFacts, GuardManifestIssue,
+    GuardArtifactIssue, GuardAuditFacts, GuardManifestIssue, HookPathSafetyState,
 };
 use crate::host_integration::{
     codex::{self, CodexAdapter},

@@ -40,9 +40,9 @@ use volicord_types::workflow_policy::ProjectWorkflowPolicySource;
 
 use crate::{
     guard_integration::audit::{
-        all_recorded_values_true, guard_file_findings_for_inspection,
-        guard_manifest_binding_valid_for_inspection, missing_required_hooks_from_manifest_json,
-        GuardArtifactIssue, GuardAuditFacts, GuardManifestIssue,
+        guard_file_findings_for_inspection, guard_manifest_binding_valid_for_inspection,
+        missing_required_hooks_from_manifest_json, GuardArtifactIssue, GuardAuditFacts,
+        GuardManifestIssue, HookPathSafetyAssessment, HookPathSafetyState,
     },
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
     guard_integration::policy::validate_policy_schema,
@@ -112,6 +112,8 @@ struct DiagnosticCheck {
     summary: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     details: Option<Value>,
+    #[serde(skip)]
+    hook_path_safety: Option<HookPathSafetyAssessment>,
 }
 
 impl DiagnosticCheck {
@@ -121,6 +123,7 @@ impl DiagnosticCheck {
             status: "passed".to_owned(),
             summary: summary.into(),
             details: None,
+            hook_path_safety: None,
         }
     }
 
@@ -130,6 +133,7 @@ impl DiagnosticCheck {
             status: "warning".to_owned(),
             summary: summary.into(),
             details: None,
+            hook_path_safety: None,
         }
     }
 
@@ -139,6 +143,7 @@ impl DiagnosticCheck {
             status: "skipped".to_owned(),
             summary: summary.into(),
             details: None,
+            hook_path_safety: None,
         }
     }
 
@@ -148,11 +153,21 @@ impl DiagnosticCheck {
             status: "failed".to_owned(),
             summary: summary.into(),
             details: None,
+            hook_path_safety: None,
         }
     }
 
     fn with_details(mut self, details: Value) -> Self {
         self.details = Some(details);
+        self
+    }
+
+    fn with_hook_path_safety(mut self, assessment: HookPathSafetyAssessment) -> Self {
+        let details = self.details.get_or_insert_with(|| json!({}));
+        if let Some(details) = details.as_object_mut() {
+            details.insert("hook_path_safety".to_owned(), json!(&assessment));
+        }
+        self.hook_path_safety = Some(assessment);
         self
     }
 }
@@ -1808,18 +1823,17 @@ fn inspect_guard_installations(
 ) {
     let installations = active_guard_installations(snapshot);
     if installations.is_empty() {
-        for (id, summary) in [
-            (
+        checks.push(
+            DiagnosticCheck::skipped(
                 GUARD_FILES_CHECK_ID,
                 "no Codex Record Guard manifest is recorded",
-            ),
-            (
-                GUARD_OBSERVATION_CHECK_ID,
-                "no Guard observation is recorded",
-            ),
-        ] {
-            checks.push(DiagnosticCheck::skipped(id, summary));
-        }
+            )
+            .with_hook_path_safety(HookPathSafetyAssessment::not_checked()),
+        );
+        checks.push(DiagnosticCheck::skipped(
+            GUARD_OBSERVATION_CHECK_ID,
+            "no Guard observation is recorded",
+        ));
         checks.push(
             DiagnosticCheck::skipped("control_surface", "no integration profile is recorded")
                 .with_details(json!({
@@ -1884,7 +1898,7 @@ fn inspect_guard_installations(
         ));
     }
     file_findings.sort_dedup();
-    let (missing_files, stale_files, broken_files) =
+    let (missing_files, unavailable_files, stale_files, broken_files) =
         projected_doctor_guard_file_paths(&file_findings);
 
     let missing_required_hooks = binding_valid_installations
@@ -1923,6 +1937,7 @@ fn inspect_guard_installations(
             .iter()
             .all(|installation| guard_effective_active(snapshot, installation))
         && file_findings.generated_config_verified()
+        && file_findings.hook_path_safety.state == HookPathSafetyState::Verified
         && file_findings.direct_file_write_matcher_coverage();
     let selected_profile = if invalid_scope_count == 0 {
         IntegrationProfile::Record.as_str()
@@ -1950,12 +1965,18 @@ fn inspect_guard_installations(
         },
     })));
 
+    let path_safety_failed = file_findings.hook_path_safety.state == HookPathSafetyState::Failed;
+    let path_safety_incomplete = matches!(
+        file_findings.hook_path_safety.state,
+        HookPathSafetyState::NotRecorded | HookPathSafetyState::NotChecked
+    );
     let file_problem = invalid_scope_count > 0
         || binding_invalid_count > 0
         || !missing_required_hooks.is_empty()
         || !missing_files.is_empty()
         || !stale_files.is_empty()
-        || !broken_files.is_empty();
+        || !broken_files.is_empty()
+        || path_safety_failed;
     let file_check = if file_problem {
         direct_action_candidates.push(direct_action_candidate(
             DoctorDirectAction::RepairGuardFiles,
@@ -1966,10 +1987,22 @@ fn inspect_guard_installations(
             GUARD_FILES_CHECK_ID,
             "one or more Codex Record Guard files are missing, stale, or broken",
         )
+    } else if path_safety_incomplete || !unavailable_files.is_empty() {
+        DiagnosticCheck::warning(
+            GUARD_FILES_CHECK_ID,
+            format!(
+                "Codex Record Guard files are present, but Hook path-safety evidence is {}",
+                file_findings
+                    .hook_path_safety
+                    .state
+                    .as_str()
+                    .replace('_', " ")
+            ),
+        )
     } else {
         DiagnosticCheck::passed(
             GUARD_FILES_CHECK_ID,
-            "Codex Record Guard files are installed",
+            "Codex Record Guard files and Hook path safety are verified",
         )
     };
     let mut file_details = doctor_guard_file_details(&file_findings);
@@ -1984,12 +2017,13 @@ fn inspect_guard_installations(
             json!(invalid_scope_count),
         );
     }
-    checks.push(file_check.with_details(file_details));
+    checks.push(
+        file_check
+            .with_details(file_details)
+            .with_hook_path_safety(file_findings.hook_path_safety.clone()),
+    );
 
-    if !matches!(
-        file_findings.hook_path_safety_state().as_str(),
-        "ok" | "not_recorded" | "not_checked" | "not_applicable"
-    ) {
+    if path_safety_failed {
         direct_action_candidates.push(direct_action_candidate(
             DoctorDirectAction::RepairGuardHookPathSafety,
             GUARD_FILES_CHECK_ID,
@@ -2039,7 +2073,7 @@ fn inspect_guard_installations(
 
 fn projected_doctor_guard_file_paths(
     facts: &GuardAuditFacts,
-) -> (Vec<String>, Vec<String>, Vec<String>) {
+) -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
     let affected_paths = facts.affected_paths();
     let paths_for = |issues: &[GuardArtifactIssue]| {
         affected_paths
@@ -2054,6 +2088,7 @@ fn projected_doctor_guard_file_paths(
             .collect::<Vec<_>>()
     };
     let missing = paths_for(&[GuardArtifactIssue::Missing]);
+    let unavailable = paths_for(&[GuardArtifactIssue::Unavailable]);
     let stale = paths_for(&[
         GuardArtifactIssue::ContentMismatch,
         GuardArtifactIssue::OwnershipMismatch,
@@ -2075,7 +2110,7 @@ fn projected_doctor_guard_file_paths(
     }
     broken.sort();
     broken.dedup();
-    (missing, stale, broken)
+    (missing, unavailable, stale, broken)
 }
 
 fn projected_doctor_guard_kind_state(
@@ -2086,7 +2121,9 @@ fn projected_doctor_guard_kind_state(
         return "not_configured".to_owned();
     }
     let issues = facts.artifact_issues(kind);
-    if issues.contains(&GuardArtifactIssue::Malformed) {
+    if issues.contains(&GuardArtifactIssue::Unavailable) {
+        "not_checked"
+    } else if issues.contains(&GuardArtifactIssue::Malformed) {
         "broken"
     } else if issues.contains(&GuardArtifactIssue::Missing) {
         "missing"
@@ -2099,18 +2136,16 @@ fn projected_doctor_guard_kind_state(
 }
 
 fn doctor_guard_file_details(findings: &GuardAuditFacts) -> Value {
-    let (missing_files, stale_files, broken_files) = projected_doctor_guard_file_paths(findings);
+    let (missing_files, unavailable_files, stale_files, broken_files) =
+        projected_doctor_guard_file_paths(findings);
     json!({
         "missing_files": missing_files,
+        "unavailable_files": unavailable_files,
         "stale_files": stale_files,
         "broken_files": broken_files,
         "file_states": doctor_guard_file_states(findings),
         "selected_profiles": &findings.guard_profiles,
         "generated_config_verified": findings.generated_config_verified(),
-        "hook_path_safety": findings.hook_path_safety_state(),
-        "hook_commands_cwd_independent": all_recorded_values_true(&findings.hook_cwd_independent_values),
-        "hook_commands_subdirectory_safe": all_recorded_values_true(&findings.hook_subdirectory_safe_values),
-        "hook_path_safety_details": &findings.hook_path_safety_details,
         "direct_file_write_matcher_coverage": findings.direct_file_write_matcher_coverage(),
     })
 }
@@ -2864,7 +2899,44 @@ fn doctor_check_element(check: &DiagnosticCheck) -> Result<Element, DoctorComman
         Field::new("Summary", HumanValue::text(&check.summary)).into(),
     ];
     if let Some(details) = &check.details {
-        body.push(Section::new("Details", json_value_elements(details)).into());
+        let mut detail_elements = if check.hook_path_safety.is_some() {
+            let mut without_assessment = details.clone();
+            if let Some(object) = without_assessment.as_object_mut() {
+                object.remove("hook_path_safety");
+            }
+            json_value_elements(&without_assessment)
+        } else {
+            json_value_elements(details)
+        };
+        if let Some(assessment) = &check.hook_path_safety {
+            detail_elements.extend([
+                Field::new(
+                    "Hook path safety",
+                    HumanValue::text(display_state_text(assessment.state.as_str())),
+                )
+                .into(),
+                Field::new(
+                    "Hook command CWD independence",
+                    HumanValue::text(display_state_text(assessment.cwd_independence.as_str())),
+                )
+                .into(),
+                Field::new(
+                    "Hook command subdirectory safety",
+                    HumanValue::text(display_state_text(assessment.subdirectory_safety.as_str())),
+                )
+                .into(),
+            ]);
+            if !assessment.evidence.is_empty() {
+                detail_elements.push(
+                    Section::new(
+                        "Hook path-safety evidence",
+                        json_value_elements(&json!(&assessment.evidence)),
+                    )
+                    .into(),
+                );
+            }
+        }
+        body.push(Section::new("Details", detail_elements).into());
     }
     Ok(Section::new(&check.id, body).into())
 }
@@ -2983,15 +3055,7 @@ fn doctor_states_json(runtime_home: &Path, checks: &[DiagnosticCheck]) -> Value 
         );
         object.insert(
             "hook_path_safety".to_owned(),
-            Value::String(doctor_hook_path_safety_state(checks)),
-        );
-        object.insert(
-            "hook_commands_cwd_independent".to_owned(),
-            Value::Bool(doctor_hook_commands_cwd_independent(checks)),
-        );
-        object.insert(
-            "hook_commands_subdirectory_safe".to_owned(),
-            Value::Bool(doctor_hook_commands_subdirectory_safe(checks)),
+            json!(doctor_hook_path_safety_assessment(checks)),
         );
         object.insert(
             "direct_file_write_matcher_coverage".to_owned(),
@@ -3106,23 +3170,12 @@ fn doctor_generated_config_verified_state(checks: &[DiagnosticCheck]) -> bool {
     doctor_guard_file_bool_detail(checks, "generated_config_verified")
 }
 
-fn doctor_hook_path_safety_state(checks: &[DiagnosticCheck]) -> String {
+fn doctor_hook_path_safety_assessment(checks: &[DiagnosticCheck]) -> HookPathSafetyAssessment {
     checks
         .iter()
         .find(|check| check.id == GUARD_FILES_CHECK_ID)
-        .and_then(|check| check.details.as_ref())
-        .and_then(|details| details.get("hook_path_safety"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| "not_checked".to_owned())
-}
-
-fn doctor_hook_commands_cwd_independent(checks: &[DiagnosticCheck]) -> bool {
-    doctor_guard_file_bool_detail(checks, "hook_commands_cwd_independent")
-}
-
-fn doctor_hook_commands_subdirectory_safe(checks: &[DiagnosticCheck]) -> bool {
-    doctor_guard_file_bool_detail(checks, "hook_commands_subdirectory_safe")
+        .and_then(|check| check.hook_path_safety.clone())
+        .unwrap_or_else(HookPathSafetyAssessment::not_checked)
 }
 
 fn doctor_direct_file_write_matcher_coverage(checks: &[DiagnosticCheck]) -> bool {
@@ -3436,6 +3489,17 @@ mod tests {
             .collect()
     }
 
+    fn json_contains_key(value: &Value, key: &str) -> bool {
+        match value {
+            Value::Object(object) => {
+                object.contains_key(key)
+                    || object.values().any(|nested| json_contains_key(nested, key))
+            }
+            Value::Array(values) => values.iter().any(|nested| json_contains_key(nested, key)),
+            _ => false,
+        }
+    }
+
     fn assert_cross_projection_parity(report: &DoctorReport) {
         let json_text =
             render_doctor_output(OutputFormat::Json, report).expect("Doctor JSON rendering");
@@ -3646,6 +3710,105 @@ mod tests {
             assert!(!output.ends_with("\n\n"));
             assert!(!output.contains('\t'));
         }
+    }
+
+    #[test]
+    fn doctor_projects_one_exact_hook_path_safety_assessment() {
+        let verified_assessment =
+            HookPathSafetyAssessment::test_state(HookPathSafetyState::Verified);
+        let verified = report(
+            CommandStatus::Complete,
+            vec![DiagnosticCheck::passed(
+                GUARD_FILES_CHECK_ID,
+                "Guard files and Hook path safety are verified",
+            )
+            .with_details(json!({ "generated_config_verified": true }))
+            .with_hook_path_safety(verified_assessment.clone())],
+            Vec::new(),
+        );
+        let verified_json_text =
+            render_doctor_output(OutputFormat::Json, &verified).expect("verified Doctor JSON");
+        let verified_json: Value =
+            serde_json::from_str(&verified_json_text).expect("typed verified Doctor JSON");
+        let expected_verified = json!({
+            "state": "verified",
+            "cwd_independence": "verified",
+            "subdirectory_safety": "verified",
+            "evidence": [],
+        });
+        assert_eq!(
+            verified_json["states"]["hook_path_safety"],
+            expected_verified
+        );
+        let guard_check = verified_json["checks"]
+            .as_array()
+            .expect("Doctor checks")
+            .iter()
+            .find(|check| check["id"] == GUARD_FILES_CHECK_ID)
+            .expect("guard_files check");
+        assert_eq!(
+            guard_check["details"]["hook_path_safety"],
+            expected_verified
+        );
+        for removed_key in [
+            "hook_commands_cwd_independent",
+            "hook_commands_subdirectory_safe",
+            "hook_path_safety_details",
+        ] {
+            assert!(!json_contains_key(&verified_json, removed_key));
+        }
+        let verified_verbose =
+            render_doctor_output(OutputFormat::Verbose, &verified).expect("verified verbose");
+        assert!(verified_verbose.contains("Hook path safety: verified"));
+        assert!(verified_verbose.contains("Hook command CWD independence: verified"));
+        assert!(verified_verbose.contains("Hook command subdirectory safety: verified"));
+        let verified_compact =
+            render_doctor_output(OutputFormat::Compact, &verified).expect("verified compact");
+        assert!(!verified_compact.contains("Hook path safety"));
+
+        let not_recorded = report(
+            CommandStatus::Complete,
+            vec![DiagnosticCheck::warning(
+                GUARD_FILES_CHECK_ID,
+                "Hook path-safety evidence is not recorded",
+            )
+            .with_hook_path_safety(HookPathSafetyAssessment::test_state(
+                HookPathSafetyState::NotRecorded,
+            ))],
+            Vec::new(),
+        );
+        let not_recorded_verbose = render_doctor_output(OutputFormat::Verbose, &not_recorded)
+            .expect("not-recorded verbose");
+        assert!(not_recorded_verbose.contains("Hook path safety: not recorded"));
+        assert!(not_recorded_verbose.contains("Hook command CWD independence: not recorded"));
+        assert!(not_recorded_verbose.contains("Hook command subdirectory safety: not recorded"));
+        for forbidden in [
+            "Hook path safety: no",
+            "Hook command CWD independence: no",
+            "Hook command subdirectory safety: no",
+        ] {
+            assert!(!not_recorded_verbose
+                .lines()
+                .any(|line| line.trim() == forbidden));
+        }
+
+        let failed = report(
+            CommandStatus::Failed,
+            vec![DiagnosticCheck::failed(
+                GUARD_FILES_CHECK_ID,
+                "Hook path safety failed the current contract audit",
+            )
+            .with_hook_path_safety(HookPathSafetyAssessment::test_failed(
+                crate::guard_integration::audit::HookPathSafetyEvidenceReason::PolicyHashMismatch,
+            ))],
+            Vec::new(),
+        );
+        let failed_verbose =
+            render_doctor_output(OutputFormat::Verbose, &failed).expect("failed verbose");
+        assert!(failed_verbose.contains("Hook path safety: failed"));
+        assert!(failed_verbose.contains("Hook command CWD independence: failed"));
+        assert!(failed_verbose.contains("Hook command subdirectory safety: failed"));
+        assert!(failed_verbose.contains("policy_hash_mismatch"));
     }
 
     #[test]

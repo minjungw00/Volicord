@@ -421,6 +421,9 @@ pub(super) fn guard_boundary_findings(
     let mut findings = GuardBoundaryFindings::default();
     let mut current = Vec::new();
     for finding in &audit.findings {
+        if finding.issue == GuardArtifactIssue::Unavailable {
+            continue;
+        }
         let diagnostic = GuardDiagnostic::from_artifact_issue(finding.artifact, finding.issue);
         let subject = GuardManagedArtifactSubject::for_connection(
             &connection.connection_internal_id,
@@ -456,27 +459,6 @@ pub(super) fn guard_boundary_findings(
             )?;
             findings.files.push(projected.id().clone());
             current.push(projected);
-        }
-    }
-    for status in &audit.hook_path_safety_statuses {
-        if let Some(diagnostic) = GuardDiagnostic::from_hook_wrapper_status(*status) {
-            for installation_id in installation_ids {
-                let subject = GuardInstallationSubject::for_connection(
-                    &connection.connection_internal_id,
-                    installation_id,
-                )
-                .map_err(ConnectionCommandError::runtime)?;
-                let projected = current_connection_finding(
-                    connection,
-                    OperationalDiagnostic::Guard(diagnostic),
-                    &subject,
-                    &GuardInstallationFacts::from_hook_wrapper_status(*status),
-                    OperationalCheckState::Failed,
-                    observed_at.clone(),
-                )?;
-                findings.files.push(projected.id().clone());
-                current.push(projected);
-            }
         }
     }
     if guard_files_failed && findings.files.is_empty() {
@@ -588,6 +570,7 @@ pub(super) fn guard_boundary_findings(
 pub(super) fn guard_artifact_issue_name(issue: GuardArtifactIssue) -> &'static str {
     match issue {
         GuardArtifactIssue::Missing => "missing",
+        GuardArtifactIssue::Unavailable => "unavailable",
         GuardArtifactIssue::Malformed => "malformed",
         GuardArtifactIssue::ContentMismatch => "content_mismatch",
         GuardArtifactIssue::OwnershipMismatch => "ownership_mismatch",

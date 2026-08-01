@@ -362,6 +362,13 @@ Durable tests should cover, as applicable:
   hook observations, older-event exclusion, distinct absence/malformed/unknown-
   callable/correlation-mismatch acquisition stages, non-probe same-server tool
   exclusion from verification, and bounded payload-free callable evidence;
+- exact current Codex hook configuration, Git-root dispatch, every required
+  phase wrapper, owner and managed-command bindings, policy hash, host output,
+  hashes, and permissions as the positive basis for the typed Hook path-safety
+  assessment; distinct verified, failed, not-recorded, not-checked, and
+  not-applicable dimensions; exact failure reasons for policy, owner, and root-
+  resolution violations; bounded deterministic evidence; failed and incomplete
+  phase aggregation; and input-order-independent JSON;
 - exact `HookActivationState` evidence precedence including unknown, setup
   review, current-definition observation, policy management, invocation bypass,
   and explicit disabled states, with no synthetic trusted state;
@@ -554,6 +561,14 @@ required-over-recommended urgency, deterministic priority and code ordering,
 conflict rejection, strict required/recommended partitioning, one primary
 action across JSON and human projections, warning-without-action wording, and
 no Store or Product Repository mutation during rendering.
+
+The Doctor binary fixture initializes the canonical current artifacts once,
+then invokes compact, verbose, and JSON Doctor modes without rerunning setup.
+It requires a passed `guard_files` check only with a verified path-safety
+assessment, one strict state object with no parallel fields, explicit verbose
+semantic labels, no successful compact detail, and unchanged Registry, project
+and diagnostics Stores, managed configuration, installation profile, Hook
+files, and Product Repository bytes and modification times.
 
 Connection-list lifecycle coverage compares each available membership with
 selected status at setup, managed-session, and complete stages; retains current

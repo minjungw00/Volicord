@@ -314,6 +314,11 @@ matrix를 정합니다.
   무효화, 현재 소유권의 hook 관찰, 이전 event 제외, 서로 다른 부재/malformed/unknown
   callable/상관관계 불일치 acquisition stage, 검증에서 same-server non-probe tool 제외,
   payload 없이 한도가 있는 callable evidence
+- typed Hook 경로 안전성 평가의 긍정 근거가 되는 정확한 현재 Codex hook 구성, Git root
+  기반 dispatch, 모든 필수 phase wrapper, owner 및 managed-command binding, policy hash,
+  host output, hash, permission, verified·failed·not-recorded·not-checked·not-applicable 차원의
+  구분, policy·owner·root-resolution 위반의 정확한 실패 reason, 한도가 있고 결정적인 근거,
+  실패 및 불완전 phase 집계, 입력 순서와 무관한 JSON
 - Unknown, setup review, 현재 definition 관찰, policy 관리, 호출별 bypass, 명시적
   disabled를 포함한 정확한 `HookActivationState` 근거 우선순위와 합성 trusted 상태 부재
 - `project_trust`를 독립적으로 유지하면서 configured, reload, hook review/unknown,
@@ -471,6 +476,13 @@ required-over-recommended urgency, 결정적인 priority 및 code ordering, 충�
 required/recommended의 엄격한 분할, JSON과 사람용 projection 전체의 primary action 하나,
 action 없는 warning의 정확한 문구, 렌더링 중 Store 또는 Product Repository mutation이
 없음을 검증합니다.
+
+Doctor binary fixture는 정규 현재 artifact를 한 번 초기화한 다음 setup을 다시 실행하지
+않고 compact, verbose, JSON Doctor mode를 호출합니다. 검증된 경로 안전성 평가가 있을 때만
+`guard_files` check가 통과하는지, 병렬 field가 없는 엄격한 state object 하나, verbose의
+명시적 의미 label, compact에서 성공 detail의 부재를 요구합니다. 또한 Registry, project 및
+diagnostics Store, 관리 구성, installation profile, Hook 파일, Product Repository의 bytes와
+modification time이 바뀌지 않았는지 확인합니다.
 
 Connection-list lifecycle coverage는 setup, managed-session, complete 단계에서 사용 가능한
 각 membership을 선택한 status와 비교하고, 영속 활성 검증이 `action_required`인 채여도

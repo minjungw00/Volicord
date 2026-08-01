@@ -591,6 +591,28 @@ bounded project-policy audit reports `scan_state: complete` or
 `scan_state: bounded_incomplete`; a bounded-incomplete audit is a warning and
 can never be reported as passed even when its inspected page has no finding.
 
+The `guard_files` check details and `states.hook_path_safety` project one
+`hook_path_safety` assessment with `state`, `cwd_independence`,
+`subdirectory_safety`, and bounded typed `evidence`. Each state is exactly
+`verified`, `failed`, `not_recorded`, `not_checked`, or `not_applicable`.
+`verified` requires the current strict Guard manifest and owner binding, every
+required phase, the exact current Codex hook command, dispatch script and phase
+wrappers, current managed-command bindings, hashes, host output, and required
+permissions. `failed` names a current contract violation. `not_recorded` means
+the applicable evidence neither established nor disproved the property;
+`not_checked` means the audit did not run or an owning Store or artifact
+boundary was unavailable. Absence of evidence is not a negative result.
+
+`guard_files` passes only when its current managed-file requirements and Hook
+path-safety assessment are verified. A failed assessment remains a failed
+check with the registered repair action. `not_recorded` or `not_checked`
+produces a warning rather than an affirmative safety failure. Verbose output
+labels Hook path safety, command CWD independence, and command subdirectory
+safety with those semantic state names and includes bounded reason details;
+compact output adds no successful assessment detail. This audit is read-only:
+Doctor does not update a Store, managed configuration, Hook file, or Product
+Repository while collecting it.
+
 `volicord doctor --json` also returns `findings` in the shared
 `DiagnosticFinding` shape. Its Registry inspection does not project arbitrary
 SQLite messages. SQLite result codes, inspection state, and bounded categorical

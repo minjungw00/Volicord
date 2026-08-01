@@ -19,6 +19,7 @@ use volicord_types::tool_names::{AgentToolId, ToolVerificationRole};
 use volicord_types::values::UtcTimestamp;
 
 use super::{HostExecutableStatus, Verification};
+use crate::guard_integration::audit::HookPathSafetyAssessment;
 use crate::host_integration::verification::HostExecutableProbe;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +60,7 @@ pub(super) struct AmbientGuardCoverageEvidence {
     affected_paths: Vec<String>,
     artifact_issues: Vec<Value>,
     manifest_issues: Vec<&'static str>,
+    hook_path_safety: HookPathSafetyAssessment,
     configured_missing_phases: Vec<String>,
     required_phases: Vec<String>,
     observed_phases: Vec<String>,
@@ -85,6 +87,7 @@ impl AmbientGuardCoverageEvidence {
         affected_paths: Vec<String>,
         artifact_issues: Vec<Value>,
         manifest_issues: Vec<&'static str>,
+        hook_path_safety: HookPathSafetyAssessment,
         configured_missing_phases: Vec<String>,
         required_phases: Vec<String>,
         observed_phases: Vec<String>,
@@ -100,6 +103,7 @@ impl AmbientGuardCoverageEvidence {
             affected_paths,
             artifact_issues,
             manifest_issues,
+            hook_path_safety,
             configured_missing_phases,
             required_phases,
             observed_phases,

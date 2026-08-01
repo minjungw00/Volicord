@@ -15,7 +15,7 @@ use crate::{
     guard_integration::{
         audit::HOOK_WRAPPER_MARKER,
         files::{plan_managed_script_file, GeneratedFilePlan},
-        public_host_label, GuardIntegrationError, HookWrapperResolutionStatus,
+        public_host_label, GuardIntegrationError,
     },
     host_integration::{HostKind, MANAGED_WRAPPER_ENV, MANAGED_WRAPPER_VALUE},
 };
@@ -28,14 +28,7 @@ pub(crate) struct HostHookCommand {
     pub(crate) phase: GuardHookPhase,
     pub(crate) purpose: HostHookPurpose,
     pub(crate) generated_command_shape: HostHookCommandShape,
-    pub(crate) expected_wrapper_path: PathBuf,
-    pub(crate) expected_phase_wrapper_path: PathBuf,
-    pub(crate) root_resolution_basis: HookRootResolutionBasis,
-    pub(crate) hook_command_path_basis: HookCommandPathBasis,
-    pub(crate) cwd_independent: bool,
-    pub(crate) subdirectory_safe: bool,
-    pub(crate) wrapper_resolution_status: HookWrapperResolutionStatus,
-    pub(crate) verification: HostHookCommandVerification,
+    pub(crate) path_safety_contract: HostHookPathSafetyContract,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,10 +62,17 @@ pub(crate) enum HookCommandPathBasis {
     GitRootRuntime,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HostHookCommandVerification {
-    pub(crate) basis_verified_by: String,
-    pub(crate) host_contract_source: String,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostHookPathSafetyContract {
+    pub(crate) root_resolution_basis: HookRootResolutionBasis,
+    pub(crate) command_path_basis: HookCommandPathBasis,
+}
+
+impl HostHookPathSafetyContract {
+    pub(crate) const CODEX_GIT_ROOT_RUNTIME: Self = Self {
+        root_resolution_basis: HookRootResolutionBasis::GitWorkTree,
+        command_path_basis: HookCommandPathBasis::GitRootRuntime,
+    };
 }
 
 pub(crate) fn plan_hook_wrapper_files(
@@ -169,12 +169,10 @@ pub(crate) fn host_hook_command_spec(
     phase: GuardHookPhase,
     purpose: HostHookPurpose,
 ) -> Result<HostHookCommand, GuardIntegrationError> {
-    let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
+    let _ = hook_wrapper_relative_path(host_kind, phase)?;
     match host_kind {
         HostKind::Codex => {
-            let dispatch_relative = codex_dispatch_wrapper_relative_path();
-            let expected_phase_wrapper_path = repo_root.join(&relative_path);
-            let expected_wrapper_path = repo_root.join(&dispatch_relative);
+            let _ = repo_root;
             let script = codex_guard_hook_script(phase);
             Ok(HostHookCommand {
                 host_kind,
@@ -184,17 +182,7 @@ pub(crate) fn host_hook_command_spec(
                     command_text: format!("sh -c {}", shell_word(&script)),
                     argv: vec!["sh".to_owned(), "-c".to_owned(), script],
                 },
-                expected_wrapper_path,
-                expected_phase_wrapper_path,
-                root_resolution_basis: HookRootResolutionBasis::GitWorkTree,
-                hook_command_path_basis: HookCommandPathBasis::GitRootRuntime,
-                cwd_independent: true,
-                subdirectory_safe: true,
-                wrapper_resolution_status: HookWrapperResolutionStatus::Ok,
-                verification: HostHookCommandVerification {
-                    basis_verified_by: "repo_root_git_marker".to_owned(),
-                    host_contract_source: "codex_hook_command_string".to_owned(),
-                },
+                path_safety_contract: HostHookPathSafetyContract::CODEX_GIT_ROOT_RUNTIME,
             })
         }
     }
@@ -349,7 +337,7 @@ fn hook_wrapper_script_content(
     )
 }
 
-fn codex_dispatch_wrapper_script_content() -> String {
+pub(crate) fn codex_dispatch_wrapper_script_content() -> String {
     format!(
         concat!(
             "#!/bin/sh\n",

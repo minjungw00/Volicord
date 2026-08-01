@@ -579,6 +579,25 @@ doctor가 기본 policy를 대신 넣거나 어느 authority 복사본도 다시
 `scan_state: bounded_incomplete`를 보고합니다. 점검한 page에 finding이 없어도 제한 때문에
 감사를 완료하지 못했으면 warning이며 통과로 보고할 수 없습니다.
 
+`guard_files` check의 details와 `states.hook_path_safety`는 `state`,
+`cwd_independence`, `subdirectory_safety`, 한도가 있는 typed `evidence`로 구성된
+`hook_path_safety` 평가 하나를 projection합니다. 각 상태는 정확히 `verified`, `failed`,
+`not_recorded`, `not_checked`, `not_applicable` 중 하나입니다. `verified`가 되려면 현재의
+엄격한 Guard manifest와 owner binding, 모든 필수 phase, 정확한 현재 Codex hook 명령,
+dispatch script와 phase wrapper, 현재 managed-command binding, hash, host output, 필수
+permission을 모두 검증해야 합니다. `failed`는 현재 계약 위반을 명시합니다.
+`not_recorded`는 적용 가능한 근거로 해당 속성을 성립시키지도 반증하지도 못했다는 뜻이고,
+`not_checked`는 감사를 실행하지 않았거나 담당 Store 또는 artifact 경계를 사용할 수
+없었다는 뜻입니다. 근거 부재는 부정 결과가 아닙니다.
+
+`guard_files`는 현재 관리 파일 요구사항과 Hook 경로 안전성 평가가 검증된 경우에만
+통과합니다. 실패한 평가는 등록된 복구 동작이 있는 failed check로 유지합니다.
+`not_recorded` 또는 `not_checked`는 안전성 실패를 단정하지 않고 warning을 만듭니다.
+Verbose 출력은 Hook 경로 안전성, 명령의 CWD 독립성, 명령의 하위 디렉터리 안전성에 이
+의미 상태 이름을 붙이고 한도가 있는 reason detail을 포함합니다. Compact 출력은 성공한
+평가 detail을 추가하지 않습니다. 이 감사에는 쓰기 효과가 없습니다. Doctor는 수집 중에
+Store, 관리 구성, Hook 파일, Product Repository를 갱신하지 않습니다.
+
 `volicord doctor --json`은 공유 `DiagnosticFinding` 형태의 `findings`도 반환합니다.
 Registry 조사에서는 임의의 SQLite 메시지를 projection하지 않습니다. SQLite 결과 code,
 조사 상태, 한도가 있는 범주형 사실로 finding을 선택하며 산문은 표시 맥락으로만 남습니다.

@@ -11,7 +11,7 @@ pub(crate) mod plan;
 pub(crate) mod policy;
 
 pub(crate) use apply::apply_guard_integration;
-pub(crate) use audit::{HookWrapperResolutionStatus, HOOK_WRAPPER_MARKER};
+pub(crate) use audit::HOOK_WRAPPER_MARKER;
 pub(crate) use files::FilePlanStatus;
 pub(crate) use manifest::{guard_installation_upsert, record_guard_installation};
 pub(crate) use plan::{plan_guard_integration, GuardIntegrationPlan, GuardIntegrationPlanRequest};

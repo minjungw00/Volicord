@@ -145,7 +145,13 @@ typed priority, code 순서로 정렬하고 semantic summary 또는 exact comman
 recommended action projection과 전체 check detail, finding, build provenance,
 disclosure까지 확장합니다. JSON은 같은 plan을 전체 collection, 서로 겹치지 않는 분할,
 primary projection으로 직렬화합니다. 어떤 renderer도 check, finding, 산문에서 action을
-다시 구성하지 않습니다. 개인정보 footprint 분기는 정규 typed 정의에서 report 하나를
+다시 구성하지 않습니다. Guard-file 수집은 typed Hook 경로 안전성 평가 하나를 Doctor check details와
+state projection에 제공합니다. 수집 계층은 현재의 정확한 owner-bound Codex Hook 계약을
+감사하고 한도가 있는 근거를 집계합니다. JSON과 verbose renderer는 그 평가의 `verified`,
+`failed`, `not_recorded`, `not_checked`, `not_applicable` 차원만 표시합니다. Compact 출력은
+성공한 평가를 생략하며 근거 부재를 부정 label로 바꾸지 않습니다. 같은 수집 과정은
+Registry, project 및 diagnostics Store, 관리 구성, Hook 파일, Product Repository 전체에서
+읽기 전용으로 유지됩니다. 개인정보 footprint 분기는 정규 typed 정의에서 report 하나를
 구성합니다. 폐쇄형 주장 식별자가 `stores`, `does_not_store`, `does_not_prove` 중 정확히
 하나를 선택하고 범주 안의 순서를 결정하며, 별도 `doctor_output_scope` 스칼라가 출력
 범위를 담당합니다. 사람용 section과 bullet, JSON의 범주 및 개수 projection은 그 report를

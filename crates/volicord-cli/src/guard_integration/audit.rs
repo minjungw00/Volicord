@@ -4,7 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_json::{json, Value};
+use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
@@ -34,35 +35,323 @@ use crate::host_integration::{
 
 use super::{
     git_exclude::git_exclude_path,
+    hooks::{codex_dispatch_wrapper_script_content, codex_guard_hook_script, shell_word},
     policy::{required_guard_phase_names, validate_policy_schema, validate_workflow_policy},
 };
 
 pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum HookWrapperResolutionStatus {
-    MetadataMissing,
-    AuthorityMismatch,
-    PolicyHashMismatch,
-    HostOutputMismatch,
-    Ok,
+const MAX_HOOK_PATH_SAFETY_EVIDENCE: usize = 16;
+const MAX_HOOK_PATH_SAFETY_EVIDENCE_TEXT_CHARS: usize = 256;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HookPathSafetyState {
+    Verified,
+    Failed,
+    NotRecorded,
+    NotChecked,
+    NotApplicable,
 }
 
-impl HookWrapperResolutionStatus {
-    pub(crate) fn as_str(self) -> &'static str {
+impl HookPathSafetyState {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
-            Self::Ok => "ok",
-            Self::PolicyHashMismatch => "policy_hash_mismatch",
-            Self::HostOutputMismatch => "host_output_mismatch",
-            Self::AuthorityMismatch => "authority_mismatch",
-            Self::MetadataMissing => "metadata_missing",
+            Self::Verified => "verified",
+            Self::Failed => "failed",
+            Self::NotRecorded => "not_recorded",
+            Self::NotChecked => "not_checked",
+            Self::NotApplicable => "not_applicable",
         }
     }
+
+    fn aggregate(left: Self, right: Self) -> Self {
+        let states = [left, right];
+        if states.contains(&Self::Failed) {
+            Self::Failed
+        } else if states.contains(&Self::NotRecorded) {
+            Self::NotRecorded
+        } else if states.contains(&Self::NotChecked) {
+            Self::NotChecked
+        } else if states.contains(&Self::Verified) {
+            Self::Verified
+        } else {
+            Self::NotApplicable
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HookPathSafetyEvidenceSource {
+    GuardManifest,
+    ProjectPolicy,
+    HostHookConfig,
+    HostHookDispatch,
+    HostHookWrapper,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HookPathSafetyEvidenceReason {
+    CurrentContractVerified,
+    ManifestMalformed,
+    OwnerBindingMismatch,
+    RequiredPhaseMissing,
+    RequiredArtifactMissing,
+    ArtifactUnavailable,
+    ArtifactMissing,
+    ArtifactMalformed,
+    ContentMismatch,
+    ManagedCommandBindingMismatch,
+    PermissionMismatch,
+    NoncanonicalHookCommand,
+    NoncanonicalRootResolution,
+    NoncanonicalManagedCommand,
+    PolicyHashMismatch,
+    HostOutputMismatch,
+    AuditNotRun,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub(crate) struct HookPathSafetyEvidence {
+    state: HookPathSafetyState,
+    source: HookPathSafetyEvidenceSource,
+    reason: HookPathSafetyEvidenceReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    installation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phase: Option<GuardHookPhase>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct HookPathSafetyAssessment {
+    pub(crate) state: HookPathSafetyState,
+    pub(crate) cwd_independence: HookPathSafetyState,
+    pub(crate) subdirectory_safety: HookPathSafetyState,
+    pub(crate) evidence: Vec<HookPathSafetyEvidence>,
+    #[serde(skip)]
+    assessment_count: usize,
+    #[serde(skip)]
+    installation_id: Option<String>,
+}
+
+impl Default for HookPathSafetyAssessment {
+    fn default() -> Self {
+        Self {
+            state: HookPathSafetyState::NotChecked,
+            cwd_independence: HookPathSafetyState::NotChecked,
+            subdirectory_safety: HookPathSafetyState::NotChecked,
+            evidence: Vec::new(),
+            assessment_count: 0,
+            installation_id: None,
+        }
+    }
+}
+
+impl HookPathSafetyAssessment {
+    pub(crate) fn not_checked() -> Self {
+        Self::from_state(
+            HookPathSafetyState::NotChecked,
+            HookPathSafetyEvidenceReason::AuditNotRun,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_state(state: HookPathSafetyState) -> Self {
+        Self {
+            state,
+            cwd_independence: state,
+            subdirectory_safety: state,
+            evidence: Vec::new(),
+            assessment_count: 1,
+            installation_id: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_failed(reason: HookPathSafetyEvidenceReason) -> Self {
+        Self::from_state(HookPathSafetyState::Failed, reason)
+    }
+
+    fn from_state(state: HookPathSafetyState, reason: HookPathSafetyEvidenceReason) -> Self {
+        Self {
+            state,
+            cwd_independence: state,
+            subdirectory_safety: state,
+            evidence: vec![HookPathSafetyEvidence {
+                state,
+                source: HookPathSafetyEvidenceSource::GuardManifest,
+                reason,
+                installation_id: None,
+                phase: None,
+                path: None,
+            }],
+            assessment_count: 1,
+            installation_id: None,
+        }
+    }
+
+    fn mark_applicable(&mut self, installation_id: Option<&str>) {
+        self.state = HookPathSafetyState::NotRecorded;
+        self.cwd_independence = HookPathSafetyState::NotRecorded;
+        self.subdirectory_safety = HookPathSafetyState::NotRecorded;
+        self.assessment_count = 1;
+        self.installation_id = installation_id.map(bounded_hook_path_evidence_text);
+    }
+
+    fn record(
+        &mut self,
+        state: HookPathSafetyState,
+        source: HookPathSafetyEvidenceSource,
+        reason: HookPathSafetyEvidenceReason,
+        phase: Option<GuardHookPhase>,
+        path: Option<&Path>,
+    ) {
+        match state {
+            HookPathSafetyState::Failed => {
+                self.state = HookPathSafetyState::Failed;
+                self.cwd_independence = HookPathSafetyState::Failed;
+                self.subdirectory_safety = HookPathSafetyState::Failed;
+            }
+            HookPathSafetyState::NotChecked if self.state != HookPathSafetyState::Failed => {
+                self.state = HookPathSafetyState::NotChecked;
+                self.cwd_independence = HookPathSafetyState::NotChecked;
+                self.subdirectory_safety = HookPathSafetyState::NotChecked;
+            }
+            HookPathSafetyState::Verified
+            | HookPathSafetyState::NotRecorded
+            | HookPathSafetyState::NotApplicable
+            | HookPathSafetyState::NotChecked => {}
+        }
+        self.evidence.push(HookPathSafetyEvidence {
+            state,
+            source,
+            reason,
+            installation_id: self.installation_id.clone(),
+            phase,
+            path: path.map(|path| bounded_hook_path_evidence_text(&path.display().to_string())),
+        });
+    }
+
+    fn mark_verified(&mut self, manifest: &volicord_types::guard_manifest::GuardManifest) {
+        if matches!(
+            self.state,
+            HookPathSafetyState::Failed | HookPathSafetyState::NotChecked
+        ) {
+            return;
+        }
+        self.state = HookPathSafetyState::Verified;
+        self.cwd_independence = HookPathSafetyState::Verified;
+        self.subdirectory_safety = HookPathSafetyState::Verified;
+        for (artifact, source) in [
+            (
+                GuardManagedArtifact::VolicordPolicy,
+                HookPathSafetyEvidenceSource::ProjectPolicy,
+            ),
+            (
+                GuardManagedArtifact::HostHookConfig,
+                HookPathSafetyEvidenceSource::HostHookConfig,
+            ),
+            (
+                GuardManagedArtifact::HostHookDispatch,
+                HookPathSafetyEvidenceSource::HostHookDispatch,
+            ),
+        ] {
+            let path = manifest
+                .managed_files
+                .iter()
+                .find(|file| file.artifact() == artifact)
+                .map(ManagedFileExpectation::path);
+            self.record(
+                HookPathSafetyState::Verified,
+                source,
+                HookPathSafetyEvidenceReason::CurrentContractVerified,
+                None,
+                path,
+            );
+        }
+        for phase in GuardHookPhase::REQUIRED {
+            let path = manifest
+                .managed_files
+                .iter()
+                .find(|file| file.artifact() == GuardManagedArtifact::HostHookWrapper(phase))
+                .map(ManagedFileExpectation::path);
+            self.record(
+                HookPathSafetyState::Verified,
+                HookPathSafetyEvidenceSource::HostHookWrapper,
+                HookPathSafetyEvidenceReason::CurrentContractVerified,
+                Some(phase),
+                path,
+            );
+        }
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) {
+        if other.assessment_count == 0 {
+            return;
+        }
+        if self.assessment_count == 0 {
+            *self = other;
+            return;
+        }
+        self.state = HookPathSafetyState::aggregate(self.state, other.state);
+        self.cwd_independence =
+            HookPathSafetyState::aggregate(self.cwd_independence, other.cwd_independence);
+        self.subdirectory_safety =
+            HookPathSafetyState::aggregate(self.subdirectory_safety, other.subdirectory_safety);
+        self.assessment_count += other.assessment_count;
+        self.evidence.extend(other.evidence);
+        self.canonicalize();
+    }
+
+    fn canonicalize(&mut self) {
+        self.evidence.sort_by(|left, right| {
+            (
+                hook_path_evidence_state_rank(left.state),
+                left.source,
+                left.reason,
+                &left.installation_id,
+                left.phase,
+                &left.path,
+            )
+                .cmp(&(
+                    hook_path_evidence_state_rank(right.state),
+                    right.source,
+                    right.reason,
+                    &right.installation_id,
+                    right.phase,
+                    &right.path,
+                ))
+        });
+        self.evidence.dedup();
+        self.evidence.truncate(MAX_HOOK_PATH_SAFETY_EVIDENCE);
+    }
+}
+
+fn hook_path_evidence_state_rank(state: HookPathSafetyState) -> u8 {
+    match state {
+        HookPathSafetyState::Failed => 0,
+        HookPathSafetyState::NotRecorded => 1,
+        HookPathSafetyState::NotChecked => 2,
+        HookPathSafetyState::NotApplicable => 3,
+        HookPathSafetyState::Verified => 4,
+    }
+}
+
+fn bounded_hook_path_evidence_text(value: &str) -> String {
+    value
+        .chars()
+        .take(MAX_HOOK_PATH_SAFETY_EVIDENCE_TEXT_CHARS)
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum GuardArtifactIssue {
     Missing,
+    Unavailable,
     Malformed,
     ContentMismatch,
     OwnershipMismatch,
@@ -92,10 +381,7 @@ pub(crate) struct GuardAuditFacts {
     pub(crate) guard_profiles: Vec<IntegrationProfile>,
     pub(crate) direct_file_write_matcher_coverage_values: Vec<bool>,
     pub(crate) missing_required_phases: Vec<GuardHookPhase>,
-    pub(crate) hook_path_safety_statuses: Vec<HookWrapperResolutionStatus>,
-    pub(crate) hook_path_safety_details: Vec<Value>,
-    pub(crate) hook_cwd_independent_values: Vec<bool>,
-    pub(crate) hook_subdirectory_safe_values: Vec<bool>,
+    pub(crate) hook_path_safety: HookPathSafetyAssessment,
     pub(crate) prompt_capture_configured: bool,
     pub(crate) prompt_capture_host_supported: bool,
     pub(crate) rule_file_supported: bool,
@@ -111,14 +397,7 @@ impl GuardAuditFacts {
             .extend(other.direct_file_write_matcher_coverage_values);
         self.missing_required_phases
             .extend(other.missing_required_phases);
-        self.hook_path_safety_statuses
-            .extend(other.hook_path_safety_statuses);
-        self.hook_path_safety_details
-            .extend(other.hook_path_safety_details);
-        self.hook_cwd_independent_values
-            .extend(other.hook_cwd_independent_values);
-        self.hook_subdirectory_safe_values
-            .extend(other.hook_subdirectory_safe_values);
+        self.hook_path_safety.merge(other.hook_path_safety);
         self.prompt_capture_configured |= other.prompt_capture_configured;
         self.prompt_capture_host_supported |= other.prompt_capture_host_supported;
         self.rule_file_supported |= other.rule_file_supported;
@@ -141,8 +420,7 @@ impl GuardAuditFacts {
         self.guard_profiles.dedup();
         self.missing_required_phases.sort();
         self.missing_required_phases.dedup();
-        self.hook_path_safety_statuses.sort();
-        self.hook_path_safety_statuses.dedup();
+        self.hook_path_safety.canonicalize();
     }
 
     fn record_finding(
@@ -151,15 +429,43 @@ impl GuardAuditFacts {
         path: impl Into<PathBuf>,
         issue: GuardArtifactIssue,
     ) {
+        let path = path.into();
+        if let Some(source) = hook_path_safety_source(artifact) {
+            let state = if issue == GuardArtifactIssue::Unavailable {
+                HookPathSafetyState::NotChecked
+            } else {
+                HookPathSafetyState::Failed
+            };
+            self.hook_path_safety.record(
+                state,
+                source,
+                hook_path_safety_reason(artifact, issue),
+                hook_path_safety_phase(artifact),
+                Some(&path),
+            );
+        }
         self.findings.push(GuardArtifactFinding {
             artifact,
-            path: path.into(),
+            path,
             issue,
             details: None,
         });
     }
 
     fn record_manifest_issue(&mut self, issue: GuardManifestIssue) {
+        let reason = match issue {
+            GuardManifestIssue::Malformed => HookPathSafetyEvidenceReason::ManifestMalformed,
+            GuardManifestIssue::OwnershipMismatch => {
+                HookPathSafetyEvidenceReason::OwnerBindingMismatch
+            }
+        };
+        self.hook_path_safety.record(
+            HookPathSafetyState::Failed,
+            HookPathSafetyEvidenceSource::GuardManifest,
+            reason,
+            None,
+            None,
+        );
         self.manifest_issues.push(issue);
     }
 
@@ -191,15 +497,6 @@ impl GuardAuditFacts {
             .collect()
     }
 
-    fn record_hook_path_status(&mut self, status: HookWrapperResolutionStatus, detail: Value) {
-        self.hook_path_safety_statuses.push(status);
-        self.hook_path_safety_details.push(detail);
-        self.hook_cwd_independent_values
-            .push(status == HookWrapperResolutionStatus::Ok);
-        self.hook_subdirectory_safe_values
-            .push(status == HookWrapperResolutionStatus::Ok);
-    }
-
     pub(crate) fn generated_config_verified(&self) -> bool {
         self.findings.is_empty()
             && self.manifest_issues.is_empty()
@@ -209,26 +506,60 @@ impl GuardAuditFacts {
                 .all(|spec| self.audited_artifacts.contains(&spec.artifact))
     }
 
-    pub(crate) fn hook_path_safety_state(&self) -> String {
-        self.hook_path_safety_statuses
-            .iter()
-            .filter(|status| **status != HookWrapperResolutionStatus::Ok)
-            .min()
-            .copied()
-            .map(HookWrapperResolutionStatus::as_str)
-            .map(str::to_owned)
-            .unwrap_or_else(|| {
-                if self.hook_path_safety_statuses.is_empty() {
-                    "not_recorded".to_owned()
-                } else {
-                    HookWrapperResolutionStatus::Ok.as_str().to_owned()
-                }
-            })
-    }
-
     pub(crate) fn direct_file_write_matcher_coverage(&self) -> bool {
         self.generated_config_verified()
             && all_recorded_values_true(&self.direct_file_write_matcher_coverage_values)
+    }
+}
+
+fn hook_path_safety_source(artifact: GuardManagedArtifact) -> Option<HookPathSafetyEvidenceSource> {
+    match artifact {
+        GuardManagedArtifact::VolicordPolicy => Some(HookPathSafetyEvidenceSource::ProjectPolicy),
+        GuardManagedArtifact::HostHookConfig => Some(HookPathSafetyEvidenceSource::HostHookConfig),
+        GuardManagedArtifact::HostHookDispatch => {
+            Some(HookPathSafetyEvidenceSource::HostHookDispatch)
+        }
+        GuardManagedArtifact::HostHookWrapper(_) => {
+            Some(HookPathSafetyEvidenceSource::HostHookWrapper)
+        }
+        GuardManagedArtifact::GitInfoExclude
+        | GuardManagedArtifact::HostRuleInstruction
+        | GuardManagedArtifact::AgentsManagedBlock => None,
+    }
+}
+
+fn hook_path_safety_phase(artifact: GuardManagedArtifact) -> Option<GuardHookPhase> {
+    match artifact {
+        GuardManagedArtifact::HostHookWrapper(phase) => Some(phase),
+        _ => None,
+    }
+}
+
+fn hook_path_safety_reason(
+    artifact: GuardManagedArtifact,
+    issue: GuardArtifactIssue,
+) -> HookPathSafetyEvidenceReason {
+    match issue {
+        GuardArtifactIssue::Missing => HookPathSafetyEvidenceReason::ArtifactMissing,
+        GuardArtifactIssue::Unavailable => HookPathSafetyEvidenceReason::ArtifactUnavailable,
+        GuardArtifactIssue::Malformed => HookPathSafetyEvidenceReason::ArtifactMalformed,
+        GuardArtifactIssue::ContentMismatch => HookPathSafetyEvidenceReason::ContentMismatch,
+        GuardArtifactIssue::OwnershipMismatch => {
+            HookPathSafetyEvidenceReason::ManagedCommandBindingMismatch
+        }
+        GuardArtifactIssue::PermissionMismatch => HookPathSafetyEvidenceReason::PermissionMismatch,
+        GuardArtifactIssue::HookContractMismatch => match artifact {
+            GuardManagedArtifact::HostHookConfig => {
+                HookPathSafetyEvidenceReason::NoncanonicalHookCommand
+            }
+            GuardManagedArtifact::HostHookDispatch => {
+                HookPathSafetyEvidenceReason::NoncanonicalRootResolution
+            }
+            GuardManagedArtifact::HostHookWrapper(_) => {
+                HookPathSafetyEvidenceReason::NoncanonicalManagedCommand
+            }
+            _ => HookPathSafetyEvidenceReason::NoncanonicalManagedCommand,
+        },
     }
 }
 
@@ -298,13 +629,13 @@ fn audit_authoritative_project_policy(
         .expect("the Guard policy has a repository-owned path");
     let issue = (|| {
         let store = CoreProjectStore::open_read_only(runtime_home, &ProjectId::new(project_id))
-            .map_err(|_| GuardArtifactIssue::OwnershipMismatch)?;
+            .map_err(|_| GuardArtifactIssue::Unavailable)?;
         let authority = store
             .project_workflow_policy()
-            .map_err(|_| GuardArtifactIssue::OwnershipMismatch)?
+            .map_err(|_| GuardArtifactIssue::Unavailable)?
             .ok_or(GuardArtifactIssue::OwnershipMismatch)?;
         let text = super::files::read_managed_text(repo_root, &path)
-            .map_err(|_| GuardArtifactIssue::Malformed)?
+            .map_err(|_| GuardArtifactIssue::Unavailable)?
             .ok_or(GuardArtifactIssue::Missing)?;
         let policy =
             serde_json::from_str::<Value>(&text).map_err(|_| GuardArtifactIssue::Malformed)?;
@@ -450,6 +781,7 @@ fn inspection_connection_revision(
 
 fn broken_manifest_findings() -> GuardAuditFacts {
     let mut findings = GuardAuditFacts::default();
+    findings.hook_path_safety.mark_applicable(None);
     findings.record_manifest_issue(GuardManifestIssue::OwnershipMismatch);
     findings
 }
@@ -471,26 +803,17 @@ fn guard_file_findings_with_context(
     context: Option<GuardAuthorityContext<'_>>,
 ) -> GuardAuditFacts {
     let mut findings = GuardAuditFacts::default();
+    findings.hook_path_safety.mark_applicable(None);
     let Ok(manifest) = guard_manifest_from_json(manifest_json) else {
         findings.record_manifest_issue(GuardManifestIssue::Malformed);
-        findings.record_hook_path_status(
-            HookWrapperResolutionStatus::MetadataMissing,
-            json!({ "source": "manifest_json" }),
-        );
         return findings;
     };
+    findings
+        .hook_path_safety
+        .mark_applicable(Some(manifest.guard_installation_id.as_str()));
     let value = serde_json::to_value(&manifest).expect("typed Guard manifest serializes");
     if context.is_some_and(|context| !guard_manifest_matches_authority_context(&value, context)) {
         findings.record_manifest_issue(GuardManifestIssue::OwnershipMismatch);
-        findings
-            .hook_path_safety_statuses
-            .push(HookWrapperResolutionStatus::AuthorityMismatch);
-        findings.hook_path_safety_details.push(json!({
-            "source": "manifest_json",
-            "reason": "owner_binding_mismatch",
-        }));
-        findings.hook_cwd_independent_values.push(false);
-        findings.hook_subdirectory_safe_values.push(false);
         return findings;
     }
     findings.prompt_capture_configured = manifest
@@ -505,12 +828,50 @@ fn guard_file_findings_with_context(
         .direct_file_write_matcher_coverage_values
         .push(true);
     findings.missing_required_phases = missing_required_phases_from_manifest(&manifest);
+    for phase in findings.missing_required_phases.iter().copied() {
+        findings.hook_path_safety.record(
+            HookPathSafetyState::Failed,
+            HookPathSafetyEvidenceSource::GuardManifest,
+            HookPathSafetyEvidenceReason::RequiredPhaseMissing,
+            Some(phase),
+            None,
+        );
+    }
 
     for expectation in &manifest.managed_files {
         findings.audited_artifacts.insert(expectation.artifact());
         verify_guard_file(expectation, &manifest, context, &mut findings);
     }
+    for artifact in required_hook_path_safety_artifacts() {
+        if !findings.audited_artifacts.contains(&artifact) {
+            findings.hook_path_safety.record(
+                HookPathSafetyState::Failed,
+                hook_path_safety_source(artifact)
+                    .expect("required Hook path-safety artifacts have a source"),
+                HookPathSafetyEvidenceReason::RequiredArtifactMissing,
+                hook_path_safety_phase(artifact),
+                None,
+            );
+        }
+    }
+    if context.is_some() {
+        findings.hook_path_safety.mark_verified(&manifest);
+    }
     findings
+}
+
+fn required_hook_path_safety_artifacts() -> impl Iterator<Item = GuardManagedArtifact> {
+    [
+        GuardManagedArtifact::VolicordPolicy,
+        GuardManagedArtifact::HostHookConfig,
+        GuardManagedArtifact::HostHookDispatch,
+    ]
+    .into_iter()
+    .chain(
+        GuardHookPhase::REQUIRED
+            .into_iter()
+            .map(GuardManagedArtifact::HostHookWrapper),
+    )
 }
 
 fn missing_required_hooks_from_manifest(
@@ -546,7 +907,7 @@ fn verify_guard_file(
             return;
         }
         Err(_) => {
-            findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
+            findings.record_finding(artifact, path, GuardArtifactIssue::Unavailable);
             return;
         }
     };
@@ -611,20 +972,22 @@ fn verify_managed_json_file(
                 return;
             }
         }
-        let server = context.and_then(|context| {
-            volicord_host_contract::McpServerKey::parse(context.connection_server_name).ok()
-        });
-        let validation_matches = server.as_ref().is_some_and(|server| {
-            validate_contract_config(
-                HostKind::Codex,
-                HostContractConfigKind::HookConfig,
-                text,
-                Some(server),
-            )
-            .is_ok()
-        });
-        if !validation_matches {
-            findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
+        if let Some(context) = context {
+            let validation_matches =
+                volicord_host_contract::McpServerKey::parse(context.connection_server_name)
+                    .ok()
+                    .is_some_and(|server| {
+                        validate_contract_config(
+                            HostKind::Codex,
+                            HostContractConfigKind::HookConfig,
+                            text,
+                            Some(&server),
+                        )
+                        .is_ok()
+                    });
+            if !validation_matches {
+                findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
+            }
         }
         return;
     }
@@ -734,10 +1097,6 @@ fn verify_managed_script_file(
         verify_managed_dispatch_script_file(file, text, findings);
         return;
     }
-    if !has_current_managed_process_binding(text) {
-        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
-        return;
-    }
     let ManagedFileExpectation::HostHookWrapper {
         managed_script_command: expected_command,
         host_kind,
@@ -757,6 +1116,9 @@ fn verify_managed_script_file(
     if hook_wrapper_exec_command(text) != Some(expected_command) {
         findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
     }
+    if !has_exact_current_managed_wrapper_shape(text, file, expected_command) {
+        findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
+    }
     if !generated_managed_command_shape_verified(file, expected_command) {
         findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
     }
@@ -764,16 +1126,22 @@ fn verify_managed_script_file(
         || hook_wrapper_comment_value(text, "policy_hash") != Some(policy_hash.as_str())
     {
         findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
-        findings.record_hook_path_status(
-            HookWrapperResolutionStatus::PolicyHashMismatch,
-            json!({ "path": path.display().to_string(), "expected_policy_hash": policy_hash.as_str() }),
+        findings.hook_path_safety.record(
+            HookPathSafetyState::Failed,
+            HookPathSafetyEvidenceSource::HostHookWrapper,
+            HookPathSafetyEvidenceReason::PolicyHashMismatch,
+            Some(*phase),
+            Some(path),
         );
     }
     if hook_wrapper_comment_value(text, "host_output") != Some(host_output.as_str()) {
         findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
-        findings.record_hook_path_status(
-            HookWrapperResolutionStatus::HostOutputMismatch,
-            json!({ "path": path.display().to_string(), "expected_host_output": host_output.as_str() }),
+        findings.hook_path_safety.record(
+            HookPathSafetyState::Failed,
+            HookPathSafetyEvidenceSource::HostHookWrapper,
+            HookPathSafetyEvidenceReason::HostOutputMismatch,
+            Some(*phase),
+            Some(path),
         );
     }
     let owner_fields = [
@@ -791,9 +1159,12 @@ fn verify_managed_script_file(
     for (key, expected) in owner_fields {
         if hook_wrapper_comment_value(text, key) != Some(expected) {
             findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
-            findings.record_hook_path_status(
-                HookWrapperResolutionStatus::AuthorityMismatch,
-                json!({ "path": path.display().to_string(), "field": key, "expected": expected }),
+            findings.hook_path_safety.record(
+                HookPathSafetyState::Failed,
+                HookPathSafetyEvidenceSource::HostHookWrapper,
+                HookPathSafetyEvidenceReason::ManagedCommandBindingMismatch,
+                Some(*phase),
+                Some(path),
             );
         }
     }
@@ -832,16 +1203,8 @@ fn verify_managed_dispatch_script_file(
         findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
         return;
     }
-    for required in [
-        "git rev-parse --show-toplevel",
-        "pre-tool|post-tool|prompt-capture",
-        ".codex/hooks/volicord-$phase.sh",
-        "exec \"$wrapper\"",
-    ] {
-        if !text.contains(required) {
-            findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
-            return;
-        }
+    if text != codex_dispatch_wrapper_script_content() {
+        findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
     }
     if sha256_text(text) != file.content_hash().as_str() {
         findings.record_finding(artifact, path, GuardArtifactIssue::ContentMismatch);
@@ -901,6 +1264,18 @@ fn is_volicord_codex_hook_group(phase: GuardHookPhase, group: &Value) -> bool {
     let Some(group) = group.as_object() else {
         return false;
     };
+    let expected_keys = if phase == GuardHookPhase::PromptCapture {
+        &["hooks"][..]
+    } else {
+        &["hooks", "matcher"][..]
+    };
+    if group.len() != expected_keys.len()
+        || group
+            .keys()
+            .any(|key| !expected_keys.contains(&key.as_str()))
+    {
+        return false;
+    }
     let Some(handlers) = group.get("hooks").and_then(Value::as_array) else {
         return false;
     };
@@ -914,21 +1289,25 @@ fn is_volicord_codex_hook_handler(phase: GuardHookPhase, handler: &Value) -> boo
     let Some(object) = handler.as_object() else {
         return false;
     };
-    let dispatch_wrapper = GuardManagedArtifact::HostHookDispatch
-        .spec()
-        .repository_relative_path()
-        .expect("the Guard dispatch artifact has a repository-relative path");
-    object.get("type").and_then(Value::as_str) == Some("command")
+    let expected_keys = if phase == GuardHookPhase::PromptCapture {
+        &["command", "timeout", "type"][..]
+    } else {
+        &["command", "statusMessage", "timeout", "type"][..]
+    };
+    let expected_status = match phase {
+        GuardHookPhase::PreTool => Some("Checking Volicord write"),
+        GuardHookPhase::PostTool => Some("Recording Volicord write"),
+        GuardHookPhase::PromptCapture => None,
+    };
+    let expected_command = format!("sh -c {}", shell_word(&codex_guard_hook_script(phase)));
+    object.len() == expected_keys.len()
         && object
-            .get("command")
-            .and_then(Value::as_str)
-            .is_some_and(|command| {
-                command.contains(&format!(
-                    ".codex/hooks/volicord-{}.sh",
-                    phase.command_name()
-                )) || (command.contains(dispatch_wrapper.to_string_lossy().as_ref())
-                    && command.contains(phase.command_name()))
-            })
+            .keys()
+            .all(|key| expected_keys.contains(&key.as_str()))
+        && object.get("type").and_then(Value::as_str) == Some("command")
+        && object.get("command").and_then(Value::as_str) == Some(expected_command.as_str())
+        && object.get("timeout").and_then(Value::as_u64) == Some(30)
+        && object.get("statusMessage").and_then(Value::as_str) == expected_status
 }
 
 pub(crate) fn hook_wrapper_exec_command(content: &str) -> Option<&str> {
@@ -1071,6 +1450,66 @@ fn has_current_managed_process_binding(content: &str) -> bool {
         })
 }
 
+fn has_exact_current_managed_wrapper_shape(
+    content: &str,
+    file: &ManagedFileExpectation,
+    expected_command: &str,
+) -> bool {
+    let ManagedFileExpectation::HostHookWrapper {
+        host_kind,
+        phase,
+        purpose,
+        connection_id,
+        guard_installation_id,
+        policy_hash,
+        host_output,
+        ..
+    } = file
+    else {
+        return false;
+    };
+    if !has_current_managed_process_binding(content) {
+        return false;
+    }
+    let Some(runtime_assignment) = content
+        .lines()
+        .find(|line| line.starts_with("VOLICORD_HOME="))
+    else {
+        return false;
+    };
+    let Some(runtime_home) = generated_shell_words(runtime_assignment)
+        .filter(|words| words.len() == 1)
+        .and_then(|words| words.into_iter().next())
+        .and_then(|word| word.strip_prefix("VOLICORD_HOME=").map(str::to_owned))
+    else {
+        return false;
+    };
+    if runtime_assignment != format!("VOLICORD_HOME={}", shell_word(&runtime_home)) {
+        return false;
+    }
+    let purpose = match purpose {
+        volicord_types::guard_manifest::GuardManagedScriptPurpose::Guard => "guard",
+    };
+    let expected = [
+        "#!/bin/sh".to_owned(),
+        format!("# {HOOK_WRAPPER_MARKER}"),
+        format!("# host_kind={}", host_kind.as_str()),
+        format!("# phase={}", phase.as_str()),
+        format!("# purpose={purpose}"),
+        format!("# connection_id={}", connection_id.as_str()),
+        format!("# guard_installation_id={}", guard_installation_id.as_str()),
+        format!("# policy_hash={}", policy_hash.as_str()),
+        format!("# host_output={}", host_output.as_str()),
+        "# runtime_home_binding=selected_init_runtime_home".to_owned(),
+        runtime_assignment.to_owned(),
+        format!("{MANAGED_WRAPPER_ENV}={MANAGED_WRAPPER_VALUE}"),
+        "export VOLICORD_HOME".to_owned(),
+        format!("export {MANAGED_WRAPPER_ENV}"),
+        format!("exec {expected_command}"),
+    ];
+    content.lines().eq(expected.iter().map(String::as_str)) && content.ends_with('\n')
+}
+
 pub(crate) fn hook_wrapper_comment_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     let prefix = format!("# {key}=");
     content
@@ -1129,7 +1568,8 @@ mod tests {
 
     use super::{
         guard_file_findings_with_context, GuardArtifactIssue, GuardAuditFacts,
-        GuardAuthorityContext, GuardManifestIssue,
+        GuardAuthorityContext, GuardManifestIssue, HookPathSafetyAssessment,
+        HookPathSafetyEvidenceReason, HookPathSafetyState, MAX_HOOK_PATH_SAFETY_EVIDENCE,
     };
     use crate::{
         guard_integration::{
@@ -1193,6 +1633,37 @@ mod tests {
         assert!(valid.generated_config_verified());
         assert!(valid.findings.is_empty());
         assert!(valid.manifest_issues.is_empty());
+        assert_eq!(valid.hook_path_safety.state, HookPathSafetyState::Verified);
+        assert_eq!(
+            valid.hook_path_safety.cwd_independence,
+            HookPathSafetyState::Verified
+        );
+        assert_eq!(
+            valid.hook_path_safety.subdirectory_safety,
+            HookPathSafetyState::Verified
+        );
+        assert!(valid.hook_path_safety.evidence.iter().all(|evidence| {
+            evidence.state == HookPathSafetyState::Verified
+                && evidence.reason == HookPathSafetyEvidenceReason::CurrentContractVerified
+        }));
+
+        let applicable_without_authority = guard_file_findings_with_context(&manifest_json, None);
+        assert_eq!(
+            applicable_without_authority.hook_path_safety.state,
+            HookPathSafetyState::NotRecorded
+        );
+        assert_eq!(
+            applicable_without_authority
+                .hook_path_safety
+                .cwd_independence,
+            HookPathSafetyState::NotRecorded
+        );
+        assert_eq!(
+            applicable_without_authority
+                .hook_path_safety
+                .subdirectory_safety,
+            HookPathSafetyState::NotRecorded
+        );
 
         let mut hash_mismatch_manifest: Value = serde_json::from_str(&manifest_json)?;
         hash_mismatch_manifest["runtime_commands"]["post_tool"]["args"][13] = Value::String(
@@ -1233,6 +1704,22 @@ mod tests {
 
         let wrapper_path = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
         let wrapper_text = fs::read_to_string(&wrapper_path)?;
+        let changed_policy_hash =
+            wrapper_text.replacen("# policy_hash=sha256:", "# policy_hash=sha256:1", 1);
+        assert_ne!(changed_policy_hash, wrapper_text);
+        fs::write(&wrapper_path, changed_policy_hash)?;
+        let policy_hash_mismatch = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert_eq!(
+            policy_hash_mismatch.hook_path_safety.state,
+            HookPathSafetyState::Failed
+        );
+        assert!(policy_hash_mismatch
+            .hook_path_safety
+            .evidence
+            .iter()
+            .any(|evidence| evidence.reason == HookPathSafetyEvidenceReason::PolicyHashMismatch));
+        fs::write(&wrapper_path, &wrapper_text)?;
+
         let changed_wrapper_text = wrapper_text.replacen("exec ", "exec false # ", 1);
         assert_ne!(changed_wrapper_text, wrapper_text);
         fs::write(&wrapper_path, changed_wrapper_text)?;
@@ -1296,6 +1783,41 @@ mod tests {
         ));
         fs::write(&hook_config_path, hook_config_text)?;
 
+        let dispatch_path = repo_root.join(".codex/hooks/volicord-dispatch.sh");
+        let dispatch_text = fs::read_to_string(&dispatch_path)?;
+        let wrong_dispatch_root = dispatch_text.replacen("git rev-parse --show-toplevel", "pwd", 1);
+        assert_ne!(wrong_dispatch_root, dispatch_text);
+        fs::write(&dispatch_path, wrong_dispatch_root)?;
+        let wrong_dispatch = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert_eq!(
+            wrong_dispatch.hook_path_safety.state,
+            HookPathSafetyState::Failed
+        );
+        assert!(wrong_dispatch
+            .hook_path_safety
+            .evidence
+            .iter()
+            .any(|evidence| {
+                evidence.reason == HookPathSafetyEvidenceReason::NoncanonicalRootResolution
+            }));
+        fs::write(&dispatch_path, dispatch_text)?;
+
+        let owner_binding_context = GuardAuthorityContext {
+            connection_internal_id: "connection_other",
+            ..context
+        };
+        let owner_binding_mismatch =
+            guard_file_findings_with_context(&manifest_json, Some(owner_binding_context));
+        assert_eq!(
+            owner_binding_mismatch.hook_path_safety.state,
+            HookPathSafetyState::Failed
+        );
+        assert!(owner_binding_mismatch
+            .hook_path_safety
+            .evidence
+            .iter()
+            .any(|evidence| evidence.reason == HookPathSafetyEvidenceReason::OwnerBindingMismatch));
+
         let missing_path = repo_root.join(".codex/rules/volicord.rules");
         fs::remove_file(&missing_path)?;
         let missing = guard_file_findings_with_context(&manifest_json, Some(context));
@@ -1317,5 +1839,86 @@ mod tests {
             .contains(&GuardManifestIssue::Malformed));
         assert_eq!(fs::read_to_string(unrelated_path)?, "user-owned\n");
         Ok(())
+    }
+
+    #[test]
+    fn hook_path_safety_states_and_aggregation_preserve_exact_knowledge() {
+        let not_checked = HookPathSafetyAssessment::not_checked();
+        assert_eq!(not_checked.state, HookPathSafetyState::NotChecked);
+        assert!(not_checked
+            .evidence
+            .iter()
+            .any(|evidence| evidence.reason == HookPathSafetyEvidenceReason::AuditNotRun));
+
+        let not_applicable =
+            HookPathSafetyAssessment::test_state(HookPathSafetyState::NotApplicable);
+        assert_eq!(
+            not_applicable.cwd_independence,
+            HookPathSafetyState::NotApplicable
+        );
+        assert_eq!(
+            not_applicable.subdirectory_safety,
+            HookPathSafetyState::NotApplicable
+        );
+
+        let verified = HookPathSafetyAssessment::test_state(HookPathSafetyState::Verified);
+        let failed = HookPathSafetyAssessment::test_failed(
+            HookPathSafetyEvidenceReason::NoncanonicalManagedCommand,
+        );
+        let not_recorded = HookPathSafetyAssessment::test_state(HookPathSafetyState::NotRecorded);
+
+        let mut failed_aggregate = verified.clone();
+        failed_aggregate.merge(failed.clone());
+        assert_eq!(failed_aggregate.state, HookPathSafetyState::Failed);
+
+        let mut not_recorded_aggregate = verified.clone();
+        not_recorded_aggregate.merge(not_recorded.clone());
+        assert_eq!(
+            not_recorded_aggregate.state,
+            HookPathSafetyState::NotRecorded
+        );
+
+        let mut verified_with_not_applicable = verified.clone();
+        verified_with_not_applicable.merge(not_applicable.clone());
+        assert_eq!(
+            verified_with_not_applicable.state,
+            HookPathSafetyState::Verified
+        );
+
+        let mut all_not_applicable = HookPathSafetyAssessment::default();
+        all_not_applicable.merge(not_applicable.clone());
+        all_not_applicable.merge(not_applicable);
+        assert_eq!(all_not_applicable.state, HookPathSafetyState::NotApplicable);
+
+        let mut unavailable_aggregate = verified.clone();
+        unavailable_aggregate.merge(HookPathSafetyAssessment::test_state(
+            HookPathSafetyState::NotChecked,
+        ));
+        assert_eq!(unavailable_aggregate.state, HookPathSafetyState::NotChecked);
+
+        let mut forward = HookPathSafetyAssessment::default();
+        for assessment in [verified.clone(), not_recorded.clone(), failed.clone()] {
+            forward.merge(assessment);
+        }
+        let mut reverse = HookPathSafetyAssessment::default();
+        for assessment in [failed, not_recorded, verified] {
+            reverse.merge(assessment);
+        }
+        assert_eq!(forward, reverse);
+        assert_eq!(
+            serde_json::to_value(forward).expect("forward assessment JSON"),
+            serde_json::to_value(reverse).expect("reverse assessment JSON")
+        );
+
+        let mut bounded = HookPathSafetyAssessment::default();
+        for index in (0..20).rev() {
+            let mut assessment = HookPathSafetyAssessment::test_failed(
+                HookPathSafetyEvidenceReason::ContentMismatch,
+            );
+            assessment.evidence[0].path = Some(format!("artifact-{index:02}"));
+            bounded.merge(assessment);
+        }
+        assert_eq!(bounded.evidence.len(), MAX_HOOK_PATH_SAFETY_EVIDENCE);
+        assert!(bounded.evidence.windows(2).all(|pair| pair[0] <= pair[1]));
     }
 }

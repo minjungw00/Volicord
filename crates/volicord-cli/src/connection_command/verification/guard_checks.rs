@@ -132,13 +132,23 @@ pub(super) fn guard_checks_for_connection(
         .iter()
         .map(|phase| phase.as_str().to_owned())
         .collect::<Vec<_>>();
-    let files_status = if !installations.is_empty()
-        && audit.generated_config_verified()
-        && configured_phase_gaps.is_empty()
-    {
-        ConnectionCheckStatus::Passed
-    } else {
+    let files_status = if installations.is_empty() {
         ConnectionCheckStatus::Failed
+    } else {
+        match audit.hook_path_safety.state {
+            HookPathSafetyState::Verified | HookPathSafetyState::NotApplicable
+                if audit.generated_config_verified() && configured_phase_gaps.is_empty() =>
+            {
+                ConnectionCheckStatus::Passed
+            }
+            HookPathSafetyState::Failed => ConnectionCheckStatus::Failed,
+            HookPathSafetyState::NotRecorded | HookPathSafetyState::NotChecked => {
+                ConnectionCheckStatus::Pending
+            }
+            HookPathSafetyState::Verified | HookPathSafetyState::NotApplicable => {
+                ConnectionCheckStatus::Failed
+            }
+        }
     };
     let observation_status = if !incompatible_event_ids.is_empty() {
         ConnectionCheckStatus::Failed
@@ -150,7 +160,7 @@ pub(super) fn guard_checks_for_connection(
     let ambient_coverage_status =
         if files_status == ConnectionCheckStatus::Failed || !incompatible_event_ids.is_empty() {
             ConnectionCheckStatus::Failed
-        } else if all_required_phases_observed {
+        } else if files_status == ConnectionCheckStatus::Passed && all_required_phases_observed {
             ConnectionCheckStatus::Passed
         } else {
             ConnectionCheckStatus::Pending
@@ -411,6 +421,7 @@ pub(super) fn guard_checks_for_connection(
                 affected_paths,
                 artifact_issues,
                 manifest_issues,
+                audit.hook_path_safety.clone(),
                 configured_phase_gaps,
                 required_phases,
                 observed_phases,

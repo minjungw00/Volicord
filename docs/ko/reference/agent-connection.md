@@ -442,6 +442,17 @@ projection입니다. Audit은 profile이나 digest가 이 정확한 선택과 �
 각 관리 artifact를 정규 현재 기대값과 비교하며, 모든 필수 phase의 호환되는 현재 event를
 요구합니다.
 
+관리 파일 감사에는 전체 안전성, CWD 독립성, 하위 디렉터리 호출을 위한 한도가 있는 Hook
+경로 안전성 평가 하나도 포함됩니다. 현재 owner binding 아래의 정확한 현재 artifact는
+`verified`를 성립시키고, 현재 계약을 실제로 위반한 사실은 `failed`를 성립시킵니다.
+적용 가능한 근거가 부족하면 `not_recorded`, 감사 또는 담당 경계를 사용할 수 없으면
+`not_checked`, 적용 가능한 Hook 속성이 없는 통합이면 `not_applicable`입니다. 집계는 입력
+순서와 무관합니다. 적용 가능한 phase 또는 installation 하나가 실패하면 `failed`가
+우선하고, 그다음은 `not_recorded`, `not_checked` 순서입니다. 적용 가능한 입력이 검증됐으면
+`verified`로 유지하며 `not_applicable`은 적용 가능한 입력이 하나도 없을 때만 결과가 됩니다.
+관리 파일과 적용 가능한 경로 안전성 평가가 통과하지 않으면 ambient coverage도 통과할 수
+없습니다.
+
 기록한 verification 도구 이름이 다르면 `managed_capability_proof`는 절대 통과하지
 않습니다. 한도 있는 fact에는 정확한 기대 이름과 관찰 이름을 노출합니다. 이전 revision,
 non-managed runtime row, milestone 부재, 서로 다른 session에 나뉜 milestone은 대신할 수

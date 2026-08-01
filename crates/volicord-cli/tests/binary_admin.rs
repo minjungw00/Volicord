@@ -1952,6 +1952,91 @@ fn fresh_init_without_host_observation_is_action_required_and_exit_zero(
 }
 
 #[test]
+fn doctor_reads_current_hook_path_safety_evidence_without_mutation() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-doctor-hook-path-safety")?;
+    fixture.install_codex_executable()?;
+    let init = fixture.run(false)?;
+    assert_eq!(init.status.code(), Some(0), "{}", stderr(&init)?);
+
+    let state_before = directory_state(fixture._temporary_root.root_path())?;
+    let run_doctor = |mode: Option<&str>| -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("doctor")
+            .env("VOLICORD_HOME", &fixture.runtime_home)
+            .env("PATH", &fixture.empty_path)
+            .env("CODEX_HOME", &fixture.codex_home)
+            .env("HOME", &fixture.user_home)
+            .env("USERPROFILE", &fixture.user_home)
+            .current_dir(&fixture.repo_root);
+        if let Some(mode) = mode {
+            command.arg(mode);
+        }
+        Ok(command.output()?)
+    };
+
+    let json_output = run_doctor(Some("--json"))?;
+    assert!(matches!(json_output.status.code(), Some(0 | 1)));
+    assert_eq!(stderr(&json_output)?, "");
+    let report: Value = serde_json::from_slice(&json_output.stdout)?;
+    let assessment = &report["states"]["hook_path_safety"];
+    assert_eq!(
+        assessment
+            .as_object()
+            .expect("typed Hook path-safety assessment")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "cwd_independence",
+            "evidence",
+            "state",
+            "subdirectory_safety",
+        ])
+    );
+    assert_eq!(assessment["state"], "verified");
+    assert_eq!(assessment["cwd_independence"], "verified");
+    assert_eq!(assessment["subdirectory_safety"], "verified");
+    assert!(!assessment["evidence"]
+        .as_array()
+        .expect("bounded Hook path-safety evidence")
+        .is_empty());
+    let guard_files = report["checks"]
+        .as_array()
+        .expect("Doctor checks")
+        .iter()
+        .find(|check| check["id"] == "guard_files")
+        .expect("guard_files check");
+    assert_eq!(guard_files["status"], "passed");
+    assert_eq!(guard_files["details"]["hook_path_safety"], *assessment);
+    for removed_key in [
+        "hook_commands_cwd_independent",
+        "hook_commands_subdirectory_safe",
+        "hook_path_safety_details",
+    ] {
+        assert!(!json_value_contains_key(&report, removed_key));
+    }
+
+    let verbose_output = run_doctor(Some("--verbose"))?;
+    assert!(matches!(verbose_output.status.code(), Some(0 | 1)));
+    assert_eq!(stderr(&verbose_output)?, "");
+    let verbose = stdout(&verbose_output)?;
+    assert!(verbose.contains("Hook path safety: verified"));
+    assert!(verbose.contains("Hook command CWD independence: verified"));
+    assert!(verbose.contains("Hook command subdirectory safety: verified"));
+
+    let compact_output = run_doctor(None)?;
+    assert!(matches!(compact_output.status.code(), Some(0 | 1)));
+    assert_eq!(stderr(&compact_output)?, "");
+    assert!(!stdout(&compact_output)?.contains("Hook path safety"));
+    assert_eq!(
+        directory_state(fixture._temporary_root.root_path())?,
+        state_before
+    );
+    Ok(())
+}
+
+#[test]
 fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-init-concise")?;
     fixture.install_codex_executable()?;
@@ -3305,6 +3390,21 @@ fn directory_contents(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn
     let mut output = BTreeMap::new();
     visit(root, root, &mut output)?;
     Ok(output)
+}
+
+fn json_value_contains_key(value: &Value, key: &str) -> bool {
+    match value {
+        Value::Object(object) => {
+            object.contains_key(key)
+                || object
+                    .values()
+                    .any(|nested| json_value_contains_key(nested, key))
+        }
+        Value::Array(values) => values
+            .iter()
+            .any(|nested| json_value_contains_key(nested, key)),
+        _ => false,
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -146,6 +146,16 @@ Product Repository transition만 기록합니다. Exact expected write는 그 �
 관찰할 뿐 actor identity나 단독 인과관계를 성립시키지 않습니다. 정확한 capture,
 matching, finding 규칙은 [저장소 관찰](repository-observation.md)이 담당합니다.
 
+Hook 경로 안전성은 한도가 있는 typed 진단 평가이며 파일시스템 또는 프로세스 강제가
+아닙니다. `verified`는 현재 owner-bound Guard manifest, Codex hook 구성, Git root 기반
+dispatch, 모든 필수 phase wrapper, 관리 invocation field, content hash, policy hash,
+host output, permission이 검토된 현재 계약과 일치함을 성립시킵니다. Codex가 Hook을
+실행했다거나 다른 프로세스가 이를 우회할 수 없다는 뜻은 아닙니다. `failed`가 되려면
+관찰한 현재 계약 위반이 있어야 합니다. `not_recorded`와 `not_checked`는 누락되었거나
+사용할 수 없는 근거를 그대로 보존하며 경로 안전성, CWD 독립성, 하위 디렉터리 안전성이
+반증됐다고 주장하지 않습니다. 감사는 권한이나 저장소 상태를 바꾸지 않고 현재 Store와
+관리 artifact를 읽습니다.
+
 ## 명시적 비보장
 
 Volicord는 다음을 보장하지 않습니다.

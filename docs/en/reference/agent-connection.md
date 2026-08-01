@@ -484,6 +484,18 @@ manifest whose profile or digest differs from that exact selection, compares
 every managed artifact with its canonical current expectation, and requires
 compatible current events for every required phase.
 
+The managed-file audit also carries one bounded Hook path-safety assessment for
+overall safety, CWD independence, and subdirectory invocation. Exact current
+artifacts under the current owner binding establish `verified`; an affirmative
+current contract violation establishes `failed`; insufficient applicable
+evidence remains `not_recorded`; an audit or owning boundary that was not
+available remains `not_checked`; and an integration with no applicable Hook
+property is `not_applicable`. Aggregation is independent of input order: a
+failed applicable phase or installation wins, then `not_recorded`, then
+`not_checked`; verified applicable inputs remain verified, while
+`not_applicable` is neutral unless no applicable input exists. Ambient coverage
+cannot pass unless the managed files and applicable path-safety assessment pass.
+
 A recorded verification-tool name mismatch never passes
 `managed_capability_proof`. Its bounded facts expose the exact expected and
 observed tool names. A prior revision, non-managed runtime row, missing

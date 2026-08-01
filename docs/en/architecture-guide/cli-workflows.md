@@ -168,6 +168,14 @@ recommended action projections alongside full check details, findings, build
 provenance, and disclosure without adding probes. JSON serializes the same plan
 as its complete, partitioned, and primary projections. No renderer reconstructs
 actions from checks, findings, or prose.
+Guard-file collection contributes one typed Hook path-safety assessment to the
+Doctor check details and state projection. The collection layer audits the
+current exact owner-bound Codex Hook contract and aggregates bounded evidence;
+the JSON and verbose renderers only present its `verified`, `failed`,
+`not_recorded`, `not_checked`, or `not_applicable` dimensions. Compact output
+omits a successful assessment and never turns missing evidence into a negative
+label. The same collection stays read-only across the Registry, project and
+diagnostics Stores, managed configuration, Hook files, and Product Repository.
 The privacy-footprint branch constructs one report from a canonical typed
 definition. Closed claim identities select exactly one of `stores`,
 `does_not_store`, or `does_not_prove` and determine category order; the separate

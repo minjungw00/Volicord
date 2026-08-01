@@ -5,9 +5,7 @@ use volicord_types::guard_manifest::GuardManagedArtifact;
 use volicord_types::integration_verification::GuardVerificationRepairReason;
 
 use crate::{
-    guard_integration::audit::{
-        GuardArtifactIssue, GuardManifestIssue, HookWrapperResolutionStatus,
-    },
+    guard_integration::audit::{GuardArtifactIssue, GuardManifestIssue},
     host_integration::verification::{ManagedConfigDiagnostic, ProjectTrustStatus},
 };
 
@@ -219,6 +217,7 @@ impl GuardDiagnostic {
             (
                 _,
                 GuardArtifactIssue::Malformed
+                | GuardArtifactIssue::Unavailable
                 | GuardArtifactIssue::ContentMismatch
                 | GuardArtifactIssue::OwnershipMismatch
                 | GuardArtifactIssue::PermissionMismatch
@@ -229,18 +228,6 @@ impl GuardDiagnostic {
 
     pub(crate) const fn from_manifest_issue(_issue: GuardManifestIssue) -> Self {
         Self::ManifestMismatch
-    }
-
-    pub(crate) const fn from_hook_wrapper_status(
-        status: HookWrapperResolutionStatus,
-    ) -> Option<Self> {
-        match status {
-            HookWrapperResolutionStatus::MetadataMissing => Some(Self::HookWrapperMissing),
-            HookWrapperResolutionStatus::AuthorityMismatch
-            | HookWrapperResolutionStatus::PolicyHashMismatch
-            | HookWrapperResolutionStatus::HostOutputMismatch => Some(Self::ManifestMismatch),
-            HookWrapperResolutionStatus::Ok => None,
-        }
     }
 }
 

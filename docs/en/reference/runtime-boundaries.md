@@ -122,6 +122,18 @@ ownership of unrelated repository content. It owns the current policy hash,
 integration revision, typed runtime commands, complete managed-file
 expectations, and required hook phases used by audit and observation.
 
+The current Codex Hook command resolves the canonical Git work-tree root at
+invocation time and dispatches through the managed repository-relative script;
+the dispatch then selects the exact required phase wrapper from that root.
+Hook path-safety audit compares the strict owner-bound manifest, current hook
+configuration, exact dispatch and wrapper bytes, typed managed-command fields,
+hashes, host output, and executable permissions with that reviewed Git-root
+runtime contract. Its typed result keeps `verified`, `failed`,
+`not_recorded`, `not_checked`, and `not_applicable` distinct for the overall,
+CWD-independence, and subdirectory-safety dimensions. Reading this evidence
+does not regenerate Hooks, change an integration revision, or write a Runtime
+Home, managed artifact, or Product Repository file.
+
 Operational connection verification discovers the actual `codex` command on
 `PATH`, canonicalizes the observed executable path under the platform topology
 rules, and runs its version command. It records the path and version as

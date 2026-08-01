@@ -12,7 +12,7 @@ use crate::{
         files::{plan_managed_block_file, plan_managed_exact_json_file, GeneratedFilePlan},
         hooks::{
             codex_guard_hook_script, shell_word, HostHookCommand, HostHookCommandShape,
-            HostHookPurpose,
+            HostHookPathSafetyContract, HostHookPurpose,
         },
         GuardIntegrationError,
     },
@@ -215,6 +215,11 @@ fn codex_hook_handler_value(
 ) -> Result<Value, GuardIntegrationError> {
     let HostHookCommandShape::ShellCommandString { command_text, .. } =
         &command.generated_command_shape;
+    if command.path_safety_contract != HostHookPathSafetyContract::CODEX_GIT_ROOT_RUNTIME {
+        return Err(GuardIntegrationError::runtime(
+            "Codex hook generation requires the current Git-root runtime path-safety contract",
+        ));
+    }
     let mut handler = serde_json::Map::new();
     handler.insert("type".to_owned(), Value::String("command".to_owned()));
     handler.insert("command".to_owned(), Value::String(command_text.clone()));

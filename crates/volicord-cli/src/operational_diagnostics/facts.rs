@@ -11,10 +11,7 @@ use volicord_types::integration_verification::{
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::GuardHookPhase;
 
-use crate::{
-    guard_integration::audit::HookWrapperResolutionStatus,
-    host_integration::verification::{ManagedConfigStatus, ProjectTrustStatus},
-};
+use crate::host_integration::verification::{ManagedConfigStatus, ProjectTrustStatus};
 
 use super::definitions::{
     GuardDiagnostic, OperationalDiagnostic, OperationalDiagnosticDefinition, RevisionDiagnostic,
@@ -84,14 +81,6 @@ impl TypedOperationalFacts for GuardArtifactFacts {
 pub struct GuardInstallationFacts {
     #[serde(skip_serializing_if = "Option::is_none")]
     observed_state: Option<&'static str>,
-}
-
-impl GuardInstallationFacts {
-    pub(crate) fn from_hook_wrapper_status(status: HookWrapperResolutionStatus) -> Self {
-        Self {
-            observed_state: Some(status.as_str()),
-        }
-    }
 }
 
 impl TypedOperationalFacts for GuardInstallationFacts {

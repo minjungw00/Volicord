@@ -171,6 +171,18 @@ transition; it does not establish actor identity or exclusive causation. Exact
 capture, matching, and finding rules belong to
 [Repository Observation](repository-observation.md).
 
+Hook path safety is a bounded typed diagnostic assessment, not filesystem or
+process enforcement. `verified` establishes that the current owner-bound Guard
+manifest, Codex hook configuration, Git-root dispatch, every required phase
+wrapper, managed invocation fields, content hashes, policy hash, host output,
+and permissions match the reviewed current contract. It does not prove that
+Codex executed the Hook or that another process cannot bypass it. `failed`
+requires an observed current contract violation. `not_recorded` and
+`not_checked` preserve missing or unavailable evidence and never claim that
+path safety, CWD independence, or subdirectory safety was disproved. The audit
+reads the current Store and managed artifacts without modifying authority or
+repository state.
+
 ## Explicit Non-Guarantees
 
 Volicord does not guarantee:

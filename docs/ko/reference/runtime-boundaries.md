@@ -105,6 +105,15 @@ runtime command에 대한 소유 inventory입니다. Managed script entry는 모
 policy hash, integration revision, typed runtime command, 전체 managed-file 기대값, 필수 hook
 phase를 담당합니다.
 
+현재 Codex Hook 명령은 호출 시 정규 Git 작업 트리 root를 해석해 저장소 상대 관리
+script로 dispatch하고, dispatch는 그 root에서 정확한 필수 phase wrapper를 선택합니다.
+Hook 경로 안전성 감사는 엄격한 owner-bound manifest, 현재 hook 구성, 정확한 dispatch와
+wrapper bytes, typed managed-command field, hash, host output, executable permission을 이
+검토된 Git-root runtime 계약과 대조합니다. Typed 결과는 전체, CWD 독립성, 하위 디렉터리
+안전성 차원마다 `verified`, `failed`, `not_recorded`, `not_checked`, `not_applicable`을
+서로 구분합니다. 이 근거를 읽는 작업은 Hook을 다시 생성하거나 integration revision을
+바꾸거나 Runtime Home, 관리 artifact, Product Repository 파일에 쓰지 않습니다.
+
 운영 연결 검증은 `PATH`에서 실제 `codex` 명령을 찾고 플랫폼 topology 규칙에 따라 관찰한
 실행 파일 경로를 canonicalize한 뒤 version 명령을 실행합니다. Path와 version
 diagnostic을 기록합니다. 관찰한 version이 바뀌면 현재 host 동작은 운영 관찰을 갱신할 때까지
