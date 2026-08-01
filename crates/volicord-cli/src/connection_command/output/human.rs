@@ -14,8 +14,8 @@ use super::report::{
     SetupDisposition,
 };
 use super::semantics::{
-    active_verification_summary, connection_status_label, hook_activation_label,
-    integration_activation_label, ConnectionCheckCounts,
+    active_verification_source_label, connection_status_label, hook_activation_label,
+    integration_activation_label, ActiveVerificationSnapshotSummary, ConnectionCheckCounts,
 };
 use crate::connection_command::{
     guidance::{ConnectionUserInvocation, DiagnosticOperation},
@@ -25,6 +25,7 @@ use crate::presentation::{Document, Field, HumanValue, Section};
 
 pub(super) fn render_command_report_concise(
     report: &ConnectionCommandReport,
+    active_verification: Option<&ActiveVerificationSnapshotSummary>,
 ) -> Result<String, ConnectionCommandError> {
     let counts = ConnectionCheckCounts::from_checks(&report.checks);
     let mut sections = vec![Document::new(
@@ -66,7 +67,7 @@ pub(super) fn render_command_report_concise(
                 .to_owned(),
         );
     }
-    if let Some(mcp) = render_mcp_verification_summary(&report.checks)? {
+    if let Some(mcp) = render_mcp_verification_summary(active_verification) {
         sections.push(mcp);
     }
     if let Some(guard) = render_guard_verification_summary(&report.checks) {
@@ -101,15 +102,31 @@ pub(super) fn render_command_report_concise(
 }
 
 fn render_mcp_verification_summary(
-    checks: &[ConnectionCheck],
-) -> Result<Option<String>, ConnectionCommandError> {
-    Ok(active_verification_summary(checks)?.map(|summary| {
-        format!(
-            "Active verification: {}\nStorage writeability: {}",
-            summary.state.label(),
+    summary: Option<&ActiveVerificationSnapshotSummary>,
+) -> Option<String> {
+    summary.map(|summary| {
+        let mut lines = vec![format!(
+            "Last active verification: {}",
+            summary.state.label()
+        )];
+        if let Some(observed_at) = summary.observed_at.as_ref() {
+            lines.push(format!(
+                "  Observed at: {}",
+                observed_at.to_canonical_string()
+            ));
+        }
+        if let Some(source) = summary.source {
+            lines.push(format!(
+                "  Source: {}",
+                active_verification_source_label(source)
+            ));
+        }
+        lines.push(format!(
+            "Last verified storage writeability: {}",
             summary.storage_writeability.label()
-        )
-    }))
+        ));
+        lines.join("\n")
+    })
 }
 
 fn render_guard_verification_summary(checks: &[ConnectionCheck]) -> Option<String> {
@@ -1694,7 +1711,7 @@ mod tests {
             }
         });
         let before = report(
-            CommandOperation::Verify,
+            CommandOperation::Status,
             None,
             vec![check(
                 ConnectionCheckKind::McpServer,
@@ -1718,9 +1735,14 @@ mod tests {
                 .output,
         )
         .unwrap();
-        assert!(before_human.contains("Active verification: not run"));
-        assert!(before_human.contains("Storage writeability: not checked"));
-        assert!(before_verbose.contains("Storage writeability: not checked"));
+        assert!(before_human.contains("Last active verification: not run"));
+        assert!(before_human.contains("Last verified storage writeability: not checked"));
+        assert!(!before_human.contains("  Observed at:"));
+        assert!(!before_human.contains("  Source:"));
+        assert!(before_verbose.contains("Last active verification: not run"));
+        assert!(before_verbose.contains("Last verified storage writeability: not checked"));
+        assert!(!before_verbose.contains("Active verification observed at:"));
+        assert!(!before_verbose.contains("Active verification source:"));
         let before_details = &before_json["checks"][0]["details"];
         assert_eq!(before_details["preflight"], preflight);
         assert_eq!(before_details["last_active_verification"], Value::Null);
@@ -1765,13 +1787,14 @@ mod tests {
                 .output,
         )
         .unwrap();
-        assert!(after_human.contains("Active verification: passed"));
-        assert!(after_human.contains("Storage writeability: passed"));
-        for hidden in ["project_1", "connection_verify", "2026-07-25T01:02:03Z"] {
-            assert!(!after_human.contains(hidden), "{hidden}: {after_human}");
-        }
+        assert!(after_human.contains(
+            "Last active verification: passed\n  Observed at: 2026-07-25T01:02:03Z\n  Source: connection verify\nLast verified storage writeability: passed"
+        ));
+        assert!(!after_human.contains("project_1"), "{after_human}");
+        assert!(after_verbose.contains("Last active verification: passed"));
         assert!(after_verbose.contains("Active verification observed at: 2026-07-25T01:02:03Z"));
-        assert!(after_verbose.contains("Active verification source: connection_verify"));
+        assert!(after_verbose.contains("Active verification source: connection verify"));
+        assert!(after_verbose.contains("Last verified storage writeability: passed"));
         assert!(after_verbose.contains("Registry writeability: passed"));
         assert!(after_verbose.contains("Project project_1 writeability: passed"));
         let after_details = &after_json["checks"][0]["details"];
@@ -1844,6 +1867,7 @@ mod tests {
             ),
         ];
         for (evidence, expected_active, expected_storage) in active_cases {
+            let expected_evidence = evidence.clone();
             let current = report(
                 CommandOperation::Status,
                 None,
@@ -1859,11 +1883,42 @@ mod tests {
                 Vec::new(),
             );
             let output = concise(&current);
-            assert_eq!(output.matches("Active verification:").count(), 1);
-            assert_eq!(output.matches("Storage writeability:").count(), 1);
-            assert!(output.contains(&format!("Active verification: {expected_active}")));
-            assert!(output.contains(&format!("Storage writeability: {expected_storage}")));
+            assert_eq!(output.matches("Last active verification:").count(), 1);
+            assert_eq!(
+                output
+                    .matches("Last verified storage writeability:")
+                    .count(),
+                1
+            );
+            assert!(output.contains(&format!("Last active verification: {expected_active}")));
+            assert!(output.contains(&format!(
+                "Last verified storage writeability: {expected_storage}"
+            )));
+            assert!(output.contains("  Observed at: 2026-07-25T01:02:03Z"));
+            assert!(output.contains("  Source: connection verify"));
             assert!(!output.contains("project_1"));
+
+            let verbose =
+                render_command_report(OutputFormat::Human(HumanOutputDetail::Verbose), &current)
+                    .unwrap()
+                    .output;
+            assert!(verbose.contains(&format!("Last active verification: {expected_active}")));
+            assert!(verbose.contains(&format!(
+                "Last verified storage writeability: {expected_storage}"
+            )));
+            assert!(verbose.contains("Active verification observed at: 2026-07-25T01:02:03Z"));
+            assert!(verbose.contains("Active verification source: connection verify"));
+
+            let machine: Value = serde_json::from_str(
+                &render_command_report(OutputFormat::Json, &current)
+                    .unwrap()
+                    .output,
+            )
+            .unwrap();
+            assert_eq!(
+                machine["checks"][0]["details"]["last_active_verification"],
+                expected_evidence
+            );
         }
 
         let malformed = report(
@@ -1880,15 +1935,18 @@ mod tests {
             )],
             Vec::new(),
         );
-        let error = match render_command_report(
+        for format in [
             OutputFormat::Human(HumanOutputDetail::Concise),
-            &malformed,
-        ) {
-            Ok(_) => panic!("malformed active verification evidence must fail"),
-            Err(error) => error,
-        };
-        assert!(error
-            .to_string()
-            .contains("current MCP active-verification evidence is invalid"));
+            OutputFormat::Human(HumanOutputDetail::Verbose),
+            OutputFormat::Json,
+        ] {
+            let error = match render_command_report(format, &malformed) {
+                Ok(_) => panic!("malformed active verification evidence must fail"),
+                Err(error) => error,
+            };
+            assert!(error
+                .to_string()
+                .contains("current MCP active-verification evidence is invalid"));
+        }
     }
 }

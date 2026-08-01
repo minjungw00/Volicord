@@ -331,8 +331,10 @@ matrix를 정합니다.
   count projection, concise `Passed`, `Blocked`, `Pending`, `Failed` field, 같은 list 어휘와
   순서, verbose not-applicable 개수
 - 증거 없음, 전체 통과, Registry 실패, 프로젝트 쓰기 실패, protocol conformance 실패,
-  host compatibility 실패, 잘못된 증거의 엄격한 거부를 위한 concise 활성 검증 projection,
-  concise 출력의 내부 ID 생략 및 verbose와 JSON의 ID 유지
+  host compatibility 실패를 위한 공유 concise/verbose 활성 검증 snapshot projection,
+  정확히 영속된 증거 시각과 사람이 읽는 source, Store 쓰기 가능성 집계, 사람용 및 JSON
+  rendering 전체에서 잘못된 증거의 엄격한 거부, concise 출력의 내부 ID 생략 및 verbose와
+  JSON의 ID 유지
 - ambient와 correlated Guard check의 분리, 즉 ambient passed와 correlated failed의
   동시 표현, attempt가 없을 때 ambient pending, correlated complete, repair-required를
   pending으로 projection하지 않음, 더 오래된 proof가 더 최신 failed attempt를 숨기지
@@ -341,6 +343,9 @@ matrix를 정합니다.
   lifecycle 사실에서 상관관계 Guard 증거 시각 선택, 엄격한 시간 순서와 attempt/proof
   identity 불일치 실패, 보고서 시각이 달라지는 읽기 전용 status 평가에서도 증거 시각과
   detail 유지 및 Store 비변경, 목록 평가 시각 분리, verbose/JSON timestamp 일치
+- 보고서 시각이 달라지는 반복 읽기 전용 status 평가에서도 마지막 활성 검증의 증거 시각,
+  source, 집계 결과, Store 쓰기 가능성을 유지하고 concise, verbose, JSON에 같은 증거
+  시각을 표시하며 Store나 filesystem을 변경하지 않음
 - concise, verbose, JSON 사이 Guard report parity, 최상위 Guard runtime session과
   verification ID, managed/Guard session role의 정규 중복 제거, 복구 가능한 failed
   check의 `action_required` 집계, 모든 typed repair reason 및 acquisition stage의 안정적인

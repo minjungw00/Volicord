@@ -9,8 +9,9 @@ use volicord_types::diagnostics::DiagnosticFindingId;
 use crate::connection_command::managed_host_round_trip_tool;
 
 use super::semantics::{
-    connection_check_status_label, connection_status_label, hook_activation_label,
-    integration_activation_label, ConnectionCheckCounts,
+    active_verification_source_label, connection_check_status_label, connection_status_label,
+    hook_activation_label, integration_activation_label, ActiveVerificationSnapshotSummary,
+    ActiveVerificationState, ConnectionCheckCounts,
 };
 use super::{
     guard_verification::CorrelatedGuardHumanProjection,
@@ -27,6 +28,7 @@ const MAX_INLINE_SCALARS: usize = 8;
 
 pub(super) fn render_command_report_verbose(
     report: &ConnectionCommandReport,
+    active_verification: Option<&ActiveVerificationSnapshotSummary>,
 ) -> Result<String, ConnectionCommandError> {
     let counts = ConnectionCheckCounts::from_checks(&report.checks);
     let roots = projected_root_cause_ids(report)?;
@@ -43,7 +45,7 @@ pub(super) fn render_command_report_verbose(
     sections.push(render_summary(report, counts));
 
     if !report.checks.is_empty() {
-        sections.push(render_checks(report)?);
+        sections.push(render_checks(report, active_verification)?);
     }
     if !report.findings.is_empty() {
         sections.push(render_findings(report, &roots));
@@ -147,10 +149,13 @@ fn render_summary(report: &ConnectionCommandReport, counts: ConnectionCheckCount
     lines.join("\n")
 }
 
-fn render_checks(report: &ConnectionCommandReport) -> Result<String, ConnectionCommandError> {
+fn render_checks(
+    report: &ConnectionCommandReport,
+    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+) -> Result<String, ConnectionCommandError> {
     let mut blocks = Vec::with_capacity(report.checks.len());
     for check in &report.checks {
-        blocks.push(render_check(report, check)?);
+        blocks.push(render_check(report, check, active_verification)?);
     }
     Ok(format!("Checks\n{}", blocks.join("\n\n")))
 }
@@ -158,6 +163,7 @@ fn render_checks(report: &ConnectionCommandReport) -> Result<String, ConnectionC
 fn render_check(
     report: &ConnectionCommandReport,
     check: &ConnectionCheck,
+    active_verification: Option<&ActiveVerificationSnapshotSummary>,
 ) -> Result<String, ConnectionCommandError> {
     let mut lines = vec![format!(
         "  [{}] {}",
@@ -204,7 +210,7 @@ fn render_check(
     }
 
     let mut details = DetailContext::new(report, check);
-    render_known_details(&mut details)?;
+    render_known_details(&mut details, active_verification)?;
     details.render_additional();
     lines.extend(details.lines);
     Ok(lines.join("\n"))
@@ -391,13 +397,16 @@ fn value_at_path<'a>(object: &'a Map<String, Value>, path: &DetailPath) -> Optio
     Some(value)
 }
 
-fn render_known_details(context: &mut DetailContext<'_>) -> Result<(), ConnectionCommandError> {
+fn render_known_details(
+    context: &mut DetailContext<'_>,
+    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+) -> Result<(), ConnectionCommandError> {
     match context.check.id() {
         ConnectionCheckKind::DiagnosticLookup | ConnectionCheckKind::RuntimeSessionLookup => {}
         ConnectionCheckKind::VerificationNotRun => {}
         ConnectionCheckKind::ManagedConfig => render_managed_config(context),
         ConnectionCheckKind::HostExecutable => render_host_executable(context),
-        ConnectionCheckKind::McpServer => render_mcp_server(context),
+        ConnectionCheckKind::McpServer => render_mcp_server(context, active_verification),
         ConnectionCheckKind::ProcessStartup => render_process_startup(context),
         ConnectionCheckKind::HostReload => render_process_startup(context),
         ConnectionCheckKind::HookSourceActivation => {}
@@ -581,7 +590,10 @@ fn render_process_startup(context: &mut DetailContext<'_>) {
     render_last_observed(context);
 }
 
-fn render_mcp_server(context: &mut DetailContext<'_>) {
+fn render_mcp_server(
+    context: &mut DetailContext<'_>,
+    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+) {
     let preflight = context.take_string("preflight.status");
     let preflight_code = context.take_string("preflight.code");
     let preflight_diagnostic = context.take_string("preflight.diagnostic");
@@ -640,14 +652,12 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
         context.line("Preflight finding", finding_id);
     }
 
-    let active_path = DetailPath::from_dotted_keys("last_active_verification");
-    match context.peek(&active_path) {
-        Some(Value::Object(_)) => render_mcp_active_verification(context),
-        Some(Value::Null) => {
+    if let Some(summary) = active_verification {
+        let active_path = DetailPath::from_dotted_keys("last_active_verification");
+        if context.peek(&active_path).is_some_and(Value::is_null) {
             context.consume(&active_path);
-            context.line("Storage writeability", "not checked");
         }
-        _ => context.line("Storage writeability", "not checked"),
+        render_mcp_active_verification(context, summary);
     }
     if preflight.as_deref() != Some("passed") {
         if let Some(code) = preflight_code {
@@ -661,12 +671,35 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     }
 }
 
-fn render_mcp_active_verification(context: &mut DetailContext<'_>) {
-    if let Some(observed_at) = context.take_string("last_active_verification.observed_at") {
-        context.line("Active verification observed at", observed_at);
+fn render_mcp_active_verification(
+    context: &mut DetailContext<'_>,
+    summary: &ActiveVerificationSnapshotSummary,
+) {
+    context.line("Last active verification", summary.state.label());
+    if let Some(observed_at) = summary.observed_at.as_ref() {
+        context.consume(&DetailPath::from_dotted_keys(
+            "last_active_verification.observed_at",
+        ));
+        context.line(
+            "Active verification observed at",
+            observed_at.to_canonical_string(),
+        );
     }
-    if let Some(source) = context.take_string("last_active_verification.source") {
-        context.line("Active verification source", source);
+    if let Some(source) = summary.source {
+        context.consume(&DetailPath::from_dotted_keys(
+            "last_active_verification.source",
+        ));
+        context.line(
+            "Active verification source",
+            active_verification_source_label(source),
+        );
+    }
+    context.line(
+        "Last verified storage writeability",
+        summary.storage_writeability.label(),
+    );
+    if summary.state == ActiveVerificationState::NotRun {
+        return;
     }
     if let Some(registry_write) = context.take_string("last_active_verification.registry_write") {
         context.line("Registry writeability", registry_write);
@@ -1831,7 +1864,9 @@ mod tests {
     }
 
     fn rendered(report: &ConnectionCommandReport) -> String {
-        render_command_report_verbose(report).unwrap()
+        let active_verification =
+            super::super::semantics::active_verification_snapshot(&report.checks).unwrap();
+        render_command_report_verbose(report, active_verification.as_ref()).unwrap()
     }
 
     fn completed_guard_proof(verification_id: &str, suffix: &str, completed_at: &str) -> Value {
@@ -2011,7 +2046,7 @@ mod tests {
             Some("2026-07-20T02:02:00Z"),
         );
         let json_before = serde_json::to_value(report.diagnostic_report().unwrap()).unwrap();
-        let block = render_check(&report, &report.checks[0]).unwrap();
+        let block = render_check(&report, &report.checks[0], None).unwrap();
         let json_after = serde_json::to_value(report.diagnostic_report().unwrap()).unwrap();
 
         assert_eq!(json_after, json_before);
@@ -2074,7 +2109,7 @@ mod tests {
             ),
             Some("2026-07-20T02:00:00Z"),
         );
-        let block = render_check(&report, &report.checks[0]).unwrap();
+        let block = render_check(&report, &report.checks[0], None).unwrap();
 
         for expected in [
             "      Latest attempt identity\n",
@@ -2129,7 +2164,7 @@ mod tests {
             guard_details(Some(pending_guard_attempt()), None, None),
             Some("2026-07-20T02:00:00Z"),
         );
-        let attempt_only = render_check(&attempt_only, &attempt_only.checks[0]).unwrap();
+        let attempt_only = render_check(&attempt_only, &attempt_only.checks[0], None).unwrap();
         assert!(attempt_only.contains("    Attempt\n"));
         assert!(!attempt_only.contains("Completed proof"));
 
@@ -2146,7 +2181,7 @@ mod tests {
             ),
             None,
         );
-        let proof_only = render_check(&proof_only, &proof_only.checks[0]).unwrap();
+        let proof_only = render_check(&proof_only, &proof_only.checks[0], None).unwrap();
         assert!(proof_only.contains("      Verification ID: verification_historical\n"));
         assert!(proof_only.contains("    Historical completed proof\n"));
         assert!(!proof_only.contains("    Attempt\n"));
@@ -2163,7 +2198,7 @@ mod tests {
             Some("2026-07-20T02:02:00Z"),
         );
 
-        let error = render_command_report_verbose(&report).unwrap_err();
+        let error = render_command_report_verbose(&report, None).unwrap_err();
         assert!(
             error
                 .to_string()
@@ -2249,7 +2284,7 @@ mod tests {
             None,
             None,
         );
-        let output = render_checks(&report).unwrap();
+        let output = render_checks(&report, None).unwrap();
         assert!(output.contains("    Required tools: blocked"));
         assert!(!output.contains("Required tools: pending"));
     }
@@ -2559,8 +2594,10 @@ mod tests {
                 "    Depends on: managed_config\n",
                 "    Preflight status: passed\n",
                 "    Preflight writeability: not_checked (requires connection_verify)\n",
+                "    Last active verification: failed\n",
                 "    Active verification observed at: 2026-07-20T00:00:00Z\n",
-                "    Active verification source: connection_verify\n",
+                "    Active verification source: connection verify\n",
+                "    Last verified storage writeability: passed\n",
                 "    Registry writeability: passed\n",
                 "    Revision diagnostic code: mcp.tools.required_missing\n",
                 "    Revision finding: finding.tools.required_missing\n\n",
@@ -2681,7 +2718,7 @@ mod tests {
         );
     }
 
-    fn mcp_details(status: &str, diagnostic: &str, tools: Vec<String>) -> Value {
+    fn mcp_details(status: &str, _diagnostic: &str, tools: Vec<String>) -> Value {
         let requested_revision = "2025-11-25";
         let mut details = json!({
             "preflight": {
@@ -2734,7 +2771,6 @@ mod tests {
             probe["diagnostic_code"] = json!("mcp.tools.required_missing");
             probe["failure_stage"] = json!("tools_list");
             probe["finding_id"] = json!("finding.tools.required_missing");
-            probe["diagnostic"] = json!(diagnostic);
         }
         details
     }
@@ -2906,8 +2942,10 @@ mod tests {
         for expected in [
             "    Preflight status: passed\n",
             "    Preflight writeability: not_checked (requires connection_verify)\n",
+            "    Last active verification: passed\n",
             "    Active verification observed at: 2026-07-20T00:00:00Z\n",
-            "    Active verification source: connection_verify\n",
+            "    Active verification source: connection verify\n",
+            "    Last verified storage writeability: passed\n",
             "    Registry writeability: passed\n",
             "    Active verification side effects: rollback_only_registry_write_probe, disposable_protocol_conformance\n",
             "    Revision 2025-11-25: passed; negotiated 2025-11-25; 13 tools; graceful shutdown\n",
@@ -3653,7 +3691,6 @@ mod tests {
             vec!["private.tool".to_owned()],
         );
         details["preflight"]["evidence"]["future_preflight"] = json!({"replica": "ready"});
-        details["last_active_verification"]["future_active"] = json!({"attempt": 2});
         details["future_top_level"] = json!("visible");
         let extended_report = report(
             CommandOperation::Verify,
@@ -3678,7 +3715,6 @@ mod tests {
             "    Revision 2025-11-25: passed; negotiated 2025-11-25; 1 tools; graceful shutdown\n",
             "    Additional details\n",
             "      Future top level: visible\n",
-            "      Last active verification\n        Future active\n          Attempt: 2\n",
             "      Preflight\n        Evidence\n          Future preflight\n            Replica: ready\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}\n{output}");

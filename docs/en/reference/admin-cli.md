@@ -1937,23 +1937,27 @@ The `mcp_server` check projects immutable read-only evidence under `preflight`
 and the latest active evidence under the sibling
 `last_active_verification`. The latter is null before an active run. Preflight
 writeability always remains `not_checked`; active Registry and project write
-results never replace it. Human output says
-`Storage writeability: not checked` when the active member is absent. Concise
-output pairs that conclusion with `Active verification: not run`. When current
-active evidence exists, concise output strictly decodes
-`McpActiveVerificationEvidence` and reports only the aggregate
-`Active verification: passed|failed` and
-`Storage writeability: passed|failed` conclusions. Every Store result must
+results never replace it. When the active member is absent, concise output says
+`Last active verification: not run` and
+`Last verified storage writeability: not checked`, with no evidence-time or
+source line. When persisted active evidence exists, concise output strictly
+decodes `McpActiveVerificationEvidence` and reports
+`Last active verification: passed|failed`, its exact persisted `observed_at`
+as `Observed at`, its `source=connection_verify` as the human phrase
+`Source: connection verify`, and
+`Last verified storage writeability: passed|failed`. Every Store result must
 pass for Store writeability to pass, and every Store, protocol-conformance,
 and host-compatibility result required by the evidence must pass for active
-verification to pass. Malformed current evidence fails rendering rather than
-producing an unknown conclusion. Concise output does not expose project or
-Connection IDs, source, timestamp, per-Store results, protocol matrices, or
-host fixtures. Verbose and JSON output retain the active evidence's separate
-`observed_at`, `source=connection_verify`, project IDs, write results,
-conformance results, host fixtures, and side effects. A combined result is
-invalid, and no schema-version or host-version branch selects the evidence
-shape.
+verification to pass. Malformed persisted evidence fails rendering rather than
+producing an unknown conclusion. Concise output omits project and Connection
+IDs, individual Store results, protocol matrices, and host fixtures. Verbose
+and JSON output retain the complete active evidence, including `observed_at`,
+`source=connection_verify`, project IDs, write results, conformance results,
+host fixtures, and side effects. The timestamp and source identify the latest
+persisted explicit `connection verify` operation; status does not classify the
+evidence as fresh or stale, imply a universal validity duration, or expire it.
+A combined result is invalid, and no schema-version or host-version branch
+selects the evidence shape.
 
 `volicord connection verify codex` reports `ambient_hook_coverage` separately
 from `correlated_guard_verification`. Concise output names both results and a

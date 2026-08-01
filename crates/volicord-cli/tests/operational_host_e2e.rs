@@ -1702,6 +1702,16 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     ] {
         assert_check(&complete_report, check_id, "passed", None);
     }
+    let active_verification = complete_report["checks"]
+        .as_array()
+        .and_then(|checks| checks.iter().find(|check| check["id"] == "mcp_server"))
+        .and_then(|check| check.pointer("/details/last_active_verification"))
+        .ok_or("last active verification evidence")?;
+    let active_verification_observed_at = active_verification["observed_at"]
+        .as_str()
+        .ok_or("last active verification evidence timestamp")?
+        .to_owned();
+    assert_eq!(active_verification["source"], "connection_verify");
     let guard_verification = complete_report["checks"]
         .as_array()
         .and_then(|checks| {
@@ -1854,7 +1864,17 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
                 .find(|check| check["id"] == "correlated_guard_verification")
         })
         .ok_or("repeated correlated_guard_verification check")?;
+    let repeated_active_verification = repeated_report["checks"]
+        .as_array()
+        .and_then(|checks| checks.iter().find(|check| check["id"] == "mcp_server"))
+        .and_then(|check| check.pointer("/details/last_active_verification"))
+        .ok_or("repeated last active verification evidence")?;
     assert_ne!(repeated_report["generated_at"], complete_generated_at);
+    assert_eq!(
+        repeated_active_verification["observed_at"], active_verification_observed_at,
+        "read-only status changed the active-verification evidence time"
+    );
+    assert_eq!(repeated_active_verification["source"], "connection_verify");
     assert_eq!(
         repeated_guard["observed_at"], guard_evidence_observed_at,
         "read-only status changed the persisted evidence time"
@@ -1863,9 +1883,6 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         repeated_guard["details"], guard_evidence_details,
         "read-only status changed the persisted evidence details"
     );
-    let after_status = fixture.content_snapshot()?;
-    assert_eq!(after_status, before_status, "connection status wrote state");
-
     let human = fixture.run_connection("status", FUTURE_VERSION, false)?;
     assert_eq!(human.status.code(), Some(0));
     assert!(human.stderr.is_empty());
@@ -1880,9 +1897,19 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(human.contains("\n  Blocked: 0\n"));
     assert!(human.contains("\n  Pending: 0\n"));
     assert!(human.contains("\n  Failed: 0\n"));
+    let active_snapshot = format!(
+        "Last active verification: passed\n  Observed at: {active_verification_observed_at}\n  Source: connection verify\nLast verified storage writeability: passed"
+    );
+    assert!(human.contains(&active_snapshot));
+    assert!(!human.contains(&project_id));
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(!human.contains(check["id"].as_str().expect("check id")));
     }
+
+    let repeated_human = fixture.run_connection("status", FUTURE_VERSION, false)?;
+    assert_eq!(repeated_human.status.code(), Some(0));
+    assert!(repeated_human.stderr.is_empty());
+    assert!(String::from_utf8(repeated_human.stdout)?.contains(&active_snapshot));
 
     let verbose = fixture.run_connection_verbose("status", FUTURE_VERSION)?;
     assert_eq!(verbose.status.code(), Some(0));
@@ -1897,6 +1924,12 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(verbose.contains("    Expected verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Observed verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Verification tool observed at:"));
+    assert!(verbose.contains("    Last active verification: passed"));
+    assert!(verbose.contains(&format!(
+        "    Active verification observed at: {active_verification_observed_at}"
+    )));
+    assert!(verbose.contains("    Active verification source: connection verify"));
+    assert!(verbose.contains("    Last verified storage writeability: passed"));
     assert!(verbose.contains(&format!("    Evidence time: {guard_evidence_observed_at}")));
     let guard_block = verbose
         .split("  [passed] Correlated Guard verification\n")
@@ -1918,6 +1951,8 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     }
     assert_eq!(guard_block.matches("Verification ID:").count(), 1);
     assert_eq!(guard_block.matches("Guard installation ID:").count(), 1);
+    let after_status = fixture.content_snapshot()?;
+    assert_eq!(after_status, before_status, "connection status wrote state");
     assert_eq!(guard_block.matches("Policy digest:").count(), 1);
     assert_eq!(guard_block.matches("Hook definition digest:").count(), 1);
     for (field, label) in [

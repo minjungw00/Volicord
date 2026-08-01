@@ -221,6 +221,14 @@ the same evidence timestamp and details. Connection list likewise keeps each
 membership's `evaluated_at` as the batch evaluation time rather than replacing
 it with a selected check's evidence time.
 
+The active-verification portion of Connection status is the latest persisted
+snapshot produced by an explicit `connection verify` operation, not a live
+probe. Concise output identifies its exact evidence time and humanized source
+and labels Store writeability as the conclusion established by that operation;
+verbose and JSON retain the complete evidence. The snapshot has no universal
+freshness duration, age warning, or automatic expiration. Reading status does
+not rerun verification.
+
 Once Store creates `RuntimeHomeMutationContext`, its
 `CanonicalRuntimeHomePath` is the sole Runtime Home identity for every
 mutation-dependent read, plan, Registry lookup, Core service, Store handle,

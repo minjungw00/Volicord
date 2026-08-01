@@ -383,10 +383,12 @@ Durable tests should cover, as applicable:
   failed, not-applicable, and mixed inputs; concise `Passed`, `Blocked`,
   `Pending`, `Failed` fields; matching list vocabulary and ordering; and the
   verbose not-applicable count;
-- concise active-verification projection for no evidence, all passed, Registry
-  failure, project-write failure, protocol-conformance failure,
-  host-compatibility failure, and strict malformed-evidence rejection, with
-  internal IDs absent from concise output and retained in verbose and JSON;
+- shared concise/verbose active-verification snapshot projection for no
+  evidence, all passed, Registry failure, project-write failure,
+  protocol-conformance failure, and host-compatibility failure; exact persisted
+  evidence time and humanized source; Store-writeability aggregation; strict
+  malformed-evidence rejection across human and JSON rendering; and internal
+  IDs absent from concise output but retained in verbose and JSON;
 - separate ambient and correlated Guard checks: ambient passed with correlated
   failed, ambient pending with no attempt, correlated complete,
   repair-required never projected as pending, and an older proof retained
@@ -397,6 +399,10 @@ Durable tests should cover, as applicable:
   evidence time and details across read-only status evaluations with changing
   report times and no Store writes; list evaluation-time separation; and
   verbose/JSON timestamp parity;
+- latest active-verification evidence time, source, aggregate result, and Store
+  writeability preserved across repeated read-only status evaluations whose
+  report times change, with the same evidence time in concise, verbose, and
+  JSON output and no Store or filesystem mutation;
 - Guard report parity across concise, verbose, and JSON; top-level Guard
   runtime sessions and verification IDs; canonical deduplication of managed
   and Guard session roles; recoverable failed aggregation to

@@ -36,8 +36,8 @@ use volicord_types::values::{IntegrationProfile, UtcTimestamp};
 
 use super::{
     cooperative_assurance_limits, human::render_command_report_concise, path_text,
-    verbose::render_command_report_verbose, ConnectionCommandError, OutputFormat,
-    PlannedConnectionChange, PlannedConnectionChangeKind,
+    semantics::active_verification_snapshot, verbose::render_command_report_verbose,
+    ConnectionCommandError, OutputFormat, PlannedConnectionChange, PlannedConnectionChangeKind,
 };
 use crate::connection_command::args::HumanOutputDetail;
 
@@ -1040,12 +1040,17 @@ pub(in crate::connection_command) fn render_command_report(
     format: OutputFormat,
     report: &ConnectionCommandReport,
 ) -> Result<RenderedCommandReport, ConnectionCommandError> {
+    let active_verification = active_verification_snapshot(&report.checks)?;
     let output = match format {
         OutputFormat::Json => serde_json::to_string_pretty(&report.diagnostic_report()?)
             .map(|output| format!("{output}\n"))
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
-        OutputFormat::Human(HumanOutputDetail::Concise) => render_command_report_concise(report)?,
-        OutputFormat::Human(HumanOutputDetail::Verbose) => render_command_report_verbose(report)?,
+        OutputFormat::Human(HumanOutputDetail::Concise) => {
+            render_command_report_concise(report, active_verification.as_ref())?
+        }
+        OutputFormat::Human(HumanOutputDetail::Verbose) => {
+            render_command_report_verbose(report, active_verification.as_ref())?
+        }
     };
     Ok(RenderedCommandReport {
         output,

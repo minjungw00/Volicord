@@ -1806,19 +1806,25 @@ reconciliation, 검증 보고서 영속화입니다. 활성 검증도 관리 hos
 `mcp_server` check는 불변 읽기 전용 증거를 `preflight` 아래에, 마지막 활성 증거를 같은
 계층의 `last_active_verification` 아래에 투영합니다. 활성 실행 전에는 후자가 null입니다.
 Preflight 쓰기 가능성은 항상 `not_checked`로 남으며 활성 Registry 및 프로젝트 쓰기 결과가
-이를 교체하지 않습니다. 활성 구성원이 없으면 사람용 출력은
-`Storage writeability: not checked`와 `Active verification: not run`을 표시합니다. 현재
-활성 증거가 있으면 concise 출력은 `McpActiveVerificationEvidence`를 엄격하게 decode하고
-집계 결론인 `Active verification: passed|failed`와
-`Storage writeability: passed|failed`만 표시합니다. 모든 Store 결과가 통과해야 Store 쓰기
-가능성이 통과하고, 증거가 요구하는 모든 Store, protocol conformance, host compatibility
-결과가 통과해야 활성 검증이 통과합니다. 현재 증거가 잘못됐으면 알 수 없는 결론을
-표시하지 않고 rendering이 실패합니다. Concise 출력은 project 또는 Connection ID,
-source, timestamp, Store별 결과, protocol matrix, host fixture를 노출하지 않습니다.
-Verbose와 JSON 출력은 활성 증거의 별도 `observed_at`, `source=connection_verify`, project
-ID, 쓰기 결과, conformance 결과, host fixture, side effect를 유지합니다. 결합된 결과는
-유효하지 않으며 schema-version 또는 host-version 분기로 evidence 형태를 선택하지
-않습니다.
+이를 교체하지 않습니다. 활성 구성원이 없으면 간결한 출력은
+`Last active verification: not run`과
+`Last verified storage writeability: not checked`를 표시하고 증거 시각이나 source 줄은
+표시하지 않습니다. 영속 활성 증거가 있으면 간결한 출력은
+`McpActiveVerificationEvidence`를 엄격하게 decode하여
+`Last active verification: passed|failed`, 정확히 영속된 `observed_at`을 나타내는
+`Observed at`, `source=connection_verify`를 사람이 읽도록 바꾼
+`Source: connection verify`, 그리고
+`Last verified storage writeability: passed|failed`를 표시합니다. 모든 Store 결과가
+통과해야 Store 쓰기 가능성이 통과하고, 증거가 요구하는 모든 Store, protocol
+conformance, host compatibility 결과가 통과해야 활성 검증이 통과합니다. 영속 증거가
+잘못됐으면 알 수 없는 결론을 표시하지 않고 rendering이 실패합니다. 간결한 출력은
+project 또는 Connection ID, Store별 결과, protocol matrix, host fixture를 생략합니다.
+Verbose와 JSON 출력은 `observed_at`, `source=connection_verify`, project ID, 쓰기 결과,
+conformance 결과, host fixture, side effect를 포함한 완전한 활성 증거를 유지합니다.
+Timestamp와 source는 가장 최근에 영속된 명시적 `connection verify` 작업을 식별합니다.
+Status는 증거를 fresh 또는 stale로 분류하거나, 보편적인 유효 기간을 암시하거나,
+증거를 만료시키지 않습니다. 결합된 결과는 유효하지 않으며 schema-version 또는
+host-version 분기로 evidence 형태를 선택하지 않습니다.
 
 `volicord connection verify codex`는 `ambient_hook_coverage`와
 `correlated_guard_verification`을 분리해 보고합니다. Concise 출력은 결과 둘과 terminal

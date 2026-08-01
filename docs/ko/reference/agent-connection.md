@@ -293,14 +293,19 @@ revision 및 host 호환성 결과를 기록하며, 자체 `observed_at`과
 source와 분리된 증거 형태를 직접 선택하며 schema-version 정수, 숫자 host version,
 결합 형태 decoder로 선택하지 않습니다. 사람용, verbose, JSON projection은 이 구분을
 보존합니다. Concise Connection 출력은 존재하는 `McpActiveVerificationEvidence`를 엄격하게
-decode하여 현재 활성 검증 결론 하나와 Store 쓰기 가능성 결론 하나를 만듭니다. 활성
-증거가 없으면 `Active verification: not run`과
-`Storage writeability: not checked`를 표시합니다. Registry 쓰기 가능성과 포함된 모든
-프로젝트 쓰기 가능성 결과가 통과해야 Store 쓰기 가능성이 통과합니다. 이 결과들과 포함된
-모든 protocol conformance 및 host compatibility probe가 통과해야 활성 검증이 통과합니다.
-존재하는 증거가 잘못됐으면 오류입니다. Concise 출력은 ID, source, timestamp, Store별
-결과, protocol matrix, host fixture를 생략하고 verbose와 JSON은 이 정확한 typed
-세부사항을 유지하며 활성 쓰기 결과를 preflight 효과로 표시하지 않습니다.
+decode하여 최신 snapshot의 활성 검증 결론 하나와 Store 쓰기 가능성 결론 하나를
+만듭니다. 활성 증거가 없으면 `Last active verification: not run`과
+`Last verified storage writeability: not checked`를 표시하고 증거 시각이나 source 줄은
+표시하지 않습니다. 증거가 있으면 `Last active verification: passed|failed`, 정확히
+영속된 `observed_at`, 사람이 읽는 source `connection verify`,
+`Last verified storage writeability: passed|failed`를 표시합니다. Registry 쓰기 가능성과
+포함된 모든 프로젝트 쓰기 가능성 결과가 통과해야 Store 쓰기 가능성이 통과합니다. 이
+결과들과 포함된 모든 protocol conformance 및 host compatibility probe가 통과해야 활성
+검증이 통과합니다. 존재하는 증거가 잘못됐으면 오류입니다. 간결한 출력은 ID, Store별
+결과, protocol matrix, host fixture를 생략하고 verbose와 JSON은 완전한 typed 증거를
+유지하며 활성 쓰기 결과를 preflight 효과로 표시하지 않습니다. 증거 시각과 source는
+provenance를 드러내지만 fresh/stale 분류, 보편적인 유효 기간, 자동 만료를 만들지
+않습니다.
 
 선택한 status와 Connection list는 같은 typed 사람용 어휘를 projection합니다. 집계
 status는 `ready`, `action required`, `failed`를 사용하고 integration 및 hook activation은

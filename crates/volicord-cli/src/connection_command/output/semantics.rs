@@ -4,7 +4,10 @@ use volicord_types::{
         ConnectionCheck, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
         HookActivationState, IntegrationActivationState,
     },
-    mcp_verification_evidence::{McpActiveVerificationEvidence, McpEvidenceCheckStatus},
+    mcp_verification_evidence::{
+        McpActiveVerificationEvidence, McpActiveVerificationSource, McpEvidenceCheckStatus,
+    },
+    values::UtcTimestamp,
 };
 
 use crate::connection_command::ConnectionCommandError;
@@ -155,17 +158,29 @@ impl StorageWriteabilityState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct ActiveVerificationSummary {
-    pub(super) state: ActiveVerificationState,
-    pub(super) storage_writeability: StorageWriteabilityState,
+pub(super) const fn active_verification_source_label(
+    source: McpActiveVerificationSource,
+) -> &'static str {
+    match source {
+        McpActiveVerificationSource::ConnectionVerify => "connection verify",
+    }
 }
 
-impl ActiveVerificationSummary {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ActiveVerificationSnapshotSummary {
+    pub(super) state: ActiveVerificationState,
+    pub(super) storage_writeability: StorageWriteabilityState,
+    pub(super) observed_at: Option<UtcTimestamp>,
+    pub(super) source: Option<McpActiveVerificationSource>,
+}
+
+impl ActiveVerificationSnapshotSummary {
     const fn not_run() -> Self {
         Self {
             state: ActiveVerificationState::NotRun,
             storage_writeability: StorageWriteabilityState::NotChecked,
+            observed_at: None,
+            source: None,
         }
     }
 
@@ -195,13 +210,15 @@ impl ActiveVerificationSummary {
             } else {
                 StorageWriteabilityState::Failed
             },
+            observed_at: Some(evidence.observed_at().clone()),
+            source: Some(evidence.source()),
         }
     }
 }
 
-pub(super) fn active_verification_summary(
+pub(super) fn active_verification_snapshot(
     checks: &[ConnectionCheck],
-) -> Result<Option<ActiveVerificationSummary>, ConnectionCommandError> {
+) -> Result<Option<ActiveVerificationSnapshotSummary>, ConnectionCommandError> {
     let Some(details) = checks
         .iter()
         .find(|check| {
@@ -216,10 +233,10 @@ pub(super) fn active_verification_summary(
         return Ok(None);
     }
     let Some(value) = details.get("last_active_verification") else {
-        return Ok(Some(ActiveVerificationSummary::not_run()));
+        return Ok(Some(ActiveVerificationSnapshotSummary::not_run()));
     };
     if value.is_null() {
-        return Ok(Some(ActiveVerificationSummary::not_run()));
+        return Ok(Some(ActiveVerificationSnapshotSummary::not_run()));
     }
     let evidence = serde_json::from_value::<McpActiveVerificationEvidence>(value.clone()).map_err(
         |error| {
@@ -228,7 +245,9 @@ pub(super) fn active_verification_summary(
             ))
         },
     )?;
-    Ok(Some(ActiveVerificationSummary::from_evidence(&evidence)))
+    Ok(Some(ActiveVerificationSnapshotSummary::from_evidence(
+        &evidence,
+    )))
 }
 
 #[cfg(test)]
@@ -496,8 +515,8 @@ mod tests {
     }
 
     #[test]
-    fn active_verification_summary_is_typed_and_component_complete() {
-        let not_run = active_verification_summary(&[mcp_check(Value::Null)])
+    fn active_verification_snapshot_is_typed_and_component_complete() {
+        let not_run = active_verification_snapshot(&[mcp_check(Value::Null)])
             .unwrap()
             .unwrap();
         assert_eq!(not_run.state, ActiveVerificationState::NotRun);
@@ -505,6 +524,8 @@ mod tests {
             not_run.storage_writeability,
             StorageWriteabilityState::NotChecked
         );
+        assert_eq!(not_run.observed_at, None);
+        assert_eq!(not_run.source, None);
 
         let cases = [
             (
@@ -534,18 +555,30 @@ mod tests {
             ),
         ];
         for (evidence, state, storage_writeability) in cases {
-            let summary = active_verification_summary(&[mcp_check(evidence)])
+            let summary = active_verification_snapshot(&[mcp_check(evidence)])
                 .unwrap()
                 .unwrap();
             assert_eq!(summary.state, state);
             assert_eq!(summary.storage_writeability, storage_writeability);
+            assert_eq!(
+                summary.observed_at,
+                Some(UtcTimestamp::parse("2026-07-31T00:00:00Z").unwrap())
+            );
+            assert_eq!(
+                summary.source,
+                Some(McpActiveVerificationSource::ConnectionVerify)
+            );
         }
+        assert_eq!(
+            active_verification_source_label(McpActiveVerificationSource::ConnectionVerify),
+            "connection verify"
+        );
     }
 
     #[test]
     fn malformed_active_verification_evidence_fails_without_unknown_fallback() {
         let error =
-            active_verification_summary(&[mcp_check(json!({"corrupt": true}))]).unwrap_err();
+            active_verification_snapshot(&[mcp_check(json!({"corrupt": true}))]).unwrap_err();
         assert!(error
             .to_string()
             .contains("current MCP active-verification evidence is invalid"));

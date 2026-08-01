@@ -321,16 +321,22 @@ side-effect values are `rollback_only_registry_write_probe`,
 the separate evidence shape directly; schema-version integers, numeric host
 versions, and combined-shape decoding do not select them. Human, verbose, and
 JSON projections preserve this distinction. Concise Connection output strictly
-decodes a present `McpActiveVerificationEvidence` into one current
+decodes a present `McpActiveVerificationEvidence` into one latest-snapshot
 active-verification conclusion and one Store-writeability conclusion. With no
-active evidence it says `Active verification: not run` and
-`Storage writeability: not checked`. Registry writeability and every included
-project writeability result must pass for Store writeability to pass. Those
-results plus every included protocol-conformance and host-compatibility probe
-must pass for active verification to pass. Malformed present evidence is an
-error. Concise output omits IDs, source, timestamp, individual Store results,
-protocol matrices, and host fixtures; verbose and JSON retain those exact
-typed details and never label an active write result as a preflight effect.
+active evidence it says `Last active verification: not run` and
+`Last verified storage writeability: not checked`, with no evidence-time or
+source line. With evidence it shows `Last active verification: passed|failed`,
+the exact persisted `observed_at`, the humanized source `connection verify`,
+and `Last verified storage writeability: passed|failed`. Registry
+writeability and every included project writeability result must pass for Store
+writeability to pass. Those results plus every included protocol-conformance
+and host-compatibility probe must pass for active verification to pass.
+Malformed present evidence is an error. Concise output omits IDs, individual
+Store results, protocol matrices, and host fixtures; verbose and JSON retain
+the complete typed evidence and never label an active write result as a
+preflight effect. The evidence time and source expose provenance without a
+fresh/stale classification, universal validity duration, or automatic
+expiration.
 
 Selected status and Connection list project the same typed human vocabulary:
 aggregate status is `ready`, `action required`, or `failed`; integration and

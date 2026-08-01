@@ -73,10 +73,15 @@ by selected status and list. Exhaustive enum mappings select aggregate-status,
 integration-activation, hook-activation, and check-status phrases; one count
 projection supplies `passed`, `blocked`, `pending`, `failed`, and
 `not applicable` in that order. A present active-verification detail is
-strictly decoded as `McpActiveVerificationEvidence` before concise output
-derives its active-verification and Store-writeability conclusions. The generic
-presentation layer only lays out those selected labels and values. JSON keeps
-the stable underscore enum spellings and the complete typed evidence.
+strictly decoded as `McpActiveVerificationEvidence` into one shared typed
+snapshot projection before human rendering. That projection owns the aggregate
+active-verification and Store-writeability conclusions, exact persisted
+`observed_at`, and typed source used by both concise and verbose output.
+Concise output labels the result as the last active verification, humanizes
+`connection_verify` as `connection verify`, and shows the evidence time; it
+does not imply freshness. The generic presentation layer only lays out those
+selected labels and values. JSON keeps the stable underscore enum spellings
+and the complete typed evidence.
 
 `connection verify` performs current adapter and managed-configuration
 inspection, runs permitted local probes, reads actual managed-host and Guard

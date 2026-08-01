@@ -192,6 +192,12 @@ Connection status는 하나의 보고서 시각을 평가하지만 그 평가를
 `evaluated_at`을 batch 평가 시각으로 유지하며 선택한 check의 증거 시각으로 바꾸지
 않습니다.
 
+Connection status의 활성 검증 부분은 명시적 `connection verify` 작업이 만든 가장 최근의
+영속 snapshot이며 실시간 probe가 아닙니다. 간결한 출력은 정확한 증거 시각과 사람이 읽는
+source를 식별하고 Store 쓰기 가능성을 그 작업이 확립한 결론으로 표시합니다. Verbose와
+JSON은 완전한 증거를 유지합니다. 이 snapshot에는 보편적인 freshness 기간, 나이 기반
+경고, 자동 만료가 없습니다. Status를 읽어도 검증을 다시 실행하지 않습니다.
+
 Store가 `RuntimeHomeMutationContext`를 만든 뒤에는 그
 `CanonicalRuntimeHomePath`가 승인 안에서 수행하는 모든 변경 의존 읽기, plan,
 Registry 조회, Core service, Store handle, diagnostic write, 효과, 응답의 유일한
