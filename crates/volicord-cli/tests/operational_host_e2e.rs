@@ -1897,7 +1897,42 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert!(verbose.contains("    Expected verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Observed verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Verification tool observed at:"));
-    assert!(verbose.contains(&format!("    Observed at: {guard_evidence_observed_at}")));
+    assert!(verbose.contains(&format!("    Evidence time: {guard_evidence_observed_at}")));
+    let guard_block = verbose
+        .split("  [passed] Correlated Guard verification\n")
+        .nth(1)
+        .ok_or("verbose correlated Guard check")?;
+    let guard_block = guard_block
+        .split("\n\n  [")
+        .next()
+        .ok_or("verbose correlated Guard check boundary")?;
+    for expected in [
+        "    Correlation\n",
+        "      Verification ID: ",
+        "      Runtime session: ",
+        "      Acquisition stage: post tool matched\n",
+        "    Attempt\n      State: complete\n",
+        "    Completed proof\n      Completed at: ",
+    ] {
+        assert!(guard_block.contains(expected), "{guard_block}");
+    }
+    assert_eq!(guard_block.matches("Verification ID:").count(), 1);
+    assert_eq!(guard_block.matches("Guard installation ID:").count(), 1);
+    assert_eq!(guard_block.matches("Policy digest:").count(), 1);
+    assert_eq!(guard_block.matches("Hook definition digest:").count(), 1);
+    for (field, label) in [
+        ("guard_installation_id", "Guard installation ID"),
+        ("policy_digest", "Policy digest"),
+        ("hook_definition_digest", "Hook definition digest"),
+    ] {
+        let value = latest_attempt[field]
+            .as_str()
+            .ok_or("complete Guard correlation value")?;
+        assert!(
+            guard_block.contains(&format!("      {label}: {value}\n")),
+            "{guard_block}"
+        );
+    }
     assert!(!verbose.contains("Details: {"));
     assert!(!verbose.contains("\":["));
     assert_eq!(

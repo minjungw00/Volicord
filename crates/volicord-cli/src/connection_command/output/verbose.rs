@@ -13,6 +13,7 @@ use super::semantics::{
     integration_activation_label, ConnectionCheckCounts,
 };
 use super::{
+    guard_verification::CorrelatedGuardHumanProjection,
     human::{headline, render_activation_plan},
     report::{
         projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
@@ -42,7 +43,7 @@ pub(super) fn render_command_report_verbose(
     sections.push(render_summary(report, counts));
 
     if !report.checks.is_empty() {
-        sections.push(render_checks(report));
+        sections.push(render_checks(report)?);
     }
     if !report.findings.is_empty() {
         sections.push(render_findings(report, &roots));
@@ -146,15 +147,18 @@ fn render_summary(report: &ConnectionCommandReport, counts: ConnectionCheckCount
     lines.join("\n")
 }
 
-fn render_checks(report: &ConnectionCommandReport) -> String {
+fn render_checks(report: &ConnectionCommandReport) -> Result<String, ConnectionCommandError> {
     let mut blocks = Vec::with_capacity(report.checks.len());
     for check in &report.checks {
-        blocks.push(render_check(report, check));
+        blocks.push(render_check(report, check)?);
     }
-    format!("Checks\n{}", blocks.join("\n\n"))
+    Ok(format!("Checks\n{}", blocks.join("\n\n")))
 }
 
-fn render_check(report: &ConnectionCommandReport, check: &ConnectionCheck) -> String {
+fn render_check(
+    report: &ConnectionCommandReport,
+    check: &ConnectionCheck,
+) -> Result<String, ConnectionCommandError> {
     let mut lines = vec![format!(
         "  [{}] {}",
         check_status_label(check.status()),
@@ -165,8 +169,13 @@ fn render_check(report: &ConnectionCommandReport, check: &ConnectionCheck) -> St
         lines.push(format!("    Code: {code}"));
     }
     if let Some(observed_at) = check.observed_at() {
+        let label = if check.id() == ConnectionCheckKind::CorrelatedGuardVerification {
+            "Evidence time"
+        } else {
+            "Observed at"
+        };
         lines.push(format!(
-            "    Observed at: {}",
+            "    {label}: {}",
             observed_at.to_canonical_string()
         ));
     }
@@ -195,10 +204,10 @@ fn render_check(report: &ConnectionCommandReport, check: &ConnectionCheck) -> St
     }
 
     let mut details = DetailContext::new(report, check);
-    render_known_details(&mut details);
+    render_known_details(&mut details)?;
     details.render_additional();
     lines.extend(details.lines);
-    lines.join("\n")
+    Ok(lines.join("\n"))
 }
 
 fn check_status_label(status: ConnectionCheckStatus) -> &'static str {
@@ -382,7 +391,7 @@ fn value_at_path<'a>(object: &'a Map<String, Value>, path: &DetailPath) -> Optio
     Some(value)
 }
 
-fn render_known_details(context: &mut DetailContext<'_>) {
+fn render_known_details(context: &mut DetailContext<'_>) -> Result<(), ConnectionCommandError> {
     match context.check.id() {
         ConnectionCheckKind::DiagnosticLookup | ConnectionCheckKind::RuntimeSessionLookup => {}
         ConnectionCheckKind::VerificationNotRun => {}
@@ -404,139 +413,129 @@ fn render_known_details(context: &mut DetailContext<'_>) {
             render_guard_observation(context);
         }
         ConnectionCheckKind::GuardObservation => render_guard_observation(context),
-        ConnectionCheckKind::CorrelatedGuardVerification => render_guard_verification(context),
+        ConnectionCheckKind::CorrelatedGuardVerification => render_guard_verification(context)?,
         ConnectionCheckKind::SetupPlan => render_setup_plan(context),
         ConnectionCheckKind::ModeTransition => render_mode_transition(context),
         ConnectionCheckKind::ConnectionRemoval => render_connection_removal(context),
     }
+    Ok(())
 }
 
-fn render_guard_verification(context: &mut DetailContext<'_>) {
-    if let Some(recoverability) = context.take_string("recoverability") {
-        context.line("Recoverability", recoverability);
+fn render_guard_verification(
+    context: &mut DetailContext<'_>,
+) -> Result<(), ConnectionCommandError> {
+    let Some(details) = context.check.details() else {
+        return Ok(());
+    };
+    let projection =
+        CorrelatedGuardHumanProjection::try_from_details(details, context.check.status())
+            .map_err(ConnectionCommandError::runtime)?;
+    for path in ["recoverability", "latest_attempt", "latest_completed_proof"] {
+        context.consume(&DetailPath::from_dotted_keys(path));
     }
-    render_guard_attempt(context);
-    render_guard_proof(context);
-}
 
-fn render_guard_attempt(context: &mut DetailContext<'_>) {
-    for (path, label) in [
-        ("latest_attempt.evidence_role", "Attempt evidence role"),
-        ("latest_attempt.verification_id", "Verification ID"),
-        ("latest_attempt.runtime_session_id", "Runtime session"),
-        ("latest_attempt.host_session_id", "Host session"),
-        ("latest_attempt.host_turn_id", "Host turn"),
-        ("latest_attempt.attempt_state", "Attempt state"),
-        ("latest_attempt.prompt_event_id", "Prompt event"),
-        ("latest_attempt.pre_tool_event_id", "Pre-tool event"),
-        ("latest_attempt.post_tool_event_id", "Post-tool event"),
-        (
-            "latest_attempt.expected_agent_tool_id",
-            "Expected AgentToolId",
-        ),
-        (
-            "latest_attempt.expected_host_callable_identity",
-            "Expected host callable",
-        ),
-        (
-            "latest_attempt.observed_host_callable_identity",
-            "Observed host callable",
-        ),
-        ("latest_attempt.acquisition_stage", "Acquisition stage"),
-        ("latest_attempt.repair_reason", "Repair reason"),
-        ("latest_attempt.retry_policy", "Retry policy"),
-        ("latest_attempt.recoverability", "Attempt recoverability"),
-        ("latest_attempt.recovery_action", "Recovery action"),
-        ("latest_attempt.integration_revision", "Attempt revision"),
-        (
-            "latest_attempt.guard_installation_id",
-            "Guard Installation ID",
-        ),
-        ("latest_attempt.policy_digest", "Policy digest"),
-        (
-            "latest_attempt.hook_definition_digest",
-            "Hook definition digest",
-        ),
-        ("latest_attempt.created_at", "Attempt created at"),
-        ("latest_attempt.acknowledged_at", "Probe acknowledged at"),
-        ("latest_attempt.completed_at", "Attempt completed at"),
-        ("latest_attempt.terminal_at", "Attempt terminal at"),
-    ] {
-        if let Some(value) = context.take_string(path) {
-            context.line(label, value);
+    if !projection.shared_correlation.is_empty() || !projection.divergence.is_empty() {
+        context.lines.push("    Correlation".to_owned());
+    }
+    if projection.divergence.is_empty() {
+        for coordinate in &projection.shared_correlation {
+            context.lines.push(format!(
+                "      {}: {}",
+                coordinate.label(),
+                coordinate.value()
+            ));
+        }
+    } else {
+        if !projection.shared_correlation.is_empty() {
+            context.lines.push("      Shared coordinates".to_owned());
+            for coordinate in &projection.shared_correlation {
+                context.lines.push(format!(
+                    "        {}: {}",
+                    coordinate.label(),
+                    coordinate.value()
+                ));
+            }
+        }
+        context
+            .lines
+            .push("      Latest attempt identity".to_owned());
+        for divergence in &projection.divergence {
+            context.lines.push(format!(
+                "        {}: {}",
+                divergence.label(),
+                divergence.attempt_value()
+            ));
+        }
+        context
+            .lines
+            .push("      Earlier completed proof identity".to_owned());
+        for divergence in &projection.divergence {
+            context.lines.push(format!(
+                "        {}: {}",
+                divergence.label(),
+                divergence.proof_value()
+            ));
         }
     }
-}
 
-fn render_guard_proof(context: &mut DetailContext<'_>) {
-    for (path, label) in [
-        (
-            "latest_completed_proof.evidence_role",
-            "Proof evidence role",
-        ),
-        (
-            "latest_completed_proof.verification_id",
-            "Proof verification ID",
-        ),
-        (
-            "latest_completed_proof.runtime_session_id",
-            "Proof runtime session",
-        ),
-        (
-            "latest_completed_proof.host_session_id",
-            "Proof host session",
-        ),
-        ("latest_completed_proof.host_turn_id", "Proof host turn"),
-        (
-            "latest_completed_proof.prompt_event_id",
-            "Proof prompt event",
-        ),
-        (
-            "latest_completed_proof.pre_tool_event_id",
-            "Proof pre-tool event",
-        ),
-        (
-            "latest_completed_proof.post_tool_event_id",
-            "Proof post-tool event",
-        ),
-        (
-            "latest_completed_proof.expected_agent_tool_id",
-            "Proof expected AgentToolId",
-        ),
-        (
-            "latest_completed_proof.expected_host_callable_identity",
-            "Proof expected host callable",
-        ),
-        (
-            "latest_completed_proof.observed_host_callable_identity",
-            "Proof observed host callable",
-        ),
-        (
-            "latest_completed_proof.acquisition_stage",
-            "Proof acquisition stage",
-        ),
-        (
-            "latest_completed_proof.integration_revision",
-            "Proof revision",
-        ),
-        (
-            "latest_completed_proof.guard_installation_id",
-            "Proof Guard Installation ID",
-        ),
-        (
-            "latest_completed_proof.policy_digest",
-            "Proof policy digest",
-        ),
-        (
-            "latest_completed_proof.hook_definition_digest",
-            "Proof hook definition digest",
-        ),
-        ("latest_completed_proof.completed_at", "Proof completed at"),
-    ] {
-        if let Some(value) = context.take_string(path) {
-            context.line(label, value);
+    if let Some(attempt) = projection.attempt.as_ref() {
+        context.lines.push("    Attempt".to_owned());
+        context
+            .lines
+            .push(format!("      State: {}", attempt.state()));
+        if let Some(value) = attempt.repair_reason() {
+            context.lines.push(format!("      Repair reason: {value}"));
+        }
+        if let Some(value) = attempt.retry_policy() {
+            context.lines.push(format!("      Retry policy: {value}"));
+        }
+        if let Some(value) = attempt.recoverability() {
+            context.lines.push(format!("      Recoverability: {value}"));
+        }
+        if let Some(value) = attempt.recovery_action() {
+            context
+                .lines
+                .push(format!("      Recovery action: {value}"));
+        }
+        context.lines.push(format!(
+            "      Created at: {}",
+            attempt.created_at().to_canonical_string()
+        ));
+        if let Some(value) = attempt.acknowledged_at() {
+            context.lines.push(format!(
+                "      Probe acknowledged at: {}",
+                value.to_canonical_string()
+            ));
+        }
+        if let Some(value) = attempt.completed_at() {
+            context.lines.push(format!(
+                "      Completed at: {}",
+                value.to_canonical_string()
+            ));
+        }
+        if let Some(value) = attempt.terminal_at() {
+            context.lines.push(format!(
+                "      Terminal at: {}",
+                value.to_canonical_string()
+            ));
         }
     }
+
+    if let Some(proof) = projection.completed_proof.as_ref() {
+        let heading = if proof.is_earlier_than_attempt() {
+            "    Earlier completed proof"
+        } else if proof.is_historical_without_attempt() {
+            "    Historical completed proof"
+        } else {
+            "    Completed proof"
+        };
+        context.lines.push(heading.to_owned());
+        context.lines.push(format!(
+            "      Completed at: {}",
+            proof.completed_at().to_canonical_string()
+        ));
+    }
+    Ok(())
 }
 
 fn render_managed_config(context: &mut DetailContext<'_>) {
@@ -1835,6 +1834,370 @@ mod tests {
         render_command_report_verbose(report).unwrap()
     }
 
+    fn completed_guard_proof(verification_id: &str, suffix: &str, completed_at: &str) -> Value {
+        json!({
+            "evidence_role": "guard_verification_proof",
+            "verification_id": verification_id,
+            "runtime_session_id": format!("runtime_{suffix}"),
+            "host_session_id": format!("host_session_{suffix}"),
+            "host_turn_id": format!("host_turn_{suffix}"),
+            "prompt_event_id": format!("prompt_{suffix}"),
+            "pre_tool_event_id": format!("pre_{suffix}"),
+            "post_tool_event_id": format!("post_{suffix}"),
+            "expected_agent_tool_id": "volicord.guard_probe",
+            "expected_host_callable_identity": "mcp__volicord__guard_probe",
+            "observed_host_callable_identity": "mcp__volicord__guard_probe",
+            "acquisition_stage": "post_tool_matched",
+            "integration_revision": "revision_guard",
+            "guard_installation_id": "guard_installation_guard",
+            "policy_digest": "policy_digest_guard",
+            "hook_definition_digest": "hook_digest_guard",
+            "completed_at": completed_at,
+        })
+    }
+
+    fn complete_guard_attempt() -> Value {
+        json!({
+            "evidence_role": "guard_verification_attempt",
+            "verification_id": "verification_current",
+            "runtime_session_id": "runtime_current",
+            "host_session_id": "host_session_current",
+            "host_turn_id": "host_turn_current",
+            "attempt_state": "complete",
+            "prompt_event_id": "prompt_current",
+            "pre_tool_event_id": "pre_current",
+            "post_tool_event_id": "post_current",
+            "expected_agent_tool_id": "volicord.guard_probe",
+            "expected_host_callable_identity": "mcp__volicord__guard_probe",
+            "observed_host_callable_identity": "mcp__volicord__guard_probe",
+            "acquisition_stage": "post_tool_matched",
+            "integration_revision": "revision_guard",
+            "guard_installation_id": "guard_installation_guard",
+            "policy_digest": "policy_digest_guard",
+            "hook_definition_digest": "hook_digest_guard",
+            "created_at": "2026-07-20T02:00:00Z",
+            "acknowledged_at": "2026-07-20T02:01:00Z",
+            "completed_at": "2026-07-20T02:02:00Z",
+            "terminal_at": "2026-07-20T02:02:00Z",
+        })
+    }
+
+    fn pending_guard_attempt() -> Value {
+        json!({
+            "evidence_role": "guard_verification_attempt",
+            "verification_id": "verification_current",
+            "runtime_session_id": "runtime_current",
+            "host_session_id": "host_session_current",
+            "host_turn_id": "host_turn_current",
+            "attempt_state": "awaiting_probe",
+            "expected_agent_tool_id": "volicord.guard_probe",
+            "expected_host_callable_identity": "mcp__volicord__guard_probe",
+            "integration_revision": "revision_guard",
+            "guard_installation_id": "guard_installation_guard",
+            "policy_digest": "policy_digest_guard",
+            "hook_definition_digest": "hook_digest_guard",
+            "created_at": "2026-07-20T02:00:00Z",
+        })
+    }
+
+    fn repair_guard_attempt() -> Value {
+        json!({
+            "evidence_role": "guard_verification_attempt",
+            "verification_id": "verification_current",
+            "runtime_session_id": "runtime_current",
+            "host_session_id": "host_session_current",
+            "host_turn_id": "host_turn_current",
+            "attempt_state": "repair_required",
+            "prompt_event_id": "prompt_current",
+            "pre_tool_event_id": "pre_current",
+            "expected_agent_tool_id": "volicord.guard_probe",
+            "expected_host_callable_identity": "mcp__volicord__guard_probe",
+            "observed_host_callable_identity": "mcp__other__guard_probe",
+            "acquisition_stage": "callable_identity_mismatch",
+            "repair_reason": "callable_identity_mismatch",
+            "retry_policy": "new_turn_required",
+            "recoverability": "recoverable",
+            "recovery_action": "request_integration_verification",
+            "integration_revision": "revision_guard",
+            "guard_installation_id": "guard_installation_guard",
+            "policy_digest": "policy_digest_guard",
+            "hook_definition_digest": "hook_digest_guard",
+            "created_at": "2026-07-20T02:00:00Z",
+            "acknowledged_at": "2026-07-20T02:01:00Z",
+            "terminal_at": "2026-07-20T02:02:00Z",
+        })
+    }
+
+    fn guard_details(
+        attempt: Option<Value>,
+        proof: Option<Value>,
+        recoverability: Option<&str>,
+    ) -> Value {
+        let mut details = serde_json::Map::new();
+        if let Some(recoverability) = recoverability {
+            details.insert(
+                "recoverability".to_owned(),
+                Value::String(recoverability.to_owned()),
+            );
+        }
+        if let Some(attempt) = attempt {
+            details.insert("latest_attempt".to_owned(), attempt);
+        }
+        if let Some(proof) = proof {
+            details.insert("latest_completed_proof".to_owned(), proof);
+        }
+        Value::Object(details)
+    }
+
+    fn guard_report(
+        status: ConnectionCheckStatus,
+        details: Value,
+        observed_at: Option<&str>,
+    ) -> ConnectionCommandReport {
+        report(
+            CommandOperation::Status,
+            false,
+            if status == ConnectionCheckStatus::Failed {
+                ConnectionStatus::Failed
+            } else {
+                ConnectionStatus::Complete
+            },
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::CorrelatedGuardVerification,
+                status,
+                (status != ConnectionCheckStatus::Passed)
+                    .then_some("correlated_guard_verification_incomplete"),
+                "Correlated Guard evidence fixture",
+                Some(details),
+                observed_at,
+            )],
+            Vec::new(),
+            None,
+            None,
+        )
+    }
+
+    fn reverse_object_order(value: Value) -> Value {
+        match value {
+            Value::Object(object) => Value::Object(
+                object
+                    .into_iter()
+                    .rev()
+                    .map(|(key, value)| (key, reverse_object_order(value)))
+                    .collect(),
+            ),
+            Value::Array(values) => {
+                Value::Array(values.into_iter().map(reverse_object_order).collect())
+            }
+            value => value,
+        }
+    }
+
+    #[test]
+    fn matching_guard_attempt_and_proof_have_one_correlation_and_separate_lifecycles() {
+        let details = guard_details(
+            Some(complete_guard_attempt()),
+            Some(completed_guard_proof(
+                "verification_current",
+                "current",
+                "2026-07-20T02:02:00Z",
+            )),
+            None,
+        );
+        let report = guard_report(
+            ConnectionCheckStatus::Passed,
+            details,
+            Some("2026-07-20T02:02:00Z"),
+        );
+        let json_before = serde_json::to_value(report.diagnostic_report().unwrap()).unwrap();
+        let block = render_check(&report, &report.checks[0]).unwrap();
+        let json_after = serde_json::to_value(report.diagnostic_report().unwrap()).unwrap();
+
+        assert_eq!(json_after, json_before);
+        assert_eq!(
+            block,
+            concat!(
+                "  [passed] Correlated Guard verification\n",
+                "    Correlated Guard evidence fixture\n",
+                "    Evidence time: 2026-07-20T02:02:00Z\n",
+                "    Depends on: ambient_hook_coverage\n",
+                "    Correlation\n",
+                "      Verification ID: verification_current\n",
+                "      Runtime session: runtime_current\n",
+                "      Host session: host_session_current\n",
+                "      Host turn: host_turn_current\n",
+                "      Prompt event: prompt_current\n",
+                "      Pre-tool event: pre_current\n",
+                "      Post-tool event: post_current\n",
+                "      Expected AgentToolId: volicord.guard_probe\n",
+                "      Expected host callable: mcp__volicord__guard_probe\n",
+                "      Observed host callable: mcp__volicord__guard_probe\n",
+                "      Acquisition stage: post tool matched\n",
+                "      Integration revision: revision_guard\n",
+                "      Guard installation ID: guard_installation_guard\n",
+                "      Policy digest: policy_digest_guard\n",
+                "      Hook definition digest: hook_digest_guard\n",
+                "    Attempt\n",
+                "      State: complete\n",
+                "      Created at: 2026-07-20T02:00:00Z\n",
+                "      Probe acknowledged at: 2026-07-20T02:01:00Z\n",
+                "      Completed at: 2026-07-20T02:02:00Z\n",
+                "      Terminal at: 2026-07-20T02:02:00Z\n",
+                "    Completed proof\n",
+                "      Completed at: 2026-07-20T02:02:00Z",
+            )
+        );
+        assert_eq!(block.matches("Verification ID:").count(), 1);
+        assert_eq!(
+            json_after["checks"][0]["details"]["latest_attempt"]["acquisition_stage"],
+            "post_tool_matched"
+        );
+        assert_eq!(
+            json_after["checks"][0]["observed_at"],
+            "2026-07-20T02:02:00Z"
+        );
+    }
+
+    #[test]
+    fn newer_pending_guard_attempt_keeps_earlier_proof_identity_separate() {
+        let report = guard_report(
+            ConnectionCheckStatus::Pending,
+            guard_details(
+                Some(pending_guard_attempt()),
+                Some(completed_guard_proof(
+                    "verification_earlier",
+                    "earlier",
+                    "2026-07-20T01:00:00Z",
+                )),
+                None,
+            ),
+            Some("2026-07-20T02:00:00Z"),
+        );
+        let block = render_check(&report, &report.checks[0]).unwrap();
+
+        for expected in [
+            "      Latest attempt identity\n",
+            "        Verification ID: verification_current\n",
+            "      Earlier completed proof identity\n",
+            "        Verification ID: verification_earlier\n",
+            "    Attempt\n      State: awaiting probe\n",
+            "    Earlier completed proof\n      Completed at: 2026-07-20T01:00:00Z",
+        ] {
+            assert!(block.contains(expected), "missing {expected:?}\n{block}");
+        }
+        assert!(!block.contains("    Correlation\n      Verification ID: verification_current\n"));
+    }
+
+    #[test]
+    fn repair_required_guard_attempt_renders_recovery_and_earlier_proof() {
+        let report = guard_report(
+            ConnectionCheckStatus::Failed,
+            guard_details(
+                Some(repair_guard_attempt()),
+                Some(completed_guard_proof(
+                    "verification_earlier",
+                    "earlier",
+                    "2026-07-20T01:00:00Z",
+                )),
+                Some("recoverable"),
+            ),
+            Some("2026-07-20T02:02:00Z"),
+        );
+        let output = rendered(&report);
+
+        for expected in [
+            "      State: repair required\n",
+            "      Repair reason: callable identity mismatch\n",
+            "      Retry policy: new turn required\n",
+            "      Recoverability: recoverable\n",
+            "      Recovery action: request integration verification\n",
+            "    Earlier completed proof\n",
+        ] {
+            assert!(output.contains(expected), "missing {expected:?}\n{output}");
+        }
+        assert_eq!(output.matches("\n").count(), output.lines().count());
+        assert!(output.ends_with('\n'));
+        assert!(!output.ends_with("\n\n"));
+        assert!(!output.contains('\t'));
+    }
+
+    #[test]
+    fn guard_attempt_without_proof_and_historical_proof_without_attempt_are_explicit() {
+        let attempt_only = guard_report(
+            ConnectionCheckStatus::Pending,
+            guard_details(Some(pending_guard_attempt()), None, None),
+            Some("2026-07-20T02:00:00Z"),
+        );
+        let attempt_only = render_check(&attempt_only, &attempt_only.checks[0]).unwrap();
+        assert!(attempt_only.contains("    Attempt\n"));
+        assert!(!attempt_only.contains("Completed proof"));
+
+        let proof_only = guard_report(
+            ConnectionCheckStatus::Pending,
+            guard_details(
+                None,
+                Some(completed_guard_proof(
+                    "verification_historical",
+                    "historical",
+                    "2026-07-20T01:00:00Z",
+                )),
+                None,
+            ),
+            None,
+        );
+        let proof_only = render_check(&proof_only, &proof_only.checks[0]).unwrap();
+        assert!(proof_only.contains("      Verification ID: verification_historical\n"));
+        assert!(proof_only.contains("    Historical completed proof\n"));
+        assert!(!proof_only.contains("    Attempt\n"));
+    }
+
+    #[test]
+    fn guard_identity_corruption_fails_at_the_strict_projection_boundary() {
+        let mut proof =
+            completed_guard_proof("verification_current", "current", "2026-07-20T02:02:00Z");
+        proof["runtime_session_id"] = Value::String("runtime_corrupt".to_owned());
+        let report = guard_report(
+            ConnectionCheckStatus::Passed,
+            guard_details(Some(complete_guard_attempt()), Some(proof), None),
+            Some("2026-07-20T02:02:00Z"),
+        );
+
+        let error = render_command_report_verbose(&report).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("inconsistent identity or completion"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn guard_human_projection_is_deterministic_across_detail_map_order() {
+        let details = guard_details(
+            Some(complete_guard_attempt()),
+            Some(completed_guard_proof(
+                "verification_current",
+                "current",
+                "2026-07-20T02:02:00Z",
+            )),
+            None,
+        );
+        let reversed = reverse_object_order(details.clone());
+        let first = guard_report(
+            ConnectionCheckStatus::Passed,
+            details,
+            Some("2026-07-20T02:02:00Z"),
+        );
+        let second = guard_report(
+            ConnectionCheckStatus::Passed,
+            reversed,
+            Some("2026-07-20T02:02:00Z"),
+        );
+
+        assert_eq!(rendered(&first), rendered(&second));
+    }
+
     macro_rules! assert_current_verbose {
         ($actual:expr, $previous:expr $(,)?) => {{
             let actual = $actual;
@@ -1886,7 +2249,7 @@ mod tests {
             None,
             None,
         );
-        let output = render_checks(&report);
+        let output = render_checks(&report).unwrap();
         assert!(output.contains("    Required tools: blocked"));
         assert!(!output.contains("Required tools: pending"));
     }

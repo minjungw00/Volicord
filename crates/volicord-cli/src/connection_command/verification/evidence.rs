@@ -609,7 +609,7 @@ fn parse_guard_timestamp(value: &str) -> Result<UtcTimestamp, String> {
         .map_err(|_| format!("Guard verification timestamp is invalid: {value}"))
 }
 
-pub(super) fn recovery_action_for_retry_policy(
+pub(in crate::connection_command) fn recovery_action_for_retry_policy(
     policy: GuardVerificationRetryPolicy,
 ) -> ActivationStepId {
     match policy {

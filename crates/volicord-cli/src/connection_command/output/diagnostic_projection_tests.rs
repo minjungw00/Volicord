@@ -493,12 +493,34 @@ fn guard_failure_keeps_typed_attempt_context_and_renderer_parity() {
                         "acquisition_stage": "callable_identity_mismatch",
                         "repair_reason": "callable_identity_mismatch",
                         "retry_policy": "new_turn_required",
+                        "recoverability": "recoverable",
                         "recovery_action": "request_integration_verification",
+                        "integration_revision": "revision_guard",
+                        "guard_installation_id": "guard_installation_current",
+                        "policy_digest": "policy_digest_current",
+                        "hook_definition_digest": "hook_digest_current",
+                        "created_at": "2026-07-20T02:00:00Z",
+                        "acknowledged_at": "2026-07-20T02:01:00Z",
+                        "terminal_at": "2026-07-20T02:02:00Z"
                     },
                     "latest_completed_proof": {
                         "evidence_role": "guard_verification_proof",
                         "verification_id": "guard_verification_older",
                         "runtime_session_id": "runtime_session_guard",
+                        "host_session_id": "host_session_older",
+                        "host_turn_id": "host_turn_older",
+                        "prompt_event_id": "prompt_older",
+                        "pre_tool_event_id": "pre_tool_older",
+                        "post_tool_event_id": "post_tool_older",
+                        "expected_agent_tool_id": "volicord.guard_probe",
+                        "expected_host_callable_identity": "mcp__volicord__guard_probe",
+                        "observed_host_callable_identity": "mcp__volicord__guard_probe",
+                        "acquisition_stage": "post_tool_matched",
+                        "integration_revision": "revision_guard",
+                        "guard_installation_id": "guard_installation_current",
+                        "policy_digest": "policy_digest_current",
+                        "hook_definition_digest": "hook_digest_current",
+                        "completed_at": "2026-07-20T01:00:00Z"
                     }
                 })),
             ),
@@ -522,15 +544,18 @@ fn guard_failure_keeps_typed_attempt_context_and_renderer_parity() {
     assert!(concise.contains("Correlated Guard verification: failed"));
     assert!(concise.contains("Reason: callable_identity_mismatch"));
     for expected in [
+        "Latest attempt identity",
         "Verification ID: guard_verification_current",
-        "Runtime session: runtime_session_guard",
-        "Host session: host_session_guard",
-        "Host turn: host_turn_guard",
-        "Attempt state: repair_required",
-        "Acquisition stage: callable_identity_mismatch",
+        "Earlier completed proof identity",
+        "Verification ID: guard_verification_older",
+        "State: repair required",
+        "Acquisition stage: callable identity mismatch",
         "Expected host callable: mcp__volicord__guard_probe",
         "Observed host callable: mcp__other__guard_probe",
-        "Retry policy: new_turn_required",
+        "Retry policy: new turn required",
+        "Recoverability: recoverable",
+        "Recovery action: request integration verification",
+        "Earlier completed proof",
     ] {
         assert!(verbose.contains(expected), "{verbose}");
     }

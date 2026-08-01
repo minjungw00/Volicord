@@ -1,6 +1,7 @@
 use super::*;
 
 mod common;
+mod guard_verification;
 mod human;
 mod list;
 mod report;

@@ -942,6 +942,19 @@ including verification, runtime-session, host-session, host-turn, event,
 expected/observed callable, acquisition-stage, repair, retry, and timestamp
 facts. `CorrelatedGuardProof` retains the latest completed current proof.
 
+The verbose Connection projection strictly derives one typed human view from
+those records. Matching attempt/proof correlation coordinates are grouped once
+under `Correlation`; attempt state, repair and recovery facts, and lifecycle
+times remain under `Attempt`; and proof lifecycle remains under `Completed
+proof`. If a newer pending or repair-required attempt coexists with an older
+completed proof, matching coordinates remain shared while divergent values are
+shown separately as the latest attempt identity and earlier completed proof
+identity. The proof is labelled as earlier historical evidence and does not
+imply that it satisfies the newer attempt. A same-verification identity or
+completion divergence is corrupt data and fails the strict projection boundary
+instead of being merged for display. JSON retains both complete evidence
+objects and their exact underscore values.
+
 The correlated check selects its `observed_at` from those typed records:
 
 - `awaiting_probe` uses the latest attempt's creation time;

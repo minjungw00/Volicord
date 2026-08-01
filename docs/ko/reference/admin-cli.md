@@ -1094,12 +1094,20 @@ MCP check는 typed `ManagedSessionAttemptDetails`,
 `ManagedCapabilityProofDetails`, `RequiredToolsEvidence`,
 `VerificationToolEvidence`, `HostExecutableProbeDetails`를 직렬화합니다. Guard check는
 `AmbientGuardCoverageEvidence`, `CorrelatedGuardAttemptEvidence`,
-`CorrelatedGuardProof`를 직렬화하며 verbose 출력은 attempt 좌표, acquisition stage,
-기대·관찰 callable identity, retry policy, timestamp를 표시합니다. 렌더러는 passed
-check에서 선택 필드가 없다는 이유로 milestone을 부정값으로 바꾸지 않습니다. 집중 렌더러가
-기대하는 타입과 맞지 않는 값이나 알 수 없는 확장 필드는 `Additional
-details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구성하지 않으며 가린 fact는
-계속 가립니다.
+`CorrelatedGuardProof`를 직렬화합니다. `correlated_guard_verification` verbose 출력은
+현재 typed 근거를 엄격하게 decode한 뒤 Connection 전용 사람용 projection을 만듭니다.
+`Correlation`은 attempt와 proof가 일치하는 좌표를 한 번만 표시하고, `Attempt`는 상태,
+복구 사실, lifecycle timestamp를 표시하며, `Completed proof`는 proof에만 속한 lifecycle만
+표시합니다. 최신 attempt가 최신 완료 proof보다 새로우면 일치하는 좌표는 공유하고 서로
+다른 좌표는 `Latest attempt identity`와 `Earlier completed proof identity` 아래에 각각
+표시합니다. Proof lifecycle에는 `Earlier completed proof` 라벨을 붙이며 그 proof가 더
+최신 attempt를 충족한다고 보지 않습니다. 사람용 enum 형태 값은 밑줄 대신 띄어쓰기를
+사용하지만 JSON은 정확한 밑줄 표기를 유지합니다. 렌더러는 passed check에서 선택 필드가
+없다는 이유로 milestone을 부정값으로 바꾸지 않습니다. Correlated Guard 근거가 정확한
+현재 타입과 맞지 않거나 attempt/proof identity 관계를 위반하면 엄격한 projection 경계에서
+실패합니다. 그 밖에 집중 렌더러가 기대하는 타입과 맞지 않는 값이나 알 수 없는 확장 필드는
+`Additional details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구성하지 않으며
+가린 fact는 계속 가립니다.
 
 `--json`은 현재 `DiagnosticReport` schema 하나만 쓰며 정확하고 손실 없는 기계 판독
 표현입니다. 허용하는 schema version은 정확히 `2`입니다.
@@ -1152,8 +1160,9 @@ truncation metadata가 들어갑니다. 관찰 부재는 필드 부재 또는 �
 시각이 아닙니다. 특히 완료된 `correlated_guard_verification` check는 영속 proof 완료
 시각을 사용합니다. 읽기 전용 status를 반복하면 `generated_at`은 달라질 수 있지만 해당
 check timestamp와 증거 detail은 유지되며 Store에 쓰지 않습니다. Verbose의 `Observed at`은
-JSON check 구성원과 같은 timestamp를 표시합니다. Concise 출력에는 이 timestamp를
-추가하지 않습니다.
+일반 check에서 JSON check 구성원과 같은 timestamp를 표시하고, correlated Guard
+verification은 같은 JSON 구성원에 더 정확한 `Evidence time` 라벨을 사용합니다. Concise
+출력에는 이 timestamp를 추가하지 않습니다.
 
 대표적인 간결한 protocol mismatch 결과는 다음과 같습니다.
 

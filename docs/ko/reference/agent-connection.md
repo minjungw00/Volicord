@@ -834,6 +834,17 @@ prompt/pre/post phase의 일반 coverage만 증명합니다.
 event, 기대·관찰 callable, acquisition stage, repair, retry, timestamp 사실을 포함한 최신
 현재 attempt를 보존합니다. `CorrelatedGuardProof`는 최신 완료 현재 proof를 보존합니다.
 
+Connection의 verbose projection은 이 record에서 typed 사람용 보기 하나를 엄격하게
+도출합니다. Attempt와 proof의 correlation 좌표가 일치하면 `Correlation` 아래에 한 번만
+묶고, attempt 상태, 복구 사실, lifecycle 시각은 `Attempt` 아래에 두며, proof lifecycle은
+`Completed proof` 아래에 둡니다. 더 새로운 pending 또는 repair-required attempt와 더
+오래된 완료 proof가 함께 있으면 일치하는 좌표는 공유하고 서로 다른 값은 최신 attempt
+identity와 이전 완료 proof identity로 나눠 표시합니다. 해당 proof는 이전 이력 근거라는
+라벨을 가지며 더 새로운 attempt를 충족한다고 암시하지 않습니다. 같은 verification의
+identity나 완료 시각이 서로 다르면 손상된 데이터이므로 표시를 위해 합치지 않고 엄격한
+projection 경계에서 실패합니다. JSON은 두 근거 object 전체와 정확한 밑줄 값 표기를
+보존합니다.
+
 상관관계 check의 `observed_at`은 이 typed record에서 다음과 같이 선택합니다.
 
 - `awaiting_probe`는 최신 attempt 생성 시각을 사용합니다.

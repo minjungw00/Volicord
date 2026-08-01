@@ -1159,11 +1159,22 @@ fields are rendered structurally. MCP checks serialize typed
 `RequiredToolsEvidence`, `VerificationToolEvidence`, and
 `HostExecutableProbeDetails`. Guard checks serialize
 `AmbientGuardCoverageEvidence`, `CorrelatedGuardAttemptEvidence`, and
-`CorrelatedGuardProof`; verbose output shows attempt coordinates, acquisition
-stage, expected and observed callable identity, retry policy, and timestamps.
-A renderer does not turn an absent optional field
-into a negative milestone on a passed check. Unknown or extended fields and values that do
-not match a focused renderer's expected type appear under `Additional details`.
+`CorrelatedGuardProof`. For `correlated_guard_verification`, verbose output
+strictly decodes that current typed evidence before building a
+Connection-specific human projection. `Correlation` renders matching attempt
+and proof coordinates once, `Attempt` renders state, repair and recovery facts,
+and lifecycle timestamps, and `Completed proof` renders only its proof-specific
+lifecycle. When the latest attempt is newer than the latest completed proof,
+matching coordinates remain shared while each divergent coordinate is shown
+under `Latest attempt identity` and `Earlier completed proof identity`; the
+proof lifecycle is labelled `Earlier completed proof` and does not satisfy the
+newer attempt. Enum-like human values use words separated by spaces, while JSON
+retains their exact underscore spellings.
+A renderer does not turn an absent optional field into a negative milestone on
+a passed check. Correlated Guard evidence that does not match its exact current
+type or violates the attempt/proof identity relationship fails the strict
+projection boundary. Other unknown or extended fields and values that do not
+match a focused renderer's expected type appear under `Additional details`.
 The renderer never reconstructs a cause from a summary. Redacted fact fields
 remain redacted.
 
@@ -1223,7 +1234,9 @@ completed `correlated_guard_verification` check uses its persisted proof
 completion time. Repeating read-only status output may change `generated_at`
 while preserving that check timestamp and its evidence details, and the read
 does not write the Store. Verbose `Observed at` renders the same timestamp as
-the JSON check member. Concise output does not add this timestamp.
+the JSON check member for ordinary checks; correlated Guard verification uses
+the more precise `Evidence time` label for that same JSON member. Concise output
+does not add this timestamp.
 
 A representative concise protocol-mismatch result is:
 

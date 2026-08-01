@@ -96,7 +96,7 @@ use super::{
 };
 
 mod dependency_graph;
-mod evidence;
+pub(in crate::connection_command) mod evidence;
 mod finding_projection;
 mod guard_checks;
 mod host_checks;
