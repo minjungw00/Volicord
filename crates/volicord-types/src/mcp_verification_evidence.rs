@@ -273,12 +273,60 @@ impl McpProbeEvidence {
         self.status
     }
 
+    pub fn requested_revision(&self) -> Option<&str> {
+        self.requested_revision.as_deref()
+    }
+
+    pub fn negotiated_revision(&self) -> Option<&str> {
+        self.negotiated_revision.as_deref()
+    }
+
+    pub const fn initialize(&self) -> bool {
+        self.initialize
+    }
+
+    pub const fn initialized_notification(&self) -> bool {
+        self.initialized_notification
+    }
+
+    pub const fn schema_validation(&self) -> bool {
+        self.schema_validation
+    }
+
+    pub const fn tools_list_observed(&self) -> bool {
+        self.tools_list_observed
+    }
+
+    pub const fn tools_returned(&self) -> Option<usize> {
+        self.tools_returned
+    }
+
+    pub const fn required_tools_validated(&self) -> bool {
+        self.required_tools_validated
+    }
+
+    pub fn safe_read_only_tool(&self) -> &str {
+        &self.safe_read_only_tool
+    }
+
+    pub const fn safe_read_only_tool_completed(&self) -> bool {
+        self.safe_read_only_tool_completed
+    }
+
+    pub const fn shutdown_completed(&self) -> bool {
+        self.shutdown_completed
+    }
+
     pub fn diagnostic_code(&self) -> Option<&str> {
         self.diagnostic_code.as_deref()
     }
 
     pub fn finding_id(&self) -> Option<&str> {
         self.finding_id.as_deref()
+    }
+
+    pub fn failure_stage(&self) -> Option<&str> {
+        self.failure_stage.as_deref()
     }
 }
 
@@ -301,6 +349,10 @@ impl McpRevisionConformance {
 
     pub fn probe(&self) -> &McpProbeEvidence {
         &self.probe
+    }
+
+    pub fn revision(&self) -> &str {
+        &self.revision
     }
 }
 
@@ -329,6 +381,14 @@ impl McpHostCompatibilityEvidence {
 
     pub fn probe(&self) -> &McpProbeEvidence {
         &self.probe
+    }
+
+    pub fn profile(&self) -> &str {
+        &self.profile
+    }
+
+    pub fn fixture(&self) -> &str {
+        &self.fixture
     }
 }
 
@@ -408,6 +468,10 @@ impl McpActiveVerificationEvidence {
 
     pub fn host_compatibility(&self) -> &[McpHostCompatibilityEvidence] {
         &self.host_compatibility
+    }
+
+    pub fn side_effects(&self) -> &[McpSideEffectKind] {
+        &self.side_effects
     }
 }
 

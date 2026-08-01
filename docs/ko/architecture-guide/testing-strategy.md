@@ -330,11 +330,13 @@ matrix를 정합니다.
 - all-passed, pending, blocked, failed, not-applicable, mixed 입력을 위한 단일 Connection
   count projection, concise `Passed`, `Blocked`, `Pending`, `Failed` field, 같은 list 어휘와
   순서, verbose not-applicable 개수
-- 증거 없음, 전체 통과, Registry 실패, 프로젝트 쓰기 실패, protocol conformance 실패,
-  host compatibility 실패를 위한 공유 concise/verbose 활성 검증 snapshot projection,
-  정확히 영속된 증거 시각과 사람이 읽는 source, Store 쓰기 가능성 집계, 사람용 및 JSON
-  rendering 전체에서 잘못된 증거의 엄격한 거부, concise 출력의 내부 ID 생략 및 verbose와
-  JSON의 ID 유지
+- 증거 없음, 전체 통과, Registry 실패, 정확한 프로젝트 쓰기 실패 ID, initialize,
+  지정된 safe tool, shutdown 실패, host compatibility 실패를 위한 공유 concise/verbose
+  활성 검증 projection, 성공한 production revision 5개를 oldest-to-newest 순서로 compact하게
+  표시, 실패 row의 완전한 lifecycle 및 diagnostic fact 펼침, 성공한 host row의 compact 표시,
+  정확히 영속된 증거 시각과 사람이 읽는 source, Store 쓰기 가능성 집계, malformed 근거의
+  엄격한 거부, contradictory 근거의 펼침, 완전한 JSON을 보존하는 사람용/JSON fact parity,
+  concise 출력의 내부 ID 생략
 - ambient와 correlated Guard check의 분리, 즉 ambient passed와 correlated failed의
   동시 표현, attempt가 없을 때 ambient pending, correlated complete, repair-required를
   pending으로 projection하지 않음, 더 오래된 proof가 더 최신 failed attempt를 숨기지
@@ -491,7 +493,12 @@ Build 표시 coverage는 exact profile, class-only, profile metadata 누락을 �
 field 없이 정확한 `class_only` 기계 값을 유지하는지 증명합니다. 집중 Doctor renderer
 coverage는 `not recorded`, `not applicable`, `not checked`, 실제 빈 collection을 나타내는
 `none`을 구별합니다. Hook 경로 안전성 case는 verified, failed, not-recorded, not-checked
-평가를 포함하며 모호한 yes/no text로 축약하지 않습니다.
+평가를 포함하며 모호한 yes/no text로 축약하지 않습니다. Connection verbose coverage는
+검증된 현재 artifact 6개를 path 없이 집계 dimension 및 source 개수로 축약하고, failed,
+not-recorded, not-checked, mixed, 한도 도달 근거를 failure-first 순서와 명시적인 누락
+표시로 펼치는지도 증명합니다. JSON은 typed report와 byte-for-byte로 동일하게 유지하고,
+모든 사람용 branch는 tab 없이 마지막 newline 하나만 가지며, rendering은 Store,
+filesystem, terminal 상태를 바꾸지 않습니다.
 
 Doctor binary fixture는 정규 현재 artifact를 한 번 초기화한 다음 setup을 다시 실행하지
 않고 compact, verbose, JSON Doctor mode를 호출합니다. 검증된 경로 안전성 평가가 있을 때만

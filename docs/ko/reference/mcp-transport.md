@@ -59,6 +59,12 @@ Registry, Connection, project, protocol profile, 도구 schema, host contract를
 `McpPreflightEvidence`로 decode하며, 이후의 활성 probe는 preflight field를 바꿀 수
 없습니다. Connection check는 활성 결과를 같은 계층의
 `last_active_verification` 구성원으로만 투영합니다.
+Connection 사람용 출력은 이 구성원을 엄격하게 decode한 뒤 rendering합니다. Verbose
+출력은 모두 성공한 Store, production revision, host profile matrix를 요약하지만 실패,
+불완전, unavailable, corrupt 또는 contradictory인 row는 lifecycle 및 diagnostic fact와
+함께 완전히 펼칩니다. 이 사람용 projection은 transport 근거를 바꾸지 않습니다. JSON은
+완전한 requested 및 negotiated revision, lifecycle 결과, 반환된 도구, fixture identity,
+failure stage, diagnostic code, finding을 유지합니다.
 
 ## 환경과 시작
 

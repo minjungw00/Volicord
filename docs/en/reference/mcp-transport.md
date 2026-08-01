@@ -64,6 +64,13 @@ SQLite databases and filesystems. Its JSON projection declares
 decodes that result into immutable `McpPreflightEvidence`; later active probes
 cannot replace any preflight field. The connection check projects active
 results only through the sibling `last_active_verification` member.
+Connection human output strictly decodes that member before rendering it.
+Verbose output compacts a uniformly successful Store, production-revision, and
+host-profile matrix but fully expands an affected failed, incomplete,
+unavailable, corrupt, or contradictory row with its lifecycle and diagnostic
+facts. This human projection does not change transport evidence: JSON retains
+the complete requested and negotiated revisions, lifecycle results, returned
+tools, fixture identity, failure stage, diagnostic code, and finding.
 
 ## Environment And Startup
 

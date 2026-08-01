@@ -15,8 +15,9 @@ use super::report::{
 };
 use super::semantics::{
     active_verification_source_label, connection_status_label, hook_activation_label,
-    integration_activation_label, ActiveVerificationSnapshotSummary, ConnectionCheckCounts,
+    integration_activation_label, ConnectionCheckCounts,
 };
+use super::verification_projection::McpActiveVerificationHumanProjection;
 use crate::connection_command::{
     guidance::{ConnectionUserInvocation, DiagnosticOperation},
     ConnectionCommandError, PlannedConnectionChange, PlannedConnectionChangeKind,
@@ -25,7 +26,7 @@ use crate::presentation::{Document, Field, HumanValue, Section};
 
 pub(super) fn render_command_report_concise(
     report: &ConnectionCommandReport,
-    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+    active_verification: Option<&McpActiveVerificationHumanProjection>,
 ) -> Result<String, ConnectionCommandError> {
     let counts = ConnectionCheckCounts::from_checks(&report.checks);
     let mut sections = vec![Document::new(
@@ -102,7 +103,7 @@ pub(super) fn render_command_report_concise(
 }
 
 fn render_mcp_verification_summary(
-    summary: Option<&ActiveVerificationSnapshotSummary>,
+    summary: Option<&McpActiveVerificationHumanProjection>,
 ) -> Option<String> {
     summary.map(|summary| {
         let mut lines = vec![format!(
@@ -1740,9 +1741,9 @@ mod tests {
         assert!(!before_human.contains("  Observed at:"));
         assert!(!before_human.contains("  Source:"));
         assert!(before_verbose.contains("Last active verification: not run"));
-        assert!(before_verbose.contains("Last verified storage writeability: not checked"));
-        assert!(!before_verbose.contains("Active verification observed at:"));
-        assert!(!before_verbose.contains("Active verification source:"));
+        assert!(before_verbose.contains("Store writeability: not checked"));
+        assert!(!before_verbose.contains("    Observed at:"));
+        assert!(!before_verbose.contains("    Source:"));
         let before_details = &before_json["checks"][0]["details"];
         assert_eq!(before_details["preflight"], preflight);
         assert_eq!(before_details["last_active_verification"], Value::Null);
@@ -1792,11 +1793,10 @@ mod tests {
         ));
         assert!(!after_human.contains("project_1"), "{after_human}");
         assert!(after_verbose.contains("Last active verification: passed"));
-        assert!(after_verbose.contains("Active verification observed at: 2026-07-25T01:02:03Z"));
-        assert!(after_verbose.contains("Active verification source: connection verify"));
-        assert!(after_verbose.contains("Last verified storage writeability: passed"));
-        assert!(after_verbose.contains("Registry writeability: passed"));
-        assert!(after_verbose.contains("Project project_1 writeability: passed"));
+        assert!(after_verbose.contains("    Observed at: 2026-07-25T01:02:03Z"));
+        assert!(after_verbose.contains("    Source: connection verify"));
+        assert!(after_verbose.contains("Store writeability: passed (Registry and 1 project)"));
+        assert!(!after_verbose.contains("Project project_1 writeability"));
         let after_details = &after_json["checks"][0]["details"];
         assert_eq!(after_details["preflight"], preflight);
         assert_eq!(after_details["last_active_verification"], active);
@@ -1903,11 +1903,9 @@ mod tests {
                     .unwrap()
                     .output;
             assert!(verbose.contains(&format!("Last active verification: {expected_active}")));
-            assert!(verbose.contains(&format!(
-                "Last verified storage writeability: {expected_storage}"
-            )));
-            assert!(verbose.contains("Active verification observed at: 2026-07-25T01:02:03Z"));
-            assert!(verbose.contains("Active verification source: connection verify"));
+            assert!(verbose.contains(&format!("Store writeability: {expected_storage}")));
+            assert!(verbose.contains("    Observed at: 2026-07-25T01:02:03Z"));
+            assert!(verbose.contains("    Source: connection verify"));
 
             let machine: Value = serde_json::from_str(
                 &render_command_report(OutputFormat::Json, &current)

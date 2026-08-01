@@ -302,10 +302,17 @@ decode하여 최신 snapshot의 활성 검증 결론 하나와 Store 쓰기 가�
 포함된 모든 프로젝트 쓰기 가능성 결과가 통과해야 Store 쓰기 가능성이 통과합니다. 이
 결과들과 포함된 모든 protocol conformance 및 host compatibility probe가 통과해야 활성
 검증이 통과합니다. 존재하는 증거가 잘못됐으면 오류입니다. 간결한 출력은 ID, Store별
-결과, protocol matrix, host fixture를 생략하고 verbose와 JSON은 완전한 typed 증거를
-유지하며 활성 쓰기 결과를 preflight 효과로 표시하지 않습니다. 증거 시각과 source는
-provenance를 드러내지만 fresh/stale 분류, 보편적인 유효 기간, 자동 만료를 만들지
-않습니다.
+결과, protocol matrix, host fixture를 생략합니다. Verbose 출력은 각각의 엄격한 typed
+입력에서 Connection이 담당하는 사람용 projection, 즉 Store 쓰기 가능성을 포함한 활성
+검증, protocol conformance, host compatibility, Hook 경로 안전성을 도출합니다. 집계
+결과는 항상 유지합니다. 모두 성공한 경우 Store는 성공 ID 없이 Registry 및 프로젝트
+개수를, protocol revision은 단계별 성공 field 없이 정규 production 순서로, host
+profile은 각각 한 row로, 검증된 Hook 평가는 path 없이 dimension 및 source 개수로
+요약합니다. 실패, 불완전, unavailable, mixed, corrupt 또는 contradictory 구성요소는
+정확한 ID, lifecycle stage, diagnostic fact, 한도가 있는 nonverified Hook 근거를
+펼칩니다. JSON은 계속 완전하며 활성 쓰기 결과를 preflight 효과로 표시하지 않습니다.
+증거 시각과 source는 provenance를 드러내지만 fresh/stale 분류, 보편적인 유효 기간,
+자동 만료를 만들지 않습니다.
 
 선택한 status와 Connection list는 같은 typed 사람용 어휘를 projection합니다. 집계
 status는 `ready`, `action required`, `failed`를 사용하고 integration 및 hook activation은
@@ -463,6 +470,11 @@ projection입니다. Audit은 profile이나 digest가 이 정확한 선택과 �
 `verified`로 유지하며 `not_applicable`은 적용 가능한 입력이 하나도 없을 때만 결과가 됩니다.
 관리 파일과 적용 가능한 경로 안전성 평가가 통과하지 않으면 ambient coverage도 통과할 수
 없습니다.
+
+Verbose Connection 출력은 모두 verified인 평가를 artifact path 없이 요약합니다.
+verified가 아니거나 내부적으로 모순된 dimension이 있으면 source, reason, installation,
+phase, path가 있는 한도 내 근거를 failure-first 순서로 펼치고, 근거 한도에 도달하면 누락
+가능성을 표시합니다. JSON은 어느 경우에도 완전한 typed 평가를 유지합니다.
 
 기록한 verification 도구 이름이 다르면 `managed_capability_proof`는 절대 통과하지
 않습니다. 한도 있는 fact에는 정확한 기대 이름과 관찰 이름을 노출합니다. 이전 revision,

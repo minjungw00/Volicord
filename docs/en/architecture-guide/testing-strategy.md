@@ -383,12 +383,15 @@ Durable tests should cover, as applicable:
   failed, not-applicable, and mixed inputs; concise `Passed`, `Blocked`,
   `Pending`, `Failed` fields; matching list vocabulary and ordering; and the
   verbose not-applicable count;
-- shared concise/verbose active-verification snapshot projection for no
-  evidence, all passed, Registry failure, project-write failure,
-  protocol-conformance failure, and host-compatibility failure; exact persisted
-  evidence time and humanized source; Store-writeability aggregation; strict
-  malformed-evidence rejection across human and JSON rendering; and internal
-  IDs absent from concise output but retained in verbose and JSON;
+- shared concise/verbose active-verification projection for no evidence, all
+  passed, Registry failure, exact project-write failure IDs, initialize,
+  designated-safe-tool and shutdown failures, and host-compatibility failure;
+  five successful production revisions compactly ordered oldest to newest;
+  failed rows expanded with complete lifecycle and diagnostic facts; compact
+  successful host rows; exact persisted evidence time and humanized source;
+  Store-writeability aggregation; strict malformed-evidence rejection;
+  contradictory-evidence expansion; human/JSON fact parity with exhaustive JSON
+  preservation; and internal IDs absent from concise output;
 - separate ambient and correlated Guard checks: ambient passed with correlated
   failed, ambient pending with no attempt, correlated complete,
   repair-required never projected as pending, and an older proof retained
@@ -581,7 +584,13 @@ value without a parallel presentation-label field. Focused Doctor renderer
 coverage distinguishes `not recorded`, `not applicable`, `not checked`, and an
 actually empty collection rendered as `none`; Hook path-safety cases include
 verified, failed, not-recorded, and not-checked assessments without reducing
-them to ambiguous yes/no text.
+them to ambiguous yes/no text. Connection verbose coverage additionally proves
+that six verified current artifacts collapse to aggregate dimension and source
+counts without paths, while failed, not-recorded, not-checked, mixed, and
+bounded-at-limit evidence expands in failure-first order with explicit omission
+labelling. JSON remains byte-for-byte equivalent to the typed report, every
+human branch is tab-free with exactly one trailing newline, and rendering does
+not mutate Store, filesystem, or terminal state.
 
 The Doctor binary fixture initializes the canonical current artifacts once,
 then invokes compact, verbose, and JSON Doctor modes without rerunning setup.

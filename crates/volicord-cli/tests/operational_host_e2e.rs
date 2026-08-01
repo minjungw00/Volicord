@@ -1920,16 +1920,33 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(verbose.contains(check["summary"].as_str().expect("check summary")));
     }
-    assert!(verbose.contains(" tools returned:"));
+    assert!(verbose.contains("    Protocol conformance: 5/5 revisions passed"));
+    for revision in [
+        "2024-10-07",
+        "2024-11-05",
+        "2025-03-26",
+        "2025-06-18",
+        "2025-11-25",
+    ] {
+        assert!(verbose.contains(&format!("      {revision}: passed")));
+    }
+    assert!(verbose.contains("    Host compatibility: 1/1 profiles passed"));
+    assert!(verbose.contains("      codex: passed (codex-mcp-turn-metadata, protocol 2025-06-18)"));
+    assert!(!verbose.contains("        Initialize:"));
+    assert!(!verbose.contains("        Required tools:"));
     assert!(verbose.contains("    Expected verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Observed verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Verification tool observed at:"));
     assert!(verbose.contains("    Last active verification: passed"));
     assert!(verbose.contains(&format!(
-        "    Active verification observed at: {active_verification_observed_at}"
+        "    Observed at: {active_verification_observed_at}"
     )));
-    assert!(verbose.contains("    Active verification source: connection verify"));
-    assert!(verbose.contains("    Last verified storage writeability: passed"));
+    assert!(verbose.contains("    Source: connection verify"));
+    assert!(verbose.contains("    Store writeability: passed (Registry and 1 project)"));
+    assert!(verbose.contains("    Hook path safety: verified"));
+    assert!(verbose.contains("    CWD independence: verified"));
+    assert!(verbose.contains("    Subdirectory safety: verified"));
+    assert!(verbose.contains("    Evidence: 6 current managed artifacts verified"));
     assert!(verbose.contains(&format!("    Evidence time: {guard_evidence_observed_at}")));
     let guard_block = verbose
         .split("  [passed] Correlated Guard verification\n")

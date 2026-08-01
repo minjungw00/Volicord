@@ -1163,18 +1163,35 @@ labelled field without a complete command. The caller selects the host and
 Product Repository when running `volicord init`; the guidance does not insert
 unknown coordinates into a placeholder command.
 
-`--verbose` renders a complete human diagnostic view. It starts with the same
+`--verbose` renders a progressive human diagnostic view. It starts with the same
 operation-aware headline as concise output, then uses the applicable
 `Connection`, `Summary`, `Checks`, `Findings`, `Required next steps`,
 `Optional active diagnostics`, `Result`, `Planned changes`, and `Report limits`
-sections when applicable. It renders every check
-and status, every root and bounded cause-chain finding, every safe typed fact,
-requested, selected, and negotiated protocol revisions, actual MCP peer
-`clientInfo`, the PATH executable probe as a separate observation, bounded
-process exit and stderr facts, Runtime Home and Connection correlation,
-runtime-session ID, integration revision, timestamps, dependency and
-blocked-by relationships, recommended actions, and report limits. Known detail
-fields are rendered structurally. MCP checks serialize typed
+sections when applicable. It renders every check and aggregate status, every
+root and bounded cause-chain finding, dependency and blocked-by relationships,
+recommended actions, and report limits. Connection-owned typed human
+projections control progressive disclosure for the latest active verification,
+Store writeability, protocol conformance, host compatibility, and Hook path
+safety; the generic presentation layer only lays out those selected facts.
+
+A uniformly successful active-verification matrix is summarized with its
+result, persisted observation time and source, rollback-only or disposable side
+effects, the passed Registry-and-project count, each production protocol
+revision in canonical oldest-to-newest order, the designated read-only tool,
+and one compact row per passing host profile and fixture. Successful Store
+identifiers and per-stage lifecycle fields are omitted. A uniformly verified
+Hook path-safety assessment shows its three aggregate dimensions, the verified
+current-artifact count, and evidence-source counts without artifact paths.
+Failed, incomplete, unavailable, mixed, corrupt, or contradictory evidence is
+expanded instead: exact failed project IDs, affected protocol or host rows,
+requested and negotiated revisions, lifecycle stages, diagnostic code and
+finding, and nonverified Hook evidence source, reason, installation, phase, and
+path remain visible. Successful sibling counts remain visible, and a bounded
+collection at its limit is labelled so that possible omission is explicit.
+The JSON projection retains every typed evidence field,
+including successful detail omitted from the human summary.
+
+Other known detail fields are rendered structurally. MCP checks serialize typed
 `ManagedSessionAttemptDetails`, `ManagedCapabilityProofDetails`,
 `RequiredToolsEvidence`, `VerificationToolEvidence`, and
 `HostExecutableProbeDetails`. Guard checks serialize
@@ -1199,7 +1216,8 @@ The renderer never reconstructs a cause from a summary. Redacted fact fields
 remain redacted.
 
 `--json` writes exactly one current `DiagnosticReport` schema and is the
-lossless machine representation. The accepted schema version is exactly `2`.
+exhaustive, lossless machine representation. The accepted schema version is
+exactly `2`.
 Consumers use the structured checks, findings, cause IDs, action codes, and
 fact objects rather than parsing human summaries. `--verbose` and `--json` are
 mutually exclusive.

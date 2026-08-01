@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_store::{
@@ -41,10 +41,10 @@ use super::{
 
 pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
 
-const MAX_HOOK_PATH_SAFETY_EVIDENCE: usize = 16;
+pub(crate) const MAX_HOOK_PATH_SAFETY_EVIDENCE: usize = 16;
 const MAX_HOOK_PATH_SAFETY_EVIDENCE_TEXT_CHARS: usize = 256;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HookPathSafetyState {
     Verified,
@@ -81,7 +81,7 @@ impl HookPathSafetyState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HookPathSafetyEvidenceSource {
     GuardManifest,
@@ -103,7 +103,7 @@ impl HookPathSafetyEvidenceSource {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HookPathSafetyEvidenceReason {
     CurrentContractVerified,
@@ -149,7 +149,8 @@ impl HookPathSafetyEvidenceReason {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HookPathSafetyEvidence {
     state: HookPathSafetyState,
     source: HookPathSafetyEvidenceSource,
@@ -188,7 +189,8 @@ impl HookPathSafetyEvidence {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HookPathSafetyAssessment {
     pub(crate) state: HookPathSafetyState,
     pub(crate) cwd_independence: HookPathSafetyState,
@@ -214,6 +216,22 @@ impl Default for HookPathSafetyAssessment {
 }
 
 impl HookPathSafetyAssessment {
+    pub(crate) const fn state(&self) -> HookPathSafetyState {
+        self.state
+    }
+
+    pub(crate) const fn cwd_independence(&self) -> HookPathSafetyState {
+        self.cwd_independence
+    }
+
+    pub(crate) const fn subdirectory_safety(&self) -> HookPathSafetyState {
+        self.subdirectory_safety
+    }
+
+    pub(crate) fn evidence(&self) -> &[HookPathSafetyEvidence] {
+        &self.evidence
+    }
+
     pub(crate) fn not_checked() -> Self {
         Self::from_state(
             HookPathSafetyState::NotChecked,

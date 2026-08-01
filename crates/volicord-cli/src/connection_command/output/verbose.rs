@@ -5,13 +5,17 @@ use volicord_types::connection_verification::{
     ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus,
 };
 use volicord_types::diagnostics::DiagnosticFindingId;
+use volicord_types::mcp_verification_evidence::McpEvidenceCheckStatus;
 
 use crate::connection_command::managed_host_round_trip_tool;
+use crate::guard_integration::audit::{
+    HookPathSafetyAssessment, HookPathSafetyEvidenceReason, HookPathSafetyEvidenceSource,
+    HookPathSafetyState,
+};
 
 use super::semantics::{
     active_verification_source_label, connection_check_status_label, connection_status_label,
-    hook_activation_label, integration_activation_label, ActiveVerificationSnapshotSummary,
-    ActiveVerificationState, ConnectionCheckCounts,
+    hook_activation_label, integration_activation_label, ConnectionCheckCounts,
 };
 use super::{
     guard_verification::CorrelatedGuardHumanProjection,
@@ -19,6 +23,11 @@ use super::{
     report::{
         projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
         ConnectionCommandResult, RuntimeHomeRollbackResult,
+    },
+    verification_projection::{
+        HookPathSafetyHumanProjection, HostCompatibilityHumanProjection,
+        McpActiveVerificationHumanProjection, ProbeDisclosureState, ProbeHumanProjection,
+        ProtocolConformanceHumanProjection, StoreWriteabilityHumanProjection,
     },
     ConnectionCommandError, PlannedConnectionChangeKind,
 };
@@ -28,7 +37,7 @@ const MAX_INLINE_SCALARS: usize = 8;
 
 pub(super) fn render_command_report_verbose(
     report: &ConnectionCommandReport,
-    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+    active_verification: Option<&McpActiveVerificationHumanProjection>,
 ) -> Result<String, ConnectionCommandError> {
     let counts = ConnectionCheckCounts::from_checks(&report.checks);
     let roots = projected_root_cause_ids(report)?;
@@ -151,7 +160,7 @@ fn render_summary(report: &ConnectionCommandReport, counts: ConnectionCheckCount
 
 fn render_checks(
     report: &ConnectionCommandReport,
-    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+    active_verification: Option<&McpActiveVerificationHumanProjection>,
 ) -> Result<String, ConnectionCommandError> {
     let mut blocks = Vec::with_capacity(report.checks.len());
     for check in &report.checks {
@@ -163,7 +172,7 @@ fn render_checks(
 fn render_check(
     report: &ConnectionCommandReport,
     check: &ConnectionCheck,
-    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+    active_verification: Option<&McpActiveVerificationHumanProjection>,
 ) -> Result<String, ConnectionCommandError> {
     let mut lines = vec![format!(
         "  [{}] {}",
@@ -399,7 +408,7 @@ fn value_at_path<'a>(object: &'a Map<String, Value>, path: &DetailPath) -> Optio
 
 fn render_known_details(
     context: &mut DetailContext<'_>,
-    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+    active_verification: Option<&McpActiveVerificationHumanProjection>,
 ) -> Result<(), ConnectionCommandError> {
     match context.check.id() {
         ConnectionCheckKind::DiagnosticLookup | ConnectionCheckKind::RuntimeSessionLookup => {}
@@ -419,6 +428,7 @@ fn render_known_details(
         ConnectionCheckKind::GuardFiles => render_guard_files(context),
         ConnectionCheckKind::AmbientHookCoverage => {
             render_guard_files(context);
+            render_hook_path_safety(context)?;
             render_guard_observation(context);
         }
         ConnectionCheckKind::GuardObservation => render_guard_observation(context),
@@ -592,7 +602,7 @@ fn render_process_startup(context: &mut DetailContext<'_>) {
 
 fn render_mcp_server(
     context: &mut DetailContext<'_>,
-    active_verification: Option<&ActiveVerificationSnapshotSummary>,
+    active_verification: Option<&McpActiveVerificationHumanProjection>,
 ) {
     let preflight = context.take_string("preflight.status");
     let preflight_code = context.take_string("preflight.code");
@@ -673,180 +683,273 @@ fn render_mcp_server(
 
 fn render_mcp_active_verification(
     context: &mut DetailContext<'_>,
-    summary: &ActiveVerificationSnapshotSummary,
+    projection: &McpActiveVerificationHumanProjection,
 ) {
-    context.line("Last active verification", summary.state.label());
-    if let Some(observed_at) = summary.observed_at.as_ref() {
-        context.consume(&DetailPath::from_dotted_keys(
-            "last_active_verification.observed_at",
-        ));
-        context.line(
-            "Active verification observed at",
-            observed_at.to_canonical_string(),
-        );
+    context.line("Last active verification", projection.state.label());
+    if let Some(observed_at) = projection.observed_at.as_ref() {
+        context.line("Observed at", observed_at.to_canonical_string());
     }
-    if let Some(source) = summary.source {
-        context.consume(&DetailPath::from_dotted_keys(
-            "last_active_verification.source",
-        ));
-        context.line(
-            "Active verification source",
-            active_verification_source_label(source),
-        );
+    if let Some(source) = projection.source {
+        context.line("Source", active_verification_source_label(source));
     }
-    context.line(
-        "Last verified storage writeability",
-        summary.storage_writeability.label(),
-    );
-    if summary.state == ActiveVerificationState::NotRun {
+    if projection.state == super::semantics::ActiveVerificationState::NotRun {
+        context.line(
+            "Store writeability",
+            projection.storage_writeability.label(),
+        );
         return;
     }
-    if let Some(registry_write) = context.take_string("last_active_verification.registry_write") {
-        context.line("Registry writeability", registry_write);
+
+    context.consume(&DetailPath::from_dotted_keys("last_active_verification"));
+    if let Some(store) = projection.store.as_ref() {
+        render_store_writeability(context, store);
     }
-    if let Some(project_writes) = context
-        .take_value("last_active_verification.project_writes")
-        .and_then(|value| value.as_array().cloned())
-    {
-        for project in project_writes {
-            let project_id = project["project_id"].as_str().unwrap_or("unknown");
-            let state_write = project["state_write"].as_str().unwrap_or("unknown");
-            context.line(&format!("Project {project_id} writeability"), state_write);
-        }
-    }
-    if let Some(side_effects) = context.take_string_array("last_active_verification.side_effects") {
-        context.line(
-            "Active verification side effects",
-            render_string_values(&side_effects),
-        );
-    }
-    let conformance = context
-        .take_value("last_active_verification.protocol_conformance")
-        .and_then(|value| value.as_array().cloned())
-        .unwrap_or_default();
-    let production_revisions = conformance
-        .iter()
-        .filter_map(|probe| probe["revision"].as_str().map(str::to_owned))
-        .collect::<Vec<_>>();
-    let host_compatibility = context
-        .take_value("last_active_verification.host_compatibility")
-        .and_then(|value| value.as_array().cloned())
-        .unwrap_or_default();
-    let host_profiles = host_compatibility
-        .iter()
-        .filter_map(|probe| probe["profile"].as_str().map(str::to_owned))
-        .collect::<Vec<_>>();
-    let safe_tool = conformance
-        .iter()
-        .chain(host_compatibility.iter())
-        .find_map(|probe| probe["safe_read_only_tool"].as_str())
-        .unwrap_or_else(|| managed_host_round_trip_tool().wire_name())
-        .to_owned();
     context.line(
-        "Production revisions",
-        render_string_values(&production_revisions),
+        "Side effects",
+        if projection.side_effect_groups.is_empty() {
+            "none recorded".to_owned()
+        } else {
+            projection.side_effect_groups.join(" and ")
+        },
     );
-    let passed = conformance
-        .iter()
-        .filter(|probe| probe["status"] == "passed")
-        .count();
-    context.line(
-        "Server conformance",
-        format_args!("{passed}/{} passed", conformance.len()),
-    );
-    for probe in conformance {
-        let revision = probe["revision"].as_str().unwrap_or("unknown");
-        let status = probe["status"].as_str().unwrap_or("unknown");
-        let negotiated = probe["negotiated_revision"]
-            .as_str()
-            .unwrap_or("not negotiated");
-        let tools = probe["tools_returned"].as_u64().unwrap_or(0);
-        let shutdown = if probe["shutdown_completed"] == true {
-            "graceful"
-        } else {
-            "incomplete"
-        };
+    if let Some(protocol) = projection.protocol.as_ref() {
+        render_protocol_conformance(context, protocol);
+    }
+    if let Some(host) = projection.host.as_ref() {
+        render_host_compatibility(context, host);
+    }
+}
+
+fn render_store_writeability(
+    context: &mut DetailContext<'_>,
+    projection: &StoreWriteabilityHumanProjection,
+) {
+    if projection.all_passed {
+        let projects = projection.projects.len();
         context.line(
-            &format!("Revision {revision}"),
-            format_args!("{status}; negotiated {negotiated}; {tools} tools; {shutdown} shutdown"),
-        );
-        let failure_stage = probe["failure_stage"].as_str();
-        let initialize = if probe["initialize"] == true {
-            "passed"
-        } else if matches!(failure_stage, Some("startup" | "initialize")) {
-            "failed"
-        } else {
-            "not completed"
-        };
-        context.line(&format!("Revision {revision} initialize"), initialize);
-        let required_tools = if probe["required_tools_validated"] == true {
-            "passed"
-        } else if probe["tools_list_observed"] == true {
-            "failed"
-        } else {
-            "not completed"
-        };
-        context.line(
-            &format!("Revision {revision} required tools"),
-            required_tools,
-        );
-        if let Some(tools) = probe["tools_returned"].as_u64() {
-            context.line(&format!("Revision {revision} tools returned"), tools);
-        }
-        let safe_tool_result = if probe["safe_read_only_tool_completed"] == true {
-            None
-        } else if failure_stage == Some("safe_tool_call") {
-            Some("failed")
-        } else {
-            Some("not completed")
-        };
-        let safe_tool = probe["safe_read_only_tool"]
-            .as_str()
-            .unwrap_or_else(|| managed_host_round_trip_tool().wire_name());
-        context.line(
-            &format!("Revision {revision} designated read-only tool"),
-            match safe_tool_result {
-                Some(result) => format!("{safe_tool} ({result})"),
-                None => safe_tool.to_owned(),
+            "Store writeability",
+            if projects == 0 {
+                "passed (Registry only)".to_owned()
+            } else {
+                format!(
+                    "passed (Registry and {projects} project{})",
+                    if projects == 1 { "" } else { "s" }
+                )
             },
         );
-        let shutdown = if probe["shutdown_completed"] == true {
+        return;
+    }
+
+    context.line(
+        "Store writeability",
+        format_args!(
+            "failed ({}/{} Stores passed)",
+            projection.passed_count,
+            projection.total_count()
+        ),
+    );
+    context.lines.push("    Failed Stores".to_owned());
+    if projection.registry == McpEvidenceCheckStatus::Failed {
+        context.lines.push("      Registry: failed".to_owned());
+    }
+    for project in &projection.projects {
+        if project.status == McpEvidenceCheckStatus::Failed {
+            context
+                .lines
+                .push(format!("      Project {}: failed", project.project_id));
+        }
+    }
+}
+
+fn render_protocol_conformance(
+    context: &mut DetailContext<'_>,
+    projection: &ProtocolConformanceHumanProjection,
+) {
+    if projection.revisions.is_empty() {
+        context.line("Protocol conformance", "unavailable (0 revisions recorded)");
+        return;
+    }
+    context.line(
+        "Protocol conformance",
+        format_args!(
+            "{}/{} revisions passed",
+            projection.passed_count,
+            projection.revisions.len()
+        ),
+    );
+    for revision in &projection.revisions {
+        context.lines.push(format!(
+            "      {}: {}",
+            revision.revision,
+            revision.disclosure.label()
+        ));
+        if revision.disclosure != ProbeDisclosureState::Passed {
+            render_expanded_probe(context, &revision.probe, 8);
+        }
+    }
+    if projection.passed_count == projection.revisions.len() {
+        if let Some(tool) = projection.designated_read_only_tool.as_deref() {
+            context.line("Designated read-only tool", tool);
+        }
+    }
+}
+
+fn render_host_compatibility(
+    context: &mut DetailContext<'_>,
+    projection: &HostCompatibilityHumanProjection,
+) {
+    if projection.profiles.is_empty() {
+        context.line("Host compatibility", "unavailable (0 profiles recorded)");
+        return;
+    }
+    context.line(
+        "Host compatibility",
+        format_args!(
+            "{}/{} profiles passed",
+            projection.passed_count,
+            projection.profiles.len()
+        ),
+    );
+    for profile in &projection.profiles {
+        if profile.disclosure == ProbeDisclosureState::Passed {
+            context.lines.push(format!(
+                "      {}: passed ({}, protocol {})",
+                profile.profile,
+                profile.fixture,
+                profile
+                    .probe
+                    .negotiated_revision
+                    .as_deref()
+                    .unwrap_or("not recorded")
+            ));
+        } else {
+            context.lines.push(format!(
+                "      {}: {}",
+                profile.profile,
+                profile.disclosure.label()
+            ));
+            context
+                .lines
+                .push(format!("        Fixture: {}", profile.fixture));
+            render_expanded_probe(context, &profile.probe, 8);
+        }
+    }
+}
+
+fn render_expanded_probe(
+    context: &mut DetailContext<'_>,
+    probe: &ProbeHumanProjection,
+    indent: usize,
+) {
+    let prefix = " ".repeat(indent);
+    let mut line = |label: &str, value: &str| {
+        context.lines.push(format!("{prefix}{label}: {value}"));
+    };
+    line(
+        "Requested revision",
+        probe
+            .requested_revision
+            .as_deref()
+            .unwrap_or("not recorded"),
+    );
+    line(
+        "Negotiated revision",
+        probe
+            .negotiated_revision
+            .as_deref()
+            .unwrap_or("not recorded"),
+    );
+    line(
+        "Initialize",
+        probe_stage_result(
+            probe.initialize,
+            probe.failure_stage,
+            &[
+                crate::connection_command::McpStage::Startup,
+                crate::connection_command::McpStage::Initialize,
+            ],
+        ),
+    );
+    line(
+        "Initialized notification",
+        if probe.initialized_notification {
             "passed"
-        } else if failure_stage == Some("shutdown") {
+        } else {
+            "not completed"
+        },
+    );
+    line(
+        "Schema validation",
+        if probe.schema_validation {
+            "passed"
+        } else {
+            "not completed"
+        },
+    );
+    line(
+        "Tools/list",
+        probe_stage_result(
+            probe.tools_list_observed,
+            probe.failure_stage,
+            &[crate::connection_command::McpStage::ToolsList],
+        ),
+    );
+    line(
+        "Required tools",
+        if probe.required_tools_validated {
+            "passed"
+        } else if probe.tools_list_observed {
             "failed"
         } else {
             "not completed"
-        };
-        context.line(&format!("Revision {revision} shutdown"), shutdown);
-        if let Some(stage) = probe["failure_stage"].as_str() {
-            context.line(
-                "Revision failure",
-                format_args!("{revision} during {stage}"),
-            );
-        }
-        if let Some(code) = probe["diagnostic_code"].as_str() {
-            context.line("Revision diagnostic code", code);
-        }
-        if let Some(finding_id) = probe["finding_id"].as_str() {
-            context.line("Revision finding", finding_id);
-        }
-    }
-    context.line("Designated read-only tool", safe_tool);
-    context.line(
-        "Host compatibility profiles",
-        render_string_values(&host_profiles),
+        },
     );
-    for probe in host_compatibility {
-        let profile = probe["profile"].as_str().unwrap_or("unknown");
-        let fixture = probe["fixture"].as_str().unwrap_or("unknown");
-        let status = probe["status"].as_str().unwrap_or("unknown");
-        let negotiated = probe["negotiated_revision"]
-            .as_str()
-            .unwrap_or("not negotiated");
-        context.line(
-            &format!("Host profile {profile}"),
-            format_args!("{status}; {fixture}; negotiated {negotiated}"),
-        );
+    line(
+        "Tools returned",
+        &probe
+            .tools_returned
+            .map(|count| count.to_string())
+            .unwrap_or_else(|| "not recorded".to_owned()),
+    );
+    line("Designated read-only tool", &probe.safe_read_only_tool);
+    line(
+        "Safe tool completion",
+        probe_stage_result(
+            probe.safe_read_only_tool_completed,
+            probe.failure_stage,
+            &[crate::connection_command::McpStage::SafeToolCall],
+        ),
+    );
+    line(
+        "Shutdown",
+        probe_stage_result(
+            probe.shutdown_completed,
+            probe.failure_stage,
+            &[crate::connection_command::McpStage::Shutdown],
+        ),
+    );
+    if let Some(stage) = probe.failure_stage {
+        line("Failure stage", stage.as_str());
+    }
+    if let Some(code) = probe.diagnostic_code.as_deref() {
+        line("Diagnostic code", code);
+    }
+    if let Some(finding_id) = probe.finding_id.as_deref() {
+        line("Finding", finding_id);
+    }
+}
+
+fn probe_stage_result(
+    completed: bool,
+    failure_stage: Option<crate::connection_command::McpStage>,
+    failed_at: &[crate::connection_command::McpStage],
+) -> &'static str {
+    if completed {
+        "passed"
+    } else if failure_stage.is_some_and(|stage| failed_at.contains(&stage)) {
+        "failed"
+    } else {
+        "not completed"
     }
 }
 
@@ -1051,6 +1154,166 @@ fn render_guard_files(context: &mut DetailContext<'_>) {
             render_string_values(&missing_phases),
         );
     }
+}
+
+fn render_hook_path_safety(context: &mut DetailContext<'_>) -> Result<(), ConnectionCommandError> {
+    let path = DetailPath::from_dotted_keys("hook_path_safety");
+    let Some(value) = context.peek(&path).cloned() else {
+        return Ok(());
+    };
+    let assessment =
+        serde_json::from_value::<HookPathSafetyAssessment>(value).map_err(|error| {
+            ConnectionCommandError::runtime(format!(
+                "current Hook path-safety evidence is invalid: {error}"
+            ))
+        })?;
+    context.consume(&path);
+    let projection = HookPathSafetyHumanProjection::from_assessment(&assessment);
+    context.line(
+        "Hook path safety",
+        hook_path_safety_state_label(projection.state),
+    );
+    context.line(
+        "CWD independence",
+        hook_path_safety_state_label(projection.cwd_independence),
+    );
+    context.line(
+        "Subdirectory safety",
+        hook_path_safety_state_label(projection.subdirectory_safety),
+    );
+
+    if projection.healthy {
+        context.line(
+            "Evidence",
+            format_args!(
+                "{} current managed artifacts verified",
+                projection.evidence_count
+            ),
+        );
+        let source_breakdown = hook_path_safety_source_breakdown(&projection);
+        if !source_breakdown.is_empty() {
+            context.line("Evidence sources", source_breakdown.join(", "));
+        }
+    } else {
+        context.line(
+            "Evidence",
+            format_args!(
+                "{} verified; {} requiring attention",
+                projection.verified_count,
+                projection.expanded_evidence.len()
+            ),
+        );
+        if projection.contradictory {
+            context.line("Evidence consistency", "contradictory");
+        }
+        if !projection.expanded_evidence.is_empty() {
+            context
+                .lines
+                .push("    Path-safety evidence requiring attention".to_owned());
+        }
+        for (index, evidence) in projection.expanded_evidence.iter().enumerate() {
+            context.lines.push(format!(
+                "      {}. {}: {}",
+                index + 1,
+                hook_path_safety_source_label(evidence.source),
+                hook_path_safety_state_label(evidence.state)
+            ));
+            context.lines.push(format!(
+                "        Reason: {}",
+                hook_path_safety_reason_label(evidence.reason)
+            ));
+            if let Some(installation_id) = evidence.installation_id.as_deref() {
+                context
+                    .lines
+                    .push(format!("        Installation ID: {installation_id}"));
+            }
+            if let Some(phase) = evidence.phase {
+                context
+                    .lines
+                    .push(format!("        Phase: {}", phase.as_str()));
+            }
+            if let Some(path) = evidence.path.as_deref() {
+                context.lines.push(format!("        Path: {path}"));
+            }
+        }
+    }
+    if projection.collection_at_limit {
+        context.line(
+            "Evidence collection limit",
+            "16 records reached; additional records may have been omitted",
+        );
+    }
+    Ok(())
+}
+
+fn hook_path_safety_state_label(state: HookPathSafetyState) -> &'static str {
+    match state {
+        HookPathSafetyState::Verified => "verified",
+        HookPathSafetyState::Failed => "failed",
+        HookPathSafetyState::NotRecorded => "not recorded",
+        HookPathSafetyState::NotChecked => "not checked",
+        HookPathSafetyState::NotApplicable => "not applicable",
+    }
+}
+
+fn hook_path_safety_source_label(source: HookPathSafetyEvidenceSource) -> &'static str {
+    match source {
+        HookPathSafetyEvidenceSource::GuardManifest => "Guard manifest",
+        HookPathSafetyEvidenceSource::ProjectPolicy => "project policy",
+        HookPathSafetyEvidenceSource::HostHookConfig => "hook config",
+        HookPathSafetyEvidenceSource::HostHookDispatch => "dispatch",
+        HookPathSafetyEvidenceSource::HostHookWrapper => "wrapper",
+    }
+}
+
+fn hook_path_safety_reason_label(reason: HookPathSafetyEvidenceReason) -> &'static str {
+    match reason {
+        HookPathSafetyEvidenceReason::CurrentContractVerified => "current contract verified",
+        HookPathSafetyEvidenceReason::ManifestMalformed => "manifest malformed",
+        HookPathSafetyEvidenceReason::OwnerBindingMismatch => "owner binding mismatch",
+        HookPathSafetyEvidenceReason::RequiredPhaseMissing => "required phase missing",
+        HookPathSafetyEvidenceReason::RequiredArtifactMissing => "required artifact missing",
+        HookPathSafetyEvidenceReason::ArtifactUnavailable => "artifact unavailable",
+        HookPathSafetyEvidenceReason::ArtifactMissing => "artifact missing",
+        HookPathSafetyEvidenceReason::ArtifactMalformed => "artifact malformed",
+        HookPathSafetyEvidenceReason::ContentMismatch => "content mismatch",
+        HookPathSafetyEvidenceReason::ManagedCommandBindingMismatch => {
+            "managed command binding mismatch"
+        }
+        HookPathSafetyEvidenceReason::PermissionMismatch => "permission mismatch",
+        HookPathSafetyEvidenceReason::NoncanonicalHookCommand => "noncanonical Hook command",
+        HookPathSafetyEvidenceReason::NoncanonicalRootResolution => "noncanonical root resolution",
+        HookPathSafetyEvidenceReason::NoncanonicalManagedCommand => "noncanonical managed command",
+        HookPathSafetyEvidenceReason::PolicyHashMismatch => "policy hash mismatch",
+        HookPathSafetyEvidenceReason::HostOutputMismatch => "host output mismatch",
+        HookPathSafetyEvidenceReason::AuditNotRun => "audit not run",
+    }
+}
+
+fn hook_path_safety_source_breakdown(projection: &HookPathSafetyHumanProjection) -> Vec<String> {
+    [
+        (
+            HookPathSafetyEvidenceSource::GuardManifest,
+            "Guard manifest",
+        ),
+        (
+            HookPathSafetyEvidenceSource::ProjectPolicy,
+            "project policy",
+        ),
+        (HookPathSafetyEvidenceSource::HostHookConfig, "hook config"),
+        (HookPathSafetyEvidenceSource::HostHookDispatch, "dispatch"),
+        (HookPathSafetyEvidenceSource::HostHookWrapper, "wrappers"),
+    ]
+    .into_iter()
+    .filter_map(|(source, label)| {
+        projection
+            .source_counts
+            .get(&source)
+            .copied()
+            .filter(|count| *count > 0)
+            .map(|count| format!("{label} {count}"))
+    })
+    .collect()
 }
 
 fn render_artifact_issues(context: &mut DetailContext<'_>) {
@@ -2595,12 +2858,14 @@ mod tests {
                 "    Preflight status: passed\n",
                 "    Preflight writeability: not_checked (requires connection_verify)\n",
                 "    Last active verification: failed\n",
-                "    Active verification observed at: 2026-07-20T00:00:00Z\n",
-                "    Active verification source: connection verify\n",
-                "    Last verified storage writeability: passed\n",
-                "    Registry writeability: passed\n",
-                "    Revision diagnostic code: mcp.tools.required_missing\n",
-                "    Revision finding: finding.tools.required_missing\n\n",
+                "    Observed at: 2026-07-20T00:00:00Z\n",
+                "    Source: connection verify\n",
+                "    Store writeability: passed (Registry only)\n",
+                "    Side effects: rollback-only Store probes and disposable conformance sessions\n",
+                "    Protocol conformance: 0/1 revisions passed\n",
+                "      2025-11-25: failed\n",
+                "        Diagnostic code: mcp.tools.required_missing\n",
+                "        Finding: finding.tools.required_missing\n\n",
                 "Required next steps\n",
                 "  action.mcp.repair_server\n",
                 "    Repair the MCP server and verify again\n",
@@ -2775,6 +3040,476 @@ mod tests {
         details
     }
 
+    fn complete_mcp_probe(revision: &str) -> Value {
+        json!({
+            "status": "passed",
+            "requested_revision": revision,
+            "negotiated_revision": revision,
+            "initialize": true,
+            "initialized_notification": true,
+            "schema_validation": true,
+            "tools_list_observed": true,
+            "tools_returned": 16,
+            "required_tools_validated": true,
+            "safe_read_only_tool": "volicord.list_projects",
+            "safe_read_only_tool_completed": true,
+            "shutdown_completed": true,
+        })
+    }
+
+    fn complete_mcp_matrix_details() -> Value {
+        let mut details = mcp_details("passed", "all stages passed", Vec::new());
+        let revisions = [
+            "2025-11-25",
+            "2025-06-18",
+            "2025-03-26",
+            "2024-11-05",
+            "2024-10-07",
+        ]
+        .into_iter()
+        .map(|revision| {
+            let mut probe = complete_mcp_probe(revision);
+            probe["revision"] = json!(revision);
+            probe
+        })
+        .collect::<Vec<_>>();
+        let mut host = complete_mcp_probe("2025-06-18");
+        host["profile"] = json!("codex");
+        host["fixture"] = json!("codex-mcp-turn-metadata");
+        details["last_active_verification"]["project_writes"] = json!([{
+            "project_id": "project_internal_1",
+            "state_write": "passed",
+        }]);
+        details["last_active_verification"]["protocol_conformance"] = json!(revisions);
+        details["last_active_verification"]["host_compatibility"] = json!([host]);
+        details["last_active_verification"]["side_effects"] = json!([
+            "rollback_only_registry_write_probe",
+            "rollback_only_project_write_probe",
+            "disposable_protocol_conformance",
+            "disposable_host_compatibility",
+        ]);
+        details
+    }
+
+    fn mcp_report_with_details(
+        details: Value,
+        status: ConnectionStatus,
+    ) -> ConnectionCommandReport {
+        report(
+            CommandOperation::Status,
+            false,
+            status,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::McpServer,
+                if status == ConnectionStatus::Failed {
+                    ConnectionCheckStatus::Failed
+                } else {
+                    ConnectionCheckStatus::Passed
+                },
+                (status == ConnectionStatus::Failed).then_some("mcp_server_failed"),
+                "Volicord MCP server active-verification evidence",
+                Some(details),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        )
+    }
+
+    #[test]
+    fn successful_mcp_matrix_is_compact_canonical_and_json_lossless() {
+        let report =
+            mcp_report_with_details(complete_mcp_matrix_details(), ConnectionStatus::Complete);
+        let json_before = serde_json::to_string(&report.diagnostic_report().unwrap()).unwrap();
+        let output = rendered(&report);
+        let json_after = serde_json::to_string(&report.diagnostic_report().unwrap()).unwrap();
+
+        assert_eq!(json_after, json_before);
+        assert!(output.contains("    Last active verification: passed\n"));
+        assert!(output.contains("    Store writeability: passed (Registry and 1 project)\n"));
+        assert!(output.contains("    Protocol conformance: 5/5 revisions passed\n"));
+        assert!(output.contains(
+            "    Host compatibility: 1/1 profiles passed\n      codex: passed (codex-mcp-turn-metadata, protocol 2025-06-18)\n"
+        ));
+        assert!(output.contains("    Designated read-only tool: volicord.list_projects\n"));
+        let mut prior = 0;
+        for revision in [
+            "2024-10-07",
+            "2024-11-05",
+            "2025-03-26",
+            "2025-06-18",
+            "2025-11-25",
+        ] {
+            let index = output
+                .find(&format!("      {revision}: passed\n"))
+                .expect("compact protocol row");
+            assert!(index >= prior, "protocol rows were not in canonical order");
+            prior = index;
+        }
+        assert_eq!(output.matches("        Initialize:").count(), 0);
+        assert_eq!(output.matches("        Required tools:").count(), 0);
+        assert!(!output.contains("project_internal_1"));
+        assert!(!output.contains('\t'));
+        assert!(output.ends_with('\n'));
+        assert!(!output.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn mcp_failures_expand_only_the_affected_revision_or_host_profile() {
+        let mut store = complete_mcp_matrix_details();
+        store["last_active_verification"]["project_writes"][0]["state_write"] = json!("failed");
+        let output = rendered(&mcp_report_with_details(store, ConnectionStatus::Failed));
+        assert!(output.contains("    Store writeability: failed (1/2 Stores passed)\n"));
+        assert!(output.contains("    Failed Stores\n"));
+        assert!(output.contains("      Project project_internal_1: failed\n"));
+
+        let mut initialize = complete_mcp_matrix_details();
+        let failed = &mut initialize["last_active_verification"]["protocol_conformance"][2];
+        failed["status"] = json!("failed");
+        failed["initialize"] = json!(false);
+        failed["initialized_notification"] = json!(false);
+        failed["schema_validation"] = json!(false);
+        failed["tools_list_observed"] = json!(false);
+        failed["tools_returned"] = Value::Null;
+        failed["required_tools_validated"] = json!(false);
+        failed["safe_read_only_tool_completed"] = json!(false);
+        failed["shutdown_completed"] = json!(false);
+        failed["failure_stage"] = json!("initialize");
+        failed["diagnostic_code"] = json!("mcp.json_rpc.error_response");
+        failed["finding_id"] = json!("finding.protocol.initialize");
+        let output = rendered(&mcp_report_with_details(
+            initialize,
+            ConnectionStatus::Failed,
+        ));
+        assert!(output.contains("    Protocol conformance: 4/5 revisions passed\n"));
+        assert!(output.contains("      2025-03-26: failed\n"));
+        assert!(output.contains("        Requested revision: 2025-03-26\n"));
+        assert!(output.contains("        Initialize: failed\n"));
+        assert!(output.contains("        Initialized notification: not completed\n"));
+        assert!(output.contains("        Schema validation: not completed\n"));
+        assert!(output.contains("        Tools/list: not completed\n"));
+        assert!(output.contains("        Failure stage: initialize\n"));
+        assert!(output.contains("        Diagnostic code: mcp.json_rpc.error_response\n"));
+        assert!(output.contains("        Finding: finding.protocol.initialize\n"));
+        assert_eq!(output.matches("        Requested revision:").count(), 1);
+
+        let mut safe_tool = complete_mcp_matrix_details();
+        let failed = &mut safe_tool["last_active_verification"]["protocol_conformance"][0];
+        failed["status"] = json!("failed");
+        failed["safe_read_only_tool_completed"] = json!(false);
+        failed["shutdown_completed"] = json!(false);
+        failed["failure_stage"] = json!("safe_tool_call");
+        failed["diagnostic_code"] = json!("mcp.tool.safe_call_failed");
+        let output = rendered(&mcp_report_with_details(
+            safe_tool,
+            ConnectionStatus::Failed,
+        ));
+        assert!(output.contains("      2025-11-25: failed\n"));
+        assert!(output.contains("        Designated read-only tool: volicord.list_projects\n"));
+        assert!(output.contains("        Safe tool completion: failed\n"));
+        assert_eq!(
+            output
+                .matches("Designated read-only tool: volicord.list_projects")
+                .count(),
+            1
+        );
+
+        let mut shutdown = complete_mcp_matrix_details();
+        let failed = &mut shutdown["last_active_verification"]["protocol_conformance"][4];
+        failed["status"] = json!("failed");
+        failed["shutdown_completed"] = json!(false);
+        failed["failure_stage"] = json!("shutdown");
+        failed["diagnostic_code"] = json!("mcp.process.shutdown_failed");
+        let output = rendered(&mcp_report_with_details(shutdown, ConnectionStatus::Failed));
+        assert!(output.contains("      2024-10-07: failed\n"));
+        assert!(output.contains("        Shutdown: failed\n"));
+        assert!(output.contains("        Failure stage: shutdown\n"));
+
+        let mut contradictory = complete_mcp_matrix_details();
+        let probe = &mut contradictory["last_active_verification"]["protocol_conformance"][1];
+        probe["shutdown_completed"] = json!(false);
+        let output = rendered(&mcp_report_with_details(
+            contradictory,
+            ConnectionStatus::Failed,
+        ));
+        assert!(output.contains("      2025-06-18: contradictory\n"));
+        assert!(output.contains("        Shutdown: not completed\n"));
+        assert!(!output.contains("2025-06-18: unknown"));
+
+        let mut host = complete_mcp_matrix_details();
+        let failed = &mut host["last_active_verification"]["host_compatibility"][0];
+        failed["status"] = json!("failed");
+        failed["safe_read_only_tool_completed"] = json!(false);
+        failed["shutdown_completed"] = json!(false);
+        failed["failure_stage"] = json!("safe_tool_call");
+        failed["diagnostic_code"] = json!("mcp.host.safe_call_failed");
+        failed["finding_id"] = json!("finding.host.codex");
+        let output = rendered(&mcp_report_with_details(host, ConnectionStatus::Failed));
+        assert!(output.contains("    Host compatibility: 0/1 profiles passed\n"));
+        assert!(output.contains("      codex: failed\n"));
+        assert!(output.contains("        Fixture: codex-mcp-turn-metadata\n"));
+        assert!(output.contains("        Negotiated revision: 2025-06-18\n"));
+        assert!(output.contains("        Diagnostic code: mcp.host.safe_call_failed\n"));
+        assert!(output.contains("        Finding: finding.host.codex\n"));
+    }
+
+    fn hook_evidence(
+        state: &str,
+        source: &str,
+        reason: &str,
+        phase: Option<&str>,
+        path: Option<&str>,
+    ) -> Value {
+        let mut evidence = json!({
+            "state": state,
+            "source": source,
+            "reason": reason,
+            "installation_id": "guard_installation_1",
+        });
+        if let Some(phase) = phase {
+            evidence["phase"] = json!(phase);
+        }
+        if let Some(path) = path {
+            evidence["path"] = json!(path);
+        }
+        evidence
+    }
+
+    fn hook_path_safety_report(
+        state: &str,
+        evidence: Vec<Value>,
+        status: ConnectionStatus,
+    ) -> ConnectionCommandReport {
+        report(
+            CommandOperation::Status,
+            false,
+            status,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::AmbientHookCoverage,
+                if status == ConnectionStatus::Failed {
+                    ConnectionCheckStatus::Failed
+                } else {
+                    ConnectionCheckStatus::Passed
+                },
+                (status == ConnectionStatus::Failed).then_some("ambient_hook_coverage_failed"),
+                "Current managed Hook coverage",
+                Some(json!({
+                    "hook_path_safety": {
+                        "state": state,
+                        "cwd_independence": state,
+                        "subdirectory_safety": state,
+                        "evidence": evidence,
+                    }
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        )
+    }
+
+    #[test]
+    fn healthy_hook_path_safety_is_summarized_without_paths() {
+        let evidence = vec![
+            hook_evidence(
+                "verified",
+                "project_policy",
+                "current_contract_verified",
+                None,
+                Some("/workspace/.volicord/policy.json"),
+            ),
+            hook_evidence(
+                "verified",
+                "host_hook_config",
+                "current_contract_verified",
+                None,
+                Some("/workspace/.codex/hooks.json"),
+            ),
+            hook_evidence(
+                "verified",
+                "host_hook_dispatch",
+                "current_contract_verified",
+                None,
+                Some("/workspace/.volicord/guard/codex-hook"),
+            ),
+            hook_evidence(
+                "verified",
+                "host_hook_wrapper",
+                "current_contract_verified",
+                Some("pre_tool"),
+                Some("/workspace/.volicord/guard/pre-tool"),
+            ),
+            hook_evidence(
+                "verified",
+                "host_hook_wrapper",
+                "current_contract_verified",
+                Some("post_tool"),
+                Some("/workspace/.volicord/guard/post-tool"),
+            ),
+            hook_evidence(
+                "verified",
+                "host_hook_wrapper",
+                "current_contract_verified",
+                Some("prompt_capture"),
+                Some("/workspace/.volicord/guard/prompt-capture"),
+            ),
+        ];
+        let report = hook_path_safety_report("verified", evidence, ConnectionStatus::Complete);
+        let json_before = serde_json::to_string(&report.diagnostic_report().unwrap()).unwrap();
+        let output = rendered(&report);
+        let json_after = serde_json::to_string(&report.diagnostic_report().unwrap()).unwrap();
+        assert_eq!(json_after, json_before);
+        assert!(output.contains(concat!(
+            "    Hook path safety: verified\n",
+            "    CWD independence: verified\n",
+            "    Subdirectory safety: verified\n",
+            "    Evidence: 6 current managed artifacts verified\n",
+            "    Evidence sources: project policy 1, hook config 1, dispatch 1, wrappers 3\n",
+        )));
+        assert!(!output.contains("/workspace/.volicord/guard/pre-tool"));
+        assert!(!output.contains("Path-safety evidence requiring attention"));
+    }
+
+    #[test]
+    fn hook_path_safety_expands_failed_not_recorded_and_mixed_evidence() {
+        let failed_path = "/workspace/.volicord/guard/pre-tool";
+        let mixed = vec![
+            hook_evidence(
+                "verified",
+                "project_policy",
+                "current_contract_verified",
+                None,
+                Some("/workspace/.volicord/policy.json"),
+            ),
+            hook_evidence(
+                "failed",
+                "host_hook_wrapper",
+                "content_mismatch",
+                Some("pre_tool"),
+                Some(failed_path),
+            ),
+        ];
+        let output = rendered(&hook_path_safety_report(
+            "failed",
+            mixed,
+            ConnectionStatus::Failed,
+        ));
+        assert!(output.contains("    Hook path safety: failed\n"));
+        assert!(output.contains("    Evidence: 1 verified; 1 requiring attention\n"));
+        assert!(output.contains("      1. wrapper: failed\n"));
+        assert!(output.contains("        Reason: content mismatch\n"));
+        assert!(output.contains("        Installation ID: guard_installation_1\n"));
+        assert!(output.contains("        Phase: pre_tool\n"));
+        assert!(output.contains(&format!("        Path: {failed_path}\n")));
+        assert!(!output.contains("/workspace/.volicord/policy.json"));
+
+        let not_recorded = vec![hook_evidence(
+            "not_recorded",
+            "host_hook_config",
+            "required_artifact_missing",
+            None,
+            Some("/workspace/.codex/hooks.json"),
+        )];
+        let output = rendered(&hook_path_safety_report(
+            "not_recorded",
+            not_recorded,
+            ConnectionStatus::Failed,
+        ));
+        assert!(output.contains("    Hook path safety: not recorded\n"));
+        assert!(output.contains("      1. hook config: not recorded\n"));
+        assert!(output.contains("        Reason: required artifact missing\n"));
+        assert!(!output.contains("Hook path safety: failed"));
+
+        let mut failure_first = vec![
+            hook_evidence(
+                "not_applicable",
+                "guard_manifest",
+                "audit_not_run",
+                None,
+                None,
+            ),
+            hook_evidence(
+                "not_checked",
+                "host_hook_config",
+                "artifact_unavailable",
+                None,
+                Some("/workspace/.codex/hooks.json"),
+            ),
+            hook_evidence(
+                "not_recorded",
+                "host_hook_dispatch",
+                "required_artifact_missing",
+                None,
+                Some("/workspace/.volicord/guard/codex-hook"),
+            ),
+            hook_evidence(
+                "failed",
+                "host_hook_wrapper",
+                "content_mismatch",
+                Some("post_tool"),
+                Some("/workspace/.volicord/guard/post-tool"),
+            ),
+            hook_evidence(
+                "verified",
+                "project_policy",
+                "current_contract_verified",
+                None,
+                Some("/workspace/.volicord/policy.json"),
+            ),
+        ];
+        let output = rendered(&hook_path_safety_report(
+            "failed",
+            failure_first.clone(),
+            ConnectionStatus::Failed,
+        ));
+        failure_first.reverse();
+        let reversed_output = rendered(&hook_path_safety_report(
+            "failed",
+            failure_first,
+            ConnectionStatus::Failed,
+        ));
+        assert_eq!(reversed_output, output);
+        assert!(output.contains("    Evidence: 1 verified; 4 requiring attention\n"));
+        let failed = output.find("      1. wrapper: failed\n").unwrap();
+        let not_recorded = output.find("      2. dispatch: not recorded\n").unwrap();
+        let not_checked = output.find("      3. hook config: not checked\n").unwrap();
+        let not_applicable = output
+            .find("      4. Guard manifest: not applicable\n")
+            .unwrap();
+        assert!(failed < not_recorded);
+        assert!(not_recorded < not_checked);
+        assert!(not_checked < not_applicable);
+    }
+
+    #[test]
+    fn hook_path_safety_reports_the_bounded_evidence_limit() {
+        let evidence = (0..crate::guard_integration::audit::MAX_HOOK_PATH_SAFETY_EVIDENCE)
+            .map(|index| {
+                hook_evidence(
+                    "failed",
+                    "host_hook_wrapper",
+                    "content_mismatch",
+                    Some("pre_tool"),
+                    Some(&format!("/workspace/.volicord/guard/wrapper-{index:02}")),
+                )
+            })
+            .collect();
+        let output = rendered(&hook_path_safety_report(
+            "failed",
+            evidence,
+            ConnectionStatus::Failed,
+        ));
+        assert!(output.contains("    Evidence: 0 verified; 16 requiring attention\n"));
+        assert!(output.contains(concat!(
+            "    Evidence collection limit: 16 records reached; ",
+            "additional records may have been omitted\n"
+        )));
+    }
+
     fn rendered_mcp_progress(
         progress: McpExchangeProgress,
         failure: Option<McpProcessFailure>,
@@ -2827,11 +3562,10 @@ mod tests {
                 "startup failed",
             )),
         );
-        assert!(before_initialize.contains("    Revision 2025-11-25 initialize: failed\n"));
-        assert!(
-            before_initialize.contains("    Revision 2025-11-25 required tools: not completed\n")
-        );
-        assert!(!before_initialize.contains("    Revision 2025-11-25 tools returned:"));
+        assert!(before_initialize.contains("      2025-11-25: failed\n"));
+        assert!(before_initialize.contains("        Initialize: failed\n"));
+        assert!(before_initialize.contains("        Required tools: not completed\n"));
+        assert!(before_initialize.contains("        Tools returned: not recorded\n"));
 
         let tools_list_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(true, None, false, false, false),
@@ -2840,11 +3574,10 @@ mod tests {
                 "tools/list failed",
             )),
         );
-        assert!(tools_list_failed.contains("    Revision 2025-11-25 initialize: passed\n"));
-        assert!(
-            tools_list_failed.contains("    Revision 2025-11-25 required tools: not completed\n")
-        );
-        assert!(!tools_list_failed.contains("    Revision 2025-11-25 tools returned:"));
+        assert!(tools_list_failed.contains("        Initialize: passed\n"));
+        assert!(tools_list_failed.contains("        Tools/list: failed\n"));
+        assert!(tools_list_failed.contains("        Required tools: not completed\n"));
+        assert!(tools_list_failed.contains("        Tools returned: not recorded\n"));
 
         let required_tools_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
@@ -2859,8 +3592,8 @@ mod tests {
                 "required tools failed",
             )),
         );
-        assert!(required_tools_failed.contains("    Revision 2025-11-25 required tools: failed\n"));
-        assert!(required_tools_failed.contains("    Revision 2025-11-25 tools returned: 2\n"));
+        assert!(required_tools_failed.contains("        Required tools: failed\n"));
+        assert!(required_tools_failed.contains("        Tools returned: 2\n"));
 
         let safe_call_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
@@ -2875,12 +3608,12 @@ mod tests {
                 "designated read-only tool call failed",
             )),
         );
-        assert!(safe_call_failed.contains("    Revision 2025-11-25 required tools: passed\n"));
-        assert!(safe_call_failed.contains("    Revision 2025-11-25 tools returned: 1\n"));
-        assert!(safe_call_failed.contains(
-            "    Revision 2025-11-25 designated read-only tool: volicord.list_projects (failed)\n"
-        ));
-        assert!(safe_call_failed.contains("    Revision 2025-11-25 shutdown: not completed\n"));
+        assert!(safe_call_failed.contains("        Required tools: passed\n"));
+        assert!(safe_call_failed.contains("        Tools returned: 1\n"));
+        assert!(safe_call_failed
+            .contains("        Designated read-only tool: volicord.list_projects\n"));
+        assert!(safe_call_failed.contains("        Safe tool completion: failed\n"));
+        assert!(safe_call_failed.contains("        Shutdown: not completed\n"));
 
         let shutdown_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
@@ -2895,19 +3628,21 @@ mod tests {
                 "shutdown failed",
             )),
         );
-        assert!(shutdown_failed.contains(
-            "    Revision 2025-11-25 designated read-only tool: volicord.list_projects\n"
-        ));
-        assert!(shutdown_failed.contains("    Revision 2025-11-25 shutdown: failed\n"));
+        assert!(
+            shutdown_failed.contains("        Designated read-only tool: volicord.list_projects\n")
+        );
+        assert!(shutdown_failed.contains("        Shutdown: failed\n"));
 
         let completed = rendered_mcp_progress(
             McpExchangeProgress::observed(true, Some(Vec::new()), true, true, true),
             None,
         );
-        assert!(completed.contains("    Revision 2025-11-25 initialize: passed\n"));
-        assert!(completed.contains("    Revision 2025-11-25 required tools: passed\n"));
-        assert!(completed.contains("    Revision 2025-11-25 tools returned: 0\n"));
-        assert!(completed.contains("    Revision 2025-11-25 shutdown: passed\n"));
+        assert!(completed.contains("    Protocol conformance: 0/1 revisions passed\n"));
+        assert!(completed.contains("      2025-11-25: contradictory\n"));
+        assert!(completed.contains("        Initialize: passed\n"));
+        assert!(completed.contains("        Required tools: passed\n"));
+        assert!(completed.contains("        Tools returned: 0\n"));
+        assert!(completed.contains("        Shutdown: passed\n"));
     }
 
     #[test]
@@ -2943,13 +3678,14 @@ mod tests {
             "    Preflight status: passed\n",
             "    Preflight writeability: not_checked (requires connection_verify)\n",
             "    Last active verification: passed\n",
-            "    Active verification observed at: 2026-07-20T00:00:00Z\n",
-            "    Active verification source: connection verify\n",
-            "    Last verified storage writeability: passed\n",
-            "    Registry writeability: passed\n",
-            "    Active verification side effects: rollback_only_registry_write_probe, disposable_protocol_conformance\n",
-            "    Revision 2025-11-25: passed; negotiated 2025-11-25; 13 tools; graceful shutdown\n",
+            "    Observed at: 2026-07-20T00:00:00Z\n",
+            "    Source: connection verify\n",
+            "    Store writeability: passed (Registry only)\n",
+            "    Side effects: rollback-only Store probes and disposable conformance sessions\n",
+            "    Protocol conformance: 1/1 revisions passed\n",
+            "      2025-11-25: passed\n",
             "    Designated read-only tool: volicord.list_projects\n",
+            "    Host compatibility: unavailable (0 profiles recorded)\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}");
         }
@@ -3000,10 +3736,8 @@ mod tests {
                 ["protocol_conformance"][0]["failure_stage"],
             "initialize"
         );
-        assert!(
-            protocol_output.contains("    Revision diagnostic code: mcp.json_rpc.error_response\n")
-        );
-        assert!(protocol_output.contains("    Revision finding: finding.protocol_failure\n"));
+        assert!(protocol_output.contains("        Diagnostic code: mcp.json_rpc.error_response\n"));
+        assert!(protocol_output.contains("        Finding: finding.protocol_failure\n"));
         assert!(!protocol_output.contains("Phase:"));
 
         let guards = report(
@@ -3712,7 +4446,7 @@ mod tests {
         let output = rendered(&extended_report);
         for expected in [
             "    Preflight writeability: not_checked (requires connection_verify)\n",
-            "    Revision 2025-11-25: passed; negotiated 2025-11-25; 1 tools; graceful shutdown\n",
+            "    Protocol conformance: 1/1 revisions passed\n      2025-11-25: passed\n",
             "    Additional details\n",
             "      Future top level: visible\n",
             "      Preflight\n        Evidence\n          Future preflight\n            Replica: ready\n",

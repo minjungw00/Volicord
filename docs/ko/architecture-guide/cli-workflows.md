@@ -61,15 +61,18 @@ Connection 범위 입력을 재사용하며, filter된 membership을 invocation 
 Connection 출력 adapter는 선택한 status와 list가 공유하는 typed 사람용 semantic
 projection 하나를 소유합니다. 완전한 enum mapping이 집계 status, integration activation,
 hook activation, check status 문구를 선택하고 count projection 하나가 `passed`, `blocked`,
-`pending`, `failed`, `not applicable` 순서로 값을 제공합니다. Concise 출력은 존재하는 활성
-검증 detail을 `McpActiveVerificationEvidence`로 엄격하게 decode하여 사람용 rendering
-전에 공유 typed snapshot projection 하나를 만듭니다. 이 projection이 concise와 verbose
-출력에서 함께 사용하는 활성 검증 및 Store 쓰기 가능성 집계 결론, 정확히 영속된
-`observed_at`, typed source를 담당합니다. Concise 출력은 결과를 마지막 활성 검증으로
+`pending`, `failed`, `not applicable` 순서로 값을 제공합니다. 존재하는 활성 검증 detail은
+사람용 rendering 전에 `McpActiveVerificationEvidence`로 엄격하게 decode합니다. 그다음
+Connection 출력 adapter가 typed `McpActiveVerificationHumanProjection`,
+`ProtocolConformanceHumanProjection`, `HostCompatibilityHumanProjection`을 만들고 ambient
+Guard detail은 typed `HookPathSafetyHumanProjection`을 만듭니다. 이 projection들이 집계
+결론, 순서, 일관성 검사, 점진적 공개를 담당하며 모두 성공한 경우를 요약하고 실패,
+불완전, unavailable, mixed 또는 contradictory 근거를 펼칩니다. 일반 presentation 계층은
+layout만 담당합니다. 활성 projection은 concise와 verbose 출력에서 함께 사용하는 정확히
+영속된 `observed_at`과 typed source도 담당합니다. Concise 출력은 결과를 마지막 활성 검증으로
 표시하고 `connection_verify`를 `connection verify`로 사람이 읽게 바꾸며 증거 시각을
-보여 줍니다. Freshness를 암시하지 않습니다. 일반 presentation 계층은 선택된 label과 값의
-layout만 담당합니다. JSON은 밑줄이 있는 안정적인 enum 표기와 완전한 typed 증거를
-유지합니다.
+보여 줍니다. Freshness를 암시하지 않습니다. JSON은 사람용 공개 선택을 거치지 않고
+밑줄이 있는 안정적인 enum 표기와 완전한 typed 증거를 유지합니다.
 
 `connection verify`는 현재 adapter와 관리 구성을 검사하고 허용된 로컬 probe를 실행한 뒤
 실제 managed-host 및 Guard 관찰을 읽고 Store 담당 경로로 보고서를 최대 하나

@@ -1100,15 +1100,31 @@ For detailed current Connection diagnostics, run the verbose status command with
 `volicord init`을 실행할 때 호스트와 Product Repository를 선택합니다. 안내는 알 수 없는
 좌표를 자리표시자 명령에 넣지 않습니다.
 
-`--verbose`는 사람이 진단하는 데 필요한 완전한 보기를 표시합니다. 간결한 출력과 같은
+`--verbose`는 점진적으로 세부 정보를 공개하는 사람용 진단 보기를 표시합니다. 간결한
+출력과 같은
 작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Findings`,
 `Required next steps`, `Optional active diagnostics`, `Result`, `Planned changes`,
-`Report limits` 구역을 상황에 맞게 사용합니다. 모든 check와 상태, 모든 root와 한도가 있는 cause-chain finding, 모든 안전한
-typed fact, requested/selected/negotiated protocol revision, 실제 MCP peer `clientInfo`, 별도
-PATH executable probe, 한도가 있는 process exit와 stderr fact, Runtime Home과 Connection
-correlation, runtime-session ID, integration revision, timestamp, dependency와 blocked-by
-관계, 권장 action, report limit을 표시합니다. 알고 있는 세부 필드는 구조화해서 표시하며,
-MCP check는 typed `ManagedSessionAttemptDetails`,
+`Report limits` 구역을 상황에 맞게 사용합니다. 모든 check와 집계 상태, 모든 root와 한도가
+있는 cause-chain finding, dependency와 blocked-by 관계, 권장 action, report limit을
+표시합니다. Connection이 담당하는 typed 사람용 projection은 마지막 활성 검증, Store
+쓰기 가능성, protocol conformance, host compatibility, Hook 경로 안전성의 점진적 공개를
+결정하고, 일반 presentation 계층은 선택된 fact의 layout만 담당합니다.
+
+모두 성공한 활성 검증 matrix는 결과, 영속 관찰 시각과 source, rollback-only 또는 폐기
+가능한 side effect, 통과한 Registry 및 프로젝트 개수, 정규 oldest-to-newest 순서의 각
+production protocol revision, 지정된 읽기 전용 도구, 통과한 각 host profile과 fixture의
+compact row로 요약합니다. 성공한 Store 식별자와 단계별 lifecycle field는 생략합니다.
+모두 검증된 Hook 경로 안전성 평가는 세 가지 집계 dimension, 검증된 현재 artifact 개수,
+근거 source 개수를 artifact path 없이 표시합니다. 실패, 불완전, unavailable, mixed,
+corrupt 또는 contradictory 근거는 대신 완전히 펼칩니다. 정확한 실패 project ID, 영향을
+받은 protocol 또는 host row, requested 및 negotiated revision, lifecycle stage, diagnostic
+code와 finding, verified가 아닌 Hook 근거의 source, reason, installation, phase, path를
+표시합니다. 성공한 형제 항목의 개수도 유지하며, 한도가 있는 collection이 limit에
+도달하면 누락 가능성을 명시합니다. JSON projection은 사람용 요약에서
+생략한 성공 detail을 포함해 모든 typed evidence field를 유지합니다.
+
+그 밖의 알고 있는 세부 필드는 구조화해서 표시하며, MCP check는 typed
+`ManagedSessionAttemptDetails`,
 `ManagedCapabilityProofDetails`, `RequiredToolsEvidence`,
 `VerificationToolEvidence`, `HostExecutableProbeDetails`를 직렬화합니다. Guard check는
 `AmbientGuardCoverageEvidence`, `CorrelatedGuardAttemptEvidence`,
@@ -1127,7 +1143,7 @@ MCP check는 typed `ManagedSessionAttemptDetails`,
 `Additional details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구성하지 않으며
 가린 fact는 계속 가립니다.
 
-`--json`은 현재 `DiagnosticReport` schema 하나만 쓰며 정확하고 손실 없는 기계 판독
+`--json`은 현재 `DiagnosticReport` schema 하나만 쓰며 완전하고 손실 없는 기계 판독
 표현입니다. 허용하는 schema version은 정확히 `2`입니다.
 Consumer는 사람용 summary를 parsing하지 않고 구조화된 check, finding, cause ID, action
 code, fact object를 사용합니다. `--verbose`와 `--json`은 함께 사용할 수 없는 사용법

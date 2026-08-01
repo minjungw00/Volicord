@@ -7,6 +7,7 @@ mod list;
 mod report;
 mod semantics;
 mod verbose;
+mod verification_projection;
 
 #[cfg(test)]
 mod diagnostic_projection_tests;

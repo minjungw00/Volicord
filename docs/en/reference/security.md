@@ -126,10 +126,12 @@ are displays, not separate authority records. They must derive from current
 typed state, omit secrets and private UserAction content, and preserve the
 structured result's guarantee boundary. A stale display cannot authorize work.
 Concise human output may select only facts applicable to its command and
-current branch while verbose or JSON output exposes more diagnostic context.
-Omitting an inapplicable field or repeating fewer non-guarantee explanations
-does not create a positive guarantee; the typed disclosure remains
-authoritative for the result.
+current branch. Verbose human output may summarize uniformly successful typed
+evidence and expand failed, incomplete, unavailable, or contradictory evidence;
+JSON remains the exhaustive typed disclosure. Omitting successful identifiers
+or paths from a human summary, omitting an inapplicable field, or repeating
+fewer non-guarantee explanations does not create a positive guarantee; the
+typed disclosure remains authoritative for the result.
 
 Doctor action displays derive from one finalized typed remediation plan.
 Finding and check provenance is bounded diagnostic context and does not prove

@@ -4,13 +4,12 @@ use volicord_types::{
         ConnectionCheck, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
         HookActivationState, IntegrationActivationState,
     },
-    mcp_verification_evidence::{
-        McpActiveVerificationEvidence, McpActiveVerificationSource, McpEvidenceCheckStatus,
-    },
-    values::UtcTimestamp,
+    mcp_verification_evidence::{McpActiveVerificationEvidence, McpActiveVerificationSource},
 };
 
 use crate::connection_command::ConnectionCommandError;
+
+use super::verification_projection::McpActiveVerificationHumanProjection;
 
 pub(super) const fn connection_status_label(status: ConnectionStatus) -> &'static str {
     match status {
@@ -166,59 +165,9 @@ pub(super) const fn active_verification_source_label(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ActiveVerificationSnapshotSummary {
-    pub(super) state: ActiveVerificationState,
-    pub(super) storage_writeability: StorageWriteabilityState,
-    pub(super) observed_at: Option<UtcTimestamp>,
-    pub(super) source: Option<McpActiveVerificationSource>,
-}
-
-impl ActiveVerificationSnapshotSummary {
-    const fn not_run() -> Self {
-        Self {
-            state: ActiveVerificationState::NotRun,
-            storage_writeability: StorageWriteabilityState::NotChecked,
-            observed_at: None,
-            source: None,
-        }
-    }
-
-    fn from_evidence(evidence: &McpActiveVerificationEvidence) -> Self {
-        let stores_passed = evidence.registry_write() == McpEvidenceCheckStatus::Passed
-            && evidence
-                .project_writes()
-                .iter()
-                .all(|project| project.state_write() == McpEvidenceCheckStatus::Passed);
-        let active_passed = stores_passed
-            && evidence
-                .protocol_conformance()
-                .iter()
-                .all(|probe| probe.probe().status() == McpEvidenceCheckStatus::Passed)
-            && evidence
-                .host_compatibility()
-                .iter()
-                .all(|probe| probe.probe().status() == McpEvidenceCheckStatus::Passed);
-        Self {
-            state: if active_passed {
-                ActiveVerificationState::Passed
-            } else {
-                ActiveVerificationState::Failed
-            },
-            storage_writeability: if stores_passed {
-                StorageWriteabilityState::Passed
-            } else {
-                StorageWriteabilityState::Failed
-            },
-            observed_at: Some(evidence.observed_at().clone()),
-            source: Some(evidence.source()),
-        }
-    }
-}
-
 pub(super) fn active_verification_snapshot(
     checks: &[ConnectionCheck],
-) -> Result<Option<ActiveVerificationSnapshotSummary>, ConnectionCommandError> {
+) -> Result<Option<McpActiveVerificationHumanProjection>, ConnectionCommandError> {
     let Some(details) = checks
         .iter()
         .find(|check| {
@@ -233,10 +182,10 @@ pub(super) fn active_verification_snapshot(
         return Ok(None);
     }
     let Some(value) = details.get("last_active_verification") else {
-        return Ok(Some(ActiveVerificationSnapshotSummary::not_run()));
+        return Ok(Some(McpActiveVerificationHumanProjection::not_run()));
     };
     if value.is_null() {
-        return Ok(Some(ActiveVerificationSnapshotSummary::not_run()));
+        return Ok(Some(McpActiveVerificationHumanProjection::not_run()));
     }
     let evidence = serde_json::from_value::<McpActiveVerificationEvidence>(value.clone()).map_err(
         |error| {
@@ -245,9 +194,13 @@ pub(super) fn active_verification_snapshot(
             ))
         },
     )?;
-    Ok(Some(ActiveVerificationSnapshotSummary::from_evidence(
-        &evidence,
-    )))
+    McpActiveVerificationHumanProjection::try_from_evidence(&evidence)
+        .map(Some)
+        .map_err(|error| {
+            ConnectionCommandError::runtime(format!(
+                "current MCP active-verification evidence is invalid: {error}"
+            ))
+        })
 }
 
 #[cfg(test)]

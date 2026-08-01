@@ -73,15 +73,21 @@ by selected status and list. Exhaustive enum mappings select aggregate-status,
 integration-activation, hook-activation, and check-status phrases; one count
 projection supplies `passed`, `blocked`, `pending`, `failed`, and
 `not applicable` in that order. A present active-verification detail is
-strictly decoded as `McpActiveVerificationEvidence` into one shared typed
-snapshot projection before human rendering. That projection owns the aggregate
-active-verification and Store-writeability conclusions, exact persisted
-`observed_at`, and typed source used by both concise and verbose output.
+strictly decoded as `McpActiveVerificationEvidence` before human rendering. The
+Connection output adapter then builds typed
+`McpActiveVerificationHumanProjection`,
+`ProtocolConformanceHumanProjection`, and
+`HostCompatibilityHumanProjection` values; ambient Guard details build the
+typed `HookPathSafetyHumanProjection`. These projections own aggregate
+conclusions, ordering, consistency checks, and progressive disclosure. They
+compact homogeneous success and expand failed, incomplete, unavailable, mixed,
+or contradictory evidence. The generic presentation layer owns layout only.
+The active projection also owns the exact persisted `observed_at` and typed
+source used by both concise and verbose output.
 Concise output labels the result as the last active verification, humanizes
 `connection_verify` as `connection verify`, and shows the evidence time; it
-does not imply freshness. The generic presentation layer only lays out those
-selected labels and values. JSON keeps the stable underscore enum spellings
-and the complete typed evidence.
+does not imply freshness. JSON bypasses human disclosure selection and keeps
+the stable underscore enum spellings and complete typed evidence.
 
 `connection verify` performs current adapter and managed-configuration
 inspection, runs permitted local probes, reads actual managed-host and Guard

@@ -332,11 +332,19 @@ writeability and every included project writeability result must pass for Store
 writeability to pass. Those results plus every included protocol-conformance
 and host-compatibility probe must pass for active verification to pass.
 Malformed present evidence is an error. Concise output omits IDs, individual
-Store results, protocol matrices, and host fixtures; verbose and JSON retain
-the complete typed evidence and never label an active write result as a
-preflight effect. The evidence time and source expose provenance without a
-fresh/stale classification, universal validity duration, or automatic
-expiration.
+Store results, protocol matrices, and host fixtures. Verbose output derives
+Connection-owned typed human projections for active verification with Store
+writeability, protocol conformance, host compatibility, and Hook path safety
+from their strict typed inputs. It always retains aggregate results.
+Homogeneous success is compact: Store reports the Registry-and-project count
+without successful IDs, protocol revisions use canonical production order without per-stage
+success fields, host profiles use one row each, and a verified Hook assessment
+reports dimension and source counts without paths. A failed, incomplete,
+unavailable, mixed, corrupt, or contradictory component expands its exact IDs,
+lifecycle stages, diagnostic facts, and bounded nonverified Hook evidence.
+JSON remains exhaustive and never labels an active write result as a preflight
+effect. The evidence time and source expose provenance without a fresh/stale
+classification, universal validity duration, or automatic expiration.
 
 Selected status and Connection list project the same typed human vocabulary:
 aggregate status is `ready`, `action required`, or `failed`; integration and
@@ -508,6 +516,12 @@ failed applicable phase or installation wins, then `not_recorded`, then
 `not_checked`; verified applicable inputs remain verified, while
 `not_applicable` is neutral unless no applicable input exists. Ambient coverage
 cannot pass unless the managed files and applicable path-safety assessment pass.
+
+Verbose Connection output summarizes a uniformly verified assessment without
+artifact paths. Any nonverified or internally contradictory dimension expands
+the bounded evidence in failure-first order with its source, reason,
+installation, phase, and path; reaching the evidence bound is labelled as a
+possible omission. JSON retains the complete typed assessment in either case.
 
 A recorded verification-tool name mismatch never passes
 `managed_capability_proof`. Its bounded facts expose the exact expected and
