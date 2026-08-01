@@ -82,6 +82,12 @@ fields and capability collection as structured human detail. It does not carry
 the physical JSON text across the Store boundary or offer that text after a
 decode, canonical-encoding, or current-contract failure.
 
+Doctor JSON retains every collected check ID and complete typed detail object.
+Verbose human grouping, human titles, healthy command aggregation,
+failure-first expansion, and Hook evidence compaction are projections of those
+records and do not add, rewrite, or persist a storage record. The finalized
+Doctor remediation plan remains the sole action source for both projections.
+
 Publication guards and their rollback results are process-local typed lifecycle
 facts, not Registry rows. Confirmation failure retains its primary error,
 rollback outcome, final-path observation, and parent-entry durability together.

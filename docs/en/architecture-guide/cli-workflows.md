@@ -174,19 +174,25 @@ one primary action. After collection, Doctor finalizes finding-owned typed
 actions and closed Doctor-owned direct candidates into one remediation plan.
 The plan merges by typed action code, computes urgency once, sorts by urgency,
 typed priority, and code, and fails on semantic-summary or exact-command
-conflicts. Verbose output expands that same plan into primary, required, and
-recommended action projections alongside full check details, findings, build
-provenance, and disclosure without adding probes. JSON serializes the same plan
-as its complete, partitioned, and primary projections. No renderer reconstructs
-actions from checks, findings, or prose.
-Guard-file collection contributes one typed Hook path-safety assessment to the
-Doctor check details and state projection. The collection layer audits the
-current exact owner-bound Codex Hook contract and aggregates bounded evidence;
-the JSON and verbose renderers only present its `verified`, `failed`,
-`not_recorded`, `not_checked`, or `not_applicable` dimensions. Compact output
-omits a successful assessment and never turns missing evidence into a negative
-label. The same collection stays read-only across the Registry, project and
-diagnostics Stores, managed configuration, Hook files, and Product Repository.
+conflicts. A Doctor-owned presentation registry assigns every current check a
+human title, semantic group, healthy projection, and non-success projection.
+Verbose output renders those groups deterministically. Its typed command
+projection combines the five executable, availability, and PATH checks, rejects
+incompatible collected path facts, summarizes healthy siblings, and expands
+each non-success check with its exact identity and plan-owned remediation. JSON
+keeps the original exhaustive check array and does not receive human group
+metadata.
+
+Verbose output also expands the finalized plan into primary, required, and
+recommended action projections alongside findings, build provenance, and
+disclosure without adding probes. No renderer reconstructs actions from checks,
+findings, or prose. Guard-file collection contributes one typed Hook path-safety
+assessment to the Doctor check details and state projection. Verified evidence
+is summarized by count; failed, not-recorded, and not-checked evidence expands
+with its bounded coordinates. Compact output omits a successful assessment and
+never turns missing evidence into a negative label. The same collection stays
+read-only across the Registry, project and diagnostics Stores, managed
+configuration, Hook files, and Product Repository.
 The privacy-footprint branch constructs one report from a canonical typed
 definition. Closed claim identities select exactly one of `stores`,
 `does_not_store`, or `does_not_prove` and determine category order; the separate

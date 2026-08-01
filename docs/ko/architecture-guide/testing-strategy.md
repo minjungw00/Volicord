@@ -478,11 +478,13 @@ coverage는 두 mode의 stdout을 바이트로 직접 수집합니다. 유효한
 다른 control 문자 손상을 거부합니다. 같은 fixture는 각 명령 전후의 모든 영속 entry,
 파일 바이트, modification time을 대조합니다. 여기에는 Registry, diagnostics 및 project
 Store, Product Repository, 관리 구성, installation profile, Hook 파일, 영속 verification
-report가 포함됩니다. 순수 renderer
-테스트는 ready, warning, action-required 또는 failed doctor 상태, skipped check 생략,
-구조화된 verbose detail, 긴 경로, 빈 collection, 사람용/JSON의 사실 동등성을 다룹니다.
-Doctor remediation coverage는 명시적인 finding과 direct candidate를 순수 report-finalization
-경계에 제공합니다. Finding action 포함, direct action 포함, command 보강,
+report가 포함됩니다. 순수 renderer 테스트는 ready, warning, action-required 또는 failed
+Doctor 상태, 현재 모든 check의 의도적인 제목, 결정적인 의미 그룹 및 check 순서, 정상 명령
+집계, CLI 또는 MCP 명령 부재, 구성 경로와 해석된 PATH의 불일치, 모순된 사실의 엄격한
+거부, 선택적인 host detection, 구조화된 비성공 detail, 긴 경로, 빈 collection, terminal
+hygiene, 완전한 JSON check 동등성을 다룹니다. Doctor remediation coverage는 명시적인
+finding과 direct candidate를 순수 report-finalization 경계에 제공합니다. Finding action 포함,
+direct action 포함, command 보강,
 required-over-recommended urgency, 결정적인 priority 및 code ordering, 충돌 거부,
 required/recommended의 엄격한 분할, JSON과 사람용 projection 전체의 primary action 하나,
 action 없는 warning의 정확한 문구, 렌더링 중 Store 또는 Product Repository mutation이
@@ -492,13 +494,13 @@ Build 표시 coverage는 exact profile, class-only, profile metadata 누락을 �
 담당자에서 나온 Version과 Doctor의 사람용 문구를 대조합니다. 또한 JSON이 병렬 표시 label
 field 없이 정확한 `class_only` 기계 값을 유지하는지 증명합니다. 집중 Doctor renderer
 coverage는 `not recorded`, `not applicable`, `not checked`, 실제 빈 collection을 나타내는
-`none`을 구별합니다. Hook 경로 안전성 case는 verified, failed, not-recorded, not-checked
-평가를 포함하며 모호한 yes/no text로 축약하지 않습니다. Connection verbose coverage는
-검증된 현재 artifact 6개를 path 없이 집계 dimension 및 source 개수로 축약하고, failed,
-not-recorded, not-checked, mixed, 한도 도달 근거를 failure-first 순서와 명시적인 누락
-표시로 펼치는지도 증명합니다. JSON은 typed report와 byte-for-byte로 동일하게 유지하고,
-모든 사람용 branch는 tab 없이 마지막 newline 하나만 가지며, rendering은 Store,
-filesystem, terminal 상태를 바꾸지 않습니다.
+`none`을 구별합니다. 간결한 build 평가가 전체 provenance를 반복하지 않고, 검증된 현재
+Hook artifact 6개는 세 안전성 차원과 개수 하나로 축약하며, 실패한 Hook artifact는 경로,
+phase, source, reason, installation ID를 펼치는지도 증명합니다. Connection verbose coverage는
+검증된 artifact의 source 개수와 failed, not-recorded, not-checked, mixed, 한도 도달 근거를
+명시적인 누락 표시와 함께 failure-first 순서로 펼치는 동작을 별도로 증명합니다. JSON은
+typed report와 byte-for-byte로 동일하게 유지하고, 모든 사람용 branch는 tab 없이 마지막
+newline 하나만 가지며, rendering은 Store, filesystem, terminal 상태를 바꾸지 않습니다.
 
 Doctor binary fixture는 정규 현재 artifact를 한 번 초기화한 다음 setup을 다시 실행하지
 않고 compact, verbose, JSON Doctor mode를 호출합니다. 검증된 경로 안전성 평가가 있을 때만

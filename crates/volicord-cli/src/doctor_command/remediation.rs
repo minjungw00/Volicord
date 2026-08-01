@@ -305,6 +305,27 @@ impl DoctorRemediationAction {
     pub(super) const fn priority(&self) -> DoctorRemediationPriority {
         self.priority
     }
+
+    pub(super) fn has_check_provenance(&self, check_id: &str) -> bool {
+        self.provenance.iter().any(|provenance| {
+            matches!(
+                provenance,
+                DoctorRemediationProvenance::Check {
+                    check_id: candidate
+                } if candidate == check_id
+            )
+        })
+    }
+
+    pub(super) fn has_finding_provenance(&self, finding_ids: &BTreeSet<&str>) -> bool {
+        self.provenance.iter().any(|provenance| {
+            matches!(
+                provenance,
+                DoctorRemediationProvenance::Finding { finding_id }
+                    if finding_ids.contains(finding_id.as_str())
+            )
+        })
+    }
 }
 
 /// The single deterministic source for every Doctor remediation projection.

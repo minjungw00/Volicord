@@ -75,6 +75,11 @@ typed 값으로 유지합니다. 따라서 Doctor는 `storage_profile`을 manife
 JSON text를 Store 경계 밖으로 전달하지 않으며 decode, 정규 encoding, 현재 계약 검증이
 실패한 뒤에도 그 text를 제공하지 않습니다.
 
+Doctor JSON은 수집한 모든 check ID와 완전한 typed detail object를 유지합니다. Verbose의
+사람용 grouping, 사람용 제목, 정상 command 집계, failure-first 확장, Hook evidence 축약은
+그 record의 projection이며 storage record를 추가하거나 다시 쓰거나 영속화하지 않습니다.
+Finalized Doctor remediation plan은 두 projection의 유일한 action source로 유지됩니다.
+
 Publication guard와 그 rollback 결과는 Registry row가 아니라 process-local typed
 lifecycle fact입니다. 확인 실패는 주 오류, rollback 결과, 최종 경로 관찰, 상위 entry
 내구성을 함께 유지합니다. 관찰된 완전한 제거는 상위 directory 동기화가 실패해도 완전한

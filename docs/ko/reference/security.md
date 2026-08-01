@@ -115,6 +115,14 @@ contradictory evidence를 펼칠 수 있으며 JSON은 완전한 typed disclosur
 비보장 설명을 더 적게 반복해도 긍정적 보장이 생기지 않습니다. 결과의 typed disclosure가
 계속 권위 있는 경계입니다.
 
+Doctor는 의미 check group과 의도적인 사람용 제목을 통해 이 disclosure 규칙을 적용합니다.
+Command group은 서로 일치하는 정상 executable, PATH, bin directory, link, reload fact를
+요약합니다. Warning, failure, 조치가 필요한 skipped 결과는 정확한 check ID, status,
+한도가 있는 path와 reason, 정규 remediation을 펼칩니다. Command fact가 양립하지 않으면
+사람용 projection을 실패시킵니다. 검증된 Hook 경로 안전성 evidence는 개수로 축약하고,
+검증되지 않은 record는 각각 한도가 있는 source, reason, installation, phase, path를
+유지합니다. 이러한 사람용 선택은 완전한 Doctor JSON check나 evidence를 바꾸지 않습니다.
+
 Doctor action 표시는 finalized typed remediation plan 하나에서 도출합니다. Finding과
 check provenance는 한도가 있는 diagnostic 맥락이며 actor identity를 증명하거나 쓰기
 권한을 부여하거나 command를 승인하거나 remediation 실행을 보여 주지 않습니다. Compact

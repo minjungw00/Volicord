@@ -172,6 +172,13 @@ footprint는 저장된 row 본문 없이 범주와 개수를 읽습니다. Typed
 `doctor_output_scope` 스칼라만 출력 범위 문장을 담당합니다. 사람용 렌더링과 JSON
 렌더링은 report 하나를 소비하고 정의의 정규 UTF-8 문구를 보존합니다.
 
+Doctor verbose 렌더링은 수집한 check를 runtime, integration, Guard, project, command,
+inventory, 선택적 진단의 의미에 따라 묶습니다. Command projection은 이미 수집한 fact만
+사용해 installation profile, 구성 command, PATH 해석, bin directory, command-link
+binding이 서로 일치하는지 검증합니다. 정상 evidence는 요약하고 비정상 evidence는 정확한
+diagnostic identity와 함께 펼칩니다. JSON은 사람용 group metadata 없이 모든 정확한 check와
+detail object를 유지합니다.
+
 Doctor 조사의 Registry 분기는 현재 저장된 `StorageManifest`를 엄격하게 decode하여 typed
 조사 record로 만듭니다. JSON은 이 storage profile을 구조화된 object로 유지하고, verbose
 사람용 출력은 contract, digest, capability 목록을 이름 있는 field와 section으로

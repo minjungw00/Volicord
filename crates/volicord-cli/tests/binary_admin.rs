@@ -300,6 +300,37 @@ fn doctor_storage_profile_is_structured_read_only_and_terminal_clean() -> Result
     assert_eq!(stderr(&verbose_output)?, "");
     let verbose = stdout(&verbose_output)?;
     let manifest = current_storage_manifest()?;
+    let mut previous_group = 0;
+    for group in [
+        "Runtime and build",
+        "Integration control",
+        "Guard and Hook state",
+        "Project integration",
+        "Command availability",
+        "Inventory and optional diagnostics",
+    ] {
+        assert_eq!(
+            verbose.lines().filter(|line| line.trim() == group).count(),
+            1,
+            "Doctor verbose output must render one {group} group: {verbose}"
+        );
+        let position = verbose.find(group).expect("Doctor semantic group");
+        assert!(position >= previous_group, "{verbose}");
+        previous_group = position;
+    }
+    for raw_check_id in [
+        "build_identity",
+        "guard_files",
+        "volicord_command",
+        "volicord_mcp_command",
+        "path_or_shim",
+        "host_detection",
+    ] {
+        assert!(
+            !verbose.lines().any(|line| line.trim() == raw_check_id),
+            "registered raw check ID must not be a heading: {verbose}"
+        );
+    }
     for expected in [
         "Path: ",
         "Storage contract: volicord.sqlite.canonical",
@@ -797,7 +828,8 @@ fn contextual_read_only_reports_preserve_authority_state() -> Result<(), Box<dyn
             assert!(text.starts_with("Volicord "), "{text}");
             assert!(!text.contains("not shown in this view"), "{text}");
             if mode == Some("--verbose") {
-                assert!(text.contains("\nChecks\n"), "{text}");
+                assert!(text.contains("\nRuntime and build\n"), "{text}");
+                assert!(text.contains("\nCommand availability\n"), "{text}");
                 assert!(text.contains("\nBuild provenance\n"), "{text}");
                 assert!(text.contains("\nOutput scope\n"), "{text}");
             }
@@ -2124,8 +2156,10 @@ fn doctor_reads_current_hook_path_safety_evidence_without_mutation() -> Result<(
     assert_eq!(stderr(&verbose_output)?, "");
     let verbose = stdout(&verbose_output)?;
     assert!(verbose.contains("Hook path safety: verified"));
-    assert!(verbose.contains("Hook command CWD independence: verified"));
-    assert!(verbose.contains("Hook command subdirectory safety: verified"));
+    assert!(verbose.contains("CWD independence: verified"));
+    assert!(verbose.contains("Subdirectory safety: verified"));
+    assert!(verbose.contains("Evidence: 6 current managed artifacts verified"));
+    assert!(!verbose.contains("Evidence 1"));
 
     let compact_output = run_doctor(None)?;
     assert!(matches!(compact_output.status.code(), Some(0 | 1)));

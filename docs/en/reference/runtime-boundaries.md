@@ -198,6 +198,14 @@ definition assigns every claim to exactly one of `stores`, `does_not_store`, or
 output-scope statement. Human and JSON rendering consume one report and preserve
 the definition's canonical UTF-8 text.
 
+Doctor verbose rendering groups the collected checks by runtime, integration,
+Guard, project, command, inventory, and optional-diagnostic meaning. Its command
+projection validates agreement among the installation profile, configured
+commands, PATH resolution, bin directory, and command-link binding using only
+the already collected facts. Healthy evidence is summarized and non-success
+evidence is expanded with its exact diagnostic identity. JSON retains every
+exact check and detail object without human group metadata.
+
 The Registry branch of Doctor inspection strictly decodes the current stored
 `StorageManifest` into a typed inspection record. JSON keeps that storage
 profile as a structured object, and verbose human output presents its contract,

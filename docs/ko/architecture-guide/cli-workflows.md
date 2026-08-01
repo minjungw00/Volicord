@@ -149,17 +149,21 @@ fact, 실제 warning 또는 failure, primary action 하나를 선택합니다. �
 finding 소유 typed action과 폐쇄형 Doctor 소유 direct candidate를 remediation plan
 하나로 finalize합니다. Plan은 typed action code로 합치고 urgency를 한 번 계산하며 urgency,
 typed priority, code 순서로 정렬하고 semantic summary 또는 exact command가 충돌하면
-실패합니다. Verbose 출력은 probe를 추가하지 않고 같은 plan을 primary, required,
-recommended action projection과 전체 check detail, finding, build provenance,
-disclosure까지 확장합니다. JSON은 같은 plan을 전체 collection, 서로 겹치지 않는 분할,
-primary projection으로 직렬화합니다. 어떤 renderer도 check, finding, 산문에서 action을
-다시 구성하지 않습니다. Guard-file 수집은 typed Hook 경로 안전성 평가 하나를 Doctor check details와
-state projection에 제공합니다. 수집 계층은 현재의 정확한 owner-bound Codex Hook 계약을
-감사하고 한도가 있는 근거를 집계합니다. JSON과 verbose renderer는 그 평가의 `verified`,
-`failed`, `not_recorded`, `not_checked`, `not_applicable` 차원만 표시합니다. Compact 출력은
-성공한 평가를 생략하며 근거 부재를 부정 label로 바꾸지 않습니다. 같은 수집 과정은
-Registry, project 및 diagnostics Store, 관리 구성, Hook 파일, Product Repository 전체에서
-읽기 전용으로 유지됩니다. 개인정보 footprint 분기는 정규 typed 정의에서 report 하나를
+실패합니다. Doctor 소유 presentation registry는 모든 현재 check에 사람용 제목, 의미 group,
+정상 projection, 비정상 projection을 배정합니다. Verbose 출력은 이 group을 결정적인 순서로
+렌더링합니다. Typed command projection은 executable, availability, PATH check 5개를 합치고
+양립하지 않는 수집 path fact를 거부하며 정상 sibling을 요약하고 비정상 check마다 정확한
+identity와 plan 소유 remediation을 펼칩니다. JSON은 기존의 완전한 check array를 유지하며
+사람용 group metadata를 받지 않습니다.
+
+Verbose 출력은 probe를 추가하지 않고 같은 finalized plan을 primary, required,
+recommended action projection과 finding, build provenance, disclosure까지 확장합니다. 어떤
+renderer도 check, finding, 산문에서 action을 다시 구성하지 않습니다. Guard-file 수집은
+typed Hook 경로 안전성 평가 하나를 Doctor check details와 state projection에 제공합니다.
+검증된 evidence는 개수로 요약하고 failed, not-recorded, not-checked evidence는 한도가 있는
+좌표와 함께 펼칩니다. Compact 출력은 성공한 평가를 생략하며 근거 부재를 부정 label로
+바꾸지 않습니다. 같은 수집 과정은 Registry, project 및 diagnostics Store, 관리 구성, Hook
+파일, Product Repository 전체에서 읽기 전용으로 유지됩니다. 개인정보 footprint 분기는 정규 typed 정의에서 report 하나를
 구성합니다. 폐쇄형 주장 식별자가 `stores`, `does_not_store`, `does_not_prove` 중 정확히
 하나를 선택하고 범주 안의 순서를 결정하며, 별도 `doctor_output_scope` 스칼라가 출력
 범위를 담당합니다. 사람용 section과 bullet, JSON의 범주 및 개수 projection은 그 report를

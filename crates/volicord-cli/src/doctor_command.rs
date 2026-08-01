@@ -47,7 +47,8 @@ use crate::{
     guard_integration::audit::{
         guard_file_findings_for_inspection, guard_manifest_binding_valid_for_inspection,
         missing_required_hooks_from_manifest_json, GuardArtifactIssue, GuardAuditFacts,
-        GuardManifestIssue, HookPathSafetyAssessment, HookPathSafetyState,
+        GuardManifestIssue, HookPathSafetyAssessment, HookPathSafetyEvidenceReason,
+        HookPathSafetyEvidenceSource, HookPathSafetyState, MAX_HOOK_PATH_SAFETY_EVIDENCE,
     },
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
     guard_integration::policy::validate_policy_schema,
@@ -66,8 +67,13 @@ use crate::{
     summary_card::DIAGNOSTIC_SUMMARY_GUARANTEE,
 };
 
+mod presentation;
 mod remediation;
 
+use presentation::{
+    doctor_check_presentation, DoctorCheckGroup, DoctorCheckPresentation, DoctorHealthyProjection,
+    DoctorNonSuccessProjection, CURRENT_DOCTOR_CHECK_PRESENTATIONS,
+};
 use remediation::{
     DoctorActionCandidate, DoctorDirectAction, DoctorRemediationAction, DoctorRemediationPlan,
 };
@@ -2461,7 +2467,11 @@ fn inspect_path_or_shim(
     let bin_dir_on_path = path_directory_is_on_path(path_env, &profile.bin_dir);
     let volicord_link = profile.bin_dir.join(volicord_binary_name());
     let mcp_link = profile.bin_dir.join(mcp_binary_name());
-    let link_ready = is_executable_file(&volicord_link) && is_executable_file(&mcp_link);
+    let volicord_link_ready = is_executable_file(&volicord_link)
+        && paths_equivalent(&volicord_link, Path::new(&profile.volicord_command));
+    let volicord_mcp_link_ready = is_executable_file(&mcp_link)
+        && paths_equivalent(&mcp_link, Path::new(&profile.volicord_mcp_command));
+    let link_ready = volicord_link_ready && volicord_mcp_link_ready;
 
     if bin_dir_on_path && link_ready {
         checks.push(
@@ -2484,8 +2494,8 @@ fn inspect_path_or_shim(
             )
             .with_details(json!({
                 "bin_dir": path_text(&profile.bin_dir),
-                "volicord_link_ready": is_executable_file(&volicord_link),
-                "volicord_mcp_link_ready": is_executable_file(&mcp_link),
+                "volicord_link_ready": volicord_link_ready,
+                "volicord_mcp_link_ready": volicord_mcp_link_ready,
                 "agent_host_restart_or_reload_may_be_needed": true,
             })),
         );
@@ -2856,16 +2866,8 @@ fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCom
             ],
         )
         .into(),
-        Section::new(
-            "Checks",
-            report
-                .checks
-                .iter()
-                .map(|check| doctor_check_element(check, &report.build))
-                .collect::<Result<Vec<_>, _>>()?,
-        )
-        .into(),
     ];
+    body.extend(doctor_verbose_check_groups(report)?);
     if !report.findings.is_empty() {
         body.push(
             Section::new(
@@ -2903,10 +2905,86 @@ fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCom
     Ok(Document::verbose(doctor_headline(report), body).render())
 }
 
-fn doctor_check_element(
+fn doctor_verbose_check_groups(report: &DoctorReport) -> Result<Vec<Element>, DoctorCommandError> {
+    let mut check_ids = BTreeSet::new();
+    for check in &report.checks {
+        if !check_ids.insert(check.id.as_str()) {
+            return Err(doctor_presentation_invariant(format!(
+                "check ID {} occurs more than once",
+                check.id
+            )));
+        }
+    }
+
+    let mut groups = Vec::new();
+    for group in DoctorCheckGroup::ALL {
+        let elements = if group == DoctorCheckGroup::CommandAvailability {
+            doctor_command_availability_elements(report)?
+        } else {
+            CURRENT_DOCTOR_CHECK_PRESENTATIONS
+                .iter()
+                .filter(|presentation| presentation.group == group)
+                .filter_map(|presentation| {
+                    report
+                        .checks
+                        .iter()
+                        .find(|check| check.id == presentation.check_id)
+                        .map(|check| doctor_registered_check_element(report, check, presentation))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        if !elements.is_empty() {
+            groups.push(Section::new(group.human_title(), elements).into());
+        }
+    }
+
+    let mut unregistered = report
+        .checks
+        .iter()
+        .filter(|check| doctor_check_presentation(&check.id).is_none())
+        .collect::<Vec<_>>();
+    unregistered.sort_by(|left, right| left.id.cmp(&right.id));
+    if !unregistered.is_empty() {
+        groups.push(
+            Section::new(
+                "Unregistered Doctor checks",
+                unregistered
+                    .into_iter()
+                    .map(doctor_unregistered_check_element)
+                    .collect(),
+            )
+            .into(),
+        );
+    }
+    Ok(groups)
+}
+
+fn doctor_registered_check_element(
+    report: &DoctorReport,
     check: &DiagnosticCheck,
-    build: &BuildInfo,
+    presentation: &DoctorCheckPresentation,
 ) -> Result<Element, DoctorCommandError> {
+    if matches!(
+        presentation.non_success_projection,
+        DoctorNonSuccessProjection::HostDetection
+    ) {
+        return Ok(Section::new(
+            presentation.human_title,
+            vec![
+                Field::new("Status", HumanValue::text("not checked")).into(),
+                Field::new(
+                    "Guidance",
+                    HumanValue::text(
+                        "Run init or connection verify when fresh host-adapter detection is needed.",
+                    ),
+                )
+                .into(),
+            ],
+        )
+        .into());
+    }
+
+    let success = check.status == "passed";
     let mut body = vec![
         Field::new(
             "Status",
@@ -2915,30 +2993,619 @@ fn doctor_check_element(
         .into(),
         Field::new("Summary", HumanValue::text(&check.summary)).into(),
     ];
-    if let Some(elements) = doctor_known_check_elements(check, build) {
-        body.extend(elements);
-    } else if let Some(details) = &check.details {
-        body.push(Section::new("Details", json_value_elements(details)).into());
+    if !success {
+        body.push(Field::new("Check ID", HumanValue::text(&check.id)).into());
     }
-    Ok(Section::new(&check.id, body).into())
+
+    let projection = if success {
+        match presentation.healthy_projection {
+            DoctorHealthyProjection::SummaryOnly
+            | DoctorHealthyProjection::CommandAggregate
+            | DoctorHealthyProjection::HostDetection => Vec::new(),
+            DoctorHealthyProjection::SelectedDetails(fields) => {
+                doctor_selected_detail_elements(check, fields)
+            }
+            DoctorHealthyProjection::BuildIdentity => {
+                doctor_build_identity_for_check(check, report)
+            }
+            DoctorHealthyProjection::RegistrySchema => doctor_registry_schema_for_check(check),
+            DoctorHealthyProjection::GuardFiles => doctor_guard_file_for_check(check),
+        }
+    } else {
+        match presentation.non_success_projection {
+            DoctorNonSuccessProjection::FullDetails => check
+                .details
+                .as_ref()
+                .map(json_value_elements)
+                .unwrap_or_default(),
+            DoctorNonSuccessProjection::BuildIdentity => {
+                doctor_build_identity_for_check(check, report)
+            }
+            DoctorNonSuccessProjection::RegistrySchema => doctor_registry_schema_for_check(check),
+            DoctorNonSuccessProjection::GuardFiles => doctor_guard_file_for_check(check),
+            DoctorNonSuccessProjection::CommandCheck => doctor_command_check_elements(check),
+            DoctorNonSuccessProjection::HostDetection => Vec::new(),
+        }
+    };
+    body.extend(projection);
+
+    if !success {
+        let related_findings = doctor_related_findings(report, presentation);
+        if !related_findings.is_empty() {
+            body.push(
+                Section::new(
+                    "Related diagnostics",
+                    related_findings
+                        .iter()
+                        .map(|finding| {
+                            Section::new(
+                                finding.code().as_str(),
+                                vec![Field::new(
+                                    "Finding ID",
+                                    HumanValue::text(finding.id().as_str()),
+                                )
+                                .into()],
+                            )
+                            .into()
+                        })
+                        .collect(),
+                )
+                .into(),
+            );
+        }
+        let finding_ids = related_findings
+            .iter()
+            .map(|finding| finding.id().as_str())
+            .collect::<BTreeSet<_>>();
+        let actions = report
+            .remediation_plan
+            .actions()
+            .iter()
+            .filter(|action| {
+                action.has_check_provenance(&check.id)
+                    || action.has_finding_provenance(&finding_ids)
+            })
+            .map(doctor_verbose_action_item)
+            .collect::<Vec<_>>();
+        if !actions.is_empty() {
+            body.push(Section::new("Remediation", actions).into());
+        }
+    }
+
+    Ok(Section::new(presentation.human_title, body).into())
 }
 
-fn doctor_known_check_elements(check: &DiagnosticCheck, build: &BuildInfo) -> Option<Vec<Element>> {
-    match check.id.as_str() {
-        "build_identity" => check
-            .build_provenance
-            .as_ref()
-            .map(|assessment| doctor_build_identity_elements(assessment, build)),
-        "registry_schema" => check
-            .storage_profile
-            .as_ref()
-            .map(|profile| doctor_registry_schema_elements(check, profile)),
-        GUARD_FILES_CHECK_ID => check
-            .details
-            .as_ref()
-            .map(|details| doctor_guard_file_elements(details, check.hook_path_safety.as_ref())),
-        _ => None,
+fn doctor_unregistered_check_element(check: &DiagnosticCheck) -> Element {
+    let mut body = vec![
+        Field::new("Check ID", HumanValue::text(&check.id)).into(),
+        Field::new(
+            "Status",
+            HumanValue::text(display_state_text(&check.status)),
+        )
+        .into(),
+        Field::new("Summary", HumanValue::text(&check.summary)).into(),
+    ];
+    if let Some(details) = &check.details {
+        body.push(Section::new("Details", json_value_elements(details)).into());
     }
+    Section::new(format!("Unregistered presentation: {}", check.id), body).into()
+}
+
+fn doctor_build_identity_for_check(check: &DiagnosticCheck, report: &DoctorReport) -> Vec<Element> {
+    check
+        .build_provenance
+        .as_ref()
+        .map(|assessment| doctor_build_identity_elements(assessment, &report.build))
+        .or_else(|| check.details.as_ref().map(json_value_elements))
+        .unwrap_or_default()
+}
+
+fn doctor_registry_schema_for_check(check: &DiagnosticCheck) -> Vec<Element> {
+    check
+        .storage_profile
+        .as_ref()
+        .map(|profile| doctor_registry_schema_elements(check, profile))
+        .or_else(|| check.details.as_ref().map(json_value_elements))
+        .unwrap_or_default()
+}
+
+fn doctor_guard_file_for_check(check: &DiagnosticCheck) -> Vec<Element> {
+    check
+        .details
+        .as_ref()
+        .map(|details| doctor_guard_file_elements(details, check.hook_path_safety.as_ref()))
+        .unwrap_or_else(|| {
+            check
+                .hook_path_safety
+                .as_ref()
+                .map(doctor_hook_path_safety_elements)
+                .unwrap_or_default()
+        })
+}
+
+fn doctor_selected_detail_elements(
+    check: &DiagnosticCheck,
+    fields: &[presentation::DoctorDetailProjection],
+) -> Vec<Element> {
+    let Some(details) = check.details.as_ref() else {
+        return Vec::new();
+    };
+    fields
+        .iter()
+        .filter_map(|field| {
+            value_at_dotted_path(details, field.path)
+                .map(|value| Field::new(field.human_label, json_human_value(value)).into())
+        })
+        .collect()
+}
+
+fn value_at_dotted_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    path.split('.')
+        .try_fold(value, |current, key| current.get(key))
+}
+
+fn doctor_related_findings<'a>(
+    report: &'a DoctorReport,
+    presentation: &DoctorCheckPresentation,
+) -> Vec<&'a DiagnosticFinding> {
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            presentation
+                .related_finding_codes
+                .contains(&finding.code().as_str())
+        })
+        .collect()
+}
+
+fn doctor_presentation_invariant(detail: impl Into<String>) -> DoctorCommandError {
+    DoctorCommandError::Runtime(format!(
+        "Doctor presentation invariant failed: {}",
+        detail.into()
+    ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DoctorCommandAvailabilityProjection {
+    cli_command_status: String,
+    mcp_command_status: String,
+    cli_path: Option<String>,
+    mcp_path: Option<String>,
+    cli_resolved_path: Option<String>,
+    mcp_resolved_path: Option<String>,
+    path_resolution_status: String,
+    bin_dir: Option<String>,
+    bin_dir_on_path: Option<bool>,
+    command_links_status: String,
+    host_reload_needed: bool,
+}
+
+impl DoctorCommandAvailabilityProjection {
+    fn try_from_checks(checks: &[DiagnosticCheck]) -> Result<Self, DoctorCommandError> {
+        let cli_command = doctor_check(checks, "volicord_command");
+        let mcp_command = doctor_check(checks, "volicord_mcp_command");
+        let cli_availability = doctor_check(checks, "volicord_command_availability");
+        let mcp_availability = doctor_check(checks, "volicord_mcp_command_availability");
+        let path_or_shim = doctor_check(checks, "path_or_shim");
+        let installation_profile = doctor_check(checks, "installation_profile");
+
+        validate_command_availability_check(cli_availability)?;
+        validate_command_availability_check(mcp_availability)?;
+        validate_path_or_shim_check(path_or_shim)?;
+
+        let cli_path = consistent_doctor_path_fact(
+            "configured CLI path",
+            [
+                doctor_detail_str(cli_command, "path"),
+                doctor_detail_str(cli_availability, "profile_command"),
+            ],
+        )?;
+        let mcp_path = consistent_doctor_path_fact(
+            "configured MCP path",
+            [
+                doctor_detail_str(mcp_command, "path"),
+                doctor_detail_str(mcp_availability, "profile_command"),
+            ],
+        )?;
+        let bin_dir = consistent_doctor_path_fact(
+            "installation bin directory",
+            [
+                doctor_detail_str(installation_profile, "bin_dir"),
+                doctor_detail_str(path_or_shim, "bin_dir"),
+            ],
+        )?;
+
+        if let (Some(bin_dir), Some(link)) = (
+            bin_dir.as_deref(),
+            doctor_detail_str(path_or_shim, "volicord"),
+        ) {
+            validate_command_link_path(bin_dir, link, &volicord_binary_name(), "CLI")?;
+        }
+        if let (Some(bin_dir), Some(link)) = (
+            bin_dir.as_deref(),
+            doctor_detail_str(path_or_shim, "volicord_mcp"),
+        ) {
+            validate_command_link_path(bin_dir, link, &mcp_binary_name(), "MCP")?;
+        }
+
+        let bin_dir_on_path = path_or_shim.and_then(|check| match check.status.as_str() {
+            "passed" => Some(true),
+            "warning"
+                if doctor_detail_bool(Some(check), "volicord_link_ready").is_some()
+                    || doctor_detail_bool(Some(check), "volicord_mcp_link_ready").is_some() =>
+            {
+                Some(true)
+            }
+            "warning" if doctor_detail_str(Some(check), "bin_dir").is_some() => Some(false),
+            _ => None,
+        });
+        let command_links_status = path_or_shim.map_or_else(
+            || "not checked".to_owned(),
+            |check| display_state_text(&check.status),
+        );
+        let host_reload_needed = [cli_availability, mcp_availability, path_or_shim]
+            .into_iter()
+            .flatten()
+            .any(|check| {
+                doctor_detail_bool(Some(check), "agent_host_restart_or_reload_may_be_needed")
+                    .unwrap_or(false)
+            });
+
+        Ok(Self {
+            cli_command_status: doctor_optional_check_status(cli_command),
+            mcp_command_status: doctor_optional_check_status(mcp_command),
+            cli_path,
+            mcp_path,
+            cli_resolved_path: doctor_detail_str(cli_availability, "path_match").map(str::to_owned),
+            mcp_resolved_path: doctor_detail_str(mcp_availability, "path_match").map(str::to_owned),
+            path_resolution_status: doctor_aggregate_check_status([
+                cli_availability,
+                mcp_availability,
+            ]),
+            bin_dir,
+            bin_dir_on_path,
+            command_links_status,
+            host_reload_needed,
+        })
+    }
+}
+
+fn doctor_command_availability_elements(
+    report: &DoctorReport,
+) -> Result<Vec<Element>, DoctorCommandError> {
+    let command_presentations = CURRENT_DOCTOR_CHECK_PRESENTATIONS
+        .iter()
+        .filter(|presentation| presentation.group == DoctorCheckGroup::CommandAvailability)
+        .collect::<Vec<_>>();
+    if !command_presentations.iter().any(|presentation| {
+        report
+            .checks
+            .iter()
+            .any(|check| check.id == presentation.check_id)
+    }) {
+        return Ok(Vec::new());
+    }
+
+    let projection = DoctorCommandAvailabilityProjection::try_from_checks(&report.checks)?;
+    let mut elements = vec![
+        Field::new(
+            "CLI command",
+            HumanValue::text(&projection.cli_command_status),
+        )
+        .into(),
+        Field::new(
+            "MCP launch command",
+            HumanValue::text(&projection.mcp_command_status),
+        )
+        .into(),
+        Field::new(
+            "CLI path",
+            projection
+                .cli_path
+                .as_deref()
+                .map(HumanValue::text)
+                .unwrap_or(HumanValue::None),
+        )
+        .into(),
+        Field::new(
+            "MCP launch path",
+            projection
+                .mcp_path
+                .as_deref()
+                .map(HumanValue::text)
+                .unwrap_or(HumanValue::None),
+        )
+        .into(),
+        Field::new(
+            "PATH resolution",
+            HumanValue::text(&projection.path_resolution_status),
+        )
+        .into(),
+        Field::new(
+            "Installation bin directory",
+            projection
+                .bin_dir
+                .as_deref()
+                .map(HumanValue::text)
+                .unwrap_or(HumanValue::None),
+        )
+        .into(),
+        Field::new(
+            "Installation bin directory on PATH",
+            projection
+                .bin_dir_on_path
+                .map(|value| HumanValue::YesNo(YesNo::from(value)))
+                .unwrap_or_else(|| HumanValue::text("not checked")),
+        )
+        .into(),
+        Field::new(
+            "Command links",
+            HumanValue::text(&projection.command_links_status),
+        )
+        .into(),
+        Field::new(
+            "Host reload needed",
+            HumanValue::YesNo(YesNo::from(projection.host_reload_needed)),
+        )
+        .into(),
+    ];
+    if projection.path_resolution_status != "passed" {
+        elements.extend([
+            Field::new(
+                "Resolved CLI PATH",
+                projection
+                    .cli_resolved_path
+                    .as_deref()
+                    .map(HumanValue::text)
+                    .unwrap_or(HumanValue::None),
+            )
+            .into(),
+            Field::new(
+                "Resolved MCP PATH",
+                projection
+                    .mcp_resolved_path
+                    .as_deref()
+                    .map(HumanValue::text)
+                    .unwrap_or(HumanValue::None),
+            )
+            .into(),
+        ]);
+    }
+
+    for presentation in command_presentations {
+        let Some(check) = report
+            .checks
+            .iter()
+            .find(|check| check.id == presentation.check_id)
+        else {
+            continue;
+        };
+        if check.status != "passed" {
+            elements.push(doctor_registered_check_element(
+                report,
+                check,
+                presentation,
+            )?);
+        }
+    }
+    Ok(elements)
+}
+
+fn doctor_check<'a>(checks: &'a [DiagnosticCheck], id: &str) -> Option<&'a DiagnosticCheck> {
+    checks.iter().find(|check| check.id == id)
+}
+
+fn doctor_detail_str<'a>(check: Option<&'a DiagnosticCheck>, key: &str) -> Option<&'a str> {
+    check
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.get(key))
+        .and_then(Value::as_str)
+}
+
+fn doctor_detail_bool(check: Option<&DiagnosticCheck>, key: &str) -> Option<bool> {
+    check
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.get(key))
+        .and_then(Value::as_bool)
+}
+
+fn consistent_doctor_path_fact<'a>(
+    label: &str,
+    values: impl IntoIterator<Item = Option<&'a str>>,
+) -> Result<Option<String>, DoctorCommandError> {
+    let values = values.into_iter().flatten().collect::<BTreeSet<_>>();
+    if values.len() > 1 {
+        return Err(doctor_presentation_invariant(format!(
+            "{label} has incompatible values: {}",
+            values.into_iter().collect::<Vec<_>>().join(", ")
+        )));
+    }
+    Ok(values.into_iter().next().map(str::to_owned))
+}
+
+fn validate_command_availability_check(
+    check: Option<&DiagnosticCheck>,
+) -> Result<(), DoctorCommandError> {
+    let Some(check) = check else {
+        return Ok(());
+    };
+    let Some(path_matches_profile) = doctor_detail_bool(Some(check), "path_matches_profile") else {
+        return Ok(());
+    };
+    let available_on_path =
+        doctor_detail_bool(Some(check), "available_on_path").ok_or_else(|| {
+            doctor_presentation_invariant(format!("{} omits available_on_path", check.id))
+        })?;
+    let path_match = doctor_detail_str(Some(check), "path_match");
+    let reload = doctor_detail_bool(Some(check), "agent_host_restart_or_reload_may_be_needed")
+        .ok_or_else(|| {
+            doctor_presentation_invariant(format!("{} omits the host reload requirement", check.id))
+        })?;
+    if available_on_path != path_match.is_some() {
+        return Err(doctor_presentation_invariant(format!(
+            "{} disagrees about whether a PATH match exists",
+            check.id
+        )));
+    }
+    if path_matches_profile && path_match.is_none() {
+        return Err(doctor_presentation_invariant(format!(
+            "{} claims a profile match without a resolved PATH path",
+            check.id
+        )));
+    }
+    if path_matches_profile {
+        let profile_command =
+            doctor_detail_str(Some(check), "profile_command").ok_or_else(|| {
+                doctor_presentation_invariant(format!("{} omits profile_command", check.id))
+            })?;
+        let path_match = path_match.expect("profile match was checked above");
+        if !paths_equivalent(Path::new(profile_command), Path::new(path_match)) {
+            return Err(doctor_presentation_invariant(format!(
+                "{} claims incompatible configured and resolved paths are equivalent",
+                check.id
+            )));
+        }
+    }
+    if reload == path_matches_profile {
+        return Err(doctor_presentation_invariant(format!(
+            "{} has an incompatible host reload requirement",
+            check.id
+        )));
+    }
+    if (check.status == "passed") != path_matches_profile {
+        return Err(doctor_presentation_invariant(format!(
+            "{} status disagrees with its profile-path match",
+            check.id
+        )));
+    }
+    Ok(())
+}
+
+fn validate_path_or_shim_check(check: Option<&DiagnosticCheck>) -> Result<(), DoctorCommandError> {
+    let Some(check) = check else {
+        return Ok(());
+    };
+    let Some(reload) =
+        doctor_detail_bool(Some(check), "agent_host_restart_or_reload_may_be_needed")
+    else {
+        return Ok(());
+    };
+    if check.status == "passed" && reload {
+        return Err(doctor_presentation_invariant(
+            "path_or_shim passed while requiring a host reload",
+        ));
+    }
+    if check.status == "warning" && !reload {
+        return Err(doctor_presentation_invariant(
+            "path_or_shim warned without requiring a host reload",
+        ));
+    }
+    let cli_link_ready = doctor_detail_bool(Some(check), "volicord_link_ready");
+    let mcp_link_ready = doctor_detail_bool(Some(check), "volicord_mcp_link_ready");
+    if cli_link_ready.is_some() != mcp_link_ready.is_some() {
+        return Err(doctor_presentation_invariant(
+            "path_or_shim records only one command-link readiness fact",
+        ));
+    }
+    if check.status == "passed"
+        && (doctor_detail_str(Some(check), "volicord").is_none()
+            || doctor_detail_str(Some(check), "volicord_mcp").is_none())
+    {
+        return Err(doctor_presentation_invariant(
+            "path_or_shim passed without both command-link paths",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_command_link_path(
+    bin_dir: &str,
+    link: &str,
+    expected_name: &str,
+    label: &str,
+) -> Result<(), DoctorCommandError> {
+    let link = Path::new(link);
+    if link.parent() != Some(Path::new(bin_dir))
+        || link.file_name() != Some(OsStr::new(expected_name))
+    {
+        return Err(doctor_presentation_invariant(format!(
+            "{label} command link {link:?} is outside the recorded installation bin directory"
+        )));
+    }
+    Ok(())
+}
+
+fn doctor_optional_check_status(check: Option<&DiagnosticCheck>) -> String {
+    check.map_or_else(
+        || "not checked".to_owned(),
+        |check| display_state_text(&check.status),
+    )
+}
+
+fn doctor_aggregate_check_status<const N: usize>(checks: [Option<&DiagnosticCheck>; N]) -> String {
+    let checks = checks.into_iter().flatten().collect::<Vec<_>>();
+    if checks.is_empty() {
+        return "not checked".to_owned();
+    }
+    for status in ["failed", "warning", "skipped"] {
+        if checks.iter().any(|check| check.status == status) {
+            return display_state_text(status);
+        }
+    }
+    if checks.len() == N && checks.iter().all(|check| check.status == "passed") {
+        "passed".to_owned()
+    } else {
+        "not checked".to_owned()
+    }
+}
+
+fn doctor_command_check_elements(check: &DiagnosticCheck) -> Vec<Element> {
+    let Some(details) = check.details.as_ref() else {
+        return Vec::new();
+    };
+    let fields: &[(&str, &str)] = match check.id.as_str() {
+        "volicord_command" | "volicord_mcp_command" => &[("path", "Configured path")],
+        "volicord_command_availability" | "volicord_mcp_command_availability" => &[
+            ("command_name", "Command name"),
+            ("profile_command", "Configured path"),
+            ("path_match", "Resolved PATH path"),
+            ("available_on_path", "Available on PATH"),
+            ("path_matches_profile", "Matches installation profile"),
+            (
+                "profile_command_directory_on_path",
+                "Configured command directory on PATH",
+            ),
+            (
+                "agent_host_restart_or_reload_may_be_needed",
+                "Host reload needed",
+            ),
+        ],
+        "path_or_shim" => &[
+            ("bin_dir", "Installation bin directory"),
+            ("volicord", "CLI command link"),
+            ("volicord_mcp", "MCP command link"),
+            ("volicord_link_ready", "CLI command link ready"),
+            ("volicord_mcp_link_ready", "MCP command link ready"),
+            (
+                "agent_host_restart_or_reload_may_be_needed",
+                "Host reload needed",
+            ),
+        ],
+        _ => &[],
+    };
+    let mut elements = fields
+        .iter()
+        .filter_map(|(key, label)| {
+            details
+                .get(*key)
+                .map(|value| Field::new(*label, json_human_value(value)).into())
+        })
+        .collect::<Vec<_>>();
+    if let Some(code) = details.get("diagnostic_code") {
+        elements.push(Field::new("Diagnostic code", json_human_value(code)).into());
+    }
+    elements
 }
 
 fn doctor_build_identity_elements(
@@ -3083,32 +3750,76 @@ fn doctor_guard_file_elements(
     }
 
     if let Some(assessment) = assessment {
-        elements.extend([
+        elements.extend(doctor_hook_path_safety_elements(assessment));
+    }
+    elements
+}
+
+fn doctor_hook_path_safety_elements(assessment: &HookPathSafetyAssessment) -> Vec<Element> {
+    let verified_count = assessment
+        .evidence()
+        .iter()
+        .filter(|evidence| evidence.state() == HookPathSafetyState::Verified)
+        .count();
+    let non_verified = assessment
+        .evidence()
+        .iter()
+        .filter(|evidence| evidence.state() != HookPathSafetyState::Verified)
+        .collect::<Vec<_>>();
+    let all_verified = !assessment.evidence().is_empty()
+        && non_verified.is_empty()
+        && assessment.state() == HookPathSafetyState::Verified
+        && assessment.cwd_independence() == HookPathSafetyState::Verified
+        && assessment.subdirectory_safety() == HookPathSafetyState::Verified;
+    let mut elements = vec![
+        Field::new(
+            "Hook path safety",
+            HumanValue::text(hook_path_safety_state_text(assessment.state())),
+        )
+        .into(),
+        Field::new(
+            "CWD independence",
+            HumanValue::text(hook_path_safety_state_text(assessment.cwd_independence())),
+        )
+        .into(),
+        Field::new(
+            "Subdirectory safety",
+            HumanValue::text(hook_path_safety_state_text(
+                assessment.subdirectory_safety(),
+            )),
+        )
+        .into(),
+    ];
+    if all_verified {
+        elements.push(
             Field::new(
-                "Hook path safety",
-                HumanValue::text(hook_path_safety_state_text(assessment.state)),
+                "Evidence",
+                HumanValue::text(format!(
+                    "{} current managed artifacts verified",
+                    assessment.evidence().len()
+                )),
             )
             .into(),
+        );
+    } else if assessment.evidence().is_empty() {
+        elements.push(Field::new("Evidence", HumanValue::None).into());
+    } else {
+        elements.push(
             Field::new(
-                "Hook command CWD independence",
-                HumanValue::text(hook_path_safety_state_text(assessment.cwd_independence)),
+                "Evidence",
+                HumanValue::text(format!(
+                    "{verified_count} verified; {} requiring attention",
+                    non_verified.len()
+                )),
             )
             .into(),
-            Field::new(
-                "Hook command subdirectory safety",
-                HumanValue::text(hook_path_safety_state_text(assessment.subdirectory_safety)),
-            )
-            .into(),
-        ]);
-        if assessment.evidence.is_empty() {
-            elements.push(Field::new("Hook path-safety evidence", HumanValue::None).into());
-        } else {
+        );
+        if !non_verified.is_empty() {
             elements.push(
                 Section::new(
-                    "Hook path-safety evidence",
-                    assessment
-                        .evidence
-                        .iter()
+                    "Path-safety evidence requiring attention",
+                    non_verified
+                        .into_iter()
                         .enumerate()
                         .map(|(index, evidence)| {
                             let mut fields = vec![
@@ -3117,28 +3828,47 @@ fn doctor_guard_file_elements(
                                     HumanValue::text(hook_path_safety_state_text(evidence.state())),
                                 )
                                 .into(),
-                                Field::new("Source", HumanValue::text(evidence.source().as_str()))
-                                    .into(),
-                                Field::new("Reason", HumanValue::text(evidence.reason().as_str()))
-                                    .into(),
+                                Field::new(
+                                    "Source",
+                                    HumanValue::text(hook_path_safety_evidence_source_text(
+                                        evidence.source(),
+                                    )),
+                                )
+                                .into(),
+                                Field::new(
+                                    "Reason",
+                                    HumanValue::text(hook_path_safety_evidence_reason_text(
+                                        evidence.reason(),
+                                    )),
+                                )
+                                .into(),
                             ];
-                            if let Some(installation_id) = evidence.installation_id() {
-                                fields.push(
-                                    Field::new(
-                                        "Installation ID",
-                                        HumanValue::text(installation_id),
-                                    )
-                                    .into(),
-                                );
-                            }
-                            if let Some(phase) = evidence.phase() {
-                                fields.push(
-                                    Field::new("Phase", HumanValue::text(phase.as_str())).into(),
-                                );
-                            }
-                            if let Some(path) = evidence.path() {
-                                fields.push(Field::new("Path", HumanValue::text(path)).into());
-                            }
+                            fields.extend([
+                                Field::new(
+                                    "Installation ID",
+                                    evidence
+                                        .installation_id()
+                                        .map(HumanValue::text)
+                                        .unwrap_or(HumanValue::None),
+                                )
+                                .into(),
+                                Field::new(
+                                    "Phase",
+                                    evidence
+                                        .phase()
+                                        .map(|phase| HumanValue::text(phase.as_str()))
+                                        .unwrap_or(HumanValue::None),
+                                )
+                                .into(),
+                                Field::new(
+                                    "Path",
+                                    evidence
+                                        .path()
+                                        .map(HumanValue::text)
+                                        .unwrap_or(HumanValue::None),
+                                )
+                                .into(),
+                            ]);
                             Section::new(format!("Evidence {}", index + 1), fields).into()
                         })
                         .collect(),
@@ -3147,7 +3877,56 @@ fn doctor_guard_file_elements(
             );
         }
     }
+    if assessment.evidence().len() == MAX_HOOK_PATH_SAFETY_EVIDENCE {
+        elements.push(
+            Field::new(
+                "Evidence collection limit",
+                HumanValue::text(format!(
+                    "{MAX_HOOK_PATH_SAFETY_EVIDENCE} records reached; additional records may have been omitted"
+                )),
+            )
+            .into(),
+        );
+    }
     elements
+}
+
+const fn hook_path_safety_evidence_source_text(
+    source: HookPathSafetyEvidenceSource,
+) -> &'static str {
+    match source {
+        HookPathSafetyEvidenceSource::GuardManifest => "Guard manifest",
+        HookPathSafetyEvidenceSource::ProjectPolicy => "project policy",
+        HookPathSafetyEvidenceSource::HostHookConfig => "Hook configuration",
+        HookPathSafetyEvidenceSource::HostHookDispatch => "Hook dispatch",
+        HookPathSafetyEvidenceSource::HostHookWrapper => "Hook wrapper",
+    }
+}
+
+const fn hook_path_safety_evidence_reason_text(
+    reason: HookPathSafetyEvidenceReason,
+) -> &'static str {
+    match reason {
+        HookPathSafetyEvidenceReason::CurrentContractVerified => "current contract verified",
+        HookPathSafetyEvidenceReason::ManifestMalformed => "manifest malformed",
+        HookPathSafetyEvidenceReason::OwnerBindingMismatch => "owner binding mismatch",
+        HookPathSafetyEvidenceReason::RequiredPhaseMissing => "required phase missing",
+        HookPathSafetyEvidenceReason::RequiredArtifactMissing => "required artifact missing",
+        HookPathSafetyEvidenceReason::ArtifactUnavailable => "artifact unavailable",
+        HookPathSafetyEvidenceReason::ArtifactMissing => "artifact missing",
+        HookPathSafetyEvidenceReason::ArtifactMalformed => "artifact malformed",
+        HookPathSafetyEvidenceReason::ContentMismatch => "content mismatch",
+        HookPathSafetyEvidenceReason::ManagedCommandBindingMismatch => {
+            "managed command binding mismatch"
+        }
+        HookPathSafetyEvidenceReason::PermissionMismatch => "permission mismatch",
+        HookPathSafetyEvidenceReason::NoncanonicalHookCommand => "noncanonical Hook command",
+        HookPathSafetyEvidenceReason::NoncanonicalRootResolution => "noncanonical root resolution",
+        HookPathSafetyEvidenceReason::NoncanonicalManagedCommand => "noncanonical managed command",
+        HookPathSafetyEvidenceReason::PolicyHashMismatch => "policy hash mismatch",
+        HookPathSafetyEvidenceReason::HostOutputMismatch => "host output mismatch",
+        HookPathSafetyEvidenceReason::AuditNotRun => "audit not run",
+    }
 }
 
 fn human_json_collection_element(label: &str, value: Option<&Value>) -> Element {
@@ -3665,6 +4444,116 @@ mod tests {
         build
     }
 
+    fn healthy_command_checks() -> Vec<DiagnosticCheck> {
+        let bin_dir = "/opt/volicord/bin";
+        let command = "/opt/volicord/bin/volicord";
+        vec![
+            DiagnosticCheck::passed("volicord_command", "volicord command is executable")
+                .with_details(json!({ "path": command })),
+            DiagnosticCheck::passed("volicord_mcp_command", "MCP launch command is executable")
+                .with_details(json!({ "path": command })),
+            DiagnosticCheck::passed(
+                "volicord_command_availability",
+                "volicord resolves to the installation profile command on PATH",
+            )
+            .with_details(json!({
+                "command_name": volicord_binary_name(),
+                "profile_command": command,
+                "available_on_path": true,
+                "path_matches_profile": true,
+                "profile_command_directory_on_path": true,
+                "path_match": command,
+                "agent_host_restart_or_reload_may_be_needed": false,
+            })),
+            DiagnosticCheck::passed(
+                "volicord_mcp_command_availability",
+                "volicord-mcp resolves to the installation profile command on PATH",
+            )
+            .with_details(json!({
+                "command_name": mcp_binary_name(),
+                "profile_command": command,
+                "available_on_path": true,
+                "path_matches_profile": true,
+                "profile_command_directory_on_path": true,
+                "path_match": command,
+                "agent_host_restart_or_reload_may_be_needed": false,
+            })),
+            DiagnosticCheck::passed(
+                "path_or_shim",
+                "profile command directory is on PATH and contains command links",
+            )
+            .with_details(json!({
+                "bin_dir": bin_dir,
+                "volicord": format!("{bin_dir}/{}", volicord_binary_name()),
+                "volicord_mcp": format!("{bin_dir}/{}", mcp_binary_name()),
+                "agent_host_restart_or_reload_may_be_needed": false,
+            })),
+        ]
+    }
+
+    fn hook_path_safety_assessment(state: &str, evidence: Vec<Value>) -> HookPathSafetyAssessment {
+        serde_json::from_value(json!({
+            "state": state,
+            "cwd_independence": state,
+            "subdirectory_safety": state,
+            "evidence": evidence,
+        }))
+        .expect("test Hook path-safety assessment")
+    }
+
+    fn verified_hook_path_safety_assessment() -> HookPathSafetyAssessment {
+        hook_path_safety_assessment(
+            "verified",
+            vec![
+                json!({
+                    "state": "verified",
+                    "source": "project_policy",
+                    "reason": "current_contract_verified",
+                    "installation_id": "guard_installation_1",
+                    "path": "/workspace/.volicord/policy.json",
+                }),
+                json!({
+                    "state": "verified",
+                    "source": "host_hook_config",
+                    "reason": "current_contract_verified",
+                    "installation_id": "guard_installation_1",
+                    "path": "/workspace/.codex/hooks.json",
+                }),
+                json!({
+                    "state": "verified",
+                    "source": "host_hook_dispatch",
+                    "reason": "current_contract_verified",
+                    "installation_id": "guard_installation_1",
+                    "path": "/workspace/.volicord/guard/codex-hook",
+                }),
+                json!({
+                    "state": "verified",
+                    "source": "host_hook_wrapper",
+                    "reason": "current_contract_verified",
+                    "installation_id": "guard_installation_1",
+                    "phase": "pre_tool",
+                    "path": "/workspace/.volicord/guard/pre-tool",
+                }),
+                json!({
+                    "state": "verified",
+                    "source": "host_hook_wrapper",
+                    "reason": "current_contract_verified",
+                    "installation_id": "guard_installation_1",
+                    "phase": "post_tool",
+                    "path": "/workspace/.volicord/guard/post-tool",
+                }),
+                json!({
+                    "state": "verified",
+                    "source": "host_hook_wrapper",
+                    "reason": "current_contract_verified",
+                    "installation_id": "guard_installation_1",
+                    "phase": "prompt_capture",
+                    "path": "/workspace/.volicord/guard/prompt-capture",
+                }),
+            ],
+        )
+    }
+
     fn report(
         status: CommandStatus,
         checks: Vec<DiagnosticCheck>,
@@ -3690,7 +4579,11 @@ mod tests {
             0..0,
             [
                 DiagnosticCheck::passed("installation_profile", "installation profile is present")
-                    .with_details(json!({ "state": "present" })),
+                    .with_details(json!({
+                        "state": "present",
+                        "default_connection_mode": "workflow",
+                        "bin_dir": "/opt/volicord/bin",
+                    })),
                 DiagnosticCheck::passed("registry_counts", "registry records counted")
                     .with_details(json!({ "projects": 2, "connections": 1 })),
                 DiagnosticCheck::passed("control_surface", "record profile is selected")
@@ -3981,7 +4874,8 @@ Next action: none\n"
         assert!(compact.contains(&path_text(&report.runtime_home)));
         assert!(!compact.contains("nested"));
         assert!(!compact.contains("Output scope"));
-        assert!(verbose.contains("build_identity"));
+        assert!(verbose.contains("Build identity"));
+        assert!(!verbose.lines().any(|line| line.trim() == "build_identity"));
         assert!(verbose.contains("nested"));
         assert!(verbose.contains("path: /tmp/example path"));
         assert!(verbose.contains("Output scope"));
@@ -3993,9 +4887,266 @@ Next action: none\n"
     }
 
     #[test]
+    fn current_doctor_checks_have_intentional_registered_titles() {
+        let expected = BTreeSet::from([
+            "build_identity",
+            "runtime_home_access",
+            "registry",
+            "registry_schema",
+            "installation_profile",
+            "installed_build_configuration",
+            "control_surface",
+            "guard_files",
+            "guard_observation",
+            "personal_local_git_tracking",
+            "integration_intent_drift",
+            "project_policy_authority",
+            "volicord_command",
+            "volicord_mcp_command",
+            "volicord_command_availability",
+            "volicord_mcp_command_availability",
+            "path_or_shim",
+            "registry_counts",
+            "host_detection",
+        ]);
+        let registered = CURRENT_DOCTOR_CHECK_PRESENTATIONS
+            .iter()
+            .map(|presentation| presentation.check_id)
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(registered, expected);
+        assert_eq!(registered.len(), CURRENT_DOCTOR_CHECK_PRESENTATIONS.len());
+        for presentation in CURRENT_DOCTOR_CHECK_PRESENTATIONS {
+            assert!(!presentation.human_title.is_empty());
+            assert_ne!(presentation.human_title, presentation.check_id);
+            assert!(!presentation.human_title.contains('_'));
+        }
+    }
+
+    #[test]
+    fn healthy_commands_render_one_typed_group_and_preserve_json_checks() {
+        let report = report(
+            CommandStatus::Complete,
+            healthy_command_checks(),
+            Vec::new(),
+        );
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+        let json_text = render_doctor_output(OutputFormat::Json, &report).unwrap();
+        let json: Value = serde_json::from_str(&json_text).unwrap();
+
+        assert_eq!(
+            verbose
+                .lines()
+                .filter(|line| line.trim() == "Command availability")
+                .count(),
+            1
+        );
+        for fact in [
+            "CLI command: passed",
+            "MCP launch command: passed",
+            "CLI path: /opt/volicord/bin/volicord",
+            "MCP launch path: /opt/volicord/bin/volicord",
+            "PATH resolution: passed",
+            "Installation bin directory on PATH: yes",
+            "Command links: passed",
+            "Host reload needed: no",
+        ] {
+            assert!(verbose.contains(fact), "{verbose}");
+        }
+        for id in [
+            "volicord_command",
+            "volicord_mcp_command",
+            "volicord_command_availability",
+            "volicord_mcp_command_availability",
+            "path_or_shim",
+        ] {
+            assert!(!verbose.lines().any(|line| line.trim() == id), "{verbose}");
+        }
+        assert_eq!(
+            json["checks"],
+            serde_json::to_value(&report.checks).expect("Doctor checks JSON")
+        );
+    }
+
+    #[test]
+    fn missing_cli_command_expands_identity_diagnostic_and_canonical_remediation() {
+        let mut checks = healthy_command_checks();
+        checks[0] = DiagnosticCheck::failed(
+            "volicord_command",
+            "volicord command is missing or not executable",
+        )
+        .with_details(json!({ "path": "/opt/volicord/bin/volicord" }));
+        let finding = doctor_installation_finding(
+            InstallationDiagnostic::ExecutableMissing,
+            UtcTimestamp::parse("2026-07-31T00:00:00Z").unwrap(),
+        )
+        .unwrap();
+        let report = report_with(
+            CommandStatus::Failed,
+            complete_build(),
+            checks,
+            vec![finding],
+            Vec::new(),
+        );
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+
+        assert!(verbose.contains("CLI command: failed"));
+        assert!(verbose.contains("MCP launch command: passed"));
+        assert!(verbose.contains("Check ID: volicord_command"));
+        assert!(verbose.contains("installation.executable.missing"));
+        assert!(verbose.contains("action.installation.install_build_with_complete_provenance"));
+        assert!(verbose.contains("Configured path: /opt/volicord/bin/volicord"));
+    }
+
+    #[test]
+    fn missing_mcp_command_expands_canonical_direct_remediation() {
+        let mut checks = healthy_command_checks();
+        checks[1] = DiagnosticCheck::failed(
+            "volicord_mcp_command",
+            "MCP launch command is missing or not executable",
+        )
+        .with_details(json!({ "path": "/opt/volicord/bin/volicord" }));
+        let report = report(
+            CommandStatus::Failed,
+            checks,
+            vec![direct_action_candidate(
+                DoctorDirectAction::RepairMcpCommand,
+                "volicord_mcp_command",
+                None,
+            )],
+        );
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+
+        assert!(verbose.contains("CLI command: passed"));
+        assert!(verbose.contains("MCP launch command: failed"));
+        assert!(verbose.contains("Check ID: volicord_mcp_command"));
+        assert!(verbose.contains("action.installation.repair_mcp_command"));
+    }
+
+    #[test]
+    fn path_mismatch_shows_configured_and_resolved_paths_and_reload_need() {
+        let mut checks = healthy_command_checks();
+        checks[2] = DiagnosticCheck::warning(
+            "volicord_command_availability",
+            "volicord resolves to a different executable on PATH",
+        )
+        .with_details(json!({
+            "command_name": volicord_binary_name(),
+            "profile_command": "/opt/volicord/bin/volicord",
+            "available_on_path": true,
+            "path_matches_profile": false,
+            "profile_command_directory_on_path": true,
+            "path_match": "/usr/local/bin/volicord",
+            "agent_host_restart_or_reload_may_be_needed": true,
+        }));
+        let report = report(
+            CommandStatus::Complete,
+            checks,
+            vec![direct_action_candidate(
+                DoctorDirectAction::MakeProfileCommandsAvailable,
+                "volicord_command_availability",
+                None,
+            )],
+        );
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+
+        assert!(verbose.contains("PATH resolution: warning"));
+        assert!(verbose.contains("CLI path: /opt/volicord/bin/volicord"));
+        assert!(verbose.contains("Resolved CLI PATH: /usr/local/bin/volicord"));
+        assert!(verbose.contains("Configured path: /opt/volicord/bin/volicord"));
+        assert!(verbose.contains("Resolved PATH path: /usr/local/bin/volicord"));
+        assert!(verbose.contains("Host reload needed: yes"));
+        assert!(verbose.contains("Check ID: volicord_command_availability"));
+    }
+
+    #[test]
+    fn inconsistent_command_facts_fail_the_human_projection() {
+        let mut checks = healthy_command_checks();
+        checks[2] = DiagnosticCheck::passed(
+            "volicord_command_availability",
+            "volicord resolves to the installation profile command on PATH",
+        )
+        .with_details(json!({
+            "command_name": volicord_binary_name(),
+            "profile_command": "/different/volicord",
+            "available_on_path": true,
+            "path_matches_profile": true,
+            "profile_command_directory_on_path": true,
+            "path_match": "/different/volicord",
+            "agent_host_restart_or_reload_may_be_needed": false,
+        }));
+        let report = report(CommandStatus::Complete, checks, Vec::new());
+        let error = render_doctor_output(OutputFormat::Verbose, &report)
+            .expect_err("inconsistent command facts must fail");
+
+        assert!(error
+            .to_string()
+            .contains("configured CLI path has incompatible values"));
+    }
+
+    #[test]
+    fn verbose_groups_and_checks_have_deterministic_semantic_order() {
+        let forward = report(
+            CommandStatus::Complete,
+            healthy_command_checks(),
+            Vec::new(),
+        );
+        let mut reversed_checks = healthy_command_checks();
+        reversed_checks.reverse();
+        let reverse = report(CommandStatus::Complete, reversed_checks, Vec::new());
+
+        assert_eq!(
+            render_doctor_output(OutputFormat::Verbose, &forward).unwrap(),
+            render_doctor_output(OutputFormat::Verbose, &reverse).unwrap()
+        );
+    }
+
+    #[test]
+    fn host_detection_is_optional_not_a_warning_or_remediation() {
+        let report = report(CommandStatus::Complete, Vec::new(), Vec::new());
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+
+        let inventory = verbose.find("Inventory and optional diagnostics").unwrap();
+        let host = verbose.find("Host detection").unwrap();
+        assert!(inventory < host);
+        assert!(verbose[host..].contains("Status: not checked"));
+        assert!(verbose[host..].contains(
+            "Run init or connection verify when fresh host-adapter detection is needed."
+        ));
+        assert!(report.remediation_plan.is_empty());
+    }
+
+    #[test]
+    fn build_identity_assessment_does_not_repeat_complete_provenance() {
+        let report = report_for_build(complete_build());
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+
+        assert_eq!(verbose.matches("Build ID:").count(), 1);
+        assert_eq!(verbose.matches(&report.build.build_id).count(), 1);
+        assert!(verbose.contains("Build identity"));
+        assert!(verbose.contains("Provenance state: usable clean"));
+    }
+
+    #[test]
+    fn unknown_check_uses_an_explicit_raw_id_fallback() {
+        let report = report(
+            CommandStatus::Complete,
+            vec![DiagnosticCheck::passed(
+                "future_doctor_check",
+                "future check is healthy",
+            )],
+            Vec::new(),
+        );
+        let verbose = render_doctor_output(OutputFormat::Verbose, &report).unwrap();
+
+        assert!(verbose.contains("Unregistered Doctor checks"));
+        assert!(verbose.contains("Unregistered presentation: future_doctor_check"));
+        assert!(verbose.contains("Check ID: future_doctor_check"));
+    }
+
+    #[test]
     fn doctor_projects_one_exact_hook_path_safety_assessment() {
-        let verified_assessment =
-            HookPathSafetyAssessment::test_state(HookPathSafetyState::Verified);
+        let verified_assessment = verified_hook_path_safety_assessment();
         let verified = report(
             CommandStatus::Complete,
             vec![DiagnosticCheck::passed(
@@ -4010,12 +5161,8 @@ Next action: none\n"
             render_doctor_output(OutputFormat::Json, &verified).expect("verified Doctor JSON");
         let verified_json: Value =
             serde_json::from_str(&verified_json_text).expect("typed verified Doctor JSON");
-        let expected_verified = json!({
-            "state": "verified",
-            "cwd_independence": "verified",
-            "subdirectory_safety": "verified",
-            "evidence": [],
-        });
+        let expected_verified = serde_json::to_value(&verified_assessment)
+            .expect("verified Hook path-safety assessment JSON");
         assert_eq!(
             verified_json["states"]["hook_path_safety"],
             expected_verified
@@ -4040,8 +5187,11 @@ Next action: none\n"
         let verified_verbose =
             render_doctor_output(OutputFormat::Verbose, &verified).expect("verified verbose");
         assert!(verified_verbose.contains("Hook path safety: verified"));
-        assert!(verified_verbose.contains("Hook command CWD independence: verified"));
-        assert!(verified_verbose.contains("Hook command subdirectory safety: verified"));
+        assert!(verified_verbose.contains("CWD independence: verified"));
+        assert!(verified_verbose.contains("Subdirectory safety: verified"));
+        assert!(verified_verbose.contains("Evidence: 6 current managed artifacts verified"));
+        assert!(!verified_verbose.contains("/workspace/.volicord/guard/pre-tool"));
+        assert!(!verified_verbose.contains("Path-safety evidence requiring attention"));
         let verified_compact =
             render_doctor_output(OutputFormat::Compact, &verified).expect("verified compact");
         assert!(!verified_compact.contains("Hook path safety"));
@@ -4060,35 +5210,60 @@ Next action: none\n"
         let not_recorded_verbose = render_doctor_output(OutputFormat::Verbose, &not_recorded)
             .expect("not-recorded verbose");
         assert!(not_recorded_verbose.contains("Hook path safety: not recorded"));
-        assert!(not_recorded_verbose.contains("Hook command CWD independence: not recorded"));
-        assert!(not_recorded_verbose.contains("Hook command subdirectory safety: not recorded"));
+        assert!(not_recorded_verbose.contains("CWD independence: not recorded"));
+        assert!(not_recorded_verbose.contains("Subdirectory safety: not recorded"));
         for forbidden in [
             "Hook path safety: no",
-            "Hook command CWD independence: no",
-            "Hook command subdirectory safety: no",
+            "CWD independence: no",
+            "Subdirectory safety: no",
         ] {
             assert!(!not_recorded_verbose
                 .lines()
                 .any(|line| line.trim() == forbidden));
         }
 
+        let failed_path = "/workspace/.volicord/guard/pre-tool";
+        let failed_assessment = hook_path_safety_assessment(
+            "failed",
+            vec![
+                json!({
+                    "state": "verified",
+                    "source": "project_policy",
+                    "reason": "current_contract_verified",
+                    "installation_id": "guard_installation_1",
+                    "path": "/workspace/.volicord/policy.json",
+                }),
+                json!({
+                    "state": "failed",
+                    "source": "host_hook_wrapper",
+                    "reason": "policy_hash_mismatch",
+                    "installation_id": "guard_installation_1",
+                    "phase": "pre_tool",
+                    "path": failed_path,
+                }),
+            ],
+        );
         let failed = report(
             CommandStatus::Failed,
             vec![DiagnosticCheck::failed(
                 GUARD_FILES_CHECK_ID,
                 "Hook path safety failed the current contract audit",
             )
-            .with_hook_path_safety(HookPathSafetyAssessment::test_failed(
-                crate::guard_integration::audit::HookPathSafetyEvidenceReason::PolicyHashMismatch,
-            ))],
+            .with_hook_path_safety(failed_assessment)],
             Vec::new(),
         );
         let failed_verbose =
             render_doctor_output(OutputFormat::Verbose, &failed).expect("failed verbose");
         assert!(failed_verbose.contains("Hook path safety: failed"));
-        assert!(failed_verbose.contains("Hook command CWD independence: failed"));
-        assert!(failed_verbose.contains("Hook command subdirectory safety: failed"));
-        assert!(failed_verbose.contains("policy_hash_mismatch"));
+        assert!(failed_verbose.contains("CWD independence: failed"));
+        assert!(failed_verbose.contains("Subdirectory safety: failed"));
+        assert!(failed_verbose.contains("Evidence: 1 verified; 1 requiring attention"));
+        assert!(failed_verbose.contains("Source: Hook wrapper"));
+        assert!(failed_verbose.contains("Reason: policy hash mismatch"));
+        assert!(failed_verbose.contains("Installation ID: guard_installation_1"));
+        assert!(failed_verbose.contains("Phase: pre_tool"));
+        assert!(failed_verbose.contains(&format!("Path: {failed_path}")));
+        assert!(!failed_verbose.contains("/workspace/.volicord/policy.json"));
 
         for (state, expected) in [
             (HookPathSafetyState::NotChecked, "not checked"),

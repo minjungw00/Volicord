@@ -522,18 +522,37 @@ installation profile, project와 Connection 개수, 선택한 profile, Guard와 
 있으면 간결한 출력은 plan의 primary action 하나만 표시합니다. Finalized remediation
 plan이 비어 있을 때만 `Next action: none`이라고 표시합니다.
 
-`volicord doctor --verbose`는 한 번 수집한 같은 report를 사용해 전체 build provenance,
-모든 check와 구조화된 details, 구조화된 finding, primary action, required와
-recommended action 전체를 나눈 group, diagnostic disclosure를 렌더링합니다. Verbose
-렌더링은 check를 다시 실행하거나 probe를 추가하지 않습니다. `--verbose`와 `--json`은
-서로 충돌합니다.
+`volicord doctor --verbose`는 한 번 수집한 같은 report를 `Runtime and build`,
+`Integration control`, `Guard and Hook state`, `Project integration`,
+`Command availability`, `Inventory and optional diagnostics` 순서의 안정적인 의미 group으로
+렌더링합니다. Doctor 소유의 현재 presentation registry가 모든 현재 check에 의도적인 사람용
+제목, group, 정상 projection, 비정상 projection을 배정합니다. 기계 check ID는 JSON에서
+바뀌지 않습니다. Warning, failed, 의미 있는 skipped check의 사람용 detail에는 정확한 check
+ID를 유지합니다. 등록되지 않은 check는 raw ID와 함께 등록되지 않은 presentation이라고
+명시합니다.
 
-가치가 큰 알려진 check는 집중된 사람용 section을 사용합니다. Build identity는 provenance
-상태와 공유 profile-precision 문구를 보고하고, dirty 또는 unavailable provenance일 때만
-실제 제한을 추가합니다. Registry schema는 경로, storage contract, canonical DDL digest,
-목록 형태의 enabled capability, integrity-constraints digest를 표시합니다. Guard file은
-관리 파일 상태와 실제 finding을 typed Hook 경로 안전성 평가와 함께 표시합니다. 집중
-projection이 없는 check는 한도가 있는 일반 detail renderer를 사용합니다.
+정상 check는 사람용 제목, status, 간결한 summary, 가치가 큰 typed detail만 표시합니다.
+Warning, failed, 조치가 필요한 skipped check는 한도가 있는 detail과 diagnostic identity,
+finalized remediation plan에서 선택한 해당 action을 펼칩니다. Build identity는 최상위
+`Build provenance` section에 이미 있는 전체 provenance를 반복하지 않고 assessment와
+limitation만 표시합니다. Registry schema는 path, storage contract, canonical DDL digest,
+목록 형태의 enabled capability, integrity-constraints digest를 표시합니다.
+
+`Command availability`는 `volicord_command`, `volicord_mcp_command`,
+`volicord_command_availability`, `volicord_mcp_command_availability`, `path_or_shim`을
+사용하는 typed 사람용 projection 하나입니다. Executable status, 구성된 CLI·MCP path,
+PATH 해석, installation bin directory와 PATH 포함 여부, command link, host reload 필요
+여부를 요약합니다. 비정상 command check는 이 group 아래에서 펼치고 정상 sibling은 요약한
+상태로 둡니다. 이 projection은 구성 path, PATH에서 해석한 사실, installation profile,
+bin directory, command-link binding이 서로 일치하는지 검증합니다. 주장이 양립하지 않으면
+path 하나를 임의로 고르지 않고 사람용 report를 실패시킵니다. `host_detection`은 선택적
+진단 아래 `Host detection: not checked`로 표시하고 init 또는 Connection verification을
+사용하라는 안내를 제공합니다. 이 check는 remediation action을 만들지 않습니다.
+
+Verbose 렌더링은 check를 다시 실행하거나 probe를 추가하지 않습니다. `--verbose`와
+`--json`은 서로 충돌합니다. `volicord doctor --json`은 완전한 순서 있는 check array,
+정확한 check ID, status, summary, detail object를 보존합니다. 의미 group과 사람용 제목은
+JSON에 추가하지 않습니다.
 
 Doctor는 모든 check, finding, Doctor 소유 direct remediation candidate를 수집한 뒤 typed
 remediation plan 하나를 finalize합니다. `DiagnosticFinding.actions`는 각 diagnostic
@@ -604,10 +623,13 @@ permission을 모두 검증해야 합니다. `failed`는 현재 계약 위반을
 `guard_files`는 현재 관리 파일 요구사항과 Hook 경로 안전성 평가가 검증된 경우에만
 통과합니다. 실패한 평가는 등록된 복구 동작이 있는 failed check로 유지합니다.
 `not_recorded` 또는 `not_checked`는 안전성 실패를 단정하지 않고 warning을 만듭니다.
-Verbose 출력은 Hook 경로 안전성, 명령의 CWD 독립성, 명령의 하위 디렉터리 안전성에 이
-의미 상태 이름을 붙이고 한도가 있는 reason detail을 포함합니다. Compact 출력은 성공한
-평가 detail을 추가하지 않습니다. 이 감사에는 쓰기 효과가 없습니다. Doctor는 수집 중에
-Store, 관리 구성, Hook 파일, Product Repository를 갱신하지 않습니다.
+Verbose 출력은 Hook 경로 안전성, CWD 독립성, 하위 디렉터리 안전성에 이 의미 상태 이름을
+붙입니다. 현재 근거가 모두 검증되었으면 검증된 근거 개수만 보고합니다. 그렇지 않으면
+검증된 개수를 표시하고 failed, not-recorded, not-checked record마다 존재하는 source,
+reason, installation ID, phase, path를 펼칩니다. Compact 출력은 성공한 평가 detail을
+추가하지 않으며 JSON은 완전한 typed evidence를 유지합니다. 이 감사에는 쓰기 효과가
+없습니다. Doctor는 수집 중에 Store, 관리 구성, Hook 파일, Product Repository를 갱신하지
+않습니다.
 
 `volicord doctor --json`은 공유 `DiagnosticFinding` 형태의 `findings`도 반환합니다.
 Registry 조사에서는 임의의 SQLite 메시지를 projection하지 않습니다. SQLite 결과 code,

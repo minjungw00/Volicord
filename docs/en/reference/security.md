@@ -133,6 +133,16 @@ or paths from a human summary, omitting an inapplicable field, or repeating
 fewer non-guarantee explanations does not create a positive guarantee; the
 typed disclosure remains authoritative for the result.
 
+Doctor applies that disclosure rule through semantic check groups and
+intentional human titles. Its command group summarizes mutually consistent
+healthy executable, PATH, bin-directory, link, and reload facts; a warning,
+failure, or actionable skipped result expands the exact check ID, status,
+bounded paths and reason, and canonical remediation. Incompatible command facts
+fail the human projection. Verified Hook path-safety evidence is reduced to a
+count, while each non-verified record retains its bounded source, reason,
+installation, phase, and path. These human selections do not alter the complete
+Doctor JSON checks or evidence.
+
 Doctor action displays derive from one finalized typed remediation plan.
 Finding and check provenance is bounded diagnostic context and does not prove
 actor identity, grant write authority, approve a command, or show that a

@@ -529,19 +529,42 @@ sections; skipped checks are not presented as warnings. When remediation is
 available, compact output presents exactly the plan's primary action. It says
 `Next action: none` only when the finalized remediation plan is empty.
 
-`volicord doctor --verbose` renders the same single collected report with full
-build provenance, every check and its structured details, structured findings,
-the primary action, all required and recommended actions in separate groups,
-and the diagnostic disclosure. Verbose rendering does not rerun checks or add
-probes. `--verbose` and `--json` conflict.
+`volicord doctor --verbose` renders the same single collected report as stable
+semantic groups in this order: `Runtime and build`, `Integration control`,
+`Guard and Hook state`, `Project integration`, `Command availability`, and
+`Inventory and optional diagnostics`. A Doctor-owned current presentation
+registry assigns every current check an intentional human title, group, healthy
+projection, and non-success projection. Machine check IDs remain unchanged in
+JSON. Warning, failed, and meaningful skipped checks retain their exact check
+ID in human detail; an unregistered check is explicitly labelled as an
+unregistered presentation with its raw ID.
 
-Known high-value checks use focused human sections. Build identity reports its
-provenance state and the shared profile-precision wording, and adds a limitation
-only for dirty or unavailable provenance. Registry schema reports the path,
-storage contract, canonical DDL digest, enabled capabilities as a list, and
-integrity-constraints digest. Guard files report managed-file states and actual
-findings together with the typed Hook path-safety assessment. Checks without a
-focused projection use the bounded generic detail renderer.
+Healthy checks show their human title, status, concise summary, and only their
+high-value typed details. Warning, failed, and actionable skipped checks expand
+their bounded details, diagnostic identity, and applicable actions selected
+from the finalized remediation plan. Build identity reports its assessment and
+limitation without repeating the complete provenance already shown in the
+top-level `Build provenance` section. Registry schema reports the path, storage
+contract, canonical DDL digest, enabled capabilities as a list, and
+integrity-constraints digest.
+
+`Command availability` is one typed human projection over
+`volicord_command`, `volicord_mcp_command`,
+`volicord_command_availability`, `volicord_mcp_command_availability`, and
+`path_or_shim`. It summarizes executable status, configured CLI and MCP paths,
+PATH resolution, the installation bin directory and its PATH presence, command
+links, and host-reload need. A non-success command check expands under that
+group while healthy siblings remain summarized. The projection validates the
+configured paths, resolved PATH facts, installation profile, bin directory,
+and command-link binding; incompatible claims fail the human report instead of
+selecting one path. `host_detection` appears under optional diagnostics as
+`Host detection: not checked` with guidance to use init or Connection
+verification, and it creates no remediation action.
+
+Verbose rendering does not rerun checks or add probes. `--verbose` and
+`--json` conflict. `volicord doctor --json` preserves the complete ordered check
+array, exact check IDs, statuses, summaries, and detail objects; semantic groups
+and human titles are not added to JSON.
 
 Doctor finalizes one typed remediation plan after all checks, findings, and
 Doctor-owned direct remediation candidates have been collected.
@@ -619,11 +642,14 @@ boundary was unavailable. Absence of evidence is not a negative result.
 path-safety assessment are verified. A failed assessment remains a failed
 check with the registered repair action. `not_recorded` or `not_checked`
 produces a warning rather than an affirmative safety failure. Verbose output
-labels Hook path safety, command CWD independence, and command subdirectory
-safety with those semantic state names and includes bounded reason details;
-compact output adds no successful assessment detail. This audit is read-only:
-Doctor does not update a Store, managed configuration, Hook file, or Product
-Repository while collecting it.
+labels Hook path safety, CWD independence, and subdirectory safety with those
+semantic state names. When all current evidence is verified, it reports only
+the verified evidence count. Otherwise it reports the verified count and
+expands each failed, not-recorded, or not-checked record with its source,
+reason, installation ID, phase, and path when present. Compact output adds no
+successful assessment detail. JSON retains the complete typed evidence. This
+audit is read-only: Doctor does not update a Store, managed configuration, Hook
+file, or Product Repository while collecting it.
 
 `volicord doctor --json` also returns `findings` in the shared
 `DiagnosticFinding` shape. Its Registry inspection does not project arbitrary

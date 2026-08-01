@@ -567,10 +567,14 @@ fixture compares all persisted entries, file bytes, and modification times
 before and after each command, covering the Registry, diagnostics and project
 Stores, Product Repository, managed configuration, installation profile, Hook
 files, and persisted verification reports. Pure renderer tests cover ready,
-warning, action-required or failed doctor states, skipped-check omission,
-structured verbose details, long paths, empty collections, and human/JSON
-factual parity. Doctor remediation coverage supplies explicit findings and
-direct candidates to the pure report-finalization boundary. It verifies
+warning, action-required or failed Doctor states; intentional titles for every
+current check; deterministic semantic group and check order; healthy command
+aggregation; missing CLI and MCP commands; configured-versus-resolved PATH
+mismatch; strict inconsistent-fact rejection; optional host detection;
+structured non-success details; long paths; empty collections; terminal
+hygiene; and exhaustive JSON check parity. Doctor remediation coverage supplies
+explicit findings and direct candidates to the pure report-finalization
+boundary. It verifies
 finding-action inclusion, direct-action inclusion, command enrichment,
 required-over-recommended urgency, deterministic priority and code ordering,
 conflict rejection, strict required/recommended partitioning, one primary
@@ -582,15 +586,16 @@ profile metadata and compares Version and Doctor human wording from the shared
 typed owner. It also proves that JSON retains the exact `class_only` machine
 value without a parallel presentation-label field. Focused Doctor renderer
 coverage distinguishes `not recorded`, `not applicable`, `not checked`, and an
-actually empty collection rendered as `none`; Hook path-safety cases include
-verified, failed, not-recorded, and not-checked assessments without reducing
-them to ambiguous yes/no text. Connection verbose coverage additionally proves
-that six verified current artifacts collapse to aggregate dimension and source
-counts without paths, while failed, not-recorded, not-checked, mixed, and
-bounded-at-limit evidence expands in failure-first order with explicit omission
-labelling. JSON remains byte-for-byte equivalent to the typed report, every
-human branch is tab-free with exactly one trailing newline, and rendering does
-not mutate Store, filesystem, or terminal state.
+actually empty collection rendered as `none`. It proves that the concise build
+assessment does not repeat complete provenance, six verified current Hook
+artifacts collapse to the three safety dimensions plus one count, and a failed
+Hook artifact expands with its path, phase, source, reason, and installation ID.
+Connection verbose coverage separately proves source counts for verified
+artifacts and failure-first expansion for failed, not-recorded, not-checked,
+mixed, and bounded-at-limit evidence with explicit omission labelling. JSON
+remains byte-for-byte equivalent to the typed report, every human branch is
+tab-free with exactly one trailing newline, and rendering does not mutate Store,
+filesystem, or terminal state.
 
 The Doctor binary fixture initializes the canonical current artifacts once,
 then invokes compact, verbose, and JSON Doctor modes without rerunning setup.
