@@ -69,6 +69,12 @@ schema version이 아닙니다. 이 record들이 선택한 Runtime Home 경로�
 전용으로 검사하며, 호환되지 않는 record 또는 relation 사실을 어떤 Registry record도
 다시 쓰지 않고 보고합니다.
 
+읽기 전용 Registry 조사는 엄격하게 decode한 현재 `StorageManifest`를 진단 consumer용
+typed 값으로 유지합니다. 따라서 Doctor는 `storage_profile`을 manifest object 자체로
+직렬화하고 field와 capability collection을 구조화된 사람용 detail로 렌더링합니다. 물리
+JSON text를 Store 경계 밖으로 전달하지 않으며 decode, 정규 encoding, 현재 계약 검증이
+실패한 뒤에도 그 text를 제공하지 않습니다.
+
 Publication guard와 그 rollback 결과는 Registry row가 아니라 process-local typed
 lifecycle fact입니다. 확인 실패는 주 오류, rollback 결과, 최종 경로 관찰, 상위 entry
 내구성을 함께 유지합니다. 관찰된 완전한 제거는 상위 directory 동기화가 실패해도 완전한

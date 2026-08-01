@@ -453,11 +453,15 @@ volicord <package-version>
 
 이 줄은 newline 하나로 끝나며 build ID, source revision, tree 상태, target,
 Cargo profile, optimization, debug metadata를 포함하지 않습니다. `volicord version`도
-같은 간결 출력을 사용합니다. `volicord version --verbose`는 공유 사람용 presentation
-primitive를 사용해 package version 다음에 `Source`와 `Build` section을 렌더링합니다.
-Source section은 commit, tree 상태, metadata source를 표시합니다. Build section은
-target, profile class, profile precision, 정확한 Cargo profile 또는 `not recorded`,
-optimization, debug assertion 상태를 표시합니다.
+같은 간결 출력을 사용합니다. `volicord version --verbose`는 Doctor도 사용하는 공유
+build-provenance 사람용 어휘로 package version 다음에 `Source`와 `Build` section을
+렌더링합니다. Source section은 commit, tree 상태, metadata source를 표시합니다. Build
+section은 target, profile class, profile precision, 정확한 Cargo profile 또는
+`not recorded`, optimization, debug assertion 상태를 표시합니다. 사람용 출력은
+`exact`를 `exact`로, `class_only`를 `class only`로 표시합니다. 기록되지 않은 tree,
+metadata source, 정확한 profile, debug 상태는 `not recorded`로 표시합니다. JSON은
+`class_only`를 포함한 정확한 기계 값을 유지하며 병렬 사람용 label field를 추가하지
+않습니다.
 
 `volicord version --json`은 typed report 하나만 출력합니다.
 
@@ -523,6 +527,13 @@ plan이 비어 있을 때만 `Next action: none`이라고 표시합니다.
 recommended action 전체를 나눈 group, diagnostic disclosure를 렌더링합니다. Verbose
 렌더링은 check를 다시 실행하거나 probe를 추가하지 않습니다. `--verbose`와 `--json`은
 서로 충돌합니다.
+
+가치가 큰 알려진 check는 집중된 사람용 section을 사용합니다. Build identity는 provenance
+상태와 공유 profile-precision 문구를 보고하고, dirty 또는 unavailable provenance일 때만
+실제 제한을 추가합니다. Registry schema는 경로, storage contract, canonical DDL digest,
+목록 형태의 enabled capability, integrity-constraints digest를 표시합니다. Guard file은
+관리 파일 상태와 실제 finding을 typed Hook 경로 안전성 평가와 함께 표시합니다. 집중
+projection이 없는 check는 한도가 있는 일반 detail renderer를 사용합니다.
 
 Doctor는 모든 check, finding, Doctor 소유 direct remediation candidate를 수집한 뒤 typed
 remediation plan 하나를 finalize합니다. `DiagnosticFinding.actions`는 각 diagnostic
@@ -601,6 +612,13 @@ Store, 관리 구성, Hook 파일, Product Repository를 갱신하지 않습니�
 `volicord doctor --json`은 공유 `DiagnosticFinding` 형태의 `findings`도 반환합니다.
 Registry 조사에서는 임의의 SQLite 메시지를 projection하지 않습니다. SQLite 결과 code,
 조사 상태, 한도가 있는 범주형 사실로 finding을 선택하며 산문은 표시 맥락으로만 남습니다.
+
+현재 Registry의 `registry_schema` check는 `storage_profile`을 `contract_id`, 두 digest
+field, `enabled_capabilities`가 있는 구조화된 `StorageManifest` object 하나로 노출합니다.
+이 object를 JSON text로 넣거나 두 번째 문자열 형태를 추가하지 않습니다. Registry 조사는
+check를 구성하기 전에 저장된 manifest를 엄격하게 decode하고 검증합니다. 잘못되었거나
+호환되지 않는 manifest text는 이 조사 경계에서 실패하며 원시 fallback 값으로 렌더링하지
+않습니다.
 
 Report의 최상위 `build` 값은 `volicord version --json`이 반환하는 것과 같은 구조화된
 `BuildInfo` projection입니다. 최상위나 `states` 아래에 build ID를 중복하지 않습니다.

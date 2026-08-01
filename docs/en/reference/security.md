@@ -146,6 +146,14 @@ bounded to the Store it names and does not imply that a Product Repository or
 another Volicord Store cannot contain corresponding authority metadata. Human
 and JSON output preserve the same canonical UTF-8 claim text.
 
+Version and Doctor human output derive build-provenance labels from one typed
+vocabulary. Missing recorded build facts are `not recorded`, while exact JSON
+values remain unchanged, including `class_only`. Doctor keeps strictly decoded
+storage metadata and Hook assessments structured in JSON and projects them as
+focused verbose sections with explicit human states. It does not turn missing
+evidence into `no`, flatten a structured value into text, or parse an unchecked
+stored string in the renderer.
+
 ### Workflow-Policy Inspection
 
 The complete authoritative workflow policy is inspectable local configuration,

@@ -481,12 +481,23 @@ required/recommended의 엄격한 분할, JSON과 사람용 projection 전체의
 action 없는 warning의 정확한 문구, 렌더링 중 Store 또는 Product Repository mutation이
 없음을 검증합니다.
 
+Build 표시 coverage는 exact profile, class-only, profile metadata 누락을 구성하고 공유 typed
+담당자에서 나온 Version과 Doctor의 사람용 문구를 대조합니다. 또한 JSON이 병렬 표시 label
+field 없이 정확한 `class_only` 기계 값을 유지하는지 증명합니다. 집중 Doctor renderer
+coverage는 `not recorded`, `not applicable`, `not checked`, 실제 빈 collection을 나타내는
+`none`을 구별합니다. Hook 경로 안전성 case는 verified, failed, not-recorded, not-checked
+평가를 포함하며 모호한 yes/no text로 축약하지 않습니다.
+
 Doctor binary fixture는 정규 현재 artifact를 한 번 초기화한 다음 setup을 다시 실행하지
 않고 compact, verbose, JSON Doctor mode를 호출합니다. 검증된 경로 안전성 평가가 있을 때만
 `guard_files` check가 통과하는지, 병렬 field가 없는 엄격한 state object 하나, verbose의
 명시적 의미 label, compact에서 성공 detail의 부재를 요구합니다. 또한 Registry, project 및
 diagnostics Store, 관리 구성, installation profile, Hook 파일, Product Repository의 bytes와
-modification time이 바뀌지 않았는지 확인합니다.
+modification time이 바뀌지 않았는지 확인합니다. Registry coverage는 JSON의
+`storage_profile`이 구조화된 현재 `StorageManifest`인지 요구하고 verbose field와 capability
+목록을 확인합니다. 또한 잘못된 영속 manifest JSON을 주입해 raw 문자열 fallback 없이
+엄격하게 실패하는지 증명합니다. 모든 branch는 마지막 newline을 정확히 하나만 유지하고
+fixture setup 뒤 폐기 가능한 Runtime Home의 read-only 상태를 보존합니다.
 
 Connection-list lifecycle coverage는 setup, managed-session, complete 단계에서 사용 가능한
 각 membership을 선택한 status와 비교하고, 영속 활성 검증이 `action_required`인 채여도

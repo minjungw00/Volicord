@@ -477,6 +477,13 @@ pub(crate) fn validate_persisted_manifest(
     database_kind: &'static str,
     persisted: &str,
 ) -> StoreResult<()> {
+    decode_persisted_manifest(database_kind, persisted).map(|_| ())
+}
+
+pub(crate) fn decode_persisted_manifest(
+    database_kind: &'static str,
+    persisted: &str,
+) -> StoreResult<StorageManifest> {
     let expected = current_storage_manifest()?;
     let expected_json = current_storage_manifest_json()?;
     let decoded = serde_json::from_str::<StorageManifest>(persisted);
@@ -489,7 +496,7 @@ pub(crate) fn validate_persisted_manifest(
                 )
             })?;
             if canonical == persisted {
-                Ok(())
+                Ok(manifest)
             } else {
                 Err(StoreError::schema_invariant(
                     database_kind,

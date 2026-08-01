@@ -134,6 +134,13 @@ Store는 아래 검사를 모두 통과한 데이터베이스만 받아들입니
 일부만 검증한 데이터베이스를 열지 않습니다. 바이트가 바뀌지 않았다면 열기를 반복해도
 같은 분류를 냅니다.
 
+정확한 현재 manifest 검증이 성공하면 읽기 전용 조사는 decode한 `StorageManifest`를 typed
+진단 값으로 유지할 수 있습니다. Doctor JSON은 이 값을 구조화된 `storage_profile`
+object로 직렬화하고 verbose 사람용 출력은 이름 있는 field와 enabled-capability
+collection으로 렌더링합니다. Renderer는 영속 carrier text를 다시 parse하지 않습니다.
+엄격한 decode 또는 정확한 비교가 실패하면 기존 corrupt 또는 incompatible 조사 상태가
+되며 원시 문자열 fallback은 만들지 않습니다.
+
 새 Runtime Home 초기화는 최종 경로가 없을 때만 허용하는 별도 작업입니다. 같은 상위
 directory에 staging directory를 만들고 그 안에 기준 SQL을 적용하며 불투명한 UUID 기반
 publication ID 하나를 생성합니다. 이 provenance를 현재 manifest, Runtime Home singleton,

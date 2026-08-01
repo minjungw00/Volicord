@@ -35,10 +35,15 @@ use volicord_types::guard_manifest::{
 };
 use volicord_types::ids::ProjectId;
 use volicord_types::schema::SummaryCard;
+use volicord_types::storage_contract::StorageManifest;
 use volicord_types::values::{GuardHookPhase, IntegrationProfile, UtcTimestamp};
 use volicord_types::workflow_policy::ProjectWorkflowPolicySource;
 
 use crate::{
+    build_presentation::{
+        debug_assertions, exact_cargo_profile, metadata_source_state, profile_precision,
+        provenance_gap, provenance_limitation, provenance_state, source_tree_state,
+    },
     guard_integration::audit::{
         guard_file_findings_for_inspection, guard_manifest_binding_valid_for_inspection,
         missing_required_hooks_from_manifest_json, GuardArtifactIssue, GuardAuditFacts,
@@ -114,6 +119,10 @@ struct DiagnosticCheck {
     details: Option<Value>,
     #[serde(skip)]
     hook_path_safety: Option<HookPathSafetyAssessment>,
+    #[serde(skip)]
+    build_provenance: Option<BuildProvenanceAssessment>,
+    #[serde(skip)]
+    storage_profile: Option<StorageManifest>,
 }
 
 impl DiagnosticCheck {
@@ -124,6 +133,8 @@ impl DiagnosticCheck {
             summary: summary.into(),
             details: None,
             hook_path_safety: None,
+            build_provenance: None,
+            storage_profile: None,
         }
     }
 
@@ -134,6 +145,8 @@ impl DiagnosticCheck {
             summary: summary.into(),
             details: None,
             hook_path_safety: None,
+            build_provenance: None,
+            storage_profile: None,
         }
     }
 
@@ -144,6 +157,8 @@ impl DiagnosticCheck {
             summary: summary.into(),
             details: None,
             hook_path_safety: None,
+            build_provenance: None,
+            storage_profile: None,
         }
     }
 
@@ -154,6 +169,8 @@ impl DiagnosticCheck {
             summary: summary.into(),
             details: None,
             hook_path_safety: None,
+            build_provenance: None,
+            storage_profile: None,
         }
     }
 
@@ -168,6 +185,20 @@ impl DiagnosticCheck {
             details.insert("hook_path_safety".to_owned(), json!(&assessment));
         }
         self.hook_path_safety = Some(assessment);
+        self
+    }
+
+    fn with_build_provenance(mut self, assessment: BuildProvenanceAssessment) -> Self {
+        self.build_provenance = Some(assessment);
+        self
+    }
+
+    fn with_storage_profile(mut self, storage_profile: StorageManifest) -> Self {
+        let details = self.details.get_or_insert_with(|| json!({}));
+        if let Some(details) = details.as_object_mut() {
+            details.insert("storage_profile".to_owned(), json!(&storage_profile));
+        }
+        self.storage_profile = Some(storage_profile);
         self
     }
 }
@@ -761,7 +792,7 @@ fn inspect_build_identity(build: &BuildInfo) -> (DiagnosticCheck, Option<Install
             "missing_or_incomplete": gaps,
         }),
     };
-    let (check, diagnostic) = match assessment {
+    let (check, diagnostic) = match &assessment {
         BuildProvenanceAssessment::UsableCleanExactProfile => (
             DiagnosticCheck::passed(
                 "build_identity",
@@ -791,7 +822,12 @@ fn inspect_build_identity(build: &BuildInfo) -> (DiagnosticCheck, Option<Install
             Some(InstallationDiagnostic::BuildIdentityUnavailable),
         ),
     };
-    (check.with_details(details), diagnostic)
+    (
+        check
+            .with_details(details)
+            .with_build_provenance(assessment),
+        diagnostic,
+    )
 }
 
 fn render_privacy_footprint_output(
@@ -1004,10 +1040,8 @@ fn inspect_registry_snapshot(
     match snapshot.schema {
         InspectionSchemaState::Current => checks.push(
             DiagnosticCheck::passed("registry_schema", "Runtime Home registry schema is current")
-                .with_details(json!({
-                    "path": path_text(&snapshot.path),
-                    "storage_profile": snapshot.runtime_home.storage_profile,
-                })),
+                .with_details(json!({ "path": path_text(&snapshot.path) }))
+                .with_storage_profile(snapshot.runtime_home.storage_profile.clone()),
         ),
     }
 }
@@ -2724,11 +2758,7 @@ fn doctor_count(checks: &[DiagnosticCheck], key: &str) -> Option<usize> {
 }
 
 fn doctor_build_source(build: &BuildInfo) -> String {
-    let tree = match build.git_dirty {
-        Some(false) => "clean",
-        Some(true) => "dirty",
-        None => "tree state not recorded",
-    };
+    let tree = source_tree_state(build.git_dirty);
     format!("{} ({tree})", build.git_commit)
 }
 
@@ -2796,16 +2826,12 @@ fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCom
                 Field::new("Commit", HumanValue::text(report.build.git_commit)).into(),
                 Field::new(
                     "Tree",
-                    HumanValue::text(match report.build.git_dirty {
-                        Some(false) => "clean",
-                        Some(true) => "dirty",
-                        None => "not recorded",
-                    }),
+                    HumanValue::text(source_tree_state(report.build.git_dirty)),
                 )
                 .into(),
                 Field::new(
                     "Metadata source",
-                    HumanValue::text(report.build.metadata_source),
+                    HumanValue::text(metadata_source_state(report.build.metadata_source)),
                 )
                 .into(),
                 Field::new("Target", HumanValue::text(report.build.target_triple)).into(),
@@ -2816,28 +2842,16 @@ fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCom
                 .into(),
                 Field::new(
                     "Profile precision",
-                    HumanValue::text(report.build.profile_precision.as_str()),
+                    HumanValue::text(profile_precision(report.build.profile_precision)),
                 )
                 .into(),
                 Field::new(
                     "Exact Cargo profile",
-                    report
-                        .build
-                        .build_profile
-                        .map(HumanValue::text)
-                        .unwrap_or(HumanValue::None),
+                    exact_cargo_profile(report.build.build_profile),
                 )
                 .into(),
                 Field::new("Optimization", HumanValue::text(report.build.opt_level)).into(),
-                Field::new(
-                    "Debug assertions",
-                    report
-                        .build
-                        .debug
-                        .map(|value| HumanValue::YesNo(YesNo::from(value)))
-                        .unwrap_or(HumanValue::None),
-                )
-                .into(),
+                Field::new("Debug assertions", debug_assertions(report.build.debug)).into(),
                 Field::new("Build ID", HumanValue::text(&report.build.build_id)).into(),
             ],
         )
@@ -2847,7 +2861,7 @@ fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCom
             report
                 .checks
                 .iter()
-                .map(doctor_check_element)
+                .map(|check| doctor_check_element(check, &report.build))
                 .collect::<Result<Vec<_>, _>>()?,
         )
         .into(),
@@ -2889,7 +2903,10 @@ fn render_verbose_doctor_text(report: &DoctorReport) -> Result<String, DoctorCom
     Ok(Document::verbose(doctor_headline(report), body).render())
 }
 
-fn doctor_check_element(check: &DiagnosticCheck) -> Result<Element, DoctorCommandError> {
+fn doctor_check_element(
+    check: &DiagnosticCheck,
+    build: &BuildInfo,
+) -> Result<Element, DoctorCommandError> {
     let mut body = vec![
         Field::new(
             "Status",
@@ -2898,47 +2915,294 @@ fn doctor_check_element(check: &DiagnosticCheck) -> Result<Element, DoctorComman
         .into(),
         Field::new("Summary", HumanValue::text(&check.summary)).into(),
     ];
-    if let Some(details) = &check.details {
-        let mut detail_elements = if check.hook_path_safety.is_some() {
-            let mut without_assessment = details.clone();
-            if let Some(object) = without_assessment.as_object_mut() {
-                object.remove("hook_path_safety");
-            }
-            json_value_elements(&without_assessment)
-        } else {
-            json_value_elements(details)
-        };
-        if let Some(assessment) = &check.hook_path_safety {
-            detail_elements.extend([
-                Field::new(
-                    "Hook path safety",
-                    HumanValue::text(display_state_text(assessment.state.as_str())),
-                )
-                .into(),
-                Field::new(
-                    "Hook command CWD independence",
-                    HumanValue::text(display_state_text(assessment.cwd_independence.as_str())),
-                )
-                .into(),
-                Field::new(
-                    "Hook command subdirectory safety",
-                    HumanValue::text(display_state_text(assessment.subdirectory_safety.as_str())),
-                )
-                .into(),
-            ]);
-            if !assessment.evidence.is_empty() {
-                detail_elements.push(
-                    Section::new(
-                        "Hook path-safety evidence",
-                        json_value_elements(&json!(&assessment.evidence)),
-                    )
-                    .into(),
-                );
-            }
-        }
-        body.push(Section::new("Details", detail_elements).into());
+    if let Some(elements) = doctor_known_check_elements(check, build) {
+        body.extend(elements);
+    } else if let Some(details) = &check.details {
+        body.push(Section::new("Details", json_value_elements(details)).into());
     }
     Ok(Section::new(&check.id, body).into())
+}
+
+fn doctor_known_check_elements(check: &DiagnosticCheck, build: &BuildInfo) -> Option<Vec<Element>> {
+    match check.id.as_str() {
+        "build_identity" => check
+            .build_provenance
+            .as_ref()
+            .map(|assessment| doctor_build_identity_elements(assessment, build)),
+        "registry_schema" => check
+            .storage_profile
+            .as_ref()
+            .map(|profile| doctor_registry_schema_elements(check, profile)),
+        GUARD_FILES_CHECK_ID => check
+            .details
+            .as_ref()
+            .map(|details| doctor_guard_file_elements(details, check.hook_path_safety.as_ref())),
+        _ => None,
+    }
+}
+
+fn doctor_build_identity_elements(
+    assessment: &BuildProvenanceAssessment,
+    build: &BuildInfo,
+) -> Vec<Element> {
+    let mut elements = vec![
+        Field::new(
+            "Provenance state",
+            HumanValue::text(provenance_state(assessment)),
+        )
+        .into(),
+        Field::new(
+            "Profile precision",
+            HumanValue::text(profile_precision(build.profile_precision)),
+        )
+        .into(),
+    ];
+    if let Some(limitation) = provenance_limitation(assessment) {
+        elements.push(Field::new("Limitation", HumanValue::text(limitation)).into());
+    }
+    if let BuildProvenanceAssessment::Unavailable { gaps } = assessment {
+        elements.push(
+            Section::new(
+                "Missing or incomplete metadata",
+                vec![BulletList::new(gaps.iter().copied().map(provenance_gap)).into()],
+            )
+            .into(),
+        );
+    }
+    elements
+}
+
+fn doctor_registry_schema_elements(
+    check: &DiagnosticCheck,
+    profile: &StorageManifest,
+) -> Vec<Element> {
+    let mut elements = vec![
+        Field::new(
+            "Path",
+            HumanValue::text(
+                check
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.get("path"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("not recorded"),
+            ),
+        )
+        .into(),
+        Field::new("Storage contract", HumanValue::text(&profile.contract_id)).into(),
+        Field::new(
+            "Canonical DDL digest",
+            HumanValue::text(&profile.canonical_ddl_digest),
+        )
+        .into(),
+    ];
+    elements.push(human_collection_element(
+        "Enabled capabilities",
+        profile.enabled_capabilities.iter().map(String::as_str),
+    ));
+    elements.push(
+        Field::new(
+            "Integrity constraints digest",
+            HumanValue::text(&profile.integrity_constraints_digest),
+        )
+        .into(),
+    );
+    elements
+}
+
+fn doctor_guard_file_elements(
+    details: &Value,
+    assessment: Option<&HookPathSafetyAssessment>,
+) -> Vec<Element> {
+    let mut elements = Vec::new();
+    let file_states = details.get("file_states");
+    let file_state_fields = [
+        GuardManagedArtifactKind::AgentsManagedBlock,
+        GuardManagedArtifactKind::VolicordPolicy,
+        GuardManagedArtifactKind::HostHookConfig,
+        GuardManagedArtifactKind::HostHookDispatch,
+        GuardManagedArtifactKind::HostHookWrapper,
+        GuardManagedArtifactKind::HostRuleInstruction,
+        GuardManagedArtifactKind::GitInfoExclude,
+    ]
+    .into_iter()
+    .filter_map(|kind| {
+        file_states
+            .and_then(|states| states.get(kind.as_str()))
+            .and_then(Value::as_str)
+            .map(|state| {
+                Field::new(
+                    guard_artifact_kind_label(kind),
+                    HumanValue::text(guard_file_state_text(state)),
+                )
+                .into()
+            })
+    })
+    .collect::<Vec<_>>();
+    if file_state_fields.is_empty() {
+        elements.push(Field::new("Managed file states", HumanValue::None).into());
+    } else {
+        elements.push(Section::new("Managed file states", file_state_fields).into());
+    }
+
+    for (label, key) in [
+        ("Missing files", "missing_files"),
+        ("Unavailable files", "unavailable_files"),
+        ("Stale files", "stale_files"),
+        ("Broken files", "broken_files"),
+        ("Selected profiles", "selected_profiles"),
+        ("Missing required Hooks", "missing_required_hooks"),
+    ] {
+        elements.push(human_json_collection_element(label, details.get(key)));
+    }
+
+    for (label, key) in [
+        ("Owner binding failures", "binding_invalid"),
+        ("Outside release scope", "outside_release_scope"),
+    ] {
+        if let Some(value) = details.get(key) {
+            elements.push(Field::new(label, json_human_value(value)).into());
+        }
+    }
+    for (label, key) in [
+        ("Generated configuration", "generated_config_verified"),
+        (
+            "Direct file-write matcher coverage",
+            "direct_file_write_matcher_coverage",
+        ),
+    ] {
+        if let Some(value) = details.get(key).and_then(Value::as_bool) {
+            elements.push(
+                Field::new(
+                    label,
+                    HumanValue::text(if value { "verified" } else { "not verified" }),
+                )
+                .into(),
+            );
+        }
+    }
+
+    if let Some(assessment) = assessment {
+        elements.extend([
+            Field::new(
+                "Hook path safety",
+                HumanValue::text(hook_path_safety_state_text(assessment.state)),
+            )
+            .into(),
+            Field::new(
+                "Hook command CWD independence",
+                HumanValue::text(hook_path_safety_state_text(assessment.cwd_independence)),
+            )
+            .into(),
+            Field::new(
+                "Hook command subdirectory safety",
+                HumanValue::text(hook_path_safety_state_text(assessment.subdirectory_safety)),
+            )
+            .into(),
+        ]);
+        if assessment.evidence.is_empty() {
+            elements.push(Field::new("Hook path-safety evidence", HumanValue::None).into());
+        } else {
+            elements.push(
+                Section::new(
+                    "Hook path-safety evidence",
+                    assessment
+                        .evidence
+                        .iter()
+                        .enumerate()
+                        .map(|(index, evidence)| {
+                            let mut fields = vec![
+                                Field::new(
+                                    "State",
+                                    HumanValue::text(hook_path_safety_state_text(evidence.state())),
+                                )
+                                .into(),
+                                Field::new("Source", HumanValue::text(evidence.source().as_str()))
+                                    .into(),
+                                Field::new("Reason", HumanValue::text(evidence.reason().as_str()))
+                                    .into(),
+                            ];
+                            if let Some(installation_id) = evidence.installation_id() {
+                                fields.push(
+                                    Field::new(
+                                        "Installation ID",
+                                        HumanValue::text(installation_id),
+                                    )
+                                    .into(),
+                                );
+                            }
+                            if let Some(phase) = evidence.phase() {
+                                fields.push(
+                                    Field::new("Phase", HumanValue::text(phase.as_str())).into(),
+                                );
+                            }
+                            if let Some(path) = evidence.path() {
+                                fields.push(Field::new("Path", HumanValue::text(path)).into());
+                            }
+                            Section::new(format!("Evidence {}", index + 1), fields).into()
+                        })
+                        .collect(),
+                )
+                .into(),
+            );
+        }
+    }
+    elements
+}
+
+fn human_json_collection_element(label: &str, value: Option<&Value>) -> Element {
+    let values = value
+        .and_then(Value::as_array)
+        .map_or_else(Vec::new, |values| {
+            values
+                .iter()
+                .map(|value| json_human_value(value).to_string())
+                .collect::<Vec<_>>()
+        });
+    human_collection_element(label, values.iter().map(String::as_str))
+}
+
+fn human_collection_element<'a>(label: &str, values: impl IntoIterator<Item = &'a str>) -> Element {
+    let values = values.into_iter().collect::<Vec<_>>();
+    if values.is_empty() {
+        Field::new(label, HumanValue::None).into()
+    } else {
+        Section::new(label, vec![BulletList::new(values).into()]).into()
+    }
+}
+
+const fn guard_artifact_kind_label(kind: GuardManagedArtifactKind) -> &'static str {
+    match kind {
+        GuardManagedArtifactKind::VolicordPolicy => "Volicord policy",
+        GuardManagedArtifactKind::GitInfoExclude => "Git info exclude",
+        GuardManagedArtifactKind::HostHookConfig => "Host Hook configuration",
+        GuardManagedArtifactKind::HostHookDispatch => "Host Hook dispatch",
+        GuardManagedArtifactKind::HostHookWrapper => "Host Hook wrappers",
+        GuardManagedArtifactKind::HostRuleInstruction => "Host rule instruction",
+        GuardManagedArtifactKind::AgentsManagedBlock => "AGENTS.md managed block",
+    }
+}
+
+fn guard_file_state_text(state: &str) -> &str {
+    match state {
+        "installed" => "installed",
+        "missing" => "missing",
+        "stale" => "stale",
+        "broken" => "broken",
+        "not_checked" => "not checked",
+        "not_configured" => "not configured",
+        other => other,
+    }
+}
+
+const fn hook_path_safety_state_text(state: HookPathSafetyState) -> &'static str {
+    match state {
+        HookPathSafetyState::Verified => "verified",
+        HookPathSafetyState::Failed => "failed",
+        HookPathSafetyState::NotRecorded => "not recorded",
+        HookPathSafetyState::NotChecked => "not checked",
+        HookPathSafetyState::NotApplicable => "not applicable",
+    }
 }
 
 fn json_value_elements(value: &Value) -> Vec<Element> {
@@ -3620,6 +3884,22 @@ mod tests {
     fn compact_doctor_projects_ready_warning_and_failure_context() {
         let ready = report(CommandStatus::Complete, Vec::new(), Vec::new());
         let ready_text = render_doctor_output(OutputFormat::Compact, &ready).unwrap();
+        assert_eq!(
+            ready_text,
+            "Volicord is ready.\n\
+\n\
+Runtime Home: /tmp/volicord doctor test/runtime home/with-a-deliberately-long-path\n\
+Installation profile: present\n\
+Projects: 2\n\
+Connections: 1\n\
+Selected profile: record\n\
+Guard state: ready\n\
+Prompt capture: available\n\
+Host reload required: no\n\
+Version: test-package-version\n\
+Source: 0123456789abcdef0123456789abcdef01234567 (clean)\n\
+Next action: none\n"
+        );
         assert!(ready_text.starts_with("Volicord is ready.\n\n"));
         assert!(ready_text.contains("Projects: 2"));
         assert!(ready_text.contains("Connections: 1"));
@@ -3809,6 +4089,68 @@ mod tests {
         assert!(failed_verbose.contains("Hook command CWD independence: failed"));
         assert!(failed_verbose.contains("Hook command subdirectory safety: failed"));
         assert!(failed_verbose.contains("policy_hash_mismatch"));
+
+        for (state, expected) in [
+            (HookPathSafetyState::NotChecked, "not checked"),
+            (HookPathSafetyState::NotApplicable, "not applicable"),
+        ] {
+            let report = report(
+                CommandStatus::Complete,
+                vec![DiagnosticCheck::warning(
+                    GUARD_FILES_CHECK_ID,
+                    "Hook path safety has no affirmative result",
+                )
+                .with_hook_path_safety(HookPathSafetyAssessment::test_state(state))],
+                Vec::new(),
+            );
+            let verbose = render_doctor_output(OutputFormat::Verbose, &report)
+                .expect("missing Hook state verbose output");
+            assert!(verbose.contains(&format!("Hook path safety: {expected}")));
+            assert!(!verbose
+                .lines()
+                .any(|line| line.trim() == "Hook path safety: no"));
+        }
+    }
+
+    #[test]
+    fn version_and_doctor_share_build_provenance_human_wording() {
+        for (profile, precision, expected_precision, expected_profile) in [
+            (
+                None,
+                volicord_mcp::BuildProfilePrecision::ClassOnly,
+                "class only",
+                "not recorded",
+            ),
+            (
+                Some("release-with-debug"),
+                volicord_mcp::BuildProfilePrecision::Exact,
+                "exact",
+                "release-with-debug",
+            ),
+        ] {
+            let mut build = complete_build();
+            build.build_profile = profile;
+            build.profile_precision = precision;
+            build.build_id = build.deterministic_build_id();
+
+            let version = crate::version_command::render_verbose_version(&build);
+            let doctor =
+                render_doctor_output(OutputFormat::Verbose, &report_for_build(build.clone()))
+                    .expect("Doctor verbose build output");
+            for line in [
+                format!("Profile precision: {expected_precision}"),
+                format!("Exact Cargo profile: {expected_profile}"),
+            ] {
+                assert!(version.contains(&line), "{version}");
+                assert!(doctor.contains(&line), "{doctor}");
+            }
+
+            let json_text = render_doctor_output(OutputFormat::Json, &report_for_build(build))
+                .expect("Doctor JSON build output");
+            let json: Value = serde_json::from_str(&json_text).expect("Doctor JSON");
+            assert_eq!(json["build"]["profile_precision"], precision.as_str());
+            assert!(!json_contains_key(&json, "profile_precision_label"));
+        }
     }
 
     #[test]

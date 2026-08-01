@@ -458,10 +458,14 @@ The line ends with one newline and contains no build ID, source revision,
 tree state, target, Cargo profile, optimization, or debug metadata.
 `volicord version` uses the same concise output. `volicord version --verbose`
 renders the package version followed by `Source` and `Build` sections through
-the shared human-presentation primitives. The source section names the commit,
-tree state, and metadata source. The build section names the target, profile
-class, profile precision, exact Cargo profile or `not recorded`, optimization,
-and debug-assertion state.
+the shared build-provenance human vocabulary also used by Doctor. The source
+section names the commit, tree state, and metadata source. The build section
+names the target, profile class, profile precision, exact Cargo profile or
+`not recorded`, optimization, and debug-assertion state. Human output renders
+`exact` as `exact` and `class_only` as `class only`; an unrecorded tree,
+metadata source, exact profile, or debug state is `not recorded`. JSON retains
+the exact machine values, including `class_only`, and adds no parallel human
+label field.
 
 `volicord version --json` writes exactly one typed report:
 
@@ -530,6 +534,14 @@ build provenance, every check and its structured details, structured findings,
 the primary action, all required and recommended actions in separate groups,
 and the diagnostic disclosure. Verbose rendering does not rerun checks or add
 probes. `--verbose` and `--json` conflict.
+
+Known high-value checks use focused human sections. Build identity reports its
+provenance state and the shared profile-precision wording, and adds a limitation
+only for dirty or unavailable provenance. Registry schema reports the path,
+storage contract, canonical DDL digest, enabled capabilities as a list, and
+integrity-constraints digest. Guard files report managed-file states and actual
+findings together with the typed Hook path-safety assessment. Checks without a
+focused projection use the bounded generic detail renderer.
 
 Doctor finalizes one typed remediation plan after all checks, findings, and
 Doctor-owned direct remediation candidates have been collected.
@@ -617,6 +629,14 @@ Repository while collecting it.
 `DiagnosticFinding` shape. Its Registry inspection does not project arbitrary
 SQLite messages. SQLite result codes, inspection state, and bounded categorical
 facts select a finding; prose remains display-only context.
+
+For a current Registry, the `registry_schema` check exposes `storage_profile`
+as one structured `StorageManifest` object with `contract_id`, both digest
+fields, and `enabled_capabilities`. It never embeds that object as JSON text or
+adds a second string form. Registry inspection strictly decodes and validates
+the stored manifest before constructing the check; malformed or incompatible
+manifest text fails at that inspection boundary and is not rendered as a raw
+fallback value.
 
 The report has one top-level `build` value in the same structured `BuildInfo`
 projection returned by `volicord version --json`. It does not duplicate the

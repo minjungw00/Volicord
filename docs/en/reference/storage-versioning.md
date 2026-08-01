@@ -143,6 +143,14 @@ profile, or SQL inventory; fill missing fields; ignore extra objects; or open a
 partially validated database. Repeating open against unchanged bytes produces
 the same classification.
 
+After exact current-manifest validation succeeds, read-only inspection may
+retain that decoded `StorageManifest` as a typed diagnostic value. Doctor JSON
+serializes the value as a structured `storage_profile` object, and verbose
+human output renders named fields plus the enabled-capability collection. No
+renderer reparses the persisted carrier text. Failed strict decoding or exact
+comparison produces the existing corrupt or incompatible inspection state and
+never a raw-string fallback.
+
 Fresh Runtime Home initialization is a distinct operation allowed only when
 the final path is absent. It creates a same-parent staging directory, applies
 the canonical SQL there, generates one opaque UUID-backed publication ID, and

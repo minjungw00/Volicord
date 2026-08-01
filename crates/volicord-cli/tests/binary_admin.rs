@@ -20,6 +20,7 @@ use volicord_store::{
     },
     diagnostic_findings::insert_occurrence_finding,
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
+    schema::current_storage_manifest,
     sqlite::registry_db_path,
 };
 use volicord_test_support::{
@@ -253,6 +254,107 @@ fn doctor_and_version_json_share_one_build_projection() -> Result<(), Box<dyn Er
         .as_object()
         .expect("doctor states object")
         .contains_key("build_id"));
+    Ok(())
+}
+
+#[test]
+fn doctor_storage_profile_is_structured_read_only_and_terminal_clean() -> Result<(), Box<dyn Error>>
+{
+    let fixture = TempRuntimeHome::new("binary-doctor-storage-profile")?;
+    let runtime_home = fixture.root_path().join("runtime-home");
+    prepare_runtime_home(&runtime_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
+    let state_before = directory_state(fixture.root_path())?;
+    let run_doctor = |mode: Option<&str>| -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command.arg("doctor").env("VOLICORD_HOME", &runtime_home);
+        if let Some(mode) = mode {
+            command.arg(mode);
+        }
+        Ok(command.output()?)
+    };
+
+    let compact_output = run_doctor(None)?;
+    assert!(matches!(compact_output.status.code(), Some(0 | 1)));
+    assert_eq!(stderr(&compact_output)?, "");
+
+    let json_output = run_doctor(Some("--json"))?;
+    assert!(matches!(json_output.status.code(), Some(0 | 1)));
+    assert_eq!(stderr(&json_output)?, "");
+    let report: Value = serde_json::from_slice(&json_output.stdout)?;
+    let registry = report["checks"]
+        .as_array()
+        .expect("Doctor checks")
+        .iter()
+        .find(|check| check["id"] == "registry_schema")
+        .expect("registry schema check");
+    let storage_profile = &registry["details"]["storage_profile"];
+    assert!(storage_profile.is_object());
+    assert!(!storage_profile.is_string());
+    assert_eq!(
+        storage_profile,
+        &serde_json::to_value(current_storage_manifest()?)?
+    );
+
+    let verbose_output = run_doctor(Some("--verbose"))?;
+    assert!(matches!(verbose_output.status.code(), Some(0 | 1)));
+    assert_eq!(stderr(&verbose_output)?, "");
+    let verbose = stdout(&verbose_output)?;
+    let manifest = current_storage_manifest()?;
+    for expected in [
+        "Path: ",
+        "Storage contract: volicord.sqlite.canonical",
+        "Canonical DDL digest: sha256:",
+        "Enabled capabilities",
+        "Integrity constraints digest: sha256:",
+    ] {
+        assert!(verbose.contains(expected), "{verbose}");
+    }
+    for capability in &manifest.enabled_capabilities {
+        assert!(verbose.contains(&format!("- {capability}")), "{verbose}");
+    }
+    assert!(!verbose.contains("storage_profile: {"));
+    assert!(!verbose.contains("\\\"contract_id\\\""));
+
+    for output in [&compact_output, &json_output, &verbose_output] {
+        let text = std::str::from_utf8(&output.stdout)?;
+        assert_eq!(
+            text.len() - text.trim_end_matches('\n').len(),
+            1,
+            "Doctor output must have exactly one trailing newline"
+        );
+    }
+    assert_eq!(directory_state(fixture.root_path())?, state_before);
+
+    rusqlite::Connection::open(registry_db_path(&runtime_home))?.execute(
+        "UPDATE runtime_home SET storage_profile = 'not-json' WHERE singleton_id = 1",
+        [],
+    )?;
+    let malformed_state_before = directory_state(fixture.root_path())?;
+    let malformed_output = run_doctor(Some("--json"))?;
+    assert!(matches!(malformed_output.status.code(), Some(0 | 1)));
+    assert_eq!(stderr(&malformed_output)?, "");
+    let malformed_text = stdout(&malformed_output)?;
+    let malformed: Value = serde_json::from_str(&malformed_text)?;
+    assert!(malformed["checks"]
+        .as_array()
+        .expect("malformed Doctor checks")
+        .iter()
+        .any(|check| check["id"] == "registry" && check["status"] == "failed"));
+    assert!(!malformed["checks"]
+        .as_array()
+        .expect("malformed Doctor checks")
+        .iter()
+        .any(|check| check["id"] == "registry_schema"));
+    assert!(!json_value_contains_key(&malformed, "storage_profile"));
+    assert!(!malformed_text.contains("not-json"));
+    assert_eq!(
+        malformed_text.len() - malformed_text.trim_end_matches('\n').len(),
+        1
+    );
+    assert_eq!(
+        directory_state(fixture.root_path())?,
+        malformed_state_before
+    );
     Ok(())
 }
 

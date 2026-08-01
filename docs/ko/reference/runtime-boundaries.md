@@ -172,6 +172,12 @@ footprint는 저장된 row 본문 없이 범주와 개수를 읽습니다. Typed
 `doctor_output_scope` 스칼라만 출력 범위 문장을 담당합니다. 사람용 렌더링과 JSON
 렌더링은 report 하나를 소비하고 정의의 정규 UTF-8 문구를 보존합니다.
 
+Doctor 조사의 Registry 분기는 현재 저장된 `StorageManifest`를 엄격하게 decode하여 typed
+조사 record로 만듭니다. JSON은 이 storage profile을 구조화된 object로 유지하고, verbose
+사람용 출력은 contract, digest, capability 목록을 이름 있는 field와 section으로
+표시합니다. 잘못되었거나 호환되지 않는 manifest는 Registry 조사 실패로 남으며 검증하지
+않은 text 형태로 renderer에 전달되지 않습니다.
+
 이러한 읽기 전용 명령은 Runtime Home, project, repository, authority, report, 관찰,
 timestamp 상태를 만들거나 갱신하지 않습니다. Connection list, Connection status,
 status, 개인정보 footprint, policy show는 MCP, writeability, reconciliation probe를

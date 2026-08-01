@@ -4,9 +4,15 @@ use std::{error::Error, fmt};
 
 use serde::Serialize;
 use volicord_command_model::VersionArgs;
-use volicord_mcp::{BuildInfo, BuildProfilePrecision};
+use volicord_mcp::BuildInfo;
 
-use crate::presentation::{Document, Field, HumanValue, Section, YesNo};
+use crate::{
+    build_presentation::{
+        debug_assertions, exact_cargo_profile, metadata_source_state, profile_precision,
+        source_tree_state,
+    },
+    presentation::{Document, Field, HumanValue, Section},
+};
 
 const PRODUCT_NAME: &str = "Volicord";
 
@@ -58,7 +64,7 @@ pub fn run_version_command(args: VersionArgs) -> Result<String, VersionCommandEr
     Ok(concise_version())
 }
 
-fn render_verbose_version(build: &BuildInfo) -> String {
+pub(crate) fn render_verbose_version(build: &BuildInfo) -> String {
     Document::verbose(
         format!("{PRODUCT_NAME} {}", build.package_version),
         vec![
@@ -66,8 +72,12 @@ fn render_verbose_version(build: &BuildInfo) -> String {
                 "Source",
                 vec![
                     Field::new("Commit", HumanValue::text(build.git_commit)).into(),
-                    Field::new("Tree", optional_tree_state(build.git_dirty)).into(),
-                    Field::new("Metadata source", HumanValue::text(build.metadata_source)).into(),
+                    Field::new("Tree", HumanValue::text(source_tree_state(build.git_dirty))).into(),
+                    Field::new(
+                        "Metadata source",
+                        HumanValue::text(metadata_source_state(build.metadata_source)),
+                    )
+                    .into(),
                 ],
             )
             .into(),
@@ -78,46 +88,22 @@ fn render_verbose_version(build: &BuildInfo) -> String {
                     Field::new("Profile class", HumanValue::text(build.profile_class)).into(),
                     Field::new(
                         "Profile precision",
-                        HumanValue::text(profile_precision_text(build.profile_precision)),
+                        HumanValue::text(profile_precision(build.profile_precision)),
                     )
                     .into(),
                     Field::new(
                         "Exact Cargo profile",
-                        build
-                            .build_profile
-                            .map(HumanValue::text)
-                            .unwrap_or_else(|| HumanValue::text("not recorded")),
+                        exact_cargo_profile(build.build_profile),
                     )
                     .into(),
                     Field::new("Optimization", HumanValue::text(build.opt_level)).into(),
-                    Field::new("Debug assertions", optional_yes_no(build.debug)).into(),
+                    Field::new("Debug assertions", debug_assertions(build.debug)).into(),
                 ],
             )
             .into(),
         ],
     )
     .render()
-}
-
-fn optional_tree_state(dirty: Option<bool>) -> HumanValue {
-    HumanValue::text(match dirty {
-        Some(true) => "dirty",
-        Some(false) => "clean",
-        None => "unknown",
-    })
-}
-
-fn optional_yes_no(value: Option<bool>) -> HumanValue {
-    value
-        .map(|value| HumanValue::YesNo(YesNo::from(value)))
-        .unwrap_or_else(|| HumanValue::text("unknown"))
-}
-
-fn profile_precision_text(precision: BuildProfilePrecision) -> &'static str {
-    match precision {
-        BuildProfilePrecision::Exact => "exact",
-        BuildProfilePrecision::ClassOnly => "class only",
-    }
 }
 
 #[cfg(test)]
@@ -128,7 +114,7 @@ mod tests {
     fn verbose_projection_names_profile_precision_without_guessing_exact_profile() {
         let mut build = volicord_mcp::build_info();
         build.build_profile = None;
-        build.profile_precision = BuildProfilePrecision::ClassOnly;
+        build.profile_precision = volicord_mcp::BuildProfilePrecision::ClassOnly;
         build.build_id = build.deterministic_build_id();
 
         let output = render_verbose_version(&build);
@@ -139,5 +125,17 @@ mod tests {
         assert!(output.contains("  Profile precision: class only"));
         assert!(output.contains("  Exact Cargo profile: not recorded"));
         assert!(output.ends_with('\n'));
+    }
+
+    #[test]
+    fn verbose_projection_shows_an_exact_profile_without_relabeling_it() {
+        let mut build = volicord_mcp::build_info();
+        build.build_profile = Some("release-with-debug");
+        build.profile_precision = volicord_mcp::BuildProfilePrecision::Exact;
+        build.build_id = build.deterministic_build_id();
+
+        let output = render_verbose_version(&build);
+        assert!(output.contains("  Profile precision: exact"));
+        assert!(output.contains("  Exact Cargo profile: release-with-debug"));
     }
 }

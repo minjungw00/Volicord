@@ -10,6 +10,7 @@ use volicord_types::guard_manifest::guard_manifest_from_json;
 use volicord_types::ids::{ConnectionIntegrationInstanceId, RuntimeHomePublicationId};
 use volicord_types::integration_revision::IntegrationRevision;
 use volicord_types::managed_mcp_client_info::project_agent_session_id;
+use volicord_types::storage_contract::StorageManifest;
 
 use crate::{
     agent_connections::{
@@ -22,8 +23,8 @@ use crate::{
     },
     schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND},
     sqlite::{
-        open_read_only_database, registry_db_path, validate_persisted_manifest,
-        validate_project_state_schema, validate_registry_schema,
+        decode_persisted_manifest, open_read_only_database, registry_db_path,
+        validate_persisted_manifest, validate_project_state_schema, validate_registry_schema,
     },
     StoreError,
 };
@@ -79,7 +80,7 @@ pub struct RuntimeHomeInspectionRecord {
     pub publication_id: RuntimeHomePublicationId,
     pub runtime_home_path: PathBuf,
     pub registry_db_path: PathBuf,
-    pub storage_profile: String,
+    pub storage_profile: StorageManifest,
     pub created_at: String,
     pub updated_at: String,
     pub metadata_json: String,
@@ -463,7 +464,7 @@ fn read_runtime_home_record(
         )));
     }
 
-    let record = conn
+    let row = conn
         .query_row(
             "SELECT
                 runtime_home_id,
@@ -478,23 +479,22 @@ fn read_runtime_home_record(
              WHERE singleton_id = 1",
             [],
             |row| {
-                Ok(RuntimeHomeInspectionRecord {
-                    runtime_home_id: row.get(0)?,
-                    publication_id: RuntimeHomePublicationId::parse(row.get::<_, String>(1)?)
-                        .map_err(|error| {
-                            rusqlite::Error::FromSqlConversionFailure(
-                                1,
-                                rusqlite::types::Type::Text,
-                                Box::new(error),
-                            )
-                        })?,
-                    runtime_home_path: PathBuf::from(row.get::<_, String>(2)?),
-                    registry_db_path: PathBuf::from(row.get::<_, String>(3)?),
-                    storage_profile: row.get(4)?,
-                    metadata_json: row.get(5)?,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    RuntimeHomePublicationId::parse(row.get::<_, String>(1)?).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            1,
+                            rusqlite::types::Type::Text,
+                            Box::new(error),
+                        )
+                    })?,
+                    PathBuf::from(row.get::<_, String>(2)?),
+                    PathBuf::from(row.get::<_, String>(3)?),
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
             },
         )
         .optional()
@@ -505,6 +505,19 @@ fn read_runtime_home_record(
             )
         })?;
 
+    let storage_profile = decode_persisted_manifest(REGISTRY_DATABASE_KIND, &row.4)
+        .map_err(project_state_validation_issue)?;
+    let record = RuntimeHomeInspectionRecord {
+        runtime_home_id: row.0,
+        publication_id: row.1,
+        runtime_home_path: row.2,
+        registry_db_path: row.3,
+        storage_profile,
+        metadata_json: row.5,
+        created_at: row.6,
+        updated_at: row.7,
+    };
+
     require_nonempty("runtime_home.runtime_home_id", &record.runtime_home_id)?;
     require_nonempty(
         "runtime_home.runtime_home_path",
@@ -514,7 +527,6 @@ fn read_runtime_home_record(
         "runtime_home.registry_db_path",
         &record.registry_db_path.display().to_string(),
     )?;
-    validate_storage_profile(REGISTRY_DATABASE_KIND, &record.storage_profile)?;
     validate_json_object("runtime_home.metadata_json", &record.metadata_json)?;
     Ok(record)
 }
@@ -1240,6 +1252,10 @@ mod tests {
 
         assert_eq!(snapshot.schema, InspectionSchemaState::Current);
         assert_eq!(snapshot.runtime_home.runtime_home_id, RUNTIME_HOME_ID);
+        assert_eq!(
+            snapshot.runtime_home.storage_profile,
+            current_storage_manifest()?.clone()
+        );
         assert_eq!(snapshot.projects.len(), 1);
         assert_eq!(snapshot.projects[0].project_id, PROJECT_ID);
         assert_eq!(snapshot.projects[0].status, ACTIVE_PROJECT_STATUS);

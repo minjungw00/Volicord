@@ -75,6 +75,13 @@ records become reachable at the selected Runtime Home path. An existing
 Registry is inspected read-only first; incompatible record or relation facts
 are reported without rewriting any Registry record.
 
+Read-only Registry inspection retains the strictly decoded current
+`StorageManifest` as a typed value for diagnostic consumers. Doctor therefore
+serializes `storage_profile` as the manifest object itself and renders its
+fields and capability collection as structured human detail. It does not carry
+the physical JSON text across the Store boundary or offer that text after a
+decode, canonical-encoding, or current-contract failure.
+
 Publication guards and their rollback results are process-local typed lifecycle
 facts, not Registry rows. Confirmation failure retains its primary error,
 rollback outcome, final-path observation, and parent-entry durability together.

@@ -568,13 +568,27 @@ conflict rejection, strict required/recommended partitioning, one primary
 action across JSON and human projections, warning-without-action wording, and
 no Store or Product Repository mutation during rendering.
 
+Build-presentation coverage constructs exact-profile, class-only, and missing
+profile metadata and compares Version and Doctor human wording from the shared
+typed owner. It also proves that JSON retains the exact `class_only` machine
+value without a parallel presentation-label field. Focused Doctor renderer
+coverage distinguishes `not recorded`, `not applicable`, `not checked`, and an
+actually empty collection rendered as `none`; Hook path-safety cases include
+verified, failed, not-recorded, and not-checked assessments without reducing
+them to ambiguous yes/no text.
+
 The Doctor binary fixture initializes the canonical current artifacts once,
 then invokes compact, verbose, and JSON Doctor modes without rerunning setup.
 It requires a passed `guard_files` check only with a verified path-safety
 assessment, one strict state object with no parallel fields, explicit verbose
 semantic labels, no successful compact detail, and unchanged Registry, project
 and diagnostics Stores, managed configuration, installation profile, Hook
-files, and Product Repository bytes and modification times.
+files, and Product Repository bytes and modification times. Registry coverage
+requires `storage_profile` to be the structured current `StorageManifest` in
+JSON, checks its verbose fields and capability list, and injects malformed
+persisted manifest JSON to prove strict failure without raw-string fallback.
+Every branch preserves exactly one trailing newline and the read-only state of
+the disposable Runtime Home after its fixture setup.
 
 Connection-list lifecycle coverage compares each available membership with
 selected status at setup, managed-session, and complete stages; retains current

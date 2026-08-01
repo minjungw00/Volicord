@@ -91,6 +91,18 @@ pub(crate) enum HookPathSafetyEvidenceSource {
     HostHookWrapper,
 }
 
+impl HookPathSafetyEvidenceSource {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::GuardManifest => "guard_manifest",
+            Self::ProjectPolicy => "project_policy",
+            Self::HostHookConfig => "host_hook_config",
+            Self::HostHookDispatch => "host_hook_dispatch",
+            Self::HostHookWrapper => "host_hook_wrapper",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HookPathSafetyEvidenceReason {
@@ -113,6 +125,30 @@ pub(crate) enum HookPathSafetyEvidenceReason {
     AuditNotRun,
 }
 
+impl HookPathSafetyEvidenceReason {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::CurrentContractVerified => "current_contract_verified",
+            Self::ManifestMalformed => "manifest_malformed",
+            Self::OwnerBindingMismatch => "owner_binding_mismatch",
+            Self::RequiredPhaseMissing => "required_phase_missing",
+            Self::RequiredArtifactMissing => "required_artifact_missing",
+            Self::ArtifactUnavailable => "artifact_unavailable",
+            Self::ArtifactMissing => "artifact_missing",
+            Self::ArtifactMalformed => "artifact_malformed",
+            Self::ContentMismatch => "content_mismatch",
+            Self::ManagedCommandBindingMismatch => "managed_command_binding_mismatch",
+            Self::PermissionMismatch => "permission_mismatch",
+            Self::NoncanonicalHookCommand => "noncanonical_hook_command",
+            Self::NoncanonicalRootResolution => "noncanonical_root_resolution",
+            Self::NoncanonicalManagedCommand => "noncanonical_managed_command",
+            Self::PolicyHashMismatch => "policy_hash_mismatch",
+            Self::HostOutputMismatch => "host_output_mismatch",
+            Self::AuditNotRun => "audit_not_run",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub(crate) struct HookPathSafetyEvidence {
     state: HookPathSafetyState,
@@ -124,6 +160,32 @@ pub(crate) struct HookPathSafetyEvidence {
     phase: Option<GuardHookPhase>,
     #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
+}
+
+impl HookPathSafetyEvidence {
+    pub(crate) const fn state(&self) -> HookPathSafetyState {
+        self.state
+    }
+
+    pub(crate) const fn source(&self) -> HookPathSafetyEvidenceSource {
+        self.source
+    }
+
+    pub(crate) const fn reason(&self) -> HookPathSafetyEvidenceReason {
+        self.reason
+    }
+
+    pub(crate) fn installation_id(&self) -> Option<&str> {
+        self.installation_id.as_deref()
+    }
+
+    pub(crate) const fn phase(&self) -> Option<GuardHookPhase> {
+        self.phase
+    }
+
+    pub(crate) fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

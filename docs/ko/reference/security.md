@@ -126,6 +126,13 @@ Doctor의 개인정보 footprint 표시도 정규 typed 정의 하나와 typed r
 Volicord Store에 대응하는 권한 metadata가 전혀 없다는 뜻이 아닙니다. 사람용 출력과 JSON
 출력은 같은 정규 UTF-8 주장 문구를 보존합니다.
 
+Version과 Doctor의 사람용 출력은 하나의 typed vocabulary에서 build-provenance label을
+도출합니다. 기록된 build fact가 없으면 `not recorded`로 표시하고, `class_only`를 포함한
+정확한 JSON 값은 바꾸지 않습니다. Doctor는 엄격하게 decode한 storage metadata와 Hook
+평가를 JSON에서 구조화된 값으로 유지하고, verbose 출력에서는 명시적인 사람용 상태를
+갖는 전용 section으로 투영합니다. 누락된 근거를 `no`로 바꾸거나 구조화 값을 text로
+평탄화하거나 renderer에서 검증하지 않은 저장 문자열을 parse하지 않습니다.
+
 ### Workflow policy 검사
 
 권위 있는 workflow policy 전체는 검사할 수 있는 로컬 구성이며 credential이 아닙니다.
