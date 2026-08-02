@@ -92,6 +92,37 @@ fn known_tool_validation_aggregates_independent_issues_without_core_effects(
 }
 
 #[test]
+fn record_shaping_rejects_legacy_shaping_update_at_the_schema_boundary(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-record-shaping-unknown-shaping-update")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+    let arguments = json!({
+        "task_id": "task_schema_only",
+        "scope_revision": 1,
+        "baseline_ref": null,
+        "summary": "Validate the supported shaping request shape.",
+        "implementation_boundary": null,
+        "gaps": [],
+        "source_refs": [],
+        "evidence_refs": [],
+        "close_assessment": null,
+        "shaping_update": {}
+    });
+
+    let error = adapter
+        .call_tool(AgentToolId::RECORD_SHAPING.wire_name(), arguments)
+        .expect_err("unknown shaping_update must fail before Core");
+    let response = structured_tool_error(AgentToolId::RECORD_SHAPING.wire_name(), &error);
+
+    assert_eq!(response["code"], "MCP_INVALID_ARGUMENTS");
+    assert_eq!(response["reached_core"], false);
+    tool_error_issue(&response, "/shaping_update", "MCP_ARGUMENT_UNKNOWN");
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-nullable-object-validation")?;

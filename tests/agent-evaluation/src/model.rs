@@ -45,10 +45,11 @@ pub enum TaskGroup {
     MultiSessionLongRunning,
     ShellScriptFileWrite,
     BlockedWaitingUserResponse,
+    PlanningOnlyDevelopment,
 }
 
 impl TaskGroup {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::ReadOnlyInvestigation,
         Self::SingleFileTypoFix,
         Self::SingleFileLogicChange,
@@ -61,6 +62,7 @@ impl TaskGroup {
         Self::MultiSessionLongRunning,
         Self::ShellScriptFileWrite,
         Self::BlockedWaitingUserResponse,
+        Self::PlanningOnlyDevelopment,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -77,6 +79,7 @@ impl TaskGroup {
             Self::MultiSessionLongRunning => "multi_session_long_running",
             Self::ShellScriptFileWrite => "shell_script_file_write",
             Self::BlockedWaitingUserResponse => "blocked_waiting_user_response",
+            Self::PlanningOnlyDevelopment => "planning_only_development",
         }
     }
 
@@ -238,6 +241,36 @@ pub struct DriverObservation {
     pub wrong_auto_completions: u64,
     pub workflow_rejections_observed: u64,
     pub workflow_rejections_surfaced_in_final_answer: u64,
+    pub shaping_workflow: ShapingWorkflowObservation,
+}
+
+/// Aggregate behavioral observations for explicit shaping and implementation entry.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapingWorkflowObservation {
+    pub long_lived_repository_requests: u64,
+    pub automatic_volicord_uses: u64,
+    pub no_task_intake_opportunities: u64,
+    pub correct_intakes: u64,
+    pub shaping_opportunities: u64,
+    pub shaping_before_implementation: u64,
+    pub user_owned_decision_opportunities: u64,
+    pub user_action_requests_created: u64,
+    pub pending_chat_replies: u64,
+    pub chat_resolutions_created: u64,
+    pub cli_instruction_opportunities: u64,
+    pub correct_cli_instructions: u64,
+    pub preauthorization_write_opportunities: u64,
+    pub premature_product_writes: u64,
+    pub implementation_entry_opportunities: u64,
+    pub explicit_task_advances: u64,
+    pub mutation_calls: u64,
+    pub hidden_mutation_rejections: u64,
+    pub final_answers: u64,
+    pub concise_user_readable_outputs: u64,
+    pub raw_mcp_json_repetitions: u64,
+    pub guarantee_wording_checks: u64,
+    pub accurate_cooperative_guarantee_wording: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

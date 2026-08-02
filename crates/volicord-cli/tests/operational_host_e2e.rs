@@ -135,6 +135,8 @@ fn main() {
 }
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
+    planning_product_explicit_shaping_journey()
+        .map_err(|error| format!("planning-product shaping regression: {error}"))?;
     codex_2025_06_18_compatibility_records_managed_runtime_facts()
         .map_err(|error| format!("compatibility regression: {error}"))?;
     verification_tool_designation_mismatch_is_typed()
@@ -162,6 +164,704 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
         .map_err(|error| format!("local failure regression: {error}"))?;
     guard_failures_are_current_and_structured()
         .map_err(|error| format!("Guard failure regression: {error}"))?;
+    Ok(())
+}
+
+fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
+    const SESSION: &str = "future.session.planning-product";
+    const BASELINE: &str = "planning_product_baseline";
+    const IMPLEMENTATION_PATH: &str = "implementation/release-preparation.md";
+
+    let fixture = OperationalFixture::planning_product("planning-product")?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&init, 0, "init", "action_required")?;
+    let connection_id = fixture.connection_id();
+    let project_id = fixture.project_id();
+    let snapshot = fixture.registry_snapshot();
+    let manifest = snapshot
+        .guard_installations
+        .iter()
+        .find(|installation| installation.project_id == project_id)
+        .map(|installation| guard_manifest_from_json(&installation.manifest_json))
+        .transpose()?
+        .ok_or("planning Product Repository Guard Installation")?;
+    fixture.run_successful_managed_mcp_with_guard(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        "future.session.planning-product-observation",
+        &manifest,
+    )?;
+
+    let prompt = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-product.intake",
+        "prompt": "Prepare development from the planning documents and carry the bounded work through completion."
+    });
+    assert!(!prompt["prompt"]
+        .as_str()
+        .expect("planning prompt")
+        .to_ascii_lowercase()
+        .contains("volicord"));
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &prompt,
+        )?
+        .status
+        .success());
+
+    let before_analysis = fixture.repository_snapshot()?;
+    for path in [
+        "plans/product.md",
+        "plans/experience.md",
+        "plans/technical.md",
+    ] {
+        let text = fs::read_to_string(fixture.repo_root.join(path))?;
+        assert!(
+            text.starts_with('#'),
+            "planning analysis must read Markdown"
+        );
+    }
+    assert!(!before_analysis
+        .keys()
+        .any(|path| path.starts_with("src") || path == Path::new("Cargo.toml")));
+
+    let mut command = fixture.managed_mcp_command(&connection_id)?;
+    let mut child = LiveMcpChild::spawn(&mut command)?;
+    child.write(&json_lines(&[
+        initialize_request(FUTURE_VERSION),
+        initialized_notification(),
+        tools_list_request(),
+    ])?)?;
+    let startup = child.read_responses(2)?;
+    assert!(startup[1]["result"]["tools"]
+        .as_array()
+        .is_some_and(|tools| tools
+            .iter()
+            .any(|tool| tool["name"] == "volicord.record_shaping")));
+    let mut call_id = 10;
+
+    let projects = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::LIST_PROJECTS,
+        json!({}),
+        SESSION,
+        "future.turn.planning-product.intake",
+    )?;
+    call_id += 1;
+    assert!(projects["projects"]
+        .as_array()
+        .is_some_and(|projects| projects
+            .iter()
+            .any(|project| project["project_selector"] == project_id)));
+
+    let empty_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": null, "detail": "full"}),
+        SESSION,
+        "future.turn.planning-product.intake",
+    )?;
+    call_id += 1;
+    let empty_status_result = method_result(&empty_status);
+    assert_eq!(empty_status_result["active_task"], Value::Null);
+    let initial_state_version = empty_status_result["base"]["state_version"]
+        .as_u64()
+        .ok_or("empty status state_version")?;
+
+    let intake = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::INTAKE,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "plain_language_request": "Prepare and implement the first bounded release described by the planning documents.",
+            "requested_mode": "work",
+            "requested_control_level": "auto",
+            "resume_policy": "create_new",
+            "acceptance_policy": "required",
+            "lineage": null,
+            "initial_scope": {
+                "boundary": "Prepare one bounded implementation note from the current planning documents.",
+                "non_goals": ["Implement unrelated product capabilities."],
+                "acceptance_criteria": [{
+                    "statement": "The bounded release preparation is recorded and reviewed.",
+                    "evidence_requirement": "not_required"
+                }]
+            },
+            "initial_context_refs": [],
+            "initial_source_refs": []
+        }),
+        SESSION,
+        "future.turn.planning-product.intake",
+    )?;
+    call_id += 1;
+    let intake_result = method_result(&intake);
+    assert_typed_mutation_state(
+        intake_result,
+        initial_state_version + 1,
+        "work",
+        Some("shaping"),
+        "shaping_required",
+    );
+    let task_id = required_string(&intake_result["task_ref"], "record_id")?;
+    assert!(intake_result["change_unit_ref"].is_null());
+    assert_eq!(
+        intake["presentation"]["task_phase"]["work_phase"],
+        "shaping"
+    );
+
+    let action = |kind: &str, question: &str, options: Value, produced_at_state_version: u64| {
+        json!({
+            "action_type": "choice",
+            "judgment_kind": kind,
+            "presentation": "short",
+            "question": question,
+            "options": options,
+            "context": {
+                "summary": "The planning-only repository needs one bounded user-owned decision.",
+                "related_refs": [],
+                "artifact_refs": [],
+                "visible_risks": [],
+                "constraints": ["This decision authorizes no Product Repository write."]
+            },
+            "affected_refs": [{
+                "record_kind": "task",
+                "record_id": task_id,
+                "project_id": project_id,
+                "task_id": task_id,
+                "produced_at_state_version": produced_at_state_version
+            }],
+            "sensitive_action_scope": null
+        })
+    };
+    let recommendations = json!([
+        {
+            "option_id": "recommended",
+            "label": "Use recommendation",
+            "description": "Use the smallest bounded release recommendation.",
+            "consequence": "The selected recommendation is applied during scope update.",
+            "is_default": true
+        },
+        {
+            "option_id": "alternative",
+            "label": "Use alternative",
+            "description": "Use the documented alternative.",
+            "consequence": "The alternative is applied during scope update.",
+            "is_default": false
+        }
+    ]);
+    let shaping = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "task_id": task_id,
+            "scope_revision": 0,
+            "baseline_ref": null,
+            "summary": "The planning documents support one bounded implementation after three user-owned decisions.",
+            "implementation_boundary": "Create only the release-preparation note at the bounded path.",
+            "gaps": [
+                {
+                    "gap_kind": "user_product_decision_required",
+                    "summary": "Confirm the product recommendation.",
+                    "affected_refs": [],
+                    "user_action": {"action": action("product_decision", "Use the recommended product boundary?", recommendations.clone(), initial_state_version + 1), "expires_at": null}
+                },
+                {
+                    "gap_kind": "user_technical_decision_required",
+                    "summary": "Confirm the technical recommendation.",
+                    "affected_refs": [],
+                    "user_action": {"action": action("technical_decision", "Use the recommended technical boundary?", recommendations, initial_state_version + 1), "expires_at": null}
+                },
+                {
+                    "gap_kind": "user_scope_decision_required",
+                    "summary": "Confirm the exact scope boundary.",
+                    "affected_refs": [],
+                    "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null, initial_state_version + 1), "expires_at": null}
+                }
+            ],
+            "source_refs": [],
+            "evidence_refs": [],
+            "close_assessment": null
+        }),
+        SESSION,
+        "future.turn.planning-product.shaping",
+    )?;
+    call_id += 1;
+    let shaping_result = method_result(&shaping);
+    assert_typed_mutation_state(
+        shaping_result,
+        initial_state_version + 2,
+        "work",
+        Some("shaping"),
+        "awaiting_user_action",
+    );
+    assert_eq!(shaping_result["shaping_checkpoint"]["readiness"], "blocked");
+    let checkpoint_id = required_string(
+        &shaping_result["shaping_checkpoint"],
+        "shaping_checkpoint_id",
+    )?;
+    let request_refs = shaping_result["created_user_action_request_refs"]
+        .as_array()
+        .ok_or("shaping UserAction request refs")?;
+    assert_eq!(request_refs.len(), 3);
+    assert_eq!(shaping["presentation"]["next_actor"], "user");
+    assert_eq!(
+        shaping["presentation"]["required_user_action"]["chat_reply_is_resolution"],
+        false
+    );
+    assert_eq!(
+        shaping["presentation"]["required_user_action"]["list_command"],
+        format!("volicord inbox --task {task_id} --json")
+    );
+    assert_eq!(fixture.repository_snapshot()?, before_analysis);
+
+    let state_db = fixture.project_state_db_path();
+    let state = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(table_count(&state, "change_units")?, 0);
+    assert_eq!(table_count(&state, "write_tickets")?, 0);
+    assert_eq!(table_count(&state, "user_action_resolutions")?, 0);
+    let before_chat_version: u64 =
+        state.query_row("SELECT state_version FROM project_state", [], |row| {
+            row.get(0)
+        })?;
+    drop(state);
+    let chat_prompt = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-product.chat-acceptance",
+        "prompt": "모든 추천안을 수락합니다."
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &chat_prompt,
+        )?
+        .status
+        .success());
+    let state = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(table_count(&state, "user_action_resolutions")?, 0);
+    assert_eq!(
+        state.query_row("SELECT state_version FROM project_state", [], |row| row
+            .get::<_, u64>(0))?,
+        before_chat_version
+    );
+    drop(state);
+
+    let inbox = fixture.run_inbox(&["--task", &task_id, "--json"])?;
+    assert_eq!(inbox.status.code(), Some(0));
+    let inbox: Value = serde_json::from_slice(&inbox.stdout)?;
+    assert_eq!(
+        inbox["pending_user_action_inbox_items"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
+    let request_ids = request_refs
+        .iter()
+        .map(|reference| required_string(reference, "record_id"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut resolution_refs = Vec::new();
+    for (index, request_id) in request_ids.iter().enumerate() {
+        let choice = if index == 2 { "accept" } else { "recommended" };
+        let resolved = fixture.run_inbox(&[
+            "resolve",
+            request_id,
+            "--choice",
+            choice,
+            "--repo",
+            fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+            "--json",
+        ])?;
+        assert_eq!(
+            resolved.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&resolved.stderr)
+        );
+        let resolved: Value = serde_json::from_slice(&resolved.stdout)?;
+        assert_typed_mutation_state(
+            &resolved,
+            initial_state_version + 3 + index as u64,
+            "work",
+            Some("shaping"),
+            if index == 2 {
+                "ready_to_apply_decisions"
+            } else {
+                "awaiting_user_action"
+            },
+        );
+        resolution_refs.push(resolved["user_action_resolution_ref"].clone());
+    }
+
+    let scope = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::UPDATE_SCOPE,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "task_id": task_id,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": "Create only the bounded release-preparation note.",
+            "non_goals": ["Add product runtime behavior."],
+            "acceptance_criteria": null,
+            "autonomy_boundary": "No additional Product Repository paths may change.",
+            "baseline_ref": BASELINE,
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Create the bounded release-preparation note.",
+                "affected_paths": [IMPLEMENTATION_PATH]
+            },
+            "related_scope_decision_refs": [resolution_refs[2].clone()]
+        }),
+        SESSION,
+        "future.turn.planning-product.apply-decisions",
+    )?;
+    call_id += 1;
+    assert_compact_mutation_state(
+        &scope,
+        initial_state_version + 6,
+        "work",
+        Some("shaping"),
+        "ready_for_implementation",
+    );
+    let change_unit_id =
+        required_string(&scope["authority_receipt"]["change_unit_ref"], "record_id")?;
+    assert_eq!(
+        table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
+        0
+    );
+
+    let resolution_ids = resolution_refs
+        .iter()
+        .map(|reference| required_string(reference, "record_id"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let advanced = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::ADVANCE_TASK,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "task_id": task_id,
+            "shaping_checkpoint_id": checkpoint_id,
+            "change_unit_id": change_unit_id,
+            "scope_revision": 1,
+            "baseline_ref": BASELINE,
+            "user_action_resolution_ids": resolution_ids
+        }),
+        SESSION,
+        "future.turn.planning-product.advance",
+    )?;
+    call_id += 1;
+    assert_compact_mutation_state(
+        &advanced,
+        initial_state_version + 7,
+        "work",
+        Some("implementation"),
+        "implementation",
+    );
+    assert_eq!(
+        table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
+        0
+    );
+    for fact_kind in [
+        "entered_implementation",
+        "phase_transition_created_no_write_ticket",
+        "product_repository_writes_require_prepare_write",
+    ] {
+        assert!(advanced["presentation"]["must_surface"]
+            .as_array()
+            .is_some_and(|facts| facts.iter().any(|fact| fact["fact_kind"] == fact_kind)));
+    }
+
+    let prepared = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::PREPARE_WRITE,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "task_id": task_id,
+            "change_unit_id": change_unit_id,
+            "intended_operation": "Create the bounded release-preparation note.",
+            "intended_paths": [IMPLEMENTATION_PATH],
+            "product_file_write_intended": true,
+            "sensitive_categories": [],
+            "baseline_ref": BASELINE
+        }),
+        SESSION,
+        "future.turn.planning-product.prepare-write",
+    )?;
+    call_id += 1;
+    let prepared_result = method_result(&prepared);
+    assert_compact_mutation_state(
+        &prepared,
+        initial_state_version + 8,
+        "work",
+        Some("implementation"),
+        "implementation",
+    );
+    assert_eq!(prepared_result["decision"], "allowed");
+    let write_ticket_id = required_string(prepared_result, "write_ticket_id")?;
+    assert_eq!(
+        fixture.repository_snapshot()?,
+        before_analysis,
+        "workflow authority mutations must not edit the Product Repository"
+    );
+
+    let write_tool_use = "future.tool-use.planning-product-write";
+    let write_input = json!({"file_path": fixture.repo_root.join(IMPLEMENTATION_PATH)});
+    let write_pre = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-product.write",
+        "tool_use_id": write_tool_use,
+        "tool_name": "Write",
+        "tool_input": write_input
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PreTool),
+            &write_pre
+        )?
+        .status
+        .success());
+    fs::create_dir_all(fixture.repo_root.join("implementation"))?;
+    fs::write(
+        fixture.repo_root.join(IMPLEMENTATION_PATH),
+        "# Release preparation\n\nImplement only the approved bounded first release.\n",
+    )?;
+    let write_post = json!({
+        "hook_event_name": "PostToolUse",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-product.write",
+        "tool_use_id": write_tool_use,
+        "tool_name": "Write",
+        "tool_input": write_input,
+        "tool_response": {"success": true}
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PostTool),
+            &write_post
+        )?
+        .status
+        .success());
+    let state = rusqlite::Connection::open(&state_db)?;
+    let observation: (String, String) = state.query_row(
+        "SELECT repository_observation_id, state FROM repository_observations WHERE host_tool_use_id = ?1 ORDER BY started_at DESC LIMIT 1",
+        [write_tool_use],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(observation.1, "complete");
+    let observation = repository_observation(&fixture.runtime_home, &project_id, &observation.0)?
+        .ok_or("bounded write repository observation")?;
+    assert_eq!(
+        observation
+            .terminal_result
+            .as_ref()
+            .and_then(|result| result.delta.as_ref())
+            .map(|delta| delta.transition_count),
+        Some(1)
+    );
+    assert!(observation
+        .terminal_result
+        .as_ref()
+        .is_some_and(|result| result.unrecorded_changes.is_empty()));
+    assert_eq!(table_count(&state, "unrecorded_changes")?, 0);
+    drop(state);
+
+    let recorded = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_RUN,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "task_id": task_id,
+            "change_unit_id": change_unit_id,
+            "kind": "implementation",
+            "run_id": null,
+            "baseline_ref": BASELINE,
+            "write_ticket_id": write_ticket_id,
+            "performed_operation": "Create the bounded release-preparation note.",
+            "summary": "The approved bounded release preparation was recorded.",
+            "observed_changes": {
+                "changed_paths": [IMPLEMENTATION_PATH],
+                "product_file_write_observed": true,
+                "sensitive_categories": [],
+                "baseline_ref": BASELINE
+            },
+            "artifact_inputs": [],
+            "evidence_updates": [],
+            "evidence_observations": [],
+            "close_assessment": {
+                "result_summary": "The bounded release preparation is complete and self-checked.",
+                "result_refs": [],
+                "residual_risks": [],
+                "sensitive_categories": [],
+                "recovery_constraints": []
+            }
+        }),
+        SESSION,
+        "future.turn.planning-product.record-run",
+    )?;
+    call_id += 1;
+    let recorded_result = method_result(&recorded);
+    assert_compact_mutation_state(
+        &recorded,
+        initial_state_version + 9,
+        "work",
+        Some("implementation"),
+        "implementation",
+    );
+    assert!(recorded_result["run_ref"].is_object());
+    let run_id = required_string(&recorded_result["run_ref"], "record_id")?;
+    let state = rusqlite::Connection::open(&state_db)?;
+    let (run_kind, observed_changes_json): (String, String) = state.query_row(
+        "SELECT kind, observed_changes_json FROM runs WHERE run_id = ?1",
+        [&run_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let observed_changes: Value = serde_json::from_str(&observed_changes_json)?;
+    assert_eq!(
+        observed_changes["changed_paths"],
+        json!([IMPLEMENTATION_PATH])
+    );
+    let (ticket_status, consumed_by_run_id, attempt_scope_json): (String, String, String) = state
+        .query_row(
+        "SELECT status, consumed_by_run_id, attempt_scope_json
+               FROM write_tickets WHERE write_ticket_id = ?1",
+        [&write_ticket_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    let attempt_scope: Value = serde_json::from_str(&attempt_scope_json)?;
+    assert_eq!(ticket_status, "consumed");
+    assert_eq!(consumed_by_run_id, run_id);
+    assert_eq!(
+        attempt_scope["intended_operation"],
+        "Create the bounded release-preparation note."
+    );
+    assert_eq!(run_kind, "implementation");
+    drop(state);
+
+    let close_review = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::CHECK_CLOSE,
+        json!({"project_selector": project_id, "task_id": task_id}),
+        SESSION,
+        "future.turn.planning-product.close-review",
+    )?;
+    call_id += 1;
+    let close_review = method_result(&close_review);
+    assert_eq!(close_review["close_state"], "blocked");
+    assert!(close_review["blockers"]
+        .as_array()
+        .is_some_and(|blockers| blockers
+            .iter()
+            .any(|blocker| blocker["code"] == "missing_final_acceptance")));
+
+    let final_action = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::REQUEST_USER_ACTION,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "request": {
+                "operation": "create",
+                "task_id": task_id,
+                "change_unit_id": change_unit_id,
+                "action": action("final_acceptance", "Accept the completed bounded result?", Value::Null, initial_state_version + 9),
+                "required_for": ["close_complete"],
+                "expires_at": null
+            }
+        }),
+        SESSION,
+        "future.turn.planning-product.final-acceptance",
+    )?;
+    call_id += 1;
+    let final_action_result = method_result(&final_action);
+    assert_compact_mutation_state(
+        &final_action,
+        initial_state_version + 10,
+        "work",
+        Some("implementation"),
+        "implementation",
+    );
+    let final_request_id = required_string(
+        &final_action_result["user_action_request_summary"],
+        "user_action_request_id",
+    )?;
+    let final_resolution = fixture.run_inbox(&[
+        "resolve",
+        &final_request_id,
+        "--choice",
+        "accept",
+        "--repo",
+        fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+        "--json",
+    ])?;
+    assert_eq!(final_resolution.status.code(), Some(0));
+    let final_resolution: Value = serde_json::from_slice(&final_resolution.stdout)?;
+    assert_typed_mutation_state(
+        &final_resolution,
+        initial_state_version + 11,
+        "work",
+        Some("implementation"),
+        "implementation",
+    );
+
+    let ready = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::CHECK_CLOSE,
+        json!({"project_selector": project_id, "task_id": task_id}),
+        SESSION,
+        "future.turn.planning-product.close",
+    )?;
+    call_id += 1;
+    assert_eq!(method_result(&ready)["close_state"], "ready");
+    let closed = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::CLOSE_TASK,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "task_id": task_id,
+            "intent": "complete",
+            "close_reason": "completed_self_checked",
+            "superseding_task_id": null,
+            "user_note": "The bounded planning-product journey is complete."
+        }),
+        SESSION,
+        "future.turn.planning-product.close",
+    )?;
+    assert_compact_mutation_state(
+        &closed,
+        initial_state_version + 12,
+        "work",
+        Some("implementation"),
+        "terminal",
+    );
+    assert_eq!(closed["authority_receipt"]["close_state"], "closed");
+    assert_eq!(closed["authority_receipt"]["close_blockers"], json!([]));
+    let output = child.finish()?;
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
     Ok(())
 }
 
@@ -2553,6 +3253,18 @@ impl OperationalFixture {
     }
 
     fn with_scope(prefix: &str, shared: bool) -> Result<Self, Box<dyn Error>> {
+        Self::with_scope_and_planning_product(prefix, shared, false)
+    }
+
+    fn planning_product(prefix: &str) -> Result<Self, Box<dyn Error>> {
+        Self::with_scope_and_planning_product(prefix, false, true)
+    }
+
+    fn with_scope_and_planning_product(
+        prefix: &str,
+        shared: bool,
+        planning_product: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         let temporary_root = TempRuntimeHome::new(prefix)?;
         let runtime_home = temporary_root.root_path().join("runtime-home");
         let codex_home = temporary_root.root_path().join("codex-home");
@@ -2573,6 +3285,20 @@ impl OperationalFixture {
             "# Product repository guidance\n\nPreserve this tracked baseline.\n",
         )?;
         let git = IsolatedGitRepository::initialize_at(&repo_root)?;
+        if planning_product {
+            git.write(
+                "plans/product.md",
+                b"# Product plan\n\nPrepare one bounded first release from the approved recommendations.\n",
+            )?;
+            git.write(
+                "plans/experience.md",
+                b"# Experience plan\n\nKeep the first release small, readable, and reversible.\n",
+            )?;
+            git.write(
+                "plans/technical.md",
+                b"# Technical plan\n\nChoose the smallest local implementation boundary before writing.\n",
+            )?;
+        }
         git.write(
             ".gitattributes",
             format!("{TRANSFORMED_TRACKED_PATH} text eol=crlf\n").as_bytes(),
@@ -2696,6 +3422,12 @@ impl OperationalFixture {
         json: bool,
     ) -> Result<Output, Box<dyn Error>> {
         self.run_connection_with_path(operation, version, json, &self.path_dir)
+    }
+
+    fn run_inbox(&self, arguments: &[&str]) -> Result<Output, Box<dyn Error>> {
+        let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), FUTURE_VERSION);
+        command.arg("inbox").args(arguments);
+        Ok(command.output()?)
     }
 
     fn run_connection_verbose(
@@ -3063,6 +3795,10 @@ impl OperationalFixture {
             ],
             |row| row.get(0),
         )?;
+        let schema_invalid_user_actions_before: i64 =
+            project_state.query_row("SELECT COUNT(*) FROM user_action_requests", [], |row| {
+                row.get(0)
+            })?;
         drop(project_state);
         let schema_invalid_observation = repository_observation(
             &self.runtime_home,
@@ -3121,6 +3857,25 @@ impl OperationalFixture {
             Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
         );
         assert!(terminalized_schema_invalid.delta.is_none());
+        let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
+        assert_eq!(
+            project_state.query_row("SELECT COUNT(*) FROM user_action_requests", [], |row| {
+                row.get::<_, i64>(0)
+            })?,
+            schema_invalid_user_actions_before,
+            "schema validation failure must not create a UserAction request"
+        );
+        assert_eq!(
+            project_state.query_row(
+                "SELECT COUNT(*) FROM repository_observations
+                  WHERE repository_observation_id = ?1 AND state = 'open'",
+                [&schema_invalid_observation_id],
+                |row| row.get::<_, i64>(0),
+            )?,
+            0,
+            "the missing PostToolUse observation must not remain orphaned"
+        );
+        drop(project_state);
 
         let begin_input = json!({"project_selector": project_id});
         let begin_pre = json!({
@@ -4360,6 +5115,110 @@ fn managed_tool_call_in_turn(
             }
         }
     })
+}
+
+fn live_mcp_call(
+    child: &mut LiveMcpChild,
+    id: u64,
+    tool: AgentToolId,
+    arguments: Value,
+    session_id: &str,
+    turn_id: &str,
+) -> Result<Value, Box<dyn Error>> {
+    child.write(&json_lines(&[managed_tool_call_in_turn(
+        id,
+        tool.wire_name(),
+        arguments,
+        session_id,
+        turn_id,
+    )])?)?;
+    let responses = child.read_responses(1)?;
+    let response = &responses[0];
+    if response["result"]["isError"] != false {
+        return Err(format!("{} returned an MCP error: {response}", tool.wire_name()).into());
+    }
+    response["result"]["structuredContent"]
+        .as_object()
+        .map(|_| response["result"]["structuredContent"].clone())
+        .ok_or_else(|| {
+            format!(
+                "{} response omitted structured content: {response}",
+                tool.wire_name()
+            )
+            .into()
+        })
+}
+
+fn method_result(structured: &Value) -> &Value {
+    structured.get("method_result").unwrap_or(structured)
+}
+
+fn required_string(value: &Value, key: &str) -> Result<String, Box<dyn Error>> {
+    value[key]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("{key} should be a string in {value}").into())
+}
+
+fn assert_typed_mutation_state(
+    result: &Value,
+    state_version: u64,
+    mode: &str,
+    work_phase: Option<&str>,
+    workflow: &str,
+) {
+    assert_eq!(result["base"]["response_kind"], "result", "{result:#}");
+    assert_eq!(result["base"]["state_version"], state_version, "{result:#}");
+    assert_eq!(
+        result["state"]["state_version"], state_version,
+        "{result:#}"
+    );
+    assert_eq!(result["state"]["mode"], mode, "{result:#}");
+    assert_eq!(
+        result["state"]["work_phase"].as_str(),
+        work_phase,
+        "{result:#}"
+    );
+    assert_eq!(result["state"]["workflow"]["kind"], workflow, "{result:#}");
+}
+
+fn assert_compact_mutation_state(
+    structured: &Value,
+    state_version: u64,
+    mode: &str,
+    work_phase: Option<&str>,
+    workflow: &str,
+) {
+    let compact = method_result(structured);
+    let effect = compact.get("effect").unwrap_or(compact);
+    assert_eq!(effect["effect_kind"], "core_committed", "{structured:#}");
+    assert_eq!(effect["state_version"], state_version, "{structured:#}");
+    assert_eq!(
+        structured["authority_receipt"]["state_version"], state_version,
+        "{structured:#}"
+    );
+    assert_eq!(structured["workflow"]["kind"], workflow, "{structured:#}");
+    assert_eq!(
+        structured["presentation"]["task_phase"]["mode"], mode,
+        "{structured:#}"
+    );
+    assert_eq!(
+        structured["presentation"]["task_phase"]["work_phase"].as_str(),
+        work_phase,
+        "{structured:#}"
+    );
+}
+
+fn table_count(connection: &rusqlite::Connection, table: &str) -> Result<i64, Box<dyn Error>> {
+    assert!(matches!(
+        table,
+        "change_units" | "write_tickets" | "user_action_resolutions" | "unrecorded_changes"
+    ));
+    Ok(
+        connection.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+            row.get(0)
+        })?,
+    )
 }
 
 fn json_lines(messages: &[Value]) -> Result<String, serde_json::Error> {

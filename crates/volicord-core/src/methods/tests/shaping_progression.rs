@@ -100,6 +100,7 @@ fn every_workflow_rejection_code_preserves_authority_without_an_effect(
 fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
     let intake = harness.service.intake(
         intake_request(
             "req_shaping_task",
@@ -131,6 +132,74 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
     )?;
     let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
     assert_eq!(scoped.response_value["state"]["work_phase"], "shaping");
+
+    let before_shortcuts = harness.counts()?;
+    let premature_advance = harness.service.advance_task(
+        AdvanceTaskRequest {
+            envelope: envelope(
+                "req_shaping_advance_without_checkpoint",
+                Some("idem_shaping_advance_without_checkpoint"),
+                false,
+                Some(2),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_not_created"),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: Vec::new(),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        premature_advance.response_value["errors"][0]["code"],
+        "SHAPING_CHECKPOINT_REQUIRED"
+    );
+    assert_eq!(
+        premature_advance.response_value["errors"][0]["details"]["recovery"]["owner_method"],
+        "volicord.record_shaping"
+    );
+
+    let premature_run = harness.service.record_run(
+        record_run_request(
+            "req_shaping_run_before_advance",
+            "idem_shaping_run_before_advance",
+            false,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        premature_run.response_value["errors"][0]["code"],
+        "TASK_PHASE_TRANSITION_REQUIRED"
+    );
+    assert_eq!(
+        premature_run.response_value["errors"][0]["details"]["recovery"]["owner_method"],
+        "volicord.record_shaping"
+    );
+
+    let shaping_close = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_shaping_close_before_advance",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(shaping_close.response_value["close_state"], "blocked");
+    assert_eq!(
+        shaping_close.response_value["state"]["workflow"]["kind"],
+        "shaping_required"
+    );
+    assert_eq!(harness.counts()?, before_shortcuts);
 
     let denied = harness.service.prepare_write(
         prepare_write_request(
@@ -202,6 +271,54 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
         .as_str()
         .expect("checkpoint id")
         .to_owned();
+
+    let before_stale = harness.counts()?;
+    let stale_checkpoint = harness.service.advance_task(
+        AdvanceTaskRequest {
+            envelope: envelope(
+                "req_shaping_stale_checkpoint",
+                Some("idem_shaping_stale_checkpoint"),
+                false,
+                Some(3),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_superseded"),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: Vec::new(),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        stale_checkpoint.response_value["errors"][0]["code"],
+        "SHAPING_CHECKPOINT_STALE"
+    );
+
+    let stale_change_unit = harness.service.advance_task(
+        AdvanceTaskRequest {
+            envelope: envelope(
+                "req_shaping_stale_change_unit",
+                Some("idem_shaping_stale_change_unit"),
+                false,
+                Some(3),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            change_unit_id: ChangeUnitId::new("change_unit_superseded"),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: Vec::new(),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        stale_change_unit.response_value["errors"][0]["code"],
+        "CHANGE_UNIT_STALE"
+    );
+    assert_eq!(harness.counts()?, before_stale);
 
     let advanced = harness.service.advance_task(
         AdvanceTaskRequest {
@@ -367,6 +484,37 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
     let after = harness.counts()?;
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.user_action_requests, before.user_action_requests + 1);
+
+    let checkpoint_id = response.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+        .as_str()
+        .expect("blocked checkpoint id");
+    let unresolved = harness.service.advance_task(
+        AdvanceTaskRequest {
+            envelope: envelope(
+                "req_shaping_gap_advance",
+                Some("idem_shaping_gap_advance"),
+                false,
+                Some(after.state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: Vec::new(),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        unresolved.response_value["errors"][0]["code"],
+        "USER_DECISION_UNRESOLVED"
+    );
+    assert_eq!(
+        unresolved.response_value["errors"][0]["details"]["recovery"]["owner_method"],
+        "volicord.resolve_user_action"
+    );
+    assert_eq!(harness.counts()?, after);
     Ok(())
 }
 
@@ -445,5 +593,42 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         "{}",
         close.response_value
     );
+    Ok(())
+}
+
+#[test]
+fn direct_mode_records_a_mutation_without_shaping() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+        &harness,
+        "direct_without_shaping",
+        RequestedMode::Direct,
+    )?;
+    assert!(harness
+        .store()?
+        .current_shaping_checkpoint(&TaskId::new(&task_id))?
+        .is_none());
+
+    let before = harness.counts()?;
+    let mut request = record_run_request(
+        "req_direct_without_shaping_run",
+        "idem_direct_without_shaping_run",
+        false,
+        Some(before.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    request.kind = RunKind::Direct;
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_typed_result_contract::<RecordRunResult>(&response);
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(response.response_value["state"]["mode"], "direct");
+    let after = harness.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.runs, before.runs + 1);
     Ok(())
 }

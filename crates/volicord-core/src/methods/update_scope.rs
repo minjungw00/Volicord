@@ -508,13 +508,11 @@ fn plan_update_scope_mutations(
             .current_shaping_checkpoint(&request.task_id)
             .map_err(CorePipelineError::from)?
         {
-            let has_resolved_decisions = checkpoint
-                .gaps
-                .iter()
-                .any(|gap| gap.status == volicord_types::values::ShapingGapStatus::Resolved);
-            let can_rebase = checkpoint.readiness
-                == volicord_types::values::ShapingCheckpointReadiness::Ready
-                && (!has_resolved_decisions || !linked_scope_decision_refs.is_empty());
+            let can_rebase = shaping_checkpoint_can_rebase(
+                &checkpoint,
+                next_scope.baseline_ref.as_deref(),
+                &linked_scope_decision_refs,
+            );
             storage_mutations.push(CoreStorageMutation::Shaping(if can_rebase {
                 ShapingCheckpointMutation::RebaseCurrent {
                     task_id: task.task_id.clone(),
@@ -787,13 +785,15 @@ fn project_update_scope_response(
         .map_err(CorePipelineError::from)?;
     if scope_changed {
         if let Some(checkpoint) = projected_shaping_checkpoint.as_mut() {
-            let has_resolved_decisions = checkpoint
-                .gaps
-                .iter()
-                .any(|gap| gap.status == volicord_types::values::ShapingGapStatus::Resolved);
-            let can_rebase = checkpoint.readiness
-                == volicord_types::values::ShapingCheckpointReadiness::Ready
-                && (!has_resolved_decisions || !linked_scope_decision_refs.is_empty());
+            let can_rebase = shaping_checkpoint_can_rebase(
+                checkpoint,
+                synthetic_task
+                    .shaping
+                    .baseline_ref
+                    .as_ref()
+                    .map(volicord_types::ids::BaselineRef::as_str),
+                &linked_scope_decision_refs,
+            );
             if can_rebase {
                 checkpoint.scope_revision = next_scope_revision;
                 checkpoint.baseline_ref = synthetic_task.shaping.baseline_ref.clone();
@@ -939,6 +939,32 @@ fn project_update_scope_response(
         result_fields,
         next_actions,
     })
+}
+
+fn shaping_checkpoint_can_rebase(
+    checkpoint: &volicord_store::core_pipeline::ShapingCheckpointRecord,
+    next_baseline_ref: Option<&str>,
+    linked_scope_decision_refs: &[StateRecordRef],
+) -> bool {
+    let has_resolved_decisions = checkpoint
+        .gaps
+        .iter()
+        .any(|gap| gap.status == volicord_types::values::ShapingGapStatus::Resolved);
+    let decisions_are_resolved = checkpoint
+        .gaps
+        .iter()
+        .all(|gap| gap.status != volicord_types::values::ShapingGapStatus::Current);
+    let readiness_can_be_completed = checkpoint.readiness
+        == volicord_types::values::ShapingCheckpointReadiness::Blocked
+        && decisions_are_resolved
+        && next_baseline_ref.is_some()
+        && checkpoint
+            .implementation_boundary
+            .as_deref()
+            .is_some_and(|boundary| !boundary.trim().is_empty());
+    (checkpoint.readiness == volicord_types::values::ShapingCheckpointReadiness::Ready
+        || readiness_can_be_completed)
+        && (!has_resolved_decisions || !linked_scope_decision_refs.is_empty())
 }
 
 fn scope_validation_rejection<T>(

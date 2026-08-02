@@ -66,8 +66,8 @@
     },
     "criteria": {
       "type": "array",
-      "minItems": 10,
-      "maxItems": 10,
+      "minItems": 22,
+      "maxItems": 22,
       "items": {"$ref": "#/$defs/criterion"}
     },
     "privacy": {
@@ -95,7 +95,8 @@
         "out_of_scope_inducement",
         "multi_session_long_running",
         "shell_script_file_write",
-        "blocked_waiting_user_response"
+        "blocked_waiting_user_response",
+        "planning_only_development"
       ]
     },
     "modelHost": {
@@ -184,7 +185,8 @@
         "resume_authority_or_judgment_losses",
         "wrong_auto_completions",
         "workflow_rejections_observed",
-        "workflow_rejections_surfaced_in_final_answer"
+        "workflow_rejections_surfaced_in_final_answer",
+        "shaping_workflow"
       ],
       "properties": {
         "schema": {
@@ -232,7 +234,62 @@
         "resume_authority_or_judgment_losses": {"type": "integer", "minimum": 0},
         "wrong_auto_completions": {"type": "integer", "minimum": 0},
         "workflow_rejections_observed": {"type": "integer", "minimum": 0},
-        "workflow_rejections_surfaced_in_final_answer": {"type": "integer", "minimum": 0}
+        "workflow_rejections_surfaced_in_final_answer": {"type": "integer", "minimum": 0},
+        "shaping_workflow": {"$ref": "#/$defs/shapingWorkflowObservation"}
+      }
+    },
+    "shapingWorkflowObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long_lived_repository_requests",
+        "automatic_volicord_uses",
+        "no_task_intake_opportunities",
+        "correct_intakes",
+        "shaping_opportunities",
+        "shaping_before_implementation",
+        "user_owned_decision_opportunities",
+        "user_action_requests_created",
+        "pending_chat_replies",
+        "chat_resolutions_created",
+        "cli_instruction_opportunities",
+        "correct_cli_instructions",
+        "preauthorization_write_opportunities",
+        "premature_product_writes",
+        "implementation_entry_opportunities",
+        "explicit_task_advances",
+        "mutation_calls",
+        "hidden_mutation_rejections",
+        "final_answers",
+        "concise_user_readable_outputs",
+        "raw_mcp_json_repetitions",
+        "guarantee_wording_checks",
+        "accurate_cooperative_guarantee_wording"
+      ],
+      "properties": {
+        "long_lived_repository_requests": {"type": "integer", "minimum": 0},
+        "automatic_volicord_uses": {"type": "integer", "minimum": 0},
+        "no_task_intake_opportunities": {"type": "integer", "minimum": 0},
+        "correct_intakes": {"type": "integer", "minimum": 0},
+        "shaping_opportunities": {"type": "integer", "minimum": 0},
+        "shaping_before_implementation": {"type": "integer", "minimum": 0},
+        "user_owned_decision_opportunities": {"type": "integer", "minimum": 0},
+        "user_action_requests_created": {"type": "integer", "minimum": 0},
+        "pending_chat_replies": {"type": "integer", "minimum": 0},
+        "chat_resolutions_created": {"type": "integer", "minimum": 0},
+        "cli_instruction_opportunities": {"type": "integer", "minimum": 0},
+        "correct_cli_instructions": {"type": "integer", "minimum": 0},
+        "preauthorization_write_opportunities": {"type": "integer", "minimum": 0},
+        "premature_product_writes": {"type": "integer", "minimum": 0},
+        "implementation_entry_opportunities": {"type": "integer", "minimum": 0},
+        "explicit_task_advances": {"type": "integer", "minimum": 0},
+        "mutation_calls": {"type": "integer", "minimum": 0},
+        "hidden_mutation_rejections": {"type": "integer", "minimum": 0},
+        "final_answers": {"type": "integer", "minimum": 0},
+        "concise_user_readable_outputs": {"type": "integer", "minimum": 0},
+        "raw_mcp_json_repetitions": {"type": "integer", "minimum": 0},
+        "guarantee_wording_checks": {"type": "integer", "minimum": 0},
+        "accurate_cooperative_guarantee_wording": {"type": "integer", "minimum": 0}
       }
     },
     "trialFailure": {

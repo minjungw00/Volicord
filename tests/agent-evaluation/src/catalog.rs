@@ -57,7 +57,7 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
 
     Ok(vec![
         FixtureCheck {
-            check_id: "four_evaluation_conditions".to_owned(),
+            check_id: "evaluation_conditions".to_owned(),
             status: CheckStatus::Passed,
             detail: format!(
                 "{} fixed conditions are scheduled for every scenario",
@@ -65,7 +65,7 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
             ),
         },
         FixtureCheck {
-            check_id: "twelve_task_groups".to_owned(),
+            check_id: "task_group_coverage".to_owned(),
             status: CheckStatus::Passed,
             detail: format!(
                 "{} deterministic scenarios cover all {} task groups",
@@ -194,6 +194,13 @@ fn validate_scenario(scenario: &ScenarioFixture) -> HarnessResult<()> {
         TaskGroup::ShellScriptFileWrite if !expected.shell_write_expected => {
             return Err(HarnessError::new(
                 "shell-write fixture must expect a shell-mediated write",
+            ));
+        }
+        TaskGroup::PlanningOnlyDevelopment
+            if !expected.product_write_expected || !expected.user_judgment_required =>
+        {
+            return Err(HarnessError::new(
+                "planning-only development must expect a product write after user judgment",
             ));
         }
         _ => {}

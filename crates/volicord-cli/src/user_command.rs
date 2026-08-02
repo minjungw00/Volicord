@@ -1266,6 +1266,7 @@ mod tests {
 
     struct PendingChoiceFixture {
         fixture: CoreFixture,
+        task_id: String,
         request_id: String,
     }
 
@@ -1337,6 +1338,7 @@ mod tests {
             .to_owned();
         Ok(PendingChoiceFixture {
             fixture,
+            task_id,
             request_id,
         })
     }
@@ -1788,6 +1790,57 @@ mod tests {
             diagnostic.project_id.as_deref(),
             Some(pending.fixture.project_id())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn inbox_resolution_rejects_a_stale_user_action_without_an_effect() -> Result<(), Box<dyn Error>>
+    {
+        let pending = pending_choice_fixture("cli-inbox-stale-resolution")?;
+        resolve_choice(&pending, true, "accept")?;
+
+        let session = seed_test_agent_session(
+            pending.fixture.runtime_home_path(),
+            pending.fixture.project_id(),
+            pending.fixture.connection_id(),
+            None,
+        )?;
+        let core = CoreService::for_mutation(&pending.fixture.mutation_context()?);
+        let validated = core.validate_agent_session(
+            AgentConnectionId::new(pending.fixture.connection_id()),
+            ProjectId::new(pending.fixture.project_id()),
+            session.runtime_session_id,
+            session.project_session_id,
+            OperationCategory::AgentWorkflow,
+        )?;
+        let state_version = pending.fixture.counts()?.state_version;
+        let scope = core.update_scope(
+            &pending.fixture.mutation_context()?,
+            pending.fixture.update_scope_request(UpdateScopeFixture {
+                request_id: "req_cli_inbox_stale_scope",
+                idempotency_key: "idem_cli_inbox_stale_scope",
+                dry_run: false,
+                expected_state_version: Some(state_version),
+                task_id: &pending.task_id,
+                operation: ChangeUnitOperation::CreateCurrent,
+                scope_summary: "Replace the basis after the original decision.",
+            }),
+            InvocationContext::agent_connection(OperationCategory::AgentWorkflow, validated),
+        )?;
+        assert_eq!(scope.response_value["base"]["response_kind"], "result");
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "stale"
+        );
+        let before_retry = pending.fixture.counts()?;
+
+        let error = resolve_choice(&pending, true, "accept")
+            .expect_err("a stale CLI resolution must be rejected");
+
+        assert!(matches!(error, UserCommandError::Runtime(_)));
+        assert!(error.to_string().contains("status: stale"));
+        assert!(error.to_string().contains("refresh `volicord inbox`"));
+        assert_eq!(pending.fixture.counts()?, before_retry);
         Ok(())
     }
 

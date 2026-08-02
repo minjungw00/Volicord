@@ -407,7 +407,20 @@ impl MutationContext<'_> {
         )?;
         self.tx.execute(
             "UPDATE shaping_checkpoints
-                SET scope_revision = ?3, baseline_ref = ?4
+                SET scope_revision = ?3,
+                    baseline_ref = ?4,
+                    readiness = CASE
+                      WHEN ?4 IS NOT NULL
+                       AND implementation_boundary IS NOT NULL
+                       AND NOT EXISTS (
+                         SELECT 1 FROM shaping_checkpoint_gaps
+                          WHERE project_id = ?1
+                            AND shaping_checkpoint_id = shaping_checkpoints.shaping_checkpoint_id
+                            AND status <> 'applied'
+                       )
+                      THEN 'ready'
+                      ELSE readiness
+                    END
               WHERE project_id = ?1 AND task_id = ?2 AND readiness <> 'superseded'",
             params![
                 self.project_id,
@@ -695,7 +708,7 @@ fn shaping_gaps(
                 ))
             }
         };
-        if (decoded_status == ShapingGapStatus::Resolved)
+        if (decoded_status != ShapingGapStatus::Current)
             != user_action
                 .as_ref()
                 .is_some_and(|link| link.user_action_resolution_id.is_some())

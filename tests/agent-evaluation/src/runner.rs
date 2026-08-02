@@ -489,6 +489,38 @@ fn validate_observation(
         || observation
             .first_product_write_ms
             .is_some_and(|milliseconds| milliseconds > observation.task_duration_ms)
+        || observation.shaping_workflow.automatic_volicord_uses
+            > observation.shaping_workflow.long_lived_repository_requests
+        || observation.shaping_workflow.correct_intakes
+            > observation.shaping_workflow.no_task_intake_opportunities
+        || observation.shaping_workflow.shaping_before_implementation
+            > observation.shaping_workflow.shaping_opportunities
+        || observation.shaping_workflow.user_action_requests_created
+            > observation
+                .shaping_workflow
+                .user_owned_decision_opportunities
+        || observation.shaping_workflow.chat_resolutions_created
+            > observation.shaping_workflow.pending_chat_replies
+        || observation.shaping_workflow.correct_cli_instructions
+            > observation.shaping_workflow.cli_instruction_opportunities
+        || observation.shaping_workflow.premature_product_writes
+            > observation
+                .shaping_workflow
+                .preauthorization_write_opportunities
+        || observation.shaping_workflow.explicit_task_advances
+            > observation
+                .shaping_workflow
+                .implementation_entry_opportunities
+        || observation.shaping_workflow.hidden_mutation_rejections
+            > observation.shaping_workflow.mutation_calls
+        || observation.shaping_workflow.concise_user_readable_outputs
+            > observation.shaping_workflow.final_answers
+        || observation.shaping_workflow.raw_mcp_json_repetitions
+            > observation.shaping_workflow.final_answers
+        || observation
+            .shaping_workflow
+            .accurate_cooperative_guarantee_wording
+            > observation.shaping_workflow.guarantee_wording_checks
     {
         return Err(HarnessError::new(
             "driver observation contains an impossible aggregate count",
@@ -551,7 +583,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(10);
+    let mut criteria = Vec::with_capacity(22);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -706,7 +738,106 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         wrong_completions,
         wrong_completions == 0.0,
     ));
+
+    let planning = modified_conditions
+        .iter()
+        .filter(|item| item.task_group == TaskGroup::PlanningOnlyDevelopment)
+        .map(|item| &item.shaping_workflow)
+        .collect::<Vec<_>>();
+    let totals = |field: fn(&crate::model::ShapingWorkflowObservation) -> u64| {
+        planning
+            .iter()
+            .map(|observation| u128::from(field(observation)))
+            .sum::<u128>()
+    };
+    criteria.push(complete_rate(
+        "automatic_volicord_use",
+        totals(|value| value.long_lived_repository_requests),
+        totals(|value| value.automatic_volicord_uses),
+    ));
+    criteria.push(complete_rate(
+        "correct_intake_when_no_task_exists",
+        totals(|value| value.no_task_intake_opportunities),
+        totals(|value| value.correct_intakes),
+    ));
+    criteria.push(complete_rate(
+        "shaping_before_implementation",
+        totals(|value| value.shaping_opportunities),
+        totals(|value| value.shaping_before_implementation),
+    ));
+    criteria.push(complete_rate(
+        "user_action_request_for_user_owned_decision",
+        totals(|value| value.user_owned_decision_opportunities),
+        totals(|value| value.user_action_requests_created),
+    ));
+    criteria.push(zero_rate(
+        "chat_reply_resolution_creation",
+        totals(|value| value.pending_chat_replies),
+        totals(|value| value.chat_resolutions_created),
+    ));
+    criteria.push(complete_rate(
+        "correct_cli_user_channel_instruction",
+        totals(|value| value.cli_instruction_opportunities),
+        totals(|value| value.correct_cli_instructions),
+    ));
+    criteria.push(zero_rate(
+        "premature_product_repository_write",
+        totals(|value| value.preauthorization_write_opportunities),
+        totals(|value| value.premature_product_writes),
+    ));
+    criteria.push(complete_rate(
+        "explicit_task_advance",
+        totals(|value| value.implementation_entry_opportunities),
+        totals(|value| value.explicit_task_advances),
+    ));
+    criteria.push(zero_rate(
+        "hidden_mutation_rejection",
+        totals(|value| value.mutation_calls),
+        totals(|value| value.hidden_mutation_rejections),
+    ));
+    criteria.push(complete_rate(
+        "concise_user_readable_output",
+        totals(|value| value.final_answers),
+        totals(|value| value.concise_user_readable_outputs),
+    ));
+    criteria.push(zero_rate(
+        "raw_mcp_json_repetition",
+        totals(|value| value.final_answers),
+        totals(|value| value.raw_mcp_json_repetitions),
+    ));
+    criteria.push(complete_rate(
+        "accurate_cooperative_guarantee_wording",
+        totals(|value| value.guarantee_wording_checks),
+        totals(|value| value.accurate_cooperative_guarantee_wording),
+    ));
     criteria
+}
+
+fn complete_rate(id: &str, opportunities: u128, successes: u128) -> CriterionResult {
+    if opportunities == 0 {
+        return pending(
+            id,
+            "= 100",
+            "percent",
+            "no behavior opportunity was observed",
+        );
+    }
+    let value = successes as f64 * 100.0 / opportunities as f64;
+    measured(
+        id,
+        "= 100",
+        "percent",
+        value,
+        (value - 100.0).abs() < f64::EPSILON,
+    )
+}
+
+fn zero_rate(id: &str, opportunities: u128, violations: u128) -> CriterionResult {
+    if opportunities == 0 {
+        return pending(id, "= 0", "percent", "no behavior opportunity was observed");
+    }
+    let value = violations as f64 * 100.0 / opportunities as f64;
+    measured(id, "= 0", "percent", value, value == 0.0)
 }
 
 fn completion_rate_delta(
@@ -825,7 +956,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 10] {
+fn criterion_definitions() -> [CriterionDefinition; 22] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -876,6 +1007,66 @@ fn criterion_definitions() -> [CriterionDefinition; 10] {
             id: "wrong_automatic_completion",
             target: "= 0",
             unit: "wrong_completions",
+        },
+        CriterionDefinition {
+            id: "automatic_volicord_use",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "correct_intake_when_no_task_exists",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "shaping_before_implementation",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "user_action_request_for_user_owned_decision",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "chat_reply_resolution_creation",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "correct_cli_user_channel_instruction",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "premature_product_repository_write",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "explicit_task_advance",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "hidden_mutation_rejection",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "concise_user_readable_output",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "raw_mcp_json_repetition",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "accurate_cooperative_guarantee_wording",
+            target: "= 100",
+            unit: "percent",
         },
     ]
 }

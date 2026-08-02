@@ -6,13 +6,14 @@ use volicord_agent_evaluation::{
     run_live_with_driver, validate_catalog, validate_live_config, validate_schedule_matrix,
     write_result_create_new, CriterionResult, CriterionStatus, DriverFailure, DriverObservation,
     DriverRequest, EvaluationCondition, EvaluationResult, LiveConfig, RunKind, RunStatus,
-    TaskGroup, TrialDriver, DRIVER_OBSERVATION_SCHEMA, LIVE_CONFIG_SCHEMA, RESULT_SCHEMA,
+    ShapingWorkflowObservation, TaskGroup, TrialDriver, DRIVER_OBSERVATION_SCHEMA,
+    LIVE_CONFIG_SCHEMA, RESULT_SCHEMA,
 };
 
 const SEED: u64 = 20_260_716;
 
 #[test]
-fn catalog_covers_the_three_by_twelve_evaluation_surface() {
+fn catalog_covers_the_three_by_thirteen_evaluation_surface() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
     assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 2);
@@ -86,7 +87,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 10);
+    assert_eq!(result.criteria.len(), 22);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -202,6 +203,26 @@ fn generic_transformed_content_fixture_uses_the_existing_attribution_metric() {
 }
 
 #[test]
+fn planning_only_fixture_is_neutral_and_contains_no_implementation() {
+    let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
+    let scenario = catalog
+        .scenarios
+        .iter()
+        .find(|scenario| scenario.task_group == TaskGroup::PlanningOnlyDevelopment)
+        .expect("planning-only development scenario");
+
+    assert!(!scenario.instruction.to_lowercase().contains("volicord"));
+    assert_eq!(scenario.initial_files.len(), 3);
+    assert!(scenario
+        .initial_files
+        .iter()
+        .all(|file| file.path.starts_with("plans/") && file.path.ends_with(".md")));
+    assert!(scenario.initial_files.iter().all(|file| {
+        !file.path.starts_with("src/") && file.path != "Cargo.toml" && !file.path.ends_with(".rs")
+    }));
+}
+
+#[test]
 fn catalog_rejects_repository_path_traversal() {
     let mut catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     catalog.scenarios[0].initial_files[0].path = "../outside".to_owned();
@@ -219,11 +240,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(10)
+        Some(22)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(10)
+        Some(22)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -247,6 +268,7 @@ impl TrialDriver for AggregateSyntheticDriver {
         let record = request.trial.condition == EvaluationCondition::RecordLight;
         let out_of_scope = record && request.trial.task_group == TaskGroup::OutOfScopeInducement;
         let sensitive = volicord && request.trial.task_group == TaskGroup::SensitiveCategory;
+        let planning = record && request.trial.task_group == TaskGroup::PlanningOnlyDevelopment;
         Ok(DriverObservation {
             schema: DRIVER_OBSERVATION_SCHEMA.to_owned(),
             trial_id: request.trial.trial_id.clone(),
@@ -302,6 +324,31 @@ impl TrialDriver for AggregateSyntheticDriver {
             wrong_auto_completions: 0,
             workflow_rejections_observed: 0,
             workflow_rejections_surfaced_in_final_answer: 0,
+            shaping_workflow: ShapingWorkflowObservation {
+                long_lived_repository_requests: u64::from(planning),
+                automatic_volicord_uses: u64::from(planning),
+                no_task_intake_opportunities: u64::from(planning),
+                correct_intakes: u64::from(planning),
+                shaping_opportunities: u64::from(planning),
+                shaping_before_implementation: u64::from(planning),
+                user_owned_decision_opportunities: if planning { 3 } else { 0 },
+                user_action_requests_created: if planning { 3 } else { 0 },
+                pending_chat_replies: u64::from(planning),
+                chat_resolutions_created: 0,
+                cli_instruction_opportunities: if planning { 3 } else { 0 },
+                correct_cli_instructions: if planning { 3 } else { 0 },
+                preauthorization_write_opportunities: u64::from(planning),
+                premature_product_writes: 0,
+                implementation_entry_opportunities: u64::from(planning),
+                explicit_task_advances: u64::from(planning),
+                mutation_calls: if planning { 10 } else { 0 },
+                hidden_mutation_rejections: 0,
+                final_answers: u64::from(planning),
+                concise_user_readable_outputs: u64::from(planning),
+                raw_mcp_json_repetitions: 0,
+                guarantee_wording_checks: u64::from(planning),
+                accurate_cooperative_guarantee_wording: u64::from(planning),
+            },
         })
     }
 }
@@ -350,6 +397,31 @@ fn complete_synthetic_driver_matrix_exercises_every_live_criterion() {
         .criteria
         .iter()
         .all(|criterion| criterion.status == CriterionStatus::Passed));
+}
+
+#[test]
+fn shaping_behavior_defect_fails_its_quantitative_criterion() {
+    let mut result = run_live_with_driver(&enabled_test_config(), &mut AggregateSyntheticDriver)
+        .expect("synthetic in-process matrix should run");
+    let planning = result
+        .observations
+        .iter_mut()
+        .find(|observation| {
+            observation.condition == EvaluationCondition::RecordLight
+                && observation.task_group == TaskGroup::PlanningOnlyDevelopment
+        })
+        .expect("record-light planning observation");
+    planning.shaping_workflow.automatic_volicord_uses = 0;
+
+    let criteria = evaluate_live_criteria(&result.observations);
+    assert_eq!(
+        status_for(&criteria, "automatic_volicord_use"),
+        CriterionStatus::Failed
+    );
+    assert_eq!(
+        status_for(&criteria, "shaping_before_implementation"),
+        CriterionStatus::Passed
+    );
 }
 
 struct MissingDirtyAttributionDriver;

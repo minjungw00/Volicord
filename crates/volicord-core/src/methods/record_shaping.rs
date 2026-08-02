@@ -263,11 +263,18 @@ fn plan_record_shaping(
                         volicord_types::ids::ChangeUnitId::new(cu.change_unit_id.clone())
                     }),
                     action: draft.action.clone(),
-                    required_for: vec![if task.mode == TaskMode::Advisor {
-                        UserActionRequiredFor::CloseComplete
+                    required_for: if task.mode == TaskMode::Advisor {
+                        vec![UserActionRequiredFor::CloseComplete]
+                    } else if gap.gap_kind
+                        == volicord_types::values::ShapingGapKind::UserScopeDecisionRequired
+                    {
+                        vec![
+                            UserActionRequiredFor::ScopeUpdate,
+                            UserActionRequiredFor::AdvanceTask,
+                        ]
                     } else {
-                        UserActionRequiredFor::AdvanceTask
-                    }],
+                        vec![UserActionRequiredFor::AdvanceTask]
+                    },
                     expires_at: draft.expires_at.clone(),
                 },
             })
