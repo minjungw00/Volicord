@@ -7,9 +7,8 @@ use crate::error_boundary::{
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
-    baseline_stale_response, decision_rejected_response, dry_run_summary,
-    infallible_rejected_pipeline_response, no_active_change_unit_response, no_active_task_response,
-    rejected_pipeline_response, validation_rejected, workspace_stale_response,
+    dry_run_summary, infallible_rejected_pipeline_response, no_active_task_response,
+    rejected_pipeline_response, validation_rejected, workflow_rejected_response,
 };
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
@@ -28,9 +27,10 @@ use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::methods::{MethodOperationCategory, RecordRunRequest, RecordRunResultFields};
 use volicord_types::schema::{RunSummary, ToolEnvelope};
-use volicord_types::values::{ErrorCode, MethodName};
+use volicord_types::values::{ErrorCode, MethodName, RunKind, TaskMode, WorkPhase};
 
 fn record_run_error_response(
+    store: &volicord_store::core_pipeline::CoreProjectStore,
     request: &RecordRunRequest,
     project_state: &volicord_store::core_pipeline::ProjectStateHeader,
     error: RecordingError,
@@ -60,12 +60,13 @@ fn record_run_error_response(
             close_readiness_plan_error(&request.envelope, project_state, error),
         ),
         RecordingError::Rejected(rejection) => {
-            record_run_rejection_response(request, project_state, rejection)
+            record_run_rejection_response(store, request, project_state, rejection)
         }
     }
 }
 
 fn record_run_rejection_response(
+    store: &volicord_store::core_pipeline::CoreProjectStore,
     request: &RecordRunRequest,
     project_state: &volicord_store::core_pipeline::ProjectStateHeader,
     rejection: RecordingRejection,
@@ -78,19 +79,85 @@ fn record_run_rejection_response(
         RecordingRejection::NoActiveTask => {
             Ok(no_active_task_response(&request.envelope, project_state))
         }
-        RecordingRejection::NoActiveChangeUnit { message } => Ok(no_active_change_unit_response(
-            &request.envelope,
-            state_version,
-            message,
-        )),
-        RecordingRejection::BaselineStale => Ok(baseline_stale_response(
-            &request.envelope,
-            state_version,
-            &request.baseline_ref,
-        )),
-        RecordingRejection::WorkspaceStale => {
-            Ok(workspace_stale_response(&request.envelope, state_version))
+        RecordingRejection::RunKindIncompatible => {
+            let task = store.task_record(&request.task_id)?.ok_or_else(|| {
+                crate::pipeline::CorePipelineError::Invariant {
+                    detail: "run-kind rejection requires an existing Task".to_owned(),
+                }
+            })?;
+            let allowed_run_kinds = match (task.mode, task.work_phase) {
+                (TaskMode::Direct, _) => vec![RunKind::Direct],
+                (TaskMode::Work, WorkPhase::Implementation) => vec![RunKind::Implementation],
+                _ => Vec::new(),
+            };
+            workflow_rejected_response(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::RunKindIncompatible,
+                "kind is not compatible with the current Task mode and work phase",
+                MethodName::RecordRun,
+                Some(request.kind),
+                allowed_run_kinds,
+                true,
+                MethodName::Status,
+            )
         }
+        RecordingRejection::TaskPhaseTransitionRequired => workflow_rejected_response(
+            store,
+            project_state,
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::TaskPhaseTransitionRequired,
+            "record_run requires the Task to enter implementation",
+            MethodName::RecordRun,
+            Some(request.kind),
+            vec![RunKind::Implementation],
+            true,
+            MethodName::AdvanceTask,
+        ),
+        RecordingRejection::ChangeUnitRequired => workflow_rejected_response(
+            store,
+            project_state,
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::ChangeUnitRequired,
+            "record_run requires a current Change Unit",
+            MethodName::RecordRun,
+            Some(request.kind),
+            Vec::new(),
+            true,
+            MethodName::UpdateScope,
+        ),
+        RecordingRejection::ChangeUnitStale | RecordingRejection::BaselineStale => {
+            workflow_rejected_response(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::ChangeUnitStale,
+                "change_unit_id or baseline_ref does not match the current Change Unit",
+                MethodName::RecordRun,
+                Some(request.kind),
+                Vec::new(),
+                true,
+                MethodName::Status,
+            )
+        }
+        RecordingRejection::WorkspaceStale => workflow_rejected_response(
+            store,
+            project_state,
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::WorkspaceBasisStale,
+            "current Git workspace context does not match the current Change Unit basis",
+            MethodName::RecordRun,
+            Some(request.kind),
+            Vec::new(),
+            true,
+            MethodName::Status,
+        ),
         RecordingRejection::ProductPathContainment { message } => rejected_pipeline_response(
             request.envelope.dry_run,
             state_version,
@@ -101,11 +168,19 @@ fn record_run_rejection_response(
                 None,
             )],
         ),
-        RecordingRejection::DecisionRejected { message } => Ok(decision_rejected_response(
+        RecordingRejection::DecisionRejected { message } => workflow_rejected_response(
+            store,
+            project_state,
             &request.envelope,
-            state_version,
+            &request.task_id,
+            ErrorCode::UserDecisionUnresolved,
             message,
-        )),
+            MethodName::RecordRun,
+            Some(request.kind),
+            Vec::new(),
+            true,
+            MethodName::ResolveUserAction,
+        ),
         RecordingRejection::WriteTicketRequired => Ok(write_ticket_required_response(
             &request.envelope,
             state_version,
@@ -309,7 +384,13 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return record_run_error_response(&request, &prepared.context.project_state, error)
+                let response = record_run_error_response(
+                    &prepared.store,
+                    &request,
+                    &prepared.context.project_state,
+                    error,
+                )?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
 

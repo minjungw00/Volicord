@@ -269,6 +269,13 @@ matrix를 정합니다.
 - 행 없음 또는 비적격 operation result에서 유지되는
   `OPERATION_RESULT_UNAVAILABLE`
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
+- 모든 폐쇄형 workflow 거부 코드, typed 현재 mode/phase와 수신 요청, allowed 대안,
+  authoritative workflow, retryability, recovery owner, 변경되지 않은 effect count와 state
+  version, pending User Channel presentation, 정확한 command 생성, phase 전환의 no-write-
+  ticket fact
+- workflow rejection 관찰 총수와 final-answer surface 총수를 비교하는 agent evaluation
+  observation. 관찰한 거부가 하나라도 final answer에서 빠지면 기본 task가 성공했더라도
+  결과는 incomplete입니다.
 - 권위 있는 MCP runtime-session source 분리, milestone ordering, 현재 revision,
   프로젝트 binding, diagnostics 비권위성
 - 숨은 launcher 구성의 정확한 형태, 현재 entry drift 거절, 사용하지 않은 lease의

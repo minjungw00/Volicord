@@ -79,7 +79,7 @@
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:ed944e3a6cc2f04754e4f59a216084394128e465e271560dab259e902b25f321"
+        "sha256": "sha256:64bdb322689185072bddeebdd2e4decba9db5746025f2863921eff212ccb6d61"
       },
       "name": "volicord.intake",
       "output_schema": {
@@ -126,7 +126,9 @@
           "GuaranteeLevel",
           "IntakeResult",
           "IntakeResultBase",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_IntakeResult",
           "McpMutationPostEffectFailure",
@@ -139,10 +141,16 @@
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -158,6 +166,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -179,12 +188,16 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -194,7 +207,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:dd0b23bca51d8301f2af9e1e9d896a19e24caafae7bcc53ef824fe856d154c95"
+        "sha256": "sha256:620eea7191438325415fdc93ed0544a9a7a56a028cf75e9268254b8f03d378e8"
       }
     },
     {
@@ -236,7 +249,7 @@
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:f638ec4d63a55f71fb6084d630b846277871550ffeac4c4ab74a3f7362c3753a"
+        "sha256": "sha256:e7f13a3a810ee5e84914cfdcc1514cd5b8c0f72bd08792ec709aa95eef4f4b06"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -281,7 +294,9 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_UpdateScopeResult",
           "McpMutationPostEffectFailure",
@@ -294,10 +309,16 @@
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -313,6 +334,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -336,12 +358,16 @@
           "ToolRejectedResponse",
           "UpdateScopeResult",
           "UpdateScopeResultBase",
+          "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -351,7 +377,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:50d088932af397e7178e750dd4d4cb925fc5c929fca48551292ef5da1ca3cd8b"
+        "sha256": "sha256:4f5296be58d9201ba46a087ce4c0ea27630389f5fc48593f201de119d634e5b0"
       }
     },
     {
@@ -417,7 +443,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:8fff2aab3a61e2e3172bdd06d0c8ae43b39552b26d8c886bec23ce19fd32dd4d"
+        "sha256": "sha256:5f10a0f71436591d3770d0d871c1c6ee3ceec00f2177fef86584651995012cca"
       },
       "name": "volicord.record_shaping",
       "output_schema": {
@@ -466,7 +492,9 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordShapingResult",
           "McpMutationPostEffectFailure",
@@ -479,10 +507,16 @@
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -501,6 +535,7 @@
           "RedactionState",
           "RepositoryFileSource",
           "RequestedControlLevel",
+          "RunKind",
           "ShapingCheckpoint",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -525,6 +560,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserContextSource",
@@ -532,6 +568,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -541,7 +580,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bdb277b8b8edba6b9be023c2d8a4d186d6544c2ba8a2b58caa9ace98c4403d0a"
+        "sha256": "sha256:15e093e30a69bac730e2191535d16c21fd1eb50a1f20ba40b7c14600184af075"
       }
     },
     {
@@ -573,7 +612,7 @@
           "shaping_checkpoint_id",
           "task_id"
         ],
-        "sha256": "sha256:6f716422e7a86aa0e1333b971e9f54415802062b20f4d5563b62e027e772b95e"
+        "sha256": "sha256:2a5bf3db68742754b61cc52522932d66493d33e2647146c85ae38474805c599f"
       },
       "name": "volicord.advance_task",
       "output_schema": {
@@ -620,7 +659,9 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_AdvanceTaskResult",
           "McpMutationPostEffectFailure",
@@ -633,10 +674,16 @@
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -652,6 +699,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -673,12 +721,16 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -688,7 +740,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:883366f70214807d3c273cfb2475407865dc107e6f10ab50a8c4e75f013f10f1"
+        "sha256": "sha256:fb98c9062ef548166322a96c6f10cf061299f3a6e50537ccbe268982f8e05274"
       }
     },
     {
@@ -781,6 +833,7 @@
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RiskAcceptanceCoverage",
+          "RunKind",
           "SensitiveActionRequirement",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -812,6 +865,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -821,7 +877,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7b56bb796cbba3828edbe00b9f9af26c974b3cb1dc734c2c07bf0ca4c1dfff43"
+        "sha256": "sha256:548e4e318f93e254ef0d32425eb84b5fc8cc60bd7d08ec1aac4307b078abc8bf"
       }
     },
     {
@@ -850,6 +906,7 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
+          "AuthorityNextActor",
           "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
@@ -870,14 +927,29 @@
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
           "OperationResultRef",
+          "RunKind",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_GetOperationResultResult"
+          "ToolResultOrRejected_for_GetOperationResultResult",
+          "WorkPhase",
+          "WorkflowBlockingReason",
+          "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:82a6565483eb60e757b6ad9ed453a92e7641d219b192674a1ce4ea0830b28dc4"
+        "sha256": "sha256:efb9a2d3e858c464d9f9e7e11da0a73ab1878d0345101973299936f78be3b438"
       }
     },
     {
@@ -934,7 +1006,9 @@
           "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpPrepareEvidenceCaptureCompactResult",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
           "McpMutationPostEffectFailure",
@@ -948,10 +1022,16 @@
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpPrepareEvidenceCaptureCompactResult",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -966,6 +1046,7 @@
           "PrepareEvidenceCaptureResult",
           "PrepareEvidenceCaptureResultBase",
           "PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -974,18 +1055,24 @@
           "StateRecordKind",
           "StateRecordRef",
           "StatusCloseState",
+          "TaskMode",
           "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UtcTimestamp",
+          "WorkPhase",
           "WorkflowBlockingReason",
-          "WorkflowProjection"
+          "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1c1c959387630246229a5f1fa2c309a059811517793b0bdf2302c7db1700e082"
+        "sha256": "sha256:00f01fc1f01adfef92befd765103164d1a640de4a98a7df4793c14df2aa42a52"
       }
     },
     {
@@ -1065,7 +1152,9 @@
           "GuaranteeLevel",
           "JudgmentKind",
           "JudgmentPresentation",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpPrepareWriteCompactResult",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_PrepareWriteResult",
           "McpMutationPostEffectFailure",
@@ -1079,10 +1168,16 @@
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpPrepareWriteCompactResult",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1101,6 +1196,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RunKind",
           "SensitiveActionScope",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -1123,6 +1219,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UserActionContext",
           "UserActionDraft",
           "UserActionOptionInput",
@@ -1132,6 +1229,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteDecisionCategory",
@@ -1148,7 +1248,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6a80cccdfe5fcd9d71d6d6ce8005c938b7d88f7c7aea78d716658a18b6351462"
+        "sha256": "sha256:8d7ce4497748ab1449a281bfac3fa3ad3c2d47b0d36d4eaaf235a5ed9f914480"
       }
     },
     {
@@ -1204,7 +1304,9 @@
           "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpStageArtifactCompactResult",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_StageArtifactResult",
           "McpMutationPostEffectFailure",
@@ -1218,10 +1320,16 @@
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpStageArtifactCompactResult",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1234,6 +1342,7 @@
           "PlannedEffect",
           "PreviewableToolResponse_for_StageArtifactResult",
           "RedactionState",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -1246,18 +1355,24 @@
           "StateRecordKind",
           "StateRecordRef",
           "StatusCloseState",
+          "TaskMode",
           "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UtcTimestamp",
+          "WorkPhase",
           "WorkflowBlockingReason",
-          "WorkflowProjection"
+          "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5d5713b6ee16efe4f43af59ee910e7b41652f0e0d4c5303f5600ce6aef1bdfc9"
+        "sha256": "sha256:23816275c75d38dce8c5b8cec0c6578ad0a51fe222a29b66163c7e530cacfee9"
       }
     },
     {
@@ -1385,7 +1500,9 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpRecordRunCompactResult",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordRunResult",
           "McpMutationPostEffectFailure",
@@ -1400,10 +1517,16 @@
           "McpPostEffectFailureCode",
           "McpRecordRunCloseBasisAnchor",
           "McpRecordRunCompactResult",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1450,6 +1573,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserContextSource",
@@ -1457,6 +1581,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1466,7 +1593,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a0d522cff361b68d48c2a36d0c53e50f2d9e68203aae1f6adcb8f61fb0b126b4"
+        "sha256": "sha256:4ee5c74be20189c9fe9a8bfa5911fb2f2b2407a33d54ba6897e283be9ae8e3da"
       }
     },
     {
@@ -1554,7 +1681,9 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "JudgmentResolutionOutcome",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpRequestUserActionCompactResult",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_McpRequestUserActionResponse",
           "McpMutationPostEffectFailure",
@@ -1569,12 +1698,18 @@
           "McpPostEffectFailureCode",
           "McpRequestUserActionCompactResult",
           "McpRequestUserActionResponse",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserActionResolution",
           "McpUserActionResolutionSummary",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1592,6 +1727,7 @@
           "RequestUserActionResult",
           "RequestUserActionResultBase",
           "RequestedControlLevel",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -1623,6 +1759,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1632,7 +1771,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2e9c8616ebfe116363124be6b32d873bfa9d5d324bd3ddb322f8c30cc1deedd0"
+        "sha256": "sha256:c7c8b0403c03a328c66533d9aeba31a97dfcaf39067455f8c6bb277b3198334a"
       }
     },
     {
@@ -1703,7 +1842,9 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpReconcileChangesCompactResult",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_ReconcileChangesResult",
           "McpMutationPostEffectFailure",
@@ -1717,10 +1858,16 @@
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpReconcileChangesCompactResult",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1739,6 +1886,7 @@
           "ReconcileChangesResultBase",
           "RedactionState",
           "RequestedControlLevel",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -1766,12 +1914,16 @@
           "UnrecordedChangeResolutionBasis",
           "UnrecordedChangeResolutionSummary",
           "UnrecordedChangeStatus",
+          "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1781,7 +1933,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bb52e229d3a448300daeb59a662ead3802638d68919e84d2cf488010aaf7bfba"
+        "sha256": "sha256:7e0c975c53cdf53cf5e65b25a2a18be3ad7ad4f36e064b7870efbca1b7769ab8"
       }
     },
     {
@@ -1868,6 +2020,7 @@
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RiskAcceptanceCoverage",
+          "RunKind",
           "SensitiveActionRequirement",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -1896,6 +2049,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1905,7 +2061,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b2749684377c990ec318351391f863b58f2841f26b71f669dab4af05443b01f1"
+        "sha256": "sha256:9923c18509d6ced44f5d673eb6ea487abfcd967c6c885876d20e9a9d1d4c722d"
       }
     },
     {
@@ -1983,7 +2139,9 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpAgentStateChange",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_CloseTaskResult",
           "McpMutationPostEffectFailure",
@@ -1996,10 +2154,16 @@
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
+          "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -2021,6 +2185,7 @@
           "RequestedControlLevel",
           "ResidualRisk",
           "RiskAcceptanceCoverage",
+          "RunKind",
           "SensitiveActionRequirement",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -2044,12 +2209,16 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -2059,7 +2228,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2e535301d2f5b6339cbcffc7bb5ffc98d4478ed255982d7b9c57e7a2d0d4aba2"
+        "sha256": "sha256:fc0a184bd4b2fe0e5f13e4d088732e4062abab3a1178836e6b92fa42f355804a"
       }
     },
     {
@@ -2089,7 +2258,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:92bf033bc411c070f0ee25c4dbcf767c881e673646456663844ad176630d6dec"
+        "sha256": "sha256:82213bb9325f1506e344874edb8e61e1f07a5f76de48d8d96e022049daa92bbd"
       }
     },
     {
@@ -2126,7 +2295,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:31408bca3a03a56904f1145726efd1cfc4b7f8ffdd3c65d8c9b4807fcffa35a3"
+        "sha256": "sha256:36da68e3b7b1ffe9bee238097a7a8aca71810d80f0d00c8e83e7a93b5b3d81a7"
       }
     },
     {
@@ -2165,7 +2334,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f42e41e2ba0081df62aaca99bc0d9664542e5dd5504066310a647e201be62444"
+        "sha256": "sha256:167587db3be02e8e0a7e799f24993b9911b6e5edbc122ef90dd6295c4046a22b"
       }
     },
     {
@@ -2206,7 +2375,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:22935261cbe7bbb6b64f8bd3927eafc3a3865803b3d35d986b8a7fe5fccad2b7"
+        "sha256": "sha256:c28729fbc4d17efd9f9df23032f73aa2a38f4a51a54de287618bbd31a20654f9"
       }
     }
   ]

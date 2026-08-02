@@ -19,6 +19,7 @@ shaping 메서드는 기존 validation, conflict, replay branch로 stale Task, s
 | 실패 범주가 무엇을 뜻하는지 | [실패 모델](../failure-model.md) |
 | API가 허용하는 정확한 `FailureCategory` 식별자 | [API 값 집합](schema-value-sets.md#failure-category-values) |
 | 공개 `ErrorCode`가 무엇을 뜻하는지 | [API 오류 코드](error-codes.md) |
+| Workflow 거부에 어떤 typed 현재 fact가 들어가는지 | [API 오류 세부사항](error-details.md#workflow-rejection-detail-fields) |
 | 어떤 공개 오류가 선택되는지 | [API 오류 우선순위](error-precedence.md) |
 | 어떤 API 응답 분기를 쓰는지 | [API 오류 처리 경로](error-routing.md) |
 | 닫기 차단 사유가 API 응답과 만나는 지점 | [API 차단 사유 처리 경로](blocker-routing.md) |

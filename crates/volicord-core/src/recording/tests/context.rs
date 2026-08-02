@@ -90,7 +90,7 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
             assert_eq!(response.response_value["base"]["response_kind"], "rejected");
             assert_eq!(
                 response.response_value["errors"][0]["code"],
-                "VALIDATION_FAILED"
+                "RUN_KIND_INCOMPATIBLE"
             );
             assert_eq!(after, before, "{suffix} must have no storage effect");
         }
@@ -100,13 +100,21 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
 
 #[test]
 fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<(), Box<dyn Error>> {
-    for (suffix, product_write_observed, changed_paths, write_ticket_id, sensitive_categories) in [
+    for (
+        suffix,
+        product_write_observed,
+        changed_paths,
+        write_ticket_id,
+        sensitive_categories,
+        expected_code,
+    ) in [
         (
             "advisor_observed_write",
             true,
             vec!["src/export.rs".to_owned()],
             None,
             Vec::new(),
+            "RUN_KIND_INCOMPATIBLE",
         ),
         (
             "advisor_changed_paths",
@@ -114,6 +122,7 @@ fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<()
             vec!["src/export.rs".to_owned()],
             None,
             Vec::new(),
+            "VALIDATION_FAILED",
         ),
         (
             "advisor_write_ticket",
@@ -121,6 +130,7 @@ fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<()
             Vec::new(),
             Some(WriteTicketId::new("wt_advisor_forbidden")),
             Vec::new(),
+            "RUN_KIND_INCOMPATIBLE",
         ),
         (
             "advisor_sensitive_effect",
@@ -128,6 +138,7 @@ fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<()
             Vec::new(),
             None,
             vec!["network".to_owned()],
+            "RUN_KIND_INCOMPATIBLE",
         ),
     ] {
         let harness = MethodHarness::new()?;
@@ -154,8 +165,8 @@ fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<()
             .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
         assert_eq!(response.response_value["base"]["response_kind"], "rejected");
         assert_eq!(
-            response.response_value["errors"][0]["code"],
-            "VALIDATION_FAILED"
+            response.response_value["errors"][0]["code"], expected_code,
+            "{suffix}"
         );
         assert_eq!(
             harness.counts()?,

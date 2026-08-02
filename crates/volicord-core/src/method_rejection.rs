@@ -1,16 +1,119 @@
 use chrono::Duration;
 use serde_json::{Map, Value};
-use volicord_store::core_pipeline::ProjectStateHeader;
+use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::{
-    ids::BaselineRef,
-    schema::{DryRunSummary, NextActionSummary, PlannedEffect, ToolEnvelope},
-    values::{ErrorCode, UtcTimestamp},
+    ids::{BaselineRef, TaskId},
+    schema::{
+        DryRunSummary, FalseValue, NextActionSummary, PlannedEffect, RequiredNullable,
+        ToolEnvelope, WorkflowRecovery, WorkflowRejectionBlocker, WorkflowRejectionDetails,
+    },
+    values::{ErrorCode, MethodName, RunKind, UtcTimestamp},
 };
 
 use crate::{
+    json_object::object_from_value,
     method_execution::PlanError,
     pipeline::{rejected_response, tool_error, CoreResult, PipelineResponse},
 };
+
+/// Builds one closed workflow rejection from current Store authority.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn workflow_rejected_response(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    code: ErrorCode,
+    message: &'static str,
+    received_action: MethodName,
+    received_run_kind: Option<RunKind>,
+    allowed_run_kinds: Vec<RunKind>,
+    corrected_retry_allowed: bool,
+    fallback_recovery: MethodName,
+) -> CoreResult<PipelineResponse> {
+    if !WorkflowRejectionDetails::is_required_for(code) {
+        return Err(crate::pipeline::CorePipelineError::InvalidDispatch {
+            detail: format!("{} is not a workflow-rejection error code", code.as_str()),
+        });
+    }
+    let task = store.task_record(task_id)?.ok_or_else(|| {
+        crate::pipeline::CorePipelineError::Invariant {
+            detail: "workflow rejection requires an existing Task".to_owned(),
+        }
+    })?;
+    let current_change_unit = store.current_change_unit(task_id)?;
+    let checkpoint = store.current_shaping_checkpoint(task_id)?;
+    let workflow = crate::workflow_projection::workflow_projection(
+        &envelope.project_id,
+        project_state.state_version,
+        &task,
+        current_change_unit.as_ref(),
+        checkpoint.as_ref(),
+    );
+    let recovery_owner = workflow.required_action().unwrap_or(fallback_recovery);
+    let details = WorkflowRejectionDetails {
+        state_change_applied: FalseValue,
+        current_task_mode: task.mode,
+        current_work_phase: task.work_phase,
+        received_action,
+        received_run_kind: RequiredNullable::new(received_run_kind),
+        allowed_run_kinds,
+        allowed_actions: workflow.allowed_actions().to_vec(),
+        blockers: vec![WorkflowRejectionBlocker {
+            code,
+            owner_method: recovery_owner,
+            required_refs: workflow.required_refs().to_vec(),
+        }],
+        workflow,
+        corrected_retry_allowed,
+        recovery: WorkflowRecovery {
+            owner_method: recovery_owner,
+        },
+    };
+    let details = object_from_value(serde_json::to_value(details)?)?;
+    rejected_pipeline_response(
+        envelope.dry_run,
+        Some(project_state.state_version),
+        vec![tool_error(
+            code,
+            message,
+            corrected_retry_allowed,
+            Some(details),
+        )],
+    )
+}
+
+/// Returns a typed workflow rejection from a method planning branch.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn workflow_rejection_plan_error<T>(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    code: ErrorCode,
+    message: &'static str,
+    received_action: MethodName,
+    received_run_kind: Option<RunKind>,
+    allowed_run_kinds: Vec<RunKind>,
+    corrected_retry_allowed: bool,
+    fallback_recovery: MethodName,
+) -> Result<T, PlanError> {
+    let response = workflow_rejected_response(
+        store,
+        project_state,
+        envelope,
+        task_id,
+        code,
+        message,
+        received_action,
+        received_run_kind,
+        allowed_run_kinds,
+        corrected_retry_allowed,
+        fallback_recovery,
+    )
+    .map_err(PlanError::Core)?;
+    Err(PlanError::Response(Box::new(response)))
+}
 
 pub(crate) fn validation_plan_error<T>(
     dry_run: volicord_types::schema::DryRunIntent,

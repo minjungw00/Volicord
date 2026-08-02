@@ -3,6 +3,7 @@
 use crate::adapter::McpAdapter;
 use crate::authority_refresh::{
     refresh_authority_status, validated_authority_refresh, MutationRefreshContext,
+    ValidatedMutationAuthority,
 };
 use crate::committed_result_recovery::{
     authoritative_refresh_failure_output, bounded_mutation_compatibility_text,
@@ -18,22 +19,28 @@ use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
-    McpMutationEffectSummary, McpMutationFullResponse, McpMutationSummaryResponse,
-    McpMutationWorkflowResponse, McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult,
-    McpPrepareWriteCompactResult, McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor,
-    McpRecordRunCompactResult, McpRequestUserActionCompactResult, McpRequestUserActionResponse,
-    McpStageArtifactCompactResult,
+    McpAgentStateChange, McpMustSurfaceFact, McpMutationEffectSummary, McpMutationFullResponse,
+    McpMutationSummaryResponse, McpMutationWorkflowResponse, McpPostEffectFailureCode,
+    McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
+    McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
+    McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
+    McpTaskPhasePresentation, McpUserChannelInstructions, McpWorkflowBlockerSummary,
+    McpWorkflowDryRunResponse, McpWorkflowPresentation, McpWorkflowRejectedResponse,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::RecordId;
 use volicord_types::methods::{
-    CloseTaskResult, IntakeResult, MethodResultBase, PrepareEvidenceCaptureResult,
-    PrepareWriteResult, PublicMethodResult, ReconcileChangesResult, RecordRunResult,
-    StageArtifactResult, UpdateScopeResult,
+    AdvanceTaskResult, CloseTaskResult, IntakeResult, MethodResultBase,
+    PrepareEvidenceCaptureResult, PrepareWriteResult, PublicMethodResult, ReconcileChangesResult,
+    RecordRunResult, RecordShapingResult, StageArtifactResult, UpdateScopeResult,
 };
-use volicord_types::schema::{AuthorityReceipt, PreviewableToolResponse, StateRecordRef};
+use volicord_types::schema::{
+    AuthorityReceipt, PreviewableToolResponse, RequiredNullable, StateRecordRef,
+    ToolDryRunResponse, ToolRejectedResponse, WorkflowRejectionDetails,
+};
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
-use volicord_types::values::{MutationDetailLevel, StateRecordKind};
+use volicord_types::values::{EffectKind, MethodName, MutationDetailLevel, StateRecordKind};
+use volicord_user_action_presentation::canonical_user_channel_instructions;
 
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
@@ -141,15 +148,13 @@ where
     if output.is_error {
         return Ok(output);
     }
-    if response_kind_from_structured_content(&output.structured_content) != Some("result") {
-        output.primary_text = bounded_mutation_compatibility_text(format!(
-            "Volicord {tool_name} returned response_kind={}; inspect the authoritative result carrier.",
-            response_kind_from_structured_content(&output.structured_content)
-                .unwrap_or("unknown")
-        ));
-        return Ok(output);
-    }
-
+    let response_kind = response_kind_from_structured_content(&output.structured_content)
+        .ok_or_else(|| {
+            McpAdapterError::Protocol(format!(
+                "mutation tool {tool_name} returned no response_kind"
+            ))
+        })?
+        .to_owned();
     let original_method_result = std::mem::take(&mut output.structured_content);
     let operation_result_ref = output.operation_result_ref.clone();
     let mut outcome = CanonicalMcpMutationOutcome::new(
@@ -163,14 +168,14 @@ where
     let Some(context) = output.mutation_refresh_context.clone() else {
         return authoritative_refresh_failure_output(&outcome);
     };
-    let (receipt, workflow) = match refresh(&context) {
+    let authority = match refresh(&context) {
         Ok(response) => match validated_authority_refresh(&context, &response) {
             Ok(refreshed) => refreshed,
             Err(()) => return authoritative_refresh_failure_output(&outcome),
         },
         Err(_) => return authoritative_refresh_failure_output(&outcome),
     };
-    outcome.set_authority_refresh(receipt, workflow);
+    outcome.set_authority_refresh(authority.receipt.clone(), authority.workflow.clone());
     let authority_receipt = outcome
         .authority_receipt
         .as_ref()
@@ -179,7 +184,75 @@ where
     if let Some(code) = output.post_effect_failure {
         return mutation_post_effect_failure_output(&outcome, code);
     }
-    output.primary_text = match authority_receipt_compatibility_text(tool_name, authority_receipt) {
+
+    let presentation = match workflow_presentation(
+        tool_name,
+        &response_kind,
+        outcome.facts.replayed,
+        outcome
+            .exact_method_result
+            .as_ref()
+            .expect("canonical mutation outcome requires an exact result"),
+        &authority,
+    ) {
+        Ok(presentation) => presentation,
+        Err(_) => {
+            return mutation_post_effect_failure_output(
+                &outcome,
+                McpPostEffectFailureCode::McpResponseProjectionFailed,
+            )
+        }
+    };
+
+    if response_kind == "rejected" {
+        let method_result: ToolRejectedResponse = serde_json::from_value(
+            outcome
+                .exact_method_result
+                .clone()
+                .expect("rejected mutation requires an exact result"),
+        )
+        .map_err(McpAdapterError::Json)?;
+        output.primary_text = rejected_compatibility_text(tool_name, &presentation);
+        output.structured_content = serde_json::to_value(McpWorkflowRejectedResponse {
+            method_result,
+            authority_receipt: authority.receipt,
+            workflow: authority.workflow,
+            presentation,
+        })
+        .map_err(McpAdapterError::Json)?;
+        output.mutation_refresh_context = None;
+        return Ok(output);
+    }
+    if response_kind == "dry_run" {
+        let method_result: ToolDryRunResponse = serde_json::from_value(
+            outcome
+                .exact_method_result
+                .clone()
+                .expect("dry-run mutation requires an exact result"),
+        )
+        .map_err(McpAdapterError::Json)?;
+        output.primary_text = dry_run_compatibility_text(tool_name, &presentation);
+        output.structured_content = serde_json::to_value(McpWorkflowDryRunResponse {
+            method_result,
+            authority_receipt: authority.receipt,
+            workflow: authority.workflow,
+            presentation,
+        })
+        .map_err(McpAdapterError::Json)?;
+        output.mutation_refresh_context = None;
+        return Ok(output);
+    }
+    if response_kind != "result" {
+        return Err(McpAdapterError::Protocol(format!(
+            "mutation tool {tool_name} returned unsupported response_kind={response_kind}"
+        )));
+    }
+
+    output.primary_text = match authority_receipt_compatibility_text(
+        tool_name,
+        authority_receipt,
+        presentation.state_change,
+    ) {
         Ok(text) => text,
         Err(_) => {
             return mutation_post_effect_failure_output(
@@ -207,6 +280,7 @@ where
             operation_result_ref: outcome.operation_result_ref.clone().into(),
             authority_receipt: authority_receipt.clone(),
             method_result,
+            presentation: presentation.clone(),
         }),
         MutationDetailLevel::Workflow => serde_json::to_value(McpMutationWorkflowResponse {
             operation_result_ref: outcome.operation_result_ref.clone().into(),
@@ -216,11 +290,13 @@ where
                 .workflow
                 .clone()
                 .expect("validated canonical mutation outcome requires a workflow projection"),
+            presentation: presentation.clone(),
         }),
         MutationDetailLevel::Full => serde_json::to_value(McpMutationFullResponse {
             operation_result_ref: outcome.operation_result_ref.clone().into(),
             authority_receipt: authority_receipt.clone(),
             method_result,
+            presentation,
         }),
     };
     output.structured_content = match projected {
@@ -261,6 +337,212 @@ pub(crate) fn response_kind_from_structured_content(value: &Value) -> Option<&st
         .pointer("/agent_workflow_result/base/response_kind")
         .or_else(|| value.pointer("/base/response_kind"))
         .and_then(Value::as_str)
+}
+
+fn workflow_presentation(
+    tool_name: &str,
+    response_kind: &str,
+    replayed: bool,
+    method_result: &Value,
+    authority: &ValidatedMutationAuthority,
+) -> Result<McpWorkflowPresentation, McpAdapterError> {
+    let method = AgentToolId::from_wire_name(tool_name)
+        .ok()
+        .and_then(AgentToolId::method)
+        .ok_or_else(|| {
+            McpAdapterError::Protocol(format!(
+                "missing MethodName mapping for mutation tool {tool_name}"
+            ))
+        })?;
+    let state_change = mutation_state_change(response_kind, replayed, method_result)?;
+    let task_phase = McpTaskPhasePresentation {
+        mode: authority.task_mode,
+        work_phase: authority.work_phase,
+    };
+    let mut must_surface = Vec::new();
+    let mut blocker_summary = Vec::new();
+    if response_kind == "rejected" {
+        must_surface.push(McpMustSurfaceFact::MethodRejected {
+            method,
+            core_state_unchanged: volicord_types::schema::TrueValue,
+        });
+        must_surface.push(McpMustSurfaceFact::CurrentTaskPhase {
+            mode: authority.task_mode,
+            work_phase: authority.work_phase,
+        });
+        let rejected: ToolRejectedResponse =
+            serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+        if let Some(details) = rejected.errors().iter().find_map(|error| {
+            error.details().and_then(|details| {
+                serde_json::from_value::<WorkflowRejectionDetails>(Value::Object(details.clone()))
+                    .ok()
+            })
+        }) {
+            must_surface.push(McpMustSurfaceFact::RecoveryMethod {
+                owner_method: details.recovery.owner_method,
+            });
+            blocker_summary.extend(details.blockers.into_iter().map(|blocker| {
+                McpWorkflowBlockerSummary {
+                    code: RequiredNullable::some(blocker.code),
+                    owner_method: blocker.owner_method,
+                    required_refs: blocker.required_refs,
+                }
+            }));
+        } else {
+            let owner_method = authority
+                .workflow
+                .required_action()
+                .unwrap_or(MethodName::Status);
+            must_surface.push(McpMustSurfaceFact::RecoveryMethod { owner_method });
+            blocker_summary.extend(rejected.errors().iter().map(|error| {
+                McpWorkflowBlockerSummary {
+                    code: RequiredNullable::some(error.code()),
+                    owner_method,
+                    required_refs: authority.workflow.required_refs().to_vec(),
+                }
+            }));
+        }
+    }
+
+    let required_user_action = if authority.workflow.next_actor()
+        == volicord_types::values::AuthorityNextActor::User
+    {
+        let task_id = authority
+            .receipt
+            .task_ref
+            .task_id
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| {
+                McpAdapterError::Protocol(
+                    "authoritative User Channel presentation requires a Task coordinate".to_owned(),
+                )
+            })?;
+        let instruction = canonical_user_channel_instructions(
+            &authority.receipt.project_id,
+            &task_id,
+            authority.pending_user_action_refs.clone(),
+        )
+        .map_err(|error| McpAdapterError::Protocol(error.to_string()))?;
+        must_surface.push(McpMustSurfaceFact::UserActionRequestExists {
+            request_refs: instruction.request_refs.clone(),
+        });
+        must_surface.push(McpMustSurfaceFact::NextActorIsUser);
+        must_surface.push(McpMustSurfaceFact::ChatReplyIsNotResolution);
+        must_surface
+            .push(McpMustSurfaceFact::ProductRepositoryMutationBlockedUntilUserChannelResolution);
+        Some(McpUserChannelInstructions {
+            channel_kind: instruction.channel_kind,
+            list_command: instruction.list_command,
+            request_refs: instruction.request_refs,
+            chat_reply_is_resolution: instruction.chat_reply_is_resolution,
+        })
+    } else {
+        None
+    };
+
+    if response_kind == "result"
+        && method == MethodName::AdvanceTask
+        && authority.work_phase == volicord_types::values::WorkPhase::Implementation
+    {
+        must_surface.push(McpMustSurfaceFact::EnteredImplementation);
+        must_surface.push(McpMustSurfaceFact::PhaseTransitionCreatedNoWriteTicket);
+        must_surface.push(
+            McpMustSurfaceFact::ProductRepositoryWritesRequirePrepareWrite {
+                owner_method: MethodName::PrepareWrite,
+            },
+        );
+    }
+
+    let headline = match state_change {
+        McpAgentStateChange::Rejected => format!("{tool_name} was rejected by current workflow"),
+        McpAgentStateChange::DryRun => format!("{tool_name} returned a dry-run preview"),
+        McpAgentStateChange::CoreCommitted => format!("{tool_name} committed Core authority"),
+        McpAgentStateChange::StagingCreated => format!("{tool_name} created staging state"),
+        McpAgentStateChange::ReadOnlyResume => {
+            format!("{tool_name} resumed current authority without mutation")
+        }
+        McpAgentStateChange::NoEffect => format!("{tool_name} returned without a state change"),
+    };
+    Ok(McpWorkflowPresentation {
+        headline,
+        state_change,
+        task_phase,
+        next_actor: authority.workflow.next_actor(),
+        blocker_summary,
+        required_user_action: required_user_action.into(),
+        must_surface,
+    })
+}
+
+fn mutation_state_change(
+    response_kind: &str,
+    replayed: bool,
+    method_result: &Value,
+) -> Result<McpAgentStateChange, McpAdapterError> {
+    if response_kind == "rejected" {
+        return Ok(McpAgentStateChange::Rejected);
+    }
+    if response_kind == "dry_run" {
+        return Ok(McpAgentStateChange::DryRun);
+    }
+    if replayed
+        || method_result
+            .get("agent_workflow_result_replayed")
+            .and_then(Value::as_bool)
+            == Some(true)
+    {
+        return Ok(McpAgentStateChange::ReadOnlyResume);
+    }
+    let effect_kind = method_result
+        .pointer("/agent_workflow_result/base/effect_kind")
+        .or_else(|| method_result.pointer("/base/effect_kind"))
+        .cloned()
+        .ok_or_else(|| {
+            McpAdapterError::Protocol("mutation result is missing effect_kind".to_owned())
+        })?;
+    match serde_json::from_value::<EffectKind>(effect_kind).map_err(McpAdapterError::Json)? {
+        EffectKind::CoreCommitted => Ok(McpAgentStateChange::CoreCommitted),
+        EffectKind::StagingCreated => Ok(McpAgentStateChange::StagingCreated),
+        EffectKind::ReadOnly => Ok(McpAgentStateChange::ReadOnlyResume),
+        EffectKind::NoEffect => Ok(McpAgentStateChange::NoEffect),
+    }
+}
+
+fn rejected_compatibility_text(tool_name: &str, presentation: &McpWorkflowPresentation) -> String {
+    let recovery = presentation
+        .must_surface
+        .iter()
+        .find_map(|fact| match fact {
+            McpMustSurfaceFact::RecoveryMethod { owner_method } => Some(owner_method.as_str()),
+            _ => None,
+        })
+        .unwrap_or(MethodName::Status.as_str());
+    bounded_mutation_compatibility_text(format!(
+        "Volicord {tool_name} rejected the mutation; Core state is unchanged; current Task phase={}/{}; recover with {recovery}.",
+        serde_json::to_value(presentation.task_phase.mode)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_else(|| "unknown".to_owned()),
+        serde_json::to_value(presentation.task_phase.work_phase)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_else(|| "unknown".to_owned()),
+    ))
+}
+
+fn dry_run_compatibility_text(tool_name: &str, presentation: &McpWorkflowPresentation) -> String {
+    bounded_mutation_compatibility_text(format!(
+        "Volicord {tool_name} returned a dry-run preview; Core state is unchanged; current Task phase={}/{}.",
+        serde_json::to_value(presentation.task_phase.mode)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_else(|| "unknown".to_owned()),
+        serde_json::to_value(presentation.task_phase.work_phase)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_else(|| "unknown".to_owned()),
+    ))
 }
 
 pub(crate) fn compact_mutation_method_result(
@@ -381,6 +663,16 @@ pub(crate) fn compact_mutation_method_result(
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
             serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
         }
+        AgentToolId::RECORD_SHAPING => {
+            let result: RecordShapingResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
+        }
+        AgentToolId::ADVANCE_TASK => {
+            let result: AdvanceTaskResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
+        }
         AgentToolId::CLOSE_TASK => {
             let result: CloseTaskResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
@@ -437,6 +729,7 @@ fn compact_request_user_action_result(method_result: &Value) -> Result<Value, Mc
 fn authority_receipt_compatibility_text(
     tool_name: &str,
     receipt: &AuthorityReceipt,
+    state_change: McpAgentStateChange,
 ) -> Result<String, McpAdapterError> {
     let close_state = serde_json::to_value(receipt.close_state)
         .map_err(McpAdapterError::Json)?
@@ -448,8 +741,16 @@ fn authority_receipt_compatibility_text(
         .as_str()
         .unwrap_or("unknown")
         .to_owned();
+    let effect = match state_change {
+        McpAgentStateChange::CoreCommitted => "committed Core authority",
+        McpAgentStateChange::StagingCreated => "created staging state",
+        McpAgentStateChange::ReadOnlyResume => "resumed current authority without mutation",
+        McpAgentStateChange::NoEffect => "returned without a Core state change",
+        McpAgentStateChange::DryRun => "returned a dry-run preview",
+        McpAgentStateChange::Rejected => "rejected the mutation",
+    };
     Ok(bounded_mutation_compatibility_text(format!(
-        "Volicord {tool_name} refreshed Task {} at state_version {}; close_state={close_state}; next_actor={next_actor}. Inspect the authoritative result for the authority receipt.",
+        "Volicord {tool_name} {effect} for Task {} at state_version {}; close_state={close_state}; next_actor={next_actor}. Inspect the authority receipt and presentation.must_surface before reporting the result.",
         receipt.task_ref.record_id.as_str(),
         receipt.state_version,
     )))

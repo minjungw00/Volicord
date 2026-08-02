@@ -305,6 +305,14 @@ Durable tests should cover, as applicable:
 - missing or ineligible operation-result rows remaining
   `OPERATION_RESULT_UNAVAILABLE`;
 - MCP rejection of hidden context and CLI-only UserAction resolution;
+- every closed workflow-rejection code, typed current mode/phase and received
+  request, allowed alternatives, authoritative workflow, retryability,
+  recovery owner, unchanged effect counts/state version, pending User Channel
+  presentation, exact command construction, and phase-transition no-write-
+  ticket facts;
+- agent-evaluation observation totals for workflow rejections and final-answer
+  surfacing; any observed rejection omitted from the final answer makes the
+  result incomplete even when the underlying task otherwise succeeded;
 - authoritative MCP runtime-session source separation, milestone ordering,
   current revisions, project binding, and diagnostics non-authority;
 - exact hidden-launcher configuration, current-entry drift rejection,

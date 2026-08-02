@@ -93,6 +93,26 @@ write ticket, create a Change Unit, update scope, establish implementation
 evidence, create an implementation close basis, or close the Task. It never
 performs an automatic `implementation` to `shaping` transition.
 
+## Workflow recovery and presentation
+
+Transition rejection uses the most specific current workflow code:
+
+- `WORKFLOW_ACTION_NOT_ALLOWED` for an unsupported current mode or phase;
+- `SHAPING_CHECKPOINT_REQUIRED` or `SHAPING_CHECKPOINT_STALE` for missing or
+  noncurrent checkpoint authority;
+- `USER_DECISION_UNRESOLVED` for pending, missing, extra, or stale current
+  User Channel resolutions;
+- `CHANGE_UNIT_REQUIRED` or `CHANGE_UNIT_STALE` for missing or incompatible
+  Change Unit authority.
+
+Every branch uses the common typed workflow-rejection details and remains
+`no_effect`. Blockers carry their exact owner methods and required refs.
+
+MCP presentation for a successful transition requires three structured facts:
+the Task entered `implementation`, the transition created no write ticket, and
+Product Repository writes still require `volicord.prepare_write`. A caller
+must not describe phase advancement as write authorization or Task completion.
+
 ## Related owners
 
 - Progression authority: [Core Model](../core-model.md).

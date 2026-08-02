@@ -884,6 +884,42 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
     let message = issue["message"].as_str().expect("enum issue message");
     assert!(message.contains("implementation"));
     assert!(message.contains("direct"));
+    assert_eq!(issue["expected_semantic_type"], "RunKind");
+    assert_eq!(
+        issue["allowed_enum_values"],
+        json!(["implementation", "direct"])
+    );
+    assert!(issue["minimal_example"].is_object());
+    assert_eq!(issue["retryable"], true);
+    assert_eq!(issue["reached_core"], false);
+    assert_eq!(issue["committed"], false);
+    Ok(())
+}
+
+#[test]
+fn intake_malformed_state_record_ref_reports_semantic_owner() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-invalid-intake-state-record-ref")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(AgentToolId::INTAKE.wire_name(), "create_new")?;
+    arguments["initial_context_refs"] = json!(["this is prose, not an authority ref"]);
+
+    let error = adapter
+        .call_tool(AgentToolId::INTAKE.wire_name(), arguments)
+        .expect_err("malformed StateRecordRef should fail before Core");
+    let response = structured_tool_error(AgentToolId::INTAKE.wire_name(), &error);
+    let issue = tool_error_issue(
+        &response,
+        "/initial_context_refs/0",
+        "MCP_ARGUMENT_TYPE_MISMATCH",
+    );
+    assert_eq!(issue["expected_semantic_type"], "StateRecordRef");
+    let hint = issue["owner_hint"].as_str().expect("field owner hint");
+    assert!(hint.contains("StateRecordRef"));
+    assert!(hint.contains("plain_language_request"));
+    assert!(issue["minimal_example"].is_object());
+    assert_eq!(issue["retryable"], true);
+    assert_eq!(issue["reached_core"], false);
+    assert_eq!(issue["committed"], false);
     Ok(())
 }
 
@@ -1044,7 +1080,15 @@ fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<
         .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("unknown root field should fail before Core");
     let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
-    tool_error_issue(&response, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
+    let issue = tool_error_issue(&response, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
+    assert_eq!(issue["unknown_fields"], json!(["unexpected"]));
+    assert!(issue["required_fields"]
+        .as_array()
+        .is_some_and(|fields| !fields.is_empty()));
+    assert!(issue["minimal_example"].is_object());
+    assert_eq!(issue["retryable"], true);
+    assert_eq!(issue["reached_core"], false);
+    assert_eq!(issue["committed"], false);
     Ok(())
 }
 
@@ -1219,7 +1263,12 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
         .collect::<BTreeSet<_>>();
     assert_eq!(
         summary_keys,
-        BTreeSet::from(["authority_receipt", "method_result", "operation_result_ref",])
+        BTreeSet::from([
+            "authority_receipt",
+            "method_result",
+            "operation_result_ref",
+            "presentation",
+        ])
     );
     assert!(summary["structuredContent"]["operation_result_ref"].is_object());
     assert_eq!(
@@ -1248,6 +1297,7 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
             "authority_receipt",
             "method_result",
             "operation_result_ref",
+            "presentation",
             "workflow",
         ])
     );

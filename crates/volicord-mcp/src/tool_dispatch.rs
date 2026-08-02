@@ -924,11 +924,11 @@ fn tool_execution_error_result_for_capabilities(
                 committed: false,
                 reported_issue_count: 1,
                 truncated: false,
-                issues: vec![McpToolErrorIssue {
+                issues: vec![McpToolErrorIssue::new(
                     path,
-                    code: McpToolIssueCode::AdapterPreconditionFailed,
+                    McpToolIssueCode::AdapterPreconditionFailed,
                     message,
-                }],
+                )],
             }
         }
         McpAdapterError::MutationAdmission(condition) => McpToolErrorResponse {
@@ -939,11 +939,11 @@ fn tool_execution_error_result_for_capabilities(
             committed: false,
             reported_issue_count: 1,
             truncated: false,
-            issues: vec![McpToolErrorIssue {
-                path: String::new(),
-                code: McpToolIssueCode::AdapterPreconditionFailed,
-                message: condition.to_string(),
-            }],
+            issues: vec![McpToolErrorIssue::new(
+                String::new(),
+                McpToolIssueCode::AdapterPreconditionFailed,
+                condition.to_string(),
+            )],
         },
         _ => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
@@ -953,11 +953,11 @@ fn tool_execution_error_result_for_capabilities(
             committed: false,
             reported_issue_count: 1,
             truncated: false,
-            issues: vec![McpToolErrorIssue {
-                path: String::new(),
-                code: McpToolIssueCode::AdapterPreconditionFailed,
-                message: "Tool execution failed before reaching Core.".to_owned(),
-            }],
+            issues: vec![McpToolErrorIssue::new(
+                String::new(),
+                McpToolIssueCode::AdapterPreconditionFailed,
+                "Tool execution failed before reaching Core.",
+            )],
         },
     };
     bounded_tool_error_result(structured, capabilities)
@@ -982,11 +982,11 @@ fn bounded_tool_error_result(
         })
         .collect();
     if structured.issues.is_empty() {
-        structured.issues.push(McpToolErrorIssue {
-            path: String::new(),
-            code: McpToolIssueCode::AdapterPreconditionFailed,
-            message: "Tool execution failed before reaching Core.".to_owned(),
-        });
+        structured.issues.push(McpToolErrorIssue::new(
+            String::new(),
+            McpToolIssueCode::AdapterPreconditionFailed,
+            "Tool execution failed before reaching Core.",
+        ));
         truncated = true;
     }
 
@@ -1671,6 +1671,14 @@ mod mutation_projection_and_recovery_tests {
             output.structured_content["method_result"]["effect_kind"],
             "core_committed"
         );
+        assert_eq!(
+            output.structured_content["presentation"]["state_change"],
+            "read_only_resume"
+        );
+        assert!(output
+            .primary_text
+            .contains("resumed current authority without mutation"));
+        assert!(!output.primary_text.contains("committed Core authority"));
         assert!(output.structured_content.get("code").is_none());
         assert!(output
             .structured_content

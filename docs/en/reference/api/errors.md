@@ -20,6 +20,7 @@ It routes to owners for:
 | What a failure category means | [Failure Model](../failure-model.md) |
 | Which exact `FailureCategory` identifiers the API accepts | [API Value Sets](schema-value-sets.md#failure-category-values) |
 | What a public `ErrorCode` means | [API Error Codes](error-codes.md) |
+| Which typed current facts accompany a workflow rejection | [API Error Details](error-details.md#workflow-rejection-detail-fields) |
 | Which public error is selected | [API Error Precedence](error-precedence.md) |
 | Which API response branch is used | [API Error Routing](error-routing.md) |
 | Where close-readiness blockers meet API responses | [API Blocker Routing](blocker-routing.md) |

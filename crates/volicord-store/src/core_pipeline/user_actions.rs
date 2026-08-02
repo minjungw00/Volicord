@@ -794,6 +794,7 @@ fn decode_user_action_request_record(
     })?;
     if raw.source_method != MethodName::RequestUserAction.as_str()
         && raw.source_method != MethodName::ReconcileChanges.as_str()
+        && raw.source_method != MethodName::RecordShaping.as_str()
     {
         return Err(StoreError::corrupt_owner_state_value(
             "user_action_requests",

@@ -2276,6 +2276,25 @@ directly and does not parse an intermediate JSON tree. The semantic
 `UserActionResolutionForm` and its candidates remain owned by
 [API User Action Schemas](api/schema-user-action.md#resolution-form).
 
+Workflow presentation uses the same owner to build adapter-neutral channel
+instructions:
+
+```schema
+CanonicalUserChannelInstructions:
+  channel_kind: cli
+  list_command: string
+  request_refs: StateRecordRef[]
+  chat_reply_is_resolution: false
+```
+
+For one current Task, `list_command` is generated from the actual Clap command
+declaration as `volicord inbox --task TASK_ID --json`. `request_refs` preserves
+the complete current project, Task, request, and produced-version coordinates.
+An adapter and agent must use these values directly; they do not construct IDs
+or shell syntax. Chat text cannot resolve a request. Product Repository
+mutation remains blocked when the current workflow is
+`awaiting_user_action` until the User Channel records a current resolution.
+
 Stored requests and resolutions are strict typed records. Corrupt, unknown,
 mixed, or invalid stored values fail with the persisted-data failure taxonomy;
 the CLI does not default, repair, or guess an answer.

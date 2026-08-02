@@ -538,11 +538,11 @@ fn record_run_rejects_non_write_authority_after_workspace_change() -> Result<(),
 
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "BASELINE_STALE"
+        "WORKSPACE_BASIS_STALE"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["workspace_reason"],
-        "workspace_context_mismatch"
+        response.response_value["errors"][0]["details"]["state_change_applied"],
+        false
     );
     assert_eq!(harness.counts()?, before);
     Ok(())

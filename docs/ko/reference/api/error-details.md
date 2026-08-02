@@ -50,6 +50,47 @@ null 허용 여부, 필드 형식은 [API 코어 스키마](schema-core.md#commo
 
 세부 데이터는 안정적인 진단 사실로 제한해야 합니다. 민감한 요청 본문을 노출하거나, 메서드 요청 본문을 중복하거나, 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하거나, 저장 효과를 정의하면 안 됩니다.
 
+<a id="workflow-rejection-detail-fields"></a>
+## Workflow 거부 상세 필드
+
+`RUN_KIND_INCOMPATIBLE`, `TASK_PHASE_TRANSITION_REQUIRED`,
+`SHAPING_CHECKPOINT_REQUIRED`, `SHAPING_CHECKPOINT_STALE`,
+`USER_DECISION_UNRESOLVED`, `CHANGE_UNIT_REQUIRED`, `CHANGE_UNIT_STALE`,
+`WORKSPACE_BASIS_STALE`, `WORKFLOW_ACTION_NOT_ALLOWED`는 다음 하나의 폐쇄형 non-null 상세
+형태를 필수로 사용합니다.
+
+```schema
+WorkflowRejectionDetails:
+  state_change_applied: false
+  current_task_mode: TaskMode
+  current_work_phase: WorkPhase
+  received_action: MethodName
+  received_run_kind: RunKind | null
+  allowed_run_kinds: RunKind[]
+  allowed_actions: MethodName[]
+  blockers: WorkflowRejectionBlocker[]
+  workflow: WorkflowProjection
+  corrected_retry_allowed: boolean
+  recovery: WorkflowRecovery
+
+WorkflowRejectionBlocker:
+  code: ErrorCode
+  owner_method: MethodName
+  required_refs: StateRecordRef[]
+
+WorkflowRecovery:
+  owner_method: MethodName
+```
+
+`received_action`은 거부된 semantic method입니다. Run 기록은 추가로
+`received_run_kind`와 `allowed_run_kinds`를 사용하고 다른 method는 nullable member와 빈
+run-kind 목록을 보존합니다. `allowed_actions`, `blockers`, `workflow`는 같은 현재 Store
+authority에서 파생됩니다. `recovery`에는 generic next-action 배열이 아니라 현재 owner
+method 하나만 들어갑니다. `corrected_retry_allowed`와 `ToolError.retryable`은 현재
+authority에 대해 수정한 요청을 semantic하게 다시 시도할 수 있는지를 나타냅니다. 둘 다
+적용된 mutation의 replay를 허가하지 않습니다. 수정 재시도가 허용되어도 바깥 거부는 계속
+`no_effect`입니다.
+
 <a id="platform-diagnostic-detail-field"></a>
 
 ## 플랫폼 diagnostic 세부 필드

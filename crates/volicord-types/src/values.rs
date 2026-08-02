@@ -2055,6 +2055,42 @@ public_error_codes! {
         wire: "VALIDATION_FAILED",
         category: Rejected,
     },
+    RunKindIncompatible => {
+        wire: "RUN_KIND_INCOMPATIBLE",
+        category: Rejected,
+    },
+    TaskPhaseTransitionRequired => {
+        wire: "TASK_PHASE_TRANSITION_REQUIRED",
+        category: Rejected,
+    },
+    ShapingCheckpointRequired => {
+        wire: "SHAPING_CHECKPOINT_REQUIRED",
+        category: Rejected,
+    },
+    ShapingCheckpointStale => {
+        wire: "SHAPING_CHECKPOINT_STALE",
+        category: Rejected,
+    },
+    UserDecisionUnresolved => {
+        wire: "USER_DECISION_UNRESOLVED",
+        category: Rejected,
+    },
+    ChangeUnitRequired => {
+        wire: "CHANGE_UNIT_REQUIRED",
+        category: Rejected,
+    },
+    ChangeUnitStale => {
+        wire: "CHANGE_UNIT_STALE",
+        category: Rejected,
+    },
+    WorkspaceBasisStale => {
+        wire: "WORKSPACE_BASIS_STALE",
+        category: Rejected,
+    },
+    WorkflowActionNotAllowed => {
+        wire: "WORKFLOW_ACTION_NOT_ALLOWED",
+        category: NotAllowed,
+    },
     PersistedDataCorrupt => {
         wire: "PERSISTED_DATA_CORRUPT",
         category: Corrupt,

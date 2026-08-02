@@ -300,8 +300,36 @@ impl TrialDriver for AggregateSyntheticDriver {
             unrecorded_change_false_positives: 0,
             resume_authority_or_judgment_losses: 0,
             wrong_auto_completions: 0,
+            workflow_rejections_observed: 0,
+            workflow_rejections_surfaced_in_final_answer: 0,
         })
     }
+}
+
+struct OmittedWorkflowRejectionDriver;
+
+impl TrialDriver for OmittedWorkflowRejectionDriver {
+    fn run_trial(
+        &mut self,
+        request: &DriverRequest,
+        repository_root: &std::path::Path,
+    ) -> Result<DriverObservation, DriverFailure> {
+        let mut observation = AggregateSyntheticDriver.run_trial(request, repository_root)?;
+        observation.workflow_rejections_observed = 1;
+        observation.workflow_rejections_surfaced_in_final_answer = 0;
+        Ok(observation)
+    }
+}
+
+#[test]
+fn live_evaluation_rejects_an_omitted_workflow_rejection() {
+    let result = run_live_with_driver(&enabled_test_config(), &mut OmittedWorkflowRejectionDriver)
+        .expect("evaluation should return an incomplete result");
+    assert_eq!(result.status, RunStatus::Incomplete);
+    assert!(result.trial_failures.iter().any(|failure| {
+        failure.failure_code == "observation_coordinate_mismatch"
+            && failure.detail.contains("omitted a workflow rejection")
+    }));
 }
 
 #[test]

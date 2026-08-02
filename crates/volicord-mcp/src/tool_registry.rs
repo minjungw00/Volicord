@@ -209,6 +209,9 @@ pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON: &str =
 const UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_002","goal_summary":"Limit saved search filters.","scope_update":{"include":["Saved-filter owner and label edits."],"exclude":[]},"scope_boundary":"Saved-filter owner and label edits.","acceptance_criteria":[{"acceptance_criterion_id":null,"statement":"Saved filters reject out-of-scope edits.","evidence_requirement":"required"}],"baseline_ref":"baseline_filter_002","change_unit":{"operation":"create_current","scope_summary":"Saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
 const UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_003","scope_boundary":"Saved-filter owner, label, and visibility edits.","baseline_ref":"baseline_filter_003","change_unit":{"operation":"replace_current","scope_summary":"Expanded saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
 
+const RECORD_SHAPING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_shape_001","scope_revision":4,"baseline_ref":"baseline_shape_001","summary":"The implementation boundary and open decisions are recorded.","implementation_boundary":"Implement only the current saved-filter scope.","gaps":[],"source_refs":[],"evidence_refs":[],"close_assessment":null}"#;
+const ADVANCE_TASK_ARGUMENTS_JSON: &str = r#"{"task_id":"task_shape_001","shaping_checkpoint_id":"shaping_checkpoint_001","change_unit_id":"change_unit_001","scope_revision":4,"baseline_ref":"baseline_shape_001","user_action_resolution_ids":[]}"#;
+
 pub(crate) const STATUS_READ_ONLY_EXAMPLE_ID: &str = "read_only_status";
 const STATUS_SUMMARY_ARGUMENTS_JSON: &str = r#"{"detail":"summary"}"#;
 pub(crate) const STATUS_READ_ONLY_ARGUMENTS_JSON: &str = r#"{"detail":"workflow"}"#;
@@ -290,6 +293,18 @@ const UPDATE_SCOPE_EXAMPLES: [McpToolExample; 3] = [
         arguments_json: UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON,
     },
 ];
+
+const RECORD_SHAPING_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: "record_current_shaping",
+    description: "Record the current shaping checkpoint.",
+    arguments_json: RECORD_SHAPING_ARGUMENTS_JSON,
+}];
+
+const ADVANCE_TASK_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: "enter_implementation",
+    description: "Advance one ready work Task into implementation.",
+    arguments_json: ADVANCE_TASK_ARGUMENTS_JSON,
+}];
 
 const STATUS_EXAMPLES: [McpToolExample; 3] = [
     McpToolExample {
@@ -394,7 +409,8 @@ pub(crate) fn canonical_tool_examples(tool: AgentToolId) -> &'static [McpToolExa
     match tool.method() {
         Some(MethodName::Intake) => &INTAKE_EXAMPLES,
         Some(MethodName::UpdateScope) => &UPDATE_SCOPE_EXAMPLES,
-        Some(MethodName::RecordShaping) | Some(MethodName::AdvanceTask) => &[],
+        Some(MethodName::RecordShaping) => &RECORD_SHAPING_EXAMPLES,
+        Some(MethodName::AdvanceTask) => &ADVANCE_TASK_EXAMPLES,
         Some(MethodName::Status) => &STATUS_EXAMPLES,
         Some(MethodName::GetOperationResult) => &GET_OPERATION_RESULT_EXAMPLES,
         Some(MethodName::PrepareEvidenceCapture) => &PREPARE_EVIDENCE_CAPTURE_EXAMPLES,

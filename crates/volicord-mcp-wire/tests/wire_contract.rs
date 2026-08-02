@@ -106,7 +106,7 @@ fn wire_owner_generates_mcp_schemas_while_public_schemas_stay_neutral() {
 
 #[test]
 fn mcp_structured_output_rejects_malformed_public_response_branches() {
-    let rejection = json!({
+    let rejection_method = json!({
         "base": {
             "response_kind": "rejected",
             "effect_kind": "no_effect",
@@ -127,7 +127,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "details": null
         }]
     });
-    let preview = json!({
+    let preview_method = json!({
         "base": {
             "response_kind": "dry_run",
             "effect_kind": "no_effect",
@@ -148,6 +148,60 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "diagnostics": []
         }
     });
+    let task_ref = json!({
+        "record_kind": "task",
+        "record_id": "task_current",
+        "project_id": "project_current",
+        "task_id": "task_current",
+        "produced_at_state_version": 7
+    });
+    let authority_receipt = json!({
+        "project_id": "project_current",
+        "state_version": 7,
+        "task_ref": task_ref,
+        "change_unit_ref": null,
+        "scope_revision": 0,
+        "latest_run_ref": null,
+        "product_file_write_observed": false,
+        "evidence_gate": null,
+        "close_state": "none",
+        "close_blockers": [],
+        "completion_claim_allowed": false,
+        "next_actor": "agent"
+    });
+    let workflow = json!({
+        "kind": "shaping_required",
+        "next_actor": "agent",
+        "required_action": "volicord.record_shaping",
+        "allowed_actions": ["volicord.record_shaping", "volicord.status"],
+        "required_refs": [task_ref],
+        "expected_state_version": 7,
+        "blocking_reason": "no_current_checkpoint",
+        "checkpoint": null
+    });
+    let presentation = |state_change: &str| {
+        json!({
+            "headline": "Current workflow result",
+            "state_change": state_change,
+            "task_phase": {"mode": "work", "work_phase": "shaping"},
+            "next_actor": "agent",
+            "blocker_summary": [],
+            "required_user_action": null,
+            "must_surface": []
+        })
+    };
+    let rejection = json!({
+        "method_result": rejection_method,
+        "authority_receipt": authority_receipt,
+        "workflow": workflow,
+        "presentation": presentation("rejected")
+    });
+    let preview = json!({
+        "method_result": preview_method,
+        "authority_receipt": authority_receipt,
+        "workflow": workflow,
+        "presentation": presentation("dry_run")
+    });
 
     type MutationOutput = McpMutationStructuredContent<IntakeResponse, McpMutationEffectSummary>;
     type ReadOnlyOutput = McpReadOnlyToolStructuredContent<StatusResponse>;
@@ -159,8 +213,8 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
 
     let mut malformed = Vec::new();
     for (pointer, value) in [
-        ("/base/response_kind", json!("result")),
-        ("/base/effect_kind", json!("core_committed")),
+        ("/method_result/base/response_kind", json!("result")),
+        ("/method_result/base/effect_kind", json!("core_committed")),
     ] {
         let mut value_to_reject = rejection.clone();
         *value_to_reject
@@ -169,9 +223,9 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
         malformed.push(value_to_reject);
     }
     for (pointer, value) in [
-        ("/base/response_kind", json!("rejected")),
-        ("/base/effect_kind", json!("read_only")),
-        ("/base/dry_run", json!(false)),
+        ("/method_result/base/response_kind", json!("rejected")),
+        ("/method_result/base/effect_kind", json!("read_only")),
+        ("/method_result/base/dry_run", json!(false)),
     ] {
         let mut value_to_reject = preview.clone();
         *value_to_reject
@@ -181,13 +235,14 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
     }
 
     let mut unknown_base = rejection.clone();
-    unknown_base["base"]["unknown"] = json!(true);
+    unknown_base["method_result"]["base"]["unknown"] = json!(true);
     malformed.push(unknown_base);
     let mut result_rejection_hybrid = rejection.clone();
     result_rejection_hybrid["task_ref"] = Value::Null;
     malformed.push(result_rejection_hybrid);
     let mut preview_rejection_hybrid = rejection.clone();
-    preview_rejection_hybrid["dry_run_summary"] = preview["dry_run_summary"].clone();
+    preview_rejection_hybrid["method_result"]["dry_run_summary"] =
+        preview["method_result"]["dry_run_summary"].clone();
     malformed.push(preview_rejection_hybrid);
 
     for value in malformed {

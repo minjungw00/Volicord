@@ -236,6 +236,8 @@ pub struct DriverObservation {
     pub unrecorded_change_false_positives: u64,
     pub resume_authority_or_judgment_losses: u64,
     pub wrong_auto_completions: u64,
+    pub workflow_rejections_observed: u64,
+    pub workflow_rejections_surfaced_in_final_answer: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

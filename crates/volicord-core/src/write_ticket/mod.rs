@@ -30,6 +30,12 @@ pub(crate) enum WriteTicketPlanningError {
     CurrentChangeUnitRequired {
         task_id: TaskId,
     },
+    TaskPhaseTransitionRequired {
+        task_id: TaskId,
+    },
+    WorkflowActionNotAllowed {
+        task_id: TaskId,
+    },
     Validation {
         field: WriteTicketField,
         message: &'static str,

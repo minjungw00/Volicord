@@ -66,30 +66,39 @@ Volicord 응답을 오류가 아닌 도구 결과로 전달합니다. 호출자�
 | 우선순위 | 주 `ErrorCode` | 의미 담당 문서 |
 |---:|---|---|
 | <a id="precedence-validation-failed"></a>1 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](error-codes.md#errorcode-validation-failed) |
-| <a id="precedence-persisted-data-corrupt"></a>2 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](error-codes.md#errorcode-persisted-data-corrupt) |
-| 3 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](error-codes.md#errorcode-state-version-conflict) |
-| <a id="precedence-invocation-context-mismatch"></a>4 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](error-codes.md#errorcode-invocation-context-mismatch) |
-| <a id="precedence-no-active-task"></a>5 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](error-codes.md#errorcode-no-active-task) |
-| <a id="precedence-no-active-change-unit"></a>6 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](error-codes.md#errorcode-no-active-change-unit) |
-| <a id="precedence-baseline-stale"></a>7 | `BASELINE_STALE` | [`BASELINE_STALE`](error-codes.md#errorcode-baseline-stale) |
-| <a id="precedence-scope-required"></a>8 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](error-codes.md#errorcode-scope-required) |
-| <a id="precedence-scope-violation"></a>9 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](error-codes.md#errorcode-scope-violation) |
-| <a id="precedence-write-ticket-required"></a>10 | `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](error-codes.md#errorcode-write-ticket-required) |
-| <a id="precedence-write-ticket-invalid"></a>11 | `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](error-codes.md#errorcode-write-ticket-invalid) |
-| <a id="precedence-approval-denied"></a>12 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](error-codes.md#errorcode-approval-denied) |
-| <a id="precedence-approval-expired"></a>13 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](error-codes.md#errorcode-approval-expired) |
-| <a id="precedence-approval-required"></a>14 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](error-codes.md#errorcode-approval-required) |
-| <a id="precedence-decision-unresolved"></a>15 | `DECISION_UNRESOLVED` | [`DECISION_UNRESOLVED`](error-codes.md#errorcode-decision-unresolved) |
-| <a id="precedence-autonomy-boundary-exceeded"></a>16 | `AUTONOMY_BOUNDARY_EXCEEDED` | [`AUTONOMY_BOUNDARY_EXCEEDED`](error-codes.md#errorcode-autonomy-boundary-exceeded) |
-| <a id="precedence-decision-required"></a>17 | `DECISION_REQUIRED` | [`DECISION_REQUIRED`](error-codes.md#errorcode-decision-required) |
-| <a id="precedence-capability-insufficient"></a>18 | `CAPABILITY_INSUFFICIENT` | [`CAPABILITY_INSUFFICIENT`](error-codes.md#errorcode-capability-insufficient) |
-| <a id="precedence-evidence-insufficient"></a>19 | `EVIDENCE_INSUFFICIENT` | [`EVIDENCE_INSUFFICIENT`](error-codes.md#errorcode-evidence-insufficient) |
-| <a id="precedence-residual-risk-not-visible"></a>20 | `RESIDUAL_RISK_NOT_VISIBLE` | [`RESIDUAL_RISK_NOT_VISIBLE`](error-codes.md#errorcode-residual-risk-not-visible) |
-| <a id="precedence-acceptance-required"></a>21 | `ACCEPTANCE_REQUIRED` | [`ACCEPTANCE_REQUIRED`](error-codes.md#errorcode-acceptance-required) |
-| <a id="precedence-projection-stale"></a>22 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
-| <a id="precedence-artifact-missing"></a>23 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
-| <a id="precedence-validator-failed"></a>24 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
-| <a id="precedence-operation-result-unavailable"></a>25 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
+| 2 | `RUN_KIND_INCOMPATIBLE` | [`RUN_KIND_INCOMPATIBLE`](error-codes.md#errorcode-run-kind-incompatible) |
+| 3 | `TASK_PHASE_TRANSITION_REQUIRED` | [`TASK_PHASE_TRANSITION_REQUIRED`](error-codes.md#errorcode-task-phase-transition-required) |
+| 4 | `SHAPING_CHECKPOINT_REQUIRED` | [`SHAPING_CHECKPOINT_REQUIRED`](error-codes.md#errorcode-shaping-checkpoint-required) |
+| 5 | `SHAPING_CHECKPOINT_STALE` | [`SHAPING_CHECKPOINT_STALE`](error-codes.md#errorcode-shaping-checkpoint-stale) |
+| 6 | `USER_DECISION_UNRESOLVED` | [`USER_DECISION_UNRESOLVED`](error-codes.md#errorcode-user-decision-unresolved) |
+| 7 | `CHANGE_UNIT_REQUIRED` | [`CHANGE_UNIT_REQUIRED`](error-codes.md#errorcode-change-unit-required) |
+| 8 | `CHANGE_UNIT_STALE` | [`CHANGE_UNIT_STALE`](error-codes.md#errorcode-change-unit-stale) |
+| 9 | `WORKSPACE_BASIS_STALE` | [`WORKSPACE_BASIS_STALE`](error-codes.md#errorcode-workspace-basis-stale) |
+| 10 | `WORKFLOW_ACTION_NOT_ALLOWED` | [`WORKFLOW_ACTION_NOT_ALLOWED`](error-codes.md#errorcode-workflow-action-not-allowed) |
+| <a id="precedence-persisted-data-corrupt"></a>11 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](error-codes.md#errorcode-persisted-data-corrupt) |
+| 12 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](error-codes.md#errorcode-state-version-conflict) |
+| <a id="precedence-invocation-context-mismatch"></a>13 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](error-codes.md#errorcode-invocation-context-mismatch) |
+| <a id="precedence-no-active-task"></a>14 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](error-codes.md#errorcode-no-active-task) |
+| <a id="precedence-no-active-change-unit"></a>15 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](error-codes.md#errorcode-no-active-change-unit) |
+| <a id="precedence-baseline-stale"></a>16 | `BASELINE_STALE` | [`BASELINE_STALE`](error-codes.md#errorcode-baseline-stale) |
+| <a id="precedence-scope-required"></a>17 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](error-codes.md#errorcode-scope-required) |
+| <a id="precedence-scope-violation"></a>18 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](error-codes.md#errorcode-scope-violation) |
+| <a id="precedence-write-ticket-required"></a>19 | `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](error-codes.md#errorcode-write-ticket-required) |
+| <a id="precedence-write-ticket-invalid"></a>20 | `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](error-codes.md#errorcode-write-ticket-invalid) |
+| <a id="precedence-approval-denied"></a>21 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](error-codes.md#errorcode-approval-denied) |
+| <a id="precedence-approval-expired"></a>22 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](error-codes.md#errorcode-approval-expired) |
+| <a id="precedence-approval-required"></a>23 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](error-codes.md#errorcode-approval-required) |
+| <a id="precedence-decision-unresolved"></a>24 | `DECISION_UNRESOLVED` | [`DECISION_UNRESOLVED`](error-codes.md#errorcode-decision-unresolved) |
+| <a id="precedence-autonomy-boundary-exceeded"></a>25 | `AUTONOMY_BOUNDARY_EXCEEDED` | [`AUTONOMY_BOUNDARY_EXCEEDED`](error-codes.md#errorcode-autonomy-boundary-exceeded) |
+| <a id="precedence-decision-required"></a>26 | `DECISION_REQUIRED` | [`DECISION_REQUIRED`](error-codes.md#errorcode-decision-required) |
+| <a id="precedence-capability-insufficient"></a>27 | `CAPABILITY_INSUFFICIENT` | [`CAPABILITY_INSUFFICIENT`](error-codes.md#errorcode-capability-insufficient) |
+| <a id="precedence-evidence-insufficient"></a>28 | `EVIDENCE_INSUFFICIENT` | [`EVIDENCE_INSUFFICIENT`](error-codes.md#errorcode-evidence-insufficient) |
+| <a id="precedence-residual-risk-not-visible"></a>29 | `RESIDUAL_RISK_NOT_VISIBLE` | [`RESIDUAL_RISK_NOT_VISIBLE`](error-codes.md#errorcode-residual-risk-not-visible) |
+| <a id="precedence-acceptance-required"></a>30 | `ACCEPTANCE_REQUIRED` | [`ACCEPTANCE_REQUIRED`](error-codes.md#errorcode-acceptance-required) |
+| <a id="precedence-projection-stale"></a>31 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
+| <a id="precedence-artifact-missing"></a>32 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
+| <a id="precedence-validator-failed"></a>33 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
+| <a id="precedence-operation-result-unavailable"></a>34 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
 
 `volicord.get_operation_result`에서는 접근 맥락 불일치가 메서드 범위 결과 없음 분기보다
 먼저 `INVOCATION_CONTEXT_MISMATCH`를 선택합니다. 그 밖에 적용되는 전역 순서는

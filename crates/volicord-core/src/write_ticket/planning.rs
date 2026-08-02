@@ -619,10 +619,9 @@ fn decide_prepare_write_policy(
         reasons,
     } = resolved;
     if task.mode == TaskMode::Advisor {
-        return prepare_write_validation_error(
-            WriteTicketField::TaskId,
-            "advisor Task mode does not support write preparation",
-        );
+        return Err(WriteTicketPlanningError::WorkflowActionNotAllowed {
+            task_id: TaskId::new(task.task_id.clone()),
+        });
     }
     let workflow_policy = project_workflow_policy(store)?;
     let current_control = task.effective_control_level;
@@ -708,10 +707,9 @@ fn decide_prepare_write_policy(
         }
     }
     if task.work_phase != WorkPhase::Implementation {
-        return prepare_write_validation_error(
-            WriteTicketField::TaskId,
-            "write preparation requires work_phase=implementation",
-        );
+        return Err(WriteTicketPlanningError::TaskPhaseTransitionRequired {
+            task_id: TaskId::new(task.task_id.clone()),
+        });
     }
     Ok(PrepareWritePolicyDecision {
         normalized,

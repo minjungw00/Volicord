@@ -1,5 +1,7 @@
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
-use crate::tool_registry::{mcp_tool_input_schema, mcp_tool_output_schema};
+use crate::tool_registry::{
+    canonical_tool_examples, mcp_tool_input_schema, mcp_tool_output_schema,
+};
 #[cfg(test)]
 use serde_json::json;
 use serde_json::{Map, Value};
@@ -52,6 +54,7 @@ pub(crate) fn validate_mcp_tool_arguments(
     if validation.issues.is_empty() {
         Ok(())
     } else {
+        enrich_argument_issues(tool_name, schema, &mut validation.issues);
         Err(McpAdapterError::InvalidParams {
             tool_name: tool_name.to_owned(),
             issues: validation.issues,
@@ -59,6 +62,192 @@ pub(crate) fn validate_mcp_tool_arguments(
             source: None,
         })
     }
+}
+
+pub(crate) fn decode_failure_issue(
+    tool_name: &str,
+    source: &serde_json::Error,
+) -> McpToolErrorIssue {
+    let mut issue = McpToolErrorIssue::new(
+        String::new(),
+        McpToolIssueCode::ArgumentDecodeFailed,
+        format!("Arguments matched the public input schema but could not be decoded: {source}."),
+    );
+    if let Some(schema) = cached_tool_input_schemas().get(tool_name) {
+        enrich_argument_issues(tool_name, schema, std::slice::from_mut(&mut issue));
+    }
+    issue
+}
+
+fn enrich_argument_issues(tool_name: &str, root_schema: &Value, issues: &mut [McpToolErrorIssue]) {
+    let minimal_example = AgentToolId::from_wire_name(tool_name)
+        .ok()
+        .and_then(|tool| canonical_tool_examples(tool).first())
+        .and_then(|example| {
+            serde_json::from_str::<Map<String, Value>>(example.arguments_json).ok()
+        });
+    for issue in issues {
+        let target_schema =
+            schema_for_instance_pointer(root_schema, &issue.path).unwrap_or(root_schema);
+        let parent_schema = parent_pointer(&issue.path)
+            .and_then(|path| schema_for_instance_pointer(root_schema, path))
+            .unwrap_or(target_schema);
+        issue.expected_semantic_type = semantic_type_name(root_schema, target_schema).into();
+        issue.required_fields = required_field_names(root_schema, parent_schema);
+        issue.allowed_enum_values = enum_string_values(root_schema, target_schema);
+        if issue.code == McpToolIssueCode::ArgumentUnknown {
+            if let Some(field) = pointer_last_segment(&issue.path) {
+                issue.unknown_fields = vec![field];
+            }
+        }
+        issue.minimal_example = minimal_example.clone().into();
+        let item_issue =
+            pointer_last_segment(&issue.path).is_some_and(|value| value.parse::<usize>().is_ok());
+        issue.owner_hint = if item_issue {
+            schema_description(root_schema, parent_schema)
+                .or_else(|| schema_description(root_schema, target_schema))
+        } else {
+            schema_description(root_schema, target_schema)
+                .or_else(|| schema_description(root_schema, parent_schema))
+        }
+        .into();
+    }
+}
+
+fn schema_for_instance_pointer<'a>(root_schema: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut current = root_schema;
+    for segment in path.split('/').skip(1).map(unescape_pointer_segment) {
+        current = schema_for_segment(root_schema, current, &segment)?;
+    }
+    Some(current)
+}
+
+fn schema_for_segment<'a>(
+    root_schema: &'a Value,
+    schema: &'a Value,
+    segment: &str,
+) -> Option<&'a Value> {
+    let schema = resolve_schema(root_schema, schema);
+    let object = schema.as_object()?;
+    if let Some(property) = object
+        .get("properties")
+        .and_then(Value::as_object)
+        .and_then(|properties| properties.get(segment))
+    {
+        return Some(property);
+    }
+    if segment.parse::<usize>().is_ok() {
+        if let Some(items) = object.get("items") {
+            return Some(items);
+        }
+    }
+    for keyword in ["allOf", "anyOf", "oneOf"] {
+        if let Some(branches) = object.get(keyword).and_then(Value::as_array) {
+            if let Some(found) = branches
+                .iter()
+                .find_map(|branch| schema_for_segment(root_schema, branch, segment))
+            {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn resolve_schema<'a>(root_schema: &'a Value, schema: &'a Value) -> &'a Value {
+    schema
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|reference| resolve_local_reference(root_schema, reference))
+        .unwrap_or(schema)
+}
+
+fn semantic_type_name(root_schema: &Value, schema: &Value) -> Option<String> {
+    if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+        return reference.rsplit('/').next().map(str::to_owned);
+    }
+    let schema = resolve_schema(root_schema, schema);
+    if let Some(title) = schema.pointer("/title").and_then(Value::as_str) {
+        return Some(title.to_owned());
+    }
+    if schema.get("type").and_then(Value::as_str) == Some("array") {
+        let item = schema.get("items")?;
+        return semantic_type_name(root_schema, item).map(|name| format!("array<{name}>"));
+    }
+    if let Some(kind) = schema.get("type").and_then(Value::as_str) {
+        return Some(kind.to_owned());
+    }
+    for keyword in ["anyOf", "oneOf"] {
+        if let Some(name) = schema
+            .get(keyword)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|branch| branch.get("type").and_then(Value::as_str) != Some("null"))
+            .find_map(|branch| semantic_type_name(root_schema, branch))
+        {
+            return Some(name);
+        }
+    }
+    None
+}
+
+fn required_field_names(root_schema: &Value, schema: &Value) -> Vec<String> {
+    resolve_schema(root_schema, schema)
+        .get("required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn enum_string_values(root_schema: &Value, schema: &Value) -> Vec<String> {
+    let schema = resolve_schema(root_schema, schema);
+    if let Some(values) = schema.get("enum").and_then(Value::as_array) {
+        return values
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect();
+    }
+    for keyword in ["anyOf", "oneOf"] {
+        let values = schema
+            .get(keyword)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|branch| enum_string_values(root_schema, branch))
+            .collect::<Vec<_>>();
+        if !values.is_empty() {
+            return values;
+        }
+    }
+    Vec::new()
+}
+
+fn schema_description(root_schema: &Value, schema: &Value) -> Option<String> {
+    resolve_schema(root_schema, schema)
+        .get("description")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+fn parent_pointer(path: &str) -> Option<&str> {
+    let index = path.rfind('/')?;
+    Some(&path[..index])
+}
+
+fn pointer_last_segment(path: &str) -> Option<String> {
+    path.rsplit('/')
+        .next()
+        .filter(|value| !value.is_empty())
+        .map(unescape_pointer_segment)
+}
+
+fn unescape_pointer_segment(value: &str) -> String {
+    value.replace("~1", "/").replace("~0", "~")
 }
 
 pub(crate) fn validate_mcp_tool_output(
@@ -144,15 +333,15 @@ fn validate_schema_instance(
             .iter()
             .any(|expected| instance_matches_type(instance, expected))
         {
-            issues.push(McpToolErrorIssue {
-                path: path.to_owned(),
-                code: McpToolIssueCode::ArgumentTypeMismatch,
-                message: format!(
+            issues.push(McpToolErrorIssue::new(
+                path,
+                McpToolIssueCode::ArgumentTypeMismatch,
+                format!(
                     "Expected {}, but received {}.",
                     expected_types.join(" or "),
                     instance_type_name(instance)
                 ),
-            });
+            ));
             return;
         }
     }
@@ -162,11 +351,11 @@ fn validate_schema_instance(
             let (allowed, allowed_truncated) = compact_enum_values(allowed);
             let (received, received_truncated) = compact_json_preview(instance);
             issues.truncated |= allowed_truncated || received_truncated;
-            issues.push(McpToolErrorIssue {
-                path: path.to_owned(),
-                code: McpToolIssueCode::ArgumentEnumValue,
-                message: format!("Expected one of [{allowed}], but received {}.", received),
-            });
+            issues.push(McpToolErrorIssue::new(
+                path,
+                McpToolIssueCode::ArgumentEnumValue,
+                format!("Expected one of [{allowed}], but received {}.", received),
+            ));
             return;
         }
     }
@@ -310,11 +499,11 @@ fn validate_object(
                 break;
             }
             if !instance.contains_key(field) {
-                issues.push(McpToolErrorIssue {
-                    path: pointer_child(path, field),
-                    code: McpToolIssueCode::ArgumentRequired,
-                    message: format!("Required argument `{field}` is missing."),
-                });
+                issues.push(McpToolErrorIssue::new(
+                    pointer_child(path, field),
+                    McpToolIssueCode::ArgumentRequired,
+                    format!("Required argument `{field}` is missing."),
+                ));
             }
         }
     }
@@ -339,11 +528,11 @@ fn validate_object(
             Some(Value::Bool(false)) => {
                 let (field_preview, field_truncated) = text_preview(field, 128);
                 issues.truncated |= field_truncated;
-                issues.push(McpToolErrorIssue {
-                    path: pointer_child(path, field),
-                    code: McpToolIssueCode::ArgumentUnknown,
-                    message: format!("Unknown argument `{}` is not allowed.", field_preview),
-                })
+                issues.push(McpToolErrorIssue::new(
+                    pointer_child(path, field),
+                    McpToolIssueCode::ArgumentUnknown,
+                    format!("Unknown argument `{}` is not allowed.", field_preview),
+                ))
             }
             Some(additional_schema) if additional_schema.is_object() => validate_schema_instance(
                 root_schema,

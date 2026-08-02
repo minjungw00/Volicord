@@ -1264,6 +1264,270 @@ fn stdio_pending_user_action_returns_cli_inbox_recovery() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-awaiting-user-action-presentation")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            AgentToolId::RECORD_SHAPING.wire_name(),
+            json!({
+                "detail": "workflow",
+                "task_id": task_id,
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "summary": "A current user-owned technical decision is required.",
+                "implementation_boundary": "Proceed only after the current User Channel decision.",
+                "gaps": [{
+                    "gap_kind": "user_technical_decision_required",
+                    "summary": "Choose the current technical direction.",
+                    "affected_refs": [],
+                    "user_action": {
+                        "action": {
+                            "action_type": "choice",
+                            "judgment_kind": "technical_decision",
+                            "presentation": "short",
+                            "question": "Which current technical direction should be used?",
+                            "options": [{
+                                "option_id": "first",
+                                "label": "First direction",
+                                "description": "Use the first bounded direction.",
+                                "consequence": "The first direction becomes current.",
+                                "is_default": true
+                            }, {
+                                "option_id": "second",
+                                "label": "Second direction",
+                                "description": "Use the second bounded direction.",
+                                "consequence": "The second direction becomes current.",
+                                "is_default": false
+                            }],
+                            "context": {
+                                "summary": "The current shaping boundary needs a user-owned decision.",
+                                "related_refs": [],
+                                "artifact_refs": [],
+                                "visible_risks": [],
+                                "constraints": []
+                            },
+                            "affected_refs": [{
+                                "record_kind": "task",
+                                "record_id": task_id,
+                                "project_id": fixture.project_id(),
+                                "task_id": task_id,
+                                "produced_at_state_version": state_version
+                            }],
+                            "sensitive_action_scope": null
+                        },
+                        "expires_at": null
+                    }
+                }],
+                "source_refs": [],
+                "evidence_refs": [],
+                "close_assessment": null
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let result = &responses[1]["result"];
+    assert_eq!(result["isError"], false);
+    let structured = &result["structuredContent"];
+    assert_eq!(
+        structured["workflow"]["kind"], "awaiting_user_action",
+        "unexpected shaping projection: {structured:#}"
+    );
+    let presentation = &structured["presentation"];
+    assert_eq!(presentation["state_change"], "core_committed");
+    assert_eq!(presentation["next_actor"], "user");
+    assert_eq!(presentation["required_user_action"]["channel_kind"], "cli");
+    assert_eq!(
+        presentation["required_user_action"]["list_command"],
+        format!("volicord inbox --task {task_id} --json")
+    );
+    assert_eq!(
+        presentation["required_user_action"]["chat_reply_is_resolution"],
+        false
+    );
+    assert_eq!(
+        presentation["required_user_action"]["request_refs"],
+        structured["workflow"]["checkpoint"]["pending_decision_refs"]
+    );
+    let must_surface = presentation["must_surface"]
+        .as_array()
+        .expect("pending UserAction presentation must carry mandatory facts");
+    for fact_kind in [
+        "user_action_request_exists",
+        "next_actor_is_user",
+        "chat_reply_is_not_resolution",
+        "product_repository_mutation_blocked_until_user_channel_resolution",
+    ] {
+        assert!(must_surface
+            .iter()
+            .any(|fact| fact["fact_kind"] == fact_kind));
+    }
+    Ok(())
+}
+
+#[test]
+fn rejected_mutation_compact_output_reports_no_effect_and_exact_recovery(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-workflow-rejection-presentation")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let before = fixture.counts()?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            AgentToolId::PREPARE_WRITE.wire_name(),
+            json!({
+                "task_id": task_id,
+                "change_unit_id": null,
+                "intended_operation": "Attempt a write before workflow recovery.",
+                "intended_paths": ["src/current.rs"],
+                "product_file_write_intended": true,
+                "sensitive_categories": [],
+                "baseline_ref": "baseline_current"
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let result = &responses[1]["result"];
+    assert_eq!(result["isError"], false);
+    let structured = &result["structuredContent"];
+    assert_eq!(
+        structured["method_result"]["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(
+        structured["method_result"]["base"]["effect_kind"],
+        "no_effect"
+    );
+    assert_eq!(
+        structured["method_result"]["base"]["state_version"],
+        state_version
+    );
+    assert_eq!(
+        structured["method_result"]["errors"][0]["code"],
+        "CHANGE_UNIT_REQUIRED"
+    );
+    assert_eq!(structured["presentation"]["state_change"], "rejected");
+    assert_eq!(
+        structured["presentation"]["task_phase"],
+        json!({"mode": "work", "work_phase": "shaping"})
+    );
+    let recovery = structured["method_result"]["errors"][0]["details"]["recovery"]["owner_method"]
+        .as_str()
+        .expect("workflow rejection must expose one recovery owner");
+    assert!(structured["presentation"]["must_surface"]
+        .as_array()
+        .expect("rejection must carry mandatory presentation facts")
+        .iter()
+        .any(|fact| {
+            fact["fact_kind"] == "recovery_method" && fact["owner_method"] == recovery
+        }));
+    let text = result["content"][0]["text"]
+        .as_str()
+        .expect("rejection compatibility text");
+    assert!(text.contains("rejected"));
+    assert!(text.contains("Core state is unchanged"));
+    for success_word in ["refreshed", "completed", "committed"] {
+        assert!(!text.to_ascii_lowercase().contains(success_word));
+    }
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-phase-transition-presentation")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&setup_adapter)?;
+    let scope = setup_adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        json!({
+            "task_id": task_id,
+            "baseline_ref": "baseline_transition",
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Current phase-transition boundary.",
+                "affected_paths": ["src/current.rs"]
+            }
+        }),
+    )?;
+    let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("scope should expose the current Change Unit")?;
+    let shaped = setup_adapter.call_tool(
+        AgentToolId::RECORD_SHAPING.wire_name(),
+        json!({
+            "task_id": task_id,
+            "scope_revision": 1,
+            "baseline_ref": "baseline_transition",
+            "summary": "The current implementation boundary is ready.",
+            "implementation_boundary": "Change only the current scoped path.",
+            "gaps": [],
+            "source_refs": [],
+            "evidence_refs": [],
+            "close_assessment": null
+        }),
+    )?;
+    let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("record_shaping should expose the current checkpoint")?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            AgentToolId::ADVANCE_TASK.wire_name(),
+            json!({
+                "task_id": task_id,
+                "shaping_checkpoint_id": checkpoint_id,
+                "change_unit_id": change_unit_id,
+                "scope_revision": 1,
+                "baseline_ref": "baseline_transition",
+                "user_action_resolution_ids": []
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let result = &responses[1]["result"];
+    assert_eq!(result["isError"], false);
+    let presentation = &result["structuredContent"]["presentation"];
+    assert_eq!(presentation["state_change"], "core_committed");
+    assert_eq!(presentation["task_phase"]["work_phase"], "implementation");
+    let facts = presentation["must_surface"]
+        .as_array()
+        .expect("phase transition must carry mandatory presentation facts");
+    for fact_kind in [
+        "entered_implementation",
+        "phase_transition_created_no_write_ticket",
+        "product_repository_writes_require_prepare_write",
+    ] {
+        assert!(facts.iter().any(|fact| fact["fact_kind"] == fact_kind));
+    }
+    let text = result["content"][0]["text"]
+        .as_str()
+        .expect("phase transition compatibility text");
+    assert!(!text.to_ascii_lowercase().contains("write ticket created"));
+    assert!(!text.to_ascii_lowercase().contains("task completed"));
+    Ok(())
+}
+
+#[test]
 fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-record-guard-cli-inbox")?;

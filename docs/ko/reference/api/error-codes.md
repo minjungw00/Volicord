@@ -37,6 +37,15 @@
 | 공개 `ErrorCode` | 필수 `FailureCategory` | 세부 항목 |
 |---|---|---|
 | `VALIDATION_FAILED` | `rejected` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
+| `RUN_KIND_INCOMPATIBLE` | `rejected` | [`RUN_KIND_INCOMPATIBLE`](#errorcode-run-kind-incompatible) |
+| `TASK_PHASE_TRANSITION_REQUIRED` | `rejected` | [`TASK_PHASE_TRANSITION_REQUIRED`](#errorcode-task-phase-transition-required) |
+| `SHAPING_CHECKPOINT_REQUIRED` | `rejected` | [`SHAPING_CHECKPOINT_REQUIRED`](#errorcode-shaping-checkpoint-required) |
+| `SHAPING_CHECKPOINT_STALE` | `rejected` | [`SHAPING_CHECKPOINT_STALE`](#errorcode-shaping-checkpoint-stale) |
+| `USER_DECISION_UNRESOLVED` | `rejected` | [`USER_DECISION_UNRESOLVED`](#errorcode-user-decision-unresolved) |
+| `CHANGE_UNIT_REQUIRED` | `rejected` | [`CHANGE_UNIT_REQUIRED`](#errorcode-change-unit-required) |
+| `CHANGE_UNIT_STALE` | `rejected` | [`CHANGE_UNIT_STALE`](#errorcode-change-unit-stale) |
+| `WORKSPACE_BASIS_STALE` | `rejected` | [`WORKSPACE_BASIS_STALE`](#errorcode-workspace-basis-stale) |
+| `WORKFLOW_ACTION_NOT_ALLOWED` | `not_allowed` | [`WORKFLOW_ACTION_NOT_ALLOWED`](#errorcode-workflow-action-not-allowed) |
 | `PERSISTED_DATA_CORRUPT` | `corrupt` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | `rejected` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `INVOCATION_CONTEXT_MISMATCH` | `rejected` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
@@ -84,6 +93,64 @@
 - 형식이 잘못된 신뢰할 수 없는 요청 데이터는 이 코드를 사용합니다. 지원되는 영속 담당
   계약의 저장 데이터가 유효하지 않으면 `PERSISTED_DATA_CORRUPT`, 신뢰할 수 없는 경계
   입력이 유효하지 않으면 `VALIDATION_FAILED`를 사용합니다.
+
+다음 workflow 코드는 `ToolRejectedResponse.errors[]`에만 나타납니다. 각 코드는 [API 오류
+세부사항](error-details.md#workflow-rejection-detail-fields)의 폐쇄형 workflow 거부 상세
+객체를 필수로 사용합니다. 거부는 `effect_kind=no_effect`이고 이벤트를 내보내지 않으며
+`state_version`을 올리거나 커밋된 replay 행을 만들지 않습니다.
+
+<a id="errorcode-run-kind-incompatible"></a>
+### `RUN_KIND_INCOMPATIBLE`
+
+수신한 `record_run` kind가 현재 Task mode 또는 work phase와 호환되지 않습니다.
+`received_run_kind`와 `allowed_run_kinds`가 현재 폐쇄형 값을 보존합니다.
+
+<a id="errorcode-task-phase-transition-required"></a>
+### `TASK_PHASE_TRANSITION_REQUIRED`
+
+수신한 action에는 이후 Task phase가 필요합니다. 현재 workflow가 명시적 전환 method를
+소유하며, 거부된 action은 전환을 암묵적으로 수행하지 않습니다.
+
+<a id="errorcode-shaping-checkpoint-required"></a>
+### `SHAPING_CHECKPOINT_REQUIRED`
+
+현재 progression에 shaping checkpoint가 필요하지만 current checkpoint가 없습니다.
+
+<a id="errorcode-shaping-checkpoint-stale"></a>
+### `SHAPING_CHECKPOINT_STALE`
+
+제공했거나 현재인 checkpoint가 현재 Task scope, baseline 또는 checkpoint authority와
+호환되지 않습니다.
+
+<a id="errorcode-user-decision-unresolved"></a>
+### `USER_DECISION_UNRESOLVED`
+
+현재 사용자 소유 shaping 결정이 pending 또는 stale이거나, 정확히 제공한 resolution
+집합에서 빠졌거나, 아직 owner method를 통해 적용되지 않았습니다.
+
+<a id="errorcode-change-unit-required"></a>
+### `CHANGE_UNIT_REQUIRED`
+
+현재 progression에 current Change Unit이 필요하지만 존재하지 않습니다.
+
+<a id="errorcode-change-unit-stale"></a>
+### `CHANGE_UNIT_STALE`
+
+제공했거나 현재인 Change Unit이 현재 Task, scope, baseline 또는 recovery authority와 더
+이상 일치하지 않습니다.
+
+<a id="errorcode-workspace-basis-stale"></a>
+### `WORKSPACE_BASIS_STALE`
+
+관찰한 workspace basis가 mutation에 필요한 현재 authoritative workspace basis와
+호환되지 않습니다.
+
+<a id="errorcode-workflow-action-not-allowed"></a>
+### `WORKFLOW_ACTION_NOT_ALLOWED`
+
+semantic action이 현재 Task mode와 work phase에서 허용되지 않습니다. 이 코드는
+`not_allowed` category이며, recovery가 가능하면 typed recovery가 현재 owner method 하나를
+보고합니다.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`

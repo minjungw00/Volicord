@@ -112,6 +112,20 @@ The success result returns the current checkpoint ref, the request refs created
 for its user-owned gaps, and the current workflow projection. Preview performs
 the same semantic validation but creates no durable identity or effect.
 
+## Workflow recovery and presentation
+
+Calling this method outside `advisor|work` plus `work_phase=shaping` returns
+`WORKFLOW_ACTION_NOT_ALLOWED` with the common typed workflow-rejection details.
+The rejected response reports the received method, exact current Task
+mode/phase, current allowed actions, tagged workflow, corrected-retry
+permission, and one recovery owner. It has no Core or replay effect.
+
+When a committed checkpoint creates current user-owned gaps, the returned
+workflow is `awaiting_user_action`. MCP presentation must surface the exact
+request refs, `next_actor=user`, `chat_reply_is_resolution=false`, the Product
+Repository mutation boundary, and the canonical task-scoped inbox command.
+The chat transcript cannot substitute for a User Channel resolution.
+
 ## Related owners
 
 - Aggregate and workflow meaning: [Core Model](../core-model.md).

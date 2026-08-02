@@ -40,6 +40,15 @@ Adjacent owners:
 | Public `ErrorCode` | Required `FailureCategory` | Detail section |
 |---|---|---|
 | `VALIDATION_FAILED` | `rejected` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
+| `RUN_KIND_INCOMPATIBLE` | `rejected` | [`RUN_KIND_INCOMPATIBLE`](#errorcode-run-kind-incompatible) |
+| `TASK_PHASE_TRANSITION_REQUIRED` | `rejected` | [`TASK_PHASE_TRANSITION_REQUIRED`](#errorcode-task-phase-transition-required) |
+| `SHAPING_CHECKPOINT_REQUIRED` | `rejected` | [`SHAPING_CHECKPOINT_REQUIRED`](#errorcode-shaping-checkpoint-required) |
+| `SHAPING_CHECKPOINT_STALE` | `rejected` | [`SHAPING_CHECKPOINT_STALE`](#errorcode-shaping-checkpoint-stale) |
+| `USER_DECISION_UNRESOLVED` | `rejected` | [`USER_DECISION_UNRESOLVED`](#errorcode-user-decision-unresolved) |
+| `CHANGE_UNIT_REQUIRED` | `rejected` | [`CHANGE_UNIT_REQUIRED`](#errorcode-change-unit-required) |
+| `CHANGE_UNIT_STALE` | `rejected` | [`CHANGE_UNIT_STALE`](#errorcode-change-unit-stale) |
+| `WORKSPACE_BASIS_STALE` | `rejected` | [`WORKSPACE_BASIS_STALE`](#errorcode-workspace-basis-stale) |
+| `WORKFLOW_ACTION_NOT_ALLOWED` | `not_allowed` | [`WORKFLOW_ACTION_NOT_ALLOWED`](#errorcode-workflow-action-not-allowed) |
 | `PERSISTED_DATA_CORRUPT` | `corrupt` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | `rejected` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `INVOCATION_CONTEXT_MISMATCH` | `rejected` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
@@ -86,6 +95,68 @@ Condition:
 Boundary:
 - Malformed untrusted request data uses this code. A supported persisted owner
   contract whose stored data is invalid uses `PERSISTED_DATA_CORRUPT`; unsupported untrusted boundary input remains `VALIDATION_FAILED`.
+
+The following workflow codes appear only in `ToolRejectedResponse.errors[]`.
+Each requires the closed workflow-rejection detail object defined by [API error
+details](error-details.md#workflow-rejection-detail-fields). The rejection has
+`effect_kind=no_effect`, emits no event, does not advance `state_version`, and
+does not create a committed replay row.
+
+<a id="errorcode-run-kind-incompatible"></a>
+### `RUN_KIND_INCOMPATIBLE`
+
+The received `record_run` kind is incompatible with the current Task mode or
+work phase. `received_run_kind` and `allowed_run_kinds` preserve the closed
+current values.
+
+<a id="errorcode-task-phase-transition-required"></a>
+### `TASK_PHASE_TRANSITION_REQUIRED`
+
+The received action requires a later Task phase. The current workflow owns the
+explicit transition method; the rejected action does not perform that
+transition implicitly.
+
+<a id="errorcode-shaping-checkpoint-required"></a>
+### `SHAPING_CHECKPOINT_REQUIRED`
+
+Current progression requires a shaping checkpoint, but no current checkpoint
+exists.
+
+<a id="errorcode-shaping-checkpoint-stale"></a>
+### `SHAPING_CHECKPOINT_STALE`
+
+The supplied or current checkpoint is not compatible with current Task scope,
+baseline, or checkpoint authority.
+
+<a id="errorcode-user-decision-unresolved"></a>
+### `USER_DECISION_UNRESOLVED`
+
+A current user-owned shaping decision remains pending, stale, missing from the
+exact supplied resolution set, or not yet applied through its owner method.
+
+<a id="errorcode-change-unit-required"></a>
+### `CHANGE_UNIT_REQUIRED`
+
+Current progression requires a current Change Unit and none exists.
+
+<a id="errorcode-change-unit-stale"></a>
+### `CHANGE_UNIT_STALE`
+
+The supplied or current Change Unit no longer matches current Task, scope,
+baseline, or recovery authority.
+
+<a id="errorcode-workspace-basis-stale"></a>
+### `WORKSPACE_BASIS_STALE`
+
+The observed workspace basis is incompatible with the current authoritative
+workspace basis required by the mutation.
+
+<a id="errorcode-workflow-action-not-allowed"></a>
+### `WORKFLOW_ACTION_NOT_ALLOWED`
+
+The semantic action is not admitted by the current Task mode and work phase.
+This code has category `not_allowed`; its typed recovery reports the one
+current owner method when recovery exists.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`

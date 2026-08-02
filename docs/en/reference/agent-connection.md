@@ -770,7 +770,10 @@ The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint, current Guard installation
 identity/policy hash or explicit absence of Guard ownership, the repository
 observer semantic contract digest, and the canonical Product Repository
-effect-catalog digest. A change to either semantic digest changes the managed
+effect-catalog digest, plus the managed agent-guidance semantic digest. The
+guidance digest covers the closed current workflow facts rendered into the
+managed `AGENTS.md` block and MCP server instructions; it is not a hash of
+project-specific prose. A change to any of these semantic digests changes the managed
 integration revision even when the hook command text is unchanged. Historical
 Guard events remain evidence for their recorded revision and cannot satisfy
 current-definition coverage. `host_sessions`

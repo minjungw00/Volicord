@@ -958,6 +958,60 @@ pub struct ToolError {
     details: RequiredNullable<JsonObject>,
 }
 
+/// The single method that owns recovery from a workflow rejection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRecovery {
+    pub owner_method: MethodName,
+}
+
+/// One typed blocker carried by a workflow rejection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRejectionBlocker {
+    pub code: ErrorCode,
+    pub owner_method: MethodName,
+    pub required_refs: Vec<StateRecordRef>,
+}
+
+/// Closed semantic context shared by the workflow-rejection error codes.
+///
+/// Nullable request members remain present so every code has one exact wire
+/// shape while still distinguishing method actions from run-kind requests.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRejectionDetails {
+    pub state_change_applied: FalseValue,
+    pub current_task_mode: crate::values::TaskMode,
+    pub current_work_phase: crate::values::WorkPhase,
+    pub received_action: MethodName,
+    pub received_run_kind: RequiredNullable<crate::values::RunKind>,
+    pub allowed_run_kinds: Vec<crate::values::RunKind>,
+    pub allowed_actions: Vec<MethodName>,
+    pub blockers: Vec<WorkflowRejectionBlocker>,
+    pub workflow: WorkflowProjection,
+    pub corrected_retry_allowed: bool,
+    pub recovery: WorkflowRecovery,
+}
+
+impl WorkflowRejectionDetails {
+    /// Confirms whether an error code requires this closed details object.
+    pub const fn is_required_for(code: ErrorCode) -> bool {
+        matches!(
+            code,
+            ErrorCode::RunKindIncompatible
+                | ErrorCode::TaskPhaseTransitionRequired
+                | ErrorCode::ShapingCheckpointRequired
+                | ErrorCode::ShapingCheckpointStale
+                | ErrorCode::UserDecisionUnresolved
+                | ErrorCode::ChangeUnitRequired
+                | ErrorCode::ChangeUnitStale
+                | ErrorCode::WorkspaceBasisStale
+                | ErrorCode::WorkflowActionNotAllowed
+        )
+    }
+}
+
 impl ToolError {
     /// Builds a public error and converts optional semantic details into the
     /// required-nullable wire field.
@@ -967,6 +1021,15 @@ impl ToolError {
         retryable: bool,
         details: Option<JsonObject>,
     ) -> Self {
+        if WorkflowRejectionDetails::is_required_for(code) {
+            let workflow_details = details
+                .as_ref()
+                .expect("workflow rejection ToolError requires typed details");
+            serde_json::from_value::<WorkflowRejectionDetails>(Value::Object(
+                workflow_details.clone(),
+            ))
+            .expect("workflow rejection ToolError details must use the closed typed shape");
+        }
         Self {
             code,
             message: message.into(),
@@ -1055,6 +1118,15 @@ impl<'de> Deserialize<'de> for ToolError {
                 "ToolError category does not match its public error code",
             ));
         }
+        if WorkflowRejectionDetails::is_required_for(wire.code) {
+            let details = wire.details.as_ref().ok_or_else(|| {
+                serde::de::Error::custom(
+                    "workflow rejection ToolError requires typed non-null details",
+                )
+            })?;
+            serde_json::from_value::<WorkflowRejectionDetails>(Value::Object(details.clone()))
+                .map_err(serde::de::Error::custom)?;
+        }
         Ok(Self {
             code: wire.code,
             message: wire.message,
@@ -1073,17 +1145,24 @@ impl JsonSchema for ToolError {
         let relation_branches = PUBLIC_ERROR_CODE_CONTRACTS
             .iter()
             .map(|contract| {
+                let mut properties = [
+                    (
+                        "category".to_owned(),
+                        exact_string_schema(contract.category().as_str()),
+                    ),
+                    ("code".to_owned(), exact_string_schema(contract.wire_name())),
+                ]
+                .into_iter()
+                .collect::<schemars::Map<_, _>>();
+                if WorkflowRejectionDetails::is_required_for(contract.code()) {
+                    properties.insert(
+                        "details".to_owned(),
+                        generator.subschema_for::<WorkflowRejectionDetails>(),
+                    );
+                }
                 Schema::Object(SchemaObject {
                     object: Some(Box::new(ObjectValidation {
-                        properties: [
-                            (
-                                "category".to_owned(),
-                                exact_string_schema(contract.category().as_str()),
-                            ),
-                            ("code".to_owned(), exact_string_schema(contract.wire_name())),
-                        ]
-                        .into_iter()
-                        .collect(),
+                        properties,
                         ..Default::default()
                     })),
                     ..Default::default()
@@ -1902,6 +1981,8 @@ pub struct AuthorityReceipt {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ChangeUnitEffectContract {
+    /// Closed `ChangeUnitEffectKind` values owned by this field. Aliases are
+    /// not accepted.
     #[serde(default)]
     pub allowed_effects: Vec<ChangeUnitEffectKind>,
     #[serde(default)]
@@ -2035,6 +2116,87 @@ impl WorkflowProjection {
             | Self::Implementation { next_actor, .. }
             | Self::CloseReview { next_actor, .. }
             | Self::Terminal { next_actor, .. } => *next_actor,
+        }
+    }
+
+    /// Returns the one required owner method selected by current workflow state.
+    pub fn required_action(&self) -> Option<MethodName> {
+        match self {
+            Self::NoActiveTask {
+                required_action, ..
+            }
+            | Self::ShapingRequired {
+                required_action, ..
+            }
+            | Self::AwaitingUserAction {
+                required_action, ..
+            }
+            | Self::ReadyToApplyDecisions {
+                required_action, ..
+            }
+            | Self::ReadyForChangeUnit {
+                required_action, ..
+            }
+            | Self::ReadyForImplementation {
+                required_action, ..
+            }
+            | Self::Implementation {
+                required_action, ..
+            }
+            | Self::CloseReview {
+                required_action, ..
+            }
+            | Self::Terminal {
+                required_action, ..
+            } => required_action.as_ref().copied(),
+        }
+    }
+
+    /// Returns the methods currently admitted by the workflow projection.
+    pub fn allowed_actions(&self) -> &[MethodName] {
+        match self {
+            Self::NoActiveTask {
+                allowed_actions, ..
+            }
+            | Self::ShapingRequired {
+                allowed_actions, ..
+            }
+            | Self::AwaitingUserAction {
+                allowed_actions, ..
+            }
+            | Self::ReadyToApplyDecisions {
+                allowed_actions, ..
+            }
+            | Self::ReadyForChangeUnit {
+                allowed_actions, ..
+            }
+            | Self::ReadyForImplementation {
+                allowed_actions, ..
+            }
+            | Self::Implementation {
+                allowed_actions, ..
+            }
+            | Self::CloseReview {
+                allowed_actions, ..
+            }
+            | Self::Terminal {
+                allowed_actions, ..
+            } => allowed_actions,
+        }
+    }
+
+    /// Returns the authority refs required by the current workflow state.
+    pub fn required_refs(&self) -> &[StateRecordRef] {
+        match self {
+            Self::NoActiveTask { required_refs, .. }
+            | Self::ShapingRequired { required_refs, .. }
+            | Self::AwaitingUserAction { required_refs, .. }
+            | Self::ReadyToApplyDecisions { required_refs, .. }
+            | Self::ReadyForChangeUnit { required_refs, .. }
+            | Self::ReadyForImplementation { required_refs, .. }
+            | Self::Implementation { required_refs, .. }
+            | Self::CloseReview { required_refs, .. }
+            | Self::Terminal { required_refs, .. } => required_refs,
         }
     }
 }

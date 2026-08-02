@@ -10,15 +10,17 @@ use volicord_types::methods::{
 };
 use volicord_types::schema::StateRecordRef;
 use volicord_types::values::{
-    MethodName, ShapingCheckpointReadiness, ShapingGapStatus, StateRecordKind, TaskLifecyclePhase,
-    TaskMode, WorkPhase,
+    ErrorCode, MethodName, ShapingCheckpointReadiness, ShapingGapStatus, StateRecordKind,
+    TaskLifecyclePhase, TaskMode, WorkPhase,
 };
 
 use crate::acceptance_facts::active_acceptance_criteria;
 use crate::error_boundary::store::plan_error_response;
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
-use crate::method_rejection::{dry_run_summary, no_active_task_response, validation_rejected};
+use crate::method_rejection::{
+    dry_run_summary, no_active_task_response, validation_rejected, workflow_rejection_plan_error,
+};
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, CorePipelineError, CoreResult, CoreService,
@@ -74,11 +76,9 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
         if request.envelope.dry_run.is_requested() {
@@ -124,43 +124,90 @@ fn plan_advance_task(
             )))
         })?;
     if task.mode != TaskMode::Work || task.work_phase != WorkPhase::Shaping {
-        return advance_validation(
-            &request,
+        return workflow_rejection_plan_error(
+            store,
             project_state,
-            "task_id",
-            "advance_task supports only a work Task in shaping",
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::WorkflowActionNotAllowed,
+            "advance_task is not allowed for the current Task mode and work phase",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            false,
+            MethodName::Status,
         );
     }
     if task.scope_revision != request.scope_revision {
-        return advance_validation(
-            &request,
+        return workflow_rejection_plan_error(
+            store,
             project_state,
-            "scope_revision",
-            "scope_revision is stale",
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::ShapingCheckpointStale,
+            "scope_revision does not match the current shaping checkpoint basis",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            true,
+            MethodName::Status,
         );
     }
     if task.shaping.baseline_ref.as_ref() != Some(&request.baseline_ref) {
-        return advance_validation(
-            &request,
+        return workflow_rejection_plan_error(
+            store,
             project_state,
-            "baseline_ref",
-            "baseline_ref does not match the current Task",
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::ShapingCheckpointStale,
+            "baseline_ref does not match the current shaping checkpoint basis",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            true,
+            MethodName::Status,
         );
     }
-    let checkpoint = store
+    let checkpoint = match store
         .current_shaping_checkpoint(&request.task_id)
         .map_err(CorePipelineError::from)?
-        .ok_or_else(|| {
-            PlanError::Response(Box::new(
-                validation_rejected(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "shaping_checkpoint_id",
-                    "a current shaping checkpoint is required",
-                )
-                .expect("validation response serializes"),
-            ))
-        })?;
+    {
+        Some(checkpoint) => checkpoint,
+        None => {
+            return workflow_rejection_plan_error(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::ShapingCheckpointRequired,
+                "a current shaping checkpoint is required before implementation",
+                MethodName::AdvanceTask,
+                None,
+                Vec::new(),
+                true,
+                MethodName::RecordShaping,
+            )
+        }
+    };
+    if checkpoint
+        .gaps
+        .iter()
+        .any(|gap| gap.status == ShapingGapStatus::Current && gap.user_action.is_some())
+    {
+        return workflow_rejection_plan_error(
+            store,
+            project_state,
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::UserDecisionUnresolved,
+            "the current shaping checkpoint has an unresolved User Channel decision",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            true,
+            MethodName::ResolveUserAction,
+        );
+    }
     if checkpoint.shaping_checkpoint_id != request.shaping_checkpoint_id.as_str()
         || checkpoint.readiness != ShapingCheckpointReadiness::Ready
         || checkpoint.scope_revision != request.scope_revision
@@ -170,43 +217,57 @@ fn plan_advance_task(
             .iter()
             .any(|gap| gap.status != ShapingGapStatus::Applied)
     {
-        return advance_validation(
-            &request,
+        return workflow_rejection_plan_error(
+            store,
             project_state,
-            "shaping_checkpoint_id",
-            "checkpoint is stale, blocked, or has unapplied gaps",
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::ShapingCheckpointStale,
+            "shaping checkpoint is stale, blocked, or has unapplied gaps",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            true,
+            MethodName::Status,
         );
     }
-    let change_unit = store
+    let change_unit = match store
         .current_change_unit(&request.task_id)
         .map_err(CorePipelineError::from)?
-        .ok_or_else(|| {
-            PlanError::Response(Box::new(
-                validation_rejected(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "change_unit_id",
-                    "a current active Change Unit is required",
-                )
-                .expect("validation response serializes"),
-            ))
-        })?;
+    {
+        Some(change_unit) => change_unit,
+        None => {
+            return workflow_rejection_plan_error(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::ChangeUnitRequired,
+                "a current Change Unit is required before implementation",
+                MethodName::AdvanceTask,
+                None,
+                Vec::new(),
+                true,
+                MethodName::UpdateScope,
+            )
+        }
+    };
     if change_unit.change_unit_id != request.change_unit_id.as_str()
         || change_unit.write_basis.baseline_ref.as_ref() != Some(&request.baseline_ref)
+        || change_unit.lifecycle.recovery_required
     {
-        return advance_validation(
-            &request,
+        return workflow_rejection_plan_error(
+            store,
             project_state,
-            "change_unit_id",
-            "Change Unit is stale or baseline-incompatible",
-        );
-    }
-    if change_unit.lifecycle.recovery_required {
-        return advance_validation(
-            &request,
-            project_state,
-            "change_unit_id",
-            "a current recovery constraint blocks implementation",
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::ChangeUnitStale,
+            "Change Unit is stale, baseline-incompatible, or recovery-constrained",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            true,
+            MethodName::Status,
         );
     }
     let expected_resolution_ids = checkpoint
@@ -221,11 +282,18 @@ fn plan_advance_task(
         .map(|id| id.as_str().to_owned())
         .collect::<BTreeSet<_>>();
     if supplied_resolution_ids != expected_resolution_ids {
-        return advance_validation(
-            &request,
+        return workflow_rejection_plan_error(
+            store,
             project_state,
-            "user_action_resolution_ids",
-            "the exact current checkpoint resolution set is required",
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::UserDecisionUnresolved,
+            "the exact current User Channel resolution set is required",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            true,
+            MethodName::Status,
         );
     }
     let planned_state_version = project_state.state_version + 1;
@@ -317,21 +385,4 @@ fn plan_advance_task(
             state,
         },
     })
-}
-
-fn advance_validation<T>(
-    request: &AdvanceTaskRequest,
-    project_state: &ProjectStateHeader,
-    field: &'static str,
-    message: &'static str,
-) -> Result<T, PlanError> {
-    Err(PlanError::Response(Box::new(
-        validation_rejected(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            field,
-            message,
-        )
-        .map_err(PlanError::Core)?,
-    )))
 }

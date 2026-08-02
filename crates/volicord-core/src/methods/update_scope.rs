@@ -116,11 +116,9 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
 

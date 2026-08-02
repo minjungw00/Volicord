@@ -18,6 +18,7 @@ pub mod host_configuration;
 pub mod ids;
 pub mod integration_revision;
 pub mod integration_verification;
+pub mod managed_guidance;
 pub mod managed_mcp_client_info;
 pub mod mcp_verification_evidence;
 pub mod methods;
@@ -1373,12 +1374,17 @@ mod tests {
         );
 
         for contract in PUBLIC_ERROR_CODE_CONTRACTS {
+            let details = if WorkflowRejectionDetails::is_required_for(contract.code()) {
+                workflow_rejection_details_json()
+            } else {
+                Value::Null
+            };
             let canonical = json!({
                 "category": contract.category().as_str(),
                 "code": contract.wire_name(),
                 "message": "fixture",
                 "retryable": false,
-                "details": null,
+                "details": details,
             });
             let decoded: ToolError = serde_json::from_value(canonical.clone())
                 .unwrap_or_else(|error| panic!("{} should decode: {error}", contract.wire_name()));
@@ -1386,7 +1392,10 @@ mod tests {
             assert_eq!(decoded.category(), contract.category());
             assert_eq!(decoded.message(), "fixture");
             assert!(!decoded.retryable());
-            assert!(decoded.details().is_none());
+            assert_eq!(
+                decoded.details().is_some(),
+                WorkflowRejectionDetails::is_required_for(contract.code())
+            );
             assert_eq!(
                 serde_json::to_value(decoded).expect("ToolError should serialize"),
                 canonical
@@ -1416,6 +1425,13 @@ mod tests {
                     contract.wire_name(),
                     wrong_category.as_str()
                 );
+            }
+
+            if WorkflowRejectionDetails::is_required_for(contract.code()) {
+                let mut missing_details = canonical.clone();
+                missing_details["details"] = Value::Null;
+                assert!(serde_json::from_value::<ToolError>(missing_details.clone()).is_err());
+                assert!(validate_json_schema(&schema, &missing_details).is_err());
             }
         }
     }
@@ -2773,6 +2789,35 @@ mod tests {
             "message": "invalid request",
             "retryable": false,
             "details": details
+        })
+    }
+
+    fn workflow_rejection_details_json() -> Value {
+        json!({
+            "state_change_applied": false,
+            "current_task_mode": "work",
+            "current_work_phase": "shaping",
+            "received_action": "volicord.advance_task",
+            "received_run_kind": null,
+            "allowed_run_kinds": [],
+            "allowed_actions": ["volicord.record_shaping"],
+            "blockers": [{
+                "code": "SHAPING_CHECKPOINT_REQUIRED",
+                "owner_method": "volicord.record_shaping",
+                "required_refs": []
+            }],
+            "workflow": {
+                "kind": "shaping_required",
+                "next_actor": "agent",
+                "required_action": "volicord.record_shaping",
+                "allowed_actions": ["volicord.record_shaping"],
+                "required_refs": [],
+                "expected_state_version": 4,
+                "blocking_reason": "no_current_checkpoint",
+                "checkpoint": null
+            },
+            "corrected_retry_allowed": true,
+            "recovery": {"owner_method": "volicord.record_shaping"}
         })
     }
 

@@ -51,6 +51,48 @@ Not allowed:
 
 Detail data must stay limited to stable diagnostic facts. It must not expose sensitive request bodies, duplicate method payloads, raw stored JSON, secrets, SQL text, sensitive absolute paths, or define storage effects.
 
+<a id="workflow-rejection-detail-fields"></a>
+## Workflow rejection detail fields
+
+`RUN_KIND_INCOMPATIBLE`, `TASK_PHASE_TRANSITION_REQUIRED`,
+`SHAPING_CHECKPOINT_REQUIRED`, `SHAPING_CHECKPOINT_STALE`,
+`USER_DECISION_UNRESOLVED`, `CHANGE_UNIT_REQUIRED`, `CHANGE_UNIT_STALE`,
+`WORKSPACE_BASIS_STALE`, and `WORKFLOW_ACTION_NOT_ALLOWED` require this one
+closed non-null detail shape:
+
+```schema
+WorkflowRejectionDetails:
+  state_change_applied: false
+  current_task_mode: TaskMode
+  current_work_phase: WorkPhase
+  received_action: MethodName
+  received_run_kind: RunKind | null
+  allowed_run_kinds: RunKind[]
+  allowed_actions: MethodName[]
+  blockers: WorkflowRejectionBlocker[]
+  workflow: WorkflowProjection
+  corrected_retry_allowed: boolean
+  recovery: WorkflowRecovery
+
+WorkflowRejectionBlocker:
+  code: ErrorCode
+  owner_method: MethodName
+  required_refs: StateRecordRef[]
+
+WorkflowRecovery:
+  owner_method: MethodName
+```
+
+`received_action` is the rejected semantic method. Run recording additionally
+uses `received_run_kind` and `allowed_run_kinds`; other methods preserve the
+nullable member and an empty run-kind list. `allowed_actions`, `blockers`, and
+`workflow` are derived from the same current Store authority. `recovery`
+contains exactly one current owner method, never a generic next-action array.
+`corrected_retry_allowed` and `ToolError.retryable` describe semantic retry of
+a corrected request against current authority; neither permits replaying an
+applied mutation. The enclosing rejection remains `no_effect` even when a
+corrected retry is allowed.
+
 <a id="platform-diagnostic-detail-field"></a>
 
 ## Platform diagnostic detail field

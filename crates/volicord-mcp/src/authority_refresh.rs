@@ -7,8 +7,19 @@ use crate::lifecycle::SessionRuntime;
 use volicord_core::pipeline::PipelineResponse;
 use volicord_core::{validate_authority_status, AuthorityStatusExpectation};
 use volicord_store::mutation::RuntimeHomeMutationContext;
-use volicord_types::ids::{ProjectId, TaskId};
+use volicord_types::ids::{ProjectId, RecordId, TaskId};
 use volicord_types::schema::{AuthorityReceipt, WorkflowProjection};
+use volicord_types::schema::{RequiredNullable, StateRecordRef};
+use volicord_types::values::{StateRecordKind, TaskMode, WorkPhase};
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ValidatedMutationAuthority {
+    pub(crate) receipt: AuthorityReceipt,
+    pub(crate) workflow: WorkflowProjection,
+    pub(crate) task_mode: TaskMode,
+    pub(crate) work_phase: WorkPhase,
+    pub(crate) pending_user_action_refs: Vec<StateRecordRef>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MutationRefreshContext {
@@ -49,11 +60,33 @@ pub(crate) fn refresh_authority_status(
 pub(crate) fn validated_authority_refresh(
     context: &MutationRefreshContext,
     response: &PipelineResponse,
-) -> Result<(AuthorityReceipt, WorkflowProjection), ()> {
-    validate_authority_status(
+) -> Result<ValidatedMutationAuthority, ()> {
+    let validated = validate_authority_status(
         &response.response_value,
         &AuthorityStatusExpectation::new(context.project_id.clone(), context.task_id.clone()),
     )
-    .map_err(|_| ())
-    .map(|validated| validated.into_authority_projection())
+    .map_err(|_| ())?;
+    let mut status = validated.into_status();
+    let active_task = status.active_task.take().ok_or(())?;
+    let task_mode = active_task.mode.ok_or(())?;
+    let work_phase = active_task.work_phase.ok_or(())?;
+    let state_version = active_task.state_version;
+    let pending_user_action_refs = active_task
+        .pending_user_action_summaries
+        .into_iter()
+        .map(|summary| StateRecordRef {
+            record_kind: StateRecordKind::UserActionRequest,
+            record_id: RecordId::new(summary.user_action_request_id.as_str()),
+            project_id: context.project_id.clone(),
+            task_id: RequiredNullable::some(context.task_id.clone()),
+            produced_at_state_version: RequiredNullable::some(state_version),
+        })
+        .collect();
+    Ok(ValidatedMutationAuthority {
+        receipt: status.authority_receipt.take().ok_or(())?,
+        workflow: active_task.workflow,
+        task_mode,
+        work_phase,
+        pending_user_action_refs,
+    })
 }

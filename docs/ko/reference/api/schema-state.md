@@ -502,6 +502,12 @@ ShapingCheckpointGap:
 
 workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 `close_review` 전에는 전역 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함합니다.
 
+Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
+tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task
+mode/work phase, 단일 recovery owner는 현재 authority에서 읽습니다. 거부된 요청의 내장
+`expected_state_version`은 커밋된 replay 결과가 아닙니다. 나중 replay는 그 시점의 현재
+authority에 대해 다시 평가되고 그 시점의 current workflow를 반환합니다.
+
 담당 문서 링크:
 - 메서드 동작과 지속 효과: [API 메서드](methods.md)가 안내하는 메서드 담당 문서와 [저장 효과](../storage-effects.md)
 

@@ -17,6 +17,7 @@ use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
     infallible_rejected_pipeline_response, no_active_task_response, validation_rejected,
+    workflow_rejected_response,
 };
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
@@ -223,11 +224,9 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
         let write_decision_reasons = project_write_decision_reasons(
@@ -262,11 +261,9 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
 
@@ -333,40 +330,6 @@ fn prepare_write_policy(request: &PrepareWriteRequest) -> MethodPolicy {
     )
 }
 
-fn prepare_write_change_unit_required_response(
-    request: &PrepareWriteRequest,
-    project_state: &ProjectStateHeader,
-    task_id: &TaskId,
-) -> PipelineResponse {
-    let mut details = Map::new();
-    details.insert(
-        "reason".to_owned(),
-        Value::String("current_change_unit_required".to_owned()),
-    );
-    details.insert(
-        "method".to_owned(),
-        Value::String(MethodName::PrepareWrite.as_str().to_owned()),
-    );
-    details.insert(
-        "project_id".to_owned(),
-        Value::String(request.envelope.project_id.as_str().to_owned()),
-    );
-    details.insert(
-        "task_id".to_owned(),
-        Value::String(task_id.as_str().to_owned()),
-    );
-    infallible_rejected_pipeline_response(
-        request.envelope.dry_run,
-        Some(project_state.state_version),
-        vec![tool_error(
-            ErrorCode::NoActiveChangeUnit,
-            "write preparation requires a current Change Unit",
-            false,
-            Some(details),
-        )],
-    )
-}
-
 fn plan_prepare_write(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
@@ -397,10 +360,11 @@ fn plan_prepare_write(
         ),
         operation_now,
     )
-    .map_err(|error| prepare_write_planning_error(request, project_state, error))
+    .map_err(|error| prepare_write_planning_error(store, request, project_state, error))
 }
 
 fn prepare_write_planning_error(
+    store: &CoreProjectStore,
     request: &PrepareWriteRequest,
     project_state: &ProjectStateHeader,
     error: WriteTicketPlanningError,
@@ -417,11 +381,58 @@ fn prepare_write_planning_error(
             no_active_task_response(&request.envelope, project_state),
         )),
         WriteTicketPlanningError::CurrentChangeUnitRequired { task_id } => {
-            PlanError::Response(Box::new(prepare_write_change_unit_required_response(
-                request,
+            match workflow_rejected_response(
+                store,
                 project_state,
+                &request.envelope,
                 &task_id,
-            )))
+                ErrorCode::ChangeUnitRequired,
+                "write preparation requires a current Change Unit",
+                MethodName::PrepareWrite,
+                None,
+                Vec::new(),
+                true,
+                MethodName::UpdateScope,
+            ) {
+                Ok(response) => PlanError::Response(Box::new(response)),
+                Err(error) => PlanError::Core(error),
+            }
+        }
+        WriteTicketPlanningError::TaskPhaseTransitionRequired { task_id } => {
+            match workflow_rejected_response(
+                store,
+                project_state,
+                &request.envelope,
+                &task_id,
+                ErrorCode::TaskPhaseTransitionRequired,
+                "write preparation requires work_phase=implementation",
+                MethodName::PrepareWrite,
+                None,
+                Vec::new(),
+                true,
+                MethodName::AdvanceTask,
+            ) {
+                Ok(response) => PlanError::Response(Box::new(response)),
+                Err(error) => PlanError::Core(error),
+            }
+        }
+        WriteTicketPlanningError::WorkflowActionNotAllowed { task_id } => {
+            match workflow_rejected_response(
+                store,
+                project_state,
+                &request.envelope,
+                &task_id,
+                ErrorCode::WorkflowActionNotAllowed,
+                "write preparation is not allowed for the current Task mode",
+                MethodName::PrepareWrite,
+                None,
+                Vec::new(),
+                false,
+                MethodName::Status,
+            ) {
+                Ok(response) => PlanError::Response(Box::new(response)),
+                Err(error) => PlanError::Core(error),
+            }
         }
         WriteTicketPlanningError::Validation { field, message } => {
             match validation_rejected(
@@ -474,7 +485,7 @@ fn materialize_prepare_write_ticket(
                 planned_state_version,
                 project_state.state_version,
             )
-            .map_err(|error| prepare_write_planning_error(request, project_state, error))?;
+            .map_err(|error| prepare_write_planning_error(store, request, project_state, error))?;
             Ok(MaterializedPrepareWriteTicket::Issued(planned))
         }
         PrepareWriteTicketPlan::Reuse(ticket) => Ok(MaterializedPrepareWriteTicket::Reused(ticket)),

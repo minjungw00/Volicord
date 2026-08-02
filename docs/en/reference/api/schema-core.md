@@ -225,6 +225,15 @@ Does not imply:
 | Public `ErrorCode` | Required `FailureCategory` |
 |---|---|
 | `VALIDATION_FAILED` | `rejected` |
+| `RUN_KIND_INCOMPATIBLE` | `rejected` |
+| `TASK_PHASE_TRANSITION_REQUIRED` | `rejected` |
+| `SHAPING_CHECKPOINT_REQUIRED` | `rejected` |
+| `SHAPING_CHECKPOINT_STALE` | `rejected` |
+| `USER_DECISION_UNRESOLVED` | `rejected` |
+| `CHANGE_UNIT_REQUIRED` | `rejected` |
+| `CHANGE_UNIT_STALE` | `rejected` |
+| `WORKSPACE_BASIS_STALE` | `rejected` |
+| `WORKFLOW_ACTION_NOT_ALLOWED` | `not_allowed` |
 | `PERSISTED_DATA_CORRUPT` | `corrupt` |
 | `STATE_VERSION_CONFLICT` | `rejected` |
 | `INVOCATION_CONTEXT_MISMATCH` | `rejected` |
@@ -341,6 +350,14 @@ Does not imply:
 | `base` | yes | no | `ToolDryRunBase` |
 | `dry_run_summary` | yes | no | `DryRunSummary` |
 <!-- END GENERATED: contract-structures api.schema.core[schema_object.ToolError] api.schema.core[schema_object.RequestedIntentReadOnlyResultBase] api.schema.core[schema_object.NotRequestedReadOnlyResultBase] api.schema.core[schema_object.CoreCommittedResultBase] api.schema.core[schema_object.StagingCreatedResultBase] api.schema.core[schema_object.NoEffectResultBase] api.schema.core[schema_object.ToolRejectedBase] api.schema.core[schema_object.ToolDryRunBase] api.schema.core[schema_object.ToolRejectedResponse] api.schema.core[schema_object.ToolDryRunResponse] -->
+
+The nine workflow-rejection codes have an additional schema relation: their
+`details` value is non-null and validates as `WorkflowRejectionDetails`.
+Other codes retain the common nullable object contract. Serde decoding and the
+public JSON Schema enforce the same code/category/details relation; a workflow
+code with `details=null`, an unknown detail member, or an opaque replacement
+string is invalid. Field meaning belongs to [API error
+details](error-details.md#workflow-rejection-detail-fields).
 
 Meaning:
 - Method-specific result fields belong only to the method result branch.

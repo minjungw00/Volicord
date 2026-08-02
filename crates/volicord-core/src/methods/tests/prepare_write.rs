@@ -24,7 +24,15 @@ fn advisor_prepare_write_rejects_without_ticket_or_state_effect() -> Result<(), 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "VALIDATION_FAILED"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["current_task_mode"],
+        "advisor"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["received_action"],
+        "volicord.prepare_write"
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -1444,23 +1452,19 @@ fn prepare_write_without_current_change_unit_rejects_before_policy_or_effects(
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "NO_ACTIVE_CHANGE_UNIT"
+        "CHANGE_UNIT_REQUIRED"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["reason"],
-        "current_change_unit_required"
+        response.response_value["errors"][0]["details"]["state_change_applied"],
+        false
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["method"],
+        response.response_value["errors"][0]["details"]["received_action"],
         "volicord.prepare_write"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["project_id"],
-        PROJECT_ID
-    );
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["task_id"],
-        task_id
+        response.response_value["errors"][0]["details"]["blockers"][0]["code"],
+        "CHANGE_UNIT_REQUIRED"
     );
     assert!(response.response_value.get("decision").is_none());
     assert_eq!(after, before);
@@ -1516,11 +1520,11 @@ fn prepare_write_dry_run_without_current_change_unit_has_no_effects() -> Result<
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "NO_ACTIVE_CHANGE_UNIT"
+        "CHANGE_UNIT_REQUIRED"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["reason"],
-        "current_change_unit_required"
+        response.response_value["errors"][0]["details"]["state_change_applied"],
+        false
     );
     assert_eq!(repeated.response_value, response.response_value);
     assert_eq!(harness.counts()?, before);

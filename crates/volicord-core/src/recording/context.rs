@@ -153,10 +153,13 @@ pub(super) fn acquire_record_run_facts(
         resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
     let work_phase = task.work_phase;
     if !task_mode_allows_run_kind(task_mode, work_phase, request.kind) {
-        return recording_validation_error(
-            "kind",
-            "kind is not compatible with the current Task mode and work phase",
-        );
+        return Err(RecordingError::Rejected(
+            if task_mode == TaskMode::Work && work_phase == WorkPhase::Shaping {
+                RecordingRejection::TaskPhaseTransitionRequired
+            } else {
+                RecordingRejection::RunKindIncompatible
+            },
+        ));
     }
     if task_mode == TaskMode::Advisor
         && (request.observed_changes.product_file_write_observed
@@ -174,19 +177,28 @@ pub(super) fn acquire_record_run_facts(
             "advisor Task runs cannot consume a write ticket",
         );
     }
-    let change_unit = store
+    let change_unit = match store
         .change_unit_record(&request.task_id, request.change_unit_id.as_str())
         .map_err(recording_store_error)?
-        .ok_or(RecordingError::Rejected(
-            RecordingRejection::NoActiveChangeUnit {
-                message: "change_unit_id does not identify a Change Unit for the Task",
-            },
-        ))?;
+    {
+        Some(change_unit) => change_unit,
+        None => {
+            return Err(RecordingError::Rejected(
+                if store
+                    .current_change_unit(&request.task_id)
+                    .map_err(recording_store_error)?
+                    .is_some()
+                {
+                    RecordingRejection::ChangeUnitStale
+                } else {
+                    RecordingRejection::ChangeUnitRequired
+                },
+            ))
+        }
+    };
     if change_unit.status != ChangeUnitStatus::Active || !change_unit.is_current {
         return Err(RecordingError::Rejected(
-            RecordingRejection::NoActiveChangeUnit {
-                message: "record_run requires the current active Change Unit",
-            },
+            RecordingRejection::ChangeUnitStale,
         ));
     }
     if !baseline_matches(&change_unit, &task, &request.baseline_ref)? {

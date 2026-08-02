@@ -14,8 +14,8 @@ use volicord_types::schema::{
     CurrentCloseBasis, RequiredNullable, ResidualRisk, ShapingCheckpoint,
 };
 use volicord_types::values::{
-    MethodName, ShapingCheckpointReadiness, ShapingGapStatus, StateRecordKind, TaskLifecyclePhase,
-    TaskMode, UserActionRequiredFor, WorkPhase,
+    ErrorCode, MethodName, ShapingCheckpointReadiness, ShapingGapStatus, StateRecordKind,
+    TaskLifecyclePhase, TaskMode, UserActionRequiredFor, WorkPhase,
 };
 use volicord_user_action_service::{
     construct_user_action, materialize_user_action_request, UserActionConstructionContext,
@@ -33,7 +33,9 @@ use crate::identity::{
 };
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
-use crate::method_rejection::{dry_run_summary, no_active_task_response, validation_rejected};
+use crate::method_rejection::{
+    dry_run_summary, no_active_task_response, validation_rejected, workflow_rejection_plan_error,
+};
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
     commit_mutation_branch, dry_run_preview_branch, CorePipelineError, CoreResult, CoreService,
@@ -91,11 +93,9 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
         if request.envelope.dry_run.is_requested() {
@@ -146,11 +146,18 @@ fn plan_record_shaping(
     if !matches!(task.mode, TaskMode::Advisor | TaskMode::Work)
         || task.work_phase != WorkPhase::Shaping
     {
-        return shaping_validation(
-            &request,
+        return workflow_rejection_plan_error(
+            store,
             project_state,
-            "task_id",
-            "record_shaping requires an advisor or work Task in shaping",
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::WorkflowActionNotAllowed,
+            "record_shaping is not allowed for the current Task mode and work phase",
+            MethodName::RecordShaping,
+            None,
+            Vec::new(),
+            false,
+            MethodName::Status,
         );
     }
     if task.scope_revision != request.scope_revision {

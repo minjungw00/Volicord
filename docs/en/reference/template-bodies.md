@@ -290,8 +290,13 @@ boundaries without requiring a fixed status/intake/check-close call ritual.
 
 - Treat Volicord's recorded scope and user-owned decisions as authoritative.
 - Do not modify Product Repository files outside an active compatible write authorization.
-- Do not infer, resolve, or record user-owned judgments on the user's behalf.
-- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.
+- Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.
+- Follow the tagged workflow's `required_action`; do not call workflow tools speculatively.
+- Record shaping with `volicord.record_shaping` before implementation-oriented scope work. Creating or replacing a Change Unit does not advance the Task phase.
+- User-owned decisions require current UserAction requests. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.
+- Do not call `volicord.advance_task` while a UserAction is pending, or `volicord.prepare_write` before the Task enters implementation.
+- Never hide or paraphrase a rejected mutation as success. Surface every fact in `presentation.must_surface`, including the current Task phase and exact recovery method.
+- Close blockers do not replace tagged workflow progression.
 - Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.
 - Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.
 <!-- END VOLICORD MANAGED GUIDANCE -->
@@ -299,7 +304,10 @@ boundaries without requiring a fixed status/intake/check-close call ritual.
 
 The block is generated repository guidance, not Core state, a write ticket,
 user authority, proof that an Agent followed it, or permission to edit product
-files.
+files. Its closed semantic fact set has a canonical digest included in the
+project integration revision, so changing one of these guidance semantics
+invalidates revision-scoped managed evidence even when rendering punctuation
+or the hook command is otherwise unchanged.
 
 ## Status card body
 

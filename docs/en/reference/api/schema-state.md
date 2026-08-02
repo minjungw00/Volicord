@@ -507,6 +507,14 @@ ShapingCheckpointGap:
 
 The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but do not choose this required action before `close_review`. User-owned current gaps always carry an exact current UserAction request ref.
 
+Workflow mutation rejection details embed this same complete tagged
+`WorkflowProjection`; they do not reconstruct progression from the received
+payload. `allowed_actions`, blocker refs, exact Task mode/work phase, and the
+single recovery owner are read from current authority. A rejected request does
+not make its embedded `expected_state_version` a committed replay result: a
+later replay is evaluated against then-current authority and returns its then-
+current workflow.
+
 Owner links:
 - Method behavior and durable effects: method owner documents routed from [API Methods](methods.md) and [Storage Effects](../storage-effects.md)
 

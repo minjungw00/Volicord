@@ -2116,6 +2116,24 @@ command fallback이 들어갈 수 없습니다. `requirement`는 required/option
 `UserActionResolutionForm`과 후보는
 [API 사용자 행동 스키마](api/schema-user-action.md#resolution-form)가 담당합니다.
 
+Workflow presentation은 같은 owner를 사용해 adapter-neutral channel instruction을
+만듭니다.
+
+```schema
+CanonicalUserChannelInstructions:
+  channel_kind: cli
+  list_command: string
+  request_refs: StateRecordRef[]
+  chat_reply_is_resolution: false
+```
+
+현재 Task 하나에서 `list_command`는 실제 Clap command declaration으로부터
+`volicord inbox --task TASK_ID --json` 형태로 생성됩니다. `request_refs`는 완전한 현재
+project, Task, request, produced-version 좌표를 보존합니다. Adapter와 agent는 이 값을
+직접 사용하며 ID나 shell syntax를 만들지 않습니다. Chat text는 요청을 resolve할 수
+없습니다. 현재 workflow가 `awaiting_user_action`이면 User Channel이 current resolution을
+기록하기 전까지 Product Repository mutation은 blocked 상태입니다.
+
 저장 요청과 resolution은 엄격한 typed record입니다. 손상되거나 알 수 없거나 섞이거나
 잘못된 저장 값은 영속 데이터 실패 분류로 실패하며 CLI가 기본값을 넣거나 복구하거나
 답을 추측하지 않습니다.

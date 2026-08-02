@@ -62,7 +62,7 @@ fn record_run_blocks_only_matching_pending_observation_actions_without_effect(
             assert_eq!(response.response_value["base"]["response_kind"], "rejected");
             assert_eq!(
                 response.response_value["errors"][0]["code"],
-                "DECISION_UNRESOLVED"
+                "USER_DECISION_UNRESOLVED"
             );
             assert_eq!(harness.counts()?, before);
 
@@ -80,7 +80,7 @@ fn record_run_blocks_only_matching_pending_observation_actions_without_effect(
             assert_eq!(dry_run.response_value["base"]["response_kind"], "rejected");
             assert_eq!(
                 dry_run.response_value["errors"][0]["code"],
-                "DECISION_UNRESOLVED"
+                "USER_DECISION_UNRESOLVED"
             );
             assert_eq!(harness.counts()?, before);
         } else {
@@ -293,7 +293,7 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
             assert_eq!(response.response_value["base"]["response_kind"], "rejected");
             assert_eq!(
                 response.response_value["errors"][0]["code"],
-                "DECISION_UNRESOLVED"
+                "USER_DECISION_UNRESOLVED"
             );
             assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
             assert_eq!(harness.counts()?, before);
@@ -321,7 +321,7 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
             assert_eq!(dry_run.response_value["base"]["response_kind"], "rejected");
             assert_eq!(
                 dry_run.response_value["errors"][0]["code"],
-                "DECISION_UNRESOLVED"
+                "USER_DECISION_UNRESOLVED"
             );
             assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
             assert_eq!(harness.counts()?, before);

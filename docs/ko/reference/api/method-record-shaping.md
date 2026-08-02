@@ -109,6 +109,19 @@ replay는 효과 없이 거부합니다.
 projection을 반환합니다. 미리보기는 같은 의미 검증을 수행하지만 지속 식별자나 효과를
 만들지 않습니다.
 
+## Workflow recovery와 presentation
+
+`advisor|work` 및 `work_phase=shaping` 밖에서 이 method를 호출하면 공통 typed workflow
+거부 상세와 함께 `WORKFLOW_ACTION_NOT_ALLOWED`를 반환합니다. 거부 응답은 수신 method,
+정확한 현재 Task mode/phase, 현재 allowed action, tagged workflow, 수정 재시도 허용 여부,
+recovery owner 하나를 보고합니다. Core 또는 replay 효과는 없습니다.
+
+커밋된 checkpoint가 현재 사용자 소유 gap을 만들면 반환 workflow는
+`awaiting_user_action`입니다. MCP presentation은 정확한 request ref,
+`next_actor=user`, `chat_reply_is_resolution=false`, Product Repository mutation 경계,
+canonical Task 범위 inbox command를 반드시 surface합니다. Chat transcript는 User Channel
+resolution을 대신할 수 없습니다.
+
 ## 관련 담당 문서
 
 - Aggregate와 workflow 의미: [Core 모델](../core-model.md).

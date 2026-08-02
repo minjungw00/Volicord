@@ -7,7 +7,7 @@ use std::{error::Error, fmt};
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use volicord_command_model::{
-    CommandIntrospectionError, InboxEvidenceTarget, InboxResolutionArguments,
+    CommandIntrospectionError, InboxEvidenceTarget, InboxListInvocation, InboxResolutionArguments,
     InboxResolveInvocation,
 };
 use volicord_types::contracts::{
@@ -15,11 +15,12 @@ use volicord_types::contracts::{
 };
 use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, UserActionRequestId};
 use volicord_types::schema::{
-    RequiredNullable, StateRecordRef, SummaryCard, UserActionRequest, UserActionResolutionForm,
+    FalseValue, RequiredNullable, StateRecordRef, SummaryCard, UserActionRequest,
+    UserActionResolutionForm,
 };
 use volicord_types::values::{
-    UserActionChannelKind, UserActionKind, UserActionRequiredFor, UserActionStatus,
-    UserActionVerificationBasis, UtcTimestamp,
+    StateRecordKind, UserActionChannelKind, UserActionKind, UserActionRequiredFor,
+    UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
 };
 
 const CLI_INBOX_LABEL: &str = "CLI inbox";
@@ -145,6 +146,45 @@ pub struct CliUserActionInboxResponse {
     pub summary_card: SummaryCard,
     pub user_channel_availability: RequiredNullable<CliUserChannelAvailability>,
     pub pending_user_action_inbox_items: Vec<CliUserActionInboxItem>,
+}
+
+/// Canonical adapter-facing instruction for the supported User Channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalUserChannelInstructions {
+    pub channel_kind: UserActionChannelKind,
+    pub list_command: String,
+    pub request_refs: Vec<StateRecordRef>,
+    pub chat_reply_is_resolution: FalseValue,
+}
+
+/// Builds task-scoped User Channel instructions from canonical coordinates.
+pub fn canonical_user_channel_instructions(
+    project_id: &ProjectId,
+    task_id: &TaskId,
+    request_refs: Vec<StateRecordRef>,
+) -> Result<CanonicalUserChannelInstructions, UserActionPresentationError> {
+    if request_refs.is_empty()
+        || request_refs.iter().any(|request_ref| {
+            request_ref.record_kind != StateRecordKind::UserActionRequest
+                || &request_ref.project_id != project_id
+                || request_ref.task_id.as_ref() != Some(task_id)
+        })
+    {
+        return Err(UserActionPresentationError::InvalidSemanticFacts(
+            "User Channel instructions require current UserActionRequest refs for one project and Task"
+                .to_owned(),
+        ));
+    }
+    Ok(CanonicalUserChannelInstructions {
+        channel_kind: UserActionChannelKind::Cli,
+        list_command: display_tokens(
+            &InboxListInvocation::new(task_id.as_str()).canonical_arguments()?,
+        )
+        .join(" "),
+        request_refs,
+        chat_reply_is_resolution: FalseValue,
+    })
 }
 
 /// Returns the exact semantic contract for `volicord inbox --json`.
@@ -463,6 +503,51 @@ mod tests {
         assert!(cli_pending_user_action_instruction(&request_id)
             .expect("MCP recovery instruction should render")
             .contains(&expected));
+    }
+
+    #[test]
+    fn canonical_user_channel_instruction_preserves_authority_coordinates() {
+        let project_id = ProjectId::new("project_current");
+        let task_id = TaskId::new("task_current");
+        let request_ref = StateRecordRef::new(
+            StateRecordKind::UserActionRequest,
+            "user_action_current",
+            project_id.clone(),
+            Some(task_id.clone()),
+            Some(9),
+        );
+        let instructions =
+            canonical_user_channel_instructions(&project_id, &task_id, vec![request_ref.clone()])
+                .expect("current request coordinates should produce User Channel instructions");
+
+        assert_eq!(instructions.channel_kind, UserActionChannelKind::Cli);
+        assert_eq!(
+            instructions.list_command,
+            "volicord inbox --task task_current --json"
+        );
+        assert_eq!(instructions.request_refs, vec![request_ref]);
+        assert_eq!(
+            serde_json::to_value(instructions.chat_reply_is_resolution)
+                .expect("closed false value serializes"),
+            json!(false)
+        );
+    }
+
+    #[test]
+    fn canonical_user_channel_instruction_rejects_cross_task_refs() {
+        let project_id = ProjectId::new("project_current");
+        let task_id = TaskId::new("task_current");
+        let wrong_task_ref = StateRecordRef::new(
+            StateRecordKind::UserActionRequest,
+            "user_action_other",
+            project_id.clone(),
+            Some(TaskId::new("task_other")),
+            Some(9),
+        );
+        assert!(
+            canonical_user_channel_instructions(&project_id, &task_id, vec![wrong_task_ref])
+                .is_err()
+        );
     }
 
     #[test]

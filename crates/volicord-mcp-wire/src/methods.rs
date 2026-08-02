@@ -25,13 +25,13 @@ use volicord_types::schema::{
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
-    AcceptancePolicy, ActorSource, CloseMutationIntent, CloseReason, EffectKind,
+    AcceptancePolicy, ActorSource, CloseMutationIntent, CloseReason, EffectKind, ErrorCode,
     EvidenceAssuranceLevel, EvidenceCoverageUpdateState, EvidenceDisplayState,
     EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentResolutionOutcome, MethodName,
     MutationDetailLevel, PrepareWriteDecision, RedactionState, RequestedControlLevel,
-    RequestedMode, ResumePolicy, RunKind, StatusDetailLevel, UserActionChannelKind, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
-    WriteTicketEffect,
+    RequestedMode, ResumePolicy, RunKind, StatusDetailLevel, TaskMode, UserActionChannelKind,
+    UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    WorkPhase, WriteTicketEffect,
 };
 
 /// Compound MCP projection that keeps the agent-workflow transaction distinct
@@ -142,8 +142,40 @@ pub struct McpToolErrorIssue {
     #[schemars(length(max = "MAX_MCP_TOOL_ISSUE_PATH_BYTES"))]
     pub path: String,
     pub code: McpToolIssueCode,
+    pub expected_semantic_type: RequiredNullable<String>,
+    pub required_fields: Vec<String>,
+    pub allowed_enum_values: Vec<String>,
+    pub unknown_fields: Vec<String>,
+    pub minimal_example: RequiredNullable<JsonObject>,
+    pub owner_hint: RequiredNullable<String>,
+    pub retryable: bool,
+    pub reached_core: bool,
+    pub committed: bool,
     #[schemars(length(min = 1, max = "MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES"))]
     pub message: String,
+}
+
+impl McpToolErrorIssue {
+    pub fn new(
+        path: impl Into<String>,
+        code: McpToolIssueCode,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            code,
+            expected_semantic_type: RequiredNullable::null(),
+            required_fields: Vec::new(),
+            allowed_enum_values: Vec::new(),
+            unknown_fields: Vec::new(),
+            minimal_example: RequiredNullable::null(),
+            owner_hint: RequiredNullable::null(),
+            retryable: true,
+            reached_core: false,
+            committed: false,
+            message: message.into(),
+        }
+    }
 }
 
 /// Structured known-tool failure returned before Core method entry.
@@ -306,6 +338,106 @@ pub struct McpReconcileChangesCompactResult {
     pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
 }
 
+/// State-change class used by the canonical agent-facing presentation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpAgentStateChange {
+    CoreCommitted,
+    StagingCreated,
+    DryRun,
+    Rejected,
+    ReadOnlyResume,
+    NoEffect,
+}
+
+/// Exact Task coordinates shown in every workflow presentation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpTaskPhasePresentation {
+    pub mode: TaskMode,
+    pub work_phase: WorkPhase,
+}
+
+/// One structured blocker and its exact recovery owner.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpWorkflowBlockerSummary {
+    pub code: RequiredNullable<ErrorCode>,
+    pub owner_method: MethodName,
+    pub required_refs: Vec<StateRecordRef>,
+}
+
+/// MCP wire projection of the canonical CLI User Channel instruction.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpUserChannelInstructions {
+    pub channel_kind: UserActionChannelKind,
+    pub list_command: String,
+    pub request_refs: Vec<StateRecordRef>,
+    pub chat_reply_is_resolution: volicord_types::schema::FalseValue,
+}
+
+/// A fact the caller must preserve when presenting one workflow result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "fact_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum McpMustSurfaceFact {
+    MethodRejected {
+        method: MethodName,
+        core_state_unchanged: volicord_types::schema::TrueValue,
+    },
+    CurrentTaskPhase {
+        mode: TaskMode,
+        work_phase: WorkPhase,
+    },
+    RecoveryMethod {
+        owner_method: MethodName,
+    },
+    UserActionRequestExists {
+        request_refs: Vec<StateRecordRef>,
+    },
+    NextActorIsUser,
+    ChatReplyIsNotResolution,
+    ProductRepositoryMutationBlockedUntilUserChannelResolution,
+    EnteredImplementation,
+    PhaseTransitionCreatedNoWriteTicket,
+    ProductRepositoryWritesRequirePrepareWrite {
+        owner_method: MethodName,
+    },
+}
+
+/// Canonical agent-facing presentation carried by mutation projections.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpWorkflowPresentation {
+    pub headline: String,
+    pub state_change: McpAgentStateChange,
+    pub task_phase: McpTaskPhasePresentation,
+    pub next_actor: volicord_types::values::AuthorityNextActor,
+    pub blocker_summary: Vec<McpWorkflowBlockerSummary>,
+    pub required_user_action: RequiredNullable<McpUserChannelInstructions>,
+    pub must_surface: Vec<McpMustSurfaceFact>,
+}
+
+/// Rejected mutation plus current authoritative workflow and presentation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpWorkflowRejectedResponse {
+    pub method_result: ToolRejectedResponse,
+    pub authority_receipt: AuthorityReceipt,
+    pub workflow: WorkflowProjection,
+    pub presentation: McpWorkflowPresentation,
+}
+
+/// Dry-run mutation preview plus current authoritative workflow and presentation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpWorkflowDryRunResponse {
+    pub method_result: ToolDryRunResponse,
+    pub authority_receipt: AuthorityReceipt,
+    pub workflow: WorkflowProjection,
+    pub presentation: McpWorkflowPresentation,
+}
+
 /// Summary-detail MCP mutation branch over one fresh authority receipt.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -313,6 +445,7 @@ pub struct McpMutationSummaryResponse<T> {
     pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: AuthorityReceipt,
     pub method_result: T,
+    pub presentation: McpWorkflowPresentation,
 }
 
 /// Workflow-detail MCP mutation branch over one fresh authority receipt.
@@ -323,6 +456,7 @@ pub struct McpMutationWorkflowResponse<T> {
     pub authority_receipt: AuthorityReceipt,
     pub method_result: T,
     pub workflow: WorkflowProjection,
+    pub presentation: McpWorkflowPresentation,
 }
 
 /// Full-detail MCP mutation branch over one fresh authority receipt.
@@ -332,6 +466,7 @@ pub struct McpMutationFullResponse<T> {
     pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: AuthorityReceipt,
     pub method_result: T,
+    pub presentation: McpWorkflowPresentation,
 }
 
 /// Bounded non-retryable MCP recovery branch used when authoritative refresh fails.
@@ -416,8 +551,8 @@ pub struct McpMutationResponseBudgetExceeded<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum McpMutationStructuredContent<T, C> {
-    Rejected(ToolRejectedResponse),
-    DryRun(ToolDryRunResponse),
+    Rejected(McpWorkflowRejectedResponse),
+    DryRun(McpWorkflowDryRunResponse),
     Full(McpMutationFullResponse<Box<T>>),
     Summary(McpMutationSummaryResponse<C>),
     Workflow(McpMutationWorkflowResponse<C>),
@@ -444,6 +579,8 @@ pub struct McpIntakeArguments {
     pub acceptance_policy: RequiredNullable<AcceptancePolicy>,
     pub lineage: RequiredNullable<volicord_types::schema::TaskLineageInput>,
     pub initial_scope: InitialScope,
+    /// Typed authority context only. Each item is a complete `StateRecordRef`;
+    /// human prose belongs in `plain_language_request`.
     #[serde(default)]
     pub initial_context_refs: Vec<StateRecordRef>,
     #[serde(default)]

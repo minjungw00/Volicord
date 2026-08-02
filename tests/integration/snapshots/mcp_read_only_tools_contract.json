@@ -110,6 +110,7 @@
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RiskAcceptanceCoverage",
+          "RunKind",
           "SensitiveActionRequirement",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -141,6 +142,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -150,7 +154,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7b56bb796cbba3828edbe00b9f9af26c974b3cb1dc734c2c07bf0ca4c1dfff43"
+        "sha256": "sha256:548e4e318f93e254ef0d32425eb84b5fc8cc60bd7d08ec1aac4307b078abc8bf"
       }
     },
     {
@@ -179,6 +183,7 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
+          "AuthorityNextActor",
           "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
@@ -199,14 +204,29 @@
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
           "OperationResultRef",
+          "RunKind",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_GetOperationResultResult"
+          "ToolResultOrRejected_for_GetOperationResultResult",
+          "WorkPhase",
+          "WorkflowBlockingReason",
+          "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:82a6565483eb60e757b6ad9ed453a92e7641d219b192674a1ce4ea0830b28dc4"
+        "sha256": "sha256:efb9a2d3e858c464d9f9e7e11da0a73ab1878d0345101973299936f78be3b438"
       }
     },
     {
@@ -293,6 +313,7 @@
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RiskAcceptanceCoverage",
+          "RunKind",
           "SensitiveActionRequirement",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -321,6 +342,9 @@
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -330,7 +354,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b2749684377c990ec318351391f863b58f2841f26b71f669dab4af05443b01f1"
+        "sha256": "sha256:9923c18509d6ced44f5d673eb6ea487abfcd967c6c885876d20e9a9d1d4c722d"
       }
     },
     {
@@ -360,7 +384,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:92bf033bc411c070f0ee25c4dbcf767c881e673646456663844ad176630d6dec"
+        "sha256": "sha256:82213bb9325f1506e344874edb8e61e1f07a5f76de48d8d96e022049daa92bbd"
       }
     },
     {
@@ -397,7 +421,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:31408bca3a03a56904f1145726efd1cfc4b7f8ffdd3c65d8c9b4807fcffa35a3"
+        "sha256": "sha256:36da68e3b7b1ffe9bee238097a7a8aca71810d80f0d00c8e83e7a93b5b3d81a7"
       }
     },
     {
@@ -436,7 +460,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f42e41e2ba0081df62aaca99bc0d9664542e5dd5504066310a647e201be62444"
+        "sha256": "sha256:167587db3be02e8e0a7e799f24993b9911b6e5edbc122ef90dd6295c4046a22b"
       }
     },
     {
@@ -477,7 +501,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:22935261cbe7bbb6b64f8bd3927eafc3a3865803b3d35d986b8a7fe5fccad2b7"
+        "sha256": "sha256:c28729fbc4d17efd9f9df23032f73aa2a38f4a51a54de287618bbd31a20654f9"
       }
     }
   ]

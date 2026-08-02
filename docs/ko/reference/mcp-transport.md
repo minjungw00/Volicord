@@ -511,6 +511,32 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 전에 거부합니다. 간결한 검색 schema는 담당 문서의 완전한 요청 검증을 느슨하게 하지
 않습니다.
 
+Known-tool의 유효하지 않은 인자는 method별 문자열 matching이 아니라 schema에서 파생한
+issue를 반환합니다.
+
+```schema
+McpToolErrorIssue:
+  path: string
+  code: McpToolIssueCode
+  expected_semantic_type: string | null
+  required_fields: string[]
+  allowed_enum_values: string[]
+  unknown_fields: string[]
+  minimal_example: object | null
+  owner_hint: string | null
+  retryable: boolean
+  reached_core: boolean
+  committed: boolean
+  message: string
+```
+
+JSON Pointer와 semantic type은 정규 input schema에서 나옵니다. 필수 member, enum 값,
+알 수 없는 member는 alias 없이 현재 schema identifier를 보존합니다. `minimal_example`은
+method의 canonical registry descriptor가 소유합니다. 필드 description이 owner hint이며,
+`initial_context_refs`는 완전한 기존 `StateRecordRef` 값만 받고 prose는
+`plain_language_request`에 둔다고 안내합니다. 이 실패는 수정 가능하므로 각 issue는
+`retryable=true`, `reached_core=false`, `committed=false`를 보고합니다.
+
 <a id="user-action-wire-projection"></a>
 ### UserAction wire projection
 
@@ -764,6 +790,33 @@ authority receipt를 먼저 보존하고, 다음으로 간결한 method result, 
 설정하며 completion 주장을 보류하고 현재 `volicord.status` 읽기를 요구합니다. 값이 있으면
 불변 operation-result reference도 보존합니다. Core 효과를 바꾸거나 권위 있는 공개 method
 result를 다시 해석하지 않습니다.
+
+정상 workflow mutation projection은 모두 canonical agent-facing `presentation` 하나도
+포함합니다.
+
+```schema
+McpWorkflowPresentation:
+  headline: string
+  state_change: core_committed | staging_created | dry_run | rejected | read_only_resume | no_effect
+  task_phase: { mode: TaskMode, work_phase: WorkPhase }
+  next_actor: AuthorityNextActor
+  blocker_summary: McpWorkflowBlockerSummary[]
+  required_user_action: McpUserChannelInstructions | null
+  must_surface: McpMustSurfaceFact[]
+```
+
+`must_surface`는 free-form prompting이 아니라 tagged fact 집합입니다. 거부 fact는 거부된
+method, 변경되지 않은 Core state, 현재 Task phase, 정확한 recovery owner를 식별합니다.
+`awaiting_user_action`은 현재 request ref, `next_actor=user`, chat이 resolution authority가
+아니라는 사실, Product Repository mutation 경계, 정규 Task 범위 inbox instruction을
+추가합니다. 성공한 `advance_task`는 implementation 진입, write ticket을 만들지 않았다는
+사실, Product Repository write에는 여전히 `volicord.prepare_write`가 필요하다는 사실을
+추가합니다.
+
+Rejected와 dry-run 분기는 정확한 raw Core 응답을 새 workflow authority 및 presentation과
+함께 보존합니다. Compact text는 committed Core authority, staging, dry run, rejection,
+read-only resume를 구분합니다. Rejection text는 Core state가 unchanged라고 말하며 completion,
+refresh 성공 또는 commit 표현을 사용하지 않습니다.
 
 Core 효과를 커밋한 뒤 전달이 실패하면 operation-result 좌표를 보존합니다. 응답 직렬화나
 전송이 실패했다는 이유로 mutation을 다시 시도하지 않습니다.

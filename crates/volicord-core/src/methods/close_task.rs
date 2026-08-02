@@ -242,11 +242,12 @@ impl CoreService {
         let guarantee_profile = match project_enforcement_profile(&prepared.store) {
             Ok(profile) => profile,
             Err(error) => {
-                return plan_error_response(
+                let response = plan_error_response(
                     &request.envelope,
                     &prepared.context.project_state,
                     PlanError::Core(error),
-                )
+                )?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
         let plan = match plan_close_task(
@@ -259,11 +260,9 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
         self.execute_prepared_request(
@@ -312,11 +311,12 @@ impl CoreService {
         let guarantee_profile = match project_enforcement_profile(&prepared.store) {
             Ok(profile) => profile,
             Err(error) => {
-                return plan_error_response(
+                let response = plan_error_response(
                     &request.envelope,
                     &prepared.context.project_state,
                     PlanError::Core(error),
-                )
+                )?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
         let mut plan = match plan_close_task(
@@ -329,11 +329,9 @@ impl CoreService {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
 
@@ -354,11 +352,9 @@ impl CoreService {
         ) {
             Ok(records) => records,
             Err(error) => {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    error,
-                )
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
             }
         };
         if !continuity_plans.is_empty() {

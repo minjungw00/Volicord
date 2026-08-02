@@ -587,6 +587,34 @@ metadata, idempotency fields, actor source, operation category, and verification
 basis. Hidden fields are rejected before Core. Compact discovery schemas never
 relax the complete owner-defined request validation.
 
+Known-tool invalid arguments return schema-derived issues rather than
+method-specific string matching:
+
+```schema
+McpToolErrorIssue:
+  path: string
+  code: McpToolIssueCode
+  expected_semantic_type: string | null
+  required_fields: string[]
+  allowed_enum_values: string[]
+  unknown_fields: string[]
+  minimal_example: object | null
+  owner_hint: string | null
+  retryable: boolean
+  reached_core: boolean
+  committed: boolean
+  message: string
+```
+
+The JSON Pointer and semantic type come from the canonical input schema.
+Required members, enum values, and unknown members preserve current schema
+identifiers without aliases. `minimal_example` comes from the method's
+canonical registry descriptor. A field description is the owner hint: for
+`initial_context_refs`, it identifies complete existing `StateRecordRef`
+values and directs prose to `plain_language_request`. These failures are
+correctable, so each issue reports `retryable=true`, `reached_core=false`, and
+`committed=false`.
+
 <a id="user-action-wire-projection"></a>
 ### UserAction wire projection
 
@@ -857,6 +885,35 @@ sets `retryable=false`, withholds a completion claim, requires a current
 `volicord.status` read, and retains an immutable operation-result reference
 when one exists. It does not change Core effects or reinterpret the
 authoritative public method result.
+
+Every normal workflow mutation projection also carries exactly one canonical
+agent-facing `presentation`:
+
+```schema
+McpWorkflowPresentation:
+  headline: string
+  state_change: core_committed | staging_created | dry_run | rejected | read_only_resume | no_effect
+  task_phase: { mode: TaskMode, work_phase: WorkPhase }
+  next_actor: AuthorityNextActor
+  blocker_summary: McpWorkflowBlockerSummary[]
+  required_user_action: McpUserChannelInstructions | null
+  must_surface: McpMustSurfaceFact[]
+```
+
+`must_surface` is a tagged fact set, not free-form prompting. Rejection facts
+identify the rejected method, unchanged Core state, current Task phase, and
+exact recovery owner. `awaiting_user_action` adds the current request refs,
+`next_actor=user`, the fact that chat is not resolution authority, the Product
+Repository mutation boundary, and canonical task-scoped inbox instructions.
+A successful `advance_task` adds that implementation was entered, no write
+ticket was created, and Product Repository writes still require
+`volicord.prepare_write`.
+
+Rejected and dry-run branches retain the exact raw Core response together with
+fresh workflow authority and presentation. Compact text distinguishes
+committed Core authority, staging, dry run, rejection, and read-only resume.
+Rejection text says Core state is unchanged and never uses completion,
+refresh-success, or commit language.
 
 A delivery failure after a committed Core effect preserves operation-result
 coordinates. The adapter does not retry a mutation merely because response

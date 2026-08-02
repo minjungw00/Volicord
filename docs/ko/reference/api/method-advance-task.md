@@ -88,6 +88,26 @@ resolution, 호환되지 않는 baseline은 효과 없이 거부됩니다.
 Change Unit을 만들거나, 범위를 갱신하거나, 구현 Evidence나 구현 닫기 근거를 세우거나,
 Task를 닫지 않습니다. `implementation`에서 `shaping`으로 자동 전환하지 않습니다.
 
+## Workflow recovery와 presentation
+
+전환 거부는 가장 구체적인 현재 workflow 코드를 사용합니다.
+
+- 지원하지 않는 현재 mode 또는 phase에는 `WORKFLOW_ACTION_NOT_ALLOWED`
+- checkpoint authority가 없거나 current가 아니면 `SHAPING_CHECKPOINT_REQUIRED` 또는
+  `SHAPING_CHECKPOINT_STALE`
+- current User Channel resolution이 pending, missing, extra, stale이면
+  `USER_DECISION_UNRESOLVED`
+- Change Unit authority가 없거나 호환되지 않으면 `CHANGE_UNIT_REQUIRED` 또는
+  `CHANGE_UNIT_STALE`
+
+모든 분기는 공통 typed workflow 거부 상세를 사용하고 `no_effect`를 유지합니다. Blocker는
+정확한 owner method와 required ref를 담습니다.
+
+성공한 전환의 MCP presentation에는 Task가 `implementation`에 들어갔고, 전환이 write
+ticket을 만들지 않았고, Product Repository write에는 여전히 `volicord.prepare_write`가
+필요하다는 세 구조화 fact가 필수입니다. 호출자는 phase 전진을 write authorization이나
+Task completion으로 설명해서는 안 됩니다.
+
 ## 관련 담당 문서
 
 - 진행 권한: [Core 모델](../core-model.md).

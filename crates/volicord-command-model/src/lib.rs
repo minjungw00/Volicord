@@ -600,6 +600,47 @@ pub enum InboxEvidenceTarget {
     EvidenceClaim(String),
 }
 
+/// One typed invocation of the current task-scoped inbox list command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxListInvocation {
+    task_id: String,
+}
+
+impl InboxListInvocation {
+    pub fn new(task_id: impl Into<String>) -> Self {
+        Self {
+            task_id: task_id.into(),
+        }
+    }
+
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    /// Produces canonical argument tokens from the actual Clap declaration.
+    pub fn canonical_arguments(&self) -> Result<Vec<String>, CommandIntrospectionError> {
+        let root = root_command();
+        let command_path = vec!["inbox".to_owned()];
+        let command =
+            find_command(&root, &command_path).ok_or_else(|| CommandIntrospectionError {
+                command_path: command_path.clone(),
+            })?;
+        let mut arguments = vec![root.get_name().to_owned(), command_path[0].clone()];
+        append_declared_option_value(
+            command,
+            &command_path,
+            "task",
+            &self.task_id,
+            &mut arguments,
+        )?;
+        append_declared_flag(command, &command_path, "json", &mut arguments)?;
+        Cli::try_parse_from(&arguments).map_err(|_| CommandIntrospectionError {
+            command_path: command_path.clone(),
+        })?;
+        Ok(arguments)
+    }
+}
+
 /// One typed invocation of the current `inbox resolve` command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InboxResolveInvocation {
@@ -1335,10 +1376,9 @@ fn argument_tokens(argument: &Arg) -> Option<Vec<String>> {
         }
     } else if let Some(long) = argument.get_long() {
         tokens.push(format!("--{long}"));
-    } else if let Some(short) = argument.get_short() {
-        tokens.push(format!("-{short}"));
     } else {
-        return None;
+        let short = argument.get_short()?;
+        tokens.push(format!("-{short}"));
     }
 
     if argument.get_action().takes_values() {
@@ -1717,6 +1757,26 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn typed_inbox_list_invocation_uses_the_task_scoped_json_command() {
+        let invocation = InboxListInvocation::new("task_current");
+        let arguments = invocation
+            .canonical_arguments()
+            .expect("typed inbox list invocation should materialize");
+        assert_eq!(
+            arguments,
+            ["volicord", "inbox", "--task", "task_current", "--json"]
+        );
+        let parsed = Cli::try_parse_from(&arguments)
+            .expect("canonical inbox list tokens should parse through Clap");
+        let Some(Command::Inbox(parsed)) = parsed.command else {
+            panic!("canonical tokens selected the wrong command");
+        };
+        assert_eq!(parsed.task, invocation.task_id());
+        assert!(parsed.json);
+        assert!(parsed.command.is_none());
     }
 
     fn report_output_args(command: Command) -> ReportOutputArgs {

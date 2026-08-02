@@ -217,9 +217,10 @@ pub(crate) enum RecordingRejection {
         message: &'static str,
     },
     NoActiveTask,
-    NoActiveChangeUnit {
-        message: &'static str,
-    },
+    RunKindIncompatible,
+    TaskPhaseTransitionRequired,
+    ChangeUnitRequired,
+    ChangeUnitStale,
     BaselineStale,
     WorkspaceStale,
     ProductPathContainment {

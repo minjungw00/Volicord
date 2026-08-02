@@ -578,6 +578,7 @@ pub fn current_project_agent_session_coordinates(
     let observer_contract_digest =
         SemanticObserverContractDigest::for_limits(&ObserverLimits::default());
     let effect_catalog_digest = CodexGuardToolEffectContract::semantic_digest();
+    let guidance_digest = volicord_types::managed_guidance::managed_guidance_semantic_digest();
     let project_revision = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
         connection_integration_revision: connection_revision.as_str(),
         project_id: &project.project.project_id,
@@ -586,6 +587,7 @@ pub fn current_project_agent_session_coordinates(
         guard_policy_hash: guard_ownership.as_ref().map(|value| value.1.as_str()),
         repository_observer_contract_digest: observer_contract_digest.as_str(),
         product_repository_effect_catalog_digest: effect_catalog_digest.as_str(),
+        managed_guidance_semantic_digest: guidance_digest.as_str(),
     })
     .map_err(|error| StoreError::InvalidInput {
         detail: format!("project integration revision could not be derived: {error}"),

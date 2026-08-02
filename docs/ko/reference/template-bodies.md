@@ -293,15 +293,23 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 
 - Treat Volicord's recorded scope and user-owned decisions as authoritative.
 - Do not modify Product Repository files outside an active compatible write authorization.
-- Do not infer, resolve, or record user-owned judgments on the user's behalf.
-- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.
+- Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.
+- Follow the tagged workflow's `required_action`; do not call workflow tools speculatively.
+- Record shaping with `volicord.record_shaping` before implementation-oriented scope work. Creating or replacing a Change Unit does not advance the Task phase.
+- User-owned decisions require current UserAction requests. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.
+- Do not call `volicord.advance_task` while a UserAction is pending, or `volicord.prepare_write` before the Task enters implementation.
+- Never hide or paraphrase a rejected mutation as success. Surface every fact in `presentation.must_surface`, including the current Task phase and exact recovery method.
+- Close blockers do not replace tagged workflow progression.
 - Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.
 - Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.
 <!-- END VOLICORD MANAGED GUIDANCE -->
 ```
 
 이 블록은 생성된 저장소 안내일 뿐 Core 상태, 쓰기 티켓, 사용자 권한, Agent가 지침을
-따랐다는 증거, 제품 파일 편집 허가가 아닙니다.
+따랐다는 증거, 제품 파일 편집 허가가 아닙니다. 폐쇄형 semantic fact 집합의 canonical
+digest는 프로젝트 통합 revision에 포함됩니다. 따라서 rendering 문장 부호나 hook command가
+그대로여도 이 guidance semantic 중 하나가 바뀌면 revision 범위 managed evidence는
+current가 아니게 됩니다.
 
 ## 상태 카드 본문
 

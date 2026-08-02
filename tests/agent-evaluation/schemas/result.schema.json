@@ -182,7 +182,9 @@
         "unrecorded_change_true_positives",
         "unrecorded_change_false_positives",
         "resume_authority_or_judgment_losses",
-        "wrong_auto_completions"
+        "wrong_auto_completions",
+        "workflow_rejections_observed",
+        "workflow_rejections_surfaced_in_final_answer"
       ],
       "properties": {
         "schema": {
@@ -228,7 +230,9 @@
         "unrecorded_change_true_positives": {"type": "integer", "minimum": 0},
         "unrecorded_change_false_positives": {"type": "integer", "minimum": 0},
         "resume_authority_or_judgment_losses": {"type": "integer", "minimum": 0},
-        "wrong_auto_completions": {"type": "integer", "minimum": 0}
+        "wrong_auto_completions": {"type": "integer", "minimum": 0},
+        "workflow_rejections_observed": {"type": "integer", "minimum": 0},
+        "workflow_rejections_surfaced_in_final_answer": {"type": "integer", "minimum": 0}
       }
     },
     "trialFailure": {

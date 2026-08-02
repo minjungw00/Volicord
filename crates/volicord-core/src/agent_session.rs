@@ -298,6 +298,8 @@ pub(crate) fn validated_agent_session_for_test_with_project_session(
                 "sha256:3333333333333333333333333333333333333333333333333333333333333333",
             product_repository_effect_catalog_digest:
                 "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            managed_guidance_semantic_digest:
+                "sha256:5555555555555555555555555555555555555555555555555555555555555555",
         },
     )
     .expect("test project revision must be valid");

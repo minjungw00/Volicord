@@ -712,6 +712,16 @@ pub struct PipelineResponse {
     pub replayed: bool,
 }
 
+impl PipelineResponse {
+    /// Attaches the verified authority coordinates retained by a prepared
+    /// request to a method-planning response.
+    pub(crate) fn with_prepared_context(mut self, prepared: &PreparedRequest<'_>) -> Self {
+        self.verified_invocation = Some(prepared.context.verified_invocation.clone());
+        self.resolved_task_id = prepared.context.resolved_task_id.clone();
+        self
+    }
+}
+
 /// Runtime Home identity used by one Core service.
 #[derive(Clone, PartialEq, Eq)]
 enum CoreRuntimeHome {
@@ -2327,30 +2337,39 @@ fn no_active_task_error() -> ToolError {
 fn error_precedence(code: ErrorCode) -> u8 {
     match code {
         ErrorCode::ValidationFailed => 1,
-        ErrorCode::PersistedDataCorrupt => 2,
-        ErrorCode::StateVersionConflict => 3,
-        ErrorCode::InvocationContextMismatch => 4,
-        ErrorCode::NoActiveTask => 5,
-        ErrorCode::NoActiveChangeUnit => 6,
-        ErrorCode::BaselineStale => 7,
-        ErrorCode::ScopeRequired => 8,
-        ErrorCode::ScopeViolation => 9,
-        ErrorCode::WriteTicketRequired => 10,
-        ErrorCode::WriteTicketInvalid => 11,
-        ErrorCode::ApprovalDenied => 12,
-        ErrorCode::ApprovalExpired => 13,
-        ErrorCode::ApprovalRequired => 14,
-        ErrorCode::DecisionUnresolved => 15,
-        ErrorCode::AutonomyBoundaryExceeded => 16,
-        ErrorCode::DecisionRequired => 17,
-        ErrorCode::CapabilityInsufficient => 18,
-        ErrorCode::EvidenceInsufficient => 19,
-        ErrorCode::ResidualRiskNotVisible => 20,
-        ErrorCode::AcceptanceRequired => 21,
-        ErrorCode::ProjectionStale => 22,
-        ErrorCode::ArtifactMissing => 23,
-        ErrorCode::ValidatorFailed => 24,
-        ErrorCode::OperationResultUnavailable => 25,
+        ErrorCode::RunKindIncompatible => 2,
+        ErrorCode::TaskPhaseTransitionRequired => 3,
+        ErrorCode::ShapingCheckpointRequired => 4,
+        ErrorCode::ShapingCheckpointStale => 5,
+        ErrorCode::UserDecisionUnresolved => 6,
+        ErrorCode::ChangeUnitRequired => 7,
+        ErrorCode::ChangeUnitStale => 8,
+        ErrorCode::WorkspaceBasisStale => 9,
+        ErrorCode::WorkflowActionNotAllowed => 10,
+        ErrorCode::PersistedDataCorrupt => 11,
+        ErrorCode::StateVersionConflict => 12,
+        ErrorCode::InvocationContextMismatch => 13,
+        ErrorCode::NoActiveTask => 14,
+        ErrorCode::NoActiveChangeUnit => 15,
+        ErrorCode::BaselineStale => 16,
+        ErrorCode::ScopeRequired => 17,
+        ErrorCode::ScopeViolation => 18,
+        ErrorCode::WriteTicketRequired => 19,
+        ErrorCode::WriteTicketInvalid => 20,
+        ErrorCode::ApprovalDenied => 21,
+        ErrorCode::ApprovalExpired => 22,
+        ErrorCode::ApprovalRequired => 23,
+        ErrorCode::DecisionUnresolved => 24,
+        ErrorCode::AutonomyBoundaryExceeded => 25,
+        ErrorCode::DecisionRequired => 26,
+        ErrorCode::CapabilityInsufficient => 27,
+        ErrorCode::EvidenceInsufficient => 28,
+        ErrorCode::ResidualRiskNotVisible => 29,
+        ErrorCode::AcceptanceRequired => 30,
+        ErrorCode::ProjectionStale => 31,
+        ErrorCode::ArtifactMissing => 32,
+        ErrorCode::ValidatorFailed => 33,
+        ErrorCode::OperationResultUnavailable => 34,
     }
 }
 

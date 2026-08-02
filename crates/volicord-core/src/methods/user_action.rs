@@ -150,7 +150,9 @@ fn execute_request_user_action(
     ) {
         Ok(plan) => plan,
         Err(error) => {
-            return plan_error_response(&request.envelope, &prepared.context.project_state, error)
+            let response =
+                plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+            return Ok(response.with_prepared_context(&prepared));
         }
     };
     if request.envelope.dry_run.is_requested() {
@@ -601,7 +603,9 @@ fn execute_resolve_user_action(
     ) {
         Ok(plan) => plan,
         Err(error) => {
-            return plan_error_response(&request.envelope, &prepared.context.project_state, error)
+            let response =
+                plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+            return Ok(response.with_prepared_context(&prepared));
         }
     };
     if request.envelope.dry_run.is_requested() {
