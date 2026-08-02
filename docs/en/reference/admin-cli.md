@@ -2061,7 +2061,12 @@ StoredDiagnosticFinding:
 The root and every cause-graph entry use the same lifecycle-aware stored
 finding shape for a finding lookup. A runtime-session root carries the
 authoritative session data and an explicit `terminal_condition`; its bounded
-graph retains lifecycle-aware occurrence records. Without `--json`, the human
+graph retains lifecycle-aware occurrence records. It also carries bounded
+read-only Repository Observation diagnostics with the exact states
+`open_current_turn`, `unavailable_post_tool_not_observed`,
+`unavailable_managed_session_terminated`,
+`orphan_open_terminal_session`, `cleanup_failed`, and
+`corrupt_observation`. Without `--json`, the human
 projection shows the same lookup result, requested and root IDs, lifecycle,
 current state and resolution time when applicable, severity, code, safe
 subject, observation time, cause records, actions, and limits. A missing
@@ -2074,7 +2079,8 @@ operability report. Its JSON identifies local diagnostics storage with
 `canonical_schema_digest` derived from the current diagnostics SQL; it does not
 use either report schema version. A diagnostics read does not create
 storage, advance project authority state, change evidence or assurance, change
-close readiness, or resolve a UserAction.
+close readiness, resolve a UserAction, terminalize a Repository Observation,
+or scan the Product Repository.
 
 Active Connection verification persists CLI-owned findings for managed
 configuration, Guard files and observations, repository trust, and revision

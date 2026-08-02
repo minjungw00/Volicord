@@ -98,6 +98,32 @@ snapshot and delta digests, and the completion time. Its delta may be empty.
 claim a complete delta. A valid baseline may remain present when the
 invocation was denied or post-tool completion became unavailable.
 
+An `open` observation closes at one of three exact lifecycle boundaries:
+
+- exact matching `PostToolUse` produces `complete` or `unavailable` from the
+  post-tool observation result;
+- the next accepted `UserPromptSubmit` in the same managed project session
+  closes open observations from different established turns as
+  `unavailable(post_tool_not_observed)`; observations in the prompt's exact
+  current turn remain open so parallel tool calls can finish; and
+- authoritative termination of the owning `managed_host` runtime closes the
+  remaining observations in its exact bounded project-session bindings as
+  `unavailable(managed_session_terminated)`.
+
+Turn identity is exact typed equality, never lexical or numeric ordering. The
+accepted prompt capture and its prior-turn terminalization share one immediate
+bounded project transaction. Runtime cleanup uses only exact Registry
+project-session bindings. Runtime Home recovery repeats that cleanup only for
+Registry sessions already authoritatively terminal; replay leaves terminal
+rows unchanged.
+
+Lifecycle terminalization retains the pre-tool baseline, records the reason,
+completion time, and one stable terminal result, and leaves the delta
+unavailable. It performs no Product Repository scan, expected-write match,
+write-ticket consumption, Unrecorded Change or finding creation, synthetic
+path creation, actor attribution, or causation claim. A failed validation
+rolls back the complete bounded project transaction.
+
 Terminal observations do not return to `open`. Exact replay returns the stored
 terminal result without rescanning the Product Repository. A conflicting
 second `PostToolUse` event is rejected.

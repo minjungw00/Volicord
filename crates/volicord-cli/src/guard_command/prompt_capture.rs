@@ -5,8 +5,8 @@ use volicord_store::{
     bootstrap::ProjectRecord,
     core_pipeline::CoreProjectStore,
     guards::{
-        guard_health_record, insert_prompt_capture, prompt_capture, prompt_capture_availability,
-        PromptCaptureAvailability, PromptCaptureInsert,
+        guard_health_record, insert_prompt_capture_and_terminalize_prior_turn_observations,
+        prompt_capture_availability, PromptCaptureAvailability, PromptCaptureInsert,
     },
     RuntimeHomeMutationContext,
 };
@@ -64,7 +64,6 @@ fn record_prompt_capture(
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<Value, GuardCommandError> {
-    let runtime_home = context.runtime_home().as_path();
     let Some(prompt) = extract_prompt_text(&input.raw_value) else {
         return Ok(json!({ "captured": false, "reason": "no_prompt_text" }));
     };
@@ -76,36 +75,46 @@ fn record_prompt_capture(
         &input.raw_value,
         &[&["prompt_capture_id"], &["capture_id"], &["id"]],
     )
-    .unwrap_or_else(|| stable_id("prompt_capture", &[session_id, &prompt_sha256]));
-    if prompt_capture(runtime_home, &project.project_id, &capture_id)?.is_none() {
-        insert_prompt_capture(
-            context,
-            &project.project_id,
-            PromptCaptureInsert {
-                prompt_capture_id: capture_id.clone(),
-                correlation: envelope.correlation.clone(),
-                connection_internal_id: envelope.connection_id.clone(),
-                capture_kind: event_string(&input.raw_value, &[&["capture_kind"]])
-                    .unwrap_or_else(|| "user_prompt".to_owned()),
-                prompt_sha256: prompt_sha256.clone(),
-                prompt_text: None,
-                captured_at: envelope.occurred_at.clone(),
-                metadata_json: json!({
-                    "source": "volicord_guard_prompt_capture",
-                    "raw_event_sha256": input.raw_sha256,
-                    "prompt_size_bytes": prompt.len(),
-                    "prompt_text_omitted": true,
-                    "resolution_channel": "cli_inbox_only"
-                })
-                .to_string(),
-            },
-        )?;
-    }
+    .unwrap_or_else(|| {
+        stable_id(
+            "prompt_capture",
+            &[
+                session_id,
+                envelope.correlation.turn_id().as_str(),
+                &prompt_sha256,
+            ],
+        )
+    });
+    let aggregate = insert_prompt_capture_and_terminalize_prior_turn_observations(
+        context,
+        &project.project_id,
+        PromptCaptureInsert {
+            prompt_capture_id: capture_id.clone(),
+            correlation: envelope.correlation.clone(),
+            connection_internal_id: envelope.connection_id.clone(),
+            capture_kind: event_string(&input.raw_value, &[&["capture_kind"]])
+                .unwrap_or_else(|| "user_prompt".to_owned()),
+            prompt_sha256: prompt_sha256.clone(),
+            prompt_text: None,
+            captured_at: envelope.occurred_at.clone(),
+            metadata_json: json!({
+                "source": "volicord_guard_prompt_capture",
+                "raw_event_sha256": input.raw_sha256,
+                "prompt_size_bytes": prompt.len(),
+                "prompt_text_omitted": true,
+                "resolution_channel": "cli_inbox_only"
+            })
+            .to_string(),
+        },
+    )?;
     Ok(json!({
         "captured": true,
         "prompt_capture_id": capture_id,
         "prompt_sha256": prompt_sha256,
-        "prompt_text_omitted": true
+        "prompt_text_omitted": true,
+        "terminalized_repository_observations": aggregate
+            .terminalized_repository_observations
+            .len()
     }))
 }
 

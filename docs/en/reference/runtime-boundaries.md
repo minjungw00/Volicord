@@ -458,6 +458,14 @@ with a closed observation-unavailable reason. Ambient repository status and
 host path reports are not invocation deltas. Exact observation behavior belongs
 to [Repository Observation](repository-observation.md).
 
+The next accepted prompt closes only different established turns in the same
+project session, in the same bounded project transaction as prompt capture.
+Exact same-turn observations remain open. A terminal managed runtime closes
+remaining observations only through its exact bounded Registry
+project-session reservations. Runtime Home recovery reads terminal Registry
+facts and repeats that project-local cleanup idempotently; it does not infer
+termination from elapsed time or an apparently open or absent process.
+
 Runtime source is also explicit. `managed_host` is created only by atomic
 one-time lease consumption; `manual_cli` identifies the public stdio or
 disposable CLI-conformance path; `cli_preflight` and `integration_probe` are
@@ -478,7 +486,8 @@ Project ownership conflicts leave no Registry reservation. An unbound MCP
 anchor and a Registry reservation without project attachment are independently
 non-authoritative. Exact replay under unchanged owner state repairs an
 interrupted final attach. A process row is not a lease or liveness signal, so a
-crashed apparently open row and concurrent processes never select or block
+crashed apparently open row without an authoritative terminal fact and
+concurrent processes never select or block
 Guard correlation. `diagnostics.sqlite` is a separate best-effort carrier and
 is never an operational authority source. Its first shared writer initializes
 and validates a complete same-directory staging database, closes every SQLite

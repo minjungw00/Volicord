@@ -716,6 +716,13 @@ discriminator는 source가 교차되거나 불완전한 조합을 거부합니�
 thread 좌표, 경로 보고, 도구 이름만으로는 이 관찰을 상관시킬 수 없습니다. 완전한
 관찰 좌표와 생명주기는 [저장소 관찰](repository-observation.md)이 담당합니다.
 
+수락한 `UserPromptSubmit`은 정확한 typed turn을 확립하고 같은 derived project session에서
+서로 다른 확립된 turn의 open 관찰만 원자적으로 닫습니다. Turn 식별자를 순서로 비교하거나
+현재 turn의 병렬 관찰을 닫지 않습니다. 정확히 binding된 `managed_host` runtime이 graceful
+또는 failure로 권위 있게 종료되면 한도가 있는 Registry project binding을 통해 session의
+남은 open 관찰을 닫습니다. Recovery는 이미 terminal 사실이 있는 runtime row에만 이 효과를
+적용합니다.
+
 Connection에 등록된 `server_name`은 `McpServerKey`로 decode하며 각 도구의 완전한
 `McpRawToolName`과 구분해 유지합니다. `CodexMcpCallableNames` 계약은 이 좌표를
 `codex-mcp-callable-names`의 `HostCallableIdentity` 하나로 투영합니다. Raw tool
@@ -779,7 +786,7 @@ host thread에 다시 결속할 수 없습니다.
 
 Runtime row는 launch lease나 liveness 주장이 아니라 process의 이력 관찰입니다. Launch
 lease는 bootstrap 전환 하나만 승인하며 runtime row를 liveness 기록으로 바꾸지 않습니다.
-Crash한 process는
+권위 있는 terminal 사실을 기록하지 못하고 crash한 process는
 열린 것처럼 보이는 row를 남길 수 있고 여러 협력적 Codex process가 동시에 현재 상태일 수
 있습니다. 어느 경우도 Guard 상관관계를 막지 않습니다. 열린 row에서 runtime을 추측하지
 않고 서로 다른 host session은 독립적으로 결속합니다.

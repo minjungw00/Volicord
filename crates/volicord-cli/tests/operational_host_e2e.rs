@@ -35,6 +35,7 @@ use volicord_store::diagnostic_findings::{
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
     current_project_agent_session_coordinates, repository_observation, RepositoryObservationState,
+    RepositoryObservationUnavailableReason,
 };
 use volicord_store::inspection::{
     inspect_runtime_home, AgentConnectionInspectionRecord, DatabaseInspection,
@@ -134,20 +135,33 @@ fn main() {
 }
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
-    codex_2025_06_18_compatibility_records_managed_runtime_facts()?;
-    verification_tool_designation_mismatch_is_typed()?;
-    status_tool_self_observation_preserves_missing_probe_reason()?;
-    managed_launch_contracts_survive_filtered_environments()?;
-    complete_managed_activation_journey_and_read_only_status()?;
-    connection_list_evaluates_multiple_memberships_independently()?;
-    connection_mode_transition_rebinds_guard_revision()?;
-    connection_mode_preflight_failure_preserves_connection()?;
-    connection_removal_after_operational_observations()?;
-    drift_verification_preserves_owned_configuration_and_removal()?;
-    dry_run_has_no_mutation()?;
-    protocol_failures_are_authoritative()?;
-    local_process_and_configuration_failures_are_structured()?;
-    guard_failures_are_current_and_structured()?;
+    codex_2025_06_18_compatibility_records_managed_runtime_facts()
+        .map_err(|error| format!("compatibility regression: {error}"))?;
+    verification_tool_designation_mismatch_is_typed()
+        .map_err(|error| format!("designation regression: {error}"))?;
+    status_tool_self_observation_preserves_missing_probe_reason()
+        .map_err(|error| format!("status self-observation regression: {error}"))?;
+    managed_launch_contracts_survive_filtered_environments()
+        .map_err(|error| format!("filtered environment regression: {error}"))?;
+    complete_managed_activation_journey_and_read_only_status()
+        .map_err(|error| format!("activation journey regression: {error}"))?;
+    connection_list_evaluates_multiple_memberships_independently()
+        .map_err(|error| format!("membership regression: {error}"))?;
+    connection_mode_transition_rebinds_guard_revision()
+        .map_err(|error| format!("mode transition regression: {error}"))?;
+    connection_mode_preflight_failure_preserves_connection()
+        .map_err(|error| format!("preflight failure regression: {error}"))?;
+    connection_removal_after_operational_observations()
+        .map_err(|error| format!("connection removal regression: {error}"))?;
+    drift_verification_preserves_owned_configuration_and_removal()
+        .map_err(|error| format!("drift regression: {error}"))?;
+    dry_run_has_no_mutation().map_err(|error| format!("dry-run regression: {error}"))?;
+    protocol_failures_are_authoritative()
+        .map_err(|error| format!("protocol failure regression: {error}"))?;
+    local_process_and_configuration_failures_are_structured()
+        .map_err(|error| format!("local failure regression: {error}"))?;
+    guard_failures_are_current_and_structured()
+        .map_err(|error| format!("Guard failure regression: {error}"))?;
     Ok(())
 }
 
@@ -2904,7 +2918,33 @@ impl OperationalFixture {
             initialized_notification(),
             tools_list_request(),
         ])?)?;
-        child.read_responses(2)?;
+        let startup_responses = child
+            .read_responses(2)
+            .map_err(|error| format!("managed startup response failed: {error}"))?;
+        let schema_invalid_tool_name = startup_responses[1]["result"]["tools"]
+            .as_array()
+            .ok_or("tools/list result must carry tools")?
+            .iter()
+            .find(|tool| {
+                tool["inputSchema"]["required"]
+                    .as_array()
+                    .is_some_and(|required| {
+                        required.iter().any(|field| {
+                            field
+                                .as_str()
+                                .is_some_and(|field| field != "project_selector")
+                        })
+                    })
+                    && tool["annotations"]["readOnlyHint"] == true
+            })
+            .and_then(|tool| tool["name"].as_str())
+            .ok_or("generated tool catalog must expose a required-argument schema")?
+            .to_owned();
+        let schema_invalid_tool = AgentToolId::ALL
+            .iter()
+            .copied()
+            .find(|tool| tool.wire_name() == schema_invalid_tool_name)
+            .ok_or("generated required-argument tool must have a semantic identity")?;
         let runtime =
             mcp_runtime_session_for_process(&self.runtime_home, connection_id, process_id)?
                 .ok_or("managed MCP runtime was not recorded before its initialize response")?;
@@ -2943,6 +2983,7 @@ impl OperationalFixture {
             project_mcp_tool(&server, AgentToolId::BEGIN_INTEGRATION_VERIFICATION)?;
         let probe_callable = project_mcp_tool(&server, AgentToolId::GUARD_PROBE)?;
         let status_callable = project_mcp_tool(&server, AgentToolId::GET_INTEGRATION_VERIFICATION)?;
+        let schema_invalid_callable = project_mcp_tool(&server, schema_invalid_tool)?;
 
         let list_pre = json!({
             "hook_event_name": "PreToolUse",
@@ -2950,7 +2991,7 @@ impl OperationalFixture {
             "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
             "tool_use_id": "future.tool-use.integration-verification-list",
             "tool_name": list_callable.callable_name().as_str(),
-            "tool_input": {},
+            "tool_input": {"project_selector": project_id},
         });
         assert!(self
             .run_guard_command(
@@ -2966,14 +3007,16 @@ impl OperationalFixture {
             native_session,
             INTEGRATION_VERIFICATION_TURN_ID,
         )])?)?;
-        child.read_responses(1)?;
+        child
+            .read_responses(1)
+            .map_err(|error| format!("managed list-projects response failed: {error}"))?;
         let list_post = json!({
             "hook_event_name": "PostToolUse",
             "session_id": native_session,
             "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
             "tool_use_id": "future.tool-use.integration-verification-list",
             "tool_name": list_callable.callable_name().as_str(),
-            "tool_input": {},
+            "tool_input": {"project_selector": project_id},
             "tool_response": {"success": true},
         });
         assert!(self
@@ -2983,6 +3026,102 @@ impl OperationalFixture {
             )?
             .status
             .success());
+
+        let schema_invalid_turn = "future.turn.schema-invalid";
+        let schema_invalid_tool_use_id = "future.tool-use.schema-invalid";
+        let schema_invalid_pre = json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": native_session,
+            "turn_id": schema_invalid_turn,
+            "tool_use_id": schema_invalid_tool_use_id,
+            "tool_name": schema_invalid_callable.callable_name().as_str(),
+            "tool_input": {"project_selector": project_id},
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PreTool),
+                &schema_invalid_pre,
+            )?
+            .status
+            .success());
+        let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
+        let schema_invalid_session_id = current_project_agent_session_coordinates(
+            &self.runtime_home,
+            project_id,
+            connection_id,
+            Some(manifest.guard_installation_id.as_str()),
+            &host_session_correlation(native_session),
+        )?
+        .session_id;
+        let schema_invalid_observation_id: String = project_state.query_row(
+            "SELECT repository_observation_id
+               FROM repository_observations
+              WHERE host_tool_use_id = ?1 AND session_id = ?2",
+            [
+                schema_invalid_tool_use_id,
+                schema_invalid_session_id.as_str(),
+            ],
+            |row| row.get(0),
+        )?;
+        drop(project_state);
+        let schema_invalid_observation = repository_observation(
+            &self.runtime_home,
+            project_id,
+            &schema_invalid_observation_id,
+        )?
+        .ok_or("schema-invalid PreTool observation")?;
+        assert_eq!(
+            schema_invalid_observation.state,
+            RepositoryObservationState::Open,
+            "generated candidate {} ended before MCP validation with {:?}",
+            schema_invalid_tool.wire_name(),
+            schema_invalid_observation.unavailable_reason
+        );
+        child.write(&json_lines(&[managed_tool_call_in_turn(
+            30,
+            schema_invalid_tool.wire_name(),
+            json!({"project_selector": project_id}),
+            native_session,
+            schema_invalid_turn,
+        )])?)?;
+        let schema_invalid_response = child
+            .read_responses(1)
+            .map_err(|error| format!("schema-invalid response failed: {error}"))?
+            .remove(0);
+        assert!(
+            schema_invalid_response.get("error").is_some()
+                || schema_invalid_response["result"]["isError"] == true,
+            "schema-invalid generated tool call unexpectedly succeeded: {schema_invalid_response}"
+        );
+        let next_prompt = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": native_session,
+            "turn_id": "future.turn.after-schema-invalid",
+            "prompt": "Continue after the rejected tool invocation."
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+                &next_prompt,
+            )?
+            .status
+            .success());
+        let terminalized_schema_invalid = repository_observation(
+            &self.runtime_home,
+            project_id,
+            &schema_invalid_observation_id,
+        )?
+        .ok_or("terminalized schema-invalid observation")?;
+        assert_eq!(
+            terminalized_schema_invalid.state,
+            RepositoryObservationState::Unavailable
+        );
+        assert_eq!(
+            terminalized_schema_invalid.unavailable_reason,
+            Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
+        );
+        assert!(terminalized_schema_invalid.delta.is_none());
+
         let begin_input = json!({"project_selector": project_id});
         let begin_pre = json!({
             "hook_event_name": "PreToolUse",
@@ -3007,7 +3146,9 @@ impl OperationalFixture {
             INTEGRATION_VERIFICATION_TURN_ID,
         )])?)?;
         let registry_path = self.runtime_home.join("registry.sqlite");
-        let begin_responses = child.read_responses(1)?;
+        let begin_responses = child
+            .read_responses(1)
+            .map_err(|error| format!("verification begin response failed: {error}"))?;
         let begin = adapter_tool_response(&begin_responses[0])?;
         let verification_id = begin["verification_id"]
             .as_str()
@@ -3059,7 +3200,9 @@ impl OperationalFixture {
             native_session,
             INTEGRATION_VERIFICATION_TURN_ID,
         )])?)?;
-        let probe_responses = child.read_responses(1)?;
+        let probe_responses = child
+            .read_responses(1)
+            .map_err(|error| format!("Guard probe response failed: {error}"))?;
         let probe = adapter_tool_response(&probe_responses[0])?;
         assert_eq!(probe["verification_id"], verification_id);
         assert_eq!(
@@ -3134,7 +3277,9 @@ impl OperationalFixture {
             native_session,
             INTEGRATION_VERIFICATION_TURN_ID,
         )])?)?;
-        let status_responses = child.read_responses(1)?;
+        let status_responses = child
+            .read_responses(1)
+            .map_err(|error| format!("verification status response failed: {error}"))?;
         let verification = adapter_tool_response(&status_responses[0])?;
         assert_eq!(verification["verification_id"], verification_id);
         assert_eq!(
@@ -3245,8 +3390,8 @@ impl OperationalFixture {
         assert_eq!(output.status.code(), Some(0));
         assert!(output.stderr.is_empty());
         let responses = json_rpc_responses(&output.stdout)?;
-        assert_eq!(responses.len(), 6);
-        for response in &responses[2..] {
+        assert_eq!(responses.len(), 7);
+        for response in [&responses[2], &responses[4], &responses[5], &responses[6]] {
             assert_eq!(response["result"]["isError"], false, "{response}");
         }
         let projects = adapter_tool_response(&responses[2]).map_err(|error| {
@@ -3260,10 +3405,10 @@ impl OperationalFixture {
             .is_some_and(|projects| projects.iter().any(|project| {
                 project["project_selector"] == project_id && project["available"] == true
             })));
-        let begin = adapter_tool_response(&responses[3]).map_err(|error| {
+        let begin = adapter_tool_response(&responses[4]).map_err(|error| {
             format!(
                 "begin integration-verification response was invalid: {error}; {}",
-                responses[3]
+                responses[4]
             )
         })?;
         assert_eq!(begin["verification_id"], verification_id);
@@ -3275,10 +3420,10 @@ impl OperationalFixture {
             begin["workflow"]["tool"],
             AgentToolId::GUARD_PROBE.wire_name()
         );
-        let probe = adapter_tool_response(&responses[4]).map_err(|error| {
+        let probe = adapter_tool_response(&responses[5]).map_err(|error| {
             format!(
                 "Guard probe response was invalid: {error}; {}",
-                responses[4]
+                responses[5]
             )
         })?;
         assert_eq!(probe["verification_id"], verification_id);
@@ -3290,10 +3435,10 @@ impl OperationalFixture {
             probe["workflow"]["tool"],
             AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name()
         );
-        let verification = adapter_tool_response(&responses[5]).map_err(|error| {
+        let verification = adapter_tool_response(&responses[6]).map_err(|error| {
             format!(
                 "integration-verification lookup response was invalid: {error}; {}",
-                responses[5]
+                responses[6]
             )
         })?;
         assert_eq!(verification["verification_id"], verification_id);
@@ -3318,12 +3463,12 @@ impl OperationalFixture {
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row
                 .get::<_, i64>(0))?,
-            guard_history_before.0 + 9
+            guard_history_before.0 + 11
         );
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row
                 .get::<_, i64>(0))?,
-            guard_history_before.1 + 1
+            guard_history_before.1 + 2
         );
         let observation_rows = project_state
             .prepare(

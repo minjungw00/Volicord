@@ -403,6 +403,17 @@ Repository. A conflicting second post event has no effect and is rejected.
 Observation-unavailable diagnostics create no Unrecorded Change or close
 blocker.
 
+The accepted `UserPromptSubmit` capture and closure of different established
+turns in the same session use one bounded immediate project transaction.
+Same-turn opens are unchanged. Managed-runtime terminalization uses each exact
+bounded Registry project-session binding in its own immediate project
+transaction. These closures preserve the baseline and stable unavailable
+result but perform no Product Repository scan, delta or finding creation,
+expected-write match, write-ticket consumption, or authority-state change.
+Already-terminal rows have no effect; any invalid selected row rolls back that
+complete project transaction. Recovery repeats this effect only for an
+authoritatively terminal managed runtime.
+
 <a id="connection-integration-verification-effects"></a>
 ## Connection-Integration Verification Effects
 

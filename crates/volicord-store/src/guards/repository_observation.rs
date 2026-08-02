@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_host_contract::HostNativeCorrelation;
+use volicord_host_contract::HostTurnId;
 use volicord_platform_fs::{
     ObservationUnavailableReason, ObserverLimits, RepositoryDelta, RepositoryObservationCheckpoint,
     SemanticObserverContractDigest,
@@ -35,6 +36,7 @@ pub(super) enum RepositoryObservationFaultPoint {
     PostAfterUnrecordedChangeInsert,
     PostAfterGuardEvent,
     PostAfterObservation,
+    TerminalizationAfterFirstUpdate,
 }
 
 #[cfg(test)]
@@ -96,6 +98,8 @@ pub enum RepositoryObservationUnavailableReason {
     Observer(ObservationUnavailableReason),
     InvocationDenied,
     MissingOpenObservation,
+    PostToolNotObserved,
+    ManagedSessionTerminated,
 }
 
 impl RepositoryObservationUnavailableReason {
@@ -104,6 +108,8 @@ impl RepositoryObservationUnavailableReason {
             Self::Observer(reason) => reason.as_str(),
             Self::InvocationDenied => "invocation_denied",
             Self::MissingOpenObservation => "missing_open_observation",
+            Self::PostToolNotObserved => "post_tool_not_observed",
+            Self::ManagedSessionTerminated => "managed_session_terminated",
         }
     }
 
@@ -111,9 +117,73 @@ impl RepositoryObservationUnavailableReason {
         match value {
             "invocation_denied" => Some(Self::InvocationDenied),
             "missing_open_observation" => Some(Self::MissingOpenObservation),
+            "post_tool_not_observed" => Some(Self::PostToolNotObserved),
+            "managed_session_terminated" => Some(Self::ManagedSessionTerminated),
             value => ObservationUnavailableReason::parse(value).map(Self::Observer),
         }
     }
+}
+
+/// Maximum number of exact open observations one aggregate operation may terminalize.
+pub const REPOSITORY_OBSERVATION_TERMINALIZATION_LIMIT: usize = 256;
+
+/// Exact authority boundary used to select open observations for terminalization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenRepositoryObservationTerminalizationScope {
+    /// Select only established turns other than the accepted prompt's exact current turn.
+    EarlierTurns { current_turn_id: HostTurnId },
+    /// Select every open observation owned by one exact managed project session.
+    ManagedSession,
+}
+
+/// Typed input for bounded open-observation terminalization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalizeOpenRepositoryObservations {
+    pub connection_internal_id: String,
+    pub session_id: String,
+    pub scope: OpenRepositoryObservationTerminalizationScope,
+    pub reason: RepositoryObservationUnavailableReason,
+    pub completed_at: UtcTimestamp,
+}
+
+/// Deterministically ordered result of one bounded terminalization transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryObservationTerminalizationResult {
+    pub terminalized: Vec<RepositoryObservationRecord>,
+}
+
+/// Read-only lifecycle classification for one invocation-scoped observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryObservationDiagnosticStatus {
+    OpenCurrentTurn,
+    UnavailablePostToolNotObserved,
+    UnavailableManagedSessionTerminated,
+    OrphanOpenTerminalSession,
+    CleanupFailed,
+    CorruptObservation,
+}
+
+impl RepositoryObservationDiagnosticStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenCurrentTurn => "open_current_turn",
+            Self::UnavailablePostToolNotObserved => "unavailable_post_tool_not_observed",
+            Self::UnavailableManagedSessionTerminated => "unavailable_managed_session_terminated",
+            Self::OrphanOpenTerminalSession => "orphan_open_terminal_session",
+            Self::CleanupFailed => "cleanup_failed",
+            Self::CorruptObservation => "corrupt_observation",
+        }
+    }
+}
+
+/// Bounded read-only diagnostic projection for one observation or failed binding read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RepositoryObservationDiagnosticRecord {
+    pub project_id: String,
+    pub session_id: String,
+    pub repository_observation_id: Option<String>,
+    pub status: RepositoryObservationDiagnosticStatus,
 }
 
 impl From<ObservationUnavailableReason> for RepositoryObservationUnavailableReason {
@@ -512,6 +582,409 @@ pub fn repository_observation(
         &project.project.project_id,
         repository_observation_id,
     )
+}
+
+/// Atomically terminalizes the exact bounded set of open repository observations.
+pub fn terminalize_open_repository_observations(
+    context: &RuntimeHomeMutationContext<'_>,
+    project_id: &str,
+    input: TerminalizeOpenRepositoryObservations,
+) -> StoreResult<RepositoryObservationTerminalizationResult> {
+    validate_terminalization_input(project_id, &input)?;
+    let mut project = open_guard_project(context, project_id, &input.connection_internal_id)?;
+    let tx = begin_immediate_transaction(&mut project.conn)?;
+    let terminalized = terminalize_open_repository_observations_in_transaction(
+        &tx,
+        &project.project.project_id,
+        &input,
+    )?;
+    tx.commit()?;
+    Ok(RepositoryObservationTerminalizationResult { terminalized })
+}
+
+/// Classifies lifecycle-relevant observations without mutating project state.
+pub fn repository_observation_diagnostics_for_session(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    connection_internal_id: &str,
+    session_id: &str,
+    runtime_terminal: bool,
+) -> StoreResult<Vec<RepositoryObservationDiagnosticRecord>> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    validate_identifier("session_id", session_id)?;
+    let Some(project) = open_project_for_read(runtime_home, project_id)? else {
+        return Err(StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        });
+    };
+    let current_prompt_turn_id = project
+        .conn
+        .query_row(
+            "SELECT host_turn_id
+               FROM prompt_captures
+              WHERE project_id = ?1
+                AND connection_internal_id = ?2
+                AND session_id = ?3
+              ORDER BY volicord_utc_seconds(captured_at) DESC,
+                       volicord_utc_subsec_nanos(captured_at) DESC,
+                       prompt_capture_id DESC
+              LIMIT 1",
+            params![
+                project.project.project_id,
+                connection_internal_id,
+                session_id
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let current_turn_id = if current_prompt_turn_id.is_some() {
+        current_prompt_turn_id
+    } else {
+        project
+            .conn
+            .query_row(
+                "SELECT last_host_turn_id
+               FROM managed_mcp_sessions
+              WHERE project_id = ?1
+                AND connection_internal_id = ?2
+                AND session_id = ?3",
+                params![
+                    project.project.project_id,
+                    connection_internal_id,
+                    session_id
+                ],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+    };
+    let limit = i64::try_from(REPOSITORY_OBSERVATION_TERMINALIZATION_LIMIT + 1).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "repository-observation diagnostic limit is not representable".to_owned(),
+        }
+    })?;
+    let observation_ids = {
+        let mut statement = project.conn.prepare(
+            "SELECT repository_observation_id
+               FROM repository_observations
+              WHERE project_id = ?1
+                AND connection_internal_id = ?2
+                AND session_id = ?3
+              ORDER BY repository_observation_id
+              LIMIT ?4",
+        )?;
+        let rows = statement.query_map(
+            params![
+                project.project.project_id,
+                connection_internal_id,
+                session_id,
+                limit
+            ],
+            |row| row.get::<_, String>(0),
+        )?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    if observation_ids.len() > REPOSITORY_OBSERVATION_TERMINALIZATION_LIMIT {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "repository-observation diagnostics exceed the bounded row limit of {}",
+                REPOSITORY_OBSERVATION_TERMINALIZATION_LIMIT
+            ),
+        });
+    }
+    let mut diagnostics = Vec::new();
+    for observation_id in observation_ids {
+        let observation = match repository_observation_from_conn(
+            &project.conn,
+            &project.project.project_id,
+            &observation_id,
+        ) {
+            Ok(Some(observation)) => observation,
+            Ok(None) | Err(_) => {
+                diagnostics.push(RepositoryObservationDiagnosticRecord {
+                    project_id: project_id.to_owned(),
+                    session_id: session_id.to_owned(),
+                    repository_observation_id: Some(observation_id),
+                    status: RepositoryObservationDiagnosticStatus::CorruptObservation,
+                });
+                continue;
+            }
+        };
+        let status = match observation.state {
+            RepositoryObservationState::Open if runtime_terminal => {
+                Some(RepositoryObservationDiagnosticStatus::OrphanOpenTerminalSession)
+            }
+            RepositoryObservationState::Open
+                if current_turn_id.as_deref()
+                    == Some(observation.correlation.turn_id().as_str()) =>
+            {
+                Some(RepositoryObservationDiagnosticStatus::OpenCurrentTurn)
+            }
+            RepositoryObservationState::Open => {
+                Some(RepositoryObservationDiagnosticStatus::CleanupFailed)
+            }
+            RepositoryObservationState::Unavailable
+                if observation.unavailable_reason
+                    == Some(RepositoryObservationUnavailableReason::PostToolNotObserved) =>
+            {
+                Some(RepositoryObservationDiagnosticStatus::UnavailablePostToolNotObserved)
+            }
+            RepositoryObservationState::Unavailable
+                if observation.unavailable_reason
+                    == Some(RepositoryObservationUnavailableReason::ManagedSessionTerminated) =>
+            {
+                Some(RepositoryObservationDiagnosticStatus::UnavailableManagedSessionTerminated)
+            }
+            RepositoryObservationState::Complete | RepositoryObservationState::Unavailable => None,
+        };
+        if let Some(status) = status {
+            diagnostics.push(RepositoryObservationDiagnosticRecord {
+                project_id: project_id.to_owned(),
+                session_id: session_id.to_owned(),
+                repository_observation_id: Some(observation_id),
+                status,
+            });
+        }
+    }
+    Ok(diagnostics)
+}
+
+pub(super) fn terminalize_open_repository_observations_in_transaction(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    input: &TerminalizeOpenRepositoryObservations,
+) -> StoreResult<Vec<RepositoryObservationRecord>> {
+    validate_terminalization_input(project_id, input)?;
+    let session_owner = tx
+        .query_row(
+            "SELECT connection_internal_id
+               FROM host_sessions
+              WHERE project_id = ?1 AND session_id = ?2",
+            params![project_id, input.session_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    if session_owner.as_deref() != Some(input.connection_internal_id.as_str()) {
+        return Err(StoreError::Conflict {
+            entity: "host_session",
+            id: input.session_id.clone(),
+            detail:
+                "repository-observation terminalization requires the exact project session owner"
+                    .to_owned(),
+        });
+    }
+    if let OpenRepositoryObservationTerminalizationScope::EarlierTurns { current_turn_id } =
+        &input.scope
+    {
+        let established = tx
+            .query_row(
+                "SELECT 1
+                   FROM host_turns
+                  WHERE project_id = ?1
+                    AND session_id = ?2
+                    AND connection_internal_id = ?3
+                    AND host_turn_id = ?4",
+                params![
+                    project_id,
+                    input.session_id,
+                    input.connection_internal_id,
+                    current_turn_id.as_str()
+                ],
+                |_| Ok(true),
+            )
+            .optional()?
+            .unwrap_or(false);
+        if !established {
+            return Err(StoreError::Conflict {
+                entity: "host_turn",
+                id: current_turn_id.as_str().to_owned(),
+                detail: "accepted prompt turn is not established for the exact project session"
+                    .to_owned(),
+            });
+        }
+    }
+
+    let limit = i64::try_from(REPOSITORY_OBSERVATION_TERMINALIZATION_LIMIT + 1).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "repository-observation terminalization limit is not representable".to_owned(),
+        }
+    })?;
+    let observation_ids = match &input.scope {
+        OpenRepositoryObservationTerminalizationScope::EarlierTurns { current_turn_id } => {
+            let mut statement = tx.prepare(
+                "SELECT repository_observation_id
+                   FROM repository_observations
+                  WHERE project_id = ?1
+                    AND connection_internal_id = ?2
+                    AND session_id = ?3
+                    AND state = 'open'
+                    AND host_turn_id <> ?4
+                  ORDER BY repository_observation_id
+                  LIMIT ?5",
+            )?;
+            let rows = statement.query_map(
+                params![
+                    project_id,
+                    input.connection_internal_id,
+                    input.session_id,
+                    current_turn_id.as_str(),
+                    limit
+                ],
+                |row| row.get::<_, String>(0),
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+        OpenRepositoryObservationTerminalizationScope::ManagedSession => {
+            let mut statement = tx.prepare(
+                "SELECT repository_observation_id
+                   FROM repository_observations
+                  WHERE project_id = ?1
+                    AND connection_internal_id = ?2
+                    AND session_id = ?3
+                    AND state = 'open'
+                  ORDER BY repository_observation_id
+                  LIMIT ?4",
+            )?;
+            let rows = statement.query_map(
+                params![
+                    project_id,
+                    input.connection_internal_id,
+                    input.session_id,
+                    limit
+                ],
+                |row| row.get::<_, String>(0),
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+    };
+    if observation_ids.len() > REPOSITORY_OBSERVATION_TERMINALIZATION_LIMIT {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "repository-observation terminalization exceeds the bounded row limit of {}",
+                REPOSITORY_OBSERVATION_TERMINALIZATION_LIMIT
+            ),
+        });
+    }
+
+    let mut selected = Vec::with_capacity(observation_ids.len());
+    for observation_id in &observation_ids {
+        let observation = repository_observation_from_conn(tx, project_id, observation_id)?
+            .ok_or_else(|| StoreError::NotFound {
+                entity: "repository_observation",
+                id: observation_id.clone(),
+            })?;
+        if observation.state != RepositoryObservationState::Open
+            || observation.connection_internal_id != input.connection_internal_id
+            || observation.session_id != input.session_id
+            || matches!(
+                &input.scope,
+                OpenRepositoryObservationTerminalizationScope::EarlierTurns { current_turn_id }
+                    if observation.correlation.turn_id() == current_turn_id
+            )
+            || input.completed_at < observation.started_at
+        {
+            return Err(StoreError::corrupt_owner_state_value(
+                "repository_observations",
+                observation_id.clone(),
+                "state",
+            ));
+        }
+        selected.push(observation);
+    }
+
+    for (index, observation) in selected.iter().enumerate() {
+        let result = RepositoryObservationResult {
+            observation_state: RepositoryObservationState::Unavailable,
+            repository_observation_id: observation.repository_observation_id.clone(),
+            delta: None,
+            unavailable_reason: Some(input.reason.as_str().to_owned()),
+            expected_write_matches: Vec::new(),
+            unrecorded_changes: Vec::new(),
+            transition_semantics: "net_product_repository_transition_during_invocation".to_owned(),
+        };
+        let changed = tx.execute(
+            "UPDATE repository_observations
+                SET state = 'unavailable',
+                    unavailable_reason = ?3,
+                    completed_at = ?4,
+                    terminal_result_json = ?5
+              WHERE project_id = ?1
+                AND repository_observation_id = ?2
+                AND state = 'open'",
+            params![
+                project_id,
+                observation.repository_observation_id,
+                input.reason.as_str(),
+                input.completed_at.to_canonical_string(),
+                canonical_json_string(&result).map_err(|error| StoreError::InvalidInput {
+                    detail: format!(
+                        "terminal repository-observation result cannot be serialized: {error}"
+                    ),
+                })?
+            ],
+        )?;
+        if changed != 1 {
+            return Err(StoreError::Conflict {
+                entity: "repository_observation",
+                id: observation.repository_observation_id.clone(),
+                detail: "repository observation did not terminalize exactly once".to_owned(),
+            });
+        }
+        #[cfg(test)]
+        if index == 0 {
+            inject_repository_observation_fault(
+                RepositoryObservationFaultPoint::TerminalizationAfterFirstUpdate,
+            )?;
+        }
+        #[cfg(not(test))]
+        let _ = index;
+    }
+
+    let mut terminalized = Vec::with_capacity(observation_ids.len());
+    for observation_id in observation_ids {
+        terminalized.push(
+            repository_observation_from_conn(tx, project_id, &observation_id)?.ok_or_else(
+                || StoreError::NotFound {
+                    entity: "repository_observation",
+                    id: observation_id,
+                },
+            )?,
+        );
+    }
+    Ok(terminalized)
+}
+
+fn validate_terminalization_input(
+    project_id: &str,
+    input: &TerminalizeOpenRepositoryObservations,
+) -> StoreResult<()> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("connection_internal_id", &input.connection_internal_id)?;
+    validate_identifier("session_id", &input.session_id)?;
+    input
+        .completed_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "repository-observation completion time must be canonical RFC 3339".to_owned(),
+        })?;
+    let valid_boundary = matches!(
+        (&input.scope, input.reason),
+        (
+            OpenRepositoryObservationTerminalizationScope::EarlierTurns { .. },
+            RepositoryObservationUnavailableReason::PostToolNotObserved
+        ) | (
+            OpenRepositoryObservationTerminalizationScope::ManagedSession,
+            RepositoryObservationUnavailableReason::ManagedSessionTerminated
+        )
+    );
+    if !valid_boundary {
+        return Err(StoreError::InvalidInput {
+            detail: "repository-observation terminal reason does not match its authority boundary"
+                .to_owned(),
+        });
+    }
+    Ok(())
 }
 
 /// Atomically records PostToolUse and closes its exact repository observation.

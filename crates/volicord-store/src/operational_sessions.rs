@@ -20,6 +20,12 @@ use crate::{
     agent_connections::{raw_agent_connection_record_from_conn, AgentConnectionRecord},
     bootstrap::raw_project_record_from_conn,
     diagnostic_findings::insert_and_link_runtime_terminal_occurrence,
+    guards::{
+        repository_observation_diagnostics_for_session, terminalize_open_repository_observations,
+        OpenRepositoryObservationTerminalizationScope, RepositoryObservationDiagnosticRecord,
+        RepositoryObservationDiagnosticStatus, RepositoryObservationUnavailableReason,
+        TerminalizeOpenRepositoryObservations,
+    },
     sqlite::{
         begin_immediate_transaction, open_registry_database_for_mutation,
         open_registry_database_read_only, registry_db_path,
@@ -31,6 +37,8 @@ const MAX_DIAGNOSTIC_FIELD_BYTES: usize = 1024;
 const MAX_PROTOCOL_FIELD_BYTES: usize = 256;
 const MAX_MCP_TOOL_NAME_BYTES: usize = 128;
 const MAX_RETURNED_TOOL_IDENTITIES: usize = 256;
+const MAX_TERMINAL_RUNTIME_RECOVERY_SESSIONS: usize = 256;
+const MAX_RUNTIME_PROJECT_SESSION_CLEANUP_BINDINGS: usize = 256;
 
 /// MCP process-start facts used to create an authoritative runtime session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -819,46 +827,48 @@ pub fn mcp_runtime_project_session_binding(
         )
         .optional()?;
     record
-        .map(|record| {
-            let corrupt = |field| {
-                StoreError::corrupt_owner_state_value(
-                    "mcp_runtime_project_session_bindings",
-                    record.session_id.clone(),
-                    field,
-                )
-            };
-            validate_timestamp("bound_at", &record.bound_at).map_err(|_| corrupt("bound_at"))?;
-            for (field, value) in [
-                ("runtime_session_id", record.runtime_session_id.as_str()),
-                (
-                    "connection_internal_id",
-                    record.connection_internal_id.as_str(),
-                ),
-                ("project_id", record.project_id.as_str()),
-                ("session_id", record.session_id.as_str()),
-                (
-                    "project_integration_revision",
-                    record.project_integration_revision.as_str(),
-                ),
-            ] {
-                validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)
-                    .map_err(|_| corrupt(field))?;
-            }
-            HostSessionId::parse(record.host_session_id.clone())
-                .map_err(|_| corrupt("host_session_id"))?;
-            if project_agent_session_id(
-                &record.connection_internal_id,
-                &record.project_integration_revision,
-                &record.host_session_id,
-            )
-            .map_err(|_| corrupt("session_id"))?
-                != record.session_id
-            {
-                return Err(corrupt("session_id"));
-            }
-            Ok(record)
-        })
+        .map(validate_runtime_project_session_binding)
         .transpose()
+}
+
+fn validate_runtime_project_session_binding(
+    record: McpRuntimeProjectSessionBindingRecord,
+) -> StoreResult<McpRuntimeProjectSessionBindingRecord> {
+    let corrupt = |field| {
+        StoreError::corrupt_owner_state_value(
+            "mcp_runtime_project_session_bindings",
+            record.session_id.clone(),
+            field,
+        )
+    };
+    validate_timestamp("bound_at", &record.bound_at).map_err(|_| corrupt("bound_at"))?;
+    for (field, value) in [
+        ("runtime_session_id", record.runtime_session_id.as_str()),
+        (
+            "connection_internal_id",
+            record.connection_internal_id.as_str(),
+        ),
+        ("project_id", record.project_id.as_str()),
+        ("session_id", record.session_id.as_str()),
+        (
+            "project_integration_revision",
+            record.project_integration_revision.as_str(),
+        ),
+    ] {
+        validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES).map_err(|_| corrupt(field))?;
+    }
+    HostSessionId::parse(record.host_session_id.clone()).map_err(|_| corrupt("host_session_id"))?;
+    if project_agent_session_id(
+        &record.connection_internal_id,
+        &record.project_integration_revision,
+        &record.host_session_id,
+    )
+    .map_err(|_| corrupt("session_id"))?
+        != record.session_id
+    {
+        return Err(corrupt("session_id"));
+    }
+    Ok(record)
 }
 
 /// Records parsed client/request data even when initialize later fails.
@@ -1120,12 +1130,13 @@ pub fn record_mcp_terminal_finding(
             detail: "terminal finding requires runtime_session_id".to_owned(),
         })?;
     insert_and_link_runtime_terminal_occurrence(context, finding)?;
-    mcp_runtime_session(context.runtime_home().as_path(), runtime_session_id)?.ok_or_else(|| {
-        StoreError::NotFound {
+    let record = mcp_runtime_session(context.runtime_home().as_path(), runtime_session_id)?
+        .ok_or_else(|| StoreError::NotFound {
             entity: "mcp_runtime_session",
             id: runtime_session_id.to_owned(),
-        }
-    })
+        })?;
+    terminalize_repository_observations_for_terminal_managed_runtime(context, &record)?;
+    Ok(record)
 }
 
 /// Records observable graceful transport close. A duplicate close is idempotent.
@@ -1135,7 +1146,7 @@ pub fn record_mcp_graceful_close(
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     validate_timestamp("graceful_close_at", observed_at)?;
-    update_session(context, runtime_session_id, |tx, prior| {
+    let record = update_session(context, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.terminal_finding_id.is_some() {
             return Err(milestone_order(
@@ -1150,7 +1161,241 @@ pub fn record_mcp_graceful_close(
             params![runtime_session_id, observed_at],
         )?;
         Ok(())
-    })
+    })?;
+    terminalize_repository_observations_for_terminal_managed_runtime(context, &record)?;
+    Ok(record)
+}
+
+/// Recovers open observations only for Registry-authoritative terminal managed sessions.
+pub fn recover_terminal_managed_runtime_repository_observations(
+    context: &RuntimeHomeMutationContext<'_>,
+) -> StoreResult<usize> {
+    let path = registry_db_path(context.runtime_home().as_path());
+    if !path.exists() {
+        return Ok(0);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    let limit = i64::try_from(MAX_TERMINAL_RUNTIME_RECOVERY_SESSIONS + 1).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "terminal managed-session recovery limit is not representable".to_owned(),
+        }
+    })?;
+    let runtime_session_ids = {
+        let mut statement = conn.prepare(
+            "SELECT runtime_session_id
+               FROM mcp_runtime_sessions
+              WHERE session_source = 'managed_host'
+                AND (terminal_finding_id IS NOT NULL OR graceful_close_at IS NOT NULL)
+              ORDER BY runtime_session_id
+              LIMIT ?1",
+        )?;
+        let rows = statement.query_map([limit], |row| row.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    if runtime_session_ids.len() > MAX_TERMINAL_RUNTIME_RECOVERY_SESSIONS {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "terminal managed-session recovery exceeds the bounded session limit of {}",
+                MAX_TERMINAL_RUNTIME_RECOVERY_SESSIONS
+            ),
+        });
+    }
+    let mut terminalized = 0usize;
+    for runtime_session_id in runtime_session_ids {
+        let record = runtime_session_from_conn(&conn, &runtime_session_id)?.ok_or_else(|| {
+            StoreError::NotFound {
+                entity: "mcp_runtime_session",
+                id: runtime_session_id,
+            }
+        })?;
+        terminalized = terminalized
+            .checked_add(
+                terminalize_repository_observations_for_terminal_managed_runtime(context, &record)?,
+            )
+            .ok_or_else(|| StoreError::InvalidInput {
+                detail: "terminalized repository-observation count overflowed".to_owned(),
+            })?;
+    }
+    Ok(terminalized)
+}
+
+fn terminalize_repository_observations_for_terminal_managed_runtime(
+    context: &RuntimeHomeMutationContext<'_>,
+    runtime: &McpRuntimeSessionRecord,
+) -> StoreResult<usize> {
+    if runtime.session_source != McpRuntimeSessionSource::ManagedHost {
+        return Ok(0);
+    }
+    if runtime.terminal_finding_id.is_none() && runtime.graceful_close_at.is_none() {
+        return Err(StoreError::Conflict {
+            entity: "mcp_runtime_session",
+            id: runtime.runtime_session_id.clone(),
+            detail: "repository-observation cleanup requires an authoritatively terminal managed runtime"
+                .to_owned(),
+        });
+    }
+    let completed_at = UtcTimestamp::parse(
+        runtime
+            .graceful_close_at
+            .as_deref()
+            .unwrap_or(&runtime.last_observed_at),
+    )
+    .map_err(|_| corrupt(runtime, "last_observed_at"))?;
+    let path = registry_db_path(context.runtime_home().as_path());
+    let conn = open_registry_database_read_only(path)?;
+    let limit = i64::try_from(MAX_RUNTIME_PROJECT_SESSION_CLEANUP_BINDINGS + 1).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "runtime project-session cleanup limit is not representable".to_owned(),
+        }
+    })?;
+    let bindings = {
+        let mut statement = conn.prepare(
+            "SELECT b.runtime_session_id, b.connection_internal_id, p.project_internal_id,
+                    b.session_id, b.project_integration_revision, b.host_session_id, b.bound_at
+               FROM mcp_runtime_project_session_bindings AS b
+               JOIN projects AS p ON p.project_internal_id = b.project_internal_id
+              WHERE b.runtime_session_id = ?1
+              ORDER BY p.project_internal_id, b.session_id
+              LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![runtime.runtime_session_id, limit], |row| {
+            Ok(McpRuntimeProjectSessionBindingRecord {
+                runtime_session_id: row.get(0)?,
+                connection_internal_id: row.get(1)?,
+                project_id: row.get(2)?,
+                session_id: row.get(3)?,
+                project_integration_revision: row.get(4)?,
+                host_session_id: row.get(5)?,
+                bound_at: row.get(6)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    if bindings.len() > MAX_RUNTIME_PROJECT_SESSION_CLEANUP_BINDINGS {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "runtime project-session cleanup exceeds the bounded binding limit of {}",
+                MAX_RUNTIME_PROJECT_SESSION_CLEANUP_BINDINGS
+            ),
+        });
+    }
+    let mut terminalized = 0usize;
+    for binding in bindings {
+        let binding = validate_runtime_project_session_binding(binding)?;
+        if binding.runtime_session_id != runtime.runtime_session_id
+            || binding.connection_internal_id != runtime.connection_internal_id
+        {
+            return Err(StoreError::corrupt_owner_state_value(
+                "mcp_runtime_project_session_bindings",
+                binding.session_id,
+                "runtime_session_id",
+            ));
+        }
+        let result = terminalize_open_repository_observations(
+            context,
+            &binding.project_id,
+            TerminalizeOpenRepositoryObservations {
+                connection_internal_id: binding.connection_internal_id,
+                session_id: binding.session_id,
+                scope: OpenRepositoryObservationTerminalizationScope::ManagedSession,
+                reason: RepositoryObservationUnavailableReason::ManagedSessionTerminated,
+                completed_at: completed_at.clone(),
+            },
+        )?;
+        terminalized = terminalized
+            .checked_add(result.terminalized.len())
+            .ok_or_else(|| StoreError::InvalidInput {
+                detail: "terminalized repository-observation count overflowed".to_owned(),
+            })?;
+    }
+    Ok(terminalized)
+}
+
+/// Returns bounded read-only Repository Observation diagnostics for one runtime session.
+pub fn repository_observation_diagnostics_for_runtime_session(
+    runtime_home: impl AsRef<Path>,
+    runtime_session_id: &str,
+) -> StoreResult<Vec<RepositoryObservationDiagnosticRecord>> {
+    let runtime_home = runtime_home.as_ref();
+    let runtime = mcp_runtime_session(runtime_home, runtime_session_id)?.ok_or_else(|| {
+        StoreError::NotFound {
+            entity: "mcp_runtime_session",
+            id: runtime_session_id.to_owned(),
+        }
+    })?;
+    let path = registry_db_path(runtime_home);
+    let conn = open_registry_database_read_only(path)?;
+    let limit = i64::try_from(MAX_RUNTIME_PROJECT_SESSION_CLEANUP_BINDINGS + 1).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "runtime observation-diagnostic binding limit is not representable".to_owned(),
+        }
+    })?;
+    let bindings = {
+        let mut statement = conn.prepare(
+            "SELECT b.runtime_session_id, b.connection_internal_id, p.project_internal_id,
+                    b.session_id, b.project_integration_revision, b.host_session_id, b.bound_at
+               FROM mcp_runtime_project_session_bindings AS b
+               JOIN projects AS p ON p.project_internal_id = b.project_internal_id
+              WHERE b.runtime_session_id = ?1
+              ORDER BY p.project_internal_id, b.session_id
+              LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![runtime_session_id, limit], |row| {
+            Ok(McpRuntimeProjectSessionBindingRecord {
+                runtime_session_id: row.get(0)?,
+                connection_internal_id: row.get(1)?,
+                project_id: row.get(2)?,
+                session_id: row.get(3)?,
+                project_integration_revision: row.get(4)?,
+                host_session_id: row.get(5)?,
+                bound_at: row.get(6)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    if bindings.len() > MAX_RUNTIME_PROJECT_SESSION_CLEANUP_BINDINGS {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "runtime observation diagnostics exceed the bounded binding limit of {}",
+                MAX_RUNTIME_PROJECT_SESSION_CLEANUP_BINDINGS
+            ),
+        });
+    }
+    let runtime_terminal =
+        runtime.terminal_finding_id.is_some() || runtime.graceful_close_at.is_some();
+    let mut diagnostics = Vec::new();
+    for raw_binding in bindings {
+        let project_id = raw_binding.project_id.clone();
+        let session_id = raw_binding.session_id.clone();
+        let binding = match validate_runtime_project_session_binding(raw_binding) {
+            Ok(binding) => binding,
+            Err(_) => {
+                diagnostics.push(RepositoryObservationDiagnosticRecord {
+                    project_id,
+                    session_id,
+                    repository_observation_id: None,
+                    status: RepositoryObservationDiagnosticStatus::CleanupFailed,
+                });
+                continue;
+            }
+        };
+        match repository_observation_diagnostics_for_session(
+            runtime_home,
+            &binding.project_id,
+            &binding.connection_internal_id,
+            &binding.session_id,
+            runtime_terminal,
+        ) {
+            Ok(mut project_diagnostics) => diagnostics.append(&mut project_diagnostics),
+            Err(_) => diagnostics.push(RepositoryObservationDiagnosticRecord {
+                project_id: binding.project_id,
+                session_id: binding.session_id,
+                repository_observation_id: None,
+                status: RepositoryObservationDiagnosticStatus::CleanupFailed,
+            }),
+        }
+    }
+    Ok(diagnostics)
 }
 
 /// Returns the latest successful managed-host observation for the current revision.

@@ -200,6 +200,13 @@ pub struct PromptCaptureRecord {
     pub metadata_json: String,
 }
 
+/// One accepted prompt capture and the prior-turn observations it atomically terminalized.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptCaptureAggregateRecord {
+    pub prompt_capture: PromptCaptureRecord,
+    pub terminalized_repository_observations: Vec<RepositoryObservationRecord>,
+}
+
 /// Unrecorded Product Repository change resolution input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnrecordedChangeResolution {
@@ -1499,6 +1506,16 @@ pub fn insert_prompt_capture(
     project_id: &str,
     input: PromptCaptureInsert,
 ) -> StoreResult<PromptCaptureRecord> {
+    insert_prompt_capture_and_terminalize_prior_turn_observations(context, project_id, input)
+        .map(|aggregate| aggregate.prompt_capture)
+}
+
+/// Atomically records an accepted prompt and closes prior-turn open observations.
+pub fn insert_prompt_capture_and_terminalize_prior_turn_observations(
+    context: &RuntimeHomeMutationContext<'_>,
+    project_id: &str,
+    input: PromptCaptureInsert,
+) -> StoreResult<PromptCaptureAggregateRecord> {
     validate_prompt_capture_insert(&input)?;
     let runtime_home = context.runtime_home().as_path();
     let fields = guard_correlation_fields(
@@ -1510,40 +1527,84 @@ pub fn insert_prompt_capture(
     )?;
     let mut project = open_guard_project(context, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
-    tx.execute(
-        "INSERT INTO prompt_captures (
-            project_id,
-            prompt_capture_id,
-            session_id,
-            connection_internal_id,
-            host_turn_id,
-            capture_kind,
-            prompt_sha256,
-            prompt_text,
-            captured_at,
-            metadata_json
-        )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![
-            project.project.project_id,
-            input.prompt_capture_id,
-            fields.session_id,
-            input.connection_internal_id,
-            fields.host_turn_id,
-            input.capture_kind,
-            input.prompt_sha256,
-            input.prompt_text,
-            input.captured_at,
-            input.metadata_json
-        ],
-    )?;
+    let existing =
+        prompt_capture_from_conn(&tx, &project.project.project_id, &input.prompt_capture_id)?;
+    if let Some(existing) = &existing {
+        let expected_correlation = &input.correlation;
+        if existing.session_id != fields.session_id
+            || &existing.correlation != expected_correlation
+            || existing.connection_internal_id != input.connection_internal_id
+            || existing.capture_kind != input.capture_kind
+            || existing.prompt_sha256 != input.prompt_sha256
+            || existing.prompt_text != input.prompt_text
+            || existing.captured_at != input.captured_at
+            || existing.metadata_json != input.metadata_json
+        {
+            return Err(StoreError::Conflict {
+                entity: "prompt_capture",
+                id: input.prompt_capture_id.clone(),
+                detail: "prompt capture replay does not match the stored accepted prompt"
+                    .to_owned(),
+            });
+        }
+    } else {
+        tx.execute(
+            "INSERT INTO prompt_captures (
+                project_id,
+                prompt_capture_id,
+                session_id,
+                connection_internal_id,
+                host_turn_id,
+                capture_kind,
+                prompt_sha256,
+                prompt_text,
+                captured_at,
+                metadata_json
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                project.project.project_id,
+                input.prompt_capture_id,
+                fields.session_id,
+                input.connection_internal_id,
+                fields.host_turn_id,
+                input.capture_kind,
+                input.prompt_sha256,
+                input.prompt_text,
+                input.captured_at,
+                input.metadata_json
+            ],
+        )?;
+    }
+    let completed_at =
+        UtcTimestamp::parse(&input.captured_at).map_err(|_| StoreError::InvalidInput {
+            detail: "prompt capture time must be a canonical RFC 3339 timestamp".to_owned(),
+        })?;
+    let current_turn_id = match &input.correlation {
+        HostNativeCorrelation::CodexHookPrompt(correlation) => correlation.turn_id.clone(),
+        _ => unreachable!("prompt correlation was validated before transaction admission"),
+    };
+    let terminalized_repository_observations =
+        terminalize_open_repository_observations_in_transaction(
+            &tx,
+            &project.project.project_id,
+            &TerminalizeOpenRepositoryObservations {
+                connection_internal_id: input.connection_internal_id.clone(),
+                session_id: fields.session_id,
+                scope: OpenRepositoryObservationTerminalizationScope::EarlierTurns {
+                    current_turn_id,
+                },
+                reason: RepositoryObservationUnavailableReason::PostToolNotObserved,
+                completed_at,
+            },
+        )?;
+    let prompt_capture =
+        prompt_capture_by_conn(&tx, &project.project.project_id, &input.prompt_capture_id)?;
     tx.commit()?;
-
-    prompt_capture_by_conn(
-        &project.conn,
-        &project.project.project_id,
-        &input.prompt_capture_id,
-    )
+    Ok(PromptCaptureAggregateRecord {
+        prompt_capture,
+        terminalized_repository_observations,
+    })
 }
 
 /// Reads one project-scoped prompt capture row.
@@ -3417,9 +3478,20 @@ mod tests {
             initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
         },
         mutation::{with_test_runtime_home_setup, TestRuntimeHomeAdmission},
-        operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
+        operational_sessions::{
+            mcp_runtime_session, record_mcp_graceful_close, record_mcp_terminal_finding,
+            recover_terminal_managed_runtime_repository_observations,
+            repository_observation_diagnostics_for_runtime_session,
+            start_mcp_runtime_session_for_test, McpRuntimeSessionStart,
+        },
         sqlite::{open_project_state_database_for_test, open_registry_database_for_test},
     };
+    use volicord_types::diagnostics::{
+        DiagnosticCode, DiagnosticDomain, DiagnosticFacts, DiagnosticFindingData,
+        DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+        OccurrenceDiagnosticFinding,
+    };
+    use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId};
     use volicord_types::integration_revision::McpRuntimeSessionSource;
 
     const TEST_POLICY_HASH: &str =
@@ -4186,6 +4258,8 @@ mod tests {
         fixture: GuardFixture,
         git: IsolatedGitRepository,
         project: ProjectRecord,
+        runtime_session_id: String,
+        session_id: String,
         integration_revision: String,
         correlation: HostNativeCorrelation,
         observer: RepositoryObserver,
@@ -4228,7 +4302,7 @@ mod tests {
                 &fixture.context()?,
                 "project_guard_a",
                 AgentSessionRuntimeBinding {
-                    runtime_session_id,
+                    runtime_session_id: runtime_session_id.clone(),
                     connection_internal_id: "conn_guard_a".to_owned(),
                     guard_installation_id: Some("guard_installation_a".to_owned()),
                     correlation: mcp_correlation(
@@ -4272,6 +4346,8 @@ mod tests {
                 fixture,
                 git,
                 project,
+                runtime_session_id,
+                session_id: coordinates.session_id,
                 integration_revision: manifest.integration_revision.as_str().to_owned(),
                 correlation,
                 observer,
@@ -4356,6 +4432,477 @@ mod tests {
         fn project_connection(&self) -> StoreResult<Connection> {
             open_project_state_database_for_test(&self.project.state_db_path)
         }
+    }
+
+    fn record_additional_open_observation(
+        prepared: &PreparedRepositoryObservation,
+        turn_id: &str,
+        tool_use_id: &str,
+        guard_event_id: &str,
+        occurred_at: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let correlation = tool_correlation("session_guard_a", turn_id, tool_use_id, "apply_patch");
+        let observation_id = repository_observation_id(
+            "project_guard_a",
+            "conn_guard_a",
+            &prepared.session_id,
+            &correlation,
+        )?;
+        let mut input = prepared.pre_input();
+        input.guard_event.guard_event_id = guard_event_id.to_owned();
+        input.guard_event.correlation = Some(correlation);
+        input.guard_event.occurred_at = occurred_at.to_owned();
+        input.repository_observation_id = observation_id.clone();
+        input.expected_write = None;
+        record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            input,
+        )?;
+        Ok(observation_id)
+    }
+
+    fn accepted_prompt_input(
+        prepared: &PreparedRepositoryObservation,
+        turn_id: &str,
+        prompt_capture_id: &str,
+        captured_at: &str,
+    ) -> Result<PromptCaptureInsert, Box<dyn Error>> {
+        let correlation = prompt_correlation("session_guard_a", turn_id);
+        observe_host_correlation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            HostCorrelationObservation {
+                connection_internal_id: "conn_guard_a".to_owned(),
+                guard_installation_id: Some("guard_installation_a".to_owned()),
+                correlation: correlation.clone(),
+                observed_at: captured_at.to_owned(),
+            },
+        )?;
+        Ok(PromptCaptureInsert {
+            prompt_capture_id: prompt_capture_id.to_owned(),
+            correlation,
+            connection_internal_id: "conn_guard_a".to_owned(),
+            capture_kind: "user_prompt".to_owned(),
+            prompt_sha256: format!("sha256:{}", "a".repeat(64)),
+            prompt_text: None,
+            captured_at: captured_at.to_owned(),
+            metadata_json: "{}".to_owned(),
+        })
+    }
+
+    #[test]
+    fn accepted_prompt_terminalizes_only_different_turns_once_without_derived_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        let prepared = PreparedRepositoryObservation::new(
+            "repository-observation-prompt-terminalization",
+            "tool_call_prior_turn",
+        )?;
+        record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            prepared.pre_input(),
+        )?;
+        let current_observation_id = record_additional_open_observation(
+            &prepared,
+            "turn_prompt_current",
+            "tool_call_parallel_current",
+            "guard_pre_parallel_current",
+            "2026-07-30T00:00:04Z",
+        )?;
+        let prompt = accepted_prompt_input(
+            &prepared,
+            "turn_prompt_current",
+            "prompt_capture_current",
+            "2026-07-30T00:00:05Z",
+        )?;
+        let first = insert_prompt_capture_and_terminalize_prior_turn_observations(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            prompt,
+        )?;
+        assert_eq!(first.terminalized_repository_observations.len(), 1);
+        assert_eq!(
+            first.terminalized_repository_observations[0].repository_observation_id,
+            prepared.observation_id
+        );
+        let prior = repository_observation(
+            prepared.fixture.runtime_home.path(),
+            "project_guard_a",
+            &prepared.observation_id,
+        )?
+        .expect("prior observation");
+        assert_eq!(prior.state, RepositoryObservationState::Unavailable);
+        assert_eq!(
+            prior.unavailable_reason,
+            Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
+        );
+        assert!(prior.delta.is_none());
+        let terminal_result = prior.terminal_result.expect("stable terminal result");
+        assert!(terminal_result.delta.is_none());
+        assert!(terminal_result.expected_write_matches.is_empty());
+        assert!(terminal_result.unrecorded_changes.is_empty());
+        assert_eq!(
+            repository_observation(
+                prepared.fixture.runtime_home.path(),
+                "project_guard_a",
+                &current_observation_id,
+            )?
+            .expect("same-turn parallel observation")
+            .state,
+            RepositoryObservationState::Open
+        );
+
+        let diagnostics = repository_observation_diagnostics_for_session(
+            prepared.fixture.runtime_home.path(),
+            "project_guard_a",
+            "conn_guard_a",
+            &prepared.session_id,
+            false,
+        )?;
+        assert!(diagnostics.iter().any(|record| {
+            record.repository_observation_id.as_deref() == Some(prepared.observation_id.as_str())
+                && record.status
+                    == RepositoryObservationDiagnosticStatus::UnavailablePostToolNotObserved
+        }));
+        assert!(diagnostics.iter().any(|record| {
+            record.repository_observation_id.as_deref() == Some(current_observation_id.as_str())
+                && record.status == RepositoryObservationDiagnosticStatus::OpenCurrentTurn
+        }));
+        let terminal_diagnostics = repository_observation_diagnostics_for_session(
+            prepared.fixture.runtime_home.path(),
+            "project_guard_a",
+            "conn_guard_a",
+            &prepared.session_id,
+            true,
+        )?;
+        assert!(terminal_diagnostics.iter().any(|record| {
+            record.repository_observation_id.as_deref() == Some(current_observation_id.as_str())
+                && record.status == RepositoryObservationDiagnosticStatus::OrphanOpenTerminalSession
+        }));
+
+        let later_observation_id = record_additional_open_observation(
+            &prepared,
+            "turn_later_open",
+            "tool_call_later_open",
+            "guard_pre_later_open",
+            "2026-07-30T00:00:06Z",
+        )?;
+        let later_prompt = accepted_prompt_input(
+            &prepared,
+            "turn_after_later",
+            "prompt_capture_after_later",
+            "2026-07-30T00:00:07Z",
+        )?;
+        let second = insert_prompt_capture_and_terminalize_prior_turn_observations(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            later_prompt.clone(),
+        )?;
+        let mut expected_terminalized = vec![
+            current_observation_id.as_str(),
+            later_observation_id.as_str(),
+        ];
+        expected_terminalized.sort_unstable();
+        assert_eq!(
+            second
+                .terminalized_repository_observations
+                .iter()
+                .map(|record| record.repository_observation_id.as_str())
+                .collect::<Vec<_>>(),
+            expected_terminalized
+        );
+        let replay = insert_prompt_capture_and_terminalize_prior_turn_observations(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            later_prompt,
+        )?;
+        assert!(replay.terminalized_repository_observations.is_empty());
+        for observation_id in [&current_observation_id, &later_observation_id] {
+            let record = repository_observation(
+                prepared.fixture.runtime_home.path(),
+                "project_guard_a",
+                observation_id,
+            )?
+            .expect("terminalized observation");
+            assert_eq!(record.state, RepositoryObservationState::Unavailable);
+            assert_eq!(
+                record.unavailable_reason,
+                Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
+            );
+        }
+
+        let project_conn = prepared.project_connection()?;
+        assert_eq!(
+            project_conn.query_row(
+                "SELECT status FROM expected_writes WHERE expected_write_id = 'expected_write_a'",
+                [],
+                |row| row.get::<_, String>(0),
+            )?,
+            "pending"
+        );
+        assert_eq!(
+            project_conn.query_row("SELECT count(*) FROM unrecorded_changes", [], |row| {
+                row.get::<_, i64>(0)
+            })?,
+            0
+        );
+        assert_eq!(
+            project_conn.query_row(
+                "SELECT count(*) FROM guard_events WHERE event_kind = 'post_tool'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            0
+        );
+        let registry = open_registry_database_for_test(registry_db_path(
+            prepared.fixture.runtime_home.path(),
+        ))?;
+        assert_eq!(
+            registry.query_row("SELECT count(*) FROM diagnostic_findings", [], |row| {
+                row.get::<_, i64>(0)
+            })?,
+            0
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prompt_terminalization_validation_failure_rolls_back_every_selected_row_and_capture(
+    ) -> Result<(), Box<dyn Error>> {
+        use repository_observation::{
+            set_repository_observation_fault_point, RepositoryObservationFaultPoint,
+        };
+
+        let prepared = PreparedRepositoryObservation::new(
+            "repository-observation-terminalization-rollback",
+            "tool_call_rollback_first",
+        )?;
+        record_pre_tool_repository_observation(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            prepared.pre_input(),
+        )?;
+        let second_observation_id = record_additional_open_observation(
+            &prepared,
+            "turn_rollback_second",
+            "tool_call_rollback_second",
+            "guard_pre_rollback_second",
+            "2026-07-30T00:00:04Z",
+        )?;
+        let prompt = accepted_prompt_input(
+            &prepared,
+            "turn_rollback_prompt",
+            "prompt_capture_rollback",
+            "2026-07-30T00:00:05Z",
+        )?;
+        set_repository_observation_fault_point(Some(
+            RepositoryObservationFaultPoint::TerminalizationAfterFirstUpdate,
+        ));
+        assert!(
+            insert_prompt_capture_and_terminalize_prior_turn_observations(
+                &prepared.fixture.context()?,
+                "project_guard_a",
+                prompt.clone(),
+            )
+            .is_err()
+        );
+        set_repository_observation_fault_point(None);
+        for observation_id in [&prepared.observation_id, &second_observation_id] {
+            assert_eq!(
+                repository_observation(
+                    prepared.fixture.runtime_home.path(),
+                    "project_guard_a",
+                    observation_id,
+                )?
+                .expect("rolled-back observation")
+                .state,
+                RepositoryObservationState::Open
+            );
+        }
+        assert!(prompt_capture(
+            prepared.fixture.runtime_home.path(),
+            "project_guard_a",
+            "prompt_capture_rollback",
+        )?
+        .is_none());
+        let retry = insert_prompt_capture_and_terminalize_prior_turn_observations(
+            &prepared.fixture.context()?,
+            "project_guard_a",
+            prompt,
+        )?;
+        assert_eq!(retry.terminalized_repository_observations.len(), 2);
+        Ok(())
+    }
+
+    fn abrupt_runtime_finding(
+        prepared: &PreparedRepositoryObservation,
+        observed_at: &str,
+    ) -> Result<OccurrenceDiagnosticFinding, Box<dyn Error>> {
+        let runtime = mcp_runtime_session(
+            prepared.fixture.runtime_home.path(),
+            &prepared.runtime_session_id,
+        )?
+        .expect("runtime session");
+        let data = DiagnosticFindingData::try_new(
+            DiagnosticCode::parse("mcp.runtime_process_failed")?,
+            DiagnosticDomain::parse("mcp")?,
+            DiagnosticStage::parse("transport")?,
+            DiagnosticSeverity::Error,
+            DiagnosticSource::parse("store_test")?,
+            DiagnosticSubject::try_new("runtime_session", &prepared.runtime_session_id)?,
+            DiagnosticFacts::empty(),
+            UtcTimestamp::parse(observed_at)?,
+        )?
+        .with_connection_id(AgentConnectionId::new(runtime.connection_internal_id))?
+        .with_integration_revision(IntegrationRevision::parse(
+            runtime.connection_integration_revision,
+        )?);
+        Ok(OccurrenceDiagnosticFinding::try_new(
+            data,
+            Some(AgentRuntimeSessionId::new(
+                prepared.runtime_session_id.clone(),
+            )),
+        )?)
+    }
+
+    #[test]
+    fn managed_runtime_graceful_and_abrupt_terminal_facts_close_bound_observations(
+    ) -> Result<(), Box<dyn Error>> {
+        for (prefix, abrupt) in [
+            ("repository-observation-graceful-close", false),
+            ("repository-observation-abrupt-close", true),
+        ] {
+            let prepared = PreparedRepositoryObservation::new(
+                prefix,
+                if abrupt {
+                    "tool_call_abrupt_close"
+                } else {
+                    "tool_call_graceful_close"
+                },
+            )?;
+            record_pre_tool_repository_observation(
+                &prepared.fixture.context()?,
+                "project_guard_a",
+                prepared.pre_input(),
+            )?;
+            if abrupt {
+                let finding = abrupt_runtime_finding(&prepared, "2026-07-30T00:00:05Z")?;
+                record_mcp_terminal_finding(&prepared.fixture.context()?, &finding)?;
+            } else {
+                record_mcp_graceful_close(
+                    &prepared.fixture.context()?,
+                    &prepared.runtime_session_id,
+                    "2026-07-30T00:00:05Z",
+                )?;
+            }
+            let observation = repository_observation(
+                prepared.fixture.runtime_home.path(),
+                "project_guard_a",
+                &prepared.observation_id,
+            )?
+            .expect("managed-session observation");
+            assert_eq!(observation.state, RepositoryObservationState::Unavailable);
+            assert_eq!(
+                observation.unavailable_reason,
+                Some(RepositoryObservationUnavailableReason::ManagedSessionTerminated)
+            );
+            assert!(observation.delta.is_none());
+            assert!(observation
+                .terminal_result
+                .as_ref()
+                .is_some_and(|result| result.delta.is_none()
+                    && result.expected_write_matches.is_empty()
+                    && result.unrecorded_changes.is_empty()));
+            assert_eq!(
+                prepared.project_connection()?.query_row(
+                    "SELECT count(*) FROM repository_observations WHERE state = 'open'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?,
+                0,
+                "completed disposable session left an open observation"
+            );
+            let diagnostics = repository_observation_diagnostics_for_runtime_session(
+                prepared.fixture.runtime_home.path(),
+                &prepared.runtime_session_id,
+            )?;
+            assert!(diagnostics.iter().any(|record| {
+                record.repository_observation_id.as_deref()
+                    == Some(prepared.observation_id.as_str())
+                    && record.status
+                        == RepositoryObservationDiagnosticStatus::UnavailableManagedSessionTerminated
+            }));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_recovery_closes_only_authoritatively_terminal_managed_sessions(
+    ) -> Result<(), Box<dyn Error>> {
+        let active = PreparedRepositoryObservation::new(
+            "repository-observation-active-recovery",
+            "tool_call_active_recovery",
+        )?;
+        record_pre_tool_repository_observation(
+            &active.fixture.context()?,
+            "project_guard_a",
+            active.pre_input(),
+        )?;
+        assert_eq!(
+            recover_terminal_managed_runtime_repository_observations(&active.fixture.context()?)?,
+            0
+        );
+        assert_eq!(
+            repository_observation(
+                active.fixture.runtime_home.path(),
+                "project_guard_a",
+                &active.observation_id,
+            )?
+            .expect("active observation")
+            .state,
+            RepositoryObservationState::Open
+        );
+
+        let terminal = PreparedRepositoryObservation::new(
+            "repository-observation-terminal-recovery",
+            "tool_call_terminal_recovery",
+        )?;
+        record_pre_tool_repository_observation(
+            &terminal.fixture.context()?,
+            "project_guard_a",
+            terminal.pre_input(),
+        )?;
+        let registry = open_registry_database_for_test(registry_db_path(
+            terminal.fixture.runtime_home.path(),
+        ))?;
+        registry.execute(
+            "UPDATE mcp_runtime_sessions
+                SET graceful_close_at = ?2, last_observed_at = ?2
+              WHERE runtime_session_id = ?1",
+            params![terminal.runtime_session_id, "2026-07-30T00:00:05Z"],
+        )?;
+        drop(registry);
+        assert_eq!(
+            recover_terminal_managed_runtime_repository_observations(&terminal.fixture.context()?)?,
+            1
+        );
+        assert_eq!(
+            recover_terminal_managed_runtime_repository_observations(&terminal.fixture.context()?)?,
+            0
+        );
+        let observation = repository_observation(
+            terminal.fixture.runtime_home.path(),
+            "project_guard_a",
+            &terminal.observation_id,
+        )?
+        .expect("recovered observation");
+        assert_eq!(observation.state, RepositoryObservationState::Unavailable);
+        assert_eq!(
+            observation.unavailable_reason,
+            Some(RepositoryObservationUnavailableReason::ManagedSessionTerminated)
+        );
+        Ok(())
     }
 
     fn assert_corrupt_owner_state<T>(result: StoreResult<T>) {

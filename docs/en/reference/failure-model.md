@@ -422,6 +422,18 @@ distinct runtime-session root while retaining lifecycle-aware terminal and
 correlated occurrences. Finding severity and current-state status describe
 stored conditions; neither changes a successful lookup into a failed lookup.
 
+Runtime-session lookup also carries bounded read-only Repository Observation
+lifecycle diagnostics. The exact states are `open_current_turn`,
+`unavailable_post_tool_not_observed`,
+`unavailable_managed_session_terminated`,
+`orphan_open_terminal_session`, `cleanup_failed`, and
+`corrupt_observation`. Current-turn opens are distinct from an open row owned
+by an authoritatively terminal session; a read or binding failure is distinct
+from corrupt observation content. Session diagnostics report these facts
+without terminalizing an observation, rescanning the Product Repository, or
+reconciling owner state. Doctor and ordinary status reads have no cleanup
+effect.
+
 Machine consumers distinguish observation outcomes structurally. An absent
 observation is an omitted optional value or an owner-defined typed
 `observation_state=absent`; an observed empty collection is the present value

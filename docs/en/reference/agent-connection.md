@@ -804,6 +804,14 @@ by the matching `PreToolUse` and `PostToolUse` events. A generic optional
 cannot correlate that observation. The complete observation coordinate and
 lifecycle belong to [Repository Observation](repository-observation.md).
 
+An accepted `UserPromptSubmit` establishes its exact typed turn and atomically
+closes only open observations from different established turns in the same
+derived project session. It never orders turn identifiers or closes a parallel
+observation in that current turn. Authoritative graceful or failed termination
+of the exact bound `managed_host` runtime closes the session's remaining open
+observations through its bounded Registry project bindings. Recovery applies
+that effect only to runtime rows already carrying a terminal fact.
+
 The Connection's registered `server_name` is decoded as `McpServerKey` and
 remains separate from each complete `McpRawToolName`. The
 `CodexMcpCallableNames` contract projects those coordinates to one
@@ -880,7 +888,8 @@ session, Connection, project, host session, or host thread.
 Runtime rows are historical process observations, not launch leases or
 liveness claims. Launch leases exist only to authorize one bootstrap
 transition and do not turn runtime rows into liveness records. A crashed
-process may leave an apparently open row, and multiple
+process that did not record an authoritative terminal fact may leave an
+apparently open row, and multiple
 cooperative Codex processes may be current concurrently. Neither condition
 blocks Guard correlation: no runtime is guessed from open rows, and different
 host sessions bind independently.

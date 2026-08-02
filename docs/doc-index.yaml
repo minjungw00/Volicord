@@ -1591,8 +1591,8 @@ documents:
   - diagnostic.trust
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-31'
-  last_verified_on: '2026-07-31'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - implementers
   - agent integrators
@@ -1625,13 +1625,14 @@ documents:
   path_ko: docs/ko/reference/repository-observation.md
   kind: reference
   summary: Reference contract for invocation-scoped Product Repository observations, exact
-    pre/post correlation, deterministic deltas, expected-write matching, and actual Unrecorded Changes.
+    prompt, pre/post, and managed-session terminal boundaries, deterministic deltas,
+    expected-write matching, and actual Unrecorded Changes.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-31'
-  last_verified_on: '2026-07-31'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - implementers
   - maintainers
@@ -1639,7 +1640,7 @@ documents:
   - implement
   - operate
   canonical_for:
-  - exact repository-observation invocation coordinate and closed lifecycle states
+  - exact repository-observation invocation coordinate and prompt, post-tool, and managed-session closed lifecycle states
   - canonical baseline, post-tool outcome, deterministic delta, and strict digest verification
   - atomic pre-tool and post-tool Guard aggregate effects
   - exact observation-scoped expected-write matching
@@ -1702,8 +1703,8 @@ documents:
   - mcp.wire
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-08-01'
-  last_verified_on: '2026-08-01'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - agents
   - implementers
@@ -1904,8 +1905,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-08-01'
-  last_verified_on: '2026-08-01'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - agents
   - implementers
@@ -2865,8 +2866,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-01'
-  last_verified_on: '2026-08-01'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - storage implementers
   - maintainers
@@ -2901,8 +2902,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - storage implementers
   - API implementers
@@ -2938,8 +2939,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-31'
-  last_verified_on: '2026-07-31'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - storage implementers
   - API implementers

@@ -13,7 +13,10 @@ use volicord_store::{
         WorkflowMetricAggregateRow, DIAGNOSTICS_DB_FILE, DIAGNOSTICS_MAX_EVENTS_PER_SESSION,
         DIAGNOSTICS_MAX_SESSIONS, DIAGNOSTICS_RETENTION_DAYS,
     },
-    operational_sessions::mcp_runtime_session,
+    guards::RepositoryObservationDiagnosticRecord,
+    operational_sessions::{
+        mcp_runtime_session, repository_observation_diagnostics_for_runtime_session,
+    },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
@@ -156,6 +159,7 @@ struct RuntimeSessionLookupRoot {
     terminal_condition: RuntimeSessionTerminalCondition,
     terminal_finding_id: Option<String>,
     graceful_close_at: Option<String>,
+    repository_observations: Vec<RepositoryObservationDiagnosticRecord>,
 }
 
 impl From<&volicord_store::operational_sessions::McpRuntimeSessionRecord>
@@ -192,6 +196,7 @@ impl From<&volicord_store::operational_sessions::McpRuntimeSessionRecord>
             terminal_condition,
             terminal_finding_id: session.terminal_finding_id.clone(),
             graceful_close_at: session.graceful_close_at.clone(),
+            repository_observations: Vec::new(),
         }
     }
 }
@@ -224,11 +229,16 @@ where
             )?
         };
         let context = runtime_session_context(&runtime_home, &session, &cause_graph)?;
+        let mut root = RuntimeSessionLookupRoot::from(&session);
+        root.repository_observations = repository_observation_diagnostics_for_runtime_session(
+            &runtime_home,
+            &options.runtime_session_id,
+        )?;
         DiagnosticLookupReport::try_new(
             DiagnosticOperation::DiagnosticsSession,
             DiagnosticLookupStatus::Found,
             options.runtime_session_id.as_str(),
-            Some(RuntimeSessionLookupRoot::from(&session)),
+            Some(root),
             cause_graph,
             context,
             diagnostic_lookup_limits(),
@@ -446,6 +456,16 @@ fn render_session_lookup_text(report: &DiagnosticLookupReport<RuntimeSessionLook
             lines.push(format!("  Terminal finding: {finding_id}"));
         }
         lines.push(format!("  Last observed: {}", session.last_observed_at));
+        for observation in &session.repository_observations {
+            lines.push(format!(
+                "  Repository observation: {} ({})",
+                observation
+                    .repository_observation_id
+                    .as_deref()
+                    .unwrap_or("binding"),
+                observation.status.as_str()
+            ));
+        }
     }
     append_stored_graph(&mut lines, report.cause_graph());
     for limit in report.limits() {

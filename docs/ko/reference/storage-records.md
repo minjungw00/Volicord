@@ -512,6 +512,16 @@ tool-use ID, 정규 tool-name 좌표에서 유일합니다. `open`에는 검증�
 write는 각각 그 정확한 관찰에 속합니다. Unrecorded Change는 관찰에 연결되고 비어 있지
 않은 정규 path 집합과 unmatched-delta digest를 저장합니다.
 
+정규 닫힌 생명주기 reason에는 정확한 project session의 다음 수락 prompt가 이전 turn을
+닫을 때 쓰는 `post_tool_not_observed`와, 권위 있게 종료된 managed runtime의 정확한
+Registry binding을 통해 나머지 open 관찰을 닫을 때 쓰는
+`managed_session_terminated`가 있습니다. 두 terminal 형식 모두 baseline, completion
+time, stable result를 보존하고 post-tool event, outcome, delta, expected-write match,
+Unrecorded Change는 비워 둡니다. Prompt capture와 이전 turn closure는 immediate bounded
+project transaction 하나에서 commit됩니다. Managed-runtime cleanup은 정확히 binding된
+project session마다 한도가 있는 immediate transaction 하나로 commit되며 recovery replay에
+멱등적입니다.
+
 Prompt 관찰은 제한된 관찰 schema 아래에서만 저장할 수 있습니다. 사용자 choice,
 resolution 본문, 비공개 resolution form, credential을 담지 않습니다.
 

@@ -399,6 +399,13 @@ tool의 session/turn/tool-use/tool-name 상관관계를 제공하며 command hoo
 저장소 상태와 host 경로 보고는 호출 delta가 아닙니다. 정확한 관찰 동작은
 [저장소 관찰](repository-observation.md)이 담당합니다.
 
+다음으로 수락한 prompt는 prompt capture와 같은 bounded project transaction에서 같은
+project session의 서로 다른 확립된 turn만 닫습니다. 정확한 same-turn 관찰은 open으로
+남습니다. Terminal managed runtime은 정확하고 한도가 있는 Registry project-session
+예약을 통해서만 나머지 관찰을 닫습니다. Runtime Home recovery는 terminal Registry
+사실을 읽고 project-local cleanup을 멱등적으로 반복합니다. 경과 시간이나 열린 것처럼
+보이거나 없는 process에서 종료를 추론하지 않습니다.
+
 Runtime source도 명시적입니다. `managed_host`는 one-time lease를 원자적으로 소비하는
 경우에만 만들고, `manual_cli`는 공개 stdio 또는 일회용 CLI conformance 경로를
 식별하며, `cli_preflight`와 `integration_probe`는 비관리 diagnostic 분류입니다. 현재
@@ -415,7 +422,7 @@ runtime anchor를 만들 수 없습니다. 첫 실제 managed MCP 도구 호출�
 프로젝트 소유권 충돌은 Registry 예약을 남기지 않습니다. Unbound MCP anchor와 프로젝트
 attach가 없는 Registry 예약은 각각 권한 효력이 없습니다. 소유자 상태가 바뀌지 않은 정확한
 replay는 중단된 마지막 attach를 복구합니다. Process row는 lease나 liveness signal이 아니므로
-crash 뒤 열린 것처럼 남은 row와 concurrent process가 Guard 상관관계를 선택하거나 막지
+권위 있는 terminal 사실 없이 crash 뒤 열린 것처럼 남은 row와 concurrent process가 Guard 상관관계를 선택하거나 막지
 않습니다. `diagnostics.sqlite`는 분리된 best-effort carrier이며 운영 권한 출처로 사용하지
 않습니다. 첫 shared writer는 같은 directory의 staging 데이터베이스 전체를 초기화하고
 검증하며, 모든 SQLite handle을 닫고 live sidecar를 거부한 뒤 파일의 permission을

@@ -1918,7 +1918,10 @@ StoredDiagnosticFinding:
 Finding 조회에서는 root와 cause graph의 모든 entry가 같은 lifecycle-aware 저장 finding
 형태를 사용합니다. Runtime-session root는 authoritative session data와 명시적인
 `terminal_condition`을 담고, 한도가 있는 graph는 lifecycle을 보존한 occurrence record를
-유지합니다. `--json`이 없으면 사람용 projection은 같은 lookup result, 요청 ID와 root ID,
+유지합니다. 또한 `open_current_turn`, `unavailable_post_tool_not_observed`,
+`unavailable_managed_session_terminated`,
+`orphan_open_terminal_session`, `cleanup_failed`, `corrupt_observation`이라는 정확한
+상태로 한도가 있는 read-only 저장소 관찰 diagnostic을 담습니다. `--json`이 없으면 사람용 projection은 같은 lookup result, 요청 ID와 root ID,
 lifecycle, 해당하는 current state와 resolution 시각, severity, code, 안전한 subject, 관찰
 시각, cause record, action, limit을 표시합니다. Finding이나 session이 없으면
 `lookup_status=not_found`로 `requested_id`를 식별하고 synthetic failed finding이나
@@ -1929,7 +1932,8 @@ JSON은 현재 diagnostics SQL에서 파생한 정확한 `canonical_schema_diges
 `contract_id=volicord.sqlite.diagnostics`로 로컬 diagnostics 저장소를 식별하며
 어느 보고서의 schema version도 사용하지 않습니다. Diagnostics 읽기는 저장소를
 만들거나 프로젝트 권한 상태를 전진시키거나 evidence 또는 assurance, 닫기 준비 상태를
-바꾸거나 UserAction을 해결하지 않습니다.
+바꾸거나 UserAction을 해결하거나 저장소 관찰을 terminalize하거나 Product Repository를
+scan하지 않습니다.
 
 활성 Connection 검증은 관리 구성, Guard 파일과 관찰, 저장소 신뢰, revision freshness에
 대한 CLI 소유 finding을 영속화합니다. 현재 안정 code는

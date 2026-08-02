@@ -386,6 +386,16 @@ result를 읽고 Product Repository를 다시 scan하지 않습니다. 충돌하
 event는 효과 없이 거부합니다. 관찰 불가 진단은 Unrecorded Change나 닫기 차단 사유를
 만들지 않습니다.
 
+수락한 `UserPromptSubmit` capture와 같은 session의 서로 다른 확립된 turn closure는
+bounded immediate project transaction 하나를 사용합니다. Same-turn open 관찰은 변경하지
+않습니다. Managed-runtime terminalization은 정확하고 한도가 있는 Registry project-session
+binding마다 별도 immediate project transaction을 사용합니다. 이 closure는 baseline과
+안정적인 unavailable result를 보존하지만 Product Repository scan, delta 또는 finding 생성,
+expected-write match, write-ticket 소비, authority-state 변경을 수행하지 않습니다. 이미
+terminal인 row에는 효과가 없으며 선택한 row 하나라도 유효하지 않으면 해당 project
+transaction 전체를 rollback합니다. Recovery는 권위 있게 종료된 managed runtime에만 이
+효과를 반복합니다.
+
 <a id="connection-integration-verification-effects"></a>
 ## Connection-Integration 검증 효과
 

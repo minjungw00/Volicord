@@ -39,7 +39,8 @@ use volicord_store::managed_launch_leases::{
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_store::operational_sessions::{
     record_mcp_graceful_close, record_mcp_initialize_attempt, record_mcp_initialize_completion,
-    record_mcp_initialized_notification, start_mcp_runtime_session, McpRuntimeSessionStart,
+    record_mcp_initialized_notification, recover_terminal_managed_runtime_repository_observations,
+    start_mcp_runtime_session, McpRuntimeSessionStart,
 };
 use volicord_types::integration_revision::McpRuntimeSessionSource;
 use volicord_types::managed_mcp_client_info::ManagedMcpClientInfo;
@@ -223,6 +224,8 @@ pub(crate) fn start_session(
         &adapter.runtime_home,
         "mcp.runtime_session.start",
         |context| {
+            recover_terminal_managed_runtime_repository_observations(context)
+                .map_err(McpAdapterError::Store)?;
             let runtime_session = if let Some(lease) = start.managed_lease {
                 if start.session_source != McpRuntimeSessionSource::ManagedHost {
                     return Err(McpAdapterError::Environment(
@@ -238,7 +241,22 @@ pub(crate) fn start_session(
     )?;
     let mut state = SessionState::new(start.session_source);
     state.runtime_mut().runtime_session_id = runtime_session.runtime_session_id;
-    validate_managed_stdio_session_ownership(adapter, &state.runtime().codex_binding)?;
+    if let Err(error) =
+        validate_managed_stdio_session_ownership(adapter, &state.runtime().codex_binding)
+    {
+        let diagnostic = McpDiagnostic::from(&error);
+        record_current_session_finding_with_admission(
+            adapter,
+            state.runtime_mut(),
+            diagnostic,
+            None,
+            None,
+            None,
+            Vec::new(),
+            true,
+        )?;
+        return Err(error);
+    }
     if !state.runtime().codex_binding.is_pending() {
         let _ = with_mcp_runtime_home_mutation(
             &adapter.runtime_home,

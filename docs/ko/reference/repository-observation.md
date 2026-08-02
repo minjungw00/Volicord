@@ -88,6 +88,29 @@ terminal 결과는 담지 않습니다.
 주장하지 않습니다. 호출이 거부됐거나 post-tool 완료를 관찰할 수 없게 된
 경우에도 유효한 baseline은 남아 있을 수 있습니다.
 
+`open` 관찰은 다음 세 가지 정확한 생명주기 경계 중 하나에서 닫힙니다.
+
+- 정확히 일치하는 `PostToolUse`는 post-tool 관찰 결과에 따라 `complete` 또는
+  `unavailable`을 만듭니다.
+- 같은 관리 프로젝트 session에서 다음으로 수락된 `UserPromptSubmit`은 서로 다른
+  확립된 turn의 open 관찰을 `unavailable(post_tool_not_observed)`로 닫습니다. Prompt의
+  정확한 현재 turn에 속한 관찰은 병렬 tool 호출이 끝날 수 있도록 open으로 남깁니다.
+- 소유한 `managed_host` runtime이 권위 있게 종료되면 정확하고 한도가 있는
+  project-session binding의 나머지 관찰을
+  `unavailable(managed_session_terminated)`로 닫습니다.
+
+Turn identity는 lexical 또는 numeric 순서가 아니라 typed exact equality로 비교합니다.
+수락한 prompt capture와 이전 turn terminalization은 immediate bounded project
+transaction 하나를 공유합니다. Runtime cleanup은 정확한 Registry project-session
+binding만 사용합니다. Runtime Home recovery는 Registry에서 이미 권위 있게 종료된
+session에 대해서만 이 cleanup을 반복하며, replay는 terminal row를 변경하지 않습니다.
+
+생명주기 terminalization은 pre-tool baseline을 보존하고 reason, completion time, 안정적인
+terminal result 하나를 기록하며 delta는 unavailable로 둡니다. Product Repository scan,
+expected-write match, write-ticket 소비, Unrecorded Change 또는 finding 생성, 합성 path 생성,
+actor 귀속, 인과관계 주장을 하지 않습니다. Row 검증이 하나라도 실패하면 한도가 있는
+project transaction 전체를 rollback합니다.
+
 Terminal 관찰은 `open`으로 돌아가지 않습니다. 정확한 replay는 Product
 Repository를 다시 scan하지 않고 저장된 terminal 결과를 반환합니다. 충돌하는
 두 번째 `PostToolUse` 이벤트는 거부합니다.

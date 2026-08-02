@@ -2386,7 +2386,9 @@ CREATE TABLE repository_observations (
       'observer_contract_mismatch',
       'git_object_unavailable',
       'invocation_denied',
-      'missing_open_observation'
+      'missing_open_observation',
+      'post_tool_not_observed',
+      'managed_session_terminated'
     )
   ),
   started_at TEXT NOT NULL,

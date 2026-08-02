@@ -375,6 +375,13 @@ JSON-RPC error나 tool error 없이 완료되어야 합니다. 그러면 Store�
 `diagnostics.sqlite`의 제한된 쓰기는 계속 best effort이며 이 사실을 조회할 때 사용하지
 않습니다.
 
+`managed_host` runtime에 두 terminal 사실 중 하나가 commit되면 Store는 그 runtime의
+정확하고 한도가 있는 Registry project-session binding을 사용해 남은 open 저장소 관찰을
+`unavailable(managed_session_terminated)`로 닫습니다. Runtime 생성 뒤 startup 실패,
+fatal process 또는 transport failure, graceful EOF 또는 shutdown이 여기에 포함됩니다.
+Runtime startup recovery는 Registry에 이미 권위 있는 terminal 사실이 있는 session에
+대해서만 같은 멱등 cleanup을 반복합니다.
+
 Registry를 열기 전에 발생한 실패는 stderr에 한도가 있는
 `VOLICORD_DIAGNOSTIC_V1` envelope 하나를 출력합니다. Registry runtime session이
 생긴 뒤에는 정확한 Connection, integration revision, runtime-session 좌표와 함께
@@ -837,8 +844,10 @@ schema를 복사하지 않습니다. Guard prompt 관찰이 있다면 권한이 
 
 ## 종료와 재연결
 
-EOF는 처리 중인 응답 뒤 loop를 닫고 graceful close를 기록합니다. 새 프로세스는 시작 검증과 MCP 초기화를 다시
-수행하며 이전 프로세스의 연결, 프로젝트, session 권한, 현재 상태를 상속하지 않습니다.
+EOF는 처리 중인 응답 뒤 loop를 닫고 한도가 있는 managed-session 저장소 관찰 cleanup과
+함께 graceful close를 기록합니다. 새 프로세스는 권위 있게 종료된 managed session만 먼저
+복구한 뒤 시작 검증과 MCP 초기화를 다시 수행하며 이전 프로세스의 연결, 프로젝트, session
+권한, 현재 상태를 상속하지 않습니다.
 
 ## 관련 담당 문서
 

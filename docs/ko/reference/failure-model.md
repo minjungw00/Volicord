@@ -370,6 +370,16 @@ Occurrence는 `lifecycle=occurrence`로 표시하고, current record는
 current-state status는 저장된 condition을 설명하며, 어느 쪽도 성공한 lookup을 실패한
 lookup으로 바꾸지 않습니다.
 
+Runtime-session lookup은 한도가 있는 read-only 저장소 관찰 lifecycle diagnostic도
+포함합니다. 정확한 상태는 `open_current_turn`,
+`unavailable_post_tool_not_observed`,
+`unavailable_managed_session_terminated`,
+`orphan_open_terminal_session`, `cleanup_failed`, `corrupt_observation`입니다. 현재
+turn의 open 관찰은 권위 있게 종료된 session이 소유한 open row와 구분하고, read 또는
+binding 실패는 손상된 관찰 내용과 구분합니다. Session diagnostic은 관찰을
+terminalize하거나 Product Repository를 다시 scan하거나 owner state를 reconcile하지 않고
+이 사실을 보고합니다. Doctor와 일반 status read에는 cleanup 효과가 없습니다.
+
 Machine consumer는 관찰 결과를 구조적으로 구분합니다. 관찰 부재는 생략한 optional 값
 또는 담당자가 정의한 typed `observation_state=absent`, 관찰한 빈 collection은 값이 있는
 `[]`, 관찰 실패는 cause finding이 있는 `failed` check, prerequisite 때문에 막힌 관찰은

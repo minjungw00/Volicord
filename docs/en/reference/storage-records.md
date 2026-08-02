@@ -586,6 +586,17 @@ complete delta. Each expected write belongs to that exact observation. Each
 Unrecorded Change links to it, contains a non-empty canonical path set, and
 stores the unmatched-delta digest.
 
+The canonical closed lifecycle reasons include `post_tool_not_observed` for
+prior turns closed by the next accepted prompt in the exact project session,
+and `managed_session_terminated` for remaining opens closed through an
+authoritatively terminal managed runtime's exact Registry bindings. Both
+terminal forms retain the baseline, completion time, and stable result while
+leaving post-tool event, outcome, delta, expected-write matches, and
+Unrecorded Changes absent. Prompt capture and prior-turn closure commit in one
+immediate bounded project transaction. Managed-runtime cleanup commits one
+bounded immediate transaction per exact bound project session and is
+idempotent across recovery.
+
 Prompt observations may be stored only under their bounded observation schema.
 They do not carry a user choice, resolution body, private resolution form, or
 credential.

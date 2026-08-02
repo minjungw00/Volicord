@@ -165,6 +165,13 @@ Product Repository transition만 기록합니다. Exact expected write는 그 �
 관찰할 뿐 actor identity나 단독 인과관계를 성립시키지 않습니다. 정확한 capture,
 matching, finding 규칙은 [저장소 관찰](repository-observation.md)이 담당합니다.
 
+다음으로 수락한 prompt와 권위 있는 managed-runtime terminal 사실은 Product Repository를
+변경했거나 변경하지 않았다는 증거가 아니라 생명주기 closure 경계입니다. 이 unavailable
+result는 pre-tool baseline을 보존하지만 delta, path, finding, expected-write match,
+write-ticket 효과, actor 귀속, 인과관계 주장을 만들지 않습니다. Recovery는 정확한 terminal
+Registry 사실과 한도가 있는 project-session binding만 신뢰하며 경과 시간에서 process
+종료를 추론하지 않습니다.
+
 Hook 경로 안전성은 한도가 있는 typed 진단 평가이며 파일시스템 또는 프로세스 강제가
 아닙니다. `verified`는 현재 owner-bound Guard manifest, Codex hook 구성, Git root 기반
 dispatch, 모든 필수 phase wrapper, 관리 invocation field, content hash, policy hash,

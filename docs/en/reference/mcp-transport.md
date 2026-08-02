@@ -432,6 +432,14 @@ An authoritative Store failure withholds the corresponding protocol success.
 Bounded writes to `diagnostics.sqlite` remain best effort and are never
 consulted for these facts.
 
+When either terminal fact is committed for a `managed_host` runtime, Store
+uses that runtime's exact bounded Registry project-session bindings to close
+remaining open Repository Observations as
+`unavailable(managed_session_terminated)`. This includes startup failure after
+the runtime has been created, fatal process or transport failure, and graceful
+EOF or shutdown. Runtime startup recovery repeats the same idempotent cleanup
+only for Registry sessions that already carry an authoritative terminal fact.
+
 Failures before the Registry can be opened emit one bounded
 `VOLICORD_DIAGNOSTIC_V1` envelope on stderr. After a Registry runtime session
 exists, findings are persisted with its exact Connection, integration
@@ -939,9 +947,10 @@ observations.
 ## Shutdown And Reconnection
 
 EOF closes the loop after in-flight response handling and records graceful
-close. A new process repeats
-startup validation and MCP initialization; it inherits no connection, project,
-session authorization, or current state from the previous process.
+close together with bounded managed-session Repository Observation cleanup. A
+new process first recovers only authoritatively terminal managed sessions, then
+repeats startup validation and MCP initialization; it inherits no connection,
+project, session authorization, or current state from the previous process.
 
 ## Related Owners
 

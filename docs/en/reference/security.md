@@ -193,6 +193,14 @@ transition; it does not establish actor identity or exclusive causation. Exact
 capture, matching, and finding rules belong to
 [Repository Observation](repository-observation.md).
 
+The next accepted prompt and an authoritative managed-runtime terminal fact
+are lifecycle closure boundaries, not evidence that the invocation changed or
+did not change the Product Repository. Their unavailable results retain the
+pre-tool baseline but create no delta, path, finding, expected-write match,
+write-ticket effect, actor attribution, or causation claim. Recovery trusts
+only exact terminal Registry facts and bounded project-session bindings; it
+does not infer process death from elapsed time.
+
 Hook path safety is a bounded typed diagnostic assessment, not filesystem or
 process enforcement. `verified` establishes that the current owner-bound Guard
 manifest, Codex hook configuration, Git-root dispatch, every required phase
