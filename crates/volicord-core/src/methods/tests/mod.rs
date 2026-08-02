@@ -2204,10 +2204,6 @@ fn assert_field_absent(value: &Value, field: &str) {
     );
 }
 
-fn assert_no_close_next_actions(response_value: &Value) {
-    assert!(response_value.get("next_actions").is_none());
-}
-
 fn close_blocker_codes(response_value: &Value) -> Vec<String> {
     response_value
         .get("blockers")

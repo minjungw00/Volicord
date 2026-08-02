@@ -204,6 +204,8 @@ Connection 호출 검증 동작은 [Agent Connection](../agent-connection.md)과
 project_state
 task
 change_unit
+shaping_checkpoint
+shaping_gap
 write_ticket
 user_action_request
 user_action_resolution
@@ -292,6 +294,71 @@ implementation
 
 이 단계는 한 Task의 장기 outcome을 유지하면서 분석과 쓰기 가능한 실행을
 구분합니다. `lifecycle_phase`와는 독립된 필드입니다.
+
+`ShapingCheckpoint.readiness`는 아래 값을 사용합니다.
+
+```text
+blocked
+ready
+superseded
+```
+
+`ShapingGapInput.gap_kind`와 `ShapingCheckpointGap.gap_kind`는 정확히 아래 값을
+사용합니다.
+
+```text
+goal_missing
+scope_boundary_missing
+non_goals_missing
+acceptance_criteria_missing
+autonomy_boundary_missing
+implementation_boundary_missing
+baseline_missing
+user_product_decision_required
+user_technical_decision_required
+user_scope_decision_required
+sensitive_approval_required
+```
+
+마지막 네 종류는 사용자 소유이며 호환되는 linked UserAction draft 하나가 필요합니다.
+그 밖의 종류에는 이 draft를 둘 수 없습니다.
+
+`ShapingCheckpointGap.status`는 아래 값을 사용합니다.
+
+```text
+current
+resolved
+applied
+```
+
+`WorkflowProjection.kind`는 정확히 아래 값을 사용합니다.
+
+```text
+no_active_task
+shaping_required
+awaiting_user_action
+ready_to_apply_decisions
+ready_for_change_unit
+ready_for_implementation
+implementation
+close_review
+terminal
+```
+
+null이 아닌 `WorkflowProjection.blocking_reason`은 정확히 아래 값을 사용합니다.
+
+```text
+no_current_checkpoint
+shaping_gaps_current
+user_action_pending
+resolved_decisions_not_applied
+change_unit_required
+explicit_advance_required
+recovery_constraint
+```
+
+이 값은 현재 진행만 설명합니다. 닫기 준비 차단 사유는 자체 로컬 범주와 해결 행동을
+유지하며 workflow kind나 required action을 선택하지 않습니다.
 
 `StateSummary.acceptance_policy`는 아래 값을 사용합니다.
 
@@ -977,6 +1044,7 @@ short
 
 ```text
 scope_update
+advance_task
 prepare_write
 record_run
 close_complete

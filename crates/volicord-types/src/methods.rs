@@ -13,8 +13,8 @@ use crate::schema::{
     DryRunIntent, EventRef, EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate,
     EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput, EvidenceProducer,
     EvidenceSummary, EvidenceTarget, GuaranteeDisclosure, GuaranteeDisplay, JsonObject,
-    NextActionSummary, NoEffectResultBase, NonEmptyEventRefs, NotRequestedReadOnlyResultBase,
-    ObservedChanges, PreviewableToolResponse, ProjectContinuityPage, ProjectContinuitySummary,
+    NoEffectResultBase, NonEmptyEventRefs, NotRequestedReadOnlyResultBase, ObservedChanges,
+    PreviewableToolResponse, ProjectContinuityPage, ProjectContinuitySummary,
     RequestedIntentReadOnlyResultBase, RequiredNullable, ResultMetadata, RiskAcceptanceCoverage,
     RunSummary, ShapingCheckpoint, ShapingGapInput, SourceRef, StagedArtifactHandle,
     StagingCreatedResultBase, StateRecordRef, StateSummary, SummaryCard, TaskFlowItem,
@@ -574,9 +574,6 @@ declare_method_result! {
         pub task_ref: StateRecordRef,
         pub change_unit_ref: Option<StateRecordRef>,
         pub state: StateSummary,
-        #[serde(skip)]
-        #[schemars(skip)]
-        pub next_actions: Vec<NextActionSummary>,
     }
 }
 
@@ -748,9 +745,6 @@ declare_method_result! {
         pub stale_write_ticket_refs: Vec<StateRecordRef>,
         pub blocker_refs: Vec<StateRecordRef>,
         pub state: StateSummary,
-        #[serde(skip)]
-        #[schemars(skip)]
-        pub next_actions: Vec<NextActionSummary>,
     }
 }
 
@@ -936,9 +930,6 @@ declare_method_result! {
         pub summary_card: SummaryCard,
         pub active_task: Option<StatusStateSummary>,
         pub status_summary: String,
-        #[serde(skip)]
-        #[schemars(skip)]
-        pub next_actions: Vec<NextActionSummary>,
         pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
         pub blocker_refs: Vec<StateRecordRef>,
         pub write_ticket_summary: Option<WriteTicketStateSummary>,
@@ -1229,9 +1220,6 @@ declare_method_result! {
         pub user_action_resolution: UserActionResolution,
         pub derived_refs: Vec<StateRecordRef>,
         pub state: StateSummary,
-        #[serde(skip)]
-        #[schemars(skip)]
-        pub next_actions: Vec<NextActionSummary>,
     }
 }
 
@@ -1276,9 +1264,6 @@ declare_method_result! {
         pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
         pub state: StateSummary,
         pub close_blockers: Vec<CloseReadinessBlocker>,
-        #[serde(skip)]
-        #[schemars(skip)]
-        pub next_actions: Vec<NextActionSummary>,
     }
 }
 

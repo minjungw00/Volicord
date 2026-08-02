@@ -1,6 +1,6 @@
 # Agent Guide
 
-Work Tasks begin in shaping. Record analysis with `volicord.record_shaping`, resolve every returned UserAction through the User Channel, apply resolved scope decisions with `volicord.update_scope`, create or update the Change Unit without changing phase, and call `volicord.advance_task` only when `workflow.kind=ready_for_implementation`. `volicord.record_run` is reserved for direct or implementation execution.
+Work Tasks begin in shaping. Record analysis with `volicord.record_shaping`; create a current `UserActionRequest` before presenting an actionable user-owned choice; accept a resolution only through the User Channel; apply decisions through their current resolution refs; and create or update the Change Unit without changing phase. Call `volicord.advance_task` only when the tagged workflow requires it. `volicord.record_run` is reserved for direct or implementation execution, Product Repository write preparation is available only in implementation, and close readiness is used only during close review.
 
 <a id="purpose"></a>
 
@@ -13,36 +13,41 @@ and close contracts stay in the [Reference Index](../reference/README.md).
 ## Operating Loop
 
 Do not memorize one universal method sequence. Start from the latest
-authoritative `next_action` and follow its `owner_method` when it names one. If
-there is no current Volicord result, the Task is unknown, or an authoritative
-refresh is required, obtain current state first. Do not poll status between
-steps merely for reassurance.
+authoritative tagged `workflow`. Call its non-null `required_action` with the
+exact `required_refs` and `expected_state_version`, and treat `allowed_actions`
+as a closed boundary rather than probing other workflow tools. If there is no
+current Volicord result, the Task is unknown, or an authoritative refresh is
+required, obtain current state first. Do not poll status between steps merely
+for reassurance.
 
-For each returned handoff:
+For each tagged workflow state:
 
 1. Confirm that it belongs to the intended Product Repository and `Task`.
 2. Inspect files, documentation, and tests that can resolve uncertainty without
    changing authority state.
-3. Ask only for a user-owned decision that changes the next safe action.
+3. Create the current UserAction request before showing a user-owned choice;
+   do not treat a chat answer as its resolution.
 4. Act only inside the current scope and compatible write or sensitive-action
    boundary shown by Volicord.
-5. Record meaningful execution and Evidence after acting when the returned
-   handoff calls for it.
+5. Record meaningful execution and Evidence after acting when the tagged state
+   calls for it.
 6. Report the primary blocker, what is known, what is missing, the next actor,
    and one next safe action.
 7. Keep Evidence, final acceptance, residual risk, and Task completion
    separate.
 
-The returned handoff can legitimately say to inspect, write, record, ask the
-user, wait, reconcile, or close. A later response can choose a different route
-when the recorded facts change.
+The tagged state can legitimately require shaping, a User Channel resolution,
+decision application, a Change Unit, explicit advance, implementation work, or
+close review. A later response can choose a different route when the recorded
+facts change. Close blockers remain blocker-local remediation data and never
+replace current workflow progression.
 
 ## Keep Agent Work And User Judgment Separate
 
 | Moment | Agent responsibility | User responsibility |
 |---|---|---|
 | Shape the work | Inspect context, propose a bounded scope, and name the next safe action. | Set the goal, non-goals, and limits in ordinary language. |
-| Request judgment | Show one focused question, the available options, consequences, and any bounded recommendation. | Answer, reject, defer, narrow the work, or ask for more evidence. |
+| Request judgment | Create the current `UserActionRequest`, then show its focused question, available options, consequences, and any bounded recommendation. | Answer, reject, defer, narrow the work, or ask for more evidence. |
 | Record judgment | Route the user to a supported User Channel and avoid depending on an unrecorded answer. | Record one shown option when the answer must become Volicord state. |
 | Continue or close | Refresh state, prepare writes, record Evidence, and surface blockers. | Decide final acceptance, residual-risk acceptance, cancellation, supersession, or the next blocker to address. |
 
@@ -77,7 +82,7 @@ Representative flows are intentionally not exact API sequences:
 |---|---|
 | Advice or read-only investigation | Inspect the available sources, state uncertainty, and stop without creating write or close ceremony that the work does not need. |
 | Narrow product-file change | Establish the Task only when needed, obtain a compatible current write authorization before editing, run focused verification, record the meaningful result, and follow the resulting close or continuation action. |
-| Multi-file or long-running work | Keep scope, the current Change Unit, Evidence, and user-owned decisions visible; resume from the persisted next action rather than reconstructing a sequence from chat. |
+| Multi-file or long-running work | Keep scope, the current Change Unit, Evidence, and user-owned decisions visible; resume from the tagged workflow projection rather than reconstructing a sequence from chat. |
 | Waiting on the user or another blocker | Report the blocker and next actor. The session may end, but do not claim that the Task is complete. |
 | Sensitive or newly expanded work | Stop before the affected action and follow the projected policy, scope, and User Channel handoff. Do not self-approve or silently keep a lighter path. |
 
@@ -167,8 +172,11 @@ Do not interpret “approved,” “looks good,” or “continue” as every pe
 decision. Keep product direction, technical direction, scope, sensitive-action
 approval, final acceptance, and residual-risk acceptance separate.
 
-When a decision must become Volicord state, show the user the supported User
-Channel path. The stable CLI fallback is:
+When a decision must become Volicord state, first create its current
+`UserActionRequest`, then show the user the supported User Channel path. Only a
+stored resolution for that request supplies authority; chat text does not. Use
+the returned current resolution ref when applying the decision. The stable CLI
+fallback is:
 
 ```sh cli-example
 volicord inbox --repo "<repo>"
@@ -185,8 +193,9 @@ exact command behavior belongs to
 ## Check Before Writes
 
 Before a product-file write, make the intended paths and effect specific enough
-to evaluate. When the returned next action routes to write preparation, obtain
-or reuse a compatible current Write Ticket, then show:
+to evaluate. Only `direct/implementation` or `work/implementation` can prepare
+a write. When `workflow.required_action` routes to write preparation, obtain or
+reuse a compatible current Write Ticket, then show:
 
 - the intended change
 - whether it fits the current scope
@@ -263,11 +272,13 @@ Before close, show the visible close facts:
 - remaining blockers
 - the next close-unblocking action
 
-Use a read-only Close Status check when the user asks whether close is blocked
-or the current close facts need an authoritative refresh. Do not insert a
-separate check merely because a memorized ritual says that completion is near
-when the current response already provides a fresh close handoff. Change `Task`
-state only through the supported close path. Do not close from prose, tests
+Use close readiness only during an intentional close review after the work is
+ready to review. A read-only Close Status check refreshes those close facts
+when the tagged workflow allows it; this review does not replace or change the
+workflow kind. Do not use close readiness to select shaping or implementation
+progression, and do not insert a separate check merely because a memorized
+ritual says that completion is near. Change `Task` state only through the supported close path.
+Do not close from prose, tests
 alone, broad acceptance language, a generated view, or stale status. Final
 acceptance and residual-risk acceptance do not replace missing required
 Evidence.

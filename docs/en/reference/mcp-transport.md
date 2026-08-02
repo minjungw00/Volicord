@@ -545,7 +545,7 @@ the validated operational ownership recorded in the audit event.
 
 | Mode and storage | MCP-visible tools |
 |---|---|
-| `workflow`, writable | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
+| `workflow`, writable | `volicord.intake`, `volicord.update_scope`, `volicord.record_shaping`, `volicord.advance_task`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | `workflow`, readable only | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action` (resume only), `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | `read_only`, readable | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | no readable allowed project | `volicord.list_projects` |

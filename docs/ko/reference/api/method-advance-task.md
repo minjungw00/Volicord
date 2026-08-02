@@ -34,10 +34,11 @@ ref를 제공합니다. Envelope는 현재 기대 state version을 제공합니�
 
 Core는 `mode=work`, `work_phase=shaping`, 현재 `ready` 체크포인트, 일치하는
 Task/checkpoint scope revision, 호환되는 Task/checkpoint/Change Unit baseline 좌표,
-정확한 현재 활성 Change Unit, 정확한 현재 요청과 근거에서 나온 모든 필수 checkpoint
-resolution, 현재 recovery constraint 부재를 요구합니다. stale 또는 superseded
-checkpoint, stale resolution, stale scope revision, 잘못된 Change Unit, 빠지거나 추가된
-resolution, 호환되지 않는 baseline은 효과 없이 거부됩니다.
+정확한 현재 활성 Change Unit, 모든 checkpoint gap의 `applied` 상태, 해당 gap에서 연결된
+현재 resolution ID의 정확한 집합, 현재 recovery constraint 부재를 요구합니다. stale
+또는 superseded checkpoint, `current`이거나 아직 `resolved`에 머문 gap, stale resolution,
+stale scope revision, 잘못된 Change Unit, 빠지거나 추가된 resolution, 호환되지 않는
+baseline은 효과 없이 거부됩니다.
 
 ## 결과와 효과
 

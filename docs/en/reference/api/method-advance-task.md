@@ -36,10 +36,11 @@ supplies the current expected state version.
 
 Core requires `mode=work`, `work_phase=shaping`, a current `ready` checkpoint,
 matching Task/checkpoint scope revision, compatible Task/checkpoint/Change Unit
-baseline coordinates, the exact current active Change Unit, every required
-checkpoint resolution from its exact current request and basis, and no current
-recovery constraint. A stale or superseded checkpoint, stale resolution, stale
-scope revision, wrong Change Unit, missing resolution, extra resolution, or
+baseline coordinates, the exact current active Change Unit, every checkpoint
+gap in `applied` status, the exact set of current resolution IDs linked from
+those gaps, and no current recovery constraint. A stale or superseded
+checkpoint, gap in `current` or `resolved` status, stale resolution, stale scope
+revision, wrong Change Unit, missing resolution, extra resolution, or
 incompatible baseline is rejected without an effect.
 
 ## Result and effects

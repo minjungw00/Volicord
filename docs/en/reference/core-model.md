@@ -532,7 +532,7 @@ The lifecycle here is conceptual authority meaning, not an API state table.
 | Area | Authority meaning |
 |---|---|
 | Intake and shaping | User intent becomes a concrete goal, scope boundary, non-goals, acceptance criteria, Autonomy Boundary, and first safe Change Unit when the relevant owners define support. |
-| Work phase | Advisor and ordinary work begin in shaping; direct work begins in implementation. Creating or replacing the current Change Unit advances ordinary work to implementation. Core rejects a Run kind or write preparation that does not match the current phase. |
+| Work phase | Advisor and work begin in shaping; direct begins in implementation. Creating or replacing the current Change Unit does not change phase. A work Task enters implementation only through `volicord.advance_task` with the exact current ready shaping checkpoint, Change Unit, scope revision, baseline, and resolution set. Core rejects a Run kind or write preparation that does not match the current phase. |
 | Lineage and carry-forward | A new Task may name one predecessor and explicitly select compatible material. Applied material is validated as new input; reference-only context never revives predecessor authority. |
 | Scope update | Accepted scope or Change Unit changes become currently applied only through the scope owner-defined transition. A judgment record alone does not mutate current scope. |
 | Execution and observation | Runs record actions and observations. Product-file writes must be compatible with current scope and a write ticket; read-only work does not create compatibility for subsequent writes. |

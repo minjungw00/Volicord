@@ -77,6 +77,12 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
 
 Core는 그 밖의 모드, 단계, 종류 조합을 커밋 전에 거절합니다. Advisor 결과와 work shaping 결과는 Run이 아니라 지속 shaping checkpoint를 사용합니다.
 
+아직 shaping인 work Task에는 typed `WorkflowRejectionDetails`와 recovery owner
+`volicord.advance_task`를 포함한 `TASK_PHASE_TRANSITION_REQUIRED`를 반환합니다. 그 밖의
+mode/phase/kind 불일치에는 수신한 kind, 폐쇄형 허용 kind 집합, 현재 태그 기반 workflow,
+정확한 recovery owner를 포함한 `RUN_KIND_INCOMPATIBLE`를 반환합니다. 두 거절 모두
+현재 typed recovery data를 포함합니다.
+
 모든 Run은 확인된 현재 Git 작업 공간 맥락이 현재 Change Unit 쓰기 근거와 일치해야
 합니다. 이 규칙은 제품 쓰기 Run뿐 아니라 쓰기가 없는 증거와 닫기 평가 Run에도
 적용되므로, 명시적인 `replace_current` 재기준 설정 없이 브랜치, HEAD, worktree를 바꿔
@@ -460,8 +466,8 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 
 아래 경우는 `ToolRejectedResponse`를 반환합니다.
 
-- 현재 저장된 `Task.mode`와 `work_phase`에 호환되지 않는 `kind`
-- 제품 파일 쓰기, 비어 있지 않은 변경 경로, 또는 `null`이 아닌 쓰기 티켓을 보고하는 `advisor` 요청
+- work Task가 아직 shaping이면 `TASK_PHASE_TRANSITION_REQUIRED`
+- 그 밖의 `kind`, mode, phase 불일치에는 `RUN_KIND_INCOMPATIBLE`
 - 오래된 `expected_state_version`
 - 무효화된 쓰기 티켓 유효성 근거
 - 누락되거나 일치하지 않는 쓰기 티켓 정책 권한 결속
@@ -501,7 +507,7 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 
 유휴 제한 시간으로 무효화된 쓰기 티켓에서는 소비 전에 거절되며 Run, 이벤트, 재실행 행, 아티팩트 승격, 증거 갱신, 증거 관찰, 쓰기 티켓 소비, `project_state.state_version` 증가를 만들지 않습니다.
 
-Task 모드 또는 advisor 읽기 전용 검증 거절도 Run, 닫기 근거 리비전, 증거 갱신, 증거 관찰, 아티팩트 연결이나 승격, 이벤트, 재실행 행, 쓰기 티켓 효과, 상태 버전 증가를 만들지 않습니다.
+mode, phase, Run-kind workflow 거절도 Run, 닫기 근거 리비전, 증거 갱신, 증거 관찰, 아티팩트 연결이나 승격, 이벤트, 재실행 행, 쓰기 티켓 효과, 상태 버전 증가를 만들지 않습니다.
 
 ## `dry_run` 동작
 

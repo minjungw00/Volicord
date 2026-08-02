@@ -75,6 +75,7 @@ enabled_capabilities:
   - managed_codex_connection
   - operational_mcp_sessions
   - project_continuity
+  - shaping_progression
   - user_action_cli_resolution
 ```
 
@@ -86,6 +87,10 @@ enabled_capabilities:
 `invocation_repository_observation`은 정확한 호출 범위 저장소 관찰, 관찰에 결속된
 예상 쓰기, 불일치 delta 기반 Unrecorded Change의 단일 현재 저장 형태를 식별합니다.
 숫자 동작 switch나 upgrade 지침이 아니라 의미 기반 capability 식별자입니다.
+
+`shaping_progression`은 checkpoint/gap/UserAction link aggregate와 명시적 work-phase 전환의
+단일 현재 저장 계약을 식별합니다. 의미 기반 capability 식별자이며 migration switch,
+대체 decoder, 숫자 compatibility branch가 아닙니다.
 
 필드 의미:
 

@@ -535,7 +535,7 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 | 영역 | 권한 의미 |
 |---|---|
 | 입력과 구체화 | 관련 담당 문서가 지원을 정의할 때 사용자 의도가 구체적 목표, 범위 경계, 범위 밖 항목, 수락 기준, Autonomy Boundary, 첫 번째 안전한 Change Unit으로 바뀝니다. |
-| 작업 단계 | Advisor와 일반 work는 shaping에서 시작하고 direct는 implementation에서 시작합니다. 현재 Change Unit을 생성하거나 교체하면 일반 work가 implementation으로 진행됩니다. Core는 현재 단계와 맞지 않는 Run 종류나 쓰기 준비를 거부합니다. |
+| 작업 단계 | advisor와 work는 shaping에서 시작하고 direct는 implementation에서 시작합니다. 현재 Change Unit을 생성하거나 교체해도 단계는 바뀌지 않습니다. work Task는 정확한 현재 ready shaping checkpoint, Change Unit, 범위 revision, baseline, resolution 집합을 사용한 `volicord.advance_task`로만 implementation에 진입합니다. Core는 현재 단계와 맞지 않는 Run 종류나 쓰기 준비를 거부합니다. |
 | Lineage와 carry-forward | 새 Task는 predecessor 하나를 지정하고 호환 material을 명시적으로 선택할 수 있습니다. 적용 material은 새 입력으로 검증하며 reference-only 맥락은 이전 권한을 되살리지 않습니다. |
 | 범위 업데이트 | 받아들인 범위나 Change Unit 변경은 범위 담당 문서가 정의한 전이를 통해서만 현재 적용 상태가 됩니다. 판단 기록만으로 현재 적용 범위가 바뀌지 않습니다. |
 | 실행과 관찰 | 실행 기록은 행동과 관찰을 기록합니다. 제품 파일 쓰기는 현재 적용 범위와 쓰기 티켓에 호환되어야 하며, 읽기 전용 작업은 이후 쓰기에 대한 호환성을 만들지 않습니다. |

@@ -114,7 +114,8 @@ diagnostic, artifact, or operational-session records change.
 Project-state records include:
 
 - `project_state`, project workflow policy, Tasks, acceptance criteria,
-  supplemental claims, and Change Units;
+  supplemental claims, Change Units, shaping checkpoints, shaping gaps, and
+  their UserAction links;
 - Write Tickets, Runs, current close basis, blockers, authority events, and
   immutable replay rows;
 - evidence-capture intents and receipts, artifacts and links, evidence
@@ -125,6 +126,30 @@ Project-state records include:
 - normalized host sessions, turns, and hook tool invocations, plus managed MCP
   project sessions that retain their required thread and may precede their
   Registry runtime binding.
+
+### Shaping checkpoint aggregate
+
+`shaping_checkpoints` owns the Task, current scope revision, optional baseline,
+summary, optional implementation boundary, readiness, source/evidence refs,
+creation time, and optional supersession time. The partial unique index over a
+Task where `superseded_at IS NULL` permits at most one current checkpoint.
+Replacing current shaping marks the prior row `readiness=superseded` and sets
+its supersession time before the new aggregate becomes current.
+
+`shaping_checkpoint_gaps` owns each gap's closed kind, summary, affected refs,
+and `current|resolved|applied` status. A `ready` checkpoint cannot receive or
+retain a `current` gap. `shaping_checkpoint_user_actions` is a same-project,
+same-Task, same-checkpoint, same-gap link to the exact UserAction request and,
+after User Channel resolution, its immutable resolution. A user-owned gap must
+have exactly one such request link; a non-user-owned gap has none. Resolving a
+linked request changes the gap to `resolved` and may make a complete checkpoint
+`ready`; applying the decision through the scope transition changes resolved
+gaps to `applied`.
+
+Every aggregate read strictly decodes identifiers, closed values, canonical
+JSON arrays, timestamps, task ownership, and link consistency. A malformed or
+inconsistent member is corrupt persisted owner data; Store does not omit it,
+invent a default, or choose a second current checkpoint.
 
 `project_workflow_policies` is the authoritative project workflow-policy
 record family. Its canonical aggregate contains the project identity, exact

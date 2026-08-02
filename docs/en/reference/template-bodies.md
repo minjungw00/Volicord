@@ -293,10 +293,11 @@ boundaries without requiring a fixed status/intake/check-close call ritual.
 - Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.
 - Follow the tagged workflow's `required_action`; do not call workflow tools speculatively.
 - Record shaping with `volicord.record_shaping` before implementation-oriented scope work. Creating or replacing a Change Unit does not advance the Task phase.
-- User-owned decisions require current UserAction requests. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.
-- Do not call `volicord.advance_task` while a UserAction is pending, or `volicord.prepare_write` before the Task enters implementation.
+- Create current UserAction requests before presenting user-owned choices. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.
+- After User Channel resolution, apply each decision through the current resolution refs.
+- Call `volicord.advance_task` only when the tagged workflow requires it and never while a UserAction is pending. Do not call `volicord.prepare_write` before the Task enters implementation.
 - Never hide or paraphrase a rejected mutation as success. Surface every fact in `presentation.must_surface`, including the current Task phase and exact recovery method.
-- Close blockers do not replace tagged workflow progression.
+- Evaluate close readiness only during close review. Close blockers do not replace tagged workflow progression.
 - Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.
 - Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.
 <!-- END VOLICORD MANAGED GUIDANCE -->

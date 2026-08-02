@@ -99,6 +99,41 @@ terminal 결과는 담지 않습니다.
   project-session binding의 나머지 관찰을
   `unavailable(managed_session_terminated)`로 닫습니다.
 
+저장되는 폐쇄형 unavailable reason 집합은 다음과 같습니다.
+
+```text
+invalid_observer_limits
+invalid_repository_root
+not_git_repository
+git_layout_unavailable
+git_command_unavailable
+git_command_failed
+process_timeout
+git_output_limit_exceeded
+process_input_limit_exceeded
+candidate_path_limit_exceeded
+total_hash_bytes_limit_exceeded
+file_size_limit_exceeded
+serialization_depth_limit_exceeded
+serialization_size_limit_exceeded
+invalid_relative_path
+non_utf8_path
+path_outside_repository
+inaccessible_path
+unsupported_path_state
+unstable_repository
+repository_identity_changed
+observer_contract_mismatch
+git_object_unavailable
+invocation_denied
+missing_open_observation
+post_tool_not_observed
+managed_session_terminated
+```
+
+마지막 두 reason은 PostTool이 없을 때 open 관찰을 terminal lifecycle 결과로 닫습니다.
+Replay에서도 terminal row는 그대로 유지됩니다.
+
 Turn identity는 lexical 또는 numeric 순서가 아니라 typed exact equality로 비교합니다.
 수락한 prompt capture와 이전 turn terminalization은 immediate bounded project
 transaction 하나를 공유합니다. Runtime cleanup은 정확한 Registry project-session

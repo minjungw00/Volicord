@@ -191,7 +191,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 The response descriptor defines success, rejection, and preview as an exact `anyOf` branch union. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. Shared rejection and preview fields remain distinct from the success fields above.
 <!-- END GENERATED: contract-structures api.method.update_scope.response[response_variants] api.method.update_scope.response[result_body] api.method.update_scope.response[result_metadata] api.method.update_scope.response[rejection] api.method.update_scope.response[dry_run] -->
 
-The supported `change_unit.operation` values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how each operation is reflected in `change_unit_ref`, `state.active_change_unit_ref`, stale write-ticket refs, blocker refs, and `next_actions`.
+The supported `change_unit.operation` values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how each operation is reflected in `change_unit_ref`, `state.active_change_unit_ref`, stale write-ticket refs, blocker refs, and the tagged `state.workflow` projection.
 
 When `change_unit.operation=create_current` or `change_unit.operation=replace_current`, `change_unit.effect_contract` may be recorded on the new current Change Unit. The effect contract is optional Core state. It can express allowed effects, forbidden effects, allowed Product Repository paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations without creating a workflow engine or replacing user-owned authority records. The same operation records the verified workspace coordinate used by later write preparation. A non-Git repository records no VCS binding and does not receive Git-specific comparison checks.
 
@@ -332,7 +332,7 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  work_phase: implementation
+  work_phase: shaping
   goal_summary: "Limit saved search filters to owner and label fields."
   scope_summary: "Saved-filter owner and label edit validation."
   non_goals:

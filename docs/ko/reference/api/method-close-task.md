@@ -347,7 +347,7 @@ API 경계 블록:
 각 응답 설명자는 지원하는 응답 분기를 정확한 `anyOf` 분기 union으로 정의합니다. 미리보기를 노출하는 응답 설명자만 해당 분기를 포함합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.
 <!-- END GENERATED: contract-structures api.method.check_close.response[response_variants] api.method.check_close.response[result_body] api.method.check_close.response[result_metadata] api.method.check_close.response[rejection] api.method.close_task.response[response_variants] api.method.close_task.response[result_body] api.method.close_task.response[result_metadata] api.method.close_task.response[rejection] api.method.close_task.response[dry_run] -->
 
-두 닫기 계열 결과 모두 최상위 `next_actions` 목록이 없습니다. 닫기 차단 사유의 해결 행동은 해당 `CloseReadinessBlocker.next_actions` 목록 안에만 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 배열 순서나 다른 차단 사유의 행동은 전역 다음 행동을 선택하지 않으며 `summary_card`도 첫 차단 사유에서 권한을 파생하지 않습니다.
+각 닫기 차단 사유의 해결 행동은 해당 `CloseReadinessBlocker.next_actions` 목록 안에만 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 각 차단 사유는 독립된 fact이고 `summary_card`는 표시 데이터이며, 진행 권한은 tagged `workflow`에 남습니다.
 
 다른 작업을 위한 대기 사용자 행동과 정보성 전용 대기 행동은 더 넓은
 `state.pending_user_action_summaries` 상태 보기에 계속 나타날 수 있습니다. 요청한

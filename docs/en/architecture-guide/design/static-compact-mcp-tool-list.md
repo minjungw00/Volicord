@@ -17,8 +17,9 @@ capabilities.
 
 Runtime request schemas omit documentation-only examples. Tool results use
 typed canonical content, schema validation, compact mutation projection,
-bounded committed-result recovery, and owner-method-bearing next-action data.
-Tool ownership does not fork by protocol revision.
+bounded committed-result recovery, tagged workflow authority, and typed
+workflow rejection recovery. Tool ownership does not fork by protocol
+revision.
 
 ## Invariants
 
@@ -29,8 +30,9 @@ Tool ownership does not fork by protocol revision.
   tool.
 - Runtime schemas preserve required validation and authority fields while
   omitting documentation-only material.
-- Compact mutation results retain actionable recovery and next-action
-  coordinates.
+- Compact mutation results retain the tagged workflow's required action,
+  allowed actions, exact refs and concurrency coordinate, plus typed rejection
+  recovery.
 - Generated contract snapshots are derived checks, not alternate tool owners.
 
 ## Responsibility boundaries
@@ -62,8 +64,8 @@ re-execute a committed mutation to rebuild output.
 ## Scope exclusions
 
 This design does not define the public tool list, schema fields, byte limits,
-Connection modes, `next_action` meaning, or protocol support. It does not
-provide state-dependent dynamic tool discovery.
+Connection modes, workflow-state meaning, blocker-local remediation, or
+protocol support. It does not provide state-dependent dynamic tool discovery.
 
 ## Implementation routes
 

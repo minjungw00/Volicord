@@ -1,5 +1,5 @@
 use crate::acceptance_facts::active_acceptance_criteria;
-use crate::close_readiness::{close_next_action, plan_close_readiness, CloseReadinessRequest};
+use crate::close_readiness::{plan_close_readiness, CloseReadinessRequest};
 use crate::continuity::project_continuity_summary_from_record;
 use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::{
@@ -11,9 +11,6 @@ use crate::evidence_facts::{
 };
 use crate::evidence_projection::evidence_summary_for_display;
 use crate::guarantee_projection::guarantee_display;
-use crate::guidance::{
-    next_actions_for_state, normalize_next_action_collection, unique_next_actions,
-};
 use crate::method_execution::{prepare_or_response, PlanError};
 use crate::method_rejection::validation_plan_error;
 use crate::pipeline::{
@@ -21,7 +18,6 @@ use crate::pipeline::{
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::policy::close_readiness::is_terminal_lifecycle;
 use crate::policy::close_readiness_evidence::project_close_evidence_summary;
 use crate::policy::workflow::{project_workflow_policy, resolve_task_control_authority};
 use crate::record_refs::state_ref;
@@ -41,8 +37,8 @@ use volicord_types::methods::{
 };
 use volicord_types::schema::{
     AuthorityReceipt, CloseReadinessBlocker, ContinuityCursor, ContinuityPageInfo,
-    ContinuityPageRequest, NextActionSummary, ProjectContinuityPage, RequiredNullable,
-    TaskFlowItem, ToolEnvelope, DEFAULT_CONTINUITY_PAGE_SIZE, MAX_CONTINUITY_PAGE_SIZE,
+    ContinuityPageRequest, ProjectContinuityPage, RequiredNullable, TaskFlowItem, ToolEnvelope,
+    DEFAULT_CONTINUITY_PAGE_SIZE, MAX_CONTINUITY_PAGE_SIZE,
 };
 use volicord_types::values::{
     CloseState, MethodName, StateRecordKind, StatusCloseState, TaskLifecyclePhase, UtcTimestamp,
@@ -234,7 +230,6 @@ fn status_result_fields(
     let mut continuity_summary = None;
     let mut task_flow = None;
     let mut authority_receipt = None;
-    let mut next_actions = Vec::new();
     let mut card_pending_user_action_count = 0usize;
     let guarantee_profile = if include.guarantees {
         Some(project_enforcement_profile(store)?)
@@ -280,16 +275,6 @@ fn status_result_fields(
                 Some(state_version),
             )
         });
-        let task_next_actions = if is_terminal_lifecycle(&task.lifecycle_phase) {
-            Vec::new()
-        } else {
-            next_actions_for_state(
-                task.mode,
-                &task_ref,
-                change_unit_ref.as_ref(),
-                state_version,
-            )
-        };
         let all_pending_user_actions =
             projected_pending_user_action_refs(store, &task_id, state_version, &user_action_now)
                 .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
@@ -341,25 +326,12 @@ fn status_result_fields(
         } else {
             close_plan.blockers.clone()
         };
-        let mut effective_close_actions = close_next_actions(&effective_close_blockers);
-        if effective_close_state == CloseState::Ready {
-            let mut required_refs = vec![task_ref.clone()];
-            required_refs.extend(change_unit_ref.clone());
-            effective_close_actions.push(close_next_action(
-                "Complete the current Task.",
-                required_refs,
-            ));
-        }
         evidence_gate = Some(close_plan.evidence_gate);
         current_close_basis = close_plan.current_close_basis.clone();
         if include.close {
             close_state = Some(status_close_state(effective_close_state));
             risk_acceptance_coverage = Some(close_plan.risk_acceptance_coverage.clone());
             close_blockers = Some(effective_close_blockers.clone());
-            next_actions.extend(effective_close_actions.clone());
-        }
-        if include.task {
-            next_actions.extend(task_next_actions.clone());
         }
         let projected_evidence = if include.task || include.evidence || include.close {
             let evidence_facts = load_current_evidence_summary_facts(
@@ -463,8 +435,6 @@ fn status_result_fields(
             task_flow = Some(projected_task_flow(store, task, state_version)?);
         }
     }
-    next_actions = unique_next_actions(next_actions);
-    normalize_next_action_collection(&mut next_actions, state_version);
     let summary_card = summary_card(SummaryCardInput {
         task,
         recording: "read_only",
@@ -500,7 +470,6 @@ fn status_result_fields(
         summary_card,
         active_task,
         status_summary: status_summary_for(task, close_state, close_blockers.as_deref()),
-        next_actions,
         pending_user_action_summaries,
         blocker_refs,
         write_ticket_summary,
@@ -652,11 +621,4 @@ fn status_close_state(close_state: CloseState) -> StatusCloseState {
         CloseState::Cancelled => StatusCloseState::Cancelled,
         CloseState::Superseded => StatusCloseState::Superseded,
     }
-}
-
-fn close_next_actions(blockers: &[CloseReadinessBlocker]) -> Vec<NextActionSummary> {
-    blockers
-        .iter()
-        .flat_map(|blocker| blocker.next_actions.clone())
-        .collect()
 }

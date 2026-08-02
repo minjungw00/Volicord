@@ -36,10 +36,12 @@ checkpoint-readiness semantics are `stable`.
 
 The request addresses the exact current Task and current scope revision. It
 supplies a shaping summary, an implementation or advisory boundary, the
-current baseline coordinate when known, typed gaps, source refs, evidence
-refs, and a `UserActionDraft` for every user-owned gap. A non-user-owned gap
-must not carry a user-action draft. A user-owned gap must carry exactly one
-compatible draft.
+current baseline coordinate when known, typed gaps from the closed
+`ShapingGapKind` set, source refs, evidence refs, and a
+`ShapingUserActionDraft` for every user-owned gap. A non-user-owned gap must
+not carry a user-action draft. A user-owned gap must carry exactly one
+compatible draft; Core creates and links its current `UserActionRequest` in the
+same transaction, before the choice can be presented as actionable.
 
 Core calculates `readiness`. A checkpoint is `ready` only when its current
 required-gap set is empty and its boundary, scope revision, and baseline are
@@ -50,7 +52,10 @@ most one non-superseded checkpoint.
 For a `work` Task, decision requests created for product, technical, scope, or
 sensitive user-owned gaps include `advance_task` in `required_for`. For an
 `advisor` Task, a ready checkpoint may establish the current advice result and
-advisor close basis. It does not establish an implementation close basis.
+advisor close basis when `close_assessment` is supplied. A work checkpoint
+forbids that close assessment and does not establish an implementation close
+basis. Exact gap kinds, statuses, and request compatibility are owned by
+[API Value Sets](schema-value-sets.md).
 
 ## Atomic behavior
 
@@ -108,8 +113,9 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 The response descriptor defines success, rejection, and preview as an exact `anyOf` branch union. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. Shared rejection and preview fields remain distinct from the success fields above.
 <!-- END GENERATED: contract-structures api.method.record_shaping.response[response_variants] api.method.record_shaping.response[result_body] api.method.record_shaping.response[result_metadata] api.method.record_shaping.response[rejection] api.method.record_shaping.response[dry_run] -->
 
-The success result returns the current checkpoint ref, the request refs created
-for its user-owned gaps, and the current workflow projection. Preview performs
+The success result returns the full current `ShapingCheckpoint` object, the
+request refs created for its user-owned gaps, and the current workflow
+projection. Preview performs
 the same semantic validation but creates no durable identity or effect.
 
 ## Workflow recovery and presentation

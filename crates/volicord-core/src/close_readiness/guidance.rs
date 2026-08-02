@@ -185,21 +185,6 @@ pub(crate) fn close_guidance(
     }
 }
 
-pub(crate) fn close_next_action(
-    label: &str,
-    required_refs: Vec<StateRecordRef>,
-) -> NextActionSummary {
-    NextActionSummary {
-        action_kind: NextActionKind::CloseTask,
-        owner_method: Some(MethodName::CloseTask),
-        allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-        label: label.to_owned(),
-        blocking_question: None,
-        expected_state_version: RequiredNullable::null(),
-        required_refs,
-    }
-}
-
 #[cfg(test)]
 #[path = "tests/guidance.rs"]
 mod tests;

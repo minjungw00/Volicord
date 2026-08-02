@@ -103,9 +103,9 @@ The closed compatibility matrix is:
 
 | Action kind | Compatible `required_for` values |
 |---|---|
-| `product_decision`, `technical_decision` | `scope_update`, `prepare_write`, `record_run`, `close_complete`, `close_supersede`, `informational` |
-| `scope_decision` | `scope_update`, `prepare_write`, `record_run`, `close_complete`, `close_supersede`, `informational` |
-| `sensitive_approval` | `prepare_write`, `record_run`, `close_complete`, `close_supersede`, `informational` |
+| `product_decision`, `technical_decision` | `scope_update`, `advance_task`, `prepare_write`, `record_run`, `close_complete`, `close_supersede`, `informational` |
+| `scope_decision` | `scope_update`, `advance_task`, `prepare_write`, `record_run`, `close_complete`, `close_supersede`, `informational` |
+| `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete`, `close_supersede`, `informational` |
 | `final_acceptance`, `residual_risk_acceptance` | `close_complete`, `informational` |
 | `cancellation` | `close_cancel`, `informational` |
 | `evidence_observation` | `record_run`, `close_complete`, `informational` |

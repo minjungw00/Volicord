@@ -41,7 +41,6 @@ pub(crate) use facts::{
     facts_with_projected_acceptance_criteria, facts_with_record_run_projection,
     facts_with_resolved_authorities, facts_with_resolved_unrecorded_changes, CloseReadinessFacts,
 };
-pub(crate) use guidance::close_next_action;
 pub(crate) use recording::{
     build_record_run_close_basis, RecordRunCloseBasisContext, RecordRunCloseBasisError,
 };

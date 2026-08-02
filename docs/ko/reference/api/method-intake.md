@@ -47,10 +47,11 @@ Task 세분성 지침:
 
 Core는 이 구분을 오래 유지되는 상태로 만듭니다. 새 Task는 Task 생명주기와 별도로
 `work_phase`를 기록합니다. `advisor`와 `work`는 `shaping`에서 시작하고 `direct`는
-`implementation`에서 시작합니다. 현재 적용 Change Unit을 만들거나 교체하면 `work`
-Task는 `implementation`으로 전환됩니다. Task를 재개하면 기록된 단계를 유지합니다.
-이 단계는 Run 종류와 쓰기 티켓 호환성을 제한하지만 두 번째 Task, 개발 방법론 엔진,
-현재 적용 범위의 대체물이 아닙니다.
+`implementation`에서 시작합니다. 현재 적용 Change Unit을 만들거나 교체해도 단계는
+바뀌지 않습니다. work Task는 현재 shaping checkpoint와 Change Unit이 정확한 진입
+요건을 만족한 뒤 `volicord.advance_task`를 통해서만 implementation에 진입합니다. Task를
+재개하면 기록된 단계를 유지합니다. 이 단계는 Run 종류와 쓰기 티켓 호환성을 제한하지만
+두 번째 Task, 개발 방법론 엔진, 현재 적용 범위의 대체물이 아닙니다.
 
 Task를 만들 때 선행 Task 관계 하나도 기록할 수 있습니다. 이 관계는 새 Task가 생긴
 이유와 선택적으로 승계한 선행 자료를 보존하지만 선행 Task 권한을 현재 상태로 만들지

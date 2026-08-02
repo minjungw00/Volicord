@@ -79,6 +79,7 @@ enabled_capabilities:
   - managed_codex_connection
   - operational_mcp_sessions
   - project_continuity
+  - shaping_progression
   - user_action_cli_resolution
 ```
 
@@ -92,6 +93,11 @@ capability inference.
 shape for exact invocation-scoped repository observations, observation-bound
 expected writes, and unmatched-delta Unrecorded Changes. It is a semantic
 capability identifier, not a numeric behavior switch or an upgrade instruction.
+
+`shaping_progression` identifies the single current checkpoint/gap/UserAction
+link aggregate and explicit work-phase transition storage contract. It is a
+semantic capability identifier, not a migration switch, alternate decoder, or
+numeric compatibility branch.
 
 Field meanings:
 

@@ -269,7 +269,6 @@ AuthorityReceipt:
   close_blockers: CloseReadinessBlocker[]
   completion_claim_allowed: boolean
   next_actor: string
-  next_action: NextActionSummary | null
 ```
 
 Meaning:
@@ -292,8 +291,10 @@ Meaning:
 - `AuthorityReceipt` is Core-generated from one freshly read project state
   version. Its blocker list is complete even when optional status projections
   are omitted. `product_file_write_observed` describes the latest recorded Run,
-  not every historical Run. The receipt does not itself commit, close, accept,
-  or prove product correctness.
+  not every historical Run. `next_actor` is a compact actor classification;
+  current method progression remains in the tagged `StateSummary.workflow`.
+  The receipt does not itself commit, close, accept, or prove product
+  correctness.
 
 <a id="unrecorded-change-reconciliation-shapes"></a>
 ## Unrecorded change reconciliation shapes
@@ -486,6 +487,30 @@ WorkflowProjection:
   blocking_reason: string | null
   checkpoint: ShapingCheckpointSummary | null
 
+ShapingUserActionDraft:
+  action: UserActionDraft
+  expires_at: string | null
+
+ShapingGapInput:
+  gap_kind: string
+  summary: string
+  affected_refs: StateRecordRef[]
+  user_action: ShapingUserActionDraft | null
+
+ShapingCheckpoint:
+  shaping_checkpoint_id: string
+  project_id: string
+  task_id: string
+  scope_revision: integer
+  baseline_ref: string | null
+  summary: string
+  implementation_boundary: string | null
+  readiness: string
+  source_refs: SourceRef[]
+  evidence_refs: StateRecordRef[]
+  created_at: string
+  superseded_at: string | null
+
 ShapingCheckpointSummary:
   checkpoint_ref: StateRecordRef
   readiness: string
@@ -505,7 +530,14 @@ ShapingCheckpointGap:
   user_action_resolution_ref: StateRecordRef | null
 ```
 
-The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but do not choose this required action before `close_review`. User-owned current gaps always carry an exact current UserAction request ref.
+`ShapingCheckpoint` is the first-class durable record returned by
+`volicord.record_shaping`; the workflow embeds its current compact summary and
+gap projections. `ShapingGapInput.user_action` is non-null exactly for a
+user-owned gap and carries the compatible typed draft that Core materializes
+and links atomically. Readiness, gap kinds, gap statuses, workflow kinds, and
+blocking reasons use the closed sets in [API Value Sets](schema-value-sets.md).
+
+The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it.
 
 Workflow mutation rejection details embed this same complete tagged
 `WorkflowProjection`; they do not reconstruct progression from the received
@@ -616,7 +648,7 @@ Meaning:
   styling, and adapter-only explanatory copy are adapter presentation and are
   not Core-returned display strings.
 - When evidence or close projection is selected, `SummaryCard.evidence` is the exact `EvidenceGateSummary.state` value owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). It does not independently infer a state from staged input or `EvidenceSummary.evidence_state`.
-- `SummaryCard.next` is a display hint only. `SummaryCard.next_action` may carry a matching structured `NextActionSummary` and may be omitted when no structured action applies. Neither field is workflow authority, and close summaries do not derive either field by selecting the first blocker.
+- `SummaryCard.next` is a display hint only. `SummaryCard.next_action` may carry a matching structured `NextActionSummary` and may be omitted when no structured action applies. Neither field is workflow authority; close blockers remain independent facts.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
 - For an already-existing pending user action, `SummaryCard.user_action`,
   `SummaryCard.next`, method `status_summary`, blocker messages, and every other
@@ -625,7 +657,7 @@ Meaning:
   request question, options, context, form, path, command, URL, or credential.
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
 - `NextActionSummary` is the canonical blocker-local or preview remediation shape. Its valid fields are `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, and `required_refs`.
-- Successful method results expose tagged `workflow` progression instead of top-level `next_actions` collections. `CloseReadinessBlocker.next_actions` remains local to its blocker and has no cross-blocker selection role.
+- Successful method results expose tagged `workflow` progression. `CloseReadinessBlocker.next_actions` remains local to its blocker and has no cross-blocker selection role.
 - `allowed_operation_categories` names the owner-supported invocation categories for the action. It does not prove that the current connection can dispatch the action, does not grant user authority, and is empty when no supported API method invocation is identified.
 - `expected_state_version` is always present and nullable. For an API mutation action that consumes optimistic concurrency, it contains the current `project_state.state_version` from the projection that produced the action and maps directly to `ToolEnvelope.expected_state_version` for that invocation. It is `null` for read actions, `user_only` actions, actions without a single owner method, and owner-method actions that do not consume optimistic concurrency.
 - `expected_state_version` is a retryable concurrency input, not identity or authority. It can become stale after another committed mutation; callers refresh current state after `STATE_VERSION_CONFLICT`. Neither `required_refs` nor any ref's `produced_at_state_version` supplies or overrides this token.

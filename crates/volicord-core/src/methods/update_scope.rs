@@ -13,7 +13,6 @@ use crate::error_boundary::{
 use crate::evidence_facts::load_current_evidence_summary_facts;
 use crate::evidence_projection::evidence_summary_for_display;
 use crate::guarantee_projection::guarantee_display;
-use crate::guidance::next_actions_for_state;
 use crate::identity::{allocate_acceptance_criterion_id, allocate_change_unit_id};
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -59,7 +58,7 @@ use volicord_types::ids::{ChangeUnitId, TaskId};
 use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
 };
-use volicord_types::schema::{AcceptanceCriterion, JsonObject, NextActionSummary, StateRecordRef};
+use volicord_types::schema::{AcceptanceCriterion, JsonObject, StateRecordRef};
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
     StateRecordKind, TaskControlLevel, UtcTimestamp, WriteTicketInvalidationReason,
@@ -129,7 +128,7 @@ impl CoreService {
                     "scope",
                     "commit",
                     "Scope update would update current Task scope and Change Unit state.",
-                    plan.next_actions,
+                    Vec::new(),
                 )),
             );
         }
@@ -698,13 +697,11 @@ struct UpdateScopeResponseProjection {
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
     result_fields: UpdateScopeResultFields,
-    next_actions: Vec<NextActionSummary>,
 }
 
 struct UpdateScopePlan {
     operation: OperationPlan,
     result_fields: UpdateScopeResultFields,
-    next_actions: Vec<NextActionSummary>,
 }
 
 impl UpdateScopeResponseProjection {
@@ -717,7 +714,6 @@ impl UpdateScopeResponseProjection {
                 self.event_payload,
             ),
             result_fields: self.result_fields,
-            next_actions: self.next_actions,
         }
     }
 }
@@ -813,12 +809,6 @@ fn project_update_scope_response(
         &request.envelope.project_id,
         Some(&request.task_id),
         Some(planned_state_version),
-    );
-    let next_actions = next_actions_for_state(
-        synthetic_task.mode,
-        &task_ref,
-        change_unit_ref.as_ref(),
-        planned_state_version,
     );
     let enforcement_profile = project_enforcement_profile(store)?;
     let guarantee_display = guarantee_display(
@@ -921,7 +911,6 @@ fn project_update_scope_response(
         stale_write_ticket_refs,
         blocker_refs,
         state,
-        next_actions: next_actions.clone(),
     };
     let event_payload = object_from_value(json!({
         "task_id": request.task_id.clone(),
@@ -937,7 +926,6 @@ fn project_update_scope_response(
         storage_mutations,
         event_payload,
         result_fields,
-        next_actions,
     })
 }
 

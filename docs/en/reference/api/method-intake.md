@@ -50,10 +50,12 @@ Task-granularity guidance:
 Core makes that distinction durable. A newly created Task records a
 `work_phase` separately from the Task lifecycle: `advisor` and `work` begin in
 `shaping`, while `direct` begins in `implementation`. Creating or replacing the
-current Change Unit advances a `work` Task to `implementation`. Resuming a Task
-keeps its recorded phase. The phase constrains Run-kind and write-ticket
-compatibility; it is not a second Task, a methodology engine, or a substitute
-for current scope.
+current Change Unit does not change phase. A work Task enters implementation
+only through `volicord.advance_task` after its current shaping checkpoint and
+Change Unit satisfy the exact entry requirements. Resuming a Task keeps its
+recorded phase. The phase constrains Run-kind and write-ticket compatibility;
+it is not a second Task, a methodology engine, or a substitute for current
+scope.
 
 Task creation can also record one predecessor relation. The relation preserves
 why the new Task exists and which predecessor material was selected for

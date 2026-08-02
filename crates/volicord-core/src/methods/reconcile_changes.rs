@@ -507,7 +507,6 @@ fn plan_reconcile_changes(
         rejected_resolution_requests,
         state,
         close_blockers: close_plan.blockers.clone(),
-        next_actions: result_next_actions.clone(),
     };
     let event_payload = object_from_value(json!({
         "task_id": request.task_id,

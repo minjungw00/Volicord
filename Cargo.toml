@@ -31,8 +31,8 @@ version = "0.9.1"
 
 [workspace.metadata.architecture.packages.volicord-types]
 group = "shared-types"
-description = "Dependency-safe shared schemas, identifiers, closed values, canonical encodings, platform-neutral path values, and adapter-neutral domain facts."
-description_ko = "의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 플랫폼 중립 경로 값, 어댑터 중립 도메인 사실을 담당합니다."
+description = "Dependency-safe public schemas and closed values, including first-class shaping checkpoints, tagged workflow progression, typed workflow rejection, canonical encodings, and platform-neutral facts."
+description_ko = "일급 shaping checkpoint, 태그 기반 workflow 진행, typed workflow rejection, 정규 인코딩, 플랫폼 중립 fact를 포함하는 의존 안전한 공개 스키마와 폐쇄형 값을 담당합니다."
 kind = "schema"
 production = true
 boundary = "core-facing"
@@ -42,8 +42,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-host-contract]
 group = "host-contract"
-description = "Dependency-safe semantic host contracts and typed host correlation identities."
-description_ko = "의존 안전한 의미 기반 호스트 계약과 타입이 있는 호스트 상관관계 식별자를 담당합니다."
+description = "Dependency-safe host contracts for exact Guard hook correlation and prospective effect classification, without user or Core progression authority."
+description_ko = "사용자 권한이나 Core 진행 권한을 만들지 않고 정확한 Guard hook 상관관계와 예상 효과 분류를 제공하는 의존 안전한 host contract를 담당합니다."
 kind = "schema"
 production = true
 boundary = "core-facing"
@@ -64,8 +64,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-mcp-wire]
 group = "mcp-wire"
-description = "MCP request, result, error, structured-content, JSON-RPC envelope, and generated wire-schema ownership."
-description_ko = "MCP 요청, 결과, 오류, 구조화 콘텐츠, JSON-RPC 엔벌로프, 생성 wire 스키마를 담당합니다."
+description = "MCP shaping and advance arguments/results, tagged workflow presentation shapes, errors, structured content, JSON-RPC envelopes, and generated wire schemas."
+description_ko = "MCP shaping 및 advance 인자와 결과, 태그 기반 workflow presentation 형태, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다."
 kind = "schema"
 production = true
 boundary = "adapter"
@@ -75,8 +75,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-store]
 group = "storage"
-description = "Canonical persistence, Runtime Home mechanics, strict persisted-row decoding into invariant-preserving typed records, and transaction application."
-description_ko = "정규 영속화, Runtime Home 메커니즘, 영속 row를 불변 조건 보존 typed record로 바꾸는 엄격한 디코딩, 트랜잭션 적용을 담당합니다."
+description = "Canonical Runtime Home persistence, strict shaping-aggregate and persisted-row decoding, atomic checkpoint/UserAction/phase transitions, and invariant-preserving transaction application."
+description_ko = "정규 Runtime Home 영속화, shaping aggregate와 영속 row의 엄격한 디코딩, 원자적 checkpoint/UserAction/단계 전이, 불변 조건을 보존하는 transaction 적용을 담당합니다."
 kind = "infrastructure"
 production = true
 boundary = "core-facing"
@@ -117,8 +117,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-user-action-service]
 group = "user-action-service"
-description = "Semantic UserAction validation, authority, lifecycle, persistence mapping, resolution, continuity, and projection from Store-validated typed records."
-description_ko = "의미 기반 UserAction 검증, 권한, 생명주기, 영속화 매핑, 해결, 연속성, Store가 검증한 typed record 기반 투영을 담당합니다."
+description = "Semantic UserAction construction, validation, authority, lifecycle, shaping-link identity, persistence mapping, resolution, continuity, and projection from Store-validated records."
+description_ko = "의미 기반 UserAction 구성, 검증, 권한, 생명주기, shaping link identity, 영속화 매핑, 해결, 연속성, Store가 검증한 record 기반 투영을 담당합니다."
 kind = "application"
 production = true
 boundary = "core-facing"
@@ -128,8 +128,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-core]
 group = "core"
-description = "Adapter-independent request orchestration, policy evaluation, method planning, and atomic commit coordination."
-description_ko = "어댑터 독립 요청 조율, 정책 평가, 메서드 계획, 원자적 커밋 조율을 담당합니다."
+description = "Adapter-independent record_shaping and advance_task orchestration, tagged workflow projection, typed recovery, policy evaluation, method planning, and atomic commit coordination."
+description_ko = "어댑터 독립 record_shaping 및 advance_task 조율, 태그 기반 workflow projection, typed recovery, 정책 평가, 메서드 계획, 원자적 커밋 조율을 담당합니다."
 kind = "application"
 production = true
 boundary = "core"
@@ -155,8 +155,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-user-action-presentation]
 group = "user-action-presentation"
-description = "Typed CLI UserAction presentation, JSON Schemas, and command-model-backed recovery instructions."
-description_ko = "타입이 있는 CLI UserAction 표현, JSON Schema, 명령 모델 기반 복구 안내를 담당합니다."
+description = "Typed User Channel presentation, CLI JSON Schemas, chat-nonauthority boundaries, and command-model-backed resolution instructions."
+description_ko = "typed User Channel presentation, CLI JSON Schema, 대화 비권한 경계, 명령 모델 기반 resolution 안내를 담당합니다."
 kind = "presentation"
 production = true
 boundary = "adapter"
@@ -166,8 +166,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-mcp]
 group = "mcp-adapter"
-description = "MCP lifecycle, transport, tool projection, session binding, and Core invocation adapter."
-description_ko = "MCP 생명주기, 전송, 도구 투영, 세션 결속, Core 호출 어댑터를 담당합니다."
+description = "MCP lifecycle, canonical AgentToolId registry, compact tagged-workflow and rejection projection, session binding, shaping/advance dispatch, and Core invocation adaptation."
+description_ko = "MCP 생명주기, 정규 AgentToolId registry, 간결한 태그 기반 workflow 및 rejection projection, 세션 결속, shaping/advance dispatch, Core 호출 adapter를 담당합니다."
 kind = "adapter"
 production = true
 boundary = "adapter"
@@ -187,8 +187,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-cli]
 group = "cli-adapter"
-description = "Administrative CLI, local orchestration, Codex setup, rendering, and managed MCP supervision."
-description_ko = "관리 CLI, 로컬 조율, Codex 설정, 렌더링, 관리 MCP 감독을 담당합니다."
+description = "Administrative CLI, typed User Channel resolution, Guard lifecycle observation/terminalization, managed tagged-workflow guidance, Codex setup, rendering, and MCP supervision."
+description_ko = "관리 CLI, typed User Channel resolution, Guard lifecycle 관찰과 terminalization, 관리형 태그 기반 workflow 지침, Codex 설정, rendering, MCP 감독을 담당합니다."
 kind = "adapter"
 production = true
 boundary = "adapter"

@@ -14,7 +14,6 @@ use crate::evidence_facts::{
 };
 use crate::evidence_projection::evidence_summary_for_display;
 use crate::guarantee_projection::guarantee_display;
-use crate::guidance::next_actions_for_state;
 use crate::identity::{allocate_user_action_request_id, allocate_user_action_resolution_id};
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -50,8 +49,8 @@ use volicord_types::methods::{
     ResolveUserActionRequest, ResolveUserActionResultFields,
 };
 use volicord_types::schema::{
-    validate_channel_submission_id, AgentSafeUserActionRequestSummary, NextActionSummary,
-    StateRecordRef, StateSummary, ToolEnvelope,
+    validate_channel_submission_id, AgentSafeUserActionRequestSummary, StateRecordRef,
+    StateSummary, ToolEnvelope,
 };
 use volicord_types::values::{
     ActorSource, ErrorCode, MethodName, StateRecordKind, UserActionChannelKind, UserActionStatus,
@@ -162,7 +161,7 @@ fn execute_request_user_action(
                 "user_action_request",
                 "create_pending",
                 "Request would create one bounded pending user action.",
-                plan.next_actions,
+                Vec::new(),
             )),
         );
     }
@@ -284,7 +283,7 @@ fn plan_request_user_action(
     if let Some(transition) = lifecycle_transition.as_ref() {
         projected_task.lifecycle_phase = transition.target();
     }
-    let (state, blocker_refs, next_actions) = projected_user_action_state(
+    let (state, blocker_refs) = projected_user_action_state(
         store,
         project_state,
         verified_invocation,
@@ -322,14 +321,12 @@ fn plan_request_user_action(
             }))?,
         ),
         result_fields,
-        next_actions,
     })
 }
 
 struct RequestUserActionPlan {
     operation: OperationPlan,
     result_fields: RequestUserActionResultFields,
-    next_actions: Vec<NextActionSummary>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -345,7 +342,7 @@ fn projected_user_action_state(
     projected_authority: Option<UserActionAuthority>,
     added_pending_ref: Option<StateRecordRef>,
     resolved_request_id: Option<&UserActionRequestId>,
-) -> Result<(StateSummary, Vec<StateRecordRef>, Vec<NextActionSummary>), PlanError> {
+) -> Result<(StateSummary, Vec<StateRecordRef>), PlanError> {
     let planned_state_version = target_state_version;
     let task_id = TaskId::new(task.task_id.clone());
     let mut pending_refs = store
@@ -362,28 +359,6 @@ fn projected_user_action_state(
         pending_refs.push(added_pending_ref);
     }
     let blocker_refs = active_blocker_refs(store, &task_id, planned_state_version)?;
-    let task_ref = state_ref(
-        StateRecordKind::Task,
-        task_id.as_str(),
-        &envelope.project_id,
-        Some(&task_id),
-        Some(planned_state_version),
-    );
-    let change_unit_ref = current_change_unit.map(|record| {
-        state_ref(
-            StateRecordKind::ChangeUnit,
-            &record.change_unit_id,
-            &envelope.project_id,
-            Some(&task_id),
-            Some(record.basis_state_version),
-        )
-    });
-    let next_actions = next_actions_for_state(
-        task.mode,
-        &task_ref,
-        change_unit_ref.as_ref(),
-        planned_state_version,
-    );
     let enforcement_profile = project_enforcement_profile(store)?;
     let guarantee_display = guarantee_display(
         &enforcement_profile,
@@ -494,7 +469,7 @@ fn projected_user_action_state(
         close_blockers: close_plan.blockers,
         guarantee_display: Some(guarantee_display),
     })?;
-    Ok((state, blocker_refs, next_actions))
+    Ok((state, blocker_refs))
 }
 
 fn execute_resolve_user_action(
@@ -615,7 +590,7 @@ fn execute_resolve_user_action(
                 "user_action_resolution",
                 "resolve_pending",
                 "Request would immutably resolve one pending user action.",
-                plan.method.next_actions,
+                Vec::new(),
             )),
         );
     }
@@ -649,7 +624,6 @@ struct ResolveUserActionPlan {
 struct ResolveUserActionMethodPlan {
     operation: OperationPlan,
     result_fields: ResolveUserActionResultFields,
-    next_actions: Vec<NextActionSummary>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -885,7 +859,7 @@ fn plan_resolve_user_action(
         }
         matched
     });
-    let (mut state, _blocker_refs, next_actions) = projected_user_action_state(
+    let (mut state, _blocker_refs) = projected_user_action_state(
         store,
         project_state,
         verified_invocation,
@@ -918,7 +892,6 @@ fn plan_resolve_user_action(
         user_action_resolution: public_resolution,
         derived_refs,
         state,
-        next_actions: next_actions.clone(),
     };
     let mut storage_mutations = vec![materialized_resolution.mutation];
     if shaping_linked {
@@ -950,7 +923,6 @@ fn plan_resolve_user_action(
                 }))?,
             ),
             result_fields,
-            next_actions,
         },
     })
 }

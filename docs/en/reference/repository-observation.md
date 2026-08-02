@@ -110,6 +110,41 @@ An `open` observation closes at one of three exact lifecycle boundaries:
   remaining observations in its exact bounded project-session bindings as
   `unavailable(managed_session_terminated)`.
 
+The closed stored unavailable-reason set is:
+
+```text
+invalid_observer_limits
+invalid_repository_root
+not_git_repository
+git_layout_unavailable
+git_command_unavailable
+git_command_failed
+process_timeout
+git_output_limit_exceeded
+process_input_limit_exceeded
+candidate_path_limit_exceeded
+total_hash_bytes_limit_exceeded
+file_size_limit_exceeded
+serialization_depth_limit_exceeded
+serialization_size_limit_exceeded
+invalid_relative_path
+non_utf8_path
+path_outside_repository
+inaccessible_path
+unsupported_path_state
+unstable_repository
+repository_identity_changed
+observer_contract_mismatch
+git_object_unavailable
+invocation_denied
+missing_open_observation
+post_tool_not_observed
+managed_session_terminated
+```
+
+The last two reasons close an open observation with a terminal lifecycle result
+when PostTool is absent. A terminal row remains stable under replay.
+
 Turn identity is exact typed equality, never lexical or numeric ordering. The
 accepted prompt capture and its prior-turn terminalization share one immediate
 bounded project transaction. Runtime cleanup uses only exact Registry

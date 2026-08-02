@@ -72,7 +72,7 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 후 판단이지 쓰기 전에 필요한 민감 동작 승인이 아니며, 쓰기를 소급해 권한 부여할 수
 없습니다.
 
-`Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor Task의 일반 다음 행동으로 이 메서드를 추천하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. 이는 호환되는 shaping `record_run` 호출이 Core Run이나 증거 상태를 커밋하는 것을 막지 않습니다.
+`Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor workflow의 허용 동작으로 이 메서드를 projection하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. Shaping 분석은 `volicord.record_shaping`으로 기록하며, 명시적 `volicord.advance_task`가 성공한 뒤에만 work 모드 쓰기 준비나 implementation Run이 허용됩니다.
 
 보안 비주장은 [보안](../security.md)이 담당합니다.
 

@@ -537,7 +537,6 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     assert_field_absent(&none.response_value, "risk_acceptance_coverage");
     assert_field_absent(&none.response_value, "close_blockers");
     assert_field_absent(&none.response_value, "guarantee_display");
-    assert_no_close_next_actions(&none.response_value);
     assert_eq!(
         none.response_value["authority_receipt"]["task_ref"]["record_id"],
         task_id
@@ -580,7 +579,6 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     assert_field_absent(&evidence_only.response_value, "close_state");
     assert_field_absent(&evidence_only.response_value, "close_blockers");
     assert_field_absent(&evidence_only.response_value, "guarantee_display");
-    assert_no_close_next_actions(&evidence_only.response_value);
 
     let close_only = harness.service.status(
         StatusRequest {

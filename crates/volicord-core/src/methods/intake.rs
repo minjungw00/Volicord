@@ -10,7 +10,6 @@ use crate::error_boundary::{
 };
 use crate::evidence_facts::load_current_evidence_summary_facts;
 use crate::guarantee_projection::guarantee_display;
-use crate::guidance::next_actions_for_state;
 use crate::identity::{allocate_acceptance_criterion_id, allocate_task_id};
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
@@ -48,8 +47,8 @@ use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{BaselineRef, TaskId};
 use volicord_types::methods::{IntakeRequest, IntakeResultFields, MethodOperationCategory};
 use volicord_types::schema::{
-    AcceptanceCriterion, AcceptanceCriterionInput, CarryForwardDisposition, JsonObject,
-    NextActionSummary, SourceRef, StateRecordRef,
+    AcceptanceCriterion, AcceptanceCriterionInput, CarryForwardDisposition, JsonObject, SourceRef,
+    StateRecordRef,
 };
 use volicord_types::values::{
     AcceptancePolicy, CarryForwardDispositionStatus, CarryForwardKind, MethodName,
@@ -118,7 +117,7 @@ impl CoreService {
                     "task",
                     "commit",
                     "Intake would select or create a Task.",
-                    plan.next_actions,
+                    Vec::new(),
                 )),
             );
         }
@@ -613,13 +612,11 @@ struct IntakeResponseProjection {
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
     result_fields: IntakeResultFields,
-    next_actions: Vec<NextActionSummary>,
 }
 
 struct IntakePlan {
     operation: OperationPlan,
     result_fields: IntakeResultFields,
-    next_actions: Vec<NextActionSummary>,
 }
 
 impl IntakeResponseProjection {
@@ -632,7 +629,6 @@ impl IntakeResponseProjection {
                 self.event_payload,
             ),
             result_fields: self.result_fields,
-            next_actions: self.next_actions,
         }
     }
 }
@@ -710,12 +706,6 @@ fn project_intake_response(
     } else {
         active_blocker_refs(store, &task_id, planned_state_version)?
     };
-    let next_actions = next_actions_for_state(
-        task_record.mode,
-        &task_ref,
-        change_unit_ref.as_ref(),
-        planned_state_version,
-    );
     let evidence_facts = load_current_evidence_summary_facts(
         store,
         &task_record,
@@ -800,7 +790,6 @@ fn project_intake_response(
         task_ref: task_ref.clone(),
         change_unit_ref,
         state,
-        next_actions: next_actions.clone(),
     };
     let event_payload = object_from_value(json!({
         "task_id": task_id,
@@ -819,7 +808,6 @@ fn project_intake_response(
         storage_mutations,
         event_payload,
         result_fields,
-        next_actions,
     })
 }
 

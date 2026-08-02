@@ -2,7 +2,7 @@
 
 # `volicord.status` reference
 
-Current progression is returned as the tagged `workflow` projection. It contains one required action when progression requires one and is independent of `close_readiness.state` and `close_readiness.blockers`. Current checkpoint readiness, typed gaps, boundary, and pending decision refs appear inside `workflow.checkpoint`.
+Current progression is returned as the tagged `workflow` projection. It contains exactly one `required_action` when progression requires one and remains independent of `close_state` and `close_blockers`. Current checkpoint readiness, typed gaps, boundary, and pending decision refs appear inside `workflow.checkpoint`. Close readiness is review data, not a progression selector.
 
 ## What this document owns
 
@@ -28,7 +28,7 @@ This document does not own:
 - the current `Task` and Change Unit
 - blockers, pending user actions, available User Channel resolution paths, and write-ticket state
 - evidence and close-readiness observations
-- project continuity, guarantee display, and next safe actions
+- project continuity, guarantee display, and the authoritative tagged workflow
 - requested and effective control, the project-policy basis, and whether the
   current authority permits a completion claim
 
@@ -120,12 +120,13 @@ Non-claim: `StatusResult.close_blockers` are not stored `close_task` results, co
   request body, resolution form, or a complete `CliUserActionInboxItem`. A
   verified User Channel renderer fetches the availability and complete item
   through its separate internal Core boundary. Relevant stale or superseded records can
-  still appear as opaque authority refs in owner-defined state and next-action
-  fields; those refs are not request-detail projections.
+  still appear as opaque authority refs in owner-defined state and
+  blocker-local or display fields; those refs are not request-detail
+  projections.
 - `include.write_ticket` returns active, invalidated, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`. An invalidated summary exposes its stable invalidation reason and validity basis; an optional project idle timeout is represented by `idle_timeout`, not by a fixed lifetime.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available, plus the canonical `evidence_gate` projection.
-- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, relevant next actions, and the same canonical `evidence_gate`. The blockers use the same close-readiness calculation as `volicord.check_close`.
+- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, blocker-local remediation actions, and the same canonical `evidence_gate`. The blockers use the same close-readiness calculation as `volicord.check_close`; their actions do not select current progression.
 - When evidence or close details are selected, `summary_card.evidence` is exactly `evidence_gate.state`. It uses `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, or `blocked`; it does not derive a second gate from evidence attachment display state.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
 - `include.continuity` returns a `ProjectContinuityPage` containing active
@@ -134,10 +135,10 @@ Non-claim: `StatusResult.close_blockers` are not stored `close_task` results, co
 - `include.continuity` also returns `task_flow`, the connected predecessor
   component for the selected Task, including branches joined by canonical
   lineage edges.
-- `summary_card` is always returned on successful `StatusResult` responses. It summarizes the owner-selected view with public display terminology and one selected `next` action when knowable. It does not add authority beyond the structured fields it summarizes.
+- `summary_card` is always returned on successful `StatusResult` responses. It summarizes the owner-selected view with public display terminology and may carry one display-only `next` hint. It does not add authority beyond the structured fields it summarizes and never replaces `active_task.workflow`.
 - `include.evidence=false` omits `evidence_summary`; `evidence_gate` is still returned when `include.close=true`.
 - `include.close=false` omits `CurrentCloseBasis`, optional close-state and
-  blocker projections, residual-risk coverage, and close-only top-level actions.
+  blocker projections, residual-risk coverage, and blocker-local remediation.
   Core still evaluates the same read-only close basis for the mandatory
   `authority_receipt`; the receipt carries the full blocker set even when those
   optional top-level fields are omitted.
@@ -179,9 +180,11 @@ Truthful projection rules:
   Observation unavailability remains a separate diagnostic and is never
   projected as an Unrecorded Change.
 - A terminal selected Task projects its stored terminal state as `closed`,
-  `cancelled`, or `superseded`, with an empty close-blocker set and no next
-  action. A non-terminal `ready` close state selects `volicord.close_task` as
-  the Agent's next action before generic workflow suggestions.
+  `cancelled`, or `superseded`, with an empty close-blocker set and tagged
+  `workflow.kind=terminal`. A non-terminal close state never selects a global
+  action ahead of the tagged workflow. A caller begins close review with
+  `volicord.check_close` only when the current workflow allows it; the review
+  does not change the workflow kind.
 - Uncomputed or unselected optional projections are omitted where the schema permits. Fixed-shape top-level fields remain `null` or empty when their corresponding `include` flag is false; interpret those values together with the request's `include` object.
 - When a projection is selected, `null` means it was computed but no value is available, and an empty array, including empty close blockers, means it was computed and no entries were found.
 - Capability declarations alone do not create guarantees.

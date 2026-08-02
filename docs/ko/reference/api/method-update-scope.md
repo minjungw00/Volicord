@@ -186,7 +186,7 @@
 응답 설명자는 성공, 거절, 미리보기를 정확한 `anyOf` 분기 union으로 정의합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.
 <!-- END GENERATED: contract-structures api.method.update_scope.response[response_variants] api.method.update_scope.response[result_body] api.method.update_scope.response[result_metadata] api.method.update_scope.response[rejection] api.method.update_scope.response[dry_run] -->
 
-지원되는 `change_unit.operation` 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. 이 메서드는 각 작업이 `change_unit_ref`, `state.active_change_unit_ref`, 오래된 쓰기 티켓 참조, 차단 사유 참조, `next_actions`에 어떻게 반영되는지를 담당합니다.
+지원되는 `change_unit.operation` 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. 이 메서드는 각 작업이 `change_unit_ref`, `state.active_change_unit_ref`, 오래된 쓰기 티켓 참조, 차단 사유 참조, 태그 기반 `state.workflow` projection에 어떻게 반영되는지를 담당합니다.
 
 `change_unit.operation=create_current` 또는 `change_unit.operation=replace_current`일 때 `change_unit.effect_contract`를 새 현재 적용 Change Unit에 기록할 수 있습니다. 효과 계약은 선택적 Core 상태입니다. 워크플로 엔진을 만들거나 사용자 소유 권한 기록을 대신하지 않으면서 허용 효과, 금지 효과, 허용 Product Repository 경로, 기대 출력, 불변 조건, 증거 기대, 민감 동작 기대를 표현할 수 있습니다. 같은 작업은 이후 쓰기 준비에 사용할 확인된 작업 공간 좌표도 기록합니다. Git 저장소가 아니면 VCS 결합을 기록하지 않고 Git 전용 비교 검사도 적용하지 않습니다.
 
@@ -327,7 +327,7 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  work_phase: implementation
+  work_phase: shaping
   goal_summary: "저장된 검색 필터를 담당자와 라벨 필드로 제한합니다."
   scope_summary: "저장 필터의 담당자·라벨 편집 검증."
   non_goals:

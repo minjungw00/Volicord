@@ -16,8 +16,8 @@ canonical definition을 한 번 만들고 Connection mode로 filter한 뒤 선�
 
 Runtime request schema는 documentation-only example을 생략합니다. Tool result는 typed
 canonical content, schema validation, compact mutation projection, bounded
-committed-result recovery, owner-method-bearing next-action data를 사용합니다. Tool
-ownership은 protocol revision별로 갈라지지 않습니다.
+committed-result recovery, 태그 기반 workflow 권한, typed workflow rejection
+recovery를 사용합니다. Tool ownership은 protocol revision별로 갈라지지 않습니다.
 
 ## 불변 조건
 
@@ -27,8 +27,8 @@ ownership은 protocol revision별로 갈라지지 않습니다.
   바꾸지 않습니다.
 - Runtime schema는 documentation-only material을 생략하면서 required validation과
   authority field를 보존합니다.
-- Compact mutation result는 actionable recovery 및 next-action coordinate를
-  유지합니다.
+- Compact mutation result는 태그 기반 workflow의 required action, allowed action,
+  정확한 ref와 동시성 좌표, typed rejection recovery를 유지합니다.
 - Generated contract snapshot은 derived check이며 다른 tool owner가 아닙니다.
 
 ## 책임 경계
@@ -58,9 +58,9 @@ registry를 선택하거나 committed mutation을 다시 실행해 output을 만
 
 ## 범위 제외
 
-이 설계는 public tool list, schema field, byte limit, Connection mode, `next_action`
-meaning, protocol support를 정의하지 않습니다. State-dependent dynamic tool discovery를
-제공하지 않습니다.
+이 설계는 public tool list, schema field, byte limit, Connection mode, workflow-state
+meaning, 차단 사유 전용 해결 행동, protocol support를 정의하지 않습니다. State-dependent
+dynamic tool discovery를 제공하지 않습니다.
 
 ## 구현 경로
 

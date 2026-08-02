@@ -276,14 +276,14 @@ documents:
   path_ko: README.ko.md
   kind: landing
   summary: Bilingual first-user Volicord onboarding route for product orientation, environment fit,
-    executable and host setup, connection and feature status distinctions, next-action-driven first
-    use, Task control, and documentation navigation.
+    executable and host setup, connection and feature status distinctions, tagged-workflow-driven
+    first use, explicit shaping and Task advance, Task control, and documentation navigation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - new users
   - operators
@@ -421,16 +421,16 @@ documents:
   path_en: docs/en/user-guide/quickstart.md
   path_ko: docs/ko/user-guide/quickstart.md
   kind: tutorial
-  summary: Shortest real managed agent-host setup tutorial, including connection-readiness and
-    feature-specific support-state distinctions.
+  summary: Shortest real managed agent-host setup tutorial, including connection readiness, tagged
+    workflow authority, explicit shaping and advance, UserAction, implementation, and close review.
   normative_level: guide
   translation_policy: semantic_parity
   contracts:
   - cli.surface.public
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-08-01'
-  last_verified_on: '2026-08-01'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -473,9 +473,9 @@ documents:
   path_en: docs/en/user-guide/agent-workflow.md
   path_ko: docs/ko/user-guide/agent-workflow.md
   kind: how_to
-  summary: How-to guidance for next-action-driven agent work, separate integration and Task-control
-    axes, user-owned judgment, write boundaries, invocation-scoped repository observations, and
-    honest session handoff.
+  summary: How-to guidance for tagged-workflow-driven agent work, explicit shaping and Task advance,
+    user-owned judgment, write boundaries, close review, invocation-scoped repository observations,
+    and honest session handoff.
   normative_level: guide
   translation_policy: semantic_parity
   contracts:
@@ -484,8 +484,8 @@ documents:
   - api.schema.user_action
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - agents
   - agent operators
@@ -498,6 +498,8 @@ documents:
   - reference.mcp-transport
   - reference.security
   - reference.api.method-intake
+  - reference.api.method-record-shaping
+  - reference.api.method-advance-task
   - reference.api.method-prepare-write
   - reference.api.method-record-run
   - reference.api.method-reconcile-changes
@@ -706,14 +708,14 @@ documents:
   path_en: docs/en/architecture-guide/source-map.md
   path_ko: docs/ko/architecture-guide/source-map.md
   kind: explanation
-  summary: Source path responsibility map for current Rust workspace modules, repository tooling,
-    source-bundle implementation, and durable test inputs.
+  summary: Source path responsibility map for current Rust workspace modules, including explicit
+    shaping progression, tagged workflow authority, storage aggregates, managed guidance, and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-31'
-  last_verified_on: '2026-07-31'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -732,6 +734,9 @@ documents:
   - architecture-guide.testing-strategy
   - reference.index
   - reference.repository-observation
+  - reference.api.method-record-shaping
+  - reference.api.method-advance-task
+  - reference.storage-records
 - doc_id: architecture-guide.cli-workflows
   path_en: docs/en/architecture-guide/cli-workflows.md
   path_ko: docs/ko/architecture-guide/cli-workflows.md
@@ -1050,10 +1055,14 @@ documents:
   path_ko: docs/ko/architecture-guide/design/static-compact-mcp-tool-list.md
   kind: explanation
   summary: Current design reference for the static mode-specific MCP tool set, compact runtime
-    schemas, and next-action routing.
+    schemas, tagged workflow authority, explicit shaping, and Task advance routing.
   normative_level: guide
   translation_policy: semantic_parity
   contracts:
+  - api.method.record_shaping.request
+  - api.method.record_shaping.response
+  - api.method.advance_task.request
+  - api.method.advance_task.response
   - api.method.check_close.response
   - api.method.close_task.response
   - api.method.reconcile_changes.response
@@ -1064,8 +1073,8 @@ documents:
   - mcp.wire
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   applies_to:
   - rust_workspace
   - mcp_initialize_profiles
@@ -1386,15 +1395,14 @@ documents:
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
   summary: Concise top-level implementation architecture overview for workspace shape,
-    machine-enforced dependency direction and visibility, operational paths, durable boundaries,
-    committed-tree source-bundle and release integrity, dedicated binary-smoke and pinned-spec tooling,
-    and detail routes.
+    machine-enforced dependency direction and visibility, explicit shaping progression ownership,
+    operational paths, durable boundaries, source-bundle integrity, and detail routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-31'
-  last_verified_on: '2026-07-31'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1641,6 +1649,7 @@ documents:
   - operate
   canonical_for:
   - exact repository-observation invocation coordinate and prompt, post-tool, and managed-session closed lifecycle states
+  - complete closed observation-unavailable reason set and terminal post-tool/managed-session outcomes
   - canonical baseline, post-tool outcome, deterministic delta, and strict digest verification
   - atomic pre-tool and post-tool Guard aggregate effects
   - exact observation-scoped expected-write matching
@@ -1657,13 +1666,14 @@ documents:
   path_en: docs/en/reference/core-model.md
   path_ko: docs/ko/reference/core-model.md
   kind: reference
-  summary: Reference contract for Core authority records and state concepts.
+  summary: Reference contract for Core authority records, explicit shaping progression, tagged
+    workflow authority, implementation admission, and close-review state concepts.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - agents
   - implementers
@@ -1675,6 +1685,7 @@ documents:
   - Core local authority record model for Volicord state
   - canonical Core UTC temporal-authority meaning and separation from state version
   - current scope and current Change Unit authority context
+  - current shaping checkpoint and gap authority, explicit Task advance, and tagged workflow progression
   - current Change Unit effect contract authority boundary
   - lifecycle meaning
   - close-readiness authority concepts
@@ -1804,7 +1815,9 @@ documents:
   path_en: docs/en/reference/mcp-transport.md
   path_ko: docs/ko/reference/mcp-transport.md
   kind: reference
-  summary: Reference contract for managed stdio startup, revision-profiled JSON-RPC framing, canonical tool projection, response wrapping, UserAction request boundaries, and shutdown.
+  summary: Reference contract for managed stdio startup, revision-profiled JSON-RPC framing,
+    canonical tool projection including explicit shaping and advance, tagged workflow authority,
+    response wrapping, UserAction request boundaries, and shutdown.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -1816,6 +1829,10 @@ documents:
   - api.method.get_operation_result.response
   - api.method.intake.request
   - api.method.intake.response
+  - api.method.record_shaping.request
+  - api.method.record_shaping.response
+  - api.method.advance_task.request
+  - api.method.advance_task.response
   - api.method.prepare_evidence_capture.request
   - api.method.prepare_evidence_capture.response
   - api.method.prepare_write.request
@@ -1877,6 +1894,7 @@ documents:
     capability mapping
   - selected-profile server capability and JSON-RPC batch behavior
   - canonical tool registry and capability-driven `tools/list` field projection
+  - public MCP routing for `volicord.record_shaping` and `volicord.advance_task`
   - static runtime-compact tool schemas and public tool list
   - MCP public input and output projections without hidden Core context
   - known-tool argument, lifecycle, and adapter-precondition failure shapes
@@ -1988,8 +2006,8 @@ documents:
   - api.schema.state
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2013,8 +2031,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2091,8 +2109,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-31'
-  last_verified_on: '2026-07-31'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2205,8 +2223,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2266,8 +2284,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2296,8 +2314,8 @@ documents:
   - cli.command.inbox
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2393,8 +2411,8 @@ documents:
   - api.method.close_task.response
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-29'
-  last_verified_on: '2026-07-29'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2461,6 +2479,10 @@ documents:
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
+  - api.method.record_shaping.request
+  - api.method.record_shaping.response
+  - api.method.advance_task.request
+  - api.method.advance_task.response
   - api.method.check_close.response
   - api.method.close_task.response
   - api.method.prepare_write.response
@@ -2485,6 +2507,8 @@ documents:
   - operate
   canonical_for:
   - state schemas
+  - tagged `WorkflowProjection` authority and closed workflow value sets
+  - shaping checkpoint, gap, readiness, and shaping-owned UserAction link shapes
   - normative public state display text and adapter-presentation boundary
   - '`WriteTicketValidityBasis.write_authority_fingerprint` shape and normalization scope'
   - non-authoritative `SourceRef` shape and field semantics
@@ -2572,8 +2596,8 @@ documents:
   - cli.output.inbox
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-29'
-  last_verified_on: '2026-07-29'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2589,6 +2613,7 @@ documents:
   - user-action canonical-time sampling and timestamp relationships
   - Core-derived adapter-neutral `UserActionResolutionForm`
   - User Channel evidence-observation request and resolution payloads
+  - UserAction kind compatibility with explicit `volicord.advance_task` progression
 - doc_id: reference.api.schema-value-sets
   path_en: docs/en/reference/api/schema-value-sets.md
   path_ko: docs/ko/reference/api/schema-value-sets.md
@@ -2612,8 +2637,8 @@ documents:
   - cli.surface.public
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2623,6 +2648,7 @@ documents:
   - operate
   canonical_for:
   - public API closed value sets
+  - shaping checkpoint readiness, shaping gap kind and status, workflow kind, and workflow blocking reason sets
   - '`FailureCategory` and `CloseReadinessBlocker.category` identifiers'
   - method-name and operation-category values
   - Codex Record profile and supported observation-source values
@@ -2888,6 +2914,7 @@ documents:
   - revision-scoped immutable host-session identity and Registry binding revision
   - workflow, replay, operation-result, Write Ticket, Guard event, repository-observation,
     expected-write, and Unrecorded Change records
+  - current shaping checkpoint, shaping gap, checkpoint-gap link, and shaping-owned UserAction link records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
   - strict UserAction request and immutable CLI resolution records
   depends_on:
@@ -2950,6 +2977,7 @@ documents:
   - operate
   canonical_for:
   - method-to-storage effects
+  - atomic `volicord.record_shaping` effects and explicit `volicord.advance_task` phase-transition effects
   - read-only and dry-run storage effects
   - rejected and blocked branch storage effects
   - canonical-time-floor effects for Core commits and storage-owned temporal writers
@@ -2987,8 +3015,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-01'
-  last_verified_on: '2026-08-01'
+  last_updated_on: '2026-08-03'
+  last_verified_on: '2026-08-03'
   primary_audience:
   - storage implementers
   - maintainers
@@ -2998,6 +3026,7 @@ documents:
   canonical_for:
   - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and complete ordered enabled-capability list'
   - one canonical SQLite format and fail-closed exact-open validation
+  - exact `shaping_progression` storage capability identity
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - noncurrent-contract corruption, unavailable, and fresh-recreation storage boundaries
   - exact-open acceptance of the current Guard verification relation and constraint inventory
@@ -3097,7 +3126,8 @@ documents:
   path_en: docs/en/reference/template-bodies.md
   path_ko: docs/ko/reference/template-bodies.md
   kind: reference
-  summary: Reference contract for exact template body ownership.
+  summary: Reference contract for exact template body ownership, including managed explicit-shaping,
+    UserAction, Task advance, rejection, and close-review guidance.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api

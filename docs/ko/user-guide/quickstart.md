@@ -53,8 +53,10 @@ hook 또는 Codex 대화에서 얻어야 하는 Guard evidence를 대신하지 �
 
 ## 4. 작업 시작
 
-`volicord.status`로 시작합니다. 반환된 `next_action`을 따르고, 제품 파일 쓰기 전에
-쓰기 티켓을 얻고, 작업과 증거를 기록하며, 완료 전에 닫기 준비 상태를 확인합니다.
+`volicord.status`로 시작합니다. 반환된 태그 기반 `workflow.required_action`과 정확한
+참조 및 상태 버전을 따릅니다. work Task는 shaping을 기록한 뒤 명시적으로
+implementation으로 진행합니다. 제품 파일 쓰기 전에 쓰기 티켓을 얻고, 작업과 증거를
+기록하며, 작업이 준비된 뒤 의도적인 close review 중에만 닫기 준비 상태를 사용합니다.
 
 에이전트가 대기 중인 `UserActionRequest`를 만들었다면 로컬 CLI User Channel만
 이를 해결할 수 있습니다.
@@ -64,8 +66,9 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-MCP 에이전트는 요청을 만들거나 재개하고 나중에 현재 상태를 관찰할 수 있지만 요청을
-해결할 수는 없습니다.
+MCP 에이전트는 실행 가능한 사용자 소유 선택지를 제시하기 전에 현재 요청을 만들어야
+하고 나중에 그 상태를 관찰할 수 있지만 요청을 해결할 수는 없습니다. 대화 문장은 User
+Channel 해결이 아닙니다.
 
 ## 다음 경로
 

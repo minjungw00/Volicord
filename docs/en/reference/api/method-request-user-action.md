@@ -2,7 +2,7 @@
 
 # `volicord.request_user_action` reference
 
-`volicord.record_shaping` reuses this method family's typed UserAction draft and judgment model when a shaping gap is user-owned. The checkpoint transaction creates and links the exact request; it does not create a second decision schema or resolve the request.
+`volicord.record_shaping` reuses this method family's typed UserAction draft and judgment model when a shaping gap is user-owned. The checkpoint transaction atomically creates and links the exact request before the actionable choice is presented; callers must not issue a separate `volicord.request_user_action` for that gap. It does not create a second decision schema or resolve the request. Only the User Channel can resolve it, and chat text never supplies that authority.
 
 This document owns the agent-workflow method that creates one pending
 `UserActionRequest`. It is the only public request method for the seven

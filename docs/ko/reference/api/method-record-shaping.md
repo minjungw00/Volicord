@@ -36,9 +36,11 @@
 
 요청은 정확한 현재 Task와 현재 scope revision을 가리킵니다. 형성 요약, 구현 또는
 자문 경계, 알려진 경우의 현재 baseline 좌표, 타입이 정해진 gap, source ref, evidence
-ref를 제공하며 사용자 소유 gap마다 `UserActionDraft`를 하나 제공합니다. 사용자
-소유가 아닌 gap에는 user-action draft가 없어야 합니다. 사용자 소유 gap에는 호환되는
-draft가 정확히 하나 있어야 합니다.
+ref를 제공하며 폐쇄형 `ShapingGapKind` 집합의 사용자 소유 gap마다
+`ShapingUserActionDraft`를 하나 제공합니다. 사용자 소유가 아닌 gap에는 user-action
+draft가 없어야 합니다. 사용자 소유 gap에는 호환되는 draft가 정확히 하나 있어야 하며,
+Core는 선택지를 실행 가능한 것으로 제시하기 전에 같은 transaction에서 현재
+`UserActionRequest`를 만들고 연결합니다.
 
 Core가 `readiness`를 계산합니다. 현재 필수 gap 집합이 비어 있고 경계, scope
 revision, baseline이 완전하고 현재일 때만 체크포인트는 `ready`입니다. 그 밖에는
@@ -48,8 +50,10 @@ revision, baseline이 완전하고 현재일 때만 체크포인트는 `ready`�
 
 `work` Task에서 제품, 기술, 범위, 민감한 사용자 소유 gap 때문에 함께 만든 결정
 요청은 `required_for`에 `advance_task`를 포함합니다. `advisor` Task에서는 준비된
-체크포인트가 현재 자문 결과와 advisor 닫기 근거를 세울 수 있습니다. 구현 닫기
-근거는 세우지 않습니다.
+체크포인트가 `close_assessment`를 제공했을 때 현재 자문 결과와 advisor 닫기 근거를
+세울 수 있습니다. work checkpoint에서는 이 닫기 평가를 허용하지 않으며 구현 닫기
+근거도 세우지 않습니다. 정확한 gap 종류, 상태, 요청 호환성은
+[API 값 집합](schema-value-sets.md)이 담당합니다.
 
 ## 원자적 동작
 
@@ -105,9 +109,9 @@ replay는 효과 없이 거부합니다.
 응답 설명자는 성공, 거절, 미리보기를 정확한 `anyOf` 분기 union으로 정의합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.
 <!-- END GENERATED: contract-structures api.method.record_shaping.response[response_variants] api.method.record_shaping.response[result_body] api.method.record_shaping.response[result_metadata] api.method.record_shaping.response[rejection] api.method.record_shaping.response[dry_run] -->
 
-성공 결과는 현재 체크포인트 ref, 사용자 소유 gap을 위해 만든 요청 ref, 현재 workflow
-projection을 반환합니다. 미리보기는 같은 의미 검증을 수행하지만 지속 식별자나 효과를
-만들지 않습니다.
+성공 결과는 완전한 현재 `ShapingCheckpoint` 객체, 사용자 소유 gap을 위해 만든 요청
+ref, 현재 workflow projection을 반환합니다. 미리보기는 같은 의미 검증을 수행하지만
+지속 식별자나 효과를 만들지 않습니다.
 
 ## Workflow recovery와 presentation
 

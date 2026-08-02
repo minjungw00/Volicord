@@ -103,7 +103,7 @@ operational-session 기록이 바뀌기 전에 거절합니다.
 프로젝트 상태 기록에는 다음이 포함됩니다.
 
 - `project_state`, 프로젝트 workflow policy, Task, acceptance criterion, supplemental
-  claim, Change Unit
+  claim, Change Unit, shaping checkpoint, shaping gap, 해당 UserAction link
 - 쓰기 티켓, Run, 현재 close basis, blocker, authority event, immutable replay row
 - evidence capture intent와 receipt, artifact와 link, evidence summary, observation,
   producer
@@ -111,6 +111,29 @@ operational-session 기록이 바뀌기 전에 거절합니다.
 - 조정에 쓰는 expected write, Guard 관찰, prompt 관찰, unrecorded change
 - 정규화한 host session, turn, hook tool invocation과 필수 thread를 보관하고 Registry
   runtime binding보다 먼저 생길 수 있는 managed MCP project session
+
+### Shaping checkpoint aggregate
+
+`shaping_checkpoints`는 Task, 현재 scope revision, 선택적 baseline, summary, 선택적
+implementation boundary, readiness, source/evidence ref, 생성 시각, 선택적 supersession
+시각을 소유합니다. `superseded_at IS NULL`인 Task를 대상으로 하는 partial unique index는
+현재 checkpoint를 최대 하나만 허용합니다. 현재 shaping을 교체할 때는 새 aggregate가
+현재 상태가 되기 전에 이전 row를 `readiness=superseded`로 바꾸고 supersession 시각을
+설정합니다.
+
+`shaping_checkpoint_gaps`는 각 gap의 폐쇄형 kind, summary, affected ref,
+`current|resolved|applied` 상태를 소유합니다. `ready` checkpoint에는 `current` gap을
+추가하거나 유지할 수 없습니다. `shaping_checkpoint_user_actions`는 같은 project, Task,
+checkpoint, gap의 정확한 UserAction request와 User Channel 해결 뒤의 불변 resolution을
+연결합니다. 사용자 소유 gap에는 이 request link가 정확히 하나 있어야 하며 사용자 소유가
+아닌 gap에는 없어야 합니다. 연결된 요청을 해결하면 gap은 `resolved`가 되고 완전한
+checkpoint는 `ready`가 될 수 있습니다. 범위 전이로 결정을 적용하면 resolved gap은
+`applied`가 됩니다.
+
+모든 aggregate read는 식별자, 폐쇄형 값, 정규 JSON 배열, timestamp, Task 소유권, link
+일관성을 엄격하게 decode합니다. 잘못되거나 모순되는 member는 손상된 영속 owner
+데이터입니다. Store는 이를 생략하거나 기본값을 만들거나 두 번째 현재 checkpoint를
+선택하지 않습니다.
 
 `project_workflow_policies`는 권위 있는 프로젝트 workflow policy record
 family입니다. 정규 aggregate에는 프로젝트 identity, 정확한

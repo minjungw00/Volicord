@@ -266,7 +266,6 @@ AuthorityReceipt:
   close_blockers: CloseReadinessBlocker[]
   completion_claim_allowed: boolean
   next_actor: string
-  next_action: NextActionSummary | null
 ```
 
 의미:
@@ -289,7 +288,9 @@ AuthorityReceipt:
 - `AuthorityReceipt`는 한 번 새로 읽은 project state version에서 Core가
   생성합니다. 선택적 status projection을 생략해도 blocker 목록은 전체입니다.
   `product_file_write_observed`는 모든 과거 Run이 아니라 최신 기록 Run을
-  설명합니다. receipt 자체는 커밋, 닫기, 수락, 제품 정확성 증명이 아닙니다.
+  설명합니다. `next_actor`는 간결한 행위자 분류이며 현재 메서드 진행은 태그 기반
+  `StateSummary.workflow`에 남습니다. receipt 자체는 커밋, 닫기, 수락, 제품 정확성
+  증명이 아닙니다.
 
 <a id="unrecorded-change-reconciliation-shapes"></a>
 ## 미기록 변경 조정 형태
@@ -481,6 +482,30 @@ WorkflowProjection:
   blocking_reason: string | null
   checkpoint: ShapingCheckpointSummary | null
 
+ShapingUserActionDraft:
+  action: UserActionDraft
+  expires_at: string | null
+
+ShapingGapInput:
+  gap_kind: string
+  summary: string
+  affected_refs: StateRecordRef[]
+  user_action: ShapingUserActionDraft | null
+
+ShapingCheckpoint:
+  shaping_checkpoint_id: string
+  project_id: string
+  task_id: string
+  scope_revision: integer
+  baseline_ref: string | null
+  summary: string
+  implementation_boundary: string | null
+  readiness: string
+  source_refs: SourceRef[]
+  evidence_refs: StateRecordRef[]
+  created_at: string
+  superseded_at: string | null
+
 ShapingCheckpointSummary:
   checkpoint_ref: StateRecordRef
   readiness: string
@@ -500,7 +525,14 @@ ShapingCheckpointGap:
   user_action_resolution_ref: StateRecordRef | null
 ```
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 `close_review` 전에는 전역 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함합니다.
+`ShapingCheckpoint`는 `volicord.record_shaping`이 반환하는 일급 영속 기록입니다.
+workflow는 현재 checkpoint의 간결한 요약과 gap projection을 포함합니다.
+`ShapingGapInput.user_action`은 사용자 소유 gap에만 null이 아니며, Core가 원자적으로
+materialize하고 연결하는 호환 typed draft를 담습니다. Readiness, gap kind, gap status,
+workflow kind, blocking reason은 [API 값 집합](schema-value-sets.md)의 폐쇄형 집합을
+사용합니다.
+
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task
@@ -608,7 +640,7 @@ WriteDecisionReason:
   명령 문법, transport framing, terminal 또는 Markdown styling, adapter 전용 설명
   문구는 adapter presentation이며 Core가 반환하는 표시 문자열이 아닙니다.
 - 증거 또는 닫기 상태 보기를 선택하면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#evidence-gate-values)이 담당하는 `EvidenceGateSummary.state` 값을 그대로 사용합니다. 스테이징 입력이나 `EvidenceSummary.evidence_state`에서 별도 상태를 추론하지 않습니다.
-- `SummaryCard.next`는 표시 힌트일 뿐입니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 두 필드 모두 워크플로 권한이 아니며 닫기 요약은 첫 차단 사유를 선택해 이 필드를 파생하지 않습니다.
+- `SummaryCard.next`는 표시 힌트일 뿐입니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 두 필드 모두 워크플로 권한이 아니며 닫기 차단 사유는 서로 독립된 fact입니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
 - 이미 존재하는 대기 사용자 행동에는 `SummaryCard.user_action`, `SummaryCard.next`, 메서드
   `status_summary`, blocker message, 그 밖의 모든 display/template string이 일반 문구만
@@ -616,7 +648,7 @@ WriteDecisionReason:
   요청 질문, 선택지, 맥락, form, 경로, 명령, URL, credential을 다시 만들면 안 됩니다.
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, 검토 완료, OS 수준 집행을 주장하면 안 됩니다.
 - `NextActionSummary`는 차단 사유 로컬 또는 미리보기 해결 행동 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, `required_refs`입니다.
-- 성공 메서드 결과는 최상위 `next_actions` 모음 대신 태그 기반 `workflow` 진행 상태를 노출합니다. `CloseReadinessBlocker.next_actions`는 해당 차단 사유에만 속하며 차단 사유 사이의 선택 역할을 갖지 않습니다.
+- 성공 메서드 결과는 태그 기반 `workflow` 진행 상태를 노출합니다. `CloseReadinessBlocker.next_actions`는 해당 차단 사유에만 속하며 차단 사유 사이의 선택 역할을 갖지 않습니다.
 - `allowed_operation_categories`는 행동에 대해 담당 문서가 지원하는 호출 범주를 이름 붙입니다. 현재 연결이 행동을 실행할 수 있음을 증명하거나 사용자 권한을 부여하지 않으며, 지원되는 API 메서드 호출이 식별되지 않으면 비어 있습니다.
 - `expected_state_version`은 항상 존재하는 null 허용 필드입니다. 낙관적 동시성을 사용하는 API 변경 행동에는 그 행동을 만든 상태 보기의 현재 `project_state.state_version`을 담으며, 해당 호출의 `ToolEnvelope.expected_state_version`으로 직접 매핑됩니다. 읽기 행동, `user_only` 행동, 단일 담당 메서드가 없는 행동, 낙관적 동시성을 사용하지 않는 담당 메서드 행동에는 `null`을 사용합니다.
 - `expected_state_version`은 재시도 가능한 동시성 입력이며 신원이나 권한이 아닙니다. 다른 변경이 커밋되면 오래될 수 있으므로 호출자는 `STATE_VERSION_CONFLICT` 뒤 현재 상태를 새로 읽습니다. `required_refs`와 참조의 `produced_at_state_version`은 이 토큰을 제공하거나 덮어쓰지 않습니다.

@@ -1749,12 +1749,13 @@ mod tests {
             ResidualRiskAcceptance, ScopeDecision, SensitiveApproval, TechnicalDecision,
         };
         use UserActionRequiredFor::{
-            CloseCancel, CloseComplete, CloseSupersede, Informational, PrepareWrite, RecordRun,
-            ScopeUpdate,
+            AdvanceTask, CloseCancel, CloseComplete, CloseSupersede, Informational, PrepareWrite,
+            RecordRun, ScopeUpdate,
         };
 
         let required_for_values = [
             ScopeUpdate,
+            AdvanceTask,
             PrepareWrite,
             RecordRun,
             CloseComplete,
@@ -1767,6 +1768,7 @@ mod tests {
                 ProductDecision,
                 &[
                     ScopeUpdate,
+                    AdvanceTask,
                     PrepareWrite,
                     RecordRun,
                     CloseComplete,
@@ -1778,6 +1780,7 @@ mod tests {
                 TechnicalDecision,
                 &[
                     ScopeUpdate,
+                    AdvanceTask,
                     PrepareWrite,
                     RecordRun,
                     CloseComplete,
@@ -1789,6 +1792,7 @@ mod tests {
                 ScopeDecision,
                 &[
                     ScopeUpdate,
+                    AdvanceTask,
                     PrepareWrite,
                     RecordRun,
                     CloseComplete,
@@ -1799,6 +1803,7 @@ mod tests {
             (
                 SensitiveApproval,
                 &[
+                    AdvanceTask,
                     PrepareWrite,
                     RecordRun,
                     CloseComplete,

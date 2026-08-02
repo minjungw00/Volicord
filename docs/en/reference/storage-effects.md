@@ -523,6 +523,8 @@ This table summarizes persistence effects. Method behavior and response unions r
 |---|---|---|
 | `volicord.intake` | creates task and shaping records | See [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | updates current scope records | See [`volicord.update_scope`](#volicordupdate_scope) |
+| `volicord.record_shaping` | atomically replaces the current shaping checkpoint aggregate and creates linked UserAction requests | See [`volicord.record_shaping`](#volicordrecord_shaping) |
+| `volicord.advance_task` | explicitly transitions one work Task from shaping to implementation | See [`volicord.advance_task`](#volicordadvance_task) |
 | `volicord.status` | read-style response | See [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | reads immutable historical replay bytes without storage effects | See [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | records write decision effects | See [`volicord.prepare_write`](#volicordprepare_write) |
@@ -575,8 +577,8 @@ Committed `dry_run=false` may:
 - for a non-null criterion replacement, update retained active same-Task criterion rows in replacement order, create rows for null IDs, and retire omitted active rows without reactivating retired identities
 - create or replace current `change_units`, including effect-contract JSON when supplied by the method owner
 - capture the verified optional Git workspace context in the Change Unit write
-  basis and advance a non-advisor Task to `work_phase=implementation` when a
-  current Change Unit is created or replaced
+  basis without changing `work_phase` when a current Change Unit is created or
+  replaced
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
 - invalidate `tasks.close_basis_json` and increment `tasks.close_basis_revision` for material scope changes
 - mark incompatible user-action basis rows stale or superseded as owner-defined compatibility requires
@@ -599,6 +601,45 @@ Owner links:
 - [`volicord.update_scope` method](api/method-update-scope.md)
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
+
+<a id="volicordrecord_shaping"></a>
+### `volicord.record_shaping`
+
+A committed `dry_run=false` call:
+
+- supersedes the prior current checkpoint, when one exists;
+- inserts one `shaping_checkpoints` row and all of its
+  `shaping_checkpoint_gaps` rows;
+- atomically creates one pending `UserActionRequest` and one exact
+  `shaping_checkpoint_user_actions` link for every user-owned gap;
+- for an eligible advisor close assessment, updates the current advice result,
+  close basis, and any owner-defined risk records in the same transaction;
+- appends one authority event, creates the exact replay row, advances the
+  canonical Core UTC floor, and increments `project_state.state_version`
+  exactly once.
+
+It creates no Run, Change Unit, write ticket, Product Repository file effect,
+UserAction resolution, or work-phase transition. Any invalid checkpoint, gap,
+request, link, event, replay, or state update rolls back the whole transaction.
+A valid dry-run preview and every rejected attempt create none of these rows or
+effects.
+
+<a id="volicordadvance_task"></a>
+### `volicord.advance_task`
+
+A committed `dry_run=false` call verifies the exact current work Task in
+shaping, ready non-superseded checkpoint, applied gap set, scope revision,
+baseline, active Change Unit, exact current resolution-ID set, and absence of a
+recovery constraint. In one transaction it changes only the Task phase to
+`implementation` and lifecycle to the implementation progression state,
+appends one authority event, creates the exact replay row, advances the
+canonical Core UTC floor, and increments `project_state.state_version` exactly
+once.
+
+It does not change scope, create or replace a Change Unit, mutate the shaping
+aggregate, issue or consume a write ticket, record Evidence or a Run, establish
+a close basis, close the Task, or write Product Repository files. Dry-run and
+rejected branches have no storage effect.
 
 <a id="volicordstatus"></a>
 ### `volicord.status`

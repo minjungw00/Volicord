@@ -80,6 +80,13 @@ this exhaustive matrix:
 
 Core rejects every other mode, phase, or kind before commit. Advisor results and work shaping results use durable shaping checkpoints rather than Runs.
 
+A work Task still in shaping receives `TASK_PHASE_TRANSITION_REQUIRED` with
+typed `WorkflowRejectionDetails` and recovery owner
+`volicord.advance_task`. Other mode/phase/kind mismatches receive
+`RUN_KIND_INCOMPATIBLE` with the received kind, the closed allowed-kind set,
+the current tagged workflow, and the exact recovery owner. These are workflow
+rejections with current typed recovery data.
+
 Every Run also requires the verified current Git workspace context to match the
 current Change Unit write basis. This applies to non-write evidence and close
 assessment Runs as well as product-write Runs, so changing branch, HEAD, or
@@ -488,8 +495,8 @@ Those failures are rejected before commit.
 
 Returns `ToolRejectedResponse` for:
 
-- a `kind` incompatible with the current persisted `Task.mode` and `work_phase`
-- an `advisor` request that reports a product-file write, non-empty changed paths, or a non-null write ticket
+- `TASK_PHASE_TRANSITION_REQUIRED` when a work Task is still in shaping
+- `RUN_KIND_INCOMPATIBLE` for every other `kind`, mode, or phase mismatch
 - stale `expected_state_version`
 - invalidated write-ticket validity basis
 - missing or mismatched write-ticket policy-authority binding
@@ -532,7 +539,7 @@ ticket consumption and creates none of those effects.
 
 For an idle-timeout-invalidated write ticket, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
 
-Task-mode or advisor read-only validation rejection likewise creates no Run, close-basis revision, evidence update, evidence observation, artifact link or promotion, event, replay row, write-ticket effect, or state-version increment.
+Mode, phase, or Run-kind workflow rejection likewise creates no Run, close-basis revision, evidence update, evidence observation, artifact link or promotion, event, replay row, write-ticket effect, or state-version increment.
 
 ## `dry_run` behavior
 

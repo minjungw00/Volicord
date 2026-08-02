@@ -57,9 +57,11 @@ for its exact effects.
 
 ## 4. Start Work
 
-Begin with `volicord.status`. Follow the returned `next_action`; obtain a Write
-Ticket before product-file writes, record work and evidence, and check close
-readiness before completion.
+Begin with `volicord.status`. Follow the returned tagged
+`workflow.required_action` and its exact refs and state version. A work Task
+records shaping before it advances explicitly to implementation; obtain a Write
+Ticket before product-file writes, record work and evidence, and use close
+readiness only during an intentional close review after the work is ready.
 
 If an agent creates a pending `UserActionRequest`, resolution belongs only to
 the local CLI User Channel:
@@ -69,8 +71,9 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-The MCP agent may create or resume the request and later observe its current
-status, but it cannot resolve the request.
+The MCP agent must create a current request before presenting an actionable
+user-owned choice and may later observe its status, but it cannot resolve the
+request. Chat text is not a User Channel resolution.
 
 ## Next Routes
 

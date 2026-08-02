@@ -79,7 +79,7 @@ not cross that boundary. Final acceptance is a post-work judgment, not the
 required pre-write sensitive-action approval, and cannot retroactively
 authorize a write.
 
-`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not recommend this method as the generic next action for an advisor Task, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. This does not prevent a compatible shaping `record_run` call from committing Core Run or evidence state.
+`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not project this method as an allowed advisor workflow action, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. Shaping analysis is recorded with `volicord.record_shaping`, and only a successful explicit `volicord.advance_task` admits work-mode write preparation or an implementation Run.
 
 Security non-claims belong to [Security](../security.md).
 

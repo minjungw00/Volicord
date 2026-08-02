@@ -494,6 +494,8 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 |---|---|---|
 | `volicord.intake` | `Task`와 구체화 기록 생성 | [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | 현재 적용 범위 기록 갱신 | [`volicord.update_scope`](#volicordupdate_scope) |
+| `volicord.record_shaping` | 현재 shaping checkpoint aggregate를 원자적으로 교체하고 연결된 UserAction 요청 생성 | [`volicord.record_shaping`](#volicordrecord_shaping) |
+| `volicord.advance_task` | work Task 하나를 shaping에서 implementation으로 명시적으로 전환 | [`volicord.advance_task`](#volicordadvance_task) |
 | `volicord.status` | 읽기형 응답 | [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | 저장 효과 없이 변경 불가능한 과거 재실행 바이트 조회 | [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | 쓰기 판단 효과 기록 | [`volicord.prepare_write`](#volicordprepare_write) |
@@ -545,9 +547,8 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - 현재 적용 `Task` 범위 필드를 갱신합니다.
 - 기준 교체가 null이 아니면 유지한 활성 같은 `Task` 기준 행을 교체 순서대로 갱신하고, null ID에 새 행을 만들며, 빠진 활성 행을 폐기하되 폐기된 identity를 다시 활성화하지 않습니다.
 - 메서드 담당 문서가 제공한 효과 계약 JSON을 포함해 현재 적용 `change_units` 행을 만들거나 교체합니다.
-- 검증된 선택적 Git workspace context를 Change Unit write basis에 캡처하고 현재
-  Change Unit을 만들거나 교체할 때 advisor가 아닌 Task를
-  `work_phase=implementation`으로 진행합니다.
+- 검증된 선택적 Git workspace context를 Change Unit write basis에 캡처하되 현재
+  Change Unit을 만들거나 교체해도 `work_phase`를 바꾸지 않습니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경에 대해 `tasks.scope_revision`을 증가시킵니다.
 - 실질적 범위 변경에 대해 `tasks.close_basis_json`을 무효화하고 `tasks.close_basis_revision`을 증가시킵니다.
 - 담당 문서가 정의한 호환성에 따라 호환되지 않는 사용자 행동 근거 행을 오래됨 또는 대체됨으로 표시합니다.
@@ -570,6 +571,40 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - [`volicord.update_scope` 메서드](api/method-update-scope.md)
 - [저장소 기록](storage-records.md)
 - [저장소 버전 관리](storage-versioning.md)
+
+<a id="volicordrecord_shaping"></a>
+### `volicord.record_shaping`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행합니다.
+
+- 이전 현재 checkpoint가 있으면 supersede합니다.
+- `shaping_checkpoints` row 하나와 그 모든 `shaping_checkpoint_gaps` row를 삽입합니다.
+- 사용자 소유 gap마다 대기 `UserActionRequest` 하나와 정확한
+  `shaping_checkpoint_user_actions` link 하나를 원자적으로 만듭니다.
+- 적격 advisor 닫기 평가라면 같은 transaction에서 현재 자문 결과, close basis, 담당
+  문서가 정의한 risk record를 갱신합니다.
+- authority event 하나와 정확한 replay row를 만들고 정규 Core UTC 하한을 진행시키며
+  `project_state.state_version`을 정확히 한 번 증가시킵니다.
+
+Run, Change Unit, write ticket, Product Repository 파일 효과, UserAction resolution,
+work-phase 전환은 만들지 않습니다. Checkpoint, gap, 요청, link, event, replay, 상태 갱신 중
+하나라도 유효하지 않으면 transaction 전체를 rollback합니다. 유효한 dry-run 미리보기와
+모든 거절 시도에는 이 row와 효과가 없습니다.
+
+<a id="volicordadvance_task"></a>
+### `volicord.advance_task`
+
+커밋되는 `dry_run=false` 호출은 shaping인 정확한 현재 work Task, ready이며 superseded가
+아닌 checkpoint, applied gap 집합, scope revision, baseline, 활성 Change Unit, 정확한 현재
+resolution-ID 집합, recovery constraint 부재를 검증합니다. Transaction 하나에서 Task
+단계만 `implementation`으로, lifecycle을 구현 진행 상태로 바꾸고 authority event 하나와
+정확한 replay row를 만들며 정규 Core UTC 하한을 진행시키고
+`project_state.state_version`을 정확히 한 번 증가시킵니다.
+
+범위를 바꾸거나 Change Unit을 만들거나 교체하지 않으며, shaping aggregate를 변경하거나
+write ticket을 발급·소비하거나 Evidence나 Run을 기록하거나 close basis를 세우거나 Task를
+닫거나 Product Repository 파일을 쓰지 않습니다. Dry-run과 거절 분기는 저장 효과가
+없습니다.
 
 <a id="volicordstatus"></a>
 ### `volicord.status`

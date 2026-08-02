@@ -12,11 +12,13 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "change_unit_creation_does_not_advance_phase",
     "user_decisions_require_user_action_requests",
     "chat_reply_is_not_resolution",
+    "apply_decisions_through_current_resolution_refs",
     "advance_task_forbidden_while_user_action_pending",
     "prepare_write_forbidden_before_implementation",
     "rejection_must_not_be_presented_as_success",
     "presentation_must_surface_required_facts",
     "close_blockers_do_not_replace_workflow_progression",
+    "close_readiness_only_during_close_review",
 ];
 
 #[derive(Serialize)]

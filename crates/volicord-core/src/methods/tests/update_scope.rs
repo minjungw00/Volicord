@@ -29,7 +29,6 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert!(response.response_value.get("next_actions").is_none());
     assert_eq!(
         response.response_value["state"]["workflow"]["kind"],
         "shaping_required"
@@ -50,7 +49,6 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
         },
         invocation(OperationCategory::Read),
     )?;
-    assert!(status.response_value.get("next_actions").is_none());
     assert_eq!(
         status.response_value["active_task"]["workflow"]["required_action"],
         "volicord.record_shaping"

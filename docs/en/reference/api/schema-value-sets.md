@@ -196,6 +196,8 @@ Operation categories are Volicord API compatibility categories, not OS permissio
 project_state
 task
 change_unit
+shaping_checkpoint
+shaping_gap
 write_ticket
 user_action_request
 user_action_resolution
@@ -284,6 +286,71 @@ implementation
 
 This phase preserves one Task's longer-lived outcome while separating analysis
 from write-capable execution. It is independent of `lifecycle_phase`.
+
+`ShapingCheckpoint.readiness` uses:
+
+```text
+blocked
+ready
+superseded
+```
+
+`ShapingGapInput.gap_kind` and `ShapingCheckpointGap.gap_kind` use exactly:
+
+```text
+goal_missing
+scope_boundary_missing
+non_goals_missing
+acceptance_criteria_missing
+autonomy_boundary_missing
+implementation_boundary_missing
+baseline_missing
+user_product_decision_required
+user_technical_decision_required
+user_scope_decision_required
+sensitive_approval_required
+```
+
+The final four kinds are user-owned and require one compatible linked
+UserAction draft; all other kinds forbid one.
+
+`ShapingCheckpointGap.status` uses:
+
+```text
+current
+resolved
+applied
+```
+
+`WorkflowProjection.kind` uses exactly:
+
+```text
+no_active_task
+shaping_required
+awaiting_user_action
+ready_to_apply_decisions
+ready_for_change_unit
+ready_for_implementation
+implementation
+close_review
+terminal
+```
+
+`WorkflowProjection.blocking_reason`, when non-null, uses exactly:
+
+```text
+no_current_checkpoint
+shaping_gaps_current
+user_action_pending
+resolved_decisions_not_applied
+change_unit_required
+explicit_advance_required
+recovery_constraint
+```
+
+These values describe current progression only. Close-readiness blockers keep
+their own local categories and remediation and do not select a workflow kind
+or required action.
 
 `StateSummary.acceptance_policy` uses:
 
@@ -972,6 +1039,7 @@ short
 
 ```text
 scope_update
+advance_task
 prepare_write
 record_run
 close_complete
