@@ -444,19 +444,6 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
                 ("relation_hint", Value::Null),
             ],
         ),
-        (
-            AgentToolId::RECORD_RUN.wire_name(),
-            RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
-            vec![
-                ("run_id", Value::Null),
-                ("write_ticket_id", Value::Null),
-                ("performed_operation", Value::Null),
-                ("artifact_inputs", json!([])),
-                ("evidence_updates", json!([])),
-                ("evidence_observations", json!([])),
-                ("close_assessment", Value::Null),
-            ],
-        ),
     ];
 
     for (tool_name, example_id, defaults) in cases {
@@ -770,10 +757,7 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
         ),
         (
             AgentToolId::RECORD_RUN.wire_name(),
-            &[
-                RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
-                "evidence_bearing_record_run",
-            ],
+            &[RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID],
         ),
         (
             AgentToolId::REQUEST_USER_ACTION.wire_name(),
@@ -835,27 +819,21 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
 }
 
 #[test]
-fn record_run_discovery_exposes_advisor_no_write_compatibility() -> Result<(), Box<dyn Error>> {
+fn record_run_discovery_exposes_execution_only_compatibility() -> Result<(), Box<dyn Error>> {
     let tool = tool_definition(AgentToolId::RECORD_RUN.wire_name());
-    for compatibility in [
-        "advisor/shaping_update",
-        "direct/direct",
-        "work/shaping_update or implementation",
-    ] {
+    for compatibility in ["direct/direct", "work/implementation"] {
         assert!(
             tool.description.contains(compatibility),
             "record_run description should expose {compatibility}"
         );
     }
+    assert!(!tool.description.contains("advisor"));
 
     let arguments = canonical_example_value(
         AgentToolId::RECORD_RUN.wire_name(),
-        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
     )?;
-    assert_eq!(arguments["kind"], "shaping_update");
-    assert!(arguments["task_id"]
-        .as_str()
-        .is_some_and(|task_id| task_id.contains("advisor")));
+    assert_eq!(arguments["kind"], "implementation");
     assert_eq!(
         arguments["observed_changes"]["product_file_write_observed"],
         false
@@ -873,7 +851,7 @@ fn record_run_invalid_observed_changes_reports_expected_shape() -> Result<(), Bo
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         AgentToolId::RECORD_RUN.wire_name(),
-        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
     )?;
     arguments["observed_changes"] = json!([]);
 
@@ -894,7 +872,7 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         AgentToolId::RECORD_RUN.wire_name(),
-        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
     )?;
     arguments["kind"] = json!("test");
 
@@ -904,7 +882,6 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
     let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
     let issue = tool_error_issue(&response, "/kind", "MCP_ARGUMENT_ENUM_VALUE");
     let message = issue["message"].as_str().expect("enum issue message");
-    assert!(message.contains("shaping_update"));
     assert!(message.contains("implementation"));
     assert!(message.contains("direct"));
     Ok(())
@@ -919,7 +896,7 @@ fn record_run_artifact_input_source_uses_public_value_set() -> Result<(), Box<dy
         let before = fixture.counts()?;
         let mut arguments = canonical_example_value(
             AgentToolId::RECORD_RUN.wire_name(),
-            RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+            RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
         )?;
         arguments["artifact_inputs"] = json!([{
             "artifact_input_id": "artifact_input_unsupported",
@@ -961,7 +938,7 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         AgentToolId::RECORD_RUN.wire_name(),
-        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
     )?;
     arguments["evidence_observations"] = json!([
         {
@@ -1059,7 +1036,7 @@ fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         AgentToolId::RECORD_RUN.wire_name(),
-        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
     )?;
     arguments["unexpected"] = json!("not accepted");
 
@@ -1270,11 +1247,11 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
         BTreeSet::from([
             "authority_receipt",
             "method_result",
-            "next_actions",
             "operation_result_ref",
+            "workflow",
         ])
     );
-    assert!(workflow["structuredContent"]["next_actions"].is_array());
+    assert!(workflow["structuredContent"]["workflow"].is_object());
     assert!(serde_json::to_vec(&workflow)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
 
     let full = intake_result("mcp-mutation-full", Some("full"))?;
@@ -1433,6 +1410,34 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         ["acceptance_criterion_id"]
         .as_str()
         .ok_or("scope response should expose the acceptance criterion")?;
+    let shaped = record_adapter.call_tool(
+        AgentToolId::RECORD_SHAPING.wire_name(),
+        json!({
+            "task_id": record_task_id,
+            "scope_revision": 1,
+            "baseline_ref": "baseline_record_compact",
+            "summary": "The compact record-run boundary is ready.",
+            "implementation_boundary": "Record only the scoped compact Run references.",
+            "gaps": [],
+            "source_refs": [],
+            "evidence_refs": [],
+            "close_assessment": null
+        }),
+    )?;
+    let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("record_shaping should expose its checkpoint")?;
+    record_adapter.call_tool(
+        AgentToolId::ADVANCE_TASK.wire_name(),
+        json!({
+            "task_id": record_task_id,
+            "shaping_checkpoint_id": checkpoint_id,
+            "change_unit_id": change_unit_id,
+            "scope_revision": 1,
+            "baseline_ref": "baseline_record_compact",
+            "user_action_resolution_ids": []
+        }),
+    )?;
     let staged_for_run = record_adapter.call_tool(
         AgentToolId::STAGE_ARTIFACT.wire_name(),
         json!({
@@ -1594,6 +1599,39 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         }),
     )?;
     assert_eq!(scope.response_value["base"]["response_kind"], "result");
+    let prepare_change_unit_id = scope.response_value["state"]["active_change_unit_ref"]
+        ["record_id"]
+        .as_str()
+        .ok_or("prepare scope should expose its current Change Unit")?;
+    let shaped = prepare_adapter.call_tool(
+        AgentToolId::RECORD_SHAPING.wire_name(),
+        json!({
+            "task_id": prepare_task_id,
+            "scope_revision": 1,
+            "baseline_ref": "baseline_fixture",
+            "summary": "The compact write-ticket boundary is ready.",
+            "implementation_boundary": "Update only the scoped export flow.",
+            "gaps": [],
+            "source_refs": [],
+            "evidence_refs": [],
+            "close_assessment": null
+        }),
+    )?;
+    let prepare_checkpoint_id = shaped.response_value["shaping_checkpoint"]
+        ["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("prepare record_shaping should expose its checkpoint")?;
+    prepare_adapter.call_tool(
+        AgentToolId::ADVANCE_TASK.wire_name(),
+        json!({
+            "task_id": prepare_task_id,
+            "shaping_checkpoint_id": prepare_checkpoint_id,
+            "change_unit_id": prepare_change_unit_id,
+            "scope_revision": 1,
+            "baseline_ref": "baseline_fixture",
+            "user_action_resolution_ids": []
+        }),
+    )?;
     let prepared = call_default(
         &prepare_fixture,
         AgentToolId::PREPARE_WRITE.wire_name(),

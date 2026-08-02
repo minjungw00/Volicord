@@ -2720,6 +2720,8 @@ mod tests {
         vec![
             ("volicord.intake", intake_request_json()),
             ("volicord.update_scope", update_scope_request_json()),
+            ("volicord.record_shaping", record_shaping_request_json()),
+            ("volicord.advance_task", advance_task_request_json()),
             ("volicord.status", status_request_json()),
             (
                 "volicord.get_operation_result",
@@ -3361,6 +3363,13 @@ mod tests {
             "volicord.update_scope" => canonical_request_hash(
                 &serde_json::from_value::<UpdateScopeRequest>(value).expect("update request"),
             ),
+            "volicord.record_shaping" => canonical_request_hash(
+                &serde_json::from_value::<RecordShapingRequest>(value)
+                    .expect("record shaping request"),
+            ),
+            "volicord.advance_task" => canonical_request_hash(
+                &serde_json::from_value::<AdvanceTaskRequest>(value).expect("advance task request"),
+            ),
             "volicord.status" => canonical_request_hash(
                 &serde_json::from_value::<StatusRequest>(value).expect("status request"),
             ),
@@ -3433,6 +3442,27 @@ mod tests {
                 "baseline_ref",
                 "change_unit",
                 "related_scope_decision_refs",
+            ],
+            "volicord.record_shaping" => &[
+                "envelope",
+                "task_id",
+                "scope_revision",
+                "baseline_ref",
+                "summary",
+                "implementation_boundary",
+                "gaps",
+                "source_refs",
+                "evidence_refs",
+                "close_assessment",
+            ],
+            "volicord.advance_task" => &[
+                "envelope",
+                "task_id",
+                "shaping_checkpoint_id",
+                "change_unit_id",
+                "scope_revision",
+                "baseline_ref",
+                "user_action_resolution_ids",
             ],
             "volicord.status" => &["envelope", "include"],
             "volicord.get_operation_result" => &["envelope", "operation_result_ref", "cursor"],
@@ -3516,6 +3546,12 @@ mod tests {
             "volicord.intake" => serde_json::from_value::<IntakeRequest>(value).map(drop),
             "volicord.update_scope" => {
                 serde_json::from_value::<UpdateScopeRequest>(value).map(drop)
+            }
+            "volicord.record_shaping" => {
+                serde_json::from_value::<RecordShapingRequest>(value).map(drop)
+            }
+            "volicord.advance_task" => {
+                serde_json::from_value::<AdvanceTaskRequest>(value).map(drop)
             }
             "volicord.status" => serde_json::from_value::<StatusRequest>(value).map(drop),
             "volicord.get_operation_result" => {
@@ -3602,6 +3638,33 @@ mod tests {
                 "affected_paths": ["src/search/saved-filter.ts"]
             },
             "related_scope_decision_refs": []
+        })
+    }
+
+    fn record_shaping_request_json() -> Value {
+        json!({
+            "envelope": envelope_json(),
+            "task_id": "task_empty_001",
+            "scope_revision": 2,
+            "baseline_ref": "baseline_empty_001",
+            "summary": "The saved-filter implementation boundary is ready.",
+            "implementation_boundary": "Limit edits to saved-filter validation.",
+            "gaps": [],
+            "source_refs": [],
+            "evidence_refs": [],
+            "close_assessment": null
+        })
+    }
+
+    fn advance_task_request_json() -> Value {
+        json!({
+            "envelope": envelope_json(),
+            "task_id": "task_empty_001",
+            "shaping_checkpoint_id": "shaping_checkpoint_empty_001",
+            "change_unit_id": "cu_empty_001",
+            "scope_revision": 2,
+            "baseline_ref": "baseline_empty_001",
+            "user_action_resolution_ids": []
         })
     }
 

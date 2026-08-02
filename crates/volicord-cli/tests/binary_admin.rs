@@ -802,7 +802,7 @@ fn contextual_read_only_reports_preserve_authority_state() -> Result<(), Box<dyn
             assert!(text.starts_with("No active Task.\n\n"), "{text}");
             assert!(text.contains("Profile: record"), "{text}");
             assert!(text.contains("Pending user actions: none"), "{text}");
-            assert!(text.contains("Next action: none"), "{text}");
+            assert!(text.contains("Next action: see workflow"), "{text}");
             assert!(!text.contains("not shown in this view"), "{text}");
         }
     }

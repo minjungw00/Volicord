@@ -1,5 +1,7 @@
 # API errors
 
+Shaping methods reject stale Task, scope, baseline, checkpoint, Change Unit, and UserAction resolution coordinates through the existing validation, conflict, and replay branches. Aggregate failures have no partial checkpoint, request, event, replay, or state-version effect.
+
 Use this page to find the focused API error Reference page for a question. It
 is a router, not a contract source; exact error contracts live in the linked
 owners.

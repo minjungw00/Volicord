@@ -117,10 +117,8 @@ fn missing_final_acceptance_is_projected_end_to_end_without_effect() -> Result<(
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
-    assert_eq!(
-        response.response_value["summary_card"]["next_action"],
-        response.response_value["blockers"][0]["next_actions"][0]
-    );
+    assert!(response.response_value["summary_card"]["next_action"].is_null());
+    assert!(response.response_value["blockers"][0]["next_actions"][0].is_object());
     assert_eq!(harness.counts()?, before);
     Ok(())
 }

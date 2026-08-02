@@ -1,3 +1,4 @@
+mod advance_task;
 mod close_task;
 mod intake;
 mod operation_result;
@@ -5,6 +6,7 @@ mod prepare_evidence_capture;
 mod prepare_write;
 mod reconcile_changes;
 mod record_run;
+mod record_shaping;
 mod stage_artifact;
 mod status;
 #[cfg(test)]

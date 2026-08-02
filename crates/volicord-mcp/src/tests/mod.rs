@@ -33,9 +33,8 @@ use crate::{
         GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, MAX_RUNTIME_TOOLS_LIST_BYTES,
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
-        REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
-        UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
+        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID, REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        STATUS_READ_ONLY_EXAMPLE_ID, UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
     },
 };
 use volicord_host_contract::{
@@ -62,8 +61,12 @@ use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
     UserActionFixture,
 };
+use volicord_types::ids::{BaselineRef, ChangeUnitId, ShapingCheckpointId, TaskId};
 use volicord_types::managed_mcp_client_info::CODEX_MANAGED_MCP_CLIENT_NAME;
-use volicord_types::schema::{CloseAssessmentInput, ResidualRiskInput, StagedArtifactHandle};
+use volicord_types::methods::{AdvanceTaskRequest, RecordShapingRequest};
+use volicord_types::schema::{
+    CloseAssessmentInput, RequiredNullable, ResidualRiskInput, StagedArtifactHandle,
+};
 use volicord_types::values::{AgentConnectionMode, ChangeUnitOperation, OperationCategory};
 
 fn production_profiles(

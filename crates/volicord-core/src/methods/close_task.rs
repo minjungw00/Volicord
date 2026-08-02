@@ -1,7 +1,6 @@
 use crate::acceptance_facts::active_acceptance_criteria;
 use crate::close_readiness::{
-    assess_close_readiness, close_next_action, CloseReadinessAssessment, CloseReadinessFacts,
-    CloseReadinessRequest,
+    assess_close_readiness, CloseReadinessAssessment, CloseReadinessFacts, CloseReadinessRequest,
 };
 use crate::continuity::{
     plan_project_continuity_record, PlannedProjectContinuityRecord, ProjectContinuityDraft,
@@ -11,7 +10,6 @@ use crate::enforcement_facts::project_enforcement_profile;
 use crate::error_boundary::store::plan_error_response;
 use crate::evidence_projection::evidence_summary_for_display;
 use crate::guarantee_projection::guarantee_display;
-use crate::guidance::primary_next_action;
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{dry_run_summary, validation_rejected};
@@ -45,13 +43,12 @@ use volicord_types::ids::{ChangeUnitId, TaskId};
 use volicord_types::methods::{CheckCloseRequest, CloseAssessmentResultFields, CloseTaskRequest};
 use volicord_types::schema::{
     AuthorityReceipt, CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary, EvidenceGateSummary,
-    JsonObject, NextActionSummary, ProjectEnforcementProfile, RequiredNullable,
-    RiskAcceptanceCoverage, ToolEnvelope,
+    JsonObject, ProjectEnforcementProfile, RequiredNullable, RiskAcceptanceCoverage, ToolEnvelope,
 };
 use volicord_types::values::{
-    AuthorityNextActor, CloseIntent, CloseReason, CloseState, MethodName, OperationCategory,
-    PersistedCloseSummary, ProjectContinuityKind, StateRecordKind, StatusCloseState,
-    TaskLifecyclePhase, TaskMode, TaskResult, UtcTimestamp, WriteTicketInvalidationReason,
+    CloseIntent, CloseReason, CloseState, MethodName, OperationCategory, PersistedCloseSummary,
+    ProjectContinuityKind, StateRecordKind, StatusCloseState, TaskLifecyclePhase, TaskMode,
+    TaskResult, UtcTimestamp, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::agent_safe_pending_user_action_summaries;
 
@@ -723,11 +720,15 @@ fn project_close_task_response(
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
         .summary;
+    let current_shaping_checkpoint = store
+        .current_shaping_checkpoint(&request.task_id)
+        .map_err(CorePipelineError::from)?;
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: response_state_version,
         task: &synthetic_task,
         current_change_unit: context.current_change_unit.as_ref(),
+        shaping_checkpoint: current_shaping_checkpoint.as_ref(),
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: context.pending_user_action_refs.clone(),
@@ -747,7 +748,6 @@ fn project_close_task_response(
     })?;
 
     let artifact_refs = context.artifact_refs.clone();
-    let no_next_actions: &[NextActionSummary] = &[];
     let summary_card = summary_card(SummaryCardInput {
         task: Some(&synthetic_task),
         recording: if storage_mutations.is_empty() {
@@ -763,7 +763,6 @@ fn project_close_task_response(
         close_status: close_state_text(close_state).to_owned(),
         verified_invocation: verified_invocation
             .expect("close task result planning requires verified invocation context"),
-        next_action: primary_next_action(no_next_actions, &blockers),
     });
     let task_ref = state_ref(
         StateRecordKind::Task,
@@ -798,32 +797,7 @@ fn project_close_task_response(
     let product_file_write_observed = latest_run
         .as_ref()
         .is_some_and(|record| record.observed_changes.product_file_write_observed);
-    let next_action = if blockers.is_empty() && close_state == CloseState::Ready {
-        Some(close_next_action(
-            "Complete the current Task.",
-            vec![task_ref.clone()],
-        ))
-    } else {
-        primary_next_action(no_next_actions, &blockers).cloned()
-    };
-    let next_actor = next_action
-        .as_ref()
-        .map(|action| {
-            if action
-                .allowed_operation_categories
-                .contains(&OperationCategory::UserOnly)
-            {
-                AuthorityNextActor::User
-            } else if action
-                .allowed_operation_categories
-                .contains(&OperationCategory::AgentWorkflow)
-            {
-                AuthorityNextActor::Agent
-            } else {
-                AuthorityNextActor::None
-            }
-        })
-        .unwrap_or(AuthorityNextActor::None);
+    let next_actor = state.workflow.next_actor();
     let authority_receipt = AuthorityReceipt {
         project_id: request.envelope.project_id.clone(),
         state_version: response_state_version,
@@ -845,7 +819,6 @@ fn project_close_task_response(
             && blockers.is_empty()
             && matches!(close_state, CloseState::Ready | CloseState::Closed),
         next_actor,
-        next_action,
     };
     let result_fields = CloseAssessmentResultFields {
         summary_card,

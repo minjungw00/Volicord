@@ -15,6 +15,18 @@
     },
     {
       "server_key": "volicord",
+      "raw_tool_name": "volicord.record_shaping",
+      "expected_callable_name": "mcp__volicord__volicord_record_shaping",
+      "purpose": "Public shaping-checkpoint recording tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.advance_task",
+      "expected_callable_name": "mcp__volicord__volicord_advance_task",
+      "purpose": "Public explicit task-progression tool"
+    },
+    {
+      "server_key": "volicord",
       "raw_tool_name": "volicord.status",
       "expected_callable_name": "mcp__volicord__volicord_status",
       "purpose": "Public status tool preserves its complete dotted raw name"

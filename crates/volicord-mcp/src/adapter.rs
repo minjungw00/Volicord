@@ -22,11 +22,12 @@ use volicord_core::pipeline::{
 };
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_mcp_wire::{
-    status_include, McpCheckCloseArguments, McpCloseTaskArguments, McpGetOperationResultArguments,
-    McpIntakeArguments, McpPrepareEvidenceCaptureArguments, McpPrepareWriteArguments,
-    McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserActionArguments,
-    McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments,
-    McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments,
+    status_include, McpAdvanceTaskArguments, McpCheckCloseArguments, McpCloseTaskArguments,
+    McpGetOperationResultArguments, McpIntakeArguments, McpPrepareEvidenceCaptureArguments,
+    McpPrepareWriteArguments, McpReconcileChangesArguments, McpRecordRunArguments,
+    McpRecordShapingArguments, McpRequestUserActionArguments, McpRequestUserActionOperation,
+    McpStageArtifactArguments, McpStatusArguments, McpToolErrorIssue, McpToolIssueCode,
+    McpUpdateScopeArguments,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
@@ -52,10 +53,11 @@ use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, IntegrationVerificationIdArguments,
 };
 use volicord_types::methods::{
-    CheckCloseRequest, CloseTaskRequest, GetOperationResultRequest, IntakeRequest,
-    MethodOperationCategory, MethodResponseContract, PrepareEvidenceCaptureRequest,
-    PrepareWriteRequest, ReconcileChangesRequest, RecordRunRequest, RequestUserActionRequest,
-    RequestUserActionResponse, StageArtifactRequest, StatusRequest, UpdateScopeRequest,
+    AdvanceTaskRequest, CheckCloseRequest, CloseTaskRequest, GetOperationResultRequest,
+    IntakeRequest, MethodOperationCategory, MethodResponseContract, PrepareEvidenceCaptureRequest,
+    PrepareWriteRequest, ReconcileChangesRequest, RecordRunRequest, RecordShapingRequest,
+    RequestUserActionRequest, RequestUserActionResponse, StageArtifactRequest, StatusRequest,
+    UpdateScopeRequest,
 };
 use volicord_types::schema::{RequiredNullable, ToolEnvelope};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
@@ -382,6 +384,12 @@ impl McpAdapter {
             Some(MethodName::UpdateScope) => {
                 self.call_update_scope(context, tool_name, params, session)
             }
+            Some(MethodName::RecordShaping) => {
+                self.call_record_shaping(context, tool_name, params, session)
+            }
+            Some(MethodName::AdvanceTask) => {
+                self.call_advance_task(context, tool_name, params, session)
+            }
             Some(MethodName::Status) => self.call_status(context, tool_name, params, session),
             Some(MethodName::GetOperationResult) => {
                 self.call_get_operation_result(context, tool_name, params, session)
@@ -519,6 +527,79 @@ impl McpAdapter {
                 include: status_include(args.detail),
             },
             |core, _, request, invocation| core.status(request, invocation),
+            session,
+        )
+    }
+
+    fn call_record_shaping(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        tool_name: &str,
+        params: Value,
+        session: Option<AgentSessionCoordinates<'_>>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpRecordShapingArguments> =
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            context,
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            context,
+            tool_name,
+            RecordShapingRequest {
+                envelope,
+                task_id,
+                scope_revision: args.scope_revision,
+                baseline_ref: args.baseline_ref,
+                summary: args.summary,
+                implementation_boundary: args.implementation_boundary,
+                gaps: args.gaps,
+                source_refs: args.source_refs,
+                evidence_refs: args.evidence_refs,
+                close_assessment: args.close_assessment,
+            },
+            CoreService::record_shaping,
+            session,
+        )
+    }
+
+    fn call_advance_task(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        tool_name: &str,
+        params: Value,
+        session: Option<AgentSessionCoordinates<'_>>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpAdvanceTaskArguments> =
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            context,
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            context,
+            tool_name,
+            AdvanceTaskRequest {
+                envelope,
+                task_id,
+                shaping_checkpoint_id: args.shaping_checkpoint_id,
+                change_unit_id: args.change_unit_id,
+                scope_revision: args.scope_revision,
+                baseline_ref: args.baseline_ref,
+                user_action_resolution_ids: args.user_action_resolution_ids,
+            },
+            CoreService::advance_task,
             session,
         )
     }
@@ -1610,10 +1691,10 @@ fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<
         string_value_guidance(
             params,
             "kind",
-            &["shaping_update", "implementation", "direct"],
+            &["implementation", "direct"],
         )
     })
-    .or_else(|| root_shape_guidance_for_source(params, source, record_run_root_fields(), crate::tool_registry::RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON))
+    .or_else(|| root_shape_guidance_for_source(params, source, record_run_root_fields(), crate::tool_registry::RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON))
 }
 
 fn request_user_action_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
@@ -2063,6 +2144,8 @@ macro_rules! impl_has_envelope {
 impl_has_envelope!(
     IntakeRequest,
     UpdateScopeRequest,
+    RecordShapingRequest,
+    AdvanceTaskRequest,
     StatusRequest,
     GetOperationResultRequest,
     PrepareEvidenceCaptureRequest,

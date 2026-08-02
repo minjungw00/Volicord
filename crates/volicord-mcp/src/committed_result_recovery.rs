@@ -15,7 +15,7 @@ use volicord_mcp_wire::{
     McpMutationResponseBudgetExceeded, McpOperationalErrorCode, McpPostEffectFailureCode,
 };
 use volicord_types::methods::OperationResultRef;
-use volicord_types::schema::{AuthorityReceipt, NextActionSummary, RequiredNullable};
+use volicord_types::schema::{AuthorityReceipt, RequiredNullable, WorkflowProjection};
 use volicord_types::values::MutationDetailLevel;
 
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
@@ -30,7 +30,7 @@ pub(crate) struct CanonicalMcpMutationOutcome {
     pub(crate) compact_method_result: Option<Value>,
     pub(crate) operation_result_ref: Option<OperationResultRef>,
     pub(crate) authority_receipt: Option<AuthorityReceipt>,
-    pub(crate) next_actions: Vec<NextActionSummary>,
+    pub(crate) workflow: Option<WorkflowProjection>,
 }
 
 impl CanonicalMcpMutationOutcome {
@@ -54,17 +54,17 @@ impl CanonicalMcpMutationOutcome {
             compact_method_result,
             operation_result_ref,
             authority_receipt: None,
-            next_actions: Vec::new(),
+            workflow: None,
         }
     }
 
     pub(crate) fn set_authority_refresh(
         &mut self,
         authority_receipt: AuthorityReceipt,
-        next_actions: Vec<NextActionSummary>,
+        workflow: WorkflowProjection,
     ) {
         self.authority_receipt = Some(authority_receipt);
-        self.next_actions = next_actions;
+        self.workflow = Some(workflow);
     }
 
     fn recovery_candidates(

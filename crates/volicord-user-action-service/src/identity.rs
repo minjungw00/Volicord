@@ -1,8 +1,8 @@
 use crate::error::UserActionServiceError;
-use volicord_types::ids::{IdempotencyKey, UnrecordedChangeId};
+use volicord_types::ids::{IdempotencyKey, ShapingCheckpointId, ShapingGapId, UnrecordedChangeId};
 use volicord_types::schema::{
     PersistedUserActionDirectRequestMetadata, PersistedUserActionReconciliationMetadata,
-    PersistedUserActionRequestMetadata,
+    PersistedUserActionRequestMetadata, PersistedUserActionShapingMetadata,
 };
 use volicord_types::values::MethodName;
 
@@ -10,6 +10,10 @@ use volicord_types::values::MethodName;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserActionOrigin {
     DirectRequest,
+    Shaping {
+        shaping_checkpoint_id: ShapingCheckpointId,
+        shaping_gap_id: ShapingGapId,
+    },
     Reconciliation {
         unrecorded_change_id: UnrecordedChangeId,
     },
@@ -26,6 +30,7 @@ impl UserActionOrigin {
     fn source_method(&self) -> MethodName {
         match self {
             Self::DirectRequest => MethodName::RequestUserAction,
+            Self::Shaping { .. } => MethodName::RecordShaping,
             Self::Reconciliation { .. } => MethodName::ReconcileChanges,
         }
     }
@@ -35,6 +40,14 @@ impl UserActionOrigin {
             Self::DirectRequest => PersistedUserActionRequestMetadata::DirectRequest(
                 PersistedUserActionDirectRequestMetadata {},
             ),
+            Self::Shaping {
+                shaping_checkpoint_id,
+                shaping_gap_id,
+            } => PersistedUserActionRequestMetadata::Shaping(PersistedUserActionShapingMetadata {
+                created_by: MethodName::RecordShaping,
+                shaping_checkpoint_id: shaping_checkpoint_id.clone(),
+                shaping_gap_id: shaping_gap_id.clone(),
+            }),
             Self::Reconciliation {
                 unrecorded_change_id,
             } => PersistedUserActionRequestMetadata::Reconciliation(

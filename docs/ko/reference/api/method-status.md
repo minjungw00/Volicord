@@ -2,6 +2,8 @@
 
 # `volicord.status` 참조
 
+현재 진행은 태그형 `workflow` projection으로 반환됩니다. 진행에 행동이 필요하면 정확히 하나의 필수 행동을 포함하며 `close_readiness.state`, `close_readiness.blockers`와 독립적입니다. 현재 checkpoint readiness, typed gap, boundary, pending decision ref는 `workflow.checkpoint`에 나타납니다.
+
 ## 담당하는 것
 
 이 문서는 기준 범위의 `volicord.status` 메서드 동작을 담당합니다.
@@ -208,7 +210,6 @@ Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤�
 | `evidence_gate` | 아니요 | 예 | `EvidenceGateSummary` |
 | `evidence_summary` | 아니요 | 예 | `EvidenceSummary` |
 | `guarantee_display` | 아니요 | 예 | `GuaranteeDisplay` |
-| `next_actions` | 예 | 아니요 | `NextActionSummary[]` |
 | `pending_user_action_summaries` | 예 | 아니요 | `AgentSafeUserActionRequestSummary[]` |
 | `risk_acceptance_coverage` | 아니요 | 예 | `RiskAcceptanceCoverage[]` |
 | `status_summary` | 예 | 아니요 | `string` |
@@ -355,7 +356,7 @@ active_task:
     task_id: task_export_001
     produced_at_state_version: 42
   baseline_ref: baseline_export_001
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 42, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries:
     - user_action_request_id: ua_export_columns_001
       status: pending
@@ -372,7 +373,6 @@ active_task:
       message: "사용자 소유 행동이 대기 중입니다."
       related_refs: []
       next_actions:
-        - presentation_role: primary
           action_kind: resolve_user_action
           owner_method: volicord.resolve_user_action
           allowed_operation_categories: [user_only]
@@ -385,15 +385,6 @@ active_task:
     basis: "현재 적용된 더 강한 로컬 보장은 없습니다."
     capability_refs: []
 status_summary: "닫기 준비 상태가 pending_user_action 때문에 차단되었습니다."
-next_actions:
-  - presentation_role: primary
-    action_kind: resolve_user_action
-    owner_method: volicord.resolve_user_action
-    allowed_operation_categories: [user_only]
-    label: "사용자가 User Channel에서 대기 행동을 해결해야 합니다."
-    blocking_question: null
-    expected_state_version: null
-    required_refs: []
 pending_user_action_summaries:
   - user_action_request_id: ua_export_columns_001
     status: pending
@@ -410,7 +401,6 @@ close_blockers:
     message: "사용자 소유 행동이 대기 중입니다."
     related_refs: []
     next_actions:
-      - presentation_role: primary
         action_kind: resolve_user_action
         owner_method: volicord.resolve_user_action
         allowed_operation_categories: [user_only]

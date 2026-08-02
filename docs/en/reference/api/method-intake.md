@@ -40,9 +40,9 @@ Task-granularity guidance:
   outcome, rather than reducing it to the next analysis technique or other
   intermediate step.
 - When analysis or shaping is one phase of a requested implementation outcome,
-  the caller selects a `work` Task and records that phase later as a
-  `shaping_update`; it does not create an isolated `advisor` Task merely because
-  analysis happens first.
+  the caller selects a `work` Task and records explicit shaping checkpoints with
+  `volicord.record_shaping`; it does not create an isolated `advisor` Task merely
+  because analysis happens first.
 - The caller selects `advisor` when the requested outcome itself is read-only
   advice. When a broader outcome is unclear, it keeps only the known boundary
   in shaping state or asks the user; it does not infer a larger goal.
@@ -232,7 +232,6 @@ If `requested_mode=auto`, the persisted and displayed mode must be the resolved 
 |---|---|---|---|
 | `base` | yes | no | `IntakeResultBase` |
 | `change_unit_ref` | no | yes | `StateRecordRef` |
-| `next_actions` | yes | no | `NextActionSummary[]` |
 | `state` | yes | no | `StateSummary` |
 | `task_ref` | yes | no | `StateRecordRef` |
 
@@ -377,7 +376,7 @@ state:
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null
-  shaping_readiness: null
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 18, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
@@ -385,26 +384,12 @@ state:
   close_state: null
   close_blockers: []
   guarantee_display: null
-next_actions:
-  - presentation_role: primary
-    action_kind: update_scope
-    owner_method: volicord.update_scope
-    allowed_operation_categories: [agent_workflow]
-    label: "Create the first currently applied Change Unit before write-ticket preparation."
-    blocking_question: null
-    expected_state_version: 18
-    required_refs:
-      - record_kind: task
-        record_id: task_onboard_001
-        project_id: proj_onboard_001
-        task_id: task_onboard_001
-        produced_at_state_version: 18
 ```
 
 ## Owner links
 
 - Request envelope and response branches: [`ToolEnvelope`](schema-core.md#tool-envelope) and [common response branches](schema-core.md#common-response).
-- State refs, `StateSummary`, `ShapingReadiness`, and next actions: [API State Schemas](schema-state.md).
+- State refs, `StateSummary`, and tagged workflow progression: [API State Schemas](schema-state.md).
 - Supported method names, mode values, `resume_policy`, `response_kind`, `effect_kind`, and operation categories: [API Value Sets](schema-value-sets.md#operation-category-values).
 - Public errors, precedence, and rejected-response routing: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).
 - Persistence effects and storage records: [Storage Effects](../storage-effects.md), [Storage Records](../storage-records.md), and [Storage Versioning](../storage-versioning.md).

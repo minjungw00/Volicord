@@ -1,7 +1,9 @@
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::record_refs::state_ref;
 use crate::task_state::StoredScope;
-use volicord_store::core_pipeline::{ChangeUnitRecord, ProjectStateHeader, TaskRecord};
+use volicord_store::core_pipeline::{
+    ChangeUnitRecord, ProjectStateHeader, ShapingCheckpointRecord, TaskRecord,
+};
 use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
 use volicord_types::schema::{
     AcceptanceCriterion, CloseReadinessBlocker, EvidenceGateSummary, EvidenceSummary,
@@ -15,6 +17,7 @@ pub(crate) struct StateSummaryInput<'a> {
     pub(crate) state_version: u64,
     pub(crate) task: &'a TaskRecord,
     pub(crate) current_change_unit: Option<&'a ChangeUnitRecord>,
+    pub(crate) shaping_checkpoint: Option<&'a ShapingCheckpointRecord>,
     pub(crate) project_policy: Option<ProjectWorkflowPolicySummary>,
     pub(crate) acceptance_criteria: Vec<AcceptanceCriterion>,
     pub(crate) pending_user_action_refs: Vec<StateRecordRef>,
@@ -35,6 +38,7 @@ pub(crate) fn state_summary(
         state_version,
         task,
         current_change_unit,
+        shaping_checkpoint,
         project_policy,
         acceptance_criteria,
         pending_user_action_refs,
@@ -132,7 +136,13 @@ pub(crate) fn state_summary(
         effect_contract,
         baseline_ref: scope.baseline_ref.map(BaselineRef::new),
         workspace_context,
-        shaping_readiness: None,
+        workflow: crate::workflow_projection::workflow_projection(
+            project_id,
+            state_version,
+            task,
+            current_change_unit,
+            shaping_checkpoint,
+        ),
         pending_user_action_summaries:
             volicord_user_action_service::agent_safe_pending_user_action_summaries(
                 pending_user_action_refs,

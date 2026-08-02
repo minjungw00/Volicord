@@ -77,8 +77,12 @@ fn assert_typed_result_contract<T>(response: &PipelineResponse)
 where
     T: DeserializeOwned + Serialize,
 {
-    let decoded: T =
-        serde_json::from_str(&response.response_json).expect("typed method result should decode");
+    let decoded: T = serde_json::from_str(&response.response_json).unwrap_or_else(|error| {
+        panic!(
+            "typed method result should decode: {error}; response={}",
+            response.response_json
+        )
+    });
     assert_eq!(
         serde_json::to_value(decoded).expect("typed method result should serialize"),
         response.response_value,
@@ -111,7 +115,7 @@ fn assert_record_run_close_projection_matches_status(response: &Value, status: &
         .expect("record_run close blockers should be an array")
         .iter()
         .any(|blocker| blocker["code"] == "stale_current_close_basis"));
-    let primary_next_actions = response["state"]["close_blockers"]
+    let blocker_next_actions = response["state"]["close_blockers"]
         .as_array()
         .expect("record_run close blockers should be an array")
         .iter()
@@ -120,13 +124,10 @@ fn assert_record_run_close_projection_matches_status(response: &Value, status: &
                 .as_array()
                 .expect("close blocker next_actions should be an array")
         })
-        .filter(|action| action["presentation_role"] == "primary")
         .collect::<Vec<_>>();
-    assert_eq!(primary_next_actions.len(), 1);
-    assert_eq!(
-        primary_next_actions[0],
-        &status["summary_card"]["next_action"]
-    );
+    assert!(!blocker_next_actions.is_empty());
+    assert!(status["summary_card"].get("next_action").is_none());
+    assert_eq!(status["summary_card"]["next"], "see workflow");
 }
 
 #[derive(Debug, Clone)]
@@ -257,6 +258,24 @@ impl AdmittedCoreService {
     ) -> CoreResult<PipelineResponse> {
         self.inner
             .update_scope(&self.context(), request, invocation)
+    }
+
+    fn record_shaping(
+        &self,
+        request: RecordShapingRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .record_shaping(&self.context(), request, invocation)
+    }
+
+    fn advance_task(
+        &self,
+        request: AdvanceTaskRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .advance_task(&self.context(), request, invocation)
     }
 
     fn prepare_write(
@@ -652,6 +671,7 @@ mod record_run_projection;
 #[path = "../../write_ticket/tests/record_run_admission.rs"]
 mod record_run_write_admission;
 mod replay;
+mod shaping_progression;
 mod stage_artifact;
 mod status;
 mod update_scope;
@@ -2185,15 +2205,7 @@ fn assert_field_absent(value: &Value, field: &str) {
 }
 
 fn assert_no_close_next_actions(response_value: &Value) {
-    let actions = response_value["next_actions"]
-        .as_array()
-        .expect("next_actions should be an array");
-    assert!(
-        actions.iter().all(|action| {
-            action["owner_method"] != "volicord.close_task" && action["action_kind"] != "close_task"
-        }),
-        "close-only next actions should not be present when close is excluded: {actions:?}"
-    );
+    assert!(response_value.get("next_actions").is_none());
 }
 
 fn close_blocker_codes(response_value: &Value) -> Vec<String> {
@@ -2286,7 +2298,94 @@ fn create_task_with_policy_and_change_unit(
         .as_str()
         .expect("change unit ref should be present")
         .to_owned();
+    if requested_mode == RequestedMode::Work {
+        advance_work_task_for_test(harness, prefix, &task_id, &change_unit_id)?;
+    }
     Ok((task_id, change_unit_id))
+}
+
+fn advance_work_task_for_test(
+    harness: &MethodHarness,
+    prefix: &str,
+    task_id: &str,
+    _change_unit_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut conn = harness.conn()?;
+    let transaction = conn.transaction()?;
+    let scope_revision: i64 = transaction.query_row(
+        "SELECT scope_revision
+           FROM tasks
+          WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?;
+    transaction.execute(
+        "INSERT INTO shaping_checkpoints (
+           project_id, shaping_checkpoint_id, task_id, scope_revision,
+           baseline_ref, summary, implementation_boundary, readiness,
+           source_refs_json, evidence_refs_json, created_at, superseded_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'ready', '[]', '[]', ?8, NULL)",
+        rusqlite::params![
+            PROJECT_ID,
+            format!("shaping_checkpoint_fixture_{prefix}"),
+            task_id,
+            scope_revision,
+            "baseline_test",
+            "Test fixture implementation boundary is ready.",
+            "Exercise the owner-defined test boundary.",
+            DEFAULT_METHOD_TEST_CLOCK,
+        ],
+    )?;
+    let updated = transaction.execute(
+        "UPDATE tasks
+            SET work_phase = 'implementation', lifecycle_phase = 'executing'
+          WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+    )?;
+    assert_eq!(
+        updated, 1,
+        "test fixture Work Task must advance exactly once"
+    );
+    transaction.commit()?;
+    Ok(())
+}
+
+fn record_ready_advisor_shaping_for_test(
+    harness: &MethodHarness,
+    prefix: &str,
+    task_id: &str,
+    expected_state_version: u64,
+) -> Result<u64, Box<dyn Error>> {
+    let response = harness.service.record_shaping(
+        RecordShapingRequest {
+            envelope: envelope(
+                &format!("req_{prefix}_record_shaping"),
+                Some(&format!("idem_{prefix}_record_shaping")),
+                false,
+                Some(expected_state_version),
+                Some(task_id),
+            ),
+            task_id: TaskId::new(task_id),
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            summary: "Advisor analysis is ready for close review.".to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Deliver the bounded advisory result without Product Repository writes.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            close_assessment: RequiredNullable::some(close_assessment_with_risks(
+                "Advisor analysis is complete.",
+                Vec::new(),
+            )),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    Ok(response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("advisor shaping state version"))
 }
 
 fn create_task_with_effect_contract(
@@ -2330,6 +2429,7 @@ fn create_task_with_effect_contract(
         .as_str()
         .expect("change unit ref should be present")
         .to_owned();
+    advance_work_task_for_test(harness, prefix, &task_id, &change_unit_id)?;
     Ok((task_id, change_unit_id))
 }
 

@@ -433,6 +433,8 @@
               "enum": [
                 "volicord.intake",
                 "volicord.update_scope",
+                "volicord.record_shaping",
+                "volicord.advance_task",
                 "volicord.status",
                 "volicord.get_operation_result",
                 "volicord.check_close",
@@ -458,14 +460,6 @@
                 "resolve_user_action",
                 "reconcile_changes",
                 "close_task"
-              ],
-              "type": "string"
-            },
-            "NextActionPresentationRole": {
-              "description": "Controlled presentation role for an owner-composed next action.",
-              "enum": [
-                "primary",
-                "additional"
               ],
               "type": "string"
             },
@@ -508,9 +502,6 @@
                     }
                   ]
                 },
-                "presentation_role": {
-                  "$ref": "#/definitions/NextActionPresentationRole"
-                },
                 "required_refs": {
                   "items": {
                     "$ref": "#/definitions/StateRecordRef"
@@ -523,7 +514,6 @@
                 "allowed_operation_categories",
                 "expected_state_version",
                 "label",
-                "presentation_role",
                 "required_refs"
               ],
               "type": "object"
@@ -555,6 +545,8 @@
                 "project_state",
                 "task",
                 "change_unit",
+                "shaping_checkpoint",
+                "shaping_gap",
                 "write_ticket",
                 "user_action_request",
                 "user_action_resolution",
@@ -696,6 +688,7 @@
               "description": "Judgment required-for values.",
               "enum": [
                 "scope_update",
+                "advance_task",
                 "prepare_write",
                 "record_run",
                 "close_complete",
@@ -1292,6 +1285,8 @@
               "enum": [
                 "volicord.intake",
                 "volicord.update_scope",
+                "volicord.record_shaping",
+                "volicord.advance_task",
                 "volicord.status",
                 "volicord.get_operation_result",
                 "volicord.check_close",
@@ -1317,14 +1312,6 @@
                 "resolve_user_action",
                 "reconcile_changes",
                 "close_task"
-              ],
-              "type": "string"
-            },
-            "NextActionPresentationRole": {
-              "description": "Controlled presentation role for an owner-composed next action.",
-              "enum": [
-                "primary",
-                "additional"
               ],
               "type": "string"
             },
@@ -1367,9 +1354,6 @@
                     }
                   ]
                 },
-                "presentation_role": {
-                  "$ref": "#/definitions/NextActionPresentationRole"
-                },
                 "required_refs": {
                   "items": {
                     "$ref": "#/definitions/StateRecordRef"
@@ -1382,7 +1366,6 @@
                 "allowed_operation_categories",
                 "expected_state_version",
                 "label",
-                "presentation_role",
                 "required_refs"
               ],
               "type": "object"
@@ -1414,6 +1397,8 @@
                 "project_state",
                 "task",
                 "change_unit",
+                "shaping_checkpoint",
+                "shaping_gap",
                 "write_ticket",
                 "user_action_request",
                 "user_action_resolution",
@@ -1555,6 +1540,7 @@
               "description": "Judgment required-for values.",
               "enum": [
                 "scope_update",
+                "advance_task",
                 "prepare_write",
                 "record_run",
                 "close_complete",
@@ -1768,7 +1754,6 @@
         "owner_method",
         "paths",
         "pending_user_action_inbox_items",
-        "presentation_role",
         "produced_at_state_version",
         "profile",
         "project_id",
@@ -1822,7 +1807,6 @@
         "EvidenceTarget",
         "MethodName",
         "NextActionKind",
-        "NextActionPresentationRole",
         "NextActionSummary",
         "OperationCategory",
         "RedactionState",
@@ -1840,8 +1824,8 @@
       ],
       "values": [
         "acceptance_criterion",
-        "additional",
         "admin_local",
+        "advance_task",
         "agent_connection",
         "agent_workflow",
         "artifact",
@@ -1873,7 +1857,6 @@
         "optional",
         "pending",
         "prepare_write",
-        "primary",
         "product_decision",
         "project_continuity_record",
         "project_state",
@@ -1891,6 +1874,8 @@
         "scope_update",
         "secret_omitted",
         "sensitive_approval",
+        "shaping_checkpoint",
+        "shaping_gap",
         "stage_artifact",
         "stale",
         "superseded",
@@ -1908,6 +1893,7 @@
         "user_action_resolution",
         "user_only",
         "verified",
+        "volicord.advance_task",
         "volicord.check_close",
         "volicord.close_task",
         "volicord.get_operation_result",
@@ -1916,6 +1902,7 @@
         "volicord.prepare_write",
         "volicord.reconcile_changes",
         "volicord.record_run",
+        "volicord.record_shaping",
         "volicord.request_user_action",
         "volicord.resolve_user_action",
         "volicord.stage_artifact",

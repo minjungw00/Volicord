@@ -29,7 +29,9 @@ use volicord_test_support::{
 };
 use volicord_types::{
     guard_manifest::{guard_manifest_from_json, GuardManifest},
-    ids::{AgentConnectionId, ProjectId},
+    ids::{AgentConnectionId, BaselineRef, ChangeUnitId, ProjectId, ShapingCheckpointId, TaskId},
+    methods::{AdvanceTaskRequest, RecordShapingRequest},
+    schema::RequiredNullable,
     tool_names::AgentToolId,
     values::{ChangeUnitOperation, GuardHookPhase, OperationCategory},
 };
@@ -299,10 +301,60 @@ impl GuardRepositoryFixture {
             .as_str()
             .ok_or("prepared Change Unit ID")?
             .to_owned();
+        let shaped = service.record_shaping(
+            &self.core.mutation_context()?,
+            RecordShapingRequest {
+                envelope: self.core.envelope(
+                    &format!("req_{prefix}_shaping"),
+                    Some(&format!("idem_{prefix}_shaping")),
+                    false,
+                    Some(2),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The exact write-attribution boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Write only the intended fixture paths.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                close_assessment: RequiredNullable::null(),
+            },
+            self.agent_invocation()?,
+        )?;
+        let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+            .as_str()
+            .ok_or("prepared shaping checkpoint ID")?;
+        service.advance_task(
+            &self.core.mutation_context()?,
+            AdvanceTaskRequest {
+                envelope: self.core.envelope(
+                    &format!("req_{prefix}_advance"),
+                    Some(&format!("idem_{prefix}_advance")),
+                    false,
+                    Some(3),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                ),
+                user_action_resolution_ids: Vec::new(),
+            },
+            self.agent_invocation()?,
+        )?;
         let mut request = self.core.prepare_write_request(
             &format!("req_{prefix}_prepare"),
             &format!("idem_{prefix}_prepare"),
-            Some(2),
+            Some(4),
             Some(&task_id),
             Some(&change_unit_id),
         );

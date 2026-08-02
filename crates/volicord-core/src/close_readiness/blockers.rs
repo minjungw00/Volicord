@@ -1,7 +1,7 @@
 use super::guidance::{close_guidance, CloseGuidance};
 use crate::guidance::{allowed_operation_categories, expected_state_version_for};
 use volicord_types::schema::{CloseReadinessBlocker, NextActionSummary, StateRecordRef};
-use volicord_types::values::{CloseReadinessBlockerCategory, NextActionPresentationRole};
+use volicord_types::values::CloseReadinessBlockerCategory;
 
 pub(crate) fn close_blocker(
     category: CloseReadinessBlockerCategory,
@@ -39,16 +39,10 @@ pub(crate) fn normalize_close_blockers(
     blockers: &mut [CloseReadinessBlocker],
     expected_state_version: u64,
 ) {
-    for (action_index, action) in blockers
+    for action in blockers
         .iter_mut()
         .flat_map(|blocker| blocker.next_actions.iter_mut())
-        .enumerate()
     {
-        action.presentation_role = if action_index == 0 {
-            NextActionPresentationRole::Primary
-        } else {
-            NextActionPresentationRole::Additional
-        };
         action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
         action.expected_state_version = expected_state_version_for(
             &action.allowed_operation_categories,

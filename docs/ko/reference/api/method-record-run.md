@@ -65,23 +65,17 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
 
 ## 목적
 
-`volicord.record_run`은 의미 있는 작업 뒤에 증거를 기록하는 기준 공개 메서드입니다. 이 메서드는 아래 작업에 대한 Run을 기록합니다.
-
-- 구체화 작업
-- 직접 응답 또는 결과
-- 구현 작업
+`volicord.record_run`은 실행과 그 증거를 기록합니다. shaping 분석은 `volicord.record_shaping`으로 기록합니다.
 
 현재 저장된 `Task.mode`, `work_phase`, 요청한 `kind`는 아래 완전한 행렬과
 일치해야 합니다.
 
 | 현재 `Task.mode` | 현재 `work_phase` | 허용되는 `RecordRunRequest.kind` |
 |---|---|---|
-| `advisor` | `shaping` | `shaping_update` |
 | `direct` | `implementation` | `direct` |
-| `work` | `shaping` | `shaping_update` |
 | `work` | `implementation` | `implementation` |
 
-Core는 호환되지 않는 조합을 커밋 전에 거절합니다. `advisor` 실행 기록은 Product Repository 파일 효과에 대해 읽기 전용이며 추가로 `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, `write_ticket_id=null`을 요구합니다. 호환되는 `shaping_update`는 Run과 메서드 소유 증거 상태를 기록하는 Core 상태 변경으로 커밋됩니다.
+Core는 그 밖의 모드, 단계, 종류 조합을 커밋 전에 거절합니다. Advisor 결과와 work shaping 결과는 Run이 아니라 지속 shaping checkpoint를 사용합니다.
 
 모든 Run은 확인된 현재 Git 작업 공간 맥락이 현재 Change Unit 쓰기 근거와 일치해야
 합니다. 이 규칙은 제품 쓰기 Run뿐 아니라 쓰기가 없는 증거와 닫기 평가 Run에도
@@ -525,44 +519,6 @@ receipt artifact도 승격하고 불변 producer를 만듭니다. 정확한 저�
 
 아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 커밋된 실행, 승격된 아티팩트 참조, 갱신된 증거 요약, 증거 관찰, 차단 사유 참조, 상태 버전, 현재 상태 스냅샷을 보여 주는 데 필요한 필드로 축약했습니다.
 
-## 제품 파일을 쓰지 않는 `advisor` 요청
-
-이 예시는 기존 `advisor` Task에서 저장소를 읽기 전용으로 분석한 결과를 기록합니다.
-메서드 안의 전제: `task_advisor_review_001`은 `Task.mode=advisor`인 현재 Task이고,
-`cu_advisor_review_001`은 현재 Change Unit이며, `baseline_advisor_review_001`은 그
-범위와 호환되고, 현재 프로젝트 상태 버전은 `7`입니다. 요청은 `advisor`와 호환되는
-`kind=shaping_update`를 사용하며 Product Repository 파일 쓰기가 없었다고 보고합니다.
-쓰기 티켓도 사용하지 않습니다. 호출이 성공하면 Run과 Core 소유 상태는 커밋되지만
-제품 파일 효과를 뜻하지는 않습니다.
-
-```yaml contract=api.method.record_run.request shape=complete_request
-method: volicord.record_run
-params:
-  envelope:
-    project_id: proj_advisor_review_001
-    task_id: task_advisor_review_001
-    request_id: req_advisor_review_001
-    idempotency_key: idem_advisor_review_001
-    expected_state_version: 7
-    dry_run: false
-    locale: ko-KR
-  task_id: task_advisor_review_001
-  change_unit_id: cu_advisor_review_001
-  kind: shaping_update
-  run_id: null
-  baseline_ref: baseline_advisor_review_001
-  write_ticket_id: null
-  summary: "Product Repository 파일을 쓰지 않고 읽기 전용 저장소 분석을 마쳤습니다."
-  observed_changes:
-    changed_paths: []
-    product_file_write_observed: false
-    sensitive_categories: []
-    baseline_ref: baseline_advisor_review_001
-  artifact_inputs: []
-  evidence_updates: []
-  evidence_observations: []
-  close_assessment: null
-```
 
 ## 최소 유효 요청
 
@@ -911,7 +867,7 @@ state:
     task_id: task_runprobe_001
     produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 32, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

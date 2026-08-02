@@ -3,10 +3,9 @@ use std::{error::Error, fmt};
 use serde_json::Value;
 use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId};
 use volicord_types::methods::{MethodResultBase, StatusResult};
-use volicord_types::schema::{AuthorityReceipt, NextActionSummary, StateRecordRef};
+use volicord_types::schema::{AuthorityReceipt, StateRecordRef, WorkflowProjection};
 use volicord_types::values::{
-    AuthorityNextActor, CloseState, EffectKind, OperationCategory, StateRecordKind,
-    StatusCloseState,
+    CloseState, EffectKind, OperationCategory, StateRecordKind, StatusCloseState,
 };
 
 /// Adapter-supplied coordinates that a fresh authority status must confirm.
@@ -65,9 +64,14 @@ impl ValidatedAuthorityStatus {
             .expect("validated authority status always contains a receipt")
     }
 
-    /// Borrows the current status next actions validated against the receipt.
-    pub fn next_actions(&self) -> &[NextActionSummary] {
-        &self.status.next_actions
+    /// Borrows the current tagged workflow projection.
+    pub fn workflow(&self) -> &WorkflowProjection {
+        &self
+            .status
+            .active_task
+            .as_ref()
+            .expect("validated authority status always contains an active Task")
+            .workflow
     }
 
     /// Consumes the wrapper and returns the validated status result.
@@ -75,14 +79,20 @@ impl ValidatedAuthorityStatus {
         self.status
     }
 
-    /// Consumes the wrapper into the canonical receipt and current next actions.
-    pub fn into_authority_projection(mut self) -> (AuthorityReceipt, Vec<NextActionSummary>) {
+    /// Consumes the wrapper into the canonical receipt and tagged workflow projection.
+    pub fn into_authority_projection(mut self) -> (AuthorityReceipt, WorkflowProjection) {
+        let workflow = self
+            .status
+            .active_task
+            .take()
+            .expect("validated authority status always contains an active Task")
+            .workflow;
         let receipt = self
             .status
             .authority_receipt
             .take()
             .expect("validated authority status always contains a receipt");
-        (receipt, self.status.next_actions)
+        (receipt, workflow)
     }
 }
 
@@ -119,7 +129,7 @@ impl Error for AuthorityStatusValidationError {}
 /// This boundary accepts only a non-dry-run read-only result for the expected
 /// Project and Task. It verifies the receipt against the same status result's
 /// state version, Task reference, scope revision, current Change Unit, evidence
-/// gate, close state, complete close blockers, and next action.
+/// gate, close state, complete close blockers, and tagged workflow projection.
 pub fn validate_authority_status(
     response: &Value,
     expectation: &AuthorityStatusExpectation,
@@ -161,14 +171,9 @@ pub fn validate_authority_status(
             status_close_state,
             StatusCloseState::Ready | StatusCloseState::Closed
         );
-    let missing_agent_owner_method = status
-        .next_actions
+    let missing_agent_owner_method = status_close_blockers
         .iter()
-        .chain(
-            status_close_blockers
-                .iter()
-                .flat_map(|blocker| blocker.next_actions.iter()),
-        )
+        .flat_map(|blocker| blocker.next_actions.iter())
         .any(|action| {
             action
                 .allowed_operation_categories
@@ -219,8 +224,7 @@ pub fn validate_authority_status(
         || status_close_state != receipt.close_state
         || active_task.close_blockers.as_deref() != Some(receipt.close_blockers.as_slice())
         || status_close_blockers != &receipt.close_blockers
-        || status.next_actions.first() != receipt.next_action.as_ref()
-        || authority_next_actor(receipt.next_action.as_ref()) != receipt.next_actor
+        || active_task.workflow.next_actor() != receipt.next_actor
         || receipt.completion_claim_allowed != completion_claim_allowed
         || missing_agent_owner_method
     {
@@ -279,25 +283,6 @@ fn expected_change_unit_matches(
         Some(Some(expected)) => {
             receipt.is_some_and(|receipt| receipt.record_id.as_str() == expected.as_str())
         }
-    }
-}
-
-fn authority_next_actor(action: Option<&NextActionSummary>) -> AuthorityNextActor {
-    let Some(action) = action else {
-        return AuthorityNextActor::None;
-    };
-    if action
-        .allowed_operation_categories
-        .contains(&OperationCategory::UserOnly)
-    {
-        AuthorityNextActor::User
-    } else if action
-        .allowed_operation_categories
-        .contains(&OperationCategory::AgentWorkflow)
-    {
-        AuthorityNextActor::Agent
-    } else {
-        AuthorityNextActor::None
     }
 }
 
@@ -374,8 +359,8 @@ mod tests {
             task_id.as_str()
         );
         assert_eq!(
-            validated.authority_receipt().next_action.as_ref(),
-            validated.next_actions().first()
+            validated.authority_receipt().next_actor,
+            validated.workflow().next_actor()
         );
         Ok(())
     }
@@ -490,21 +475,11 @@ mod tests {
             ("active task close blockers", |value| {
                 value["active_task"]["close_blockers"] = serde_json::json!([])
             }),
-            ("next action", |value| {
-                value["authority_receipt"]["next_action"] = Value::Null
-            }),
-            ("status next actions", |value| {
-                value["next_actions"] = serde_json::json!([])
-            }),
             ("next actor", |value| {
                 value["authority_receipt"]["next_actor"] = serde_json::json!("none")
             }),
             ("completion claim", |value| {
                 value["authority_receipt"]["completion_claim_allowed"] = serde_json::json!(true)
-            }),
-            ("agent action owner method", |value| {
-                value["authority_receipt"]["next_action"]["owner_method"] = Value::Null;
-                value["next_actions"][0]["owner_method"] = Value::Null;
             }),
         ];
 

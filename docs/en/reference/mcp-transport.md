@@ -1,5 +1,7 @@
 # MCP transport reference
 
+The closed tool catalog includes `volicord.record_shaping` and `volicord.advance_task`. Both mutate Core authority and declare no direct Product Repository file effect. Generated request/response schemas and compact registry descriptions come from the canonical tool registry.
+
 This document owns the local MCP process boundary: managed stdio startup,
 strict binding, JSON-RPC lifecycle, tool discovery, public argument projection,
 response wrapping, and shutdown. Core methods, Codex configuration, connection
@@ -15,7 +17,7 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 | `volicord mcp serve`, initialization, `tools/list`, `tools/call`, and response wrapping | `stable` |
 | `volicord mcp preflight` read-only inspection and output contract | `stable` |
 | Authoritative runtime-session lifecycle milestones | `stable` |
-| The five production MCP revisions and closed 16-tool catalog, including mode/storage visibility subsets | `stable` |
+| The five production MCP revisions and closed canonical tool catalog, including mode/storage visibility subsets | `stable` |
 | Current beta MCP transport surface | `beta` — none; every current transport surface is classified by another row |
 | Hidden managed launcher, launch leases, and generated configuration details | `internal` |
 | Host executable version, MCP client name/version, and best-effort protocol metrics | `diagnostic` |
@@ -546,7 +548,7 @@ method but is never an MCP tool.
 
 `AgentToolId` is the canonical typed identity and catalog for every Agent
 Connection MCP tool. Core-owned identities reuse `MethodName`; adapter
-utilities and Connection-integration tools belong to the same closed 16-tool
+utilities and Connection-integration tools belong to the same closed canonical
 catalog. Each identity owns its stable MCP wire-name projection, category,
 Connection-mode availability, Core-method, adapter-utility, or
 Connection-integration ownership, idempotence, and optional operational

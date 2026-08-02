@@ -4205,7 +4205,50 @@ fn create_task_with_change_unit(
         .as_str()
         .expect("change unit ref should be present")
         .to_owned();
+    seed_ready_work_progression(fixture, &task_id)?;
     Ok((task_id, change_unit_id))
+}
+
+fn seed_ready_work_progression(fixture: &CoreFixture, task_id: &str) -> Result<(), Box<dyn Error>> {
+    let mut conn = fixture.mutation_conn()?;
+    let transaction = conn.transaction()?;
+    let (scope_revision, created_at): (i64, String) = transaction.query_row(
+        "SELECT t.scope_revision, p.updated_at
+           FROM tasks t
+           JOIN project_state p ON p.project_id = t.project_id
+          WHERE t.project_id = ?1 AND t.task_id = ?2",
+        rusqlite::params![fixture.project_id(), task_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    transaction.execute(
+        "INSERT INTO shaping_checkpoints (
+           project_id, shaping_checkpoint_id, task_id, scope_revision,
+           baseline_ref, summary, implementation_boundary, readiness,
+           source_refs_json, evidence_refs_json, created_at, superseded_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'ready', '[]', '[]', ?8, NULL)",
+        rusqlite::params![
+            fixture.project_id(),
+            format!("shaping_checkpoint_fixture_{task_id}"),
+            task_id,
+            scope_revision,
+            volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "Conformance fixture implementation boundary is ready.",
+            "Exercise only the current owner-defined conformance boundary.",
+            created_at,
+        ],
+    )?;
+    let updated = transaction.execute(
+        "UPDATE tasks
+            SET work_phase = 'implementation', lifecycle_phase = 'executing'
+          WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![fixture.project_id(), task_id],
+    )?;
+    assert_eq!(
+        updated, 1,
+        "conformance Work Task must advance exactly once"
+    );
+    transaction.commit()?;
+    Ok(())
 }
 
 fn prepare_write_ticket(

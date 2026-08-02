@@ -2,6 +2,8 @@
 
 # `volicord.prepare_write` 참조
 
+쓰기 준비에는 `direct/implementation` 또는 `work/implementation`, 현재 active Change Unit, 그리고 `scope_update`, `advance_task`, `prepare_write`에 필요한 미해결 현재 결정이 없다는 조건이 필요합니다. shaping에서 만든 Change Unit은 단계 gate를 만족하지 않습니다.
+
 ## 담당하는 것
 
 이 문서는 기준 범위의 `volicord.prepare_write` 메서드 동작을 담당합니다.
@@ -523,7 +525,7 @@ state:
   effect_contract: null
   baseline_ref: baseline_pref_001
   workspace_context: null
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 20, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary:

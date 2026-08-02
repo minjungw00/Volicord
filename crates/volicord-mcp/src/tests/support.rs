@@ -591,6 +591,63 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
     let mut state_version = scope.response_value["base"]["state_version"]
         .as_u64()
         .ok_or("scope response should expose state_version")?;
+    let shaped = core.record_shaping(
+        &fixture.mutation_context()?,
+        RecordShapingRequest {
+            envelope: fixture.envelope(
+                &format!("req_mcp_user_action_{}_shaping", case.name),
+                Some(&format!("idem_mcp_user_action_{}_shaping", case.name)),
+                false,
+                Some(state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new(
+                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            )),
+            summary: "The UserAction adapter fixture boundary is ready.".to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Exercise only the current UserAction adapter boundary.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            close_assessment: RequiredNullable::null(),
+        },
+        invocation(),
+    )?;
+    state_version = shaped.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("record_shaping response should expose state_version")?;
+    let shaping_checkpoint_id = shaped.response_value["shaping_checkpoint"]
+        ["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("record_shaping response should expose its checkpoint")?;
+    let advanced = core.advance_task(
+        &fixture.mutation_context()?,
+        AdvanceTaskRequest {
+            envelope: fixture.envelope(
+                &format!("req_mcp_user_action_{}_advance", case.name),
+                Some(&format!("idem_mcp_user_action_{}_advance", case.name)),
+                false,
+                Some(state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new(
+                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            ),
+            user_action_resolution_ids: Vec::new(),
+        },
+        invocation(),
+    )?;
+    state_version = advanced.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("advance_task response should expose state_version")?;
     let mut registered_artifact_id = None;
     if let McpUserActionLeakageCaseKind::Choice { close_basis, .. } = case.kind {
         if close_basis != McpUserActionCloseBasis::None {

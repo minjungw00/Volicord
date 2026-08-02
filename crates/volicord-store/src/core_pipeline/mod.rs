@@ -96,6 +96,7 @@ mod reconciliation;
 mod record_refs;
 mod replay;
 mod runs;
+mod shaping;
 mod tasks;
 mod user_action_reader;
 mod user_actions;
@@ -138,6 +139,11 @@ pub use replay::{StoredOperationResult, ToolInvocationRecord, VerifiedReplayCont
 pub use runs::{
     RunInsert, RunMutation, RunObservedChangesRecord, RunRecord, RunStatus, StoredRunMetadata,
     StoredRunSummary, StoredRunWriteTicketEffect, StoredRunWriteTicketEffectKind,
+};
+pub use shaping::{
+    ShapingCheckpointGapInsert, ShapingCheckpointGapRecord, ShapingCheckpointInsert,
+    ShapingCheckpointMutation, ShapingCheckpointRecord, ShapingCheckpointUserActionInsert,
+    ShapingCheckpointUserActionRecord,
 };
 pub use tasks::{
     AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionStatus,

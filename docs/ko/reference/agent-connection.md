@@ -1,5 +1,7 @@
 # Agent Connection 참조
 
+workflow 모드 connection은 shaping 및 advance 메서드를 dispatch할 수 있습니다. Agent는 반환된 태그형 `workflow`를 따릅니다. `required_action`은 진행 상태가 선택하며 닫기 차단 사유는 별도 close-readiness projection으로 유지됩니다.
+
 이 문서는 현재 `host_kind=codex` Agent Connection 계약을 정의합니다. 정확한
 `host_kind=codex` Record 연결 표면, 정규 연결 검증 보고서, 관리 구성 소유권, 통합
 revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 담당합니다.

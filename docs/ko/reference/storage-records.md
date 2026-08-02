@@ -1,5 +1,7 @@
 # 저장소 기록
 
+`shaping_checkpoints`, `shaping_checkpoint_gaps`, `shaping_checkpoint_user_actions`는 하나의 Task 범위 aggregate를 이룹니다. Task마다 superseded가 아닌 checkpoint는 최대 하나이며, 사용자 소유 gap은 같은 Task의 요청 링크를 반드시 포함하고, ready checkpoint에는 current gap이 없습니다.
+
 이 문서는 지원되는 저장 계약의 의미와 기록 간 불변식을 담당합니다. 정확한
 테이블, column, constraint, index, 정규 SQL은 [저장소 DDL](storage-ddl.md)이
 담당합니다.

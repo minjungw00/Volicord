@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use volicord_types::ids::{
     AcceptanceCriterionId, ArtifactId, ChangeUnitId, DurableIdGenerator, DurableIdKind,
     EvidenceCaptureIntentId, EvidenceObservationId, EvidenceProducerId, ProjectContinuityRecordId,
-    RiskId, RunId, StagedArtifactHandleId, TaskId, UserActionRequestId, UserActionResolutionId,
-    WriteTicketId, DURABLE_ID_RETRY_LIMIT,
+    RiskId, RunId, ShapingCheckpointId, ShapingGapId, StagedArtifactHandleId, TaskId,
+    UserActionRequestId, UserActionResolutionId, WriteTicketId, DURABLE_ID_RETRY_LIMIT,
 };
 
 use volicord_store::core_pipeline::CoreProjectStore;
@@ -50,6 +50,34 @@ pub(crate) fn allocate_change_unit_id(
             .map_err(CorePipelineError::from)
     })
     .map(ChangeUnitId::new)
+}
+
+pub(crate) fn allocate_shaping_checkpoint_id(
+    generator: &dyn DurableIdGenerator,
+    store: &CoreProjectStore,
+) -> CoreResult<ShapingCheckpointId> {
+    allocate_durable_id(generator, DurableIdKind::ShapingCheckpoint, |candidate| {
+        store
+            .shaping_checkpoint_id_exists(candidate)
+            .map_err(CorePipelineError::from)
+    })
+    .map(ShapingCheckpointId::new)
+}
+
+pub(crate) fn allocate_shaping_gap_id(
+    generator: &dyn DurableIdGenerator,
+    store: &CoreProjectStore,
+    reserved_ids: &BTreeSet<String>,
+) -> CoreResult<ShapingGapId> {
+    allocate_durable_id(generator, DurableIdKind::ShapingGap, |candidate| {
+        if reserved_ids.contains(candidate) {
+            return Ok(true);
+        }
+        store
+            .shaping_gap_id_exists(candidate)
+            .map_err(CorePipelineError::from)
+    })
+    .map(ShapingGapId::new)
 }
 
 pub(crate) fn allocate_user_action_resolution_id(

@@ -23,10 +23,10 @@ pub(super) fn task_mode_allows_run_kind(
     run_kind: RunKind,
 ) -> bool {
     match task_mode {
-        TaskMode::Advisor => run_kind == RunKind::ShapingUpdate,
+        TaskMode::Advisor => false,
         TaskMode::Direct => run_kind == RunKind::Direct,
         TaskMode::Work => match work_phase {
-            WorkPhase::Shaping => run_kind == RunKind::ShapingUpdate,
+            WorkPhase::Shaping => false,
             WorkPhase::Implementation => run_kind == RunKind::Implementation,
         },
     }

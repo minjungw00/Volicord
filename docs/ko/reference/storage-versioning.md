@@ -1,5 +1,7 @@
 # 저장소 버전 관리
 
+shaping 진행은 단일 정확 storage manifest의 일부입니다. manifest가 다른 Runtime Home은 incompatible로 보고하며 byte를 보존합니다. schema-version 분기, row 변환, dual read, dual write는 적용하지 않습니다.
+
 이 문서는 현재 Volicord SQLite 저장소 계약을 담당합니다. 여기에는 매니페스트
 정체성, 정확한 데이터베이스 열기 검증, 기준 스키마 메타데이터, 프로젝트 상태
 시계, 원자적 변경 경계, 멱등성, 정확한 재실행이 포함됩니다.

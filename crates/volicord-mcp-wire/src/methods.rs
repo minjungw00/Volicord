@@ -4,23 +4,24 @@ use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use volicord_types::ids::{
-    BaselineRef, ChangeUnitId, RunId, TaskId, UserActionRequestId, UserActionResolutionId,
-    WriteTicketId,
+    BaselineRef, ChangeUnitId, RunId, ShapingCheckpointId, TaskId, UserActionRequestId,
+    UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
-    ChangeUnitUpdate, CheckCloseResponse, CloseTaskResponse, GetOperationResultResponse,
-    InitialScope, IntakeResponse, OperationResultRef, PrepareEvidenceCaptureResponse,
-    PrepareWriteResponse, ReconcileChangesResponse, RecordRunResponse, RequestUserActionResponse,
-    ScopeUpdate, StageArtifactResponse, StatusInclude, StatusResponse, UnrecordedChangeRejection,
+    AdvanceTaskResponse, ChangeUnitUpdate, CheckCloseResponse, CloseTaskResponse,
+    GetOperationResultResponse, InitialScope, IntakeResponse, OperationResultRef,
+    PrepareEvidenceCaptureResponse, PrepareWriteResponse, ReconcileChangesResponse,
+    RecordRunResponse, RecordShapingResponse, RequestUserActionResponse, ScopeUpdate,
+    StageArtifactResponse, StatusInclude, StatusResponse, UnrecordedChangeRejection,
     UnrecordedChangeResolutionRequest, UpdateScopeResponse,
 };
 use volicord_types::schema::{
     AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
     AuthorityReceipt, CloseAssessmentInput, ContinuityPageRequest, EvidenceCaptureIntent,
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceObservationInput, EvidenceTarget,
-    EvidenceUpdateProvenance, JsonObject, NextActionSummary, ObservedChanges, RequiredNullable,
+    EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, ShapingGapInput,
     SourceRef, StagedArtifactHandle, StateRecordRef, ToolDryRunResponse, ToolRejectedResponse,
-    UserActionDraft, WriteDecisionReason, WriteTicket,
+    UserActionDraft, WorkflowProjection, WriteDecisionReason, WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -321,7 +322,7 @@ pub struct McpMutationWorkflowResponse<T> {
     pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: AuthorityReceipt,
     pub method_result: T,
-    pub next_actions: Vec<NextActionSummary>,
+    pub workflow: WorkflowProjection,
 }
 
 /// Full-detail MCP mutation branch over one fresh authority receipt.
@@ -475,6 +476,44 @@ pub struct McpUpdateScopeArguments {
     pub change_unit: ChangeUnitUpdate,
     #[serde(default)]
     pub related_scope_decision_refs: Vec<StateRecordRef>,
+}
+
+/// MCP-visible `volicord.record_shaping` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpRecordShapingArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
+    pub task_id: TaskId,
+    pub scope_revision: u64,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub summary: String,
+    pub implementation_boundary: RequiredNullable<String>,
+    pub gaps: Vec<ShapingGapInput>,
+    #[serde(default)]
+    pub source_refs: Vec<SourceRef>,
+    #[serde(default)]
+    pub evidence_refs: Vec<StateRecordRef>,
+    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
+}
+
+/// MCP-visible `volicord.advance_task` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpAdvanceTaskArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
+    pub task_id: TaskId,
+    pub shaping_checkpoint_id: ShapingCheckpointId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    #[serde(default)]
+    pub user_action_resolution_ids: Vec<UserActionResolutionId>,
 }
 
 /// MCP-visible `volicord.status` arguments.
@@ -818,6 +857,8 @@ pub fn mcp_request_schema(tool: AgentToolId) -> Option<Value> {
     match tool.method()? {
         MethodName::Intake => Some(request_schema::<McpIntakeArguments>()),
         MethodName::UpdateScope => Some(request_schema::<McpUpdateScopeArguments>()),
+        MethodName::RecordShaping => Some(request_schema::<McpRecordShapingArguments>()),
+        MethodName::AdvanceTask => Some(request_schema::<McpAdvanceTaskArguments>()),
         MethodName::Status => Some(request_schema::<McpStatusArguments>()),
         MethodName::GetOperationResult => Some(request_schema::<McpGetOperationResultArguments>()),
         MethodName::PrepareEvidenceCapture => {
@@ -848,6 +889,12 @@ pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
         >()),
         MethodName::UpdateScope => Some(response_schema::<
             McpMutationStructuredContent<UpdateScopeResponse, McpMutationEffectSummary>,
+        >()),
+        MethodName::RecordShaping => Some(response_schema::<
+            McpMutationStructuredContent<RecordShapingResponse, McpMutationEffectSummary>,
+        >()),
+        MethodName::AdvanceTask => Some(response_schema::<
+            McpMutationStructuredContent<AdvanceTaskResponse, McpMutationEffectSummary>,
         >()),
         MethodName::Status => Some(response_schema::<
             McpReadOnlyToolStructuredContent<StatusResponse>,

@@ -65,6 +65,12 @@ fn reused_request_id_does_not_collide_except_for_compatible_write_ticket_reuse(
     let second_scope_event_id = response_event_id(&second_scope.response_value);
     assert_ne!(first_change_unit_id, second_change_unit_id);
     assert_ne!(first_scope_event_id, second_scope_event_id);
+    advance_work_task_for_test(
+        &harness,
+        "reused_request_ids",
+        &second_task_id,
+        &second_change_unit_id,
+    )?;
 
     let first_write = harness.service.prepare_write(
         prepare_write_request(

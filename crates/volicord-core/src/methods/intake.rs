@@ -504,7 +504,11 @@ fn plan_intake_mutations(
                 .as_ref()
                 .map(|lineage| lineage.dispositions.clone())
                 .unwrap_or_default(),
-            lifecycle_phase: TaskLifecyclePhase::Shaping,
+            lifecycle_phase: if mode == TaskMode::Direct {
+                TaskLifecyclePhase::Executing
+            } else {
+                TaskLifecyclePhase::Shaping
+            },
             result: Some(TaskResult::None),
             title: Some(request.plain_language_request.clone()),
             summary: Some(request.plain_language_request.clone()),
@@ -780,6 +784,7 @@ fn project_intake_response(
         state_version: planned_state_version,
         task: &task_record,
         current_change_unit: current_change_unit.as_ref(),
+        shaping_checkpoint: None,
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: pending_refs,

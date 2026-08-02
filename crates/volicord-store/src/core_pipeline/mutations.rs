@@ -4,7 +4,8 @@ use rusqlite::Transaction;
 
 use super::{
     ArtifactMutation, ChangeUnitMutation, CommittedMutationFacts, ContinuityMutation,
-    EvidenceMutation, RunMutation, TaskMutation, UserActionMutation, WriteTicketMutation,
+    EvidenceMutation, RunMutation, ShapingCheckpointMutation, TaskMutation, UserActionMutation,
+    WriteTicketMutation,
 };
 use crate::{
     workflow_records::{ProjectWorkflowPolicyMutationEffect, WorkflowPolicyMutation},
@@ -19,6 +20,7 @@ pub enum CoreStorageMutation {
     ChangeUnit(ChangeUnitMutation),
     WriteTicket(WriteTicketMutation),
     Run(RunMutation),
+    Shaping(ShapingCheckpointMutation),
     Evidence(EvidenceMutation),
     Artifact(ArtifactMutation),
     UserAction(UserActionMutation),
@@ -85,6 +87,9 @@ impl CoreStorageMutation {
                 .apply(context, facts.committed_state_version)
                 .map(|()| AggregateMutationResult::Applied),
             Self::Run(mutation) => mutation
+                .apply(context)
+                .map(|()| AggregateMutationResult::Applied),
+            Self::Shaping(mutation) => mutation
                 .apply(context)
                 .map(|()| AggregateMutationResult::Applied),
             Self::Evidence(mutation) => mutation

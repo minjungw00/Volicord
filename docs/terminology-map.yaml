@@ -3449,3 +3449,37 @@ terms:
       - "Rejected response means the method did not proceed to the committed operation."
       - "Do not use rejected responses as close blockers or committed blocked results."
       - "Response shapes belong to `api/schema-core.md`; storage effects belong to `storage-effects.md`."
+  shaping_checkpoint:
+    category: "api_concept"
+    en: "shaping checkpoint"
+    ko_reference: "shaping checkpoint"
+    ko_user: "구체화 체크포인트"
+    preserve_as_identifier:
+      - "ShapingCheckpoint"
+      - "ShapingCheckpointId"
+      - "volicord.record_shaping"
+    primary_owner:
+      en: "docs/en/reference/api/method-record-shaping.md"
+      ko: "docs/ko/reference/api/method-record-shaping.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+  explicit_task_advance:
+    category: "api_concept"
+    en: "explicit Task advance"
+    ko_reference: "명시적 Task advance"
+    ko_user: "명시적 구현 단계 진입"
+    preserve_as_identifier:
+      - "volicord.advance_task"
+      - "AdvanceTaskRequest"
+      - "ready_for_implementation"
+    primary_owner:
+      en: "docs/en/reference/api/method-advance-task.md"
+      ko: "docs/ko/reference/api/method-advance-task.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"

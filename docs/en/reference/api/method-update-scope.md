@@ -31,10 +31,10 @@ This document does not own:
 - baseline reference
 - currently applied Change Unit
 
-This method is the supported path that turns shaping into a first safe Change Unit when user-owned blockers have been handled.
+This method records a Change Unit as the current work boundary. It never changes `work_phase`. A `work` Task in shaping therefore remains in shaping after `create_current` or `replace_current`; only `volicord.advance_task` enters implementation.
 
 For `direct` and `work` Tasks, a committed `create_current` or
-`replace_current` operation records `work_phase=implementation`. It also binds
+`replace_current` operation binds
 the new Change Unit's baseline to the verified current workspace context. On a
 Git-backed Product Repository that context contains the common Git directory,
 exact worktree identity, branch or detached-HEAD state, HEAD SHA, and workspace
@@ -164,7 +164,6 @@ The committed `UpdateScopeResult` uses `base.response_kind=result` and
 | `blocker_refs` | yes | no | `StateRecordRef[]` |
 | `change_unit_ref` | no | yes | `StateRecordRef` |
 | `linked_scope_decision_refs` | yes | no | `StateRecordRef[]` |
-| `next_actions` | yes | no | `NextActionSummary[]` |
 | `stale_write_ticket_refs` | yes | no | `StateRecordRef[]` |
 | `state` | yes | no | `StateSummary` |
 | `task_ref` | yes | no | `StateRecordRef` |
@@ -357,7 +356,7 @@ state:
     branch_ref: "refs/heads/filter-scope"
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-  shaping_readiness: null
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 19, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
@@ -365,31 +364,12 @@ state:
   close_state: null
   close_blockers: []
   guarantee_display: null
-next_actions:
-  - presentation_role: primary
-    action_kind: prepare_write
-    owner_method: volicord.prepare_write
-    allowed_operation_categories: [agent_workflow]
-    label: "Check the saved-filter change against current scope."
-    blocking_question: null
-    expected_state_version: 19
-    required_refs:
-      - record_kind: task
-        record_id: task_filter_001
-        project_id: proj_filter_001
-        task_id: task_filter_001
-        produced_at_state_version: 19
-      - record_kind: change_unit
-        record_id: cu_filter_001
-        project_id: proj_filter_001
-        task_id: task_filter_001
-        produced_at_state_version: 19
 ```
 
 ## Owner links
 
 - Request envelope and response branches: [API Schema Core](schema-core.md).
-- State refs, `StateSummary`, `ShapingReadiness`, blockers, and next actions: [API State Schemas](schema-state.md).
+- State refs, `StateSummary`, tagged workflow progression, and blockers: [API State Schemas](schema-state.md).
 - Scope-related user judgment shapes: [API Judgment Schemas](schema-judgment.md).
 - Supported value sets, `change_unit.operation` meanings, and operation categories: [API Value Sets](schema-value-sets.md#operation-category-values).
 - Public errors, precedence, and rejected-response routing: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).

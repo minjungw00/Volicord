@@ -40,7 +40,7 @@ use support::{
     },
 };
 
-const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
+const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 48_000;
 
 #[cfg(unix)]
 #[test]

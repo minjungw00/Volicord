@@ -1,5 +1,7 @@
 # Security
 
+A user-owned shaping gap is not authority to infer a decision. Only a verified User Channel resolution can satisfy its exact request; chat content, agent claims, shaping summaries, and free-form Change Unit invariants cannot substitute for that resolution.
+
 This document owns supported security guarantees and explicit non-guarantees
 for the local Codex workflow. It does not define method schemas,
 storage effects, Codex configuration syntax, or operating-system policy.

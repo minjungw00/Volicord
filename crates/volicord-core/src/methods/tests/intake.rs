@@ -875,32 +875,17 @@ fn intake_rejects_implements_advice_from_before_advisor_completion() -> Result<(
 fn intake_accepts_implements_advice_from_completed_advice_only_task() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    let (predecessor_task_id, predecessor_change_unit_id) = create_task_with_mode_and_change_unit(
+    let (predecessor_task_id, _predecessor_change_unit_id) = create_task_with_mode_and_change_unit(
         &harness,
         "lineage_completed_advice",
         RequestedMode::Advisor,
     )?;
-    let mut run = record_run_request(
-        "req_lineage_completed_advice_run",
-        "idem_lineage_completed_advice_run",
-        false,
-        Some(2),
+    let recorded_state_version = record_ready_advisor_shaping_for_test(
+        &harness,
+        "lineage_completed_advice",
         &predecessor_task_id,
-        &predecessor_change_unit_id,
-    );
-    run.kind = RunKind::ShapingUpdate;
-    run.evidence_updates = vec![supported_evidence_update("Completed advice evidence.")];
-    run.close_assessment = Some(close_assessment_with_risks(
-        "Completed advice result.",
-        Vec::new(),
-    ))
-    .into();
-    let recorded = harness
-        .service
-        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
-    let recorded_state_version = recorded.response_value["base"]["state_version"]
-        .as_u64()
-        .expect("recorded advice state version");
+        2,
+    )?;
     let closed = harness.service.close_task(
         close_task_request(CloseTaskFixture {
             request_id: "req_lineage_completed_advice_close",

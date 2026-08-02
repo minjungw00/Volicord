@@ -1,7 +1,7 @@
 use crate::pipeline::VerifiedInvocationContext;
 use volicord_store::core_pipeline::TaskRecord;
 use volicord_types::schema::{
-    EvidenceGateSummary, GuaranteeDisplay, NextActionSummary, SummaryCard, WriteTicketStateSummary,
+    EvidenceGateSummary, GuaranteeDisplay, SummaryCard, WriteTicketStateSummary,
 };
 use volicord_types::values::{ActorSource, CloseState, GuaranteeLevel, StatusCloseState};
 
@@ -15,14 +15,9 @@ pub(crate) struct SummaryCardInput<'a> {
     pub(crate) changes: String,
     pub(crate) close_status: String,
     pub(crate) verified_invocation: &'a VerifiedInvocationContext,
-    pub(crate) next_action: Option<&'a NextActionSummary>,
 }
 
 pub(crate) fn summary_card(input: SummaryCardInput<'_>) -> SummaryCard {
-    let next = input
-        .next_action
-        .map(next_action_label)
-        .unwrap_or_else(|| "none".to_owned());
     SummaryCard {
         task: task_summary_text(input.task),
         recording: input.recording.to_owned(),
@@ -33,8 +28,8 @@ pub(crate) fn summary_card(input: SummaryCardInput<'_>) -> SummaryCard {
         changes: input.changes,
         close_status: input.close_status,
         transport: transport_summary(input.verified_invocation),
-        next,
-        next_action: input.next_action.cloned(),
+        next: "see workflow".to_owned(),
+        next_action: None,
         guarantee: AUTHORITY_RECORD_SUMMARY_GUARANTEE.to_owned(),
     }
 }
@@ -108,17 +103,6 @@ fn count_state_text(label: &str, count: usize) -> String {
         "none".to_owned()
     } else {
         format!("{label} ({count})")
-    }
-}
-
-fn next_action_label(action: &NextActionSummary) -> String {
-    if !action.label.trim().is_empty() {
-        action.label.clone()
-    } else {
-        action
-            .blocking_question
-            .clone()
-            .unwrap_or_else(|| "none".to_owned())
     }
 }
 

@@ -1,5 +1,7 @@
 # Storage Versioning
 
+Shaping progression is part of the single exact storage manifest. A Runtime Home whose manifest differs is incompatible and remains byte-preserved; no schema-version branch, row conversion, dual read, or dual write applies.
+
 This document owns the current Volicord SQLite storage contract: manifest
 identity, exact database-open validation, canonical schema metadata,
 project-state clocks, atomic mutation boundaries, idempotency, and exact

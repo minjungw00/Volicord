@@ -1060,8 +1060,11 @@ mod mutation_projection_and_recovery_tests {
     use volicord_types::canonical::canonical_json_bare_sha256;
     use volicord_types::ids::{
         AcceptanceCriterionId, BaselineRef, ChangeUnitId, EvidenceCaptureIntentId, RecordId,
+        ShapingCheckpointId,
     };
-    use volicord_types::methods::MAX_OPERATION_RESULT_PAGE_BYTES;
+    use volicord_types::methods::{
+        AdvanceTaskRequest, RecordShapingRequest, MAX_OPERATION_RESULT_PAGE_BYTES,
+    };
     use volicord_types::schema::{
         EvidenceCaptureSpec, EvidenceObservationInput, EvidenceProducer, EvidenceTarget,
         JsonObject, PersistedEvidenceCaptureReceiptBody, PersistedEvidenceCaptureReceiptSource,
@@ -1074,8 +1077,8 @@ mod mutation_projection_and_recovery_tests {
 
     fn pad_valid_intake_result(result: &mut Value, bytes: usize) {
         let label = result
-            .pointer_mut("/next_actions/0/label")
-            .expect("committed intake result should expose a next-action label");
+            .pointer_mut("/state/scope_summary")
+            .expect("committed intake result should expose a scope summary");
         *label = Value::String("x".repeat(bytes));
     }
 
@@ -1294,6 +1297,57 @@ mod mutation_projection_and_recovery_tests {
             ["acceptance_criterion_id"]
             .as_str()
             .ok_or("scope should expose the current acceptance criterion")?;
+        let shaped = core.record_shaping(
+            &fixture.mutation_context()?,
+            RecordShapingRequest {
+                envelope: fixture.envelope(
+                    "req_mcp_producer_recovery_shaping",
+                    Some("idem_mcp_producer_recovery_shaping"),
+                    false,
+                    Some(2),
+                    Some(task_id.as_str()),
+                ),
+                task_id: task_id.clone(),
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The evidence-producer recovery boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Record only the scoped evidence producer.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                close_assessment: RequiredNullable::null(),
+            },
+            workflow_invocation(),
+        )?;
+        let shaping_checkpoint_id = shaped.response_value["shaping_checkpoint"]
+            ["shaping_checkpoint_id"]
+            .as_str()
+            .ok_or("record_shaping should expose its checkpoint")?;
+        core.advance_task(
+            &fixture.mutation_context()?,
+            AdvanceTaskRequest {
+                envelope: fixture.envelope(
+                    "req_mcp_producer_recovery_advance",
+                    Some("idem_mcp_producer_recovery_advance"),
+                    false,
+                    Some(3),
+                    Some(task_id.as_str()),
+                ),
+                task_id: task_id.clone(),
+                shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id),
+                change_unit_id: ChangeUnitId::new(change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                ),
+                user_action_resolution_ids: Vec::new(),
+            },
+            workflow_invocation(),
+        )?;
         let target = EvidenceTarget::AcceptanceCriterion {
             acceptance_criterion_id: AcceptanceCriterionId::new(criterion_id),
         };
@@ -1304,7 +1358,7 @@ mod mutation_projection_and_recovery_tests {
                     "req_mcp_producer_recovery_prepare",
                     Some("idem_mcp_producer_recovery_prepare"),
                     false,
-                    Some(2),
+                    Some(4),
                     Some(task_id.as_str()),
                 ),
                 task_id: task_id.clone(),
@@ -1385,7 +1439,7 @@ mod mutation_projection_and_recovery_tests {
             "req_mcp_producer_recovery_record",
             "idem_mcp_producer_recovery_record",
             false,
-            Some(3),
+            Some(5),
             task_id.as_str(),
             change_unit_id,
         );
@@ -1486,7 +1540,7 @@ mod mutation_projection_and_recovery_tests {
             compact_method_result,
             operation_result_ref: Some(recovery_operation_result_ref()),
             authority_receipt,
-            next_actions: Vec::new(),
+            workflow: None,
         }
     }
 

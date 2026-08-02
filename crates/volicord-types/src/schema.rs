@@ -16,9 +16,9 @@ use crate::ids::{
     BaselineRef, ChangeUnitId, EventId, EvidenceCaptureIntentId, EvidenceCaptureReceiptId,
     EvidenceClaimId, EvidenceObservationId, EvidenceProducerId, GuardEventId, GuardInstallationId,
     IdempotencyKey, ProjectContinuityRecordId, ProjectId, PromptCaptureId, RecordId,
-    RepositoryObservationId, RequestId, RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId,
-    UnrecordedChangeId, UserActionOptionId, UserActionRequestId, UserActionResolutionId,
-    WriteTicketId,
+    RepositoryObservationId, RequestId, RiskId, RunId, ShapingCheckpointId, ShapingGapId,
+    StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId, UserActionOptionId,
+    UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use crate::product_path::ProductRelativePath;
 use crate::values::{
@@ -30,12 +30,11 @@ use crate::values::{
     EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus,
     FailureCategory, GuaranteeClass, GuaranteeLevel, GuardDecision, GuardHookContractStatus,
     GuardHookPhase, HostKind, IntegrationProfile, JudgmentKind, JudgmentPresentation,
-    JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionPresentationRole,
-    NonGuarantee, ObservationConfidence, ObservedEffectKind, OperationCategory,
-    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
-    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, RedactionState, ResponseKind,
-    RunKind, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
-    TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
+    JudgmentResolutionOutcome, MethodName, NextActionKind, NonGuarantee, ObservationConfidence,
+    ObservedEffectKind, OperationCategory, PlannedBlockerSourceKind, ProjectContinuityKind,
+    ProjectContinuityStatus, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
+    RedactionState, ResponseKind, RunKind, StateRecordKind, StatusCloseState, TaskControlLevel,
+    TaskLifecyclePhase, TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
     UnrecordedChangeStatus, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
     UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis,
     UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
@@ -1817,7 +1816,7 @@ pub struct StateSummary {
     pub effect_contract: Option<ChangeUnitEffectContract>,
     pub baseline_ref: Option<BaselineRef>,
     pub workspace_context: Option<WorkspaceContext>,
-    pub shaping_readiness: Option<ShapingReadiness>,
+    pub workflow: WorkflowProjection,
     pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub write_ticket_summary: Option<WriteTicketStateSummary>,
@@ -1897,7 +1896,6 @@ pub struct AuthorityReceipt {
     pub close_blockers: Vec<CloseReadinessBlocker>,
     pub completion_claim_allowed: bool,
     pub next_actor: AuthorityNextActor,
-    pub next_action: Option<NextActionSummary>,
 }
 
 /// Optional Change Unit effect contract recorded as Core state.
@@ -1929,34 +1927,121 @@ pub struct TaskLifecycleState {
     pub closed_at: Option<UtcTimestamp>,
 }
 
-/// Shaping-readiness view over current Task and Change Unit state.
+/// Request-local user-action draft attached to one user-owned shaping gap.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct ShapingReadiness {
-    pub goal_summary_known: bool,
-    pub scope_boundary_known: bool,
-    pub non_goals_known: bool,
-    pub affected_area_or_paths_known: bool,
-    pub acceptance_criteria_known: bool,
-    pub autonomy_boundary_known: bool,
-    pub first_change_unit_known: bool,
-    pub user_owned_blocker_kind: Option<String>,
-    pub next_safe_action: Option<NextActionSummary>,
-    pub gaps: Vec<ShapingGap>,
+#[serde(deny_unknown_fields)]
+pub struct ShapingUserActionDraft {
+    pub action: UserActionDraft,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
 }
 
-/// Shaping gap display item.
+/// One typed shaping gap supplied to `volicord.record_shaping`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct ShapingGap {
-    pub gap_kind: String,
-    pub message: String,
-    pub blocker_ref: Option<StateRecordRef>,
-    pub user_action_request_candidate_ref: Option<StateRecordRef>,
+#[serde(deny_unknown_fields)]
+pub struct ShapingGapInput {
+    pub gap_kind: crate::values::ShapingGapKind,
+    pub summary: String,
+    pub affected_refs: Vec<StateRecordRef>,
+    pub user_action: RequiredNullable<ShapingUserActionDraft>,
+}
+
+/// Durable first-class shaping checkpoint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShapingCheckpoint {
+    pub shaping_checkpoint_id: crate::ids::ShapingCheckpointId,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub scope_revision: u64,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub summary: String,
+    pub implementation_boundary: RequiredNullable<String>,
+    pub readiness: crate::values::ShapingCheckpointReadiness,
+    pub source_refs: Vec<SourceRef>,
+    pub evidence_refs: Vec<StateRecordRef>,
+    pub created_at: UtcTimestamp,
+    pub superseded_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Durable shaping gap projected with its exact UserAction authority refs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShapingCheckpointGap {
+    pub shaping_gap_id: crate::ids::ShapingGapId,
+    pub gap_kind: crate::values::ShapingGapKind,
+    pub summary: String,
+    pub affected_refs: Vec<StateRecordRef>,
+    pub status: crate::values::ShapingGapStatus,
+    pub user_action_request_ref: RequiredNullable<StateRecordRef>,
+    pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
+}
+
+/// Current shaping checkpoint projection used by workflow progression.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShapingCheckpointSummary {
+    pub checkpoint_ref: StateRecordRef,
+    pub readiness: crate::values::ShapingCheckpointReadiness,
+    pub scope_revision: u64,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub implementation_boundary: RequiredNullable<String>,
+    pub gaps: Vec<ShapingCheckpointGap>,
+    pub pending_decision_refs: Vec<StateRecordRef>,
+}
+
+macro_rules! workflow_projection_variants {
+    ($($variant:ident),+ $(,)?) => {
+        /// One authoritative tagged workflow-progression projection.
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+        #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+        pub enum WorkflowProjection {
+            $(
+                $variant {
+                    next_actor: AuthorityNextActor,
+                    required_action: RequiredNullable<MethodName>,
+                    allowed_actions: Vec<MethodName>,
+                    required_refs: Vec<StateRecordRef>,
+                    expected_state_version: u64,
+                    blocking_reason: RequiredNullable<crate::values::WorkflowBlockingReason>,
+                    checkpoint: RequiredNullable<ShapingCheckpointSummary>,
+                },
+            )+
+        }
+    };
+}
+
+workflow_projection_variants!(
+    NoActiveTask,
+    ShapingRequired,
+    AwaitingUserAction,
+    ReadyToApplyDecisions,
+    ReadyForChangeUnit,
+    ReadyForImplementation,
+    Implementation,
+    CloseReview,
+    Terminal,
+);
+
+impl WorkflowProjection {
+    /// Returns the actor that owns the next workflow transition.
+    pub fn next_actor(&self) -> AuthorityNextActor {
+        match self {
+            Self::NoActiveTask { next_actor, .. }
+            | Self::ShapingRequired { next_actor, .. }
+            | Self::AwaitingUserAction { next_actor, .. }
+            | Self::ReadyToApplyDecisions { next_actor, .. }
+            | Self::ReadyForChangeUnit { next_actor, .. }
+            | Self::ReadyForImplementation { next_actor, .. }
+            | Self::Implementation { next_actor, .. }
+            | Self::CloseReview { next_actor, .. }
+            | Self::Terminal { next_actor, .. } => *next_actor,
+        }
+    }
 }
 
 /// Canonical next-action display shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct NextActionSummary {
-    pub presentation_role: NextActionPresentationRole,
     pub action_kind: NextActionKind,
     pub owner_method: Option<MethodName>,
     pub allowed_operation_categories: Vec<OperationCategory>,
@@ -3403,8 +3488,18 @@ pub struct PersistedUserActionRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PersistedUserActionRequestMetadata {
+    Shaping(PersistedUserActionShapingMetadata),
     Reconciliation(PersistedUserActionReconciliationMetadata),
     DirectRequest(PersistedUserActionDirectRequestMetadata),
+}
+
+/// Origin metadata for a shaping-checkpoint-created user-action request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedUserActionShapingMetadata {
+    pub created_by: MethodName,
+    pub shaping_checkpoint_id: ShapingCheckpointId,
+    pub shaping_gap_id: ShapingGapId,
 }
 
 /// Empty metadata for a direct user-action request.

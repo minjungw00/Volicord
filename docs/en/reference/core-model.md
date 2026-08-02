@@ -260,19 +260,18 @@ User-owned judgment is the boundary where the user owns the decision. Core may r
 
 User-owned judgment can concern product direction, technical direction, scope, a sensitive step, final acceptance, residual-risk acceptance, or cancellation. Exact judgment schema fields and value names belong to API schema and value-set owners.
 
-### Task mode, work phase, and Run compatibility
+### Task mode and progression authority
 
-The concrete `Task.mode` and `work_phase` jointly limit which Run kind can
-represent the current step:
+The concrete `Task.mode` and `work_phase` select the authority record and transition:
 
-| `Task.mode` | `work_phase` | Compatible Run kind |
+| `Task.mode` | `work_phase` | Authority path |
 |---|---|---|
-| `advisor` | `shaping` | `shaping_update` |
+| `advisor` | `shaping` | `volicord.record_shaping`; a ready checkpoint is the advice result basis |
 | `direct` | `implementation` | `direct` |
-| `work` | `shaping` | `shaping_update` |
+| `work` | `shaping` | `volicord.record_shaping`, then `volicord.advance_task` with exact current authority |
 | `work` | `implementation` | `implementation` |
 
-`advisor` is read-only with respect to Product Repository file effects. It does not authorize product-file writes or write-ticket issuance, while a compatible `shaping_update` call to `record_run` still commits the Run and any method-owned Core evidence state. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Mode compatibility does not by itself satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
+`advisor` is read-only with respect to Product Repository file effects and never uses a write-capable Change Unit, a write ticket, or `volicord.advance_task`. A Change Unit is a work boundary and does not change phase. A work Task enters implementation only through a successful explicit advance. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Progression authority does not satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
 
 ### Run
 
@@ -858,7 +857,7 @@ Use this table for owner routing. Do not copy the linked contracts into this pag
 | API method list and method routing | [API Methods](api/methods.md) |
 | Method behavior | Method owner documents listed by [API Methods](api/methods.md) |
 | Common API envelopes and response branches | [API Schema Core](api/schema-core.md) |
-| State-shaped API data, including `ShapingReadiness`, `CloseReadinessBlocker`, `WriteDecisionReason`, and project continuity shapes | [API State Schemas](api/schema-state.md) and [API Value Sets](api/schema-value-sets.md) |
+| State-shaped API data, including tagged workflow progression, `CloseReadinessBlocker`, `WriteDecisionReason`, and project continuity shapes | [API State Schemas](api/schema-state.md) and [API Value Sets](api/schema-value-sets.md) |
 | User judgment schema shapes, `SensitiveActionScope`, and accepted-risk input shapes | [API Judgment Schemas](api/schema-judgment.md) |
 | Artifact refs, artifact input shapes, staging handles, and artifact schema rules | [API Artifact Schemas](api/schema-artifacts.md) |
 | Public error code meanings, error routing, and error precedence | [API error codes](api/error-codes.md), [API error routing](api/error-routing.md), and [API error precedence](api/error-precedence.md) |

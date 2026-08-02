@@ -158,6 +158,10 @@ pub enum MethodName {
     Intake,
     #[serde(rename = "volicord.update_scope")]
     UpdateScope,
+    #[serde(rename = "volicord.record_shaping")]
+    RecordShaping,
+    #[serde(rename = "volicord.advance_task")]
+    AdvanceTask,
     #[serde(rename = "volicord.status")]
     Status,
     #[serde(rename = "volicord.get_operation_result")]
@@ -184,9 +188,11 @@ pub enum MethodName {
 
 impl MethodName {
     /// Complete current public method catalog in declaration order.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 15] = [
         Self::Intake,
         Self::UpdateScope,
+        Self::RecordShaping,
+        Self::AdvanceTask,
         Self::Status,
         Self::GetOperationResult,
         Self::CheckClose,
@@ -205,6 +211,8 @@ impl MethodName {
         match self {
             Self::Intake => "volicord.intake",
             Self::UpdateScope => "volicord.update_scope",
+            Self::RecordShaping => "volicord.record_shaping",
+            Self::AdvanceTask => "volicord.advance_task",
             Self::Status => "volicord.status",
             Self::GetOperationResult => "volicord.get_operation_result",
             Self::CheckClose => "volicord.check_close",
@@ -338,14 +346,6 @@ pub enum NextActionKind {
     ResolveUserAction,
     ReconcileChanges,
     CloseTask,
-}
-
-/// Controlled presentation role for an owner-composed next action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum NextActionPresentationRole {
-    Primary,
-    Additional,
 }
 
 /// Common API response branch metadata.
@@ -748,6 +748,8 @@ pub enum StateRecordKind {
     ProjectState,
     Task,
     ChangeUnit,
+    ShapingCheckpoint,
+    ShapingGap,
     WriteTicket,
     UserActionRequest,
     UserActionResolution,
@@ -848,6 +850,127 @@ impl TaskControlLevel {
 pub enum WorkPhase {
     Shaping,
     Implementation,
+}
+
+/// Durable readiness of one shaping checkpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingCheckpointReadiness {
+    Blocked,
+    Ready,
+    Superseded,
+}
+
+impl ShapingCheckpointReadiness {
+    /// Returns the stable stored and public spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Blocked => "blocked",
+            Self::Ready => "ready",
+            Self::Superseded => "superseded",
+        }
+    }
+}
+
+/// Closed shaping-gap kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingGapKind {
+    GoalMissing,
+    ScopeBoundaryMissing,
+    NonGoalsMissing,
+    AcceptanceCriteriaMissing,
+    AutonomyBoundaryMissing,
+    ImplementationBoundaryMissing,
+    BaselineMissing,
+    UserProductDecisionRequired,
+    UserTechnicalDecisionRequired,
+    UserScopeDecisionRequired,
+    SensitiveApprovalRequired,
+}
+
+impl ShapingGapKind {
+    /// Returns whether this gap requires exact User Channel authority.
+    pub const fn is_user_owned(self) -> bool {
+        matches!(
+            self,
+            Self::UserProductDecisionRequired
+                | Self::UserTechnicalDecisionRequired
+                | Self::UserScopeDecisionRequired
+                | Self::SensitiveApprovalRequired
+        )
+    }
+
+    /// Returns the compatible UserAction kind for a user-owned gap.
+    pub const fn user_action_kind(self) -> Option<UserActionKind> {
+        match self {
+            Self::UserProductDecisionRequired => Some(UserActionKind::ProductDecision),
+            Self::UserTechnicalDecisionRequired => Some(UserActionKind::TechnicalDecision),
+            Self::UserScopeDecisionRequired => Some(UserActionKind::ScopeDecision),
+            Self::SensitiveApprovalRequired => Some(UserActionKind::SensitiveApproval),
+            Self::GoalMissing
+            | Self::ScopeBoundaryMissing
+            | Self::NonGoalsMissing
+            | Self::AcceptanceCriteriaMissing
+            | Self::AutonomyBoundaryMissing
+            | Self::ImplementationBoundaryMissing
+            | Self::BaselineMissing => None,
+        }
+    }
+
+    /// Returns the stable stored and public spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GoalMissing => "goal_missing",
+            Self::ScopeBoundaryMissing => "scope_boundary_missing",
+            Self::NonGoalsMissing => "non_goals_missing",
+            Self::AcceptanceCriteriaMissing => "acceptance_criteria_missing",
+            Self::AutonomyBoundaryMissing => "autonomy_boundary_missing",
+            Self::ImplementationBoundaryMissing => "implementation_boundary_missing",
+            Self::BaselineMissing => "baseline_missing",
+            Self::UserProductDecisionRequired => "user_product_decision_required",
+            Self::UserTechnicalDecisionRequired => "user_technical_decision_required",
+            Self::UserScopeDecisionRequired => "user_scope_decision_required",
+            Self::SensitiveApprovalRequired => "sensitive_approval_required",
+        }
+    }
+}
+
+/// Durable resolution state of one shaping gap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingGapStatus {
+    Current,
+    Resolved,
+    Applied,
+}
+
+/// Closed workflow-progression states.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowStateKind {
+    NoActiveTask,
+    ShapingRequired,
+    AwaitingUserAction,
+    ReadyToApplyDecisions,
+    ReadyForChangeUnit,
+    ReadyForImplementation,
+    Implementation,
+    CloseReview,
+    Terminal,
+}
+
+/// Typed reason that blocks the current workflow transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowBlockingReason {
+    NoCurrentCheckpoint,
+    ShapingGapsCurrent,
+    UserActionPending,
+    ResolvedDecisionsNotApplied,
+    ChangeUnitRequired,
+    ExplicitAdvanceRequired,
+    RecoveryConstraint,
 }
 
 /// Task-owned final-acceptance policy selected at intake.
@@ -1262,7 +1385,6 @@ impl WriteTicketInvalidationReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RunKind {
-    ShapingUpdate,
     Implementation,
     Direct,
 }
@@ -1649,6 +1771,13 @@ impl UserActionKind {
                     | Self::ScopeDecision
                     | Self::SensitiveApproval
             ),
+            UserActionRequiredFor::AdvanceTask => matches!(
+                self,
+                Self::ProductDecision
+                    | Self::TechnicalDecision
+                    | Self::ScopeDecision
+                    | Self::SensitiveApproval
+            ),
             UserActionRequiredFor::RecordRun => matches!(
                 self,
                 Self::ProductDecision
@@ -1692,6 +1821,7 @@ pub enum JudgmentPresentation {
 #[serde(rename_all = "snake_case")]
 pub enum UserActionRequiredFor {
     ScopeUpdate,
+    AdvanceTask,
     PrepareWrite,
     RecordRun,
     CloseComplete,

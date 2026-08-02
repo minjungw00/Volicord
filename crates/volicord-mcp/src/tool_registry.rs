@@ -25,7 +25,7 @@ pub(crate) fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
 }
 
 #[cfg(test)]
-pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
+pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 48_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CanonicalToolDefinition {
@@ -228,10 +228,8 @@ const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON: &str = r#"{"task_id
 
 const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"detail":"full","task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
 
-pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID: &str =
-    "advisor_no_product_write_record_run";
-pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_advisor_analysis_001","change_unit_id":"cu_advisor_analysis_001","kind":"shaping_update","baseline_ref":"baseline_advisor_analysis_001","summary":"Advisor analysis completed without Product Repository file writes.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_advisor_analysis_001"}}"#;
-const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation reviewed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"coverage_state":"supported"}],"evidence_observations":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"source_kind":"agent_report","assurance_level":"cooperative_report","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation reviewed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
+pub(crate) const RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID: &str = "evidence_bearing_record_run";
+pub(crate) const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation reviewed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"coverage_state":"supported"}],"evidence_observations":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"source_kind":"agent_report","assurance_level":"cooperative_report","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation reviewed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
 
 pub(crate) const REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID: &str = "final_acceptance_request";
 pub(crate) const REQUEST_USER_ACTION_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str = r#"{"request":{"operation":"create","task_id":"task_close_001","change_unit_id":null,"action":{"action_type":"choice","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","options":null,"context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"affected_refs":[],"sensitive_action_scope":null},"required_for":["close_complete"],"expires_at":null}}"#;
@@ -342,18 +340,11 @@ const STAGE_ARTIFACT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     arguments_json: STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON,
 }];
 
-const RECORD_RUN_EXAMPLES: [McpToolExample; 2] = [
-    McpToolExample {
-        id: RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
-        description: "Record an advisor shaping update with no Product Repository write.",
-        arguments_json: RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "evidence_bearing_record_run",
-        description: "Record target-scoped evidence and a close assessment.",
-        arguments_json: RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON,
-    },
-];
+const RECORD_RUN_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
+    description: "Record target-scoped evidence and a close assessment.",
+    arguments_json: RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON,
+}];
 
 const REQUEST_USER_ACTION_EXAMPLES: [McpToolExample; 2] = [
     McpToolExample {
@@ -403,6 +394,7 @@ pub(crate) fn canonical_tool_examples(tool: AgentToolId) -> &'static [McpToolExa
     match tool.method() {
         Some(MethodName::Intake) => &INTAKE_EXAMPLES,
         Some(MethodName::UpdateScope) => &UPDATE_SCOPE_EXAMPLES,
+        Some(MethodName::RecordShaping) | Some(MethodName::AdvanceTask) => &[],
         Some(MethodName::Status) => &STATUS_EXAMPLES,
         Some(MethodName::GetOperationResult) => &GET_OPERATION_RESULT_EXAMPLES,
         Some(MethodName::PrepareEvidenceCapture) => &PREPARE_EVIDENCE_CAPTURE_EXAMPLES,
@@ -1083,6 +1075,12 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::UPDATE_SCOPE) => {
             "Update Task scope and Change Unit before more work."
         }
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECORD_SHAPING) => {
+            "Record a shaping checkpoint and any linked user decisions."
+        }
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::ADVANCE_TASK) => {
+            "Explicitly advance ready work from shaping to implementation."
+        }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::STATUS) => {
             "Refresh unknown Task authority, blockers, and next action."
         }
@@ -1131,6 +1129,12 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
         (_, AgentToolId::UPDATE_SCOPE) => {
             "Update the current Task scope and keep, create, or replace its current Change Unit."
         }
+        (_, AgentToolId::RECORD_SHAPING) => {
+            "Atomically record the current shaping checkpoint, typed gaps, and linked UserAction requests."
+        }
+        (_, AgentToolId::ADVANCE_TASK) => {
+            "Advance an exact ready work Task checkpoint and current Change Unit into implementation."
+        }
         (_, AgentToolId::STATUS) => {
             "Read the current Core status view without creating Core authority state."
         }
@@ -1147,7 +1151,7 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "Prepare an Evidence attachment input; staging alone is not recorded Evidence. The default compact result includes the staged handle and expiry."
         }
         (_, AgentToolId::RECORD_RUN) => {
-            "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
+            "Record execution and evidence. Mode/kind: direct/direct or work/implementation."
         }
         (_, AgentToolId::REQUEST_USER_ACTION) => {
             "Create or resume one focused user action. MCP returns only a bounded pending summary; user-owned delivery and resolution use `volicord inbox`."

@@ -1,5 +1,7 @@
 # Runtime Boundaries
 
+Shaping checkpoints and explicit Task transitions mutate Runtime Home authority only. Product Repository writes still require implementation phase, a current Change Unit, `volicord.prepare_write`, and the host/user file-write path.
+
 This document owns filesystem-location and process boundaries among the
 `Product Repository`, `Volicord Runtime Home`, installed Volicord executables,
 managed Codex configuration, and the stdio MCP child process.

@@ -2,6 +2,8 @@
 
 # `volicord.status` reference
 
+Current progression is returned as the tagged `workflow` projection. It contains one required action when progression requires one and is independent of `close_readiness.state` and `close_readiness.blockers`. Current checkpoint readiness, typed gaps, boundary, and pending decision refs appear inside `workflow.checkpoint`.
+
 ## What this document owns
 
 This document owns baseline method behavior for `volicord.status`:
@@ -216,7 +218,6 @@ read-only effect or guarantee boundary.
 | `evidence_gate` | no | yes | `EvidenceGateSummary` |
 | `evidence_summary` | no | yes | `EvidenceSummary` |
 | `guarantee_display` | no | yes | `GuaranteeDisplay` |
-| `next_actions` | yes | no | `NextActionSummary[]` |
 | `pending_user_action_summaries` | yes | no | `AgentSafeUserActionRequestSummary[]` |
 | `risk_acceptance_coverage` | no | yes | `RiskAcceptanceCoverage[]` |
 | `status_summary` | yes | no | `string` |
@@ -366,7 +367,7 @@ active_task:
     task_id: task_export_001
     produced_at_state_version: 42
   baseline_ref: baseline_export_001
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 42, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries:
     - user_action_request_id: ua_export_columns_001
       status: pending
@@ -383,7 +384,6 @@ active_task:
       message: "A user-owned action is pending."
       related_refs: []
       next_actions:
-        - presentation_role: primary
           action_kind: resolve_user_action
           owner_method: volicord.resolve_user_action
           allowed_operation_categories: [user_only]
@@ -396,15 +396,6 @@ active_task:
     basis: "No stronger local guarantee is currently applied."
     capability_refs: []
 status_summary: "Close readiness is blocked by pending_user_action."
-next_actions:
-  - presentation_role: primary
-    action_kind: resolve_user_action
-    owner_method: volicord.resolve_user_action
-    allowed_operation_categories: [user_only]
-    label: "The user must resolve the pending action through a User Channel."
-    blocking_question: null
-    expected_state_version: null
-    required_refs: []
 pending_user_action_summaries:
   - user_action_request_id: ua_export_columns_001
     status: pending
@@ -421,7 +412,6 @@ close_blockers:
     message: "A user-owned action is pending."
     related_refs: []
     next_actions:
-      - presentation_role: primary
         action_kind: resolve_user_action
         owner_method: volicord.resolve_user_action
         allowed_operation_categories: [user_only]

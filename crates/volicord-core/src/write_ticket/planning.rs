@@ -33,13 +33,14 @@ use volicord_types::product_path::{
 use volicord_types::schema::{JsonObject, WriteTicketAttemptScope, WriteTicketValidityBasis};
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, MethodName, PrepareWriteDecision, StateRecordKind,
-    TaskControlLevel, TaskMode, UserActionKind, UtcTimestamp, WorkPhase, WriteDecisionCategory,
-    WriteTicketEffect, WriteTicketInvalidationReason,
+    TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor, UserActionStatus,
+    UtcTimestamp, WorkPhase, WriteDecisionCategory, WriteTicketEffect,
+    WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
     pending_user_action_authorities, user_action_authority_from_record,
-    user_action_blocks_operation, UserActionAuthority, UserActionOperation,
-    UserActionOperationContext,
+    user_action_blocks_operation, user_action_has_current_basis, UserActionAuthority,
+    UserActionOperation, UserActionOperationContext,
 };
 
 use super::approval::{
@@ -852,7 +853,20 @@ fn plan_prepare_write_mutations(
     };
     let pending_user_action_request_ids = pending_authorities
         .iter()
-        .filter(|authority| user_action_blocks_operation(authority, &operation_context))
+        .filter(|authority| {
+            user_action_blocks_operation(authority, &operation_context)
+                || (authority.status == UserActionStatus::Pending
+                    && user_action_has_current_basis(authority)
+                    && authority.task_id == task_id
+                    && authority.required_for.iter().any(|required_for| {
+                        matches!(
+                            required_for,
+                            UserActionRequiredFor::ScopeUpdate
+                                | UserActionRequiredFor::AdvanceTask
+                                | UserActionRequiredFor::PrepareWrite
+                        )
+                    }))
+        })
         .map(|authority| authority.user_action_request_id.clone())
         .collect::<Vec<_>>();
     if !pending_user_action_request_ids.is_empty() {

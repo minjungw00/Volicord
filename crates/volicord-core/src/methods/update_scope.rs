@@ -49,9 +49,10 @@ use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     AcceptanceCriteriaReplace, AcceptanceCriterionStatus, AcceptanceCriterionUpsert,
     ChangeUnitMutation, ChangeUnitRecord, CoreProjectStore, CoreStorageMutation,
-    ProjectStateHeader, TaskAutonomyBoundary, TaskCloseBasisUpdate, TaskControlLevelUpdate,
-    TaskMutation, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate, TaskShapingFacts,
-    UserActionInvalidation, UserActionMutation, WriteTicketInvalidation, WriteTicketMutation,
+    ProjectStateHeader, ShapingCheckpointMutation, TaskAutonomyBoundary, TaskCloseBasisUpdate,
+    TaskControlLevelUpdate, TaskMutation, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
+    TaskShapingFacts, UserActionInvalidation, UserActionMutation, WriteTicketInvalidation,
+    WriteTicketMutation,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{ChangeUnitId, TaskId};
@@ -61,8 +62,7 @@ use volicord_types::methods::{
 use volicord_types::schema::{AcceptanceCriterion, JsonObject, NextActionSummary, StateRecordRef};
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
-    StateRecordKind, TaskControlLevel, TaskLifecyclePhase, TaskMode, UtcTimestamp, WorkPhase,
-    WriteTicketInvalidationReason,
+    StateRecordKind, TaskControlLevel, UtcTimestamp, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
     pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
@@ -437,7 +437,6 @@ fn plan_update_scope_mutations(
         Vec::new()
     };
 
-    let task_mode = task.mode;
     let next_shaping = TaskShapingFacts {
         goal_summary: next_scope.goal_summary.clone(),
         scope_summary: next_scope.scope_summary.clone(),
@@ -459,12 +458,7 @@ fn plan_update_scope_mutations(
     let mut storage_mutations = vec![CoreStorageMutation::Task(TaskMutation::UpdateScope(
         TaskScopeUpdate {
             task_id: task.task_id.clone(),
-            work_phase: matches!(
-                request.change_unit.operation,
-                ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
-            )
-            .then_some(WorkPhase::Implementation)
-            .filter(|_| task_mode != TaskMode::Advisor),
+            work_phase: None,
             lifecycle_phase: None,
             result: None,
             title: next_scope.goal_summary.clone(),
@@ -512,6 +506,32 @@ fn plan_update_scope_mutations(
                 close_basis: None,
             },
         )));
+        if let Some(checkpoint) = store
+            .current_shaping_checkpoint(&request.task_id)
+            .map_err(CorePipelineError::from)?
+        {
+            let has_resolved_decisions = checkpoint
+                .gaps
+                .iter()
+                .any(|gap| gap.status == volicord_types::values::ShapingGapStatus::Resolved);
+            let can_rebase = checkpoint.readiness
+                == volicord_types::values::ShapingCheckpointReadiness::Ready
+                && (!has_resolved_decisions || !linked_scope_decision_refs.is_empty());
+            storage_mutations.push(CoreStorageMutation::Shaping(if can_rebase {
+                ShapingCheckpointMutation::RebaseCurrent {
+                    task_id: task.task_id.clone(),
+                    scope_revision: next_scope_revision,
+                    baseline_ref: next_scope
+                        .baseline_ref
+                        .as_ref()
+                        .map(|value| volicord_types::ids::BaselineRef::new(value.clone())),
+                }
+            } else {
+                ShapingCheckpointMutation::SupersedeCurrent {
+                    task_id: task.task_id.clone(),
+                }
+            }));
+        }
     }
 
     let mut synthetic_task = task.clone();
@@ -525,15 +545,6 @@ fn plan_update_scope_mutations(
     synthetic_task.shaping = next_shaping;
     synthetic_task.bounded_context = next_bounded_context;
     synthetic_task.autonomy_boundary = next_autonomy_boundary;
-    if task_mode != TaskMode::Advisor
-        && matches!(
-            request.change_unit.operation,
-            ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
-        )
-    {
-        synthetic_task.work_phase = WorkPhase::Implementation;
-    }
-
     let (change_unit_ref, synthetic_change_unit, change_unit_id) =
         match request.change_unit.operation {
             ChangeUnitOperation::KeepCurrent => {
@@ -577,7 +588,6 @@ fn plan_update_scope_mutations(
                     ChangeUnitMutation::InsertCurrent(insert),
                 ));
                 synthetic_task.current_change_unit_id = Some(change_unit_id.as_str().to_owned());
-                synthetic_task.lifecycle_phase = TaskLifecyclePhase::Ready;
                 let change_unit_ref = state_ref(
                     StateRecordKind::ChangeUnit,
                     change_unit_id.as_str(),
@@ -616,7 +626,6 @@ fn plan_update_scope_mutations(
                     ChangeUnitMutation::ReplaceCurrent(insert),
                 ));
                 synthetic_task.current_change_unit_id = Some(change_unit_id.as_str().to_owned());
-                synthetic_task.lifecycle_phase = TaskLifecyclePhase::Ready;
                 let change_unit_ref = state_ref(
                     StateRecordKind::ChangeUnit,
                     change_unit_id.as_str(),
@@ -775,6 +784,31 @@ fn project_update_scope_response(
             .collect::<Vec<_>>()
     };
     let blocker_refs = active_blocker_refs(store, &request.task_id, planned_state_version)?;
+    let mut projected_shaping_checkpoint = store
+        .current_shaping_checkpoint(&request.task_id)
+        .map_err(CorePipelineError::from)?;
+    if scope_changed {
+        if let Some(checkpoint) = projected_shaping_checkpoint.as_mut() {
+            let has_resolved_decisions = checkpoint
+                .gaps
+                .iter()
+                .any(|gap| gap.status == volicord_types::values::ShapingGapStatus::Resolved);
+            let can_rebase = checkpoint.readiness
+                == volicord_types::values::ShapingCheckpointReadiness::Ready
+                && (!has_resolved_decisions || !linked_scope_decision_refs.is_empty());
+            if can_rebase {
+                checkpoint.scope_revision = next_scope_revision;
+                checkpoint.baseline_ref = synthetic_task.shaping.baseline_ref.clone();
+                for gap in &mut checkpoint.gaps {
+                    if gap.status == volicord_types::values::ShapingGapStatus::Resolved {
+                        gap.status = volicord_types::values::ShapingGapStatus::Applied;
+                    }
+                }
+            } else {
+                projected_shaping_checkpoint = None;
+            }
+        }
+    }
     let task_ref = state_ref(
         StateRecordKind::Task,
         request.task_id.as_str(),
@@ -870,6 +904,7 @@ fn project_update_scope_response(
         state_version: planned_state_version,
         task: &synthetic_task,
         current_change_unit: synthetic_change_unit.as_ref(),
+        shaping_checkpoint: projected_shaping_checkpoint.as_ref(),
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: pending_refs,

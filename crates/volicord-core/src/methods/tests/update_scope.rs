@@ -1,7 +1,8 @@
 use super::*;
 
 #[test]
-fn advisor_current_change_unit_next_action_is_record_run() -> Result<(), Box<dyn Error>> {
+fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<(), Box<dyn Error>>
+{
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(
         intake_request(
@@ -28,12 +29,15 @@ fn advisor_current_change_unit_next_action_is_record_run() -> Result<(), Box<dyn
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    let next_actions = response.response_value["next_actions"]
-        .as_array()
-        .expect("next_actions should be an array");
-    assert_eq!(next_actions.len(), 1);
-    assert_eq!(next_actions[0]["action_kind"], "record_run");
-    assert_eq!(next_actions[0]["owner_method"], "volicord.record_run");
+    assert!(response.response_value.get("next_actions").is_none());
+    assert_eq!(
+        response.response_value["state"]["workflow"]["kind"],
+        "shaping_required"
+    );
+    assert_eq!(
+        response.response_value["state"]["workflow"]["required_action"],
+        "volicord.record_shaping"
+    );
 
     let status = harness.service.status(
         StatusRequest {
@@ -46,15 +50,11 @@ fn advisor_current_change_unit_next_action_is_record_run() -> Result<(), Box<dyn
         },
         invocation(OperationCategory::Read),
     )?;
-    let status_actions = status.response_value["next_actions"]
-        .as_array()
-        .expect("status next_actions should be an array");
-    assert!(status_actions.iter().any(|action| {
-        action["action_kind"] == "record_run" && action["owner_method"] == "volicord.record_run"
-    }));
-    assert!(status_actions
-        .iter()
-        .all(|action| action["action_kind"] != "prepare_write"));
+    assert!(status.response_value.get("next_actions").is_none());
+    assert_eq!(
+        status.response_value["active_task"]["workflow"]["required_action"],
+        "volicord.record_shaping"
+    );
     Ok(())
 }
 
@@ -75,7 +75,7 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
         .as_str()
         .expect("task ref should be present")
         .to_owned();
-    let next_action_state_version = intake.response_value["next_actions"][0]
+    let next_action_state_version = intake.response_value["state"]["workflow"]
         ["expected_state_version"]
         .as_u64()
         .expect("the projected mutation action should carry a concurrency token");
@@ -107,10 +107,7 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
     );
     assert_eq!(response.response_value["base"]["state_version"], 2);
     assert!(response.response_value["change_unit_ref"].is_object());
-    assert_eq!(
-        response.response_value["state"]["work_phase"],
-        "implementation"
-    );
+    assert_eq!(response.response_value["state"]["work_phase"], "shaping");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.change_units, before.change_units + 1);
     assert_eq!(after.authority_events, before.authority_events + 1);

@@ -203,6 +203,7 @@ fn setup_approval_consumer_fixture(
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let change_unit_id = response_record_id(&scope.response_value, "change_unit_ref");
+    advance_work_task_for_test(&harness, scenario.name, &task_id, &change_unit_id)?;
 
     let mut approval_basis_refs = Vec::new();
     for approval_facts in &scenario.approval_records {

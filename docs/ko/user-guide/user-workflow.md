@@ -1,5 +1,7 @@
 # 사용자 작업 흐름
 
+shaping에 제품, 기술, 범위, 민감 승인이 필요하면 Core는 현재 shaping gap에 연결된 정확한 UserAction 요청을 생성합니다. 채팅 내용은 이 요청을 해결할 수 없습니다. 지원되는 User Channel에서 결정을 제출해야 하며, 확인된 resolution이 지속 기록될 때까지 workflow는 `awaiting_user_action`에 머뭅니다.
+
 Volicord를 사용하면 평소 말로 에이전트와 일하면서도 범위, 증거, 사용자 소유 판단,
 닫기 상태를 구분할 수 있습니다. 이 문서는 사용자 작업 흐름을 설명합니다. 정확한
 계약은 [참조 색인](../reference/README.md)에 있습니다.

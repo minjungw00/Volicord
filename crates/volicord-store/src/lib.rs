@@ -37,3 +37,46 @@ pub use mutation::{
     RuntimeHomeMutationContext, RuntimeHomeMutationSetupInProgress,
     RUNTIME_HOME_MUTATION_SETUP_IN_PROGRESS,
 };
+
+#[cfg(test)]
+#[test]
+fn project_schema_declares_stable_ddl_vector() -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_types::storage_contract::{GeneratedRelationKind, StorageDatabaseKind};
+
+    let metadata = schema::generated_schema_metadata()?;
+    assert_eq!(metadata.tables.len(), 60);
+    assert_eq!(metadata.columns.len(), 635);
+    assert_eq!(metadata.indexes.len(), 78);
+    assert_eq!(metadata.constraints.len(), 49);
+
+    for table in [
+        "shaping_checkpoints",
+        "shaping_checkpoint_gaps",
+        "shaping_checkpoint_user_actions",
+    ] {
+        assert!(metadata.tables.iter().any(|relation| {
+            relation.database == StorageDatabaseKind::ProjectState
+                && relation.name == table
+                && relation.relation_kind == GeneratedRelationKind::Table
+        }));
+    }
+    assert!(metadata.indexes.iter().any(|index| {
+        index.database == StorageDatabaseKind::ProjectState
+            && index.table == "shaping_checkpoints"
+            && index.name == "idx_shaping_checkpoints_one_current"
+            && index.unique
+            && index.partial
+    }));
+    for trigger in [
+        "trg_shaping_gap_not_added_to_ready_checkpoint",
+        "trg_shaping_checkpoint_ready_has_no_current_gap",
+        "trg_shaping_gap_resolution_requires_user_resolution",
+    ] {
+        assert!(metadata.tables.iter().any(|relation| {
+            relation.database == StorageDatabaseKind::ProjectState
+                && relation.name == trigger
+                && relation.relation_kind == GeneratedRelationKind::Trigger
+        }));
+    }
+    Ok(())
+}

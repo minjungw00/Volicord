@@ -1,11 +1,7 @@
 use crate::policy::evidence::{state_record_ref_identity_key, unique_state_record_refs};
 use std::collections::BTreeSet;
-use volicord_types::schema::{
-    CloseReadinessBlocker, NextActionSummary, RequiredNullable, StateRecordRef,
-};
-use volicord_types::values::{
-    MethodName, NextActionKind, NextActionPresentationRole, OperationCategory, TaskMode,
-};
+use volicord_types::schema::{NextActionSummary, RequiredNullable, StateRecordRef};
+use volicord_types::values::{MethodName, NextActionKind, OperationCategory, TaskMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StateGuidance {
@@ -68,7 +64,6 @@ pub(crate) fn next_actions_for_state(
         ),
     };
     vec![NextActionSummary {
-        presentation_role: NextActionPresentationRole::Primary,
         action_kind,
         owner_method: Some(owner_method),
         allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
@@ -83,12 +78,7 @@ pub(crate) fn normalize_next_action_collection(
     actions: &mut [NextActionSummary],
     expected_state_version: u64,
 ) {
-    for (index, action) in actions.iter_mut().enumerate() {
-        action.presentation_role = if index == 0 {
-            NextActionPresentationRole::Primary
-        } else {
-            NextActionPresentationRole::Additional
-        };
+    for action in actions.iter_mut() {
         action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
         action.expected_state_version = expected_state_version_for(
             &action.allowed_operation_categories,
@@ -145,6 +135,8 @@ pub(crate) fn allowed_operation_categories(
         ],
         Some(
             MethodName::UpdateScope
+            | MethodName::RecordShaping
+            | MethodName::AdvanceTask
             | MethodName::PrepareEvidenceCapture
             | MethodName::PrepareWrite
             | MethodName::StageArtifact
@@ -160,21 +152,6 @@ pub(crate) fn allowed_operation_categories(
         )
         | None => Vec::new(),
     }
-}
-
-pub(crate) fn primary_next_action<'a>(
-    next_actions: &'a [NextActionSummary],
-    close_blockers: &'a [CloseReadinessBlocker],
-) -> Option<&'a NextActionSummary> {
-    next_actions
-        .iter()
-        .find(|action| action.presentation_role == NextActionPresentationRole::Primary)
-        .or_else(|| {
-            close_blockers
-                .iter()
-                .flat_map(|blocker| blocker.next_actions.iter())
-                .find(|action| action.presentation_role == NextActionPresentationRole::Primary)
-        })
 }
 
 #[cfg(test)]
@@ -206,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_next_actions_are_normalized_deduplicated_and_selected_by_role() {
+    fn semantic_next_actions_are_normalized_and_deduplicated() {
         for owner_method in [
             MethodName::UpdateScope,
             MethodName::PrepareWrite,
@@ -234,7 +211,6 @@ mod tests {
         assert!(allowed_operation_categories(None).is_empty());
 
         let primary = NextActionSummary {
-            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::RecordRun,
             owner_method: Some(MethodName::RecordRun),
             allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
@@ -244,20 +220,10 @@ mod tests {
             required_refs: Vec::new(),
         };
         let mut additional_duplicate = primary.clone();
-        additional_duplicate.presentation_role = NextActionPresentationRole::Additional;
         additional_duplicate.expected_state_version = RequiredNullable::some(41);
 
         let deduplicated = unique_next_actions(vec![additional_duplicate.clone(), primary.clone()]);
         assert_eq!(deduplicated.len(), 1);
-
-        let distinct_additional = NextActionSummary {
-            label: "Additional action.".to_owned(),
-            ..additional_duplicate
-        };
-        let reordered = [distinct_additional, primary.clone()];
-        let selected = primary_next_action(&reordered, &[])
-            .expect("primary action should be selected by role");
-        assert_eq!(selected, &primary);
 
         let older_ref = StateRecordRef {
             record_kind: StateRecordKind::Task,

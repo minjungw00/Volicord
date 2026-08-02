@@ -1,5 +1,7 @@
 # 보안
 
+사용자 소유 shaping gap은 결정을 추론할 권한이 아닙니다. 확인된 User Channel resolution만 정확한 요청을 만족할 수 있으며, 채팅 내용, agent 주장, shaping 요약, 자유 형식 Change Unit invariant는 이를 대신할 수 없습니다.
+
 이 문서는 로컬 Codex workflow의 지원 보장과 명시적 비보장을 담당합니다.
 메서드 schema, 저장 효과, Codex 구성 문법, 운영체제 정책은 정의하지 않습니다.
 

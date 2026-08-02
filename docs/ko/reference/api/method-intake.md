@@ -39,8 +39,8 @@ Task 세분성 지침:
 - `plain_language_request`와 첫 범위에는 다음 분석 기법이나 다른 중간 단계로
   축소하지 않은 사용자의 요청 결과를 유지합니다.
 - 분석이나 shaping이 요청된 구현 결과의 한 단계라면 호출자는 `work` Task를
-  선택하고 해당 단계를 나중에 `shaping_update`로 기록합니다. 분석이 먼저라는
-  이유만으로 고립된 `advisor` Task를 만들지 않습니다.
+  선택하고 `volicord.record_shaping`으로 명시적인 shaping checkpoint를 기록합니다.
+  분석이 먼저라는 이유만으로 고립된 `advisor` Task를 만들지 않습니다.
 - 요청된 결과 자체가 읽기 전용 조언일 때 `advisor`를 선택합니다. 더 넓은 결과가
   불명확하면 shaping 상태에 알려진 경계만 두거나 사용자에게 묻고, 더 큰 목표를
   추론하지 않습니다.
@@ -217,7 +217,6 @@ Task 계보와 선택적 승계 규칙:
 |---|---|---|---|
 | `base` | 예 | 아니요 | `IntakeResultBase` |
 | `change_unit_ref` | 아니요 | 예 | `StateRecordRef` |
-| `next_actions` | 예 | 아니요 | `NextActionSummary[]` |
 | `state` | 예 | 아니요 | `StateSummary` |
 | `task_ref` | 예 | 아니요 | `StateRecordRef` |
 
@@ -362,7 +361,7 @@ state:
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null
-  shaping_readiness: null
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 18, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
@@ -370,26 +369,12 @@ state:
   close_state: null
   close_blockers: []
   guarantee_display: null
-next_actions:
-  - presentation_role: primary
-    action_kind: update_scope
-    owner_method: volicord.update_scope
-    allowed_operation_categories: [agent_workflow]
-    label: "쓰기 티켓을 준비하기 전에 첫 현재 적용 Change Unit을 만드세요."
-    blocking_question: null
-    expected_state_version: 18
-    required_refs:
-      - record_kind: task
-        record_id: task_onboard_001
-        project_id: proj_onboard_001
-        task_id: task_onboard_001
-        produced_at_state_version: 18
 ```
 
 ## 담당 문서 링크
 
 - 요청 래퍼와 응답 분기: [`ToolEnvelope`](schema-core.md#tool-envelope), [공통 응답 분기](schema-core.md#common-response).
-- 상태 참조, `StateSummary`, `ShapingReadiness`, 다음 행동: [API 상태 스키마](schema-state.md).
+- 상태 참조, `StateSummary`, 태그 기반 워크플로 진행 상태: [API 상태 스키마](schema-state.md).
 - 지원되는 메서드 이름, 모드 값, `resume_policy`, `response_kind`, `effect_kind`, 작업 범주: [API 값 집합](schema-value-sets.md#operation-category-values).
 - 공개 오류, 우선순위, 거절 응답 처리 경로: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [API 오류 처리 경로](error-routing.md).
 - 저장 효과와 저장 기록: [저장 효과](../storage-effects.md), [저장소 기록](../storage-records.md), [저장소 버전 관리](../storage-versioning.md).

@@ -1255,8 +1255,11 @@ mod tests {
         },
         seed_test_agent_session, TestRuntimeHomeSetup,
     };
-    use volicord_types::ids::{AgentConnectionId, EvidenceClaimId};
-    use volicord_types::schema::StagedArtifactHandle;
+    use volicord_types::ids::{
+        AgentConnectionId, BaselineRef, ChangeUnitId, EvidenceClaimId, ShapingCheckpointId,
+    };
+    use volicord_types::methods::{AdvanceTaskRequest, RecordShapingRequest};
+    use volicord_types::schema::{RequiredNullable, StagedArtifactHandle};
     use volicord_types::values::{ChangeUnitOperation, JudgmentKind};
 
     use super::*;
@@ -1396,13 +1399,69 @@ mod tests {
         let scope_state_version = scope.response_value["base"]["state_version"]
             .as_u64()
             .expect("scope update should expose its committed state version");
+        let shaped = core.record_shaping(
+            &fixture.mutation_context()?,
+            RecordShapingRequest {
+                envelope: fixture.envelope(
+                    "req_cli_observation_shaping",
+                    Some("idem_cli_observation_shaping"),
+                    false,
+                    Some(scope_state_version),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The CLI evidence-observation boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Register only the scoped observation artifact.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                close_assessment: RequiredNullable::null(),
+            },
+            invocation.clone(),
+        )?;
+        let shaped_state_version = shaped.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("record_shaping should expose its committed state version");
+        let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+            .as_str()
+            .expect("record_shaping should identify its checkpoint");
+        let advanced = core.advance_task(
+            &fixture.mutation_context()?,
+            AdvanceTaskRequest {
+                envelope: fixture.envelope(
+                    "req_cli_observation_advance",
+                    Some("idem_cli_observation_advance"),
+                    false,
+                    Some(shaped_state_version),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                ),
+                user_action_resolution_ids: Vec::new(),
+            },
+            invocation.clone(),
+        )?;
+        let advanced_state_version = advanced.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("advance_task should expose its committed state version");
         let staged = core.stage_artifact(
             &fixture.mutation_context()?,
             fixture.stage_artifact_request(
                 "req_cli_observation_stage",
                 Some("idem_cli_observation_stage"),
                 false,
-                Some(scope_state_version),
+                Some(advanced_state_version),
                 &task_id,
             ),
             invocation.clone(),

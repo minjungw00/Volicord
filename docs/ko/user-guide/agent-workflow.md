@@ -1,5 +1,7 @@
 # 에이전트 가이드
 
+work Task는 shaping에서 시작합니다. 분석은 `volicord.record_shaping`으로 기록하고, 반환된 UserAction은 User Channel에서 해결하며, 해결된 범위 결정은 `volicord.update_scope`로 적용합니다. Change Unit 생성이나 갱신은 단계를 바꾸지 않습니다. `workflow.kind=ready_for_implementation`일 때만 `volicord.advance_task`를 호출합니다. `volicord.record_run`은 direct 또는 implementation 실행에만 사용합니다.
+
 <a id="purpose"></a>
 
 Volicord에 연결된 세션에서 에이전트를 운영하거나 검토할 때 이 가이드를 사용합니다.

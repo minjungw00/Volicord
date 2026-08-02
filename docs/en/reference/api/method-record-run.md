@@ -68,23 +68,17 @@ The exact dependency and transaction boundaries are described in the
 
 ## Purpose
 
-`volicord.record_run` is the baseline public method for recording Evidence after meaningful work. It records a Run for:
-
-- shaping work
-- a direct answer or result
-- implementation work
+`volicord.record_run` records execution and its Evidence. Shaping analysis is recorded with `volicord.record_shaping`.
 
 The current persisted `Task.mode`, `work_phase`, and requested `kind` must match
 this exhaustive matrix:
 
 | Current `Task.mode` | Current `work_phase` | Allowed `RecordRunRequest.kind` |
 |---|---|---|
-| `advisor` | `shaping` | `shaping_update` |
 | `direct` | `implementation` | `direct` |
-| `work` | `shaping` | `shaping_update` |
 | `work` | `implementation` | `implementation` |
 
-Core rejects an incompatible pair before commit. An `advisor` Run is read-only with respect to Product Repository file effects and additionally requires `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, and `write_ticket_id=null`. A compatible `shaping_update` remains a committed Core mutation that records the Run and any method-owned evidence state.
+Core rejects every other mode, phase, or kind before commit. Advisor results and work shaping results use durable shaping checkpoints rather than Runs.
 
 Every Run also requires the verified current Git workspace context to match the
 current Change Unit write basis. This applies to non-write evidence and close
@@ -557,45 +551,6 @@ and artifact promotion details are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the committed run, promoted artifact ref, updated evidence summary, evidence observation, blocker refs, state version, and current state snapshot.
 
-## `advisor` no-product-write request
-
-This example records a read-only repository analysis for an existing advisor
-Task. Method-local precondition: `task_advisor_review_001` is the current Task
-with `Task.mode=advisor`, `cu_advisor_review_001` is its current Change Unit,
-`baseline_advisor_review_001` is compatible with that scope, and the current
-project state version is `7`. The request uses the advisor-compatible
-`kind=shaping_update` and reports no Product Repository file write. It does not
-use a write ticket. A successful call still commits the Run and advances
-Core-owned state; no product-file effect is implied.
-
-```yaml contract=api.method.record_run.request shape=complete_request
-method: volicord.record_run
-params:
-  envelope:
-    project_id: proj_advisor_review_001
-    task_id: task_advisor_review_001
-    request_id: req_advisor_review_001
-    idempotency_key: idem_advisor_review_001
-    expected_state_version: 7
-    dry_run: false
-    locale: en-US
-  task_id: task_advisor_review_001
-  change_unit_id: cu_advisor_review_001
-  kind: shaping_update
-  run_id: null
-  baseline_ref: baseline_advisor_review_001
-  write_ticket_id: null
-  summary: "Read-only repository analysis completed without Product Repository file writes."
-  observed_changes:
-    changed_paths: []
-    product_file_write_observed: false
-    sensitive_categories: []
-    baseline_ref: baseline_advisor_review_001
-  artifact_inputs: []
-  evidence_updates: []
-  evidence_observations: []
-  close_assessment: null
-```
 
 ## Minimal valid request
 
@@ -944,7 +899,7 @@ state:
     task_id: task_runprobe_001
     produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 32, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

@@ -259,19 +259,18 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 
 사용자 소유 판단은 제품 방향, 기술 방향, 범위, 민감 단계, 최종 수락, 잔여 위험 수락, 취소에 관한 것일 수 있습니다. 정확한 판단 스키마 필드와 값 이름은 API 스키마와 값 집합 담당 문서가 맡습니다.
 
-### Task 모드, work phase, 실행 기록 호환성
+### Task 모드와 진행 권한
 
-확정된 `Task.mode`와 `work_phase`는 현재 단계를 나타낼 수 있는 Run 종류를 함께
-제한합니다.
+확정된 `Task.mode`와 `work_phase`는 현재 단계의 권한 기록과 전이를 선택합니다.
 
-| `Task.mode` | `work_phase` | 호환되는 Run 종류 |
+| `Task.mode` | `work_phase` | 권한 경로 |
 |---|---|---|
-| `advisor` | `shaping` | `shaping_update` |
+| `advisor` | `shaping` | `volicord.record_shaping`; ready checkpoint가 자문 결과 근거가 됨 |
 | `direct` | `implementation` | `direct` |
-| `work` | `shaping` | `shaping_update` |
+| `work` | `shaping` | `volicord.record_shaping` 후 정확한 현재 권한으로 `volicord.advance_task` |
 | `work` | `implementation` | `implementation` |
 
-`advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. 제품 파일 쓰기나 쓰기 티켓 발급 권한을 만들지 않지만, 호환되는 `shaping_update`의 `record_run` 호출은 Run과 메서드 소유 Core 증거 상태를 정상 커밋합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 모드 호환성 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
+`advisor`는 Product Repository 파일 효과에 대해 읽기 전용이며 쓰기 가능한 Change Unit, 쓰기 티켓, `volicord.advance_task`를 사용하지 않습니다. Change Unit은 작업 경계이며 단계를 바꾸지 않습니다. work Task는 명시적 advance 성공으로만 구현에 진입합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 진행 권한 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
 
 ### 실행 기록
 
@@ -848,7 +847,7 @@ fact를 받거나 승인 policy 해석을 반복하지 않습니다.
 | API 메서드 목록과 메서드 경로 | [API 메서드](api/methods.md) |
 | 메서드 동작 | [API 메서드](api/methods.md)가 나열하는 메서드 담당 문서 |
 | 공통 API 요청 래퍼와 응답 분기 | [API 코어 스키마](api/schema-core.md) |
-| `ShapingReadiness`, `CloseReadinessBlocker`, `WriteDecisionReason`, 프로젝트 연속성 형태를 포함한 상태 형태 API 데이터 | [API 상태 스키마](api/schema-state.md), [API 값 집합](api/schema-value-sets.md) |
+| 태그 기반 워크플로 진행 상태, `CloseReadinessBlocker`, `WriteDecisionReason`, 프로젝트 연속성 형태를 포함한 상태 형태 API 데이터 | [API 상태 스키마](api/schema-state.md), [API 값 집합](api/schema-value-sets.md) |
 | 사용자 판단 스키마 형태, `SensitiveActionScope`, 수락된 위험 입력 형태 | [API 판단 스키마](api/schema-judgment.md) |
 | 아티팩트 참조, 아티팩트 입력 형태, 스테이징 핸들, 아티팩트 스키마 규칙 | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | 공개 오류 코드 의미, 오류 처리 경로, 오류 우선순위 | [API 오류 코드](api/error-codes.md), [API 오류 처리 경로](api/error-routing.md), [API 오류 우선순위](api/error-precedence.md) |

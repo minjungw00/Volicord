@@ -1,5 +1,7 @@
 # API 오류
 
+shaping 메서드는 기존 validation, conflict, replay branch로 stale Task, scope, baseline, checkpoint, Change Unit, UserAction resolution 좌표를 거절합니다. Aggregate 실패는 checkpoint, request, event, replay, state version에 부분 효과를 남기지 않습니다.
+
 이 문서는 질문에 맞는 집중 API 오류 참조 문서를 찾는 첫 경로입니다. 계약 담당
 문서가 아니라 경로 안내 문서이며, 정확한 오류 계약은 연결된 담당 문서에 있습니다.
 

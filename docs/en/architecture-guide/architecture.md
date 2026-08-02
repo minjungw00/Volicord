@@ -1,5 +1,7 @@
 # Implementation architecture
 
+Core owns shaping progression through typed method planners, the UserAction service, and ordered Store mutations. Store owns strict aggregate decoding and canonical DDL. MCP maps generated wire arguments into Core requests and does not implement phase-transition policy.
+
 This page is the top-level Architecture Guide overview for the local Rust
 workspace. It owns guide-level operational paths, workspace shape, dependency
 direction, durable implementation boundaries, and routes to focused detail

@@ -575,6 +575,12 @@ fn supplemental_evidence_claim_identity_is_task_scoped_and_statement_is_immutabl
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let second_change_unit_id = response_record_id(&second_scope.response_value, "change_unit_ref");
+    advance_work_task_for_test(
+        &harness,
+        "task_scoped_evidence_claim_second",
+        &second_task_id,
+        &second_change_unit_id,
+    )?;
 
     let mut second_run = record_run_request(
         "req_task_scoped_claim_second",

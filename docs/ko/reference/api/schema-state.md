@@ -167,7 +167,7 @@ StateSummary:
   effect_contract: ChangeUnitEffectContract | null
   baseline_ref: string | null
   workspace_context: WorkspaceContext | null
-  shaping_readiness: ShapingReadiness | null
+  workflow: WorkflowProjection
   pending_user_action_summaries: AgentSafeUserActionRequestSummary[]
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
@@ -466,37 +466,41 @@ TaskLifecycleState:
 - `lifecycle_phase`, `close_reason`, `result`의 지원 값: [`Task` 생명주기 값](schema-value-sets.md#task-lifecycle-values)
 - 생명주기 영역의 제품 의미: [Core 모델의 `Task` 생명주기](../core-model.md#6-task-lifecycle)
 
-## `ShapingReadiness`
+## `WorkflowProjection`과 shaping checkpoint
 
-의미:
-- `ShapingReadiness`는 `Task`, Change Unit, 대기 중인 사용자 행동, 증거 요약, 차단 사유, 다음 행동 필드를 포괄하는 API 보기 형태입니다.
-- boolean 필드와 `gaps` 배열은 현재 상태의 준비 상태 형태 데이터를 드러냅니다.
+`StateSummary.workflow`는 단일 태그형 진행 권한입니다. `kind` 값은 `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_for_implementation`, `implementation`, `close_review`, `terminal` 중 하나입니다.
 
 ```schema
-ShapingReadiness:
-  goal_summary_known: boolean
-  scope_boundary_known: boolean
-  non_goals_known: boolean
-  affected_area_or_paths_known: boolean
-  acceptance_criteria_known: boolean
-  autonomy_boundary_known: boolean
-  first_change_unit_known: boolean
-  user_owned_blocker_kind: string | null
-  next_safe_action: NextActionSummary | null
-  gaps: ShapingGap[]
+WorkflowProjection:
+  kind: string
+  next_actor: string
+  required_action: string | null
+  allowed_actions: string[]
+  required_refs: StateRecordRef[]
+  expected_state_version: integer
+  blocking_reason: string | null
+  checkpoint: ShapingCheckpointSummary | null
 
-ShapingGap:
+ShapingCheckpointSummary:
+  checkpoint_ref: StateRecordRef
+  readiness: string
+  scope_revision: integer
+  baseline_ref: string | null
+  implementation_boundary: string | null
+  gaps: ShapingCheckpointGap[]
+  pending_decision_refs: StateRecordRef[]
+
+ShapingCheckpointGap:
+  shaping_gap_id: string
   gap_kind: string
-  message: string
-  blocker_ref: StateRecordRef | null
-  user_action_request_candidate_ref: StateRecordRef | null
+  summary: string
+  affected_refs: StateRecordRef[]
+  status: string
+  user_action_request_ref: StateRecordRef | null
+  user_action_resolution_ref: StateRecordRef | null
 ```
 
-의미:
-- `ShapingGap`은 형태에 따라 blocker 또는 담당자가 제안한 사용자 행동 요청 후보를
-  참조할 수 있습니다. 후보 ref 자체는 resolution이 아닙니다.
-- `user_owned_blocker_kind`와 `ShapingGap.gap_kind`는 불투명 준비 상태 분류 문자열입니다. 영향받는 담당 문서가 더 좁은 값을 공개하지 않는 한 빠짐없는 공개 값 집합이 아닙니다.
-- `ShapingGap.message`는 자유 형식 표시 문자열입니다.
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 `close_review` 전에는 전역 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함합니다.
 
 담당 문서 링크:
 - 메서드 동작과 지속 효과: [API 메서드](methods.md)가 안내하는 메서드 담당 문서와 [저장 효과](../storage-effects.md)
@@ -520,7 +524,6 @@ SummaryCard:
   guarantee: string
 
 NextActionSummary:
-  presentation_role: string
   action_kind: string
   owner_method: string | null
   allowed_operation_categories: string[]
@@ -599,20 +602,19 @@ WriteDecisionReason:
   명령 문법, transport framing, terminal 또는 Markdown styling, adapter 전용 설명
   문구는 adapter presentation이며 Core가 반환하는 표시 문자열이 아닙니다.
 - 증거 또는 닫기 상태 보기를 선택하면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#evidence-gate-values)이 담당하는 `EvidenceGateSummary.state` 값을 그대로 사용합니다. 스테이징 입력이나 `EvidenceSummary.evidence_state`에서 별도 상태를 추론하지 않습니다.
-- `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 구조화된 행동이 적용되면 요약은 `presentation_role=primary`인 행동을 선택하며 배열 위치는 선택 계약이 아닙니다.
+- `SummaryCard.next`는 표시 힌트일 뿐입니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 두 필드 모두 워크플로 권한이 아니며 닫기 요약은 첫 차단 사유를 선택해 이 필드를 파생하지 않습니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
 - 이미 존재하는 대기 사용자 행동에는 `SummaryCard.user_action`, `SummaryCard.next`, 메서드
   `status_summary`, blocker message, 그 밖의 모든 display/template string이 일반 문구만
   사용합니다. 사용자 행동이 대기 중이고 다음 actor가 User Channel임을 말할 수 있지만
   요청 질문, 선택지, 맥락, form, 경로, 명령, URL, credential을 다시 만들면 안 됩니다.
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, 검토 완료, OS 수준 집행을 주장하면 안 됩니다.
-- `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, `required_refs`입니다.
-- 비어 있지 않은 각 최상위 `next_actions` 모음에는 `presentation_role=primary`인 항목이 정확히 하나 있습니다. 나머지 항목은 `additional`을 사용합니다. 닫기 준비 상태는 명시적인 중첩 예외입니다. 닫기 준비 상태 결과 하나의 `blockers[*].next_actions`를 평탄화한 전체가 primary 하나를 갖는 투영 단위이므로 뒤쪽의 개별 차단 사유 목록에는 additional 행동만 있을 수 있습니다. 단일 `next_action`은 `primary`를 사용합니다.
-- `additional`은 표시 역할이지 선택 사항이라는 뜻이 아닙니다. 다른 차단 사유를 해소하려면 보조 행동도 필수일 수 있습니다.
+- `NextActionSummary`는 차단 사유 로컬 또는 미리보기 해결 행동 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, `required_refs`입니다.
+- 성공 메서드 결과는 최상위 `next_actions` 모음 대신 태그 기반 `workflow` 진행 상태를 노출합니다. `CloseReadinessBlocker.next_actions`는 해당 차단 사유에만 속하며 차단 사유 사이의 선택 역할을 갖지 않습니다.
 - `allowed_operation_categories`는 행동에 대해 담당 문서가 지원하는 호출 범주를 이름 붙입니다. 현재 연결이 행동을 실행할 수 있음을 증명하거나 사용자 권한을 부여하지 않으며, 지원되는 API 메서드 호출이 식별되지 않으면 비어 있습니다.
 - `expected_state_version`은 항상 존재하는 null 허용 필드입니다. 낙관적 동시성을 사용하는 API 변경 행동에는 그 행동을 만든 상태 보기의 현재 `project_state.state_version`을 담으며, 해당 호출의 `ToolEnvelope.expected_state_version`으로 직접 매핑됩니다. 읽기 행동, `user_only` 행동, 단일 담당 메서드가 없는 행동, 낙관적 동시성을 사용하지 않는 담당 메서드 행동에는 `null`을 사용합니다.
 - `expected_state_version`은 재시도 가능한 동시성 입력이며 신원이나 권한이 아닙니다. 다른 변경이 커밋되면 오래될 수 있으므로 호출자는 `STATE_VERSION_CONFLICT` 뒤 현재 상태를 새로 읽습니다. `required_refs`와 참조의 `produced_at_state_version`은 이 토큰을 제공하거나 덮어쓰지 않습니다.
-- 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
+- 오래된 `action` 또는 `reason` 필드를 쓰는 차단 사유 로컬 또는 미리보기 행동은 유효한 `NextActionSummary`가 아닙니다.
 - 이미 존재하는 대기 사용자 행동에는 `NextActionSummary.label`과 소유 blocker message가
   일반 User Channel 안내만 사용하고 `blocking_question=null`이며 `required_refs`에
   `user_action_request` ref가 없습니다. Request ID와 pending/next-actor 사실은
@@ -666,7 +668,6 @@ WriteDecisionReason:
 
 | 필드 | 분류 | 규칙 |
 |---|---|---|
-| `presentation_role` | 제어되는 표시 역할 값. | [다음 행동 값](schema-value-sets.md#next-action-values)의 `primary` 또는 `additional`을 사용합니다. 선택 사항 여부를 나타내지 않습니다. |
 | `action_kind` | 제어되는 행동 범주 값. | [다음 행동 값](schema-value-sets.md#next-action-values)의 값 집합을 사용합니다. 메서드 이름 값이 아닙니다. |
 | `owner_method` | 담당 메서드 이름 또는 `null`. | 지원되는 공개 메서드 하나가 다음 행동을 담당할 때 그 API 메서드를 이름 붙입니다. 단일 담당 메서드가 없으면 `null`을 사용합니다. |
 | `allowed_operation_categories` | 제어되는 작업 범주 값. | 이 행동에 대해 담당 문서가 지원하는 호출 범주를 나열합니다. `owner_method=null`이거나 지원되는 API 호출 경로가 식별되지 않으면 `[]`를 사용합니다. |

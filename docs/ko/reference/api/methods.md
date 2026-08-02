@@ -20,6 +20,8 @@
 
 <a id="volicordintake"></a>
 <a id="volicordupdate_scope"></a>
+<a id="volicordrecord_shaping"></a>
+<a id="volicordadvance_task"></a>
 <a id="volicordstatus"></a>
 <a id="volicordget_operation_result"></a>
 <a id="volicordprepare_evidence_capture"></a>
@@ -36,6 +38,8 @@
 |---|---|
 | `volicord.intake` | [접수 메서드 담당 문서](method-intake.md) |
 | `volicord.update_scope` | [범위 갱신 메서드 담당 문서](method-update-scope.md) |
+| `volicord.record_shaping` | [형성 기록 메서드 담당 문서](method-record-shaping.md) |
+| `volicord.advance_task` | [Task 전진 메서드 담당 문서](method-advance-task.md) |
 | `volicord.status` | [상태 메서드 담당 문서](method-status.md) |
 | `volicord.get_operation_result` | [작업 결과 조회 메서드 담당 문서](method-get-operation-result.md#volicordget_operation_result) |
 | `volicord.prepare_evidence_capture` | [증거 캡처 준비 메서드 담당 문서](method-prepare-evidence-capture.md#volicordprepare_evidence_capture) |

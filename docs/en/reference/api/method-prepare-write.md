@@ -2,6 +2,8 @@
 
 # `volicord.prepare_write` reference
 
+Write preparation requires `direct/implementation` or `work/implementation`, the current active Change Unit, and no unresolved current decision required for `scope_update`, `advance_task`, or `prepare_write`. A Change Unit created during shaping does not satisfy the phase gate.
+
 ## What this document owns
 
 This document owns baseline method behavior for `volicord.prepare_write`:
@@ -550,7 +552,7 @@ state:
   effect_contract: null
   baseline_ref: baseline_pref_001
   workspace_context: null
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 20, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary:

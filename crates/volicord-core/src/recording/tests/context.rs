@@ -6,14 +6,6 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
         (
             RequestedMode::Advisor,
             "advisor",
-            RunKind::ShapingUpdate,
-            "shaping_update",
-            true,
-            "advisor_shaping",
-        ),
-        (
-            RequestedMode::Advisor,
-            "advisor",
             RunKind::Implementation,
             "implementation",
             false,
@@ -30,14 +22,6 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
         (
             RequestedMode::Direct,
             "direct",
-            RunKind::ShapingUpdate,
-            "shaping_update",
-            false,
-            "direct_shaping",
-        ),
-        (
-            RequestedMode::Direct,
-            "direct",
             RunKind::Implementation,
             "implementation",
             false,
@@ -50,14 +34,6 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
             "direct",
             true,
             "direct_direct",
-        ),
-        (
-            RequestedMode::Work,
-            "work",
-            RunKind::ShapingUpdate,
-            "shaping_update",
-            false,
-            "work_shaping",
         ),
         (
             RequestedMode::Work,
@@ -167,7 +143,7 @@ fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<()
             &task_id,
             &change_unit_id,
         );
-        request.kind = RunKind::ShapingUpdate;
+        request.kind = RunKind::Implementation;
         request.observed_changes.product_file_write_observed = product_write_observed;
         request.observed_changes.changed_paths = changed_paths;
         request.observed_changes.sensitive_categories = sensitive_categories;

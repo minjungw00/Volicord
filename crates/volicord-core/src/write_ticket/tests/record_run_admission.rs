@@ -513,6 +513,12 @@ fn record_run_rejects_non_write_authority_after_workspace_change() -> Result<(),
         invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(original.clone()),
     )?;
     let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
+    advance_work_task_for_test(
+        &harness,
+        "run_non_write_workspace",
+        &task_id,
+        &change_unit_id,
+    )?;
     let before = harness.counts()?;
     let mut changed = original;
     changed.branch_ref = Some("refs/heads/other".to_owned());

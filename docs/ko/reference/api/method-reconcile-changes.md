@@ -133,7 +133,6 @@ JSON이나 저장된 폐쇄형 값의 철자를 해석하지 않으며 새 관�
 |---|---|---|---|
 | `base` | 예 | 아니요 | `ReconcileChangesResultBase` |
 | `close_blockers` | 예 | 아니요 | `CloseReadinessBlocker[]` |
-| `next_actions` | 예 | 아니요 | `NextActionSummary[]` |
 | `pending_user_action_summaries` | 예 | 아니요 | `AgentSafeUserActionRequestSummary[]` |
 | `rejected_resolution_requests` | 예 | 아니요 | `UnrecordedChangeRejection[]` |
 | `resolved_changes` | 예 | 아니요 | `UnrecordedChangeResolutionSummary[]` |

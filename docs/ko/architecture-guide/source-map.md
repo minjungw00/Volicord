@@ -1,5 +1,7 @@
 # 소스 맵
 
+명시적 shaping 진행은 `volicord-core::methods::{record_shaping,advance_task}`, `volicord-core::workflow_projection`, `volicord-store::core_pipeline::shaping`, 정규 project schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
+
 이 맵은 유지관리자를 현재 구현 소유자로 안내합니다. 제품 계약이 아니므로 정확한 동작은
 집중된 Reference 문서를 사용합니다.
 

@@ -3,8 +3,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ids::{
-    BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RunId, TaskId, UnrecordedChangeId,
-    UserActionRequestId, UserActionResolutionId, WriteTicketId,
+    BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RunId, ShapingCheckpointId, TaskId,
+    UnrecordedChangeId, UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary,
@@ -16,10 +16,11 @@ use crate::schema::{
     NextActionSummary, NoEffectResultBase, NonEmptyEventRefs, NotRequestedReadOnlyResultBase,
     ObservedChanges, PreviewableToolResponse, ProjectContinuityPage, ProjectContinuitySummary,
     RequestedIntentReadOnlyResultBase, RequiredNullable, ResultMetadata, RiskAcceptanceCoverage,
-    RunSummary, SourceRef, StagedArtifactHandle, StagingCreatedResultBase, StateRecordRef,
-    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolEnvelope, ToolResultOrRejected,
-    UnrecordedChangeFinding, UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest,
-    UserActionResolution, UserActionResolutionInput, WriteDecisionReason, WriteTicket,
+    RunSummary, ShapingCheckpoint, ShapingGapInput, SourceRef, StagedArtifactHandle,
+    StagingCreatedResultBase, StateRecordRef, StateSummary, SummaryCard, TaskFlowItem,
+    TaskLineageInput, ToolEnvelope, ToolResultOrRejected, UnrecordedChangeFinding,
+    UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest, UserActionResolution,
+    UserActionResolutionInput, WorkflowProjection, WriteDecisionReason, WriteTicket,
     WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
 use crate::values::{
@@ -573,7 +574,80 @@ declare_method_result! {
         pub task_ref: StateRecordRef,
         pub change_unit_ref: Option<StateRecordRef>,
         pub state: StateSummary,
+        #[serde(skip)]
+        #[schemars(skip)]
         pub next_actions: Vec<NextActionSummary>,
+    }
+}
+
+/// `volicord.record_shaping` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RecordShapingRequest {
+    pub envelope: ToolEnvelope,
+    pub task_id: TaskId,
+    pub scope_revision: u64,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub summary: String,
+    pub implementation_boundary: RequiredNullable<String>,
+    pub gaps: Vec<ShapingGapInput>,
+    pub source_refs: Vec<SourceRef>,
+    pub evidence_refs: Vec<StateRecordRef>,
+    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
+}
+
+impl MethodOperationCategory for RecordShapingRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::RecordShaping
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::AgentWorkflow
+    }
+}
+
+declare_method_result! {
+    /// `volicord.record_shaping` method result branch and its method-specific fields.
+    pub struct RecordShapingResult from RecordShapingResultFields with RecordShapingResultBase {
+        pub shaping_checkpoint: ShapingCheckpoint,
+        pub created_user_action_request_refs: Vec<StateRecordRef>,
+        pub workflow: WorkflowProjection,
+        pub state: StateSummary,
+    }
+}
+
+/// `volicord.advance_task` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AdvanceTaskRequest {
+    pub envelope: ToolEnvelope,
+    pub task_id: TaskId,
+    pub shaping_checkpoint_id: ShapingCheckpointId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    pub user_action_resolution_ids: Vec<UserActionResolutionId>,
+}
+
+impl MethodOperationCategory for AdvanceTaskRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::AdvanceTask
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::AgentWorkflow
+    }
+}
+
+declare_method_result! {
+    /// `volicord.advance_task` method result branch and its method-specific fields.
+    pub struct AdvanceTaskResult from AdvanceTaskResultFields with AdvanceTaskResultBase {
+        pub task_ref: StateRecordRef,
+        pub shaping_checkpoint_ref: StateRecordRef,
+        pub change_unit_ref: StateRecordRef,
+        pub user_action_resolution_refs: Vec<StateRecordRef>,
+        pub workflow: WorkflowProjection,
+        pub state: StateSummary,
     }
 }
 
@@ -674,6 +748,8 @@ declare_method_result! {
         pub stale_write_ticket_refs: Vec<StateRecordRef>,
         pub blocker_refs: Vec<StateRecordRef>,
         pub state: StateSummary,
+        #[serde(skip)]
+        #[schemars(skip)]
         pub next_actions: Vec<NextActionSummary>,
     }
 }
@@ -739,7 +815,7 @@ pub struct StatusStateSummary {
     pub effect_contract: Option<ChangeUnitEffectContract>,
     pub baseline_ref: Option<BaselineRef>,
     pub workspace_context: Option<crate::schema::WorkspaceContext>,
-    pub shaping_readiness: Option<crate::schema::ShapingReadiness>,
+    pub workflow: WorkflowProjection,
     pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub blocker_refs: Vec<StateRecordRef>,
     #[serde(
@@ -800,7 +876,7 @@ impl StatusStateSummary {
             effect_contract,
             baseline_ref,
             workspace_context,
-            shaping_readiness,
+            workflow,
             pending_user_action_summaries,
             blocker_refs,
             write_ticket_summary,
@@ -834,7 +910,7 @@ impl StatusStateSummary {
             effect_contract,
             baseline_ref,
             workspace_context,
-            shaping_readiness,
+            workflow,
             pending_user_action_summaries,
             blocker_refs,
             write_ticket_summary: include
@@ -860,6 +936,8 @@ declare_method_result! {
         pub summary_card: SummaryCard,
         pub active_task: Option<StatusStateSummary>,
         pub status_summary: String,
+        #[serde(skip)]
+        #[schemars(skip)]
         pub next_actions: Vec<NextActionSummary>,
         pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
         pub blocker_refs: Vec<StateRecordRef>,
@@ -1151,6 +1229,8 @@ declare_method_result! {
         pub user_action_resolution: UserActionResolution,
         pub derived_refs: Vec<StateRecordRef>,
         pub state: StateSummary,
+        #[serde(skip)]
+        #[schemars(skip)]
         pub next_actions: Vec<NextActionSummary>,
     }
 }
@@ -1196,6 +1276,8 @@ declare_method_result! {
         pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
         pub state: StateSummary,
         pub close_blockers: Vec<CloseReadinessBlocker>,
+        #[serde(skip)]
+        #[schemars(skip)]
         pub next_actions: Vec<NextActionSummary>,
     }
 }
@@ -1480,6 +1562,30 @@ declare_public_method_contracts! {
         result_effects: [CoreCommitted],
         request_contract: "api.method.update_scope.request",
         response_contract: "api.method.update_scope.response",
+        committed_result_replay: true
+    },
+    RecordShaping {
+        request: RecordShapingRequest,
+        fields: RecordShapingResultFields,
+        base: RecordShapingResultBase,
+        result: RecordShapingResult,
+        response: RecordShapingResponse,
+        dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
+        request_contract: "api.method.record_shaping.request",
+        response_contract: "api.method.record_shaping.response",
+        committed_result_replay: true
+    },
+    AdvanceTask {
+        request: AdvanceTaskRequest,
+        fields: AdvanceTaskResultFields,
+        base: AdvanceTaskResultBase,
+        result: AdvanceTaskResult,
+        response: AdvanceTaskResponse,
+        dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
+        request_contract: "api.method.advance_task.request",
+        response_contract: "api.method.advance_task.response",
         committed_result_replay: true
     },
     Status {

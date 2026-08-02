@@ -37,6 +37,7 @@ mod task_facts;
 mod task_policy;
 mod task_state;
 mod workflow_diagnostics;
+mod workflow_projection;
 mod write_ticket;
 
 pub use agent_session::{AgentSessionValidationError, ValidatedAgentSession};

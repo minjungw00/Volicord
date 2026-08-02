@@ -1,5 +1,7 @@
 # Agent Guide
 
+Work Tasks begin in shaping. Record analysis with `volicord.record_shaping`, resolve every returned UserAction through the User Channel, apply resolved scope decisions with `volicord.update_scope`, create or update the Change Unit without changing phase, and call `volicord.advance_task` only when `workflow.kind=ready_for_implementation`. `volicord.record_run` is reserved for direct or implementation execution.
+
 <a id="purpose"></a>
 
 Use this guide when operating or reviewing an agent in a Volicord-connected

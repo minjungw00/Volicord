@@ -166,7 +166,7 @@ StateSummary:
   effect_contract: ChangeUnitEffectContract | null
   baseline_ref: string | null
   workspace_context: WorkspaceContext | null
-  shaping_readiness: ShapingReadiness | null
+  workflow: WorkflowProjection
   pending_user_action_summaries: AgentSafeUserActionRequestSummary[]
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
@@ -471,37 +471,41 @@ Owner links:
 - Supported values for `lifecycle_phase`, `close_reason`, and `result`: [task lifecycle values](schema-value-sets.md#task-lifecycle-values)
 - Product meaning of lifecycle areas: [Core Model task lifecycle](../core-model.md#6-task-lifecycle)
 
-## `ShapingReadiness`
+## `WorkflowProjection` and shaping checkpoints
 
-Meaning:
-- `ShapingReadiness` is an API view shape over `Task`, Change Unit, pending user action, evidence summary, blocker, and next-action fields.
-- Its boolean fields and `gaps` array expose readiness-shaped data for the current state.
+`StateSummary.workflow` is the single tagged progression authority. Its `kind` is one of `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_for_implementation`, `implementation`, `close_review`, or `terminal`.
 
 ```schema
-ShapingReadiness:
-  goal_summary_known: boolean
-  scope_boundary_known: boolean
-  non_goals_known: boolean
-  affected_area_or_paths_known: boolean
-  acceptance_criteria_known: boolean
-  autonomy_boundary_known: boolean
-  first_change_unit_known: boolean
-  user_owned_blocker_kind: string | null
-  next_safe_action: NextActionSummary | null
-  gaps: ShapingGap[]
+WorkflowProjection:
+  kind: string
+  next_actor: string
+  required_action: string | null
+  allowed_actions: string[]
+  required_refs: StateRecordRef[]
+  expected_state_version: integer
+  blocking_reason: string | null
+  checkpoint: ShapingCheckpointSummary | null
 
-ShapingGap:
+ShapingCheckpointSummary:
+  checkpoint_ref: StateRecordRef
+  readiness: string
+  scope_revision: integer
+  baseline_ref: string | null
+  implementation_boundary: string | null
+  gaps: ShapingCheckpointGap[]
+  pending_decision_refs: StateRecordRef[]
+
+ShapingCheckpointGap:
+  shaping_gap_id: string
   gap_kind: string
-  message: string
-  blocker_ref: StateRecordRef | null
-  user_action_request_candidate_ref: StateRecordRef | null
+  summary: string
+  affected_refs: StateRecordRef[]
+  status: string
+  user_action_request_ref: StateRecordRef | null
+  user_action_resolution_ref: StateRecordRef | null
 ```
 
-Meaning:
-- `ShapingGap` can reference a blocker or an owner-proposed user-action request
-  candidate by shape; the candidate ref is not itself a resolution.
-- `user_owned_blocker_kind` and `ShapingGap.gap_kind` are opaque readiness classification strings. They are not exhaustive public value sets unless an affected owner publishes narrower values.
-- `ShapingGap.message` is a free-form display string.
+The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but do not choose this required action before `close_review`. User-owned current gaps always carry an exact current UserAction request ref.
 
 Owner links:
 - Method behavior and durable effects: method owner documents routed from [API Methods](methods.md) and [Storage Effects](../storage-effects.md)
@@ -525,7 +529,6 @@ SummaryCard:
   guarantee: string
 
 NextActionSummary:
-  presentation_role: string
   action_kind: string
   owner_method: string | null
   allowed_operation_categories: string[]
@@ -605,7 +608,7 @@ Meaning:
   styling, and adapter-only explanatory copy are adapter presentation and are
   not Core-returned display strings.
 - When evidence or close projection is selected, `SummaryCard.evidence` is the exact `EvidenceGateSummary.state` value owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). It does not independently infer a state from staged input or `EvidenceSummary.evidence_state`.
-- `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies. When a structured action applies, the summary selects the action whose `presentation_role=primary`; array position is not a selection contract.
+- `SummaryCard.next` is a display hint only. `SummaryCard.next_action` may carry a matching structured `NextActionSummary` and may be omitted when no structured action applies. Neither field is workflow authority, and close summaries do not derive either field by selecting the first blocker.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
 - For an already-existing pending user action, `SummaryCard.user_action`,
   `SummaryCard.next`, method `status_summary`, blocker messages, and every other
@@ -613,13 +616,12 @@ Meaning:
   pending and identify the User Channel as next actor, but must not reconstruct
   request question, options, context, form, path, command, URL, or credential.
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
-- `NextActionSummary` is the canonical next-action display shape. Its valid fields are `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, and `required_refs`.
-- Every non-empty top-level `next_actions` collection has exactly one `presentation_role=primary`. Remaining entries use `additional`. Close readiness is the explicit nested exception: `blockers[*].next_actions` flattened across one close-readiness result is one projection unit with exactly one primary, so an individual later blocker list can contain only additional actions. A singular `next_action` uses `primary`.
-- `additional` is a presentation role, not an optionality claim. An additional action can still be required to clear another blocker.
+- `NextActionSummary` is the canonical blocker-local or preview remediation shape. Its valid fields are `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, and `required_refs`.
+- Successful method results expose tagged `workflow` progression instead of top-level `next_actions` collections. `CloseReadinessBlocker.next_actions` remains local to its blocker and has no cross-blocker selection role.
 - `allowed_operation_categories` names the owner-supported invocation categories for the action. It does not prove that the current connection can dispatch the action, does not grant user authority, and is empty when no supported API method invocation is identified.
 - `expected_state_version` is always present and nullable. For an API mutation action that consumes optimistic concurrency, it contains the current `project_state.state_version` from the projection that produced the action and maps directly to `ToolEnvelope.expected_state_version` for that invocation. It is `null` for read actions, `user_only` actions, actions without a single owner method, and owner-method actions that do not consume optimistic concurrency.
 - `expected_state_version` is a retryable concurrency input, not identity or authority. It can become stale after another committed mutation; callers refresh current state after `STATE_VERSION_CONFLICT`. Neither `required_refs` nor any ref's `produced_at_state_version` supplies or overrides this token.
-- A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
+- A blocker-local or preview action that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
 - For an already-existing pending user action, `NextActionSummary.label` and
   the owning blocker message use generic User Channel guidance,
   `blocking_question=null`, and `required_refs` contains no
@@ -680,7 +682,6 @@ Meaning:
 
 | Field | Classification | Rule |
 |---|---|---|
-| `presentation_role` | Controlled presentation-role value. | Uses `primary` or `additional` from the [next-action values](schema-value-sets.md#next-action-values). It does not describe optionality. |
 | `action_kind` | Controlled action category. | Uses the [next-action values](schema-value-sets.md#next-action-values). It is not a method-name value. |
 | `owner_method` | Method-name value or `null`. | Names the API method that owns the next action when one supported public method applies. Use `null` when no single owner method applies. |
 | `allowed_operation_categories` | Controlled operation-category values. | Lists the owner-supported invocation categories for this action. Uses `[]` when `owner_method=null` or no supported API invocation path is identified. |

@@ -8,7 +8,7 @@ use volicord_core::pipeline::PipelineResponse;
 use volicord_core::{validate_authority_status, AuthorityStatusExpectation};
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{ProjectId, TaskId};
-use volicord_types::schema::{AuthorityReceipt, NextActionSummary};
+use volicord_types::schema::{AuthorityReceipt, WorkflowProjection};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MutationRefreshContext {
@@ -49,7 +49,7 @@ pub(crate) fn refresh_authority_status(
 pub(crate) fn validated_authority_refresh(
     context: &MutationRefreshContext,
     response: &PipelineResponse,
-) -> Result<(AuthorityReceipt, Vec<NextActionSummary>), ()> {
+) -> Result<(AuthorityReceipt, WorkflowProjection), ()> {
     validate_authority_status(
         &response.response_value,
         &AuthorityStatusExpectation::new(context.project_id.clone(), context.task_id.clone()),

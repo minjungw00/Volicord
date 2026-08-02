@@ -472,11 +472,15 @@ fn projected_user_action_state(
             error,
         )
     })?;
+    let shaping_checkpoint = store
+        .current_shaping_checkpoint(&task_id)
+        .map_err(CorePipelineError::from)?;
     let state = state_summary(StateSummaryInput {
         project_id: &envelope.project_id,
         state_version: planned_state_version,
         task,
         current_change_unit,
+        shaping_checkpoint: shaping_checkpoint.as_ref(),
         project_policy,
         acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs: pending_refs,
@@ -850,7 +854,34 @@ fn plan_resolve_user_action(
     if let Some(transition) = lifecycle_transition.as_ref() {
         projected_task.lifecycle_phase = transition.target();
     }
-    let (state, _blocker_refs, next_actions) = projected_user_action_state(
+    let mut projected_checkpoint = store
+        .current_shaping_checkpoint(&task_id)
+        .map_err(CorePipelineError::from)?;
+    let shaping_linked = projected_checkpoint.as_mut().is_some_and(|checkpoint| {
+        let mut matched = false;
+        for gap in &mut checkpoint.gaps {
+            if gap.user_action.as_ref().is_some_and(|link| {
+                link.user_action_request_id == request.user_action_request_id.as_str()
+            }) {
+                gap.status = volicord_types::values::ShapingGapStatus::Resolved;
+                if let Some(link) = gap.user_action.as_mut() {
+                    link.user_action_resolution_id = Some(resolution_id.as_str().to_owned());
+                    link.resolved_at = Some(now.clone());
+                }
+                matched = true;
+            }
+        }
+        if matched
+            && !checkpoint
+                .gaps
+                .iter()
+                .any(|gap| gap.status == volicord_types::values::ShapingGapStatus::Current)
+        {
+            checkpoint.readiness = volicord_types::values::ShapingCheckpointReadiness::Ready;
+        }
+        matched
+    });
+    let (mut state, _blocker_refs, next_actions) = projected_user_action_state(
         store,
         project_state,
         verified_invocation,
@@ -867,6 +898,15 @@ fn plan_resolve_user_action(
         None,
         Some(&request.user_action_request_id),
     )?;
+    if let Some(checkpoint) = projected_checkpoint.as_ref() {
+        state.workflow = crate::workflow_projection::workflow_projection(
+            &request.envelope.project_id,
+            planned_state_version,
+            &projected_task,
+            current_change_unit.as_ref(),
+            Some(checkpoint),
+        );
+    }
     let result_fields = ResolveUserActionResultFields {
         user_action_request_ref: request_ref,
         user_action_resolution_ref: resolution_ref,
@@ -877,6 +917,14 @@ fn plan_resolve_user_action(
         next_actions: next_actions.clone(),
     };
     let mut storage_mutations = vec![materialized_resolution.mutation];
+    if shaping_linked {
+        storage_mutations.push(volicord_store::core_pipeline::CoreStorageMutation::Shaping(
+            volicord_store::core_pipeline::ShapingCheckpointMutation::ResolveLinkedGap {
+                user_action_request_id: request.user_action_request_id.as_str().to_owned(),
+                user_action_resolution_id: resolution_id.as_str().to_owned(),
+            },
+        ));
+    }
     storage_mutations.extend(continuity_plans.into_iter().map(|plan| plan.mutation));
     if let Some(transition) = lifecycle_transition {
         storage_mutations.push(transition.storage_mutation());

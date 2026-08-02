@@ -1,5 +1,7 @@
 # Storage Effects
 
+`volicord.record_shaping` commits checkpoint, gap, UserAction request/link, event, replay result, and one state-version increment in a single transaction. `volicord.advance_task` commits only the explicit Task phase transition and its event/replay result. Neither method writes Product Repository files or issues a write ticket.
+
 This document defines baseline method-to-storage effect semantics.
 
 ## Owns / Does not own

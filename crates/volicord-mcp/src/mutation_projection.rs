@@ -163,14 +163,14 @@ where
     let Some(context) = output.mutation_refresh_context.clone() else {
         return authoritative_refresh_failure_output(&outcome);
     };
-    let (receipt, next_actions) = match refresh(&context) {
+    let (receipt, workflow) = match refresh(&context) {
         Ok(response) => match validated_authority_refresh(&context, &response) {
             Ok(refreshed) => refreshed,
             Err(()) => return authoritative_refresh_failure_output(&outcome),
         },
         Err(_) => return authoritative_refresh_failure_output(&outcome),
     };
-    outcome.set_authority_refresh(receipt, next_actions);
+    outcome.set_authority_refresh(receipt, workflow);
     let authority_receipt = outcome
         .authority_receipt
         .as_ref()
@@ -212,7 +212,10 @@ where
             operation_result_ref: outcome.operation_result_ref.clone().into(),
             authority_receipt: authority_receipt.clone(),
             method_result,
-            next_actions: outcome.next_actions.clone(),
+            workflow: outcome
+                .workflow
+                .clone()
+                .expect("validated canonical mutation outcome requires a workflow projection"),
         }),
         MutationDetailLevel::Full => serde_json::to_value(McpMutationFullResponse {
             operation_result_ref: outcome.operation_result_ref.clone().into(),

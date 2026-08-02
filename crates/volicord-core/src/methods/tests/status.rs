@@ -493,14 +493,9 @@ fn status_ready_close_uses_empty_blockers_only_after_computation() -> Result<(),
         status.response_value["authority_receipt"]["next_actor"],
         "agent"
     );
-    assert_eq!(
-        status.response_value["authority_receipt"]["next_action"]["action_kind"],
-        "close_task"
-    );
-    assert_eq!(
-        status.response_value["authority_receipt"]["next_action"]["owner_method"],
-        "volicord.close_task"
-    );
+    assert!(status.response_value["authority_receipt"]
+        .get("next_action")
+        .is_none());
     assert_eq!(
         status.response_value["authority_receipt"]["completion_claim_allowed"],
         true

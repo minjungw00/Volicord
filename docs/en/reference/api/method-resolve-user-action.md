@@ -93,7 +93,6 @@ persisted-floor rules belong to
 |---|---|---|---|
 | `base` | yes | no | `ResolveUserActionResultBase` |
 | `derived_refs` | yes | no | `StateRecordRef[]` |
-| `next_actions` | yes | no | `NextActionSummary[]` |
 | `state` | yes | no | `StateSummary` |
 | `user_action_request` | yes | no | `UserActionRequest` |
 | `user_action_request_ref` | yes | no | `StateRecordRef` |

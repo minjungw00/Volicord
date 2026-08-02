@@ -1,5 +1,7 @@
 # Storage DDL
 
+The canonical project schema contains the three shaping aggregate tables and their strict foreign keys, current-checkpoint uniqueness index, readiness checks, and corruption-preventing triggers. The Task scope-revision foreign key is deferred so an authorized scope update can rebase the checkpoint atomically.
+
 This document owns the physical SQLite DDL contract for the one canonical
 storage layout described by [Storage Records](storage-records.md). It makes
 `registry.sqlite`, project `state.sqlite`, and the physical `StorageManifest`
@@ -1065,6 +1067,7 @@ CREATE TABLE tasks (
   closed_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, task_id),
+  UNIQUE (project_id, task_id, scope_revision),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (project_id, predecessor_task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, current_change_unit_id)
@@ -1199,7 +1202,11 @@ CREATE TABLE user_action_requests (
   required_for_json TEXT NOT NULL,
   requested_by_actor_source TEXT NOT NULL,
   source_method TEXT NOT NULL CHECK (
-    source_method IN ('volicord.request_user_action', 'volicord.reconcile_changes')
+    source_method IN (
+      'volicord.request_user_action',
+      'volicord.record_shaping',
+      'volicord.reconcile_changes'
+    )
   ),
   source_idempotency_key TEXT NOT NULL CHECK (length(trim(source_idempotency_key)) > 0),
   requested_at TEXT NOT NULL,
@@ -1207,6 +1214,7 @@ CREATE TABLE user_action_requests (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, user_action_request_id),
   UNIQUE (project_id, user_action_request_id, action_kind),
+  UNIQUE (project_id, task_id, user_action_request_id, action_kind),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
@@ -1241,6 +1249,12 @@ CREATE TABLE user_action_resolutions (
   resolved_at TEXT NOT NULL,
   PRIMARY KEY (project_id, user_action_resolution_id),
   UNIQUE (project_id, user_action_request_id),
+  UNIQUE (
+    project_id,
+    user_action_request_id,
+    user_action_resolution_id,
+    action_kind
+  ),
   UNIQUE (project_id, channel_kind, channel_submission_id),
   FOREIGN KEY (project_id, user_action_request_id, action_kind)
     REFERENCES user_action_requests (
@@ -1249,6 +1263,235 @@ CREATE TABLE user_action_resolutions (
       action_kind
     )
 );
+
+CREATE TABLE shaping_checkpoints (
+  project_id TEXT NOT NULL,
+  shaping_checkpoint_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
+  baseline_ref TEXT,
+  summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+  implementation_boundary TEXT,
+  readiness TEXT NOT NULL CHECK (readiness IN ('blocked', 'ready', 'superseded')),
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  superseded_at TEXT,
+  PRIMARY KEY (project_id, shaping_checkpoint_id),
+  UNIQUE (project_id, task_id, shaping_checkpoint_id),
+  FOREIGN KEY (project_id, task_id, scope_revision)
+    REFERENCES tasks (project_id, task_id, scope_revision)
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK (
+    (readiness IN ('blocked', 'ready') AND superseded_at IS NULL)
+    OR (readiness = 'superseded' AND superseded_at IS NOT NULL)
+  ),
+  CHECK (
+    readiness <> 'ready'
+    OR (
+      baseline_ref IS NOT NULL
+      AND length(trim(baseline_ref)) > 0
+      AND implementation_boundary IS NOT NULL
+      AND length(trim(implementation_boundary)) > 0
+    )
+  ),
+  CHECK (baseline_ref IS NULL OR length(trim(baseline_ref)) > 0),
+  CHECK (
+    implementation_boundary IS NULL
+    OR length(trim(implementation_boundary)) > 0
+  )
+);
+
+CREATE UNIQUE INDEX idx_shaping_checkpoints_one_current
+  ON shaping_checkpoints (project_id, task_id)
+  WHERE readiness <> 'superseded';
+
+CREATE TABLE shaping_checkpoint_gaps (
+  project_id TEXT NOT NULL,
+  shaping_checkpoint_id TEXT NOT NULL,
+  shaping_gap_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  gap_kind TEXT NOT NULL CHECK (
+    gap_kind IN (
+      'goal_missing',
+      'scope_boundary_missing',
+      'non_goals_missing',
+      'acceptance_criteria_missing',
+      'autonomy_boundary_missing',
+      'implementation_boundary_missing',
+      'baseline_missing',
+      'user_product_decision_required',
+      'user_technical_decision_required',
+      'user_scope_decision_required',
+      'sensitive_approval_required'
+    )
+  ),
+  summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+  affected_refs_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL CHECK (status IN ('current', 'resolved', 'applied')),
+  user_action_request_id TEXT,
+  user_action_kind TEXT,
+  PRIMARY KEY (project_id, shaping_checkpoint_id, shaping_gap_id),
+  UNIQUE (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id,
+    user_action_request_id,
+    user_action_kind
+  ),
+  FOREIGN KEY (project_id, task_id, shaping_checkpoint_id)
+    REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id),
+  FOREIGN KEY (project_id, task_id, user_action_request_id, user_action_kind)
+    REFERENCES user_action_requests (
+      project_id,
+      task_id,
+      user_action_request_id,
+      action_kind
+    )
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id,
+    user_action_request_id,
+    user_action_kind
+  ) REFERENCES shaping_checkpoint_user_actions (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id,
+    user_action_request_id,
+    action_kind
+  ) DEFERRABLE INITIALLY DEFERRED,
+  CHECK (
+    (gap_kind = 'user_product_decision_required'
+      AND user_action_kind = 'product_decision'
+      AND user_action_request_id IS NOT NULL)
+    OR (gap_kind = 'user_technical_decision_required'
+      AND user_action_kind = 'technical_decision'
+      AND user_action_request_id IS NOT NULL)
+    OR (gap_kind = 'user_scope_decision_required'
+      AND user_action_kind = 'scope_decision'
+      AND user_action_request_id IS NOT NULL)
+    OR (gap_kind = 'sensitive_approval_required'
+      AND user_action_kind = 'sensitive_approval'
+      AND user_action_request_id IS NOT NULL)
+    OR (gap_kind IN (
+        'goal_missing',
+        'scope_boundary_missing',
+        'non_goals_missing',
+        'acceptance_criteria_missing',
+        'autonomy_boundary_missing',
+        'implementation_boundary_missing',
+        'baseline_missing'
+      )
+      AND user_action_kind IS NULL
+      AND user_action_request_id IS NULL)
+  ),
+  CHECK (status <> 'resolved' OR user_action_request_id IS NOT NULL)
+);
+
+CREATE TABLE shaping_checkpoint_user_actions (
+  project_id TEXT NOT NULL,
+  shaping_checkpoint_id TEXT NOT NULL,
+  shaping_gap_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
+  action_kind TEXT NOT NULL CHECK (
+    action_kind IN (
+      'product_decision',
+      'technical_decision',
+      'scope_decision',
+      'sensitive_approval'
+    )
+  ),
+  user_action_resolution_id TEXT,
+  linked_at TEXT NOT NULL,
+  resolved_at TEXT,
+  PRIMARY KEY (project_id, shaping_checkpoint_id, shaping_gap_id),
+  UNIQUE (project_id, user_action_request_id),
+  UNIQUE (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id,
+    user_action_request_id,
+    action_kind
+  ),
+  FOREIGN KEY (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id,
+    user_action_request_id,
+    action_kind
+  ) REFERENCES shaping_checkpoint_gaps (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id,
+    user_action_request_id,
+    user_action_kind
+  ) DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id, task_id, user_action_request_id, action_kind)
+    REFERENCES user_action_requests (
+      project_id,
+      task_id,
+      user_action_request_id,
+      action_kind
+    ),
+  FOREIGN KEY (
+    project_id,
+    user_action_request_id,
+    user_action_resolution_id,
+    action_kind
+  ) REFERENCES user_action_resolutions (
+    project_id,
+    user_action_request_id,
+    user_action_resolution_id,
+    action_kind
+  ),
+  CHECK (
+    (user_action_resolution_id IS NULL AND resolved_at IS NULL)
+    OR (user_action_resolution_id IS NOT NULL AND resolved_at IS NOT NULL)
+  )
+);
+
+CREATE TRIGGER trg_shaping_gap_not_added_to_ready_checkpoint
+BEFORE INSERT ON shaping_checkpoint_gaps
+WHEN EXISTS (
+  SELECT 1
+    FROM shaping_checkpoints
+   WHERE project_id = NEW.project_id
+     AND shaping_checkpoint_id = NEW.shaping_checkpoint_id
+     AND readiness = 'ready'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'ready shaping checkpoint cannot receive a gap');
+END;
+
+CREATE TRIGGER trg_shaping_checkpoint_ready_has_no_current_gap
+BEFORE UPDATE OF readiness ON shaping_checkpoints
+WHEN NEW.readiness = 'ready'
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    SELECT 1
+      FROM shaping_checkpoint_gaps
+     WHERE project_id = NEW.project_id
+       AND shaping_checkpoint_id = NEW.shaping_checkpoint_id
+       AND status = 'current'
+  ) THEN RAISE(ABORT, 'ready shaping checkpoint has a current gap') END;
+END;
+
+CREATE TRIGGER trg_shaping_gap_resolution_requires_user_resolution
+BEFORE UPDATE OF status ON shaping_checkpoint_gaps
+WHEN NEW.status = 'resolved'
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+      FROM shaping_checkpoint_user_actions
+     WHERE project_id = NEW.project_id
+       AND shaping_checkpoint_id = NEW.shaping_checkpoint_id
+       AND shaping_gap_id = NEW.shaping_gap_id
+       AND user_action_resolution_id IS NOT NULL
+  ) THEN RAISE(ABORT, 'resolved shaping gap requires a linked resolution') END;
+END;
 
 CREATE TABLE project_continuity_records (
   project_id TEXT NOT NULL,

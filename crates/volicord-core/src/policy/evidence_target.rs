@@ -130,7 +130,9 @@ pub(crate) fn close_basis_is_current(
 
 pub(crate) fn close_basis_run_refs(basis: &CurrentCloseBasis) -> Vec<&StateRecordRef> {
     let mut refs = Vec::new();
-    refs.push(&basis.source_run_ref);
+    if basis.source_run_ref.record_kind == StateRecordKind::Run {
+        refs.push(&basis.source_run_ref);
+    }
     refs.extend(
         basis
             .result_refs

@@ -137,7 +137,6 @@ method-result data rather than `ToolRejectedResponse` errors.
 |---|---|---|---|
 | `base` | yes | no | `ReconcileChangesResultBase` |
 | `close_blockers` | yes | no | `CloseReadinessBlocker[]` |
-| `next_actions` | yes | no | `NextActionSummary[]` |
 | `pending_user_action_summaries` | yes | no | `AgentSafeUserActionRequestSummary[]` |
 | `rejected_resolution_requests` | yes | no | `UnrecordedChangeRejection[]` |
 | `resolved_changes` | yes | no | `UnrecordedChangeResolutionSummary[]` |

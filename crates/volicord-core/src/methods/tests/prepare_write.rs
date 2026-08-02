@@ -2465,6 +2465,7 @@ fn prepare_write_replay_rejects_changed_git_workspace_without_exposing_ticket(
         .as_str()
         .expect("change unit id")
         .to_owned();
+    advance_work_task_for_test(&harness, "workspace_replay", &task_id, &change_unit_id)?;
     let request = prepare_write_request(
         "req_workspace_replay_write",
         "idem_workspace_replay_write",
@@ -2547,6 +2548,7 @@ fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Resul
         .as_str()
         .expect("change unit id")
         .to_owned();
+    advance_work_task_for_test(&harness, "workspace", &task_id, &change_unit_id)?;
     assert_eq!(
         scoped.response_value["state"]["workspace_context"]["branch_ref"],
         "refs/heads/original"

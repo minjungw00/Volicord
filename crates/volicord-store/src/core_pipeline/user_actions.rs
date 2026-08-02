@@ -448,6 +448,9 @@ fn stored_user_action_request_from_insert(
         ) | (
             MethodName::ReconcileChanges,
             PersistedUserActionRequestMetadata::Reconciliation(_)
+        ) | (
+            MethodName::RecordShaping,
+            PersistedUserActionRequestMetadata::Shaping(_)
         )
     );
     if !origin_matches_source {
@@ -848,6 +851,7 @@ fn decode_user_action_request_record(
     let source_method = match raw.source_method.as_str() {
         value if value == MethodName::RequestUserAction.as_str() => MethodName::RequestUserAction,
         value if value == MethodName::ReconcileChanges.as_str() => MethodName::ReconcileChanges,
+        value if value == MethodName::RecordShaping.as_str() => MethodName::RecordShaping,
         _ => {
             return Err(StoreError::corrupt_owner_state_value(
                 "user_action_requests",
@@ -879,6 +883,9 @@ fn decode_user_action_request_record(
         ) | (
             MethodName::ReconcileChanges,
             PersistedUserActionRequestMetadata::Reconciliation(_)
+        ) | (
+            MethodName::RecordShaping,
+            PersistedUserActionRequestMetadata::Shaping(_)
         )
     );
     if !origin_matches_source {
@@ -1397,6 +1404,9 @@ impl MutationContext<'_> {
             ) | (
                 MethodName::ReconcileChanges,
                 PersistedUserActionRequestMetadata::Reconciliation(_)
+            ) | (
+                MethodName::RecordShaping,
+                PersistedUserActionRequestMetadata::Shaping(_)
             )
         );
         if !origin_matches_source {

@@ -31,10 +31,9 @@
 - 기준선 참조
 - 현재 적용 Change Unit
 
-이 메서드는 사용자 소유 차단 사유가 처리되면 shaping 상태를 안전한 첫 Change Unit으로 옮기는 지원 경로입니다.
+이 메서드는 Change Unit을 현재 작업 경계로 기록하며 `work_phase`를 변경하지 않습니다. 따라서 shaping 중인 `work` Task는 `create_current` 또는 `replace_current` 뒤에도 shaping에 머물고, 구현 진입은 `volicord.advance_task`만 수행합니다.
 
-`direct`와 `work` Task에서 커밋된 `create_current` 또는 `replace_current` 작업은
-`work_phase=implementation`을 기록합니다. 또한 새 Change Unit의 기준선을 확인된 현재
+`direct`와 `work` Task에서 커밋된 `create_current` 또는 `replace_current` 작업은 새 Change Unit의 기준선을 확인된 현재
 작업 공간 맥락에 결합합니다. Git 기반 Product Repository에서는 공통 Git 디렉터리,
 정확한 worktree 식별 정보, 브랜치 또는 detached HEAD 상태, HEAD SHA, 작업 공간 지문을
 기록합니다. 이 좌표가 바뀐 뒤 현재 기준선으로 Change Unit을 교체하는 작업이 명시적
@@ -160,7 +159,6 @@
 | `blocker_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `change_unit_ref` | 아니요 | 예 | `StateRecordRef` |
 | `linked_scope_decision_refs` | 예 | 아니요 | `StateRecordRef[]` |
-| `next_actions` | 예 | 아니요 | `NextActionSummary[]` |
 | `stale_write_ticket_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `state` | 예 | 아니요 | `StateSummary` |
 | `task_ref` | 예 | 아니요 | `StateRecordRef` |
@@ -353,7 +351,7 @@ state:
     branch_ref: "refs/heads/filter-scope"
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-  shaping_readiness: null
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 19, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
@@ -361,31 +359,12 @@ state:
   close_state: null
   close_blockers: []
   guarantee_display: null
-next_actions:
-  - presentation_role: primary
-    action_kind: prepare_write
-    owner_method: volicord.prepare_write
-    allowed_operation_categories: [agent_workflow]
-    label: "저장 필터 변경이 현재 적용 범위에 맞는지 확인하세요."
-    blocking_question: null
-    expected_state_version: 19
-    required_refs:
-      - record_kind: task
-        record_id: task_filter_001
-        project_id: proj_filter_001
-        task_id: task_filter_001
-        produced_at_state_version: 19
-      - record_kind: change_unit
-        record_id: cu_filter_001
-        project_id: proj_filter_001
-        task_id: task_filter_001
-        produced_at_state_version: 19
 ```
 
 ## 담당 문서 링크
 
 - 요청 래퍼와 응답 분기: [API 코어 스키마](schema-core.md).
-- 상태 참조, `StateSummary`, `ShapingReadiness`, 차단 사유, 다음 행동: [API 상태 스키마](schema-state.md).
+- 상태 참조, `StateSummary`, 태그 기반 워크플로 진행 상태, 차단 사유: [API 상태 스키마](schema-state.md).
 - 범위 관련 사용자 판단 형태: [API 판단 스키마](schema-judgment.md).
 - 지원되는 값 집합, `change_unit.operation` 의미, 작업 범주: [API 값 집합](schema-value-sets.md#operation-category-values).
 - 공개 오류, 우선순위, 거절 응답 처리 경로: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [API 오류 처리 경로](error-routing.md).

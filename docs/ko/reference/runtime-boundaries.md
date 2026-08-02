@@ -1,5 +1,7 @@
 # 런타임 경계
 
+shaping checkpoint와 명시적 Task 전이는 Runtime Home 권한만 변경합니다. Product Repository 쓰기는 implementation 단계, 현재 Change Unit, `volicord.prepare_write`, host/user 파일 쓰기 경로를 계속 요구합니다.
+
 이 문서는 `Product Repository`, `Volicord Runtime Home`, 설치된 Volicord 실행 파일,
 관리 Codex 구성, stdio MCP 자식 프로세스 사이의 파일시스템 위치와 프로세스 경계를
 담당합니다.

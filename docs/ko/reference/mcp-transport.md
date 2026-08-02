@@ -1,5 +1,7 @@
 # MCP 전송 참조
 
+폐쇄형 tool catalog는 `volicord.record_shaping`과 `volicord.advance_task`를 포함합니다. 두 도구는 Core 권한을 변경하지만 Product Repository 파일에는 직접 효과가 없습니다. 생성 request/response schema와 compact registry 설명은 정규 tool registry에서 나옵니다.
+
 이 문서는 로컬 MCP 프로세스 경계인 관리 stdio 시작, 엄격한 binding, JSON-RPC
 lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 담당합니다. Core
 메서드, Codex 구성, 연결 검증, 저장 효과는 각각의 집중 담당 문서에 남습니다.
@@ -14,7 +16,7 @@ lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 �
 | `volicord mcp serve`, 초기화, `tools/list`, `tools/call`, 응답 wrapping | `stable` |
 | `volicord mcp preflight` 읽기 전용 점검 및 출력 계약 | `stable` |
 | 권위 있는 runtime-session lifecycle milestone | `stable` |
-| 프로덕션 MCP revision 다섯 개와 mode/저장소별 가시성 부분집합을 포함한 닫힌 16개 도구 catalog | `stable` |
+| 프로덕션 MCP revision 다섯 개와 mode/저장소별 가시성 부분집합을 포함한 닫힌 기준 도구 catalog | `stable` |
 | 현재 beta MCP transport 표면 | `beta` — 없음. 현재 transport 표면은 모두 다른 행에서 분류합니다. |
 | 숨겨진 관리 launcher, launch lease, 생성 구성 세부사항 | `internal` |
 | Host 실행 파일 version, MCP client name/version, best-effort protocol metric | `diagnostic` |
@@ -475,7 +477,7 @@ Task 상태와 이전 호출은 도구를 동적으로 추가하지 않습니다
 
 `AgentToolId`는 모든 Agent Connection MCP 도구의 정규 typed identity이자 catalog입니다.
 Core 소유 identity는 `MethodName`을 재사용하고, adapter utility와 Connection-integration
-도구도 같은 폐쇄형 16개 도구 catalog에 속합니다. 각 identity는 안정적인 MCP wire 이름
+도구도 같은 폐쇄형 기준 도구 catalog에 속합니다. 각 identity는 안정적인 MCP wire 이름
 투영, category, Connection mode별 가용성, Core method, adapter utility 또는
 Connection-integration 소유권, 멱등성, 선택적 운영 verification role을 소유합니다.
 

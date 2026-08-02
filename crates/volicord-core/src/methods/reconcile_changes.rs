@@ -13,7 +13,7 @@ use crate::evidence_facts::{
 };
 use crate::evidence_projection::evidence_summary_for_display;
 use crate::guarantee_projection::guarantee_display;
-use crate::guidance::{normalize_next_action_collection, primary_next_action};
+use crate::guidance::normalize_next_action_collection;
 use crate::identity::allocate_user_action_request_id;
 use crate::json_object::object_from_value;
 use crate::method_execution::{
@@ -63,9 +63,9 @@ use volicord_types::schema::{
 use volicord_types::values::OperationCategory;
 use volicord_types::values::{
     ActorSource, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
-    NextActionKind, NextActionPresentationRole, PlannedBlockerSourceKind, StateRecordKind,
-    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    NextActionKind, PlannedBlockerSourceKind, StateRecordKind, UnrecordedChangeResolutionBasis,
+    UnrecordedChangeStatus, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
+    UserActionStatus, UtcTimestamp,
 };
 use volicord_user_action_service::{
     agent_safe_pending_user_action_summaries, construct_user_action,
@@ -444,11 +444,15 @@ fn plan_reconcile_changes(
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
         .summary;
+    let shaping_checkpoint = store
+        .current_shaping_checkpoint(&request.task_id)
+        .map_err(CorePipelineError::from)?;
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task,
         current_change_unit: current_change_unit.as_ref(),
+        shaping_checkpoint: shaping_checkpoint.as_ref(),
         project_policy,
         acceptance_criteria: active_acceptance_criteria(store, &request.task_id)?,
         pending_user_action_refs: projected_pending_refs.clone(),
@@ -491,7 +495,6 @@ fn plan_reconcile_changes(
         changes: changes_summary_text(true, unresolved_findings.len() as u64),
         close_status: close_state_text(close_plan.close_state).to_owned(),
         verified_invocation,
-        next_action: primary_next_action(&result_next_actions, &close_plan.blockers),
     });
     let result_fields = ReconcileChangesResultFields {
         summary_card,
@@ -1008,7 +1011,6 @@ fn unrecorded_finding(
         observed_paths: observed_paths(record),
         detected_at: record.detected_at.clone(),
         next_action: NextActionSummary {
-            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::ReconcileChanges,
             owner_method: Some(MethodName::ReconcileChanges),
             allowed_operation_categories: vec![
@@ -1069,7 +1071,6 @@ fn reconcile_next_actions(
     if !planned_user_actions.is_empty() {
         if dry_run.is_requested() {
             return vec![NextActionSummary {
-                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::ReconcileChanges,
                 owner_method: Some(MethodName::ReconcileChanges),
                 allowed_operation_categories: vec![
@@ -1087,7 +1088,6 @@ fn reconcile_next_actions(
             }];
         }
         return vec![NextActionSummary {
-            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::ResolveUserAction,
             owner_method: Some(MethodName::ResolveUserAction),
             allowed_operation_categories: vec![OperationCategory::UserOnly],
@@ -1101,7 +1101,6 @@ fn reconcile_next_actions(
         }];
     }
     vec![NextActionSummary {
-        presentation_role: NextActionPresentationRole::Primary,
         action_kind: NextActionKind::ReconcileChanges,
         owner_method: Some(MethodName::ReconcileChanges),
         allowed_operation_categories: vec![

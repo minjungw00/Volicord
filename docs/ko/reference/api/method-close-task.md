@@ -3,6 +3,8 @@
 
 # `volicord.check_close`와 `volicord.close_task` 참조
 
+닫기 준비 상태와 workflow 진행은 별개입니다. 현재 ready advisor shaping checkpoint는 자문 결과 근거가 될 수 있지만 work shaping checkpoint는 implementation close basis가 될 수 없습니다. 차단 사유 자체의 해결 행동은 더 이른 workflow 필수 shaping 행동을 덮어쓰지 않습니다.
+
 ## 담당하는 것
 
 이 문서는 닫기 메서드 묶음의 기준 동작을 담당합니다.
@@ -345,7 +347,7 @@ API 경계 블록:
 각 응답 설명자는 지원하는 응답 분기를 정확한 `anyOf` 분기 union으로 정의합니다. 미리보기를 노출하는 응답 설명자만 해당 분기를 포함합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.
 <!-- END GENERATED: contract-structures api.method.check_close.response[response_variants] api.method.check_close.response[result_body] api.method.check_close.response[result_metadata] api.method.check_close.response[rejection] api.method.close_task.response[response_variants] api.method.close_task.response[result_body] api.method.close_task.response[result_metadata] api.method.close_task.response[rejection] api.method.close_task.response[dry_run] -->
 
-두 닫기 계열 결과 모두 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 `presentation_role=primary`인 차단 사유 행동에서 선택된 단일 표시 다음 행동이며 배열 위치는 선택 계약이 아닙니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 결과 하나의 `blockers[*].next_actions` 전체에는 primary가 정확히 하나 있으며 뒤쪽의 차단 사유 목록에는 additional 행동만 있을 수 있습니다.
+두 닫기 계열 결과 모두 최상위 `next_actions` 목록이 없습니다. 닫기 차단 사유의 해결 행동은 해당 `CloseReadinessBlocker.next_actions` 목록 안에만 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 배열 순서나 다른 차단 사유의 행동은 전역 다음 행동을 선택하지 않으며 `summary_card`도 첫 차단 사유에서 권한을 파생하지 않습니다.
 
 다른 작업을 위한 대기 사용자 행동과 정보성 전용 대기 행동은 더 넓은
 `state.pending_user_action_summaries` 상태 보기에 계속 나타날 수 있습니다. 요청한
@@ -547,7 +549,7 @@ state:
   autonomy_boundary: "온보딩 체크리스트 완료만 다룹니다."
   active_change_unit_ref: null
   baseline_ref: baseline_close_001
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 72, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
@@ -561,7 +563,6 @@ state:
       message: "이 Task를 닫으려면 최종 수락이 필요합니다."
       related_refs: []
       next_actions:
-        - presentation_role: primary
           action_kind: request_user_action
           owner_method: volicord.request_user_action
           allowed_operation_categories: [agent_workflow]
@@ -581,7 +582,6 @@ blockers:
     message: "이 Task를 닫으려면 최종 수락이 필요합니다."
     related_refs: []
     next_actions:
-      - presentation_role: primary
         action_kind: request_user_action
         owner_method: volicord.request_user_action
         allowed_operation_categories: [agent_workflow]

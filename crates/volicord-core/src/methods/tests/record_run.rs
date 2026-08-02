@@ -82,6 +82,12 @@ fn record_run_rejects_branch_change_after_write_ticket_issue_without_consumption
         invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(original.clone()),
     )?;
     let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
+    advance_work_task_for_test(
+        &harness,
+        "run_workspace_branch_change",
+        &task_id,
+        &change_unit_id,
+    )?;
     let ticket = harness.service.prepare_write(
         prepare_write_request(
             "req_run_workspace_ticket",

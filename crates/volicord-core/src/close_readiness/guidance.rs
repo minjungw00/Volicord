@@ -1,7 +1,5 @@
 use volicord_types::schema::{NextActionSummary, RequiredNullable, StateRecordRef};
-use volicord_types::values::{
-    MethodName, NextActionKind, NextActionPresentationRole, OperationCategory,
-};
+use volicord_types::values::{MethodName, NextActionKind, OperationCategory};
 
 /// Semantic close-readiness continuation selected from one evaluated condition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,7 +175,6 @@ pub(crate) fn close_guidance(
             ),
         };
     NextActionSummary {
-        presentation_role: NextActionPresentationRole::Primary,
         action_kind,
         owner_method,
         allowed_operation_categories,
@@ -193,7 +190,6 @@ pub(crate) fn close_next_action(
     required_refs: Vec<StateRecordRef>,
 ) -> NextActionSummary {
     NextActionSummary {
-        presentation_role: NextActionPresentationRole::Primary,
         action_kind: NextActionKind::CloseTask,
         owner_method: Some(MethodName::CloseTask),
         allowed_operation_categories: vec![OperationCategory::AgentWorkflow],

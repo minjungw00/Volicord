@@ -1,5 +1,7 @@
 # 저장 효과
 
+`volicord.record_shaping`은 checkpoint, gap, UserAction 요청과 링크, event, replay result, 단 한 번의 state-version 증가를 한 transaction에서 커밋합니다. `volicord.advance_task`는 명시적 Task 단계 전이와 해당 event/replay result만 커밋합니다. 두 메서드 모두 Product Repository 파일을 쓰거나 쓰기 티켓을 발급하지 않습니다.
+
 이 문서는 기준 범위에서 메서드와 응답 분기가 만들 수 있는 저장 효과를 정의합니다.
 
 ## 담당하는 것 / 담당하지 않는 것

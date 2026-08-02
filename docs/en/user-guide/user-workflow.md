@@ -1,5 +1,7 @@
 # User Workflow
 
+When shaping needs a product, technical, scope, or sensitive decision, Core creates an exact UserAction request linked to the current shaping gap. Chat text cannot resolve that request; submit the decision through the supported User Channel. The workflow remains `awaiting_user_action` until a verified resolution is durable.
+
 Volicord lets you work with an agent in ordinary language while keeping scope,
 Evidence, user-owned decisions, and Close Status separate. This page explains
 the user workflow. Exact contracts stay in the

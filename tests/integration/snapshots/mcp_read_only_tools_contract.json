@@ -97,7 +97,6 @@
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
-          "NextActionPresentationRole",
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
@@ -112,8 +111,11 @@
           "ResidualRisk",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
-          "ShapingGap",
-          "ShapingReadiness",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingGapKind",
+          "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
           "StatusCloseState",
@@ -137,6 +139,8 @@
           "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowBlockingReason",
+          "WorkflowProjection",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -146,7 +150,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:397be50f424d9eecefbe40db968209d0a2ca8e4468f4fe70657b3e5d1c620154"
+        "sha256": "sha256:7b56bb796cbba3828edbe00b9f9af26c974b3cb1dc734c2c07bf0ca4c1dfff43"
       }
     },
     {
@@ -170,7 +174,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:10e79fb5e20b7afa791e8fd5aa540a125a4ed447503df0527790566f20ed3bd0"
+        "sha256": "sha256:ed1fa0292f9433eb0211bbbb53d8e56ae54004a832a5e87f145683fa708f1866"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -202,7 +206,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1dbd92387155803d1eed8132f55bc5f4f2fa6da634f579d783e006cb80dc73ea"
+        "sha256": "sha256:82a6565483eb60e757b6ad9ed453a92e7641d219b192674a1ce4ea0830b28dc4"
       }
     },
     {
@@ -277,7 +281,6 @@
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
-          "NextActionPresentationRole",
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
@@ -291,8 +294,11 @@
           "ResidualRisk",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
-          "ShapingGap",
-          "ShapingReadiness",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingGapKind",
+          "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
@@ -313,6 +319,8 @@
           "UserActionResolutionRefRecordKind",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowBlockingReason",
+          "WorkflowProjection",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -322,7 +330,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:31edcd9a52ad2a830f83089c472e126db5e31cc793d2cc6f5bf4166a42f6ce20"
+        "sha256": "sha256:b2749684377c990ec318351391f863b58f2841f26b71f669dab4af05443b01f1"
       }
     },
     {

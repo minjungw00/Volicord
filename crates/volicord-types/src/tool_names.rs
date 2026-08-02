@@ -131,6 +131,8 @@ impl JsonSchema for AgentToolId {
 impl AgentToolId {
     pub const INTAKE: Self = Self(AgentToolKind::Method(MethodName::Intake));
     pub const UPDATE_SCOPE: Self = Self(AgentToolKind::Method(MethodName::UpdateScope));
+    pub const RECORD_SHAPING: Self = Self(AgentToolKind::Method(MethodName::RecordShaping));
+    pub const ADVANCE_TASK: Self = Self(AgentToolKind::Method(MethodName::AdvanceTask));
     pub const STATUS: Self = Self(AgentToolKind::Method(MethodName::Status));
     pub const GET_OPERATION_RESULT: Self =
         Self(AgentToolKind::Method(MethodName::GetOperationResult));
@@ -151,9 +153,11 @@ impl AgentToolId {
     pub const GET_INTEGRATION_VERIFICATION: Self = Self(AgentToolKind::GetIntegrationVerification);
 
     /// The complete Agent Connection MCP tool catalog in stable discovery order.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::INTAKE,
         Self::UPDATE_SCOPE,
+        Self::RECORD_SHAPING,
+        Self::ADVANCE_TASK,
         Self::STATUS,
         Self::GET_OPERATION_RESULT,
         Self::PREPARE_EVIDENCE_CAPTURE,
@@ -175,6 +179,8 @@ impl AgentToolId {
         match method {
             MethodName::Intake => Some(Self::INTAKE),
             MethodName::UpdateScope => Some(Self::UPDATE_SCOPE),
+            MethodName::RecordShaping => Some(Self::RECORD_SHAPING),
+            MethodName::AdvanceTask => Some(Self::ADVANCE_TASK),
             MethodName::Status => Some(Self::STATUS),
             MethodName::GetOperationResult => Some(Self::GET_OPERATION_RESULT),
             MethodName::CheckClose => Some(Self::CHECK_CLOSE),
@@ -370,7 +376,6 @@ mod tests {
     #[test]
     fn every_agent_tool_wire_name_is_unique_and_round_trips() {
         let mut names = BTreeSet::new();
-        assert_eq!(AgentToolId::ALL.len(), 16);
         for tool in AgentToolId::ALL {
             assert!(names.insert(tool.wire_name()));
             assert_eq!(AgentToolId::from_wire_name(tool.wire_name()), Ok(tool));
@@ -398,7 +403,6 @@ mod tests {
 
     #[test]
     fn every_agent_tool_has_one_no_product_write_effect() {
-        assert_eq!(AgentToolId::ALL.len(), 16);
         for tool in AgentToolId::ALL {
             assert_eq!(
                 tool.product_repository_effect(),

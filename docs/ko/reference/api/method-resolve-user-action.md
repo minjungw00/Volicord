@@ -81,7 +81,6 @@ Core transaction은 더 늦은 정규 커밋 timestamp를 선택할 수 있지�
 |---|---|---|---|
 | `base` | 예 | 아니요 | `ResolveUserActionResultBase` |
 | `derived_refs` | 예 | 아니요 | `StateRecordRef[]` |
-| `next_actions` | 예 | 아니요 | `NextActionSummary[]` |
 | `state` | 예 | 아니요 | `StateSummary` |
 | `user_action_request` | 예 | 아니요 | `UserActionRequest` |
 | `user_action_request_ref` | 예 | 아니요 | `StateRecordRef` |

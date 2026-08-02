@@ -1885,7 +1885,7 @@ documents:
   - Runtime Home forwarding, connection binding, project selection, and repository discovery
   - native host session retention before project-selected Agent Session derivation
   - explicit versioned Codex MCP metadata profile and separation from command-hook correlation
-  - closed 16-tool Agent Connection catalog and public in-chat integration-verification tool schemas
+  - closed canonical Agent Connection tool catalog and public in-chat integration-verification tool schemas
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -2025,6 +2025,58 @@ documents:
   - '`volicord.update_scope` behavior'
   - '`UpdateScopeResult` branch behavior'
   - update-scope examples
+- doc_id: reference.api.method-record-shaping
+  path_en: docs/en/reference/api/method-record-shaping.md
+  path_ko: docs/ko/reference/api/method-record-shaping.md
+  kind: reference
+  summary: Reference contract for `volicord.record_shaping` behavior.
+  normative_level: contract
+  translation_policy: semantic_parity
+  contracts:
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  owner_area: core_api
+  created_on: '2026-08-02'
+  last_updated_on: '2026-08-02'
+  last_verified_on: '2026-08-02'
+  primary_audience:
+  - API implementers
+  - agent integrators
+  - maintainers
+  journeys:
+  - implement
+  - operate
+  canonical_for:
+  - '`volicord.record_shaping` behavior'
+  - '`RecordShapingResult` branch behavior'
+  - atomic ShapingCheckpoint and shaping-gap recording behavior
+  - shaping-owned UserAction request creation and linking
+- doc_id: reference.api.method-advance-task
+  path_en: docs/en/reference/api/method-advance-task.md
+  path_ko: docs/ko/reference/api/method-advance-task.md
+  kind: reference
+  summary: Reference contract for `volicord.advance_task` behavior.
+  normative_level: contract
+  translation_policy: semantic_parity
+  contracts:
+  - api.schema.state
+  - api.schema.user_action
+  owner_area: core_api
+  created_on: '2026-08-02'
+  last_updated_on: '2026-08-02'
+  last_verified_on: '2026-08-02'
+  primary_audience:
+  - API implementers
+  - agent integrators
+  - maintainers
+  journeys:
+  - implement
+  - operate
+  canonical_for:
+  - '`volicord.advance_task` behavior'
+  - '`AdvanceTaskResult` branch behavior'
+  - explicit `work/shaping` to `work/implementation` transition
 - doc_id: reference.api.method-status
   path_en: docs/en/reference/api/method-status.md
   path_ko: docs/ko/reference/api/method-status.md

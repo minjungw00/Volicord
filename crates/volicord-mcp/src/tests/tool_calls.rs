@@ -98,7 +98,7 @@ fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         AgentToolId::RECORD_RUN.wire_name(),
-        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
     )?;
     arguments["close_assessment"] = json!({});
 

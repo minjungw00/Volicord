@@ -1,5 +1,7 @@
 # 구현 아키텍처
 
+Core는 typed method planner, UserAction service, 순서가 있는 Store mutation으로 shaping 진행을 담당합니다. Store는 엄격한 aggregate decoding과 정규 DDL을 담당합니다. MCP는 생성된 wire argument를 Core request로 매핑하며 단계 전이 정책을 구현하지 않습니다.
+
 이 문서는 로컬 Rust 워크스페이스를 위한 아키텍처 가이드의 상위 개요입니다.
 가이드 수준의 운영 경로, 워크스페이스 형태, 의존 방향, 오래 유지될 구현 경계,
 집중 세부 담당 문서로 가는 경로를 담당합니다.

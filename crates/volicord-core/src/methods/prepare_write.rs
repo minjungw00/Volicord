@@ -735,11 +735,15 @@ fn project_prepare_write_response(
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
         .summary;
+    let shaping_checkpoint = store
+        .current_shaping_checkpoint(&task_id)
+        .map_err(CorePipelineError::from)?;
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task,
         current_change_unit: Some(&change_unit),
+        shaping_checkpoint: shaping_checkpoint.as_ref(),
         project_policy,
         acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs,

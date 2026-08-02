@@ -3,6 +3,8 @@
 
 # `volicord.check_close` and `volicord.close_task` reference
 
+Close readiness and workflow progression are separate. A current ready advisor shaping checkpoint can supply the advice result basis, while a work shaping checkpoint cannot supply an implementation close basis. Blocker-local remediation actions do not override an earlier workflow-required shaping action.
+
 ## What this document owns
 
 This document owns baseline method behavior for the close method family:
@@ -341,7 +343,7 @@ Contract: `dry_run` is `false`; `events` must be empty (`maxItems: 0`).
 Each response descriptor defines its supported response branches as an exact `anyOf` branch union. Only a response descriptor that exposes preview includes that branch. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. Shared rejection and preview fields remain distinct from the success fields above.
 <!-- END GENERATED: contract-structures api.method.check_close.response[response_variants] api.method.check_close.response[result_body] api.method.check_close.response[result_metadata] api.method.check_close.response[rejection] api.method.close_task.response[response_variants] api.method.close_task.response[result_body] api.method.close_task.response[result_metadata] api.method.close_task.response[rejection] api.method.close_task.response[dry_run] -->
 
-Neither close-family result has a top-level `next_actions` list. `summary_card.next` is the single display next action selected from the `presentation_role=primary` blocker action; array position is not the selection contract. Next actions for close blockers remain inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes). Across `blockers[*].next_actions` in one result, exactly one action is primary; later blocker-local lists can contain only additional actions.
+Neither close-family result has a top-level `next_actions` list. Remediation actions for a close blocker remain only inside that `CloseReadinessBlocker.next_actions` list and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes). Array order and actions from other blockers do not select a global next action, and `summary_card` does not derive authority from the first blocker.
 
 Pending user actions for another operation and informational-only pending
 actions may remain visible through the broader
@@ -541,7 +543,7 @@ state:
   autonomy_boundary: "Stay within onboarding checklist completion."
   active_change_unit_ref: null
   baseline_ref: baseline_close_001
-  shaping_readiness: null
+  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 72, blocking_reason: null, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
@@ -555,7 +557,6 @@ state:
       message: "Final acceptance is still required before this Task can close."
       related_refs: []
       next_actions:
-        - presentation_role: primary
           action_kind: request_user_action
           owner_method: volicord.request_user_action
           allowed_operation_categories: [agent_workflow]
@@ -575,7 +576,6 @@ blockers:
     message: "Final acceptance is still required before this Task can close."
     related_refs: []
     next_actions:
-      - presentation_role: primary
         action_kind: request_user_action
         owner_method: volicord.request_user_action
         allowed_operation_categories: [agent_workflow]

@@ -15,6 +15,8 @@
   "method_order": [
     "volicord.intake",
     "volicord.update_scope",
+    "volicord.record_shaping",
+    "volicord.advance_task",
     "volicord.status",
     "volicord.get_operation_result",
     "volicord.check_close",
@@ -28,6 +30,30 @@
     "volicord.close_task"
   ],
   "schemas": {
+    "volicord.advance_task": {
+      "definitions": [
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "baseline_ref",
+        "change_unit_id",
+        "envelope",
+        "scope_revision",
+        "shaping_checkpoint_id",
+        "task_id",
+        "user_action_resolution_ids"
+      ],
+      "root_required": [
+        "baseline_ref",
+        "change_unit_id",
+        "envelope",
+        "scope_revision",
+        "shaping_checkpoint_id",
+        "task_id",
+        "user_action_resolution_ids"
+      ],
+      "sha256": "sha256:7a902dade407cbb43c986681c134ed07e7178ed518f843237565ee9ab53c14e0"
+    },
     "volicord.check_close": {
       "definitions": [
         "ToolEnvelope"
@@ -82,7 +108,7 @@
         "envelope",
         "operation_result_ref"
       ],
-      "sha256": "sha256:732919d160755a008ab731dafaae4fbacc895937af0d5b625f9cdd5990c99202"
+      "sha256": "sha256:a75577c8fae4653e6d1b413b307b753811471d399a53dc72809f85e6c48c101b"
     },
     "volicord.intake": {
       "definitions": [
@@ -137,7 +163,7 @@
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:b909fc7ca299f9838eaadff8e00ef52ea01e774e8dbe53cdcb7db2351b65c0c2"
+      "sha256": "sha256:c4c395e627606e22f21194ad105abf68f94c114abaf4faf2bd1c09c406426aae"
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
@@ -271,7 +297,66 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:bf5fa046c401d5e2540b02f4154a4bfbd2b048b17e78c0523028bc6c3d09887c"
+      "sha256": "sha256:13ad669b2a19c119173ec9e9af6a6240ceb1afade68fcc12f4dec79f93d13811"
+    },
+    "volicord.record_shaping": {
+      "definitions": [
+        "AcceptedRiskInput",
+        "ActorSource",
+        "ArtifactAvailability",
+        "ArtifactIntegrityStatus",
+        "ArtifactRef",
+        "CloseAssessmentInput",
+        "CommandSource",
+        "EvidenceTarget",
+        "ExternalUriSource",
+        "GitCommitSource",
+        "GitDiffSource",
+        "JudgmentKind",
+        "JudgmentPresentation",
+        "RedactionState",
+        "RepositoryFileSource",
+        "ResidualRiskInput",
+        "SensitiveActionScope",
+        "ShapingGapInput",
+        "ShapingGapKind",
+        "ShapingUserActionDraft",
+        "SourceLineRange",
+        "SourceRef",
+        "StateRecordKind",
+        "StateRecordRef",
+        "ToolEnvelope",
+        "UserActionContext",
+        "UserActionDraft",
+        "UserActionOptionInput",
+        "UserContextSource",
+        "UtcTimestamp"
+      ],
+      "root_properties": [
+        "baseline_ref",
+        "close_assessment",
+        "envelope",
+        "evidence_refs",
+        "gaps",
+        "implementation_boundary",
+        "scope_revision",
+        "source_refs",
+        "summary",
+        "task_id"
+      ],
+      "root_required": [
+        "baseline_ref",
+        "close_assessment",
+        "envelope",
+        "evidence_refs",
+        "gaps",
+        "implementation_boundary",
+        "scope_revision",
+        "source_refs",
+        "summary",
+        "task_id"
+      ],
+      "sha256": "sha256:f7bddf2408dc1f841ba6727b05be1cf114a830b00a5cf5faf8afa06b94064839"
     },
     "volicord.request_user_action": {
       "definitions": [
@@ -310,7 +395,7 @@
         "required_for",
         "task_id"
       ],
-      "sha256": "sha256:562a204c4b4f7d08b6015be2f991af681755fd831aa4a9d53c94a44f2e3c069c"
+      "sha256": "sha256:00c23bacb7281461dc4ec152a6bbc2717747f5c2fac38fb9dcea972c11b5a962"
     },
     "volicord.resolve_user_action": {
       "definitions": [
@@ -420,7 +505,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:090a662723bc5bd33684fda8407a68cd2f9b59c5aa4608366509005ca1291bf5"
+      "sha256": "sha256:ea561e29a95cb630f5cd808f3348d70fe22abd1827ee78d86dd023d94949b450"
     }
   }
 }

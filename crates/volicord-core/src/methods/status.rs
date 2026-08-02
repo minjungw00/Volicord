@@ -12,8 +12,7 @@ use crate::evidence_facts::{
 use crate::evidence_projection::evidence_summary_for_display;
 use crate::guarantee_projection::guarantee_display;
 use crate::guidance::{
-    next_actions_for_state, normalize_next_action_collection, primary_next_action,
-    unique_next_actions,
+    next_actions_for_state, normalize_next_action_collection, unique_next_actions,
 };
 use crate::method_execution::{prepare_or_response, PlanError};
 use crate::method_rejection::validation_plan_error;
@@ -46,8 +45,7 @@ use volicord_types::schema::{
     TaskFlowItem, ToolEnvelope, DEFAULT_CONTINUITY_PAGE_SIZE, MAX_CONTINUITY_PAGE_SIZE,
 };
 use volicord_types::values::{
-    AuthorityNextActor, CloseState, MethodName, OperationCategory, StateRecordKind,
-    StatusCloseState, TaskLifecyclePhase, UtcTimestamp,
+    CloseState, MethodName, StateRecordKind, StatusCloseState, TaskLifecyclePhase, UtcTimestamp,
 };
 use volicord_user_action_service::{
     agent_safe_pending_user_action_summaries, projected_pending_user_action_refs,
@@ -237,7 +235,6 @@ fn status_result_fields(
     let mut task_flow = None;
     let mut authority_receipt = None;
     let mut next_actions = Vec::new();
-    let mut receipt_next_actions = Vec::new();
     let mut card_pending_user_action_count = 0usize;
     let guarantee_profile = if include.guarantees {
         Some(project_enforcement_profile(store)?)
@@ -263,6 +260,9 @@ fn status_result_fields(
         let task_id = TaskId::new(task.task_id.clone());
         let current_change_unit = store
             .current_change_unit(&task_id)
+            .map_err(CorePipelineError::from)?;
+        let current_shaping_checkpoint = store
+            .current_shaping_checkpoint(&task_id)
             .map_err(CorePipelineError::from)?;
         let task_ref = state_ref(
             StateRecordKind::Task,
@@ -352,8 +352,6 @@ fn status_result_fields(
         }
         evidence_gate = Some(close_plan.evidence_gate);
         current_close_basis = close_plan.current_close_basis.clone();
-        receipt_next_actions.extend(effective_close_actions.clone());
-        receipt_next_actions.extend(task_next_actions.clone());
         if include.close {
             close_state = Some(status_close_state(effective_close_state));
             risk_acceptance_coverage = Some(close_plan.risk_acceptance_coverage.clone());
@@ -386,6 +384,7 @@ fn status_result_fields(
                 state_version,
                 task,
                 current_change_unit: current_change_unit.as_ref(),
+                shaping_checkpoint: current_shaping_checkpoint.as_ref(),
                 project_policy: workflow_policy.summary.clone(),
                 acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
                 pending_user_action_refs: all_pending_user_actions,
@@ -438,8 +437,14 @@ fn status_result_fields(
             close_state: status_close_state(effective_close_state),
             close_blockers: effective_close_blockers,
             completion_claim_allowed,
-            next_actor: AuthorityNextActor::None,
-            next_action: None,
+            next_actor: crate::workflow_projection::workflow_projection(
+                project_id,
+                state_version,
+                task,
+                current_change_unit.as_ref(),
+                current_shaping_checkpoint.as_ref(),
+            )
+            .next_actor(),
         });
     }
     if include.continuity {
@@ -460,18 +465,6 @@ fn status_result_fields(
     }
     next_actions = unique_next_actions(next_actions);
     normalize_next_action_collection(&mut next_actions, state_version);
-    receipt_next_actions = unique_next_actions(receipt_next_actions);
-    normalize_next_action_collection(&mut receipt_next_actions, state_version);
-    if let Some(receipt) = authority_receipt.as_mut() {
-        let next_action = receipt_next_actions.first().cloned();
-        receipt.next_actor = next_action
-            .as_ref()
-            .map(authority_next_actor)
-            .unwrap_or(AuthorityNextActor::None);
-        receipt.next_action = next_action;
-    }
-
-    let close_blockers_slice = close_blockers.as_deref().unwrap_or(&[]);
     let summary_card = summary_card(SummaryCardInput {
         task,
         recording: "read_only",
@@ -501,7 +494,6 @@ fn status_result_fields(
         ),
         close_status: close_state_summary_text(include.close, close_state),
         verified_invocation,
-        next_action: primary_next_action(&next_actions, close_blockers_slice),
     });
 
     Ok(StatusResultFields {
@@ -523,22 +515,6 @@ fn status_result_fields(
         task_flow,
         authority_receipt,
     })
-}
-
-fn authority_next_actor(action: &NextActionSummary) -> AuthorityNextActor {
-    if action
-        .allowed_operation_categories
-        .contains(&OperationCategory::UserOnly)
-    {
-        AuthorityNextActor::User
-    } else if action
-        .allowed_operation_categories
-        .contains(&OperationCategory::AgentWorkflow)
-    {
-        AuthorityNextActor::Agent
-    } else {
-        AuthorityNextActor::None
-    }
 }
 
 fn projected_task_flow(

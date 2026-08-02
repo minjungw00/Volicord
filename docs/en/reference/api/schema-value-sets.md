@@ -93,13 +93,6 @@ These values classify derived invocation or persisted actor provenance. They do 
 <a id="next-action-values"></a>
 ## Next-action values
 
-`NextActionSummary.presentation_role` uses exactly these controlled values:
-
-| Value | Meaning |
-|---|---|
-| `primary` | The single action selected as the main next action in the owner-composed action collection. |
-| `additional` | Another surfaced action in the same collection. It can still be required and does not mean optional. |
-
 `NextActionSummary.action_kind` is a controlled action-category value. It uses only these supported values and owner-supported invocation categories:
 
 | `action_kind` value | `owner_method` when one method owns the next step | `allowed_operation_categories` |
@@ -271,16 +264,16 @@ sensitive
 `observe < light < tracked < sensitive`; Core and project policy may raise a
 Task but never lower its effective control.
 
-Mode and `work_phase` jointly constrain Run-kind compatibility:
+Mode and `work_phase` jointly select progression and execution authority:
 
-| `Task.mode` | `work_phase` | Allowed `RunKind` | Successful `intent=complete` result |
+| `Task.mode` | `work_phase` | Supported authority | Successful `intent=complete` result |
 |---|---|---|---|
-| `advisor` | `shaping` | `shaping_update` | `advice_only` |
+| `advisor` | `shaping` | `volicord.record_shaping` | `advice_only` |
 | `direct` | `implementation` | `direct` | `completed` |
-| `work` | `shaping` | `shaping_update` | `completed` |
+| `work` | `shaping` | `volicord.record_shaping`, then `volicord.advance_task` | `completed` |
 | `work` | `implementation` | `implementation` | `completed` |
 
-`advisor` is read-only with respect to Product Repository file effects. It does not use `prepare_write` or a write ticket, and its compatible Run has `product_file_write_observed=false`, an empty `changed_paths` list, and `write_ticket_id=null`. A compatible `shaping_update` still allows `record_run` to commit Run and method-owned Core evidence state.
+`RunKind` contains only `direct` and `implementation`. Advisor Tasks use shaping checkpoints and do not use `prepare_write` or write tickets.
 
 `StateSummary.work_phase` and `TaskFlowItem.work_phase` use:
 
@@ -527,7 +520,6 @@ reason set.
 `RecordRunRequest.kind` and `RunSummary.kind` use:
 
 ```text
-shaping_update
 implementation
 direct
 ```

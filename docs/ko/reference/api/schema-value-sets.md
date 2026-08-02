@@ -97,13 +97,6 @@ Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 �
 <a id="next-action-values"></a>
 ## 다음 행동 값
 
-`NextActionSummary.presentation_role`은 아래의 제어 값만 사용합니다.
-
-| 값 | 의미 |
-|---|---|
-| `primary` | 담당 문서가 구성한 행동 모음에서 주된 다음 행동으로 선택된 단일 행동입니다. |
-| `additional` | 같은 모음에 함께 표시되는 다른 행동입니다. 여전히 필수일 수 있으며 선택 사항이라는 뜻이 아닙니다. |
-
 `NextActionSummary.action_kind`는 제어되는 행동 범주 값입니다. 지원되는 값과 담당 문서가 지원하는 호출 범주는 아래와 같습니다.
 
 | `action_kind` 값 | 메서드 하나가 다음 단계를 담당할 때의 `owner_method` | `allowed_operation_categories` |
@@ -279,16 +272,16 @@ sensitive
 `observe < light < tracked < sensitive`이며 Core와 프로젝트 정책은 Task의 유효
 통제 수준을 올릴 수 있지만 절대 낮출 수 없습니다.
 
-모드와 `work_phase`가 함께 Run 종류 호환성을 제한합니다.
+모드와 `work_phase`가 진행 및 실행 권한을 선택합니다.
 
-| `Task.mode` | `work_phase` | 허용되는 `RunKind` | 성공한 `intent=complete` 결과 |
+| `Task.mode` | `work_phase` | 지원 권한 | 성공한 `intent=complete` 결과 |
 |---|---|---|---|
-| `advisor` | `shaping` | `shaping_update` | `advice_only` |
+| `advisor` | `shaping` | `volicord.record_shaping` | `advice_only` |
 | `direct` | `implementation` | `direct` | `completed` |
-| `work` | `shaping` | `shaping_update` | `completed` |
+| `work` | `shaping` | `volicord.record_shaping` 후 `volicord.advance_task` | `completed` |
 | `work` | `implementation` | `implementation` | `completed` |
 
-`advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `prepare_write`나 쓰기 티켓을 사용하지 않으며, 호환되는 실행 기록은 `product_file_write_observed=false`, 빈 `changed_paths` 목록, `write_ticket_id=null`을 가집니다. 호환되는 `shaping_update`는 `record_run`이 Run과 메서드 소유 Core 증거 상태를 커밋하는 것을 허용합니다.
+`RunKind`는 `direct`와 `implementation`만 포함합니다. Advisor Task는 shaping checkpoint를 사용하며 `prepare_write`나 쓰기 티켓을 사용하지 않습니다.
 
 `StateSummary.work_phase`와 `TaskFlowItem.work_phase`는 아래 값을 사용합니다.
 
@@ -534,7 +527,6 @@ explicit_revoke
 `RecordRunRequest.kind`와 `RunSummary.kind`는 아래 값을 사용합니다.
 
 ```text
-shaping_update
 implementation
 direct
 ```

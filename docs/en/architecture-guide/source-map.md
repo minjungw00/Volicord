@@ -1,5 +1,7 @@
 # Source Map
 
+Explicit shaping progression is implemented in `volicord-core::methods::{record_shaping,advance_task}`, `volicord-core::workflow_projection`, `volicord-store::core_pipeline::shaping`, the canonical project schema, shared public types, and MCP wire/adapter/registry modules.
+
 This map routes maintainers to current implementation owners. It is not a
 product contract; use the focused Reference document for exact behavior.
 

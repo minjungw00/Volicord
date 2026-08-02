@@ -137,32 +137,17 @@ fn complete_orchestration_commits_the_terminal_task_transition() -> Result<(), B
 fn advisor_completion_orchestration_persists_advice_only() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+    let (task_id, _change_unit_id) = create_task_with_mode_and_change_unit(
         &harness,
         "close_orchestration_advisor",
         RequestedMode::Advisor,
     )?;
-    let mut run = record_run_request(
-        "req_close_orchestration_advisor_run",
-        "idem_close_orchestration_advisor_run",
-        false,
-        Some(2),
+    let after_evidence = record_ready_advisor_shaping_for_test(
+        &harness,
+        "close_orchestration_advisor",
         &task_id,
-        &change_unit_id,
-    );
-    run.kind = RunKind::ShapingUpdate;
-    run.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
-    run.close_assessment = Some(close_assessment_with_risks(
-        "Close claim supported.",
-        Vec::new(),
-    ))
-    .into();
-    let run_response = harness
-        .service
-        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
-    let after_evidence = run_response.response_value["base"]["state_version"]
-        .as_u64()
-        .expect("state_version should be present");
+        2,
+    )?;
 
     let response = harness.service.close_task(
         close_task_request(CloseTaskFixture {

@@ -43,6 +43,7 @@ pub(super) fn create_workspace_bound_task(
         invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace.clone()),
     )?;
     let change_unit_id = response_record_id(&scope.response_value, "change_unit_ref");
+    advance_work_task_for_test(harness, suffix, &task_id, &change_unit_id)?;
     let criterion_id = active_acceptance_criterion_id(harness, &task_id)?;
     Ok((task_id, change_unit_id, criterion_id, workspace))
 }

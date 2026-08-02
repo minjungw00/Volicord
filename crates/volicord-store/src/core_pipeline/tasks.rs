@@ -43,6 +43,7 @@ pub enum TaskMutation {
     UpdateControlLevel(TaskControlLevelUpdate),
     UpdateScope(TaskScopeUpdate),
     UpdateScopeRevision(TaskScopeRevisionUpdate),
+    AdvanceToImplementation { task_id: String },
     UpdateCloseBasis(TaskCloseBasisUpdate),
     ReplaceAcceptanceCriteria(AcceptanceCriteriaReplace),
 }
@@ -155,6 +156,9 @@ impl TaskMutation {
             Self::UpdateControlLevel(input) => context.update_task_control_level(input),
             Self::UpdateScope(input) => context.update_task_scope(input),
             Self::UpdateScopeRevision(input) => context.update_task_scope_revision(input),
+            Self::AdvanceToImplementation { task_id } => {
+                context.advance_task_to_implementation(task_id)
+            }
             Self::UpdateCloseBasis(input) => context.update_task_close_basis(input),
             Self::ReplaceAcceptanceCriteria(input) => context.replace_acceptance_criteria(input),
         }
@@ -785,6 +789,31 @@ fn acceptance_policy_rank(value: AcceptancePolicy) -> u8 {
 }
 
 impl MutationContext<'_> {
+    fn advance_task_to_implementation(&mut self, task_id: &str) -> StoreResult<()> {
+        validate_identifier("task_id", task_id)?;
+        let changed = self.tx.execute(
+            "UPDATE tasks
+                SET work_phase = 'implementation',
+                    lifecycle_phase = 'executing',
+                    updated_at = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND mode = 'work'
+                AND work_phase = 'shaping'
+                AND lifecycle_phase NOT IN ('completed', 'cancelled', 'superseded')",
+            params![self.project_id, task_id, self.committed_at],
+        )?;
+        if changed != 1 {
+            return Err(StoreError::Conflict {
+                entity: "task",
+                id: task_id.to_owned(),
+                detail: "Task is not eligible for the shaping-to-implementation transition"
+                    .to_owned(),
+            });
+        }
+        Ok(())
+    }
+
     fn insert_task(&mut self, input: &TaskInsert) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
         if input.control_level_reason.trim().is_empty() {

@@ -1,5 +1,7 @@
 # Storage Records
 
+`shaping_checkpoints`, `shaping_checkpoint_gaps`, and `shaping_checkpoint_user_actions` form one Task-scoped aggregate. Exactly one non-superseded checkpoint can be current. User-owned gaps require same-Task request links, and ready checkpoints have no current gap.
+
 This document owns semantic meaning and cross-record invariants for the
 supported storage contract. Exact tables, columns, constraints, indexes,
 and canonical SQL remain with [Storage DDL](storage-ddl.md).

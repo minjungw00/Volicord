@@ -84,6 +84,8 @@ opaque_string_type!(EventId, "Opaque event identifier.");
 opaque_string_type!(RecordId, "Opaque state-record identifier.");
 opaque_string_type!(BaselineRef, "Opaque baseline identifier.");
 opaque_string_type!(ChangeUnitId, "Opaque Change Unit identifier.");
+opaque_string_type!(ShapingCheckpointId, "Opaque ShapingCheckpoint identifier.");
+opaque_string_type!(ShapingGapId, "Opaque shaping-gap identifier.");
 opaque_string_type!(WriteTicketId, "Opaque write ticket identifier.");
 opaque_string_type!(RunId, "Opaque Run identifier.");
 opaque_string_type!(
@@ -299,6 +301,10 @@ pub enum DurableIdKind {
     Task,
     /// Core-generated Change Unit ids.
     ChangeUnit,
+    /// Core-generated ShapingCheckpoint ids.
+    ShapingCheckpoint,
+    /// Core-generated shaping-gap ids.
+    ShapingGap,
     /// Core-generated user-action-request ids.
     UserActionRequest,
     /// Core-generated user-action-resolution ids.
@@ -357,6 +363,8 @@ impl DurableIdKind {
         match self {
             Self::Task => "task_",
             Self::ChangeUnit => "cu_",
+            Self::ShapingCheckpoint => "shaping_",
+            Self::ShapingGap => "shaping_gap_",
             Self::UserActionRequest => "uar_",
             Self::UserActionResolution => "ures_",
             Self::WriteTicket => "wt_",
@@ -391,6 +399,8 @@ impl fmt::Display for DurableIdKind {
         formatter.write_str(match self {
             Self::Task => "task",
             Self::ChangeUnit => "change_unit",
+            Self::ShapingCheckpoint => "shaping_checkpoint",
+            Self::ShapingGap => "shaping_gap",
             Self::UserActionRequest => "user_action_request",
             Self::UserActionResolution => "user_action_resolution",
             Self::WriteTicket => "write_ticket",
