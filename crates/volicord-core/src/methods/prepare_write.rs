@@ -338,6 +338,43 @@ fn plan_prepare_write(
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
 ) -> Result<PrepareWritePlanningOutcome, PlanError> {
+    if let Some(task) = store
+        .task_record(task_id)
+        .map_err(CorePipelineError::from)?
+    {
+        let current_change_unit = store
+            .current_change_unit(task_id)
+            .map_err(CorePipelineError::from)?;
+        let checkpoint = store
+            .current_shaping_checkpoint(task_id)
+            .map_err(CorePipelineError::from)?;
+        let shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+            store,
+            &request.envelope.project_id,
+            project_state.state_version,
+            &task,
+            current_change_unit.as_ref(),
+            checkpoint.as_ref(),
+            operation_now,
+        )?;
+        if !shaping_authority.recovery_required.is_empty() {
+            let response = workflow_rejected_response(
+                store,
+                project_state,
+                &request.envelope,
+                task_id,
+                ErrorCode::UserDecisionUnresolved,
+                "write preparation cannot consume a rejected, deferred, or expired shaping decision",
+                MethodName::PrepareWrite,
+                None,
+                Vec::new(),
+                false,
+                MethodName::RecordShaping,
+            )
+            .map_err(PlanError::Core)?;
+            return Err(PlanError::Response(Box::new(response)));
+        }
+    }
     let task_is_current = !project_state
         .active_task_id
         .as_deref()

@@ -111,8 +111,9 @@ Choice 요청의 모든 `affected_refs` 항목은 요청 프로젝트에 속해�
 이 일반 호환 행렬은 shaping application owner를 선택하지 않습니다.
 `volicord.record_shaping`이 만든 요청은 gap별 정확한 정책을 사용합니다. 제품·기술은
 `[advance_task]`, 범위는 `[scope_update]`, 민감 승인은 `[advance_task, prepare_write,
-record_run, close_complete]`를 사용합니다. 불변 resolution은 연결된 gap을 `resolved`로
-바꾸며, 의미 owner method만 `applied`로 바꿀 수 있습니다.
+record_run, close_complete]`를 사용합니다. 불변 resolution은 연결된 gap을 정확한
+`accepted`, `rejected`, `deferred` disposition으로 바꿉니다. 의미 owner method는
+`accepted`만 `applied`로 바꿀 수 있습니다.
 
 유효 상태는 `pending`, `resolved`, `stale`, `superseded`, `expired`입니다. 하나의 Core
 evaluator가 현재 근거 호환성, 불변 resolution 존재 여부, expiry, 현재 Core 시각에서
@@ -121,6 +122,9 @@ evaluator가 현재 근거 호환성, 불변 resolution 존재 여부, expiry, �
 수 있습니다. 만료는 `created_at <= now < expires_at`을 사용하므로
 `now >= expires_at`이면 해결할 수 없습니다. 조회는 만료 표시를 위해 상태를 변경하지
 않습니다.
+Shaping에 연결된 요청에서는 이 유효 lifecycle 상태가 별도
+`ShapingDecisionAuthorityState`의 입력입니다. 따라서 `resolved`는 종료 답변을 기록하지만
+그 자체로 shaping 권한을 부여하지 않습니다.
 
 Choice 요청은 호출자의 명시적인 nullable `expires_at`을 보존합니다. `null`은 시간
 deadline이 없다는 뜻이며 근거 무효화는 계속 적용됩니다. Evidence 관찰 요청은 호출자

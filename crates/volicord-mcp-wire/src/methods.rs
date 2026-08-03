@@ -243,6 +243,8 @@ pub struct McpRecordShapingCompactResult {
     pub shaping_checkpoint_id: ShapingCheckpointId,
     pub readiness: ShapingCheckpointReadiness,
     pub unresolved_application_owners: Vec<ShapingDecisionApplicationOwner>,
+    pub decision_recovery_requirements:
+        Vec<volicord_types::schema::ShapingDecisionRecoveryRequirement>,
     pub created_user_action_request_refs: Vec<StateRecordRef>,
     pub workflow_kind: WorkflowStateKind,
     pub close_state: Option<CloseState>,
@@ -426,6 +428,23 @@ pub enum McpMustSurfaceFact {
     },
     RecoveryMethod {
         owner_method: MethodName,
+    },
+    ShapingDecisionOutcome {
+        request_ref: StateRecordRef,
+        resolution_ref: RequiredNullable<StateRecordRef>,
+        disposition: volicord_types::values::ShapingDecisionAuthorityState,
+        authority_granted: bool,
+    },
+    NonAuthorizingShapingDecision {
+        request_ref: StateRecordRef,
+        resolution_ref: RequiredNullable<StateRecordRef>,
+        disposition: volicord_types::values::ShapingDecisionAuthorityState,
+        recovery_owner: MethodName,
+        authority_granted: volicord_types::schema::FalseValue,
+        terminal_request_cannot_be_retried: volicord_types::schema::TrueValue,
+        successor_request_required_if_still_needed: volicord_types::schema::TrueValue,
+        chat_text_cannot_replace_successor: volicord_types::schema::TrueValue,
+        product_repository_mutation_available: volicord_types::schema::FalseValue,
     },
     UserActionRequestExists {
         request_refs: Vec<StateRecordRef>,

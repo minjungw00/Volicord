@@ -819,9 +819,14 @@ fact를 담습니다. 충족되지 않은 implementation-gating UserAction autho
 ref와 함께 `implementation_blocked_until_user_action_authority_satisfied`를 추가합니다.
 `awaiting_user_action`은 현재 request ref, `next_actor=user`, chat이 resolution authority가
 아니라는 사실, Product Repository mutation 경계, 정규 Task 범위 inbox instruction을
-추가합니다. 성공한 `advance_task`는 implementation 진입, write ticket을 만들지 않았다는
-사실, Product Repository write에는 여전히 `volicord.prepare_write`가 필요하다는 사실을
-추가합니다.
+추가합니다. Shaping에 연결된 각 결정의 정확한 request ref, 존재하는 resolution ref,
+disposition, 권한 부여 여부를 `shaping_decision_outcome`으로 제공합니다. 거부, 보류,
+만료 결정은 `volicord.record_shaping`, 종료 또는 만료 요청의 재시도 불가, 계획에 판단이
+계속 필요할 때의 successor-request identity, chat 경계, Product Repository mutation 불가를
+담은 `non_authorizing_shaping_decision`도 추가합니다. Compact record-shaping 결과는 타입이
+정해진 decision recovery requirement를 유지합니다. 성공한 `advance_task`는 implementation
+진입, write ticket을 만들지 않았다는 사실, Product Repository write에는 여전히
+`volicord.prepare_write`가 필요하다는 사실을 추가합니다.
 
 태그가 있는 `workflow.required_action`만 진행을 선택합니다. 최상위 배열, blocker 배열,
 compact text, presentation 순서는 다음 메서드를 선택하지 않습니다. Shaping 결정의

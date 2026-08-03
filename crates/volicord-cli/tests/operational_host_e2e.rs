@@ -439,7 +439,8 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 "operation": "record_checkpoint",
                 "checkpoint_operation": {
                     "operation": "replace_current",
-                    "expected_current_checkpoint_id": checkpoint_id
+                    "expected_current_checkpoint_id": checkpoint_id,
+                    "retired_user_action_request_refs": []
                 },
                 "scope_revision": 0,
                 "baseline_ref": null,
@@ -578,7 +579,8 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 "operation": "record_checkpoint",
                 "checkpoint_operation": {
                     "operation": "replace_current",
-                    "expected_current_checkpoint_id": checkpoint_id
+                    "expected_current_checkpoint_id": checkpoint_id,
+                    "retired_user_action_request_refs": []
                 },
                 "scope_revision": 0,
                 "baseline_ref": null,
@@ -654,7 +656,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         if kind == "user_scope_decision_required" {
             status == "applied"
         } else {
-            status == "resolved"
+            status == "accepted"
         }
     }));
     drop(state);

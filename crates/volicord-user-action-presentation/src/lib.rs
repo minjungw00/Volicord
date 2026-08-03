@@ -233,6 +233,12 @@ pub fn cli_inbox_item(
     request_ref: StateRecordRef,
     request: UserActionRequest,
 ) -> Result<CliUserActionInboxItem, UserActionPresentationError> {
+    if request.status != UserActionStatus::Pending {
+        return Err(UserActionPresentationError::InvalidSemanticFacts(format!(
+            "CLI inbox presentation requires a pending UserAction, not {}",
+            request.status.as_str()
+        )));
+    }
     let resolution_form = request
         .body
         .resolution_form()
@@ -419,6 +425,15 @@ mod tests {
     use schemars::schema_for;
     use serde::de::DeserializeOwned;
     use serde_json::json;
+    use volicord_types::ids::{BaselineRef, UserActionOptionId};
+    use volicord_types::schema::{
+        UserActionBasis, UserActionBasisCoordinates, UserActionChoiceBasis,
+        UserActionChoiceRequestBody, UserActionContext, UserActionOption, UserActionRequestBody,
+    };
+    use volicord_types::values::{
+        JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, UserActionBasisStatus,
+        UserActionOptionAction,
+    };
 
     use super::*;
 
@@ -551,6 +566,34 @@ mod tests {
     }
 
     #[test]
+    fn terminal_and_expired_requests_never_receive_an_inbox_resolution_path() {
+        let pending = choice_request(UserActionStatus::Pending);
+        let request_ref = StateRecordRef::new(
+            StateRecordKind::UserActionRequest,
+            pending.user_action_request_id.as_str(),
+            pending.project_id.clone(),
+            Some(pending.task_id.clone()),
+            Some(4),
+        );
+        assert!(cli_inbox_item(request_ref.clone(), pending).is_ok());
+
+        for status in [
+            UserActionStatus::Resolved,
+            UserActionStatus::Expired,
+            UserActionStatus::Stale,
+            UserActionStatus::Superseded,
+        ] {
+            let error = cli_inbox_item(request_ref.clone(), choice_request(status))
+                .expect_err("non-pending requests cannot expose a resolution command");
+            assert!(matches!(
+                error,
+                UserActionPresentationError::InvalidSemanticFacts(message)
+                    if message.contains(status.as_str())
+            ));
+        }
+    }
+
+    #[test]
     fn evidence_command_display_uses_both_typed_target_invocations() {
         let request_id = UserActionRequestId::new("user_action_observation");
         let form = UserActionResolutionForm::EvidenceObservation {
@@ -614,5 +657,59 @@ mod tests {
         let encoded = serde_json::to_value(&value).expect("closed value serializes");
         let decoded: T = serde_json::from_value(encoded).expect("closed value deserializes");
         assert_eq!(decoded, value);
+    }
+
+    fn choice_request(status: UserActionStatus) -> UserActionRequest {
+        let project_id = ProjectId::new("project-presentation");
+        let task_id = TaskId::new("task-presentation");
+        UserActionRequest {
+            user_action_request_id: UserActionRequestId::new("action-presentation"),
+            project_id,
+            task_id: task_id.clone(),
+            change_unit_id: RequiredNullable::null(),
+            action_kind: UserActionKind::ScopeDecision,
+            status,
+            body: UserActionRequestBody::Choice(Box::new(UserActionChoiceRequestBody {
+                judgment_kind: JudgmentKind::ScopeDecision,
+                presentation: JudgmentPresentation::Short,
+                question: "Accept the bounded scope?".to_owned(),
+                options: vec![UserActionOption {
+                    option_id: UserActionOptionId::new("accept"),
+                    label: "Accept".to_owned(),
+                    description: "Accept the bounded scope.".to_owned(),
+                    consequence: "The accepted decision may be applied by its owner.".to_owned(),
+                    machine_action: UserActionOptionAction::Accept,
+                    resolution_outcome: JudgmentResolutionOutcome::Accepted,
+                    is_default: true,
+                }],
+                context: UserActionContext {
+                    summary: "One exact user decision is required.".to_owned(),
+                    related_refs: Vec::new(),
+                    artifact_refs: Vec::new(),
+                    visible_risks: Vec::new(),
+                    constraints: Vec::new(),
+                },
+                affected_refs: Vec::new(),
+                sensitive_action_scope: RequiredNullable::null(),
+            })),
+            basis: UserActionBasis::Choice(Box::new(UserActionChoiceBasis {
+                coordinates: UserActionBasisCoordinates {
+                    task_id,
+                    change_unit_id: RequiredNullable::null(),
+                    scope_revision: 0,
+                    baseline_ref: RequiredNullable::some(BaselineRef::new("baseline-presentation")),
+                    created_at_state_version: 4,
+                    compatibility_status: UserActionBasisStatus::Current,
+                },
+                close_basis_revision: RequiredNullable::null(),
+                result_refs: Vec::new(),
+                residual_risk_ids: Vec::new(),
+                sensitive_action_scope: RequiredNullable::null(),
+            })),
+            required_for: vec![UserActionRequiredFor::ScopeUpdate],
+            user_action_resolution_ref: RequiredNullable::null(),
+            expires_at: RequiredNullable::null(),
+            created_at: UtcTimestamp::parse("2026-08-03T00:00:00Z").expect("test timestamp"),
+        }
     }
 }

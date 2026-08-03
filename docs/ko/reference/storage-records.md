@@ -127,15 +127,16 @@ predecessor를 `readiness=superseded`로 바꾸며 supersession 시각을 succes
 predecessor identity는 불변이고 self-reference할 수 없습니다.
 
 `shaping_checkpoint_gaps`는 각 gap의 폐쇄형 kind, summary, affected ref,
-`current|resolved|applied` 상태를 소유합니다. `ready` checkpoint에는 `current` gap을
+`current|accepted|rejected|deferred|applied` 상태를 소유합니다. `ready` checkpoint에는 `current` gap을
 추가하거나 유지할 수 없습니다. `shaping_checkpoint_user_actions`는 같은 project, Task,
 checkpoint, gap의 정확한 UserAction request와 User Channel 해결 뒤의 불변 resolution을
 연결합니다. 사용자 소유 gap에는 이 request link가 정확히 하나 있어야 하며 사용자 소유가
-아닌 gap에는 없어야 합니다. 연결된 요청을 해결하면 해당 gap만 `resolved`가 되고
+아닌 gap에는 없어야 합니다. 연결된 요청을 해결하면 해당 gap만 outcome에 맞는
+`accepted`, `rejected`, `deferred` 상태가 되고
 구조적으로 완전한 checkpoint는 `ready`가 될 수 있습니다. `volicord.update_scope`는
 선택된 정확한 scope gap을 적용하고, `volicord.advance_task`는 선택된 정확한 제품·기술·민감
 gap을 단계 전이와 원자적으로 적용합니다. 어떤 operation도 Task 전체 조건으로 모든
-resolved gap을 갱신하지 않습니다. Applied gap은 terminal이며 민감 resolution 권한은 이후
+accepted gap을 갱신하지 않습니다. Applied gap은 terminal이며 민감 resolution 권한은 이후
 정책에서 계속 사용할 수 있습니다.
 
 모든 aggregate read는 식별자, 폐쇄형 값, 정규 JSON 배열, timestamp, Task 소유권,
@@ -143,6 +144,12 @@ predecessor 소유권과 timestamp, link 일관성을 엄격하게 decode합니�
 모순되는 member는 손상된 영속 owner 데이터입니다. Store는 이를 생략하거나 기본값을
 만들거나 row 정렬로 checkpoint를 선택하거나 checkpoint 교체로 연결된 current-basis
 UserAction을 분리하지 않습니다.
+
+정확한 checkpoint replacement는 `retired_user_action_request_refs`가 predecessor 소유의
+완전한 집합일 때만 거부, 보류, 만료 상태인 연결 요청의 근거를 supersede할 수 있습니다.
+Pending, accepted, applied, stale, 외부, 누락, 추가 ref는 거부됩니다. Retirement와
+successor aggregate 생성은 같은 transaction에 속하며 요청과 변경 불가능한 resolution
+row는 감사 이력으로 남습니다.
 
 `project_workflow_policies`는 권위 있는 프로젝트 workflow policy record
 family입니다. 정규 aggregate에는 프로젝트 identity, 정확한

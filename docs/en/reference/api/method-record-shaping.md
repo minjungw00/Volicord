@@ -31,7 +31,9 @@ checkpoint-readiness semantics are `stable`.
 `operation=record_checkpoint` addresses the exact current Task and scope.
 `checkpoint_operation.operation=create_initial` requires no current checkpoint.
 `checkpoint_operation.operation=replace_current` requires
-`expected_current_checkpoint_id` to identify the exact current checkpoint.
+`expected_current_checkpoint_id` to identify the exact current checkpoint and
+`retired_user_action_request_refs` to name the complete exact set of linked
+rejected, deferred, or expired requests whose basis the replacement retires.
 A replacement checkpoint records that identity as
 `predecessor_checkpoint_id`; Core performs one compare-and-swap rather than
 selecting a row by ordering. The request supplies a shaping summary, an implementation or advisory boundary, the
@@ -44,17 +46,23 @@ same transaction, before the choice can be presented as actionable.
 
 Core calculates structural `readiness`. A checkpoint is `ready` when its
 baseline and implementation boundary are complete, every non-user shaping gap
-is closed, and every user-owned gap has a current User Channel resolution.
-Resolved decisions may still be `resolved` rather than `applied` until their
-semantic owners consume them. Otherwise it is `blocked`. A permitted replacement marks
+is closed, and no user-owned gap remains `current`. Accepted decisions remain
+`accepted` until their semantic owners apply them; rejected and deferred
+decisions are structurally complete but non-authorizing. Otherwise it is
+`blocked`. A permitted replacement marks
 the exact predecessor `superseded`, gives predecessor supersession and
 successor creation the same timestamp, and leaves at most one non-superseded
 checkpoint for a Task.
 
-Replacement is prohibited while any UserAction linked from the exact current
-checkpoint has current semantic authority. This includes pending decisions,
-resolved decisions whose gaps are not `applied`, and decisions required by a
-current workflow gate. The typed rejection identifies the checkpoint, request
+Replacement cannot retire pending, accepted-but-unapplied, applied, stale, or
+foreign authority. For rejected, deferred, or expired predecessor requests,
+the retirement refs must be an exact set: omission and unrelated extras reject
+the operation. The request basis transition, predecessor supersession,
+successor checkpoint and gaps, successor UserAction requests, event, replay
+row, and state-version update commit in one transaction. The retired request
+and its immutable resolution, if present, remain audit history. A successor
+plan that still needs the judgment creates a distinct request identity. The
+typed rejection identifies the checkpoint, request
 refs, effective statuses, and required owner methods and reports
 `state_change_applied=false`. Scope or Task transitions and typed
 decision-application operations may invalidate authority only within their
@@ -76,14 +84,16 @@ recording never establishes a close basis. Exact gap kinds, statuses, and reques
 `operation=finalize_advice` requires `Task.mode=advisor`,
 `work_phase=shaping`, the exact ready current checkpoint, exact current
 non-write Change Unit, scope revision, baseline, and the unique exact current
-resolution set for every user-owned checkpoint gap. No gap may remain
-`current`; scope-owned gaps must already be `applied`; and every advisor-owned
-resolution must remain current and accepted. Task-wide effective UserActions
+accepted resolution set for every advisor-owned checkpoint gap. No gap may
+remain `current`; scope-owned gaps must already be `applied`; and every
+advisor-owned decision must remain current and accepted. Rejected, deferred,
+expired, or inconsistent authority selects `decision_recovery_required` and
+cannot be finalized. Task-wide effective UserActions
 required for `finalize_advice` or shaping-owned scope update must be represented
-consistently by the current checkpoint; detached pending or resolved authority
+consistently by the current checkpoint; detached pending or accepted authority
 rejects finalization. The request also supplies the
 result summary, supported result and evidence refs, residual risks, and
-recovery constraints. Core atomically applies advisor-owned resolved gaps,
+recovery constraints. Core atomically applies advisor-owned accepted gaps,
 records the advice result, establishes a checkpoint-backed
 `CurrentCloseBasis`, retains the checkpoint identity, and returns workflow and
 close-readiness projections. It creates no replacement checkpoint or new
@@ -168,7 +178,7 @@ request refs, `next_actor=user`, `chat_reply_is_resolution=false`, the Product
 Repository mutation boundary, and the canonical task-scoped inbox command.
 The chat transcript cannot substitute for a User Channel resolution.
 
-After resolution, only a resolved scope gap selects
+After resolution, only an accepted scope gap selects
 `ready_to_apply_decisions`. Product-only and technical-only checkpoints select
 `ready_for_change_unit` when the mode-compatible current Change Unit is still
 absent; they do not require or synthesize a scope-decision ref. Task-wide

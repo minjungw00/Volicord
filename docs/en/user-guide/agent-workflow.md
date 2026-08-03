@@ -188,14 +188,19 @@ stored resolution for that request supplies authority; chat text does not. Use
 the returned current resolution ref when applying the decision. The stable CLI
 fallback is:
 
-Resolution does not apply a shaping decision. Route resolved scope gaps through
-`volicord.update_scope`. For work, supply resolved product, technical, and
-sensitive gaps to `volicord.advance_task`. For advisor, preserve those exact
-resolutions until `ready_to_finalize_advice` requires advisor finalization
+Resolution does not apply a shaping decision. Inspect its exact outcome. Route
+accepted scope gaps through `volicord.update_scope`. For work, supply accepted
+product, technical, and sensitive gaps to `volicord.advance_task`. For advisor,
+preserve those exact accepted resolutions until `ready_to_finalize_advice` requires advisor finalization
 through `volicord.record_shaping`; finalization applies them,
 records the result and evidence/risk lineage, preserves the checkpoint, and
 establishes the close basis. When scope and another decision coexist, apply
 only the scope gap first and leave the other gap for its mode-specific owner.
+Rejection, deferral, or expiration grants no authority and selects
+`decision_recovery_required`; revise the plan with `volicord.record_shaping`.
+Do not retry the terminal or expired request. If the revised plan still needs
+the decision, create a successor UserAction request and present it through the
+User Channel rather than treating chat as resolution.
 
 ```sh cli-example
 volicord inbox --repo "<repo>"

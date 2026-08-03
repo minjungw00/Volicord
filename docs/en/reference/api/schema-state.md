@@ -474,7 +474,7 @@ Owner links:
 
 ## `WorkflowProjection` and shaping checkpoints
 
-`StateSummary.workflow` is the single tagged progression authority. Its `kind` is one of `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, or `terminal`.
+`StateSummary.workflow` is the single tagged progression authority. Its `kind` is one of `no_active_task`, `shaping_required`, `awaiting_user_action`, `decision_recovery_required`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, or `terminal`.
 
 ```schema
 WorkflowProjection:
@@ -522,6 +522,7 @@ ShapingCheckpointSummary:
   gaps: ShapingCheckpointGap[]
   pending_decision_refs: StateRecordRef[]
   unresolved_application_owners: string[]
+  decision_recovery_requirements: ShapingDecisionRecoveryRequirement[]
 
 ShapingCheckpointGap:
   shaping_gap_id: string
@@ -530,8 +531,16 @@ ShapingCheckpointGap:
   summary: string
   affected_refs: StateRecordRef[]
   status: string
+  decision_authority_state: string | null
   user_action_request_ref: StateRecordRef | null
   user_action_resolution_ref: StateRecordRef | null
+
+ShapingDecisionRecoveryRequirement:
+  shaping_gap_id: string
+  user_action_request_ref: StateRecordRef
+  user_action_resolution_ref: StateRecordRef | null
+  disposition: string
+  reason: string
 ```
 
 `ShapingCheckpoint` is the first-class durable record returned by
@@ -544,8 +553,13 @@ blocking reasons use the closed sets in [API Value Sets](schema-value-sets.md).
 
 Checkpoint readiness is structural and is independent from decision
 application. `application_owner` is non-null exactly for a user-owned gap.
-`unresolved_application_owners` is the unique stable set of owners for resolved
+`unresolved_application_owners` is the unique stable set of owners for accepted
 decisions not yet applied. It can be non-empty while `readiness=ready`.
+`decision_recovery_requirements` identifies each exact rejected, deferred, or
+expired request, available immutable resolution, authority disposition, and
+typed reason. Its presence selects `decision_recovery_required` with
+`next_actor=agent` and `required_action=volicord.record_shaping` even when
+structural readiness is `ready`.
 `ready_to_apply_decisions` is selected only when that set includes
 `volicord.update_scope`. Work advance-owned decisions proceed toward a Change
 Unit or `ready_for_implementation`. Advisor finalization-owned decisions

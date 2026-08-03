@@ -39,12 +39,12 @@ Core requires `mode=work`, `work_phase=shaping`, a current `ready` checkpoint,
 matching Task/checkpoint scope revision, compatible Task/checkpoint/Change Unit
 baseline coordinates, the exact current active Change Unit, and no current
 recovery constraint. Every scope-owned gap must already be `applied`. Every
-product-, technical-, or sensitive-owned gap must be `resolved`, linked to its
+product-, technical-, or sensitive-owned gap must be `accepted`, linked to its
 exact accepted current User Channel resolution, and supplied exactly once.
 Core verifies each request, resolution, Task, checkpoint, scope revision,
 baseline, and Change Unit basis. The Store marks only those advance-owned gaps
 `applied` in the same transaction that enters implementation. A stale or superseded
-checkpoint, `current` gap, unapplied scope gap, resolved-but-unsupplied
+checkpoint, `current` gap, unapplied scope gap, accepted-but-unsupplied
 advance-owned gap, stale resolution, stale scope
 revision, wrong Change Unit, missing resolution, extra resolution, or
 incompatible baseline is rejected without an effect.
@@ -118,6 +118,12 @@ Every branch uses the common typed workflow-rejection details and remains
 UserAction request refs, and effective UserAction statuses. A detached live
 decision produces `inconsistent_authority_state`; workflow cannot report
 `ready_for_implementation` while Task-wide advance authority is unsatisfied.
+
+Rejected, deferred, and expired shaping decisions are never application
+inputs. They select `decision_recovery_required`, name
+`volicord.record_shaping` as the recovery owner, and prevent phase transition,
+Run creation, and Product Repository effects. Only accepted current compatible
+resolutions may be applied, exactly once.
 
 MCP presentation for a successful transition requires three structured facts:
 the Task entered `implementation`, the transition created no write ticket, and

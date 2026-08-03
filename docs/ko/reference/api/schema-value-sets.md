@@ -306,7 +306,7 @@ superseded
 `blocked`는 현재 checkpoint가 구조적으로 완전하지 않거나 `current` gap이 있다는
 뜻입니다. `ready`는 baseline과 implementation boundary가 있고 비사용자 shaping gap이
 닫혔으며 어떤 gap도 `current`가 아니라는 뜻입니다. 해결된 사용자 소유 gap은 아직
-application owner의 적용을 기다릴 수 있습니다. `superseded`는 명시적 checkpoint
+application owner의 적용을 기다리거나 recovery가 필요할 수 있습니다. `superseded`는 명시적 checkpoint
 operation으로 교체되어 현재가 아닌 predecessor입니다. Readiness 자체는 결정을 적용하거나,
 Task를 advance하거나, 자문을 finalization하거나, 닫기 근거를 만들지 않습니다.
 
@@ -334,14 +334,21 @@ sensitive_approval_required
 
 ```text
 current
-resolved
+accepted
+rejected
+deferred
 applied
 ```
 
-`current`는 결정이나 shaping 작업이 해결되지 않았다는 뜻입니다. `resolved`는 정확한 User
-Channel 권한이 있지만 의미 application owner가 아직 적용하지 않았다는 뜻입니다.
-`applied`는 owner가 정확한 resolution을 소비해 현재 상태에 결속했다는 뜻입니다.
-Resolution만으로 `applied`가 되지 않습니다.
+`current`는 결정이나 shaping 작업에 답변이 없다는 뜻입니다. `accepted`는 현재 호환되는
+정확한 accepted User Channel resolution이 application owner의 적용을 기다린다는 뜻입니다.
+`rejected`와 `deferred`는 권한을 부여하지 않는 종료 disposition입니다. `applied`는 owner가
+정확한 accepted resolution을 소비해 현재 상태에 결속했다는 뜻입니다. `accepted`만
+`applied`로 전이할 수 있습니다.
+
+`ShapingDecisionAuthorityState`는 정확히 `awaiting_user`, `accepted_unapplied`, `applied`,
+`rejected`, `deferred`, `expired`, `stale`, `superseded`, `inconsistent`를 사용합니다.
+Recovery requirement는 정확한 reason 값 `rejected`, `deferred`, `expired`를 사용합니다.
 
 사용자 소유 gap은 다음 모드 인식 폐쇄형 application-owner mapping을 사용합니다.
 
@@ -364,6 +371,7 @@ advisor + sensitive_approval_required -> volicord.record_shaping
 no_active_task
 shaping_required
 awaiting_user_action
+decision_recovery_required
 ready_to_apply_decisions
 ready_for_change_unit
 ready_to_finalize_advice
@@ -379,7 +387,8 @@ null이 아닌 `WorkflowProjection.blocking_reason`은 정확히 아래 값을 �
 no_current_checkpoint
 shaping_gaps_current
 user_action_pending
-resolved_decisions_not_applied
+accepted_decisions_not_applied
+decision_recovery_required
 change_unit_required
 advisor_finalization_required
 explicit_advance_required

@@ -118,7 +118,8 @@ A request created by `volicord.record_shaping` uses the exact per-gap policy:
 product and technical use `[advance_task]`; scope uses `[scope_update]`; and
 sensitive approval uses `[advance_task, prepare_write, record_run,
 close_complete]`. Its immutable resolution changes the linked gap to
-`resolved`; the semantic owner method alone changes it to `applied`.
+the exact `accepted`, `rejected`, or `deferred` disposition. The semantic owner
+method may change only `accepted` to `applied`.
 
 The effective statuses are `pending`, `resolved`, `stale`, `superseded`, and
 `expired`. One Core evaluator derives status from current basis compatibility,
@@ -127,6 +128,9 @@ superseded basis takes precedence over a stored resolution; a current request
 with a resolution is `resolved`; only an otherwise-pending current request can
 be `expired`. Expiry uses `created_at <= now < expires_at`, so
 `now >= expires_at` cannot resolve. Reads do not mutate state to report expiry.
+For a shaping-linked request, this effective lifecycle status is an input to
+the separate `ShapingDecisionAuthorityState`; `resolved` therefore records a
+terminal answer but does not by itself grant shaping authority.
 
 Choice requests preserve the explicit nullable caller `expires_at`; `null`
 means no time deadline while basis invalidation still applies.

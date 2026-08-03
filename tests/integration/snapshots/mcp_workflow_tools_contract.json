@@ -171,6 +171,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -210,7 +213,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c52833e96cd9d5cae3b64379a3302a78038acbfd92665fe638ab09524307c88c"
+        "sha256": "sha256:1a9aa602fb2552a286ba3ba95752a38997fbac2b4251c0f8cae21aa860054767"
       }
     },
     {
@@ -343,6 +346,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -384,7 +390,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c98ebbc4765cce143b3a098555af858360bee42afdc0e36c2cecacf31c076f09"
+        "sha256": "sha256:ab50c8599927ea984982d373f0254929953bb2d4c1b77c73198b2f7fc9a06fb8"
       }
     },
     {
@@ -439,7 +445,7 @@
           "operation",
           "task_id"
         ],
-        "sha256": "sha256:e3e69b910aad1be866f1b7173ebe6db74c03974731a3644c44059a610d942945"
+        "sha256": "sha256:8258cfc9b5d1a7515bee65f97b6af5bd846b214bb08c625a4031b7e034dc8e91"
       },
       "name": "volicord.record_shaping",
       "output_schema": {
@@ -538,6 +544,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "SourceLineRange",
@@ -581,7 +590,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d5da04af7d08030ef9f25b8331690a9a1220fbeedf32f7bb27467731b778fd6a"
+        "sha256": "sha256:33fd497d8673f54a985d2d5d553e48db657c4bbd7422aff42efade1a439fe452"
       }
     },
     {
@@ -706,6 +715,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -745,7 +757,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5548283c2dc5828ec02c2b748d256b1dcd19fa1d337e695f7023dfaac0a9313f"
+        "sha256": "sha256:12d4c60ae88db15ba30532a34f04562a94216728759153d330770e7feb57ce12"
       }
     },
     {
@@ -844,6 +856,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -885,7 +900,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:daa3e709342b1a8dce460493079d238ac63d3c837f47b29a6ac0ff5494925dc5"
+        "sha256": "sha256:7a3c5664be9bcbc1c612b2e965feefff4e99f4afe5682278f1d90e15baad5126"
       }
     },
     {
@@ -940,6 +955,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -960,7 +978,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b0bde348049ecf3b82660928674c7eb9f9dfc0e57f4e188504c4fd74b788d2a9"
+        "sha256": "sha256:63d024a6403784998e2cd9294b4433847570c3afcdcd2460edb32d4effe5f97e"
       }
     },
     {
@@ -1062,6 +1080,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1086,7 +1107,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:976141e2990502f6d355d25da07e0cc61c11c0bb6ba793bb6737910c627cfd22"
+        "sha256": "sha256:4f3e5804437a8e9e7e2646c82aa83ce1c7fa2a25df7df0f112201c011e12f7ea"
       }
     },
     {
@@ -1216,6 +1237,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1265,7 +1289,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:43716dc9663e444046932a88963a4e0b860a8dc175ac1f73625061b7f7843ddf"
+        "sha256": "sha256:7d60a007645e0a9df6fa9a6d36e46b982debd1e67a6cde3c5cf7a66235b151b0"
       }
     },
     {
@@ -1364,6 +1388,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StageArtifactResult",
@@ -1392,7 +1419,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ece20079ed61a2292f3bb012743b45172764e8b90f58aee1201b0142d2239892"
+        "sha256": "sha256:d5f5ca1d00e0f1750603cb4d568f699c14283395313f545dffa6f8d89ffbd335"
       }
     },
     {
@@ -1574,6 +1601,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "SourceLineRange",
@@ -1616,7 +1646,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:845780828239ff32a2852dfbdd02619a25a8c269f2c497a63ec1db9b703d5d94"
+        "sha256": "sha256:ee83725c441bbf7555b84efdc104059514f760e233a21828d091e22c5f67ed85"
       }
     },
     {
@@ -1755,6 +1785,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1796,7 +1829,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:803519928171b097ba964b76ef371722c10f54a28f1a2731015929967123f871"
+        "sha256": "sha256:6e3074542c35fbf5f3f9dbb7cda9f595fa1c71d802996962e5ff01e9c38a4579"
       }
     },
     {
@@ -1916,6 +1949,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1961,7 +1997,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a11795ceef4bf09b184a3fe3f1136755c6ad3d9626aa7e64f56b1e4aacf17dee"
+        "sha256": "sha256:0f557fc12237aab42db88c98b151132e3bae6fcd7ad09307e84487f700f2832b"
       }
     },
     {
@@ -2054,6 +2090,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -2092,7 +2131,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c5d5f8323f05c67684c701b6465d7ffe616d3eac4c06b07df3b9976cbd2fe6b4"
+        "sha256": "sha256:b9eb68a4d351abfd181635db9419aa7211fb00ee4991393de36ea9196dc3ee2b"
       }
     },
     {
@@ -2222,6 +2261,9 @@
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -2262,7 +2304,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8909ef3dc4b3e3856cff82cf37ca62d0e2adc1f598e8783928c1a22a5f4373e2"
+        "sha256": "sha256:760ad6db22678862b4c897e9d1bf6676a43d3858dc75d348f85cdf39994ded30"
       }
     },
     {

@@ -51,6 +51,11 @@ Guard의 prompt 관련 관찰은 사용자 답이 되지 않습니다. 저장 re
 요청, 선택한 저장 option 또는 evidence 후보, CLI provenance, submission identity,
 현재 근거가 모두 유효할 때만 권한 효력이 있습니다.
 
+Shaping에 연결된 판단에서는 종료 상태 자체가 권한이 아닙니다. 수락되었고 현재이며
+호환되는 resolution만 정확한 owner가 적용할 수 있습니다. 거부, 보류, 만료 결정은
+scope, phase, sensitive, write, close, acceptance, Product Repository 권한을 부여하지 않으며
+정확한 agent 소유 shaping recovery가 필요합니다.
+
 ## 로컬 연결 가정
 
 관리 Codex 프로세스와 `volicord`는 로컬 사용자의 운영체제 계정으로 실행됩니다.

@@ -422,6 +422,41 @@ fn workflow_presentation(
         );
     }
 
+    if let Some(checkpoint) = workflow_checkpoint(&authority.workflow) {
+        for gap in &checkpoint.gaps {
+            let (Some(disposition), Some(request_ref)) = (
+                gap.decision_authority_state.as_ref().copied(),
+                gap.user_action_request_ref.as_ref().cloned(),
+            ) else {
+                continue;
+            };
+            let authority_granted = matches!(
+                disposition,
+                volicord_types::values::ShapingDecisionAuthorityState::AcceptedUnapplied
+                    | volicord_types::values::ShapingDecisionAuthorityState::Applied
+            );
+            must_surface.push(McpMustSurfaceFact::ShapingDecisionOutcome {
+                request_ref: request_ref.clone(),
+                resolution_ref: gap.user_action_resolution_ref.clone(),
+                disposition,
+                authority_granted,
+            });
+            if disposition.recovery_reason().is_some() {
+                must_surface.push(McpMustSurfaceFact::NonAuthorizingShapingDecision {
+                    request_ref,
+                    resolution_ref: gap.user_action_resolution_ref.clone(),
+                    disposition,
+                    recovery_owner: MethodName::RecordShaping,
+                    authority_granted: volicord_types::schema::FalseValue,
+                    terminal_request_cannot_be_retried: volicord_types::schema::TrueValue,
+                    successor_request_required_if_still_needed: volicord_types::schema::TrueValue,
+                    chat_text_cannot_replace_successor: volicord_types::schema::TrueValue,
+                    product_repository_mutation_available: volicord_types::schema::FalseValue,
+                });
+            }
+        }
+    }
+
     let required_user_action = if authority.workflow.next_actor()
         == volicord_types::values::AuthorityNextActor::User
     {
@@ -697,11 +732,15 @@ pub(crate) fn compact_mutation_method_result(
             let unresolved_application_owners = workflow_checkpoint(&result.workflow)
                 .map(|checkpoint| checkpoint.unresolved_application_owners.clone())
                 .unwrap_or_default();
+            let decision_recovery_requirements = workflow_checkpoint(&result.workflow)
+                .map(|checkpoint| checkpoint.decision_recovery_requirements.clone())
+                .unwrap_or_default();
             serde_json::to_value(McpRecordShapingCompactResult {
                 effect: compact_mutation_effect(&result),
                 shaping_checkpoint_id: result.shaping_checkpoint.shaping_checkpoint_id,
                 readiness: result.shaping_checkpoint.readiness,
                 unresolved_application_owners,
+                decision_recovery_requirements,
                 created_user_action_request_refs: result.created_user_action_request_refs,
                 workflow_kind: workflow_state_kind(&result.workflow),
                 close_state: result.state.close_state,
@@ -739,6 +778,7 @@ fn workflow_checkpoint(
         WorkflowProjection::NoActiveTask { checkpoint, .. }
         | WorkflowProjection::ShapingRequired { checkpoint, .. }
         | WorkflowProjection::AwaitingUserAction { checkpoint, .. }
+        | WorkflowProjection::DecisionRecoveryRequired { checkpoint, .. }
         | WorkflowProjection::ReadyToApplyDecisions { checkpoint, .. }
         | WorkflowProjection::ReadyForChangeUnit { checkpoint, .. }
         | WorkflowProjection::ReadyToFinalizeAdvice { checkpoint, .. }
@@ -759,6 +799,9 @@ fn workflow_state_kind(
         WorkflowProjection::NoActiveTask { .. } => WorkflowStateKind::NoActiveTask,
         WorkflowProjection::ShapingRequired { .. } => WorkflowStateKind::ShapingRequired,
         WorkflowProjection::AwaitingUserAction { .. } => WorkflowStateKind::AwaitingUserAction,
+        WorkflowProjection::DecisionRecoveryRequired { .. } => {
+            WorkflowStateKind::DecisionRecoveryRequired
+        }
         WorkflowProjection::ReadyToApplyDecisions { .. } => {
             WorkflowStateKind::ReadyToApplyDecisions
         }

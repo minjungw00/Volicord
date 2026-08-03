@@ -1419,6 +1419,135 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
 }
 
 #[test]
+fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-rejected-shaping-decision-presentation")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let shaped = setup_adapter.call_tool(
+        AgentToolId::RECORD_SHAPING.wire_name(),
+        json!({
+            "task_id": task_id,
+            "operation": {
+                "operation": "record_checkpoint",
+                "checkpoint_operation": {"operation": "create_initial"},
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "summary": "One current scope decision controls the implementation boundary.",
+                "implementation_boundary": "Proceed only with accepted current scope authority.",
+                "gaps": [{
+                    "gap_kind": "user_scope_decision_required",
+                    "summary": "Confirm the bounded scope authority.",
+                    "affected_refs": [],
+                    "user_action": {
+                        "action": {
+                            "action_type": "choice",
+                            "judgment_kind": "scope_decision",
+                            "presentation": "short",
+                            "question": "Accept the bounded scope authority?",
+                            "options": null,
+                            "context": {
+                                "summary": "The implementation boundary needs an explicit scope decision.",
+                                "related_refs": [],
+                                "artifact_refs": [],
+                                "visible_risks": [],
+                                "constraints": []
+                            },
+                            "affected_refs": [{
+                                "record_kind": "task",
+                                "record_id": task_id,
+                                "project_id": fixture.project_id(),
+                                "task_id": task_id,
+                                "produced_at_state_version": state_version
+                            }],
+                            "sensitive_action_scope": null
+                        },
+                        "expires_at": null
+                    }
+                }],
+                "source_refs": [],
+                "evidence_refs": []
+            }
+        }),
+    )?;
+    let user_action_request_id = shaped.response_value["created_user_action_request_refs"][0]
+        ["record_id"]
+        .as_str()
+        .ok_or("shaping request id")?;
+    let context = fixture.mutation_context()?;
+    let core = CoreService::for_mutation(&context);
+    let resolved = core.resolve_user_action(
+        &context,
+        fixture.resolve_user_action_request(ResolveUserActionFixture {
+            request_id: "req_mcp_rejected_shaping_decision",
+            task_id: &task_id,
+            user_action_request_id,
+            channel_submission_id: "submission_mcp_rejected_shaping_decision",
+            resolution: volicord_types::schema::UserActionResolutionInput::Choice {
+                selected_option_id: volicord_types::ids::UserActionOptionId::new("reject"),
+                note: None.into(),
+            },
+        }),
+        InvocationContext::local_user(
+            ProjectId::new(fixture.project_id()),
+            OperationCategory::UserOnly,
+            volicord_types::values::UserActionChannelKind::Cli,
+        ),
+    )?;
+    assert_eq!(
+        resolved.response_value["state"]["workflow"]["kind"],
+        "decision_recovery_required"
+    );
+
+    let before_rejected_application = fixture.counts()?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(3, json!({})),
+        initialized_notification(),
+        tools_call(
+            4,
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+            json!({
+                "task_id": task_id,
+                "baseline_ref": "baseline_rejected_shaping_decision",
+                "change_unit": {
+                    "operation": "create_current",
+                    "scope_summary": "This update must not consume rejected authority.",
+                    "affected_paths": ["src/current.rs"]
+                }
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+    let responses = stdio_responses(&output)?;
+    let structured = &responses[1]["result"]["structuredContent"];
+    assert_eq!(
+        structured["method_result"]["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(structured["workflow"]["kind"], "decision_recovery_required");
+    assert_eq!(structured["presentation"]["next_actor"], "agent");
+    let facts = structured["presentation"]["must_surface"]
+        .as_array()
+        .ok_or("decision recovery presentation facts")?;
+    assert!(facts.iter().any(|fact| {
+        fact["fact_kind"] == "shaping_decision_outcome"
+            && fact["disposition"] == "rejected"
+            && fact["authority_granted"] == false
+    }));
+    assert!(facts.iter().any(|fact| {
+        fact["fact_kind"] == "non_authorizing_shaping_decision"
+            && fact["recovery_owner"] == "volicord.record_shaping"
+            && fact["terminal_request_cannot_be_retried"] == true
+            && fact["successor_request_required_if_still_needed"] == true
+            && fact["chat_text_cannot_replace_successor"] == true
+            && fact["product_repository_mutation_available"] == false
+    }));
+    assert_eq!(fixture.counts()?, before_rejected_application);
+    Ok(())
+}
+
+#[test]
 fn product_and_technical_only_shaping_outputs_do_not_fabricate_scope_gaps(
 ) -> Result<(), Box<dyn Error>> {
     for (label, gap_kind, judgment_kind) in [

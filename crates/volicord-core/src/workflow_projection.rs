@@ -6,11 +6,13 @@ use volicord_store::core_pipeline::{
 use volicord_types::ids::{ProjectId, TaskId};
 use volicord_types::schema::{
     PersistedUserActionRequestMetadata, RequiredNullable, ShapingCheckpointGap,
-    ShapingCheckpointSummary, StateRecordRef, WorkflowProjection, WorkflowRejectionUserAction,
+    ShapingCheckpointSummary, ShapingDecisionRecoveryRequirement, StateRecordRef,
+    UserActionResolutionBody, WorkflowProjection, WorkflowRejectionUserAction,
 };
 use volicord_types::values::{
-    AuthorityNextActor, MethodName, ShapingCheckpointReadiness, ShapingDecisionApplicationOwner,
-    ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionBasisStatus,
+    evaluate_shaping_decision_authority, ActorSource, AuthorityNextActor, MethodName,
+    ShapingCheckpointReadiness, ShapingDecisionApplicationOwner, ShapingDecisionAuthorityFacts,
+    ShapingDecisionAuthorityState, ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode,
     UserActionRequiredFor, UserActionStatus, UtcTimestamp, WorkPhase, WorkflowBlockingReason,
 };
 
@@ -22,22 +24,25 @@ pub(crate) struct WorkflowUserActionFact {
     pub(crate) request_ref: StateRecordRef,
     pub(crate) resolution_ref: Option<StateRecordRef>,
     pub(crate) status: UserActionStatus,
+    pub(crate) authority_state: ShapingDecisionAuthorityState,
     pub(crate) required_owner_method: MethodName,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct TaskWideShapingAuthority {
-    pub(crate) pending: Vec<WorkflowUserActionFact>,
-    pub(crate) resolved_unapplied: Vec<WorkflowUserActionFact>,
+    pub(crate) awaiting_user: Vec<WorkflowUserActionFact>,
+    pub(crate) accepted_unapplied: Vec<WorkflowUserActionFact>,
+    pub(crate) recovery_required: Vec<WorkflowUserActionFact>,
     pub(crate) inconsistent: Vec<WorkflowUserActionFact>,
     pub(crate) applied_resolution_ids: BTreeSet<String>,
 }
 
 impl TaskWideShapingAuthority {
     fn blocking_facts(&self) -> impl Iterator<Item = &WorkflowUserActionFact> {
-        self.pending
+        self.awaiting_user
             .iter()
-            .chain(self.resolved_unapplied.iter())
+            .chain(self.accepted_unapplied.iter())
+            .chain(self.recovery_required.iter())
             .chain(self.inconsistent.iter())
     }
 
@@ -50,13 +55,16 @@ impl TaskWideShapingAuthority {
     }
 
     pub(crate) fn has_blockers(&self) -> bool {
-        !self.pending.is_empty()
-            || !self.resolved_unapplied.is_empty()
+        !self.awaiting_user.is_empty()
+            || !self.accepted_unapplied.is_empty()
+            || !self.recovery_required.is_empty()
             || !self.inconsistent.is_empty()
     }
 
     pub(crate) fn blocks_advance_application(&self) -> bool {
-        !self.pending.is_empty() || !self.inconsistent.is_empty()
+        !self.awaiting_user.is_empty()
+            || !self.recovery_required.is_empty()
+            || !self.inconsistent.is_empty()
     }
 
     pub(crate) fn blocking_user_actions(&self) -> Vec<WorkflowRejectionUserAction> {
@@ -88,18 +96,26 @@ pub(crate) fn task_wide_shaping_authority(
     let mut assessment = TaskWideShapingAuthority::default();
     for record in records {
         let request = record.request();
-        let participates_in_progression = if task.mode == TaskMode::Advisor {
-            request
-                .required_for()
-                .contains(&UserActionRequiredFor::FinalizeAdvice)
-                || request
+        let represented_gap = checkpoint.and_then(|checkpoint| {
+            checkpoint.gaps.iter().find(|gap| {
+                gap.user_action.as_ref().is_some_and(|link| {
+                    link.user_action_request_id == request.user_action_request_id()
+                })
+            })
+        });
+        let participates_in_progression = represented_gap.is_some()
+            || if task.mode == TaskMode::Advisor {
+                request
                     .required_for()
-                    .contains(&UserActionRequiredFor::ScopeUpdate)
-        } else {
-            request
-                .required_for()
-                .contains(&UserActionRequiredFor::AdvanceTask)
-        };
+                    .contains(&UserActionRequiredFor::FinalizeAdvice)
+                    || request
+                        .required_for()
+                        .contains(&UserActionRequiredFor::ScopeUpdate)
+            } else {
+                request
+                    .required_for()
+                    .contains(&UserActionRequiredFor::AdvanceTask)
+            };
         if !participates_in_progression {
             continue;
         }
@@ -119,13 +135,6 @@ pub(crate) fn task_wide_shaping_authority(
                 Some(state_version),
             )
         });
-        let represented_gap = checkpoint.and_then(|checkpoint| {
-            checkpoint.gaps.iter().find(|gap| {
-                gap.user_action.as_ref().is_some_and(|link| {
-                    link.user_action_request_id == request.user_action_request_id()
-                })
-            })
-        });
         let origin_matches = match (request.metadata(), checkpoint, represented_gap) {
             (
                 PersistedUserActionRequestMetadata::Shaping(metadata),
@@ -139,79 +148,118 @@ pub(crate) fn task_wide_shaping_authority(
         };
         let basis = request.basis();
         let coordinates = basis.coordinates();
-        let current_basis_matches = request.basis_status() == UserActionBasisStatus::Current
-            && basis.compatibility_status() == UserActionBasisStatus::Current
-            && coordinates.task_id == task_id
-            && coordinates.scope_revision == task.scope_revision
-            && coordinates.change_unit_id.as_ref().map(|id| id.as_str())
-                == current_change_unit.map(|change_unit| change_unit.change_unit_id.as_str())
-            && coordinates
-                .baseline_ref
-                .as_ref()
-                .map(|baseline| baseline.as_str())
-                == task
-                    .shaping
+        let policy =
+            represented_gap.and_then(|gap| gap.gap_kind.decision_policy_for_mode(task.mode));
+        let (machine_action, resolution_outcome) = match record
+            .resolution()
+            .map(|resolution| resolution.resolution())
+        {
+            Some(UserActionResolutionBody::Choice {
+                machine_action,
+                resolution_outcome,
+                ..
+            }) => (Some(*machine_action), Some(*resolution_outcome)),
+            _ => (None, None),
+        };
+        let resolution_identity_matches = represented_gap.is_some_and(|gap| {
+            gap.user_action.as_ref().is_some_and(|link| {
+                link.user_action_resolution_id.as_deref()
+                    == record
+                        .resolution()
+                        .map(|resolution| resolution.user_action_resolution_id())
+            })
+        });
+        let verified_user_channel = record.resolution().is_some_and(|resolution| {
+            resolution.resolved_by_actor_source() == &ActorSource::LocalUser
+                && resolution.resolved_verification_basis()
+                    == resolution.channel_kind().verification_basis()
+                && !resolution.resolved_assurance_level().trim().is_empty()
+        });
+        let mut authority_state =
+            evaluate_shaping_decision_authority(ShapingDecisionAuthorityFacts {
+                effective_user_action_status: record.status(),
+                resolution_present: record.resolution().is_some(),
+                machine_action,
+                resolution_outcome,
+                request_basis_status: request.basis_status(),
+                basis_compatibility_status: basis.compatibility_status(),
+                checkpoint_identity_matches: origin_matches,
+                gap_identity_matches: represented_gap.is_some(),
+                resolution_identity_matches: !record.resolution().is_some()
+                    || resolution_identity_matches,
+                policy_matches: policy.is_some_and(|policy| {
+                    policy.user_action_kind == request.action_kind()
+                        && policy.required_for == request.required_for()
+                }),
+                verified_user_channel: !record.resolution().is_some() || verified_user_channel,
+                task_mode_matches: policy.is_some(),
+                scope_revision_matches: coordinates.task_id == task_id
+                    && coordinates.scope_revision == task.scope_revision,
+                baseline_matches: coordinates
                     .baseline_ref
                     .as_ref()
-                    .map(|baseline| baseline.as_str());
-        let applied = represented_gap.is_some_and(|gap| {
-            gap.status == ShapingGapStatus::Applied
-                && gap.user_action.as_ref().is_some_and(|link| {
-                    link.user_action_resolution_id.as_deref()
-                        == record
-                            .resolution()
-                            .map(|resolution| resolution.user_action_resolution_id())
-                })
-        });
+                    .map(|baseline| baseline.as_str())
+                    == task
+                        .shaping
+                        .baseline_ref
+                        .as_ref()
+                        .map(|baseline| baseline.as_str()),
+                change_unit_matches: coordinates.change_unit_id.as_ref().map(|id| id.as_str())
+                    == current_change_unit.map(|change_unit| change_unit.change_unit_id.as_str()),
+                gap_status: represented_gap.map_or(ShapingGapStatus::Current, |gap| gap.status),
+            });
+        if represented_gap.is_none()
+            && record.status() == UserActionStatus::Pending
+            && request.basis_status() == volicord_types::values::UserActionBasisStatus::Current
+            && basis.compatibility_status()
+                == volicord_types::values::UserActionBasisStatus::Current
+            && coordinates.task_id == task_id
+            && coordinates.scope_revision == task.scope_revision
+        {
+            authority_state = ShapingDecisionAuthorityState::AwaitingUser;
+        }
         let fact = WorkflowUserActionFact {
             request_ref,
             resolution_ref,
             status: record.status(),
-            required_owner_method: match record.status() {
-                UserActionStatus::Pending | UserActionStatus::Expired => {
-                    MethodName::ResolveUserAction
-                }
-                UserActionStatus::Resolved if origin_matches => represented_gap
-                    .and_then(|gap| gap.gap_kind.decision_policy_for_mode(task.mode))
+            authority_state,
+            required_owner_method: match authority_state {
+                ShapingDecisionAuthorityState::AwaitingUser => MethodName::ResolveUserAction,
+                ShapingDecisionAuthorityState::AcceptedUnapplied => policy
                     .map_or(MethodName::Status, |policy| {
                         policy.application_owner.method()
                     }),
-                UserActionStatus::Resolved => MethodName::Status,
-                UserActionStatus::Stale | UserActionStatus::Superseded => MethodName::Status,
+                ShapingDecisionAuthorityState::Rejected
+                | ShapingDecisionAuthorityState::Deferred
+                | ShapingDecisionAuthorityState::Expired => MethodName::RecordShaping,
+                ShapingDecisionAuthorityState::Applied
+                | ShapingDecisionAuthorityState::Stale
+                | ShapingDecisionAuthorityState::Superseded
+                | ShapingDecisionAuthorityState::Inconsistent => MethodName::Status,
             },
         };
-        match record.status() {
-            UserActionStatus::Pending | UserActionStatus::Expired => {
-                assessment.pending.push(fact.clone());
-                if !origin_matches || !current_basis_matches {
+        match authority_state {
+            ShapingDecisionAuthorityState::AwaitingUser => {
+                assessment.awaiting_user.push(fact.clone());
+                if represented_gap.is_none() {
                     assessment.inconsistent.push(fact);
                 }
             }
-            UserActionStatus::Resolved => {
-                if applied && origin_matches && current_basis_matches {
-                    if let Some(resolution) = record.resolution() {
-                        assessment
-                            .applied_resolution_ids
-                            .insert(resolution.user_action_resolution_id().to_owned());
-                    }
-                } else {
-                    assessment.resolved_unapplied.push(fact.clone());
-                    if !origin_matches || !current_basis_matches {
-                        assessment.inconsistent.push(fact);
-                    }
+            ShapingDecisionAuthorityState::AcceptedUnapplied => {
+                assessment.accepted_unapplied.push(fact)
+            }
+            ShapingDecisionAuthorityState::Rejected
+            | ShapingDecisionAuthorityState::Deferred
+            | ShapingDecisionAuthorityState::Expired => assessment.recovery_required.push(fact),
+            ShapingDecisionAuthorityState::Applied => {
+                if let Some(resolution) = record.resolution() {
+                    assessment
+                        .applied_resolution_ids
+                        .insert(resolution.user_action_resolution_id().to_owned());
                 }
             }
-            UserActionStatus::Stale | UserActionStatus::Superseded => {
-                if applied && origin_matches {
-                    if let Some(resolution) = record.resolution() {
-                        assessment
-                            .applied_resolution_ids
-                            .insert(resolution.user_action_resolution_id().to_owned());
-                    }
-                } else if represented_gap.is_some() {
-                    assessment.inconsistent.push(fact);
-                }
-            }
+            ShapingDecisionAuthorityState::Stale | ShapingDecisionAuthorityState::Superseded => {}
+            ShapingDecisionAuthorityState::Inconsistent => assessment.inconsistent.push(fact),
         }
     }
     Ok(assessment)
@@ -223,58 +271,95 @@ fn checkpoint_summary(
     state_version: u64,
     checkpoint: &ShapingCheckpointRecord,
     task_mode: TaskMode,
+    task_wide_authority: &TaskWideShapingAuthority,
 ) -> ShapingCheckpointSummary {
     let gaps = checkpoint
         .gaps
         .iter()
-        .map(|gap| ShapingCheckpointGap {
-            shaping_gap_id: volicord_types::ids::ShapingGapId::new(gap.shaping_gap_id.clone()),
-            gap_kind: gap.gap_kind,
-            application_owner: RequiredNullable::new(
-                gap.gap_kind
-                    .decision_policy_for_mode(task_mode)
-                    .map(|policy| policy.application_owner),
-            ),
-            summary: gap.summary.clone(),
-            affected_refs: gap.affected_refs.clone(),
-            status: gap.status,
-            user_action_request_ref: RequiredNullable::new(gap.user_action.as_ref().map(|link| {
-                state_ref(
-                    StateRecordKind::UserActionRequest,
-                    &link.user_action_request_id,
-                    project_id,
-                    Some(task_id),
-                    Some(state_version),
-                )
-            })),
-            user_action_resolution_ref: RequiredNullable::new(gap.user_action.as_ref().and_then(
-                |link| {
-                    link.user_action_resolution_id
-                        .as_ref()
-                        .map(|resolution_id| {
-                            state_ref(
-                                StateRecordKind::UserActionResolution,
-                                resolution_id,
-                                project_id,
-                                Some(task_id),
-                                Some(state_version),
-                            )
-                        })
-                },
-            )),
+        .map(|gap| {
+            let authority_state = gap.user_action.as_ref().and_then(|link| {
+                task_wide_authority
+                    .blocking_facts()
+                    .find(|fact| fact.request_ref.record_id.as_str() == link.user_action_request_id)
+                    .map(|fact| fact.authority_state)
+                    .or_else(|| {
+                        (gap.status == ShapingGapStatus::Applied)
+                            .then_some(ShapingDecisionAuthorityState::Applied)
+                    })
+                    .or_else(|| {
+                        (gap.status == ShapingGapStatus::Current)
+                            .then_some(ShapingDecisionAuthorityState::AwaitingUser)
+                    })
+            });
+            ShapingCheckpointGap {
+                shaping_gap_id: volicord_types::ids::ShapingGapId::new(gap.shaping_gap_id.clone()),
+                gap_kind: gap.gap_kind,
+                application_owner: RequiredNullable::new(
+                    gap.gap_kind
+                        .decision_policy_for_mode(task_mode)
+                        .map(|policy| policy.application_owner),
+                ),
+                summary: gap.summary.clone(),
+                affected_refs: gap.affected_refs.clone(),
+                status: gap.status,
+                decision_authority_state: RequiredNullable::new(authority_state),
+                user_action_request_ref: RequiredNullable::new(gap.user_action.as_ref().map(
+                    |link| {
+                        state_ref(
+                            StateRecordKind::UserActionRequest,
+                            &link.user_action_request_id,
+                            project_id,
+                            Some(task_id),
+                            Some(state_version),
+                        )
+                    },
+                )),
+                user_action_resolution_ref: RequiredNullable::new(
+                    gap.user_action.as_ref().and_then(|link| {
+                        link.user_action_resolution_id
+                            .as_ref()
+                            .map(|resolution_id| {
+                                state_ref(
+                                    StateRecordKind::UserActionResolution,
+                                    resolution_id,
+                                    project_id,
+                                    Some(task_id),
+                                    Some(state_version),
+                                )
+                            })
+                    }),
+                ),
+            }
         })
         .collect::<Vec<_>>();
     let pending_decision_refs = gaps
         .iter()
-        .filter(|gap| gap.status == ShapingGapStatus::Current)
+        .filter(|gap| {
+            gap.decision_authority_state.as_ref()
+                == Some(&ShapingDecisionAuthorityState::AwaitingUser)
+        })
         .filter_map(|gap| gap.user_action_request_ref.as_ref().cloned())
         .collect();
     let unresolved_application_owners = gaps
         .iter()
-        .filter(|gap| gap.status == ShapingGapStatus::Resolved)
+        .filter(|gap| gap.status == ShapingGapStatus::Accepted)
         .filter_map(|gap| gap.application_owner.as_ref().copied())
         .collect::<BTreeSet<ShapingDecisionApplicationOwner>>()
         .into_iter()
+        .collect();
+    let decision_recovery_requirements = gaps
+        .iter()
+        .filter_map(|gap| {
+            let disposition = gap.decision_authority_state.as_ref().copied()?;
+            let reason = disposition.recovery_reason()?;
+            Some(ShapingDecisionRecoveryRequirement {
+                shaping_gap_id: gap.shaping_gap_id.clone(),
+                user_action_request_ref: gap.user_action_request_ref.as_ref()?.clone(),
+                user_action_resolution_ref: gap.user_action_resolution_ref.clone(),
+                disposition,
+                reason,
+            })
+        })
         .collect();
     ShapingCheckpointSummary {
         checkpoint_ref: state_ref(
@@ -305,6 +390,7 @@ fn checkpoint_summary(
         gaps,
         pending_decision_refs,
         unresolved_application_owners,
+        decision_recovery_requirements,
     }
 }
 
@@ -324,8 +410,16 @@ pub(crate) fn workflow_projection(
         Some(&task_id),
         Some(state_version),
     );
-    let summary = checkpoint
-        .map(|value| checkpoint_summary(project_id, &task_id, state_version, value, task.mode));
+    let summary = checkpoint.map(|value| {
+        checkpoint_summary(
+            project_id,
+            &task_id,
+            state_version,
+            value,
+            task.mode,
+            task_wide_authority,
+        )
+    });
     let mut refs = vec![task_ref];
     if let Some(summary) = summary.as_ref() {
         refs.push(summary.checkpoint_ref.clone());
@@ -374,6 +468,19 @@ pub(crate) fn workflow_projection(
             checkpoint: RequiredNullable::new(summary),
         };
     }
+    if !task_wide_authority.recovery_required.is_empty() {
+        return WorkflowProjection::DecisionRecoveryRequired {
+            next_actor: AuthorityNextActor::Agent,
+            required_action: RequiredNullable::some(MethodName::RecordShaping),
+            allowed_actions: vec![MethodName::RecordShaping, MethodName::Status],
+            required_refs: refs,
+            expected_state_version: state_version,
+            blocking_reason: RequiredNullable::some(
+                WorkflowBlockingReason::DecisionRecoveryRequired,
+            ),
+            checkpoint: RequiredNullable::new(summary),
+        };
+    }
     if task.work_phase == WorkPhase::Implementation {
         return WorkflowProjection::Implementation {
             next_actor: AuthorityNextActor::Agent,
@@ -391,7 +498,7 @@ pub(crate) fn workflow_projection(
         };
     }
     let Some(checkpoint) = checkpoint else {
-        if !task_wide_authority.pending.is_empty() {
+        if !task_wide_authority.awaiting_user.is_empty() {
             return WorkflowProjection::AwaitingUserAction {
                 next_actor: AuthorityNextActor::User,
                 required_action: RequiredNullable::some(MethodName::ResolveUserAction),
@@ -427,7 +534,7 @@ pub(crate) fn workflow_projection(
             checkpoint: RequiredNullable::null(),
         };
     };
-    let has_pending_user = !task_wide_authority.pending.is_empty()
+    let has_pending_user = !task_wide_authority.awaiting_user.is_empty()
         || checkpoint
             .gaps
             .iter()
@@ -463,7 +570,7 @@ pub(crate) fn workflow_projection(
         };
     }
     let has_scope_decisions_to_apply = checkpoint.gaps.iter().any(|gap| {
-        gap.status == ShapingGapStatus::Resolved
+        gap.status == ShapingGapStatus::Accepted
             && gap
                 .gap_kind
                 .decision_policy_for_mode(task.mode)
@@ -479,7 +586,7 @@ pub(crate) fn workflow_projection(
             required_refs: refs,
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
-                WorkflowBlockingReason::ResolvedDecisionsNotApplied,
+                WorkflowBlockingReason::AcceptedDecisionsNotApplied,
             ),
             checkpoint: RequiredNullable::new(summary),
         };

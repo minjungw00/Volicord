@@ -1,10 +1,14 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use volicord_types::canonical::canonical_json_string;
 use volicord_types::ids::{BaselineRef, TaskId};
-use volicord_types::schema::{ShapingCheckpointOperation, SourceRef, StateRecordRef};
+use volicord_types::schema::{
+    PersistedUserActionRequestMetadata, ShapingCheckpointOperation, SourceRef, StateRecordRef,
+    UserActionResolutionBody,
+};
 use volicord_types::values::{
-    ShapingCheckpointReadiness, ShapingDecisionApplicationOwner, ShapingGapKind, ShapingGapStatus,
-    TaskMode, UserActionKind, UserActionRequiredFor, UtcTimestamp,
+    JudgmentResolutionOutcome, ShapingCheckpointReadiness, ShapingDecisionApplicationOwner,
+    ShapingGapKind, ShapingGapStatus, TaskMode, UserActionKind, UserActionOptionAction,
+    UserActionRequiredFor, UtcTimestamp,
 };
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
@@ -28,6 +32,7 @@ pub enum ShapingCheckpointMutation {
     ResolveLinkedGap {
         user_action_request_id: String,
         user_action_resolution_id: String,
+        disposition: ShapingGapStatus,
     },
     ApplyScopeAndRebaseCurrent {
         task_id: String,
@@ -75,6 +80,7 @@ pub struct ShapingCheckpointInsert {
     pub source_refs: Vec<SourceRef>,
     pub evidence_refs: Vec<StateRecordRef>,
     pub created_at: UtcTimestamp,
+    pub retired_user_action_request_ids: Vec<String>,
     pub gaps: Vec<ShapingCheckpointGapInsert>,
 }
 
@@ -142,7 +148,12 @@ impl ShapingCheckpointMutation {
             Self::ResolveLinkedGap {
                 user_action_request_id,
                 user_action_resolution_id,
-            } => context.resolve_shaping_gap(user_action_request_id, user_action_resolution_id),
+                disposition,
+            } => context.resolve_shaping_gap(
+                user_action_request_id,
+                user_action_resolution_id,
+                *disposition,
+            ),
             Self::ApplyScopeAndRebaseCurrent {
                 task_id,
                 shaping_checkpoint_id,
@@ -329,6 +340,7 @@ impl MutationContext<'_> {
             }
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id,
+                ..
             } => {
                 let expected = expected_current_checkpoint_id.as_str();
                 if current_ids.len() != 1 || current_ids[0] != expected {
@@ -337,7 +349,7 @@ impl MutationContext<'_> {
                             .to_owned(),
                     });
                 }
-                self.reject_live_checkpoint_user_actions(&input.task_id, expected)?;
+                self.retire_checkpoint_user_actions(input, expected)?;
                 let changed = self.tx.execute(
                     "UPDATE shaping_checkpoints
                         SET readiness = 'superseded', superseded_at = ?4
@@ -364,34 +376,169 @@ impl MutationContext<'_> {
         }
     }
 
-    fn reject_live_checkpoint_user_actions(
+    fn retire_checkpoint_user_actions(
         &self,
-        task_id: &str,
+        input: &ShapingCheckpointInsert,
         checkpoint_id: &str,
     ) -> StoreResult<()> {
-        let live_count: i64 = self.tx.query_row(
-            "SELECT COUNT(*)
+        let ShapingCheckpointOperation::ReplaceCurrent {
+            retired_user_action_request_refs,
+            ..
+        } = &input.checkpoint_operation
+        else {
+            return Err(StoreError::InvalidInput {
+                detail: "shaping retirement requires replace_current".to_owned(),
+            });
+        };
+        let operation_ids = retired_user_action_request_refs
+            .iter()
+            .map(|reference| {
+                if reference.record_kind
+                    != volicord_types::values::StateRecordKind::UserActionRequest
+                    || reference.project_id.as_str() != self.project_id
+                    || reference.task_id.as_ref().map(TaskId::as_str)
+                        != Some(input.task_id.as_str())
+                {
+                    return Err(StoreError::InvalidInput {
+                        detail: "retired request refs must belong to the exact predecessor Task"
+                            .to_owned(),
+                    });
+                }
+                Ok(reference.record_id.as_str().to_owned())
+            })
+            .collect::<StoreResult<std::collections::BTreeSet<_>>>()?;
+        let input_ids = input
+            .retired_user_action_request_ids
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        if operation_ids.len() != retired_user_action_request_refs.len()
+            || input_ids.len() != input.retired_user_action_request_ids.len()
+            || operation_ids != input_ids
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "typed retirement refs and aggregate retirement ids must match exactly"
+                    .to_owned(),
+            });
+        }
+        let rows = {
+            let mut statement = self.tx.prepare(
+                "SELECT l.user_action_request_id, g.status, r.basis_status,
+                        r.expires_at, resolution.resolution_json
                FROM shaping_checkpoint_user_actions AS l
                JOIN shaping_checkpoint_gaps AS g
                  ON g.project_id = l.project_id
                 AND g.shaping_checkpoint_id = l.shaping_checkpoint_id
                 AND g.shaping_gap_id = l.shaping_gap_id
                JOIN user_action_requests AS r
-                 ON r.project_id = l.project_id
+                ON r.project_id = l.project_id
                 AND r.user_action_request_id = l.user_action_request_id
+               LEFT JOIN user_action_resolutions AS resolution
+                 ON resolution.project_id = l.project_id
+                AND resolution.user_action_request_id = l.user_action_request_id
               WHERE l.project_id = ?1
                 AND l.task_id = ?2
                 AND l.shaping_checkpoint_id = ?3
                 AND g.status <> 'applied'
-                AND r.basis_status = 'current'",
-            params![self.project_id, task_id, checkpoint_id],
-            |row| row.get(0),
-        )?;
-        if live_count != 0 {
+                AND r.basis_status = 'current'
+               ORDER BY l.user_action_request_id",
+            )?;
+            let rows = statement
+                .query_map(
+                    params![self.project_id, input.task_id, checkpoint_id],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, Option<String>>(3)?,
+                            row.get::<_, Option<String>>(4)?,
+                        ))
+                    },
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        let mut required_retirements = std::collections::BTreeSet::new();
+        for (request_id, status, basis_status, expires_at, resolution_json) in rows {
+            if basis_status != "current" {
+                return Err(StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail: "shaping retirement selected a non-current request basis".to_owned(),
+                });
+            }
+            let permitted = match status.as_str() {
+                "rejected" => resolution_json.as_deref().is_some_and(|json| {
+                    serde_json::from_str::<UserActionResolutionBody>(json).is_ok_and(|body| {
+                        matches!(
+                            body,
+                            UserActionResolutionBody::Choice {
+                                machine_action: UserActionOptionAction::Reject,
+                                resolution_outcome: JudgmentResolutionOutcome::Rejected,
+                                ..
+                            }
+                        )
+                    })
+                }),
+                "deferred" => resolution_json.as_deref().is_some_and(|json| {
+                    serde_json::from_str::<UserActionResolutionBody>(json).is_ok_and(|body| {
+                        matches!(
+                            body,
+                            UserActionResolutionBody::Choice {
+                                machine_action: UserActionOptionAction::Defer,
+                                resolution_outcome: JudgmentResolutionOutcome::Deferred,
+                                ..
+                            }
+                        )
+                    })
+                }),
+                "current" => {
+                    resolution_json.is_none()
+                        && expires_at.as_deref().is_some_and(|expires_at| {
+                            UtcTimestamp::parse(expires_at)
+                                .is_ok_and(|expires_at| input.created_at >= expires_at)
+                        })
+                }
+                _ => false,
+            };
+            if !permitted {
+                return Err(StoreError::InvalidInput {
+                    detail: "only rejected, deferred, or expired shaping requests may be retired"
+                        .to_owned(),
+                });
+            }
+            required_retirements.insert(request_id);
+        }
+        let supplied = input
+            .retired_user_action_request_ids
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        if supplied.len() != input.retired_user_action_request_ids.len()
+            || supplied != required_retirements
+        {
             return Err(StoreError::InvalidInput {
-                detail: "current shaping checkpoint has live linked UserAction authority"
+                detail: "retired UserAction requests must exactly match the predecessor's recoverable decisions"
                     .to_owned(),
             });
+        }
+        for request_id in supplied {
+            let changed = self.tx.execute(
+                "UPDATE user_action_requests
+                    SET basis_status = 'superseded',
+                        basis_json = json_set(basis_json, '$.coordinates.compatibility_status', 'superseded')
+                  WHERE project_id = ?1
+                    AND user_action_request_id = ?2
+                    AND basis_status = 'current'",
+                params![self.project_id, request_id],
+            )?;
+            if changed != 1 {
+                return Err(StoreError::Conflict {
+                    entity: "user_action_request",
+                    id: request_id,
+                    detail: "exact shaping decision retirement compare-and-swap failed".to_owned(),
+                });
+            }
         }
         Ok(())
     }
@@ -517,9 +664,63 @@ impl MutationContext<'_> {
         &mut self,
         user_action_request_id: &str,
         user_action_resolution_id: &str,
+        disposition: ShapingGapStatus,
     ) -> StoreResult<()> {
         validate_identifier("user_action_request_id", user_action_request_id)?;
         validate_identifier("user_action_resolution_id", user_action_resolution_id)?;
+        if !matches!(
+            disposition,
+            ShapingGapStatus::Accepted | ShapingGapStatus::Rejected | ShapingGapStatus::Deferred
+        ) {
+            return Err(StoreError::InvalidInput {
+                detail: "a shaping resolution requires an exact terminal decision disposition"
+                    .to_owned(),
+            });
+        }
+        let resolution_json: String = self.tx.query_row(
+            "SELECT resolution_json FROM user_action_resolutions
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2
+                AND user_action_resolution_id = ?3",
+            params![
+                self.project_id,
+                user_action_request_id,
+                user_action_resolution_id
+            ],
+            |row| row.get(0),
+        )?;
+        let resolution: UserActionResolutionBody =
+            serde_json::from_str(&resolution_json).map_err(|_| StoreError::InvalidInput {
+                detail: "shaping resolution body is not canonical".to_owned(),
+            })?;
+        let expected_disposition = match resolution {
+            UserActionResolutionBody::Choice {
+                machine_action: UserActionOptionAction::Accept,
+                resolution_outcome: JudgmentResolutionOutcome::Accepted,
+                ..
+            } => ShapingGapStatus::Accepted,
+            UserActionResolutionBody::Choice {
+                machine_action: UserActionOptionAction::Reject,
+                resolution_outcome: JudgmentResolutionOutcome::Rejected,
+                ..
+            } => ShapingGapStatus::Rejected,
+            UserActionResolutionBody::Choice {
+                machine_action: UserActionOptionAction::Defer,
+                resolution_outcome: JudgmentResolutionOutcome::Deferred,
+                ..
+            } => ShapingGapStatus::Deferred,
+            _ => {
+                return Err(StoreError::InvalidInput {
+                    detail: "shaping resolution action and outcome are not compatible".to_owned(),
+                });
+            }
+        };
+        if disposition != expected_disposition {
+            return Err(StoreError::InvalidInput {
+                detail: "shaping disposition does not match the immutable resolution outcome"
+                    .to_owned(),
+            });
+        }
         let link = self
             .tx
             .query_row(
@@ -548,11 +749,11 @@ impl MutationContext<'_> {
         )?;
         self.tx.execute(
             "UPDATE shaping_checkpoint_gaps
-                SET status = 'resolved'
+                SET status = ?4
               WHERE project_id = ?1
                 AND shaping_checkpoint_id = ?2
                 AND shaping_gap_id = ?3",
-            params![self.project_id, checkpoint_id, gap_id],
+            params![self.project_id, checkpoint_id, gap_id, disposition.as_str()],
         )?;
         self.tx.execute(
             "UPDATE shaping_checkpoints
@@ -961,7 +1162,7 @@ impl MutationContext<'_> {
                 &required_for_json,
             )?;
             if policy.application_owner != owner
-                || status != "resolved"
+                || status != "accepted"
                 || resolution_id.as_deref() != Some(application.user_action_resolution_id.as_str())
                 || basis_status != "current"
                 || required_for.as_slice() != policy.required_for
@@ -977,7 +1178,7 @@ impl MutationContext<'_> {
                   WHERE project_id = ?1
                     AND shaping_checkpoint_id = ?2
                     AND shaping_gap_id = ?3
-                    AND status = 'resolved'",
+                    AND status = 'accepted'",
                 params![
                     self.project_id,
                     shaping_checkpoint_id,
@@ -1069,6 +1270,15 @@ fn validate_checkpoint_insert(input: &ShapingCheckpointInsert) -> StoreResult<()
     if input.readiness == ShapingCheckpointReadiness::Superseded {
         return Err(StoreError::InvalidInput {
             detail: "a newly recorded shaping checkpoint cannot be superseded".to_owned(),
+        });
+    }
+    if matches!(
+        input.checkpoint_operation,
+        ShapingCheckpointOperation::CreateInitial
+    ) && !input.retired_user_action_request_ids.is_empty()
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "create_initial cannot retire UserAction requests".to_owned(),
         });
     }
     if input.readiness == ShapingCheckpointReadiness::Ready
@@ -1434,10 +1644,14 @@ fn shaping_gaps(
                     conn,
                     project_id,
                     task_id,
-                    checkpoint_id,
-                    &request_id,
-                    decoded_kind,
-                    task_mode,
+                    ShapingLinkExpectation {
+                        checkpoint_id,
+                        gap_id: &gap_id,
+                        request_id: &request_id,
+                        gap_kind: decoded_kind,
+                        task_mode,
+                        status: decoded_status,
+                    },
                 )?)
             }
             (None, None) if !decoded_kind.is_user_owned() => None,
@@ -1477,27 +1691,38 @@ fn shaping_gaps(
     Ok(gaps)
 }
 
+struct ShapingLinkExpectation<'a> {
+    checkpoint_id: &'a str,
+    gap_id: &'a str,
+    request_id: &'a str,
+    gap_kind: ShapingGapKind,
+    task_mode: TaskMode,
+    status: ShapingGapStatus,
+}
+
 fn shaping_link(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-    checkpoint_id: &str,
-    request_id: &str,
-    expected_gap_kind: ShapingGapKind,
-    task_mode: TaskMode,
+    expected: ShapingLinkExpectation<'_>,
 ) -> StoreResult<ShapingCheckpointUserActionRecord> {
     let raw = conn
         .query_row(
             "SELECT l.task_id, l.action_kind, l.user_action_resolution_id,
-                    l.linked_at, l.resolved_at, r.required_for_json
+                    l.linked_at, l.resolved_at, r.required_for_json,
+                    r.metadata_json, resolution.resolution_json
                FROM shaping_checkpoint_user_actions AS l
                JOIN user_action_requests AS r
                  ON r.project_id = l.project_id
                 AND r.user_action_request_id = l.user_action_request_id
+               LEFT JOIN user_action_resolutions AS resolution
+                 ON resolution.project_id = l.project_id
+                AND resolution.user_action_request_id = l.user_action_request_id
+                AND resolution.user_action_resolution_id = l.user_action_resolution_id
               WHERE l.project_id = ?1
                 AND l.shaping_checkpoint_id = ?2
                 AND l.user_action_request_id = ?3",
-            params![project_id, checkpoint_id, request_id],
+            params![project_id, expected.checkpoint_id, expected.request_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -1506,6 +1731,8 @@ fn shaping_link(
                     row.get::<_, String>(3)?,
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, Option<String>>(7)?,
                 ))
             },
         )
@@ -1517,47 +1744,65 @@ fn shaping_link(
         linked_at,
         resolved_at,
         required_for_json,
+        metadata_json,
+        resolution_json,
     )) = raw
     else {
         return Err(StoreError::corrupt_owner_state_value(
             "shaping_checkpoint_user_actions",
-            request_id.to_owned(),
+            expected.request_id.to_owned(),
             "user_action_request_id",
         ));
     };
     let action_kind: UserActionKind = decode_owner_closed_value(
         "shaping_checkpoint_user_actions",
-        request_id.to_owned(),
+        expected.request_id.to_owned(),
         "action_kind",
         &action_kind,
     )?;
-    let Some(policy) = expected_gap_kind.decision_policy_for_mode(task_mode) else {
+    let Some(policy) = expected
+        .gap_kind
+        .decision_policy_for_mode(expected.task_mode)
+    else {
         return Err(StoreError::corrupt_owner_state_value(
             "shaping_checkpoint_gaps",
-            request_id.to_owned(),
+            expected.request_id.to_owned(),
             "gap_kind",
         ));
     };
     let required_for: Vec<UserActionRequiredFor> = decode_owner_json_text(
         "shaping_checkpoint_user_actions",
-        request_id,
+        expected.request_id,
         "required_for_json",
         &required_for_json,
     )?;
+    let metadata: PersistedUserActionRequestMetadata = decode_owner_json_text(
+        "shaping_checkpoint_user_actions",
+        expected.request_id,
+        "metadata_json",
+        &metadata_json,
+    )?;
+    let origin_matches = matches!(
+        metadata,
+        PersistedUserActionRequestMetadata::Shaping(metadata)
+            if metadata.shaping_checkpoint_id.as_str() == expected.checkpoint_id
+                && metadata.shaping_gap_id.as_str() == expected.gap_id
+    );
     if linked_task_id != task_id
         || action_kind != policy.user_action_kind
         || required_for.as_slice() != policy.required_for
+        || !origin_matches
     {
         return Err(StoreError::corrupt_owner_state_value(
             "shaping_checkpoint_user_actions",
-            request_id.to_owned(),
+            expected.request_id.to_owned(),
             "task_id",
         ));
     }
     let linked_at = UtcTimestamp::parse(&linked_at).map_err(|_| {
         StoreError::corrupt_owner_state_value(
             "shaping_checkpoint_user_actions",
-            request_id.to_owned(),
+            expected.request_id.to_owned(),
             "linked_at",
         )
     })?;
@@ -1568,19 +1813,95 @@ fn shaping_link(
         .map_err(|_| {
             StoreError::corrupt_owner_state_value(
                 "shaping_checkpoint_user_actions",
-                request_id.to_owned(),
+                expected.request_id.to_owned(),
                 "resolved_at",
             )
         })?;
     if resolution_id.is_some() != resolved_at.is_some() {
         return Err(StoreError::corrupt_owner_state_value(
             "shaping_checkpoint_user_actions",
-            request_id.to_owned(),
+            expected.request_id.to_owned(),
             "user_action_resolution_id",
         ));
     }
+    match (expected.status, resolution_json.as_deref()) {
+        (ShapingGapStatus::Current, None) => {}
+        (ShapingGapStatus::Accepted | ShapingGapStatus::Applied, Some(json)) => {
+            let resolution: UserActionResolutionBody = decode_owner_json_text(
+                "shaping_checkpoint_user_actions",
+                expected.request_id,
+                "resolution_json",
+                json,
+            )?;
+            if !matches!(
+                resolution,
+                UserActionResolutionBody::Choice {
+                    machine_action: UserActionOptionAction::Accept,
+                    resolution_outcome: JudgmentResolutionOutcome::Accepted,
+                    ..
+                }
+            ) {
+                return Err(StoreError::corrupt_owner_state_value(
+                    "shaping_checkpoint_gaps",
+                    expected.gap_id,
+                    "status",
+                ));
+            }
+        }
+        (ShapingGapStatus::Rejected, Some(json)) => {
+            let resolution: UserActionResolutionBody = decode_owner_json_text(
+                "shaping_checkpoint_user_actions",
+                expected.request_id,
+                "resolution_json",
+                json,
+            )?;
+            if !matches!(
+                resolution,
+                UserActionResolutionBody::Choice {
+                    machine_action: UserActionOptionAction::Reject,
+                    resolution_outcome: JudgmentResolutionOutcome::Rejected,
+                    ..
+                }
+            ) {
+                return Err(StoreError::corrupt_owner_state_value(
+                    "shaping_checkpoint_gaps",
+                    expected.gap_id,
+                    "status",
+                ));
+            }
+        }
+        (ShapingGapStatus::Deferred, Some(json)) => {
+            let resolution: UserActionResolutionBody = decode_owner_json_text(
+                "shaping_checkpoint_user_actions",
+                expected.request_id,
+                "resolution_json",
+                json,
+            )?;
+            if !matches!(
+                resolution,
+                UserActionResolutionBody::Choice {
+                    machine_action: UserActionOptionAction::Defer,
+                    resolution_outcome: JudgmentResolutionOutcome::Deferred,
+                    ..
+                }
+            ) {
+                return Err(StoreError::corrupt_owner_state_value(
+                    "shaping_checkpoint_gaps",
+                    expected.gap_id,
+                    "status",
+                ));
+            }
+        }
+        _ => {
+            return Err(StoreError::corrupt_owner_state_value(
+                "shaping_checkpoint_gaps",
+                expected.gap_id,
+                "status",
+            ));
+        }
+    }
     Ok(ShapingCheckpointUserActionRecord {
-        user_action_request_id: request_id.to_owned(),
+        user_action_request_id: expected.request_id.to_owned(),
         action_kind,
         user_action_resolution_id: resolution_id,
         linked_at,

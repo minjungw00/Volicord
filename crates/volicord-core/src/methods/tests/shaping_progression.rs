@@ -532,6 +532,376 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
 }
 
 #[test]
+fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identity(
+) -> Result<(), Box<dyn Error>> {
+    for (label, gap_kind, judgment_kind, selected_option, expected_disposition) in [
+        (
+            "rejected_scope",
+            ShapingGapKind::UserScopeDecisionRequired,
+            JudgmentKind::ScopeDecision,
+            "reject",
+            "rejected",
+        ),
+        (
+            "rejected_sensitive",
+            ShapingGapKind::SensitiveApprovalRequired,
+            JudgmentKind::SensitiveApproval,
+            "reject",
+            "rejected",
+        ),
+        (
+            "deferred_scope",
+            ShapingGapKind::UserScopeDecisionRequired,
+            JudgmentKind::ScopeDecision,
+            "defer",
+            "deferred",
+        ),
+    ] {
+        let harness = MethodHarness::new()?;
+        let (task_id, change_unit_id) = shaping_task(&harness, label)?;
+        let shaped = record_user_owned_gap(
+            &harness,
+            label,
+            &task_id,
+            &change_unit_id,
+            gap_kind,
+            judgment_kind,
+        )?;
+        let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+        let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
+            .as_str()
+            .expect("shaping request id")
+            .to_owned();
+
+        let resolved = harness.service.resolve_user_action(
+            resolve_user_action_request(
+                &format!("req_{label}_terminal"),
+                &format!("submission_{label}_terminal"),
+                None,
+                &task_id,
+                &request_id,
+                selected_option,
+            ),
+            invocation(OperationCategory::UserOnly),
+        )?;
+        assert_eq!(resolved.response_value["base"]["response_kind"], "result");
+        assert_eq!(
+            resolved.response_value["user_action_resolution"]["body"]["resolution_outcome"],
+            expected_disposition
+        );
+        let workflow = &resolved.response_value["state"]["workflow"];
+        assert_eq!(workflow["kind"], "decision_recovery_required", "{label}");
+        assert_eq!(workflow["next_actor"], "agent", "{label}");
+        assert_eq!(workflow["required_action"], "volicord.record_shaping");
+        assert_eq!(
+            workflow["checkpoint"]["decision_recovery_requirements"][0]["disposition"],
+            expected_disposition
+        );
+        assert_eq!(
+            workflow["checkpoint"]["gaps"][0]["status"],
+            expected_disposition
+        );
+        assert_eq!(workflow["checkpoint"]["readiness"], "ready");
+        let retirement_ref: StateRecordRef = serde_json::from_value(
+            workflow["checkpoint"]["decision_recovery_requirements"][0]["user_action_request_ref"]
+                .clone(),
+        )?;
+
+        let before_application = harness.counts()?;
+        let application = if gap_kind.decision_policy().is_some_and(|policy| {
+            policy.application_owner == ShapingDecisionApplicationOwner::AdvanceTask
+        }) {
+            harness.service.advance_task(
+                AdvanceTaskRequest {
+                    envelope: envelope(
+                        &format!("req_{label}_invalid_application"),
+                        Some(&format!("idem_{label}_invalid_application")),
+                        false,
+                        Some(before_application.state_version),
+                        Some(&task_id),
+                    ),
+                    task_id: TaskId::new(&task_id),
+                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    change_unit_id: ChangeUnitId::new(&change_unit_id),
+                    scope_revision: 1,
+                    baseline_ref: BaselineRef::new("baseline_test"),
+                    user_action_resolution_ids: Vec::new(),
+                },
+                invocation(OperationCategory::AgentWorkflow),
+            )?
+        } else {
+            harness.service.update_scope(
+                update_scope_request(
+                    &format!("req_{label}_invalid_application"),
+                    &format!("idem_{label}_invalid_application"),
+                    false,
+                    Some(before_application.state_version),
+                    &task_id,
+                    ChangeUnitOperation::KeepCurrent,
+                    "A non-authorizing outcome cannot update scope.",
+                ),
+                invocation(OperationCategory::AgentWorkflow),
+            )?
+        };
+        assert_eq!(
+            application.response_value["base"]["response_kind"],
+            "rejected"
+        );
+        assert_eq!(
+            application.response_value["errors"][0]["details"]["workflow"]["kind"],
+            "decision_recovery_required"
+        );
+        assert_eq!(harness.counts()?, before_application);
+
+        if selected_option == "defer" {
+            let duplicate = harness.service.resolve_user_action(
+                resolve_user_action_request(
+                    &format!("req_{label}_duplicate"),
+                    &format!("submission_{label}_duplicate"),
+                    None,
+                    &task_id,
+                    &request_id,
+                    "accept",
+                ),
+                invocation(OperationCategory::UserOnly),
+            )?;
+            assert_eq!(
+                duplicate.response_value["base"]["response_kind"],
+                "rejected"
+            );
+            assert_eq!(harness.counts()?, before_application);
+        }
+
+        let omitted = harness.service.record_shaping(
+            ready_shaping_request(
+                &format!("req_{label}_omitted_retirement"),
+                &format!("idem_{label}_omitted_retirement"),
+                before_application.state_version,
+                &task_id,
+                ShapingCheckpointOperation::ReplaceCurrent {
+                    expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    retired_user_action_request_refs: Vec::new(),
+                },
+                "Recovery requires the exact predecessor decision ref.",
+            ),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(omitted.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(harness.counts()?, before_application);
+
+        let mut successor = ready_shaping_request(
+            &format!("req_{label}_successor"),
+            &format!("idem_{label}_successor"),
+            before_application.state_version,
+            &task_id,
+            ShapingCheckpointOperation::ReplaceCurrent {
+                expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                retired_user_action_request_refs: vec![retirement_ref],
+            },
+            "The revised plan asks for a fresh decision.",
+        );
+        let successor_action = user_action_request(
+            "unused",
+            "unused",
+            false,
+            Some(before_application.state_version),
+            &task_id,
+            Some(&change_unit_id),
+            judgment_kind,
+        )
+        .action;
+        let RecordShapingOperation::RecordCheckpoint { gaps, .. } = &mut successor.operation else {
+            unreachable!();
+        };
+        *gaps = vec![ShapingGapInput {
+            gap_kind,
+            summary: "The revised plan still requires this user judgment.".to_owned(),
+            affected_refs: Vec::new(),
+            user_action: RequiredNullable::some(ShapingUserActionDraft {
+                action: successor_action,
+                expires_at: RequiredNullable::null(),
+            }),
+        }];
+        let replaced = harness
+            .service
+            .record_shaping(successor, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(replaced.response_value["base"]["response_kind"], "result");
+        assert_eq!(
+            replaced.response_value["workflow"]["kind"],
+            "awaiting_user_action"
+        );
+        let successor_request_id = replaced.response_value["created_user_action_request_refs"][0]
+            ["record_id"]
+            .as_str()
+            .expect("successor request id");
+        assert_ne!(successor_request_id, request_id);
+        assert_eq!(user_action_status(&harness, &request_id)?, "superseded");
+        assert_eq!(
+            user_action_status(&harness, successor_request_id)?,
+            "pending"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn expired_shaping_request_routes_to_read_only_recovery_and_can_be_reissued(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
+    harness.use_clock(clock.clone());
+    let (task_id, change_unit_id) = shaping_task(&harness, "expired_recovery")?;
+    let mut shaping = ready_shaping_request(
+        "req_expired_recovery_shaping",
+        "idem_expired_recovery_shaping",
+        2,
+        &task_id,
+        ShapingCheckpointOperation::CreateInitial,
+        "The current plan requires a time-bounded scope decision.",
+    );
+    let action = user_action_request(
+        "unused",
+        "unused",
+        false,
+        Some(2),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::ScopeDecision,
+    )
+    .action;
+    let RecordShapingOperation::RecordCheckpoint { gaps, .. } = &mut shaping.operation else {
+        unreachable!();
+    };
+    *gaps = vec![ShapingGapInput {
+        gap_kind: ShapingGapKind::UserScopeDecisionRequired,
+        summary: "The request expires at its fixed authority boundary.".to_owned(),
+        affected_refs: Vec::new(),
+        user_action: RequiredNullable::some(ShapingUserActionDraft {
+            action,
+            expires_at: RequiredNullable::some(UtcTimestamp::parse("2026-06-18T00:01:00Z")?),
+        }),
+    }];
+    let shaped = harness
+        .service
+        .record_shaping(shaping, invocation(OperationCategory::AgentWorkflow))?;
+    let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+    let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
+        .as_str()
+        .expect("expiring request id")
+        .to_owned();
+    let before_expiry_read = harness.counts()?;
+    clock.advance(Duration::minutes(2));
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_expired_recovery_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+            continuity_page: None,
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let workflow = &status.response_value["active_task"]["workflow"];
+    assert_eq!(workflow["kind"], "decision_recovery_required");
+    assert_eq!(workflow["next_actor"], "agent");
+    assert_eq!(workflow["required_action"], "volicord.record_shaping");
+    assert_eq!(
+        workflow["checkpoint"]["decision_recovery_requirements"][0]["reason"],
+        "expired"
+    );
+    assert_eq!(
+        workflow["checkpoint"]["decision_recovery_requirements"][0]["user_action_resolution_ref"],
+        Value::Null
+    );
+    assert_eq!(harness.counts()?, before_expiry_read);
+
+    let rejected_resolution = harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_expired_recovery_resolve",
+            "submission_expired_recovery_resolve",
+            None,
+            &task_id,
+            &request_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    assert_eq!(
+        rejected_resolution.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(harness.counts()?, before_expiry_read);
+
+    let retirement_ref: StateRecordRef = serde_json::from_value(
+        workflow["checkpoint"]["decision_recovery_requirements"][0]["user_action_request_ref"]
+            .clone(),
+    )?;
+    let mut successor = ready_shaping_request(
+        "req_expired_recovery_successor",
+        "idem_expired_recovery_successor",
+        before_expiry_read.state_version,
+        &task_id,
+        ShapingCheckpointOperation::ReplaceCurrent {
+            expected_current_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
+            retired_user_action_request_refs: vec![retirement_ref],
+        },
+        "The revised plan creates a fresh bounded request.",
+    );
+    let successor_action = user_action_request(
+        "unused",
+        "unused",
+        false,
+        Some(before_expiry_read.state_version),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::ScopeDecision,
+    )
+    .action;
+    let RecordShapingOperation::RecordCheckpoint { gaps, .. } = &mut successor.operation else {
+        unreachable!();
+    };
+    *gaps = vec![ShapingGapInput {
+        gap_kind: ShapingGapKind::UserScopeDecisionRequired,
+        summary: "The successor request has an independent immutable identity.".to_owned(),
+        affected_refs: Vec::new(),
+        user_action: RequiredNullable::some(ShapingUserActionDraft {
+            action: successor_action,
+            expires_at: RequiredNullable::some(UtcTimestamp::parse("2026-06-18T00:05:00Z")?),
+        }),
+    }];
+    let replaced = harness
+        .service
+        .record_shaping(successor, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        replaced.response_value["workflow"]["kind"],
+        "awaiting_user_action"
+    );
+    let successor_request_id = replaced.response_value["created_user_action_request_refs"][0]
+        ["record_id"]
+        .as_str()
+        .expect("successor request id");
+    assert_ne!(successor_request_id, request_id);
+    assert_eq!(user_action_status(&harness, &request_id)?, "superseded");
+    assert_eq!(
+        harness
+            .store()?
+            .user_action_record(
+                successor_request_id,
+                &UtcTimestamp::parse("2026-06-18T00:02:00Z")?,
+            )?
+            .expect("successor user action")
+            .status(),
+        UserActionStatus::Pending
+    );
+    Ok(())
+}
+
+#[test]
 fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(
@@ -818,6 +1188,7 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
             &task_id,
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                retired_user_action_request_refs: Vec::new(),
             },
             "Replacement bounded advice.",
         ),
@@ -1394,6 +1765,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
             &task_id,
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new("checkpoint_unknown"),
+                retired_user_action_request_refs: Vec::new(),
             },
             "Stale replacement authority.",
         ),
@@ -1412,6 +1784,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
         &task_id,
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
+            retired_user_action_request_refs: Vec::new(),
         },
         "Exact successor authority.",
     );
@@ -1460,6 +1833,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
             &task_id,
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
+                retired_user_action_request_refs: Vec::new(),
             },
             "A competing replacement cannot displace the committed successor.",
         ),
@@ -1509,6 +1883,7 @@ fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(
         &task_id,
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
+            retired_user_action_request_refs: Vec::new(),
         },
         "First competing successor.",
     );
@@ -1519,6 +1894,7 @@ fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(
         &task_id,
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
+            retired_user_action_request_refs: Vec::new(),
         },
         "Second competing successor.",
     );
@@ -1556,9 +1932,13 @@ fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(
         .iter()
         .find(|response| response.response_value["base"]["response_kind"] == "rejected")
         .expect("one concurrent replacement must lose");
-    assert_eq!(
-        rejected.response_value["errors"][0]["code"],
-        "STATE_VERSION_CONFLICT"
+    assert!(
+        matches!(
+            rejected.response_value["errors"][0]["code"].as_str(),
+            Some("STATE_VERSION_CONFLICT" | "SHAPING_CHECKPOINT_STALE")
+        ),
+        "losing response: {}",
+        rejected.response_value
     );
     let after = harness.counts()?;
     assert_eq!(after.state_version, before.state_version + 1);
@@ -1618,6 +1998,7 @@ fn every_live_user_owned_shaping_decision_blocks_replacement() -> Result<(), Box
                 &task_id,
                 ShapingCheckpointOperation::ReplaceCurrent {
                     expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    retired_user_action_request_refs: Vec::new(),
                 },
                 "A free-form replacement cannot remove decision authority.",
             ),
@@ -1692,6 +2073,7 @@ fn direct_store_mutation_cannot_detach_live_shaping_authority() -> Result<(), Bo
                 shaping_checkpoint_id: "checkpoint_direct_store_successor".to_owned(),
                 checkpoint_operation: ShapingCheckpointOperation::ReplaceCurrent {
                     expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    retired_user_action_request_refs: Vec::new(),
                 },
                 task_id: task_id.clone(),
                 scope_revision: 1,
@@ -1702,6 +2084,7 @@ fn direct_store_mutation_cannot_detach_live_shaping_authority() -> Result<(), Bo
                 source_refs: Vec::new(),
                 evidence_refs: Vec::new(),
                 created_at: UtcTimestamp::parse("2026-06-18T00:00:01Z")?,
+                retired_user_action_request_ids: Vec::new(),
                 gaps: Vec::new(),
             },
         ),
@@ -1771,6 +2154,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
             &task_id,
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                retired_user_action_request_refs: Vec::new(),
             },
             "Resolved authority is not yet applied.",
         ),
@@ -1814,6 +2198,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         &task_id,
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            retired_user_action_request_refs: Vec::new(),
         },
         "Applied authority permits exact checkpoint succession.",
     );
@@ -1990,6 +2375,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                     &task_id,
                     ShapingCheckpointOperation::ReplaceCurrent {
                         expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                        retired_user_action_request_refs: Vec::new(),
                     },
                     "Pending user authority remains attached to the current checkpoint.",
                 ),
@@ -2109,6 +2495,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                     &task_id,
                     ShapingCheckpointOperation::ReplaceCurrent {
                         expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                        retired_user_action_request_refs: Vec::new(),
                     },
                     "Resolved authority remains live until its semantic owner applies it.",
                 ),
@@ -2237,7 +2624,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                 let expected = if gap.gap_kind == ShapingGapKind::UserScopeDecisionRequired {
                     ShapingGapStatus::Applied
                 } else {
-                    ShapingGapStatus::Resolved
+                    ShapingGapStatus::Accepted
                 };
                 assert_eq!(gap.status, expected, "{label}: {:?}", gap.gap_kind);
             }

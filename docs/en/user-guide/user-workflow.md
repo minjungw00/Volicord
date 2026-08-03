@@ -1,6 +1,6 @@
 # User Workflow
 
-When shaping needs a product, technical, scope, or sensitive decision, Core creates an exact UserAction request linked to the current shaping gap. Chat text cannot resolve that request; submit the decision through the supported User Channel. The workflow remains `awaiting_user_action` until a verified resolution is durable.
+When shaping needs a product, technical, scope, or sensitive decision, Core creates an exact UserAction request linked to the current shaping gap. Chat text cannot resolve that request; submit the decision through the supported User Channel. A pending request uses `awaiting_user_action`. Acceptance lets the responsible method apply the decision. Rejection, deferral, or expiration grants no authority and asks the agent to revise the shaping plan through `decision_recovery_required`; a successor request is required if the revised plan still needs the judgment.
 
 Volicord lets you work with an agent in ordinary language while keeping scope,
 Evidence, user-owned decisions, and Close Status separate. This page explains

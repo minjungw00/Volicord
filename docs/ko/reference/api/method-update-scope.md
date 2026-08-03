@@ -63,10 +63,10 @@ sensitive expectation은 없고 `product_file_write`, `run_recording`, `sensitiv
   ID는 커밋 전에 거절합니다.
 - `change_unit.operation`과 그 작업에 필요한 필드. 지원되는 작업 값과 그 의미는 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다.
 - 현재 적용 Change Unit을 만들거나 교체할 때 선택적으로 쓰는 `change_unit.effect_contract`. 값이 있으면 `ChangeUnitEffectContract`를 사용합니다. 생략하면 그 Change Unit에는 추가 효과 계약이 없습니다.
-- `related_scope_decision_refs`는 현재 checkpoint의 resolved 범위 owner gap을 정확히 모두
+- `related_scope_decision_refs`는 현재 checkpoint의 accepted 범위 owner gap을 정확히 모두
   포함해야 합니다. 그런 gap이 없으면 제품 전용·기술 전용 진행을 포함해 빈 배열입니다.
 
-범위 갱신이 `scope_decision`을 적용할 때 각 ref는 현재 checkpoint의 resolved 범위 gap에
+범위 갱신이 `scope_decision`을 적용할 때 각 ref는 현재 checkpoint의 accepted 범위 gap에
 연결된 정확한 resolution이어야 합니다. 또한 `judgment_kind=scope_decision`,
 `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`,
 `resolved_by_actor_source=local_user`, 호환 User Channel 출처,
@@ -155,10 +155,15 @@ Task, Change Unit, checkpoint, `scope_revision`, baseline, request, 영향받는
 없는 `state_version` 증가는 티켓을 무효화하지 않습니다. 무효화는 티켓을
 소비하거나 조용히 재사용하지 않습니다.
 
-범위 결정을 적용하면 선택한 scope gap만 `resolved`에서 `applied`로 바뀌고 scope
+범위 결정을 적용하면 선택한 scope gap만 `accepted`에서 `applied`로 바뀌고 scope
 revision이 증가합니다. 호환되는 no-op 또는 Change Unit 생성은 scope decision ref 없이
 현재 checkpoint를 보존하고 rebase할 수 있습니다. 전이가 checkpoint의 scope 또는
 baseline 권한 근거를 실제로 무효화할 때만 checkpoint를 supersede합니다.
+
+거부, 보류, 만료, 불일치 상태의 shaping 결정은 scope 권한을 부여하지 않습니다. 이
+메서드는 현재 workflow가 `decision_recovery_required`이고 recovery owner가
+`volicord.record_shaping`인 no-effect workflow 거부를 반환합니다. 의미상 no-op인 scope
+요청도 이 gate를 우회할 수 없습니다.
 
 ## 성공 결과
 

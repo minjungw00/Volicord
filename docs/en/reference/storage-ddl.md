@@ -1358,7 +1358,9 @@ CREATE TABLE shaping_checkpoint_gaps (
   ),
   summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
   affected_refs_json TEXT NOT NULL DEFAULT '[]',
-  status TEXT NOT NULL CHECK (status IN ('current', 'resolved', 'applied')),
+  status TEXT NOT NULL CHECK (
+    status IN ('current', 'accepted', 'rejected', 'deferred', 'applied')
+  ),
   user_action_request_id TEXT,
   user_action_kind TEXT,
   PRIMARY KEY (project_id, shaping_checkpoint_id, shaping_gap_id),
@@ -1517,6 +1519,24 @@ BEGIN
   SELECT RAISE(ABORT, 'ready shaping checkpoint cannot receive a gap');
 END;
 
+CREATE TRIGGER trg_shaping_gap_insert_is_current
+BEFORE INSERT ON shaping_checkpoint_gaps
+WHEN NEW.status <> 'current'
+BEGIN
+  SELECT RAISE(ABORT, 'inserted shaping gap must be current');
+END;
+
+CREATE TRIGGER trg_shaping_gap_disposition_transition
+BEFORE UPDATE OF status ON shaping_checkpoint_gaps
+WHEN NEW.status <> OLD.status
+  AND NOT (
+    (OLD.status = 'current' AND NEW.status IN ('accepted', 'rejected', 'deferred'))
+    OR (OLD.status = 'accepted' AND NEW.status = 'applied')
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'invalid shaping gap disposition transition');
+END;
+
 CREATE TRIGGER trg_shaping_checkpoint_ready_has_no_current_gap
 BEFORE UPDATE OF readiness ON shaping_checkpoints
 WHEN NEW.readiness = 'ready'
@@ -1530,32 +1550,53 @@ BEGIN
   ) THEN RAISE(ABORT, 'ready shaping checkpoint has a current gap') END;
 END;
 
-CREATE TRIGGER trg_shaping_gap_resolution_requires_user_resolution
+CREATE TRIGGER trg_shaping_gap_disposition_requires_matching_user_resolution
 BEFORE UPDATE OF status ON shaping_checkpoint_gaps
-WHEN NEW.status = 'resolved'
+WHEN NEW.status IN ('accepted', 'rejected', 'deferred')
 BEGIN
   SELECT CASE WHEN NOT EXISTS (
     SELECT 1
-      FROM shaping_checkpoint_user_actions
-     WHERE project_id = NEW.project_id
-       AND shaping_checkpoint_id = NEW.shaping_checkpoint_id
-       AND shaping_gap_id = NEW.shaping_gap_id
-       AND user_action_resolution_id IS NOT NULL
-  ) THEN RAISE(ABORT, 'resolved shaping gap requires a linked resolution') END;
+      FROM shaping_checkpoint_user_actions AS link
+      JOIN user_action_resolutions AS resolution
+        ON resolution.project_id = link.project_id
+       AND resolution.user_action_request_id = link.user_action_request_id
+       AND resolution.user_action_resolution_id = link.user_action_resolution_id
+     WHERE link.project_id = NEW.project_id
+       AND link.shaping_checkpoint_id = NEW.shaping_checkpoint_id
+       AND link.shaping_gap_id = NEW.shaping_gap_id
+       AND json_extract(resolution.resolution_json, '$.resolution_type') = 'choice'
+       AND (
+         (NEW.status = 'accepted'
+           AND json_extract(resolution.resolution_json, '$.machine_action') = 'accept'
+           AND json_extract(resolution.resolution_json, '$.resolution_outcome') = 'accepted')
+         OR (NEW.status = 'rejected'
+           AND json_extract(resolution.resolution_json, '$.machine_action') = 'reject'
+           AND json_extract(resolution.resolution_json, '$.resolution_outcome') = 'rejected')
+         OR (NEW.status = 'deferred'
+           AND json_extract(resolution.resolution_json, '$.machine_action') = 'defer'
+           AND json_extract(resolution.resolution_json, '$.resolution_outcome') = 'deferred')
+       )
+  ) THEN RAISE(ABORT, 'shaping disposition requires a matching linked resolution') END;
 END;
 
-CREATE TRIGGER trg_shaping_gap_application_requires_resolved_gap
+CREATE TRIGGER trg_shaping_gap_application_requires_accepted_gap
 BEFORE UPDATE OF status ON shaping_checkpoint_gaps
 WHEN NEW.status = 'applied'
 BEGIN
-  SELECT CASE WHEN OLD.status <> 'resolved' OR NOT EXISTS (
+  SELECT CASE WHEN OLD.status <> 'accepted' OR NOT EXISTS (
     SELECT 1
-      FROM shaping_checkpoint_user_actions
-     WHERE project_id = NEW.project_id
-       AND shaping_checkpoint_id = NEW.shaping_checkpoint_id
-       AND shaping_gap_id = NEW.shaping_gap_id
-       AND user_action_resolution_id IS NOT NULL
-  ) THEN RAISE(ABORT, 'applied shaping gap requires an exact resolved gap') END;
+      FROM shaping_checkpoint_user_actions AS link
+      JOIN user_action_resolutions AS resolution
+        ON resolution.project_id = link.project_id
+       AND resolution.user_action_request_id = link.user_action_request_id
+       AND resolution.user_action_resolution_id = link.user_action_resolution_id
+     WHERE link.project_id = NEW.project_id
+       AND link.shaping_checkpoint_id = NEW.shaping_checkpoint_id
+       AND link.shaping_gap_id = NEW.shaping_gap_id
+       AND json_extract(resolution.resolution_json, '$.resolution_type') = 'choice'
+       AND json_extract(resolution.resolution_json, '$.machine_action') = 'accept'
+       AND json_extract(resolution.resolution_json, '$.resolution_outcome') = 'accepted'
+  ) THEN RAISE(ABORT, 'applied shaping gap requires an exact accepted resolution') END;
 END;
 
 CREATE TRIGGER trg_applied_shaping_gap_is_terminal

@@ -343,7 +343,7 @@
         "operation",
         "task_id"
       ],
-      "sha256": "sha256:d23be5ba7889939c3b8449677ce7d3c6a4ee86b9fa8bd82100b779c5bc4ef939"
+      "sha256": "sha256:8d9a770a80acaaa94174e9f8b3a17ae7180c704d3779110fec1a8f47fbfb44e7"
     },
     "volicord.request_user_action": {
       "definitions": [

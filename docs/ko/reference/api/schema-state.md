@@ -469,7 +469,7 @@ TaskLifecycleState:
 
 ## `WorkflowProjection`과 shaping checkpoint
 
-`StateSummary.workflow`는 단일 태그형 진행 권한입니다. `kind` 값은 `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, `terminal` 중 하나입니다.
+`StateSummary.workflow`는 단일 태그형 진행 권한입니다. `kind` 값은 `no_active_task`, `shaping_required`, `awaiting_user_action`, `decision_recovery_required`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, `terminal` 중 하나입니다.
 
 ```schema
 WorkflowProjection:
@@ -517,6 +517,7 @@ ShapingCheckpointSummary:
   gaps: ShapingCheckpointGap[]
   pending_decision_refs: StateRecordRef[]
   unresolved_application_owners: string[]
+  decision_recovery_requirements: ShapingDecisionRecoveryRequirement[]
 
 ShapingCheckpointGap:
   shaping_gap_id: string
@@ -525,8 +526,16 @@ ShapingCheckpointGap:
   summary: string
   affected_refs: StateRecordRef[]
   status: string
+  decision_authority_state: string | null
   user_action_request_ref: StateRecordRef | null
   user_action_resolution_ref: StateRecordRef | null
+
+ShapingDecisionRecoveryRequirement:
+  shaping_gap_id: string
+  user_action_request_ref: StateRecordRef
+  user_action_resolution_ref: StateRecordRef | null
+  disposition: string
+  reason: string
 ```
 
 `ShapingCheckpoint`는 `volicord.record_shaping`이 반환하는 일급 영속 기록입니다.
@@ -539,9 +548,13 @@ workflow kind, blocking reason은 [API 값 집합](schema-value-sets.md)의 폐�
 
 Checkpoint readiness는 구조적이며 decision application과 독립적입니다.
 `application_owner`는 사용자 소유 gap일 때만 null이 아닙니다.
-`unresolved_application_owners`는 해결되었지만 아직 적용되지 않은 결정 owner의 고유하고
+`unresolved_application_owners`는 수락되었지만 아직 적용되지 않은 결정 owner의 고유하고
 안정적인 집합입니다. `readiness=ready`여도 비어 있지 않을 수 있습니다. 이 집합에
-`volicord.update_scope`가 있을 때만 `ready_to_apply_decisions`를 선택합니다. Work의
+`volicord.update_scope`가 있을 때만 `ready_to_apply_decisions`를 선택합니다.
+`decision_recovery_requirements`는 정확한 각 거부·보류·만료 요청, 존재하는 변경 불가능한
+resolution, authority disposition, 타입이 정해진 reason을 식별합니다. 이 값이 있으면 구조적
+readiness가 `ready`여도 `next_actor=agent`, `required_action=volicord.record_shaping`인
+`decision_recovery_required`를 선택합니다. Work의
 advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으로 진행합니다.
 Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
 진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.

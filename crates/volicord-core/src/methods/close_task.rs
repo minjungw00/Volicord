@@ -719,13 +719,22 @@ fn project_close_task_response(
     let current_shaping_checkpoint = store
         .current_shaping_checkpoint(&request.task_id)
         .map_err(CorePipelineError::from)?;
+    let task_wide_shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &request.envelope.project_id,
+        response_state_version,
+        &synthetic_task,
+        context.current_change_unit.as_ref(),
+        current_shaping_checkpoint.as_ref(),
+        now,
+    )?;
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: response_state_version,
         task: &synthetic_task,
         current_change_unit: context.current_change_unit.as_ref(),
         shaping_checkpoint: current_shaping_checkpoint.as_ref(),
-        task_wide_shaping_authority: &Default::default(),
+        task_wide_shaping_authority: &task_wide_shaping_authority,
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: context.pending_user_action_refs.clone(),

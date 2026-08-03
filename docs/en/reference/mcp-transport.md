@@ -917,6 +917,14 @@ implementation-gating UserAction authority adds
 request refs. `awaiting_user_action` adds the current request refs,
 `next_actor=user`, the fact that chat is not resolution authority, the Product
 Repository mutation boundary, and canonical task-scoped inbox instructions.
+Each shaping-linked decision adds `shaping_decision_outcome` with exact request
+and available resolution refs, disposition, and whether authority was granted.
+Rejected, deferred, and expired decisions also add
+`non_authorizing_shaping_decision`, naming `volicord.record_shaping`, terminal
+or expired non-retryability, successor-request identity when the plan still
+needs the judgment, the chat boundary, and unavailable Product Repository
+mutation. Compact record-shaping results retain the typed decision recovery
+requirements.
 A successful `advance_task` adds that implementation was entered, no write
 ticket was created, and Product Repository writes still require
 `volicord.prepare_write`.

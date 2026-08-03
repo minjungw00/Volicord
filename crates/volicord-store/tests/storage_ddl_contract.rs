@@ -34,7 +34,7 @@ use volicord_types::tool_names::AgentToolId;
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 65);
+    assert_eq!(metadata.tables.len(), 67);
     assert_eq!(metadata.columns.len(), 636);
     assert_eq!(metadata.indexes.len(), 78);
     assert_eq!(metadata.constraints.len(), 49);
@@ -376,11 +376,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:1d94dd4cbc07a899eb99b7cd8663c9eacceda00b6ce95a5d7138e0775e0a21f9"
+        "sha256:22ec5caeb5dcc6ce66f4b3597a36b08e684bed0402be220c1dbe91424b554771"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:bc2e2730d54778556a35ef74936a9c4adcbb227d60c16f9198f9ba6756e9fc9f"
+        "sha256:59319faf393484a0dd904fc04c3fb7d78b47df708cf27a3266895a9b1de5aa54"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,14 +414,14 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:1d94dd4cbc07a899eb99b7cd8663c9eacceda00b6ce95a5d7138e0775e0a21f9\",",
+            "{\"canonical_ddl_digest\":\"sha256:22ec5caeb5dcc6ce66f4b3597a36b08e684bed0402be220c1dbe91424b554771\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"shaping_checkpoint_lineage\",",
-            "\"shaping_progression\",",
+            "\"shaping_decision_recovery\",\"shaping_progression\",",
             "\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:bc2e2730d54778556a35ef74936a9c4adcbb227d60c16f9198f9ba6756e9fc9f\"}"
+            "\"integrity_constraints_digest\":\"sha256:59319faf393484a0dd904fc04c3fb7d78b47df708cf27a3266895a9b1de5aa54\"}"
         )
     );
     Ok(())

@@ -63,6 +63,12 @@ resolution is authoritative only when the strict typed request, selected stored
 option or evidence candidates, CLI provenance, submission identity, and current
 basis all validate.
 
+For shaping-linked judgments, terminal status is not authority. Only an
+accepted, current, compatible resolution may be applied by its exact owner.
+Rejected, deferred, and expired decisions grant no scope, phase, sensitive,
+write, close, acceptance, or Product Repository authority and require exact
+agent-owned shaping recovery.
+
 ## Local Connection Assumptions
 
 The managed Codex process and `volicord` run under the local user's operating-

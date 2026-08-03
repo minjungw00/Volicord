@@ -191,18 +191,25 @@ fn plan_advance_task(
         operation_now,
     )?;
     if task_wide_authority.blocks_advance_application() {
+        let recovery_owner = if !task_wide_authority.recovery_required.is_empty() {
+            MethodName::RecordShaping
+        } else if !task_wide_authority.awaiting_user.is_empty() {
+            MethodName::ResolveUserAction
+        } else {
+            MethodName::Status
+        };
         return workflow_rejection_plan_error(
             store,
             project_state,
             &request.envelope,
             &request.task_id,
             ErrorCode::UserDecisionUnresolved,
-            "task-wide UserAction authority required for advance_task is unresolved or inconsistent",
+            "task-wide UserAction authority required for advance_task is not accepted",
             MethodName::AdvanceTask,
             None,
             Vec::new(),
             false,
-            MethodName::Status,
+            recovery_owner,
         );
     }
     let checkpoint = match current_checkpoint {
@@ -310,14 +317,14 @@ fn plan_advance_task(
             policy.application_owner == ShapingDecisionApplicationOwner::AdvanceTask
         })
     }) {
-        if gap.status != ShapingGapStatus::Resolved {
+        if gap.status != ShapingGapStatus::Accepted {
             return workflow_rejection_plan_error(
                 store,
                 project_state,
                 &request.envelope,
                 &request.task_id,
                 ErrorCode::UserDecisionUnresolved,
-                "every advance-owned shaping gap must be resolved and supplied exactly once",
+                "every advance-owned shaping gap must be accepted and supplied exactly once",
                 MethodName::AdvanceTask,
                 None,
                 Vec::new(),

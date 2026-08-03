@@ -9,8 +9,10 @@ This document owns the agent-workflow method that creates one pending
 judgment kinds and `evidence_observation`.
 
 Resolution and semantic application are separate. Resolving a shaping-created
-request records immutable User Channel authority and changes the linked gap to
-`resolved`; it never changes scope, applies the gap, or advances the Task.
+request records an immutable User Channel outcome and changes the linked gap to
+`accepted`, `rejected`, or `deferred`; it never changes scope, applies the gap,
+or advances the Task. Only the accepted disposition grants application
+eligibility.
 
 ## Request
 

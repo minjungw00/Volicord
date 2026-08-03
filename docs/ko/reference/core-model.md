@@ -275,15 +275,25 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 Shaping checkpoint succession은 명시적 권한입니다. `create_initial`은 현재 checkpoint가
 없어야 하고, `replace_current`는 정확한 현재 checkpoint 하나를 compare-and-swap하여
 successor의 predecessor로 기록합니다. 연결된 live 사용자 소유 결정은 의미 owner가
-적용하거나 scope 또는 Task 전환이 근거를 권위 있게 무효화할 때까지 교체를 차단합니다.
+적용 대기 중이거나 수락되었지만 미적용 상태이거나 적용된 상태이면 교체를 차단합니다.
+거부, 보류, 만료 상태의 요청은 영향받는 모든 request ref를 지정하는 정확한
+`replace_current` operation으로만 폐기할 수 있습니다. 폐기된 요청은 superseded 근거와
+함께 변경 불가능한 감사 이력으로 남습니다. successor 계획에도 같은 판단이 필요하면
+별도 `UserActionRequest`를 만듭니다.
 Work 진행은 checkpoint-local gap뿐 아니라 `advance_task`에 필요한 Task 전체 effective
 UserAction도 평가하고, advisor 진행은 `finalize_advice`와 scope update에 대해 같은 검사를
 수행합니다. Gap이 없는 successor를 기록해도 어느 Task 전체 결정 gate도 우회하지 못합니다.
 
-Shaping resolution과 application은 구분됩니다. 연결된 gap은 User Channel 권한이 생기기
-전에는 `current`, 그 권한이 의미 owner의 적용을 기다리는 동안은 `resolved`, owner의 상태
-mutation이 정확한 resolution을 소비한 뒤에만 `applied`입니다. 폐쇄형 owner 정책은 다음과
-같습니다.
+UserAction 종료 상태와 shaping 권한은 별개입니다. 정규 evaluator는 유효 요청 상태,
+변경 불가능한 action과 outcome, User Channel provenance, 근거 호환성, checkpoint와 gap
+identity, 적용 상태, scope revision, baseline, Change Unit, Task mode를 함께 평가합니다.
+폐쇄형 상태는 `awaiting_user`, `accepted_unapplied`, `applied`, `rejected`, `deferred`,
+`expired`, `stale`, `superseded`, `inconsistent`입니다. 연결된 gap의 저장 상태는
+`current`, `accepted`, `rejected`, `deferred`, `applied`입니다. 수락되었고 현재이며
+호환되는 User Channel resolution만 의미 owner를 통해 `accepted`에서 `applied`로 바뀔
+수 있습니다. 거부, 보류, 만료는 권한을 부여하지 않습니다.
+
+폐쇄형 owner 정책은 다음과 같습니다.
 
 | 모드 | Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | downstream 유지 |
 |---|---|---|---|---|---|---|
@@ -296,14 +306,22 @@ mutation이 정확한 resolution을 소비한 뒤에만 `applied`입니다. 폐�
 | `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.record_shaping` | 유지 | 닫기 근거에 유지 |
 
 Checkpoint `readiness=ready`는 구조적 상태입니다. baseline과 implementation boundary가
-있고, 비사용자 gap이 닫혔으며, 각 사용자 gap에 현재 resolution이 있다는 뜻입니다. 모든
-결정이 적용되었다는 뜻은 아닙니다. 따라서 workflow summary는 readiness와 남은
-application owner를 따로 노출합니다. Resolved scope gap만
-`ready_to_apply_decisions`를 선택합니다. `work`의 resolved 제품·기술·민감 gap은
+있고, 비사용자 gap이 닫혔으며, 사용자 gap이 `current` 상태로 남아 있지 않다는 뜻입니다.
+Checkpoint가 진행 가능하다는 뜻은 아닙니다. 따라서 workflow summary는 구조적 readiness,
+수락된 결정의 application owner, 정확한 decision recovery requirement를 따로 노출합니다.
+Accepted scope gap만 `ready_to_apply_decisions`를 선택합니다. `work`의 accepted
+제품·기술·민감 gap은
 `volicord.advance_task`의 원자적 적용을 기다리고, `advisor`의 해당 gap은 정확한
 `finalize_advice` operation이 적용할 때까지 보입니다. 구조적으로 ready인 advisor
 checkpoint와 현재 호환 Change Unit이 있으면 `ready_to_finalize_advice`를 선택하며,
 finalization이 현재 닫기 근거를 만든 뒤에만 `close_review`를 선택합니다.
+
+거부, 보류, 만료 상태의 checkpoint 결정은 `next_actor=agent`,
+`required_action=volicord.record_shaping`인 `decision_recovery_required`를 선택합니다.
+이 상태는 정확한 checkpoint, request ref, 존재하는 resolution ref, disposition, 타입이
+정해진 recovery reason, 기대 state version을 포함합니다. 만료 요청은 해결되지 않은 감사
+이력으로 남으며 `volicord.resolve_user_action`으로 연결될 수 없습니다. Pending 요청만
+`next_actor=user`인 `awaiting_user_action`을 선택합니다.
 
 `advisor`는 Product Repository 파일 효과에 대해 읽기 전용이며 쓰기 가능한 Change Unit, 쓰기 티켓, `volicord.advance_task`를 사용하지 않습니다. 정규 advisor Change Unit은 affected/allowed path가 없고 non-null effect contract를 가지며 `artifact_registration`, `user_action_request`, `evidence_update`만 허용하고 sensitive expectation은 없으며 `product_file_write`, `run_recording`, `sensitive_action`, `external_network`, `secret_access`를 금지합니다. Core와 Store는 scope update와 현재 상태 읽기에서 호환되지 않는 advisor Change Unit을 거부합니다. Change Unit은 작업 경계이며 단계를 바꾸지 않습니다. work Task는 명시적 advance 성공으로만 구현에 진입합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 진행 권한 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
 

@@ -141,6 +141,17 @@ from the stored option action/outcome and current basis. Observation authority
 comes only from the exact current `evidence_observation` resolution body and is
 never final acceptance or another judgment.
 
+For a shaping-linked choice, Core atomically records the immutable resolution
+and the exact gap disposition. `machine_action=accept` with
+`resolution_outcome=accepted` records `accepted`, leaves the decision unapplied,
+calculates structural checkpoint readiness, and routes to the application owner
+from `ShapingDecisionPolicy`. `reject/rejected` records `rejected`, while
+`defer/deferred` records `deferred`; both grant no authority and route to
+`volicord.record_shaping` through `decision_recovery_required`. The immutable
+request cannot be resolved again. Expired requests remain unresolved audit
+history, reject this method without state change, and use the same agent-owned
+recovery workflow. Resolution never applies the shaping decision.
+
 Dry run, malformed or mixed payloads, an Agent Connection actor, stale or
 superseded basis, `now >= expires_at`, changed candidates or bytes, replay
 conflict, and wrong channel binding reject with no request, resolution, event, replay, blocker, lifecycle, or state-version effect. Exact replay, dry run, rejection,

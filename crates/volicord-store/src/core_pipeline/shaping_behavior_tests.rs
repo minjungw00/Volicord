@@ -119,6 +119,7 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
             source_refs: Vec::new(),
             evidence_refs: Vec::new(),
             created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
+            retired_user_action_request_ids: Vec::new(),
             gaps: vec![
                 shaping_gap(
                     product_gap_id,
@@ -135,10 +136,12 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
         CoreStorageMutation::Shaping(ShapingCheckpointMutation::ResolveLinkedGap {
             user_action_request_id: product_request_id.to_owned(),
             user_action_resolution_id: product_resolution_id.to_owned(),
+            disposition: ShapingGapStatus::Accepted,
         }),
         CoreStorageMutation::Shaping(ShapingCheckpointMutation::ResolveLinkedGap {
             user_action_request_id: scope_request_id.to_owned(),
             user_action_resolution_id: scope_resolution_id.to_owned(),
+            disposition: ShapingGapStatus::Accepted,
         }),
     ];
     store.commit_mutation(initial, &initial_mutations, response_json)?;
@@ -181,7 +184,7 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
             .find(|gap| gap.shaping_gap_id == scope_gap_id)
             .expect("scope gap")
             .status,
-        ShapingGapStatus::Resolved
+        ShapingGapStatus::Accepted
     );
 
     let apply_scope = commit_input(
@@ -228,7 +231,7 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
             .find(|gap| gap.shaping_gap_id == product_gap_id)
             .expect("product gap")
             .status,
-        ShapingGapStatus::Resolved
+        ShapingGapStatus::Accepted
     );
 
     let failed_advance = commit_input(
@@ -279,7 +282,7 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
             .find(|gap| gap.shaping_gap_id == product_gap_id)
             .expect("product gap")
             .status,
-        ShapingGapStatus::Resolved
+        ShapingGapStatus::Accepted
     );
     assert_eq!(
         store
@@ -375,15 +378,35 @@ fn shaping_request(
                 judgment_kind,
                 presentation: JudgmentPresentation::Short,
                 question: "Apply this exact shaping decision?".to_owned(),
-                options: vec![UserActionOption {
-                    option_id: UserActionOptionId::new("accept"),
-                    label: "Accept".to_owned(),
-                    description: "Accept this exact decision.".to_owned(),
-                    consequence: "The semantic owner may apply it.".to_owned(),
-                    machine_action: UserActionOptionAction::Accept,
-                    resolution_outcome: JudgmentResolutionOutcome::Accepted,
-                    is_default: true,
-                }],
+                options: vec![
+                    UserActionOption {
+                        option_id: UserActionOptionId::new("accept"),
+                        label: "Accept".to_owned(),
+                        description: "Accept this exact decision.".to_owned(),
+                        consequence: "The semantic owner may apply it.".to_owned(),
+                        machine_action: UserActionOptionAction::Accept,
+                        resolution_outcome: JudgmentResolutionOutcome::Accepted,
+                        is_default: true,
+                    },
+                    UserActionOption {
+                        option_id: UserActionOptionId::new("reject"),
+                        label: "Reject".to_owned(),
+                        description: "Reject this exact decision.".to_owned(),
+                        consequence: "The decision grants no authority.".to_owned(),
+                        machine_action: UserActionOptionAction::Reject,
+                        resolution_outcome: JudgmentResolutionOutcome::Rejected,
+                        is_default: false,
+                    },
+                    UserActionOption {
+                        option_id: UserActionOptionId::new("defer"),
+                        label: "Defer".to_owned(),
+                        description: "Defer this exact decision.".to_owned(),
+                        consequence: "The decision grants no authority.".to_owned(),
+                        machine_action: UserActionOptionAction::Defer,
+                        resolution_outcome: JudgmentResolutionOutcome::Deferred,
+                        is_default: false,
+                    },
+                ],
                 context: UserActionContext {
                     summary: "Exact shaping application Store test.".to_owned(),
                     related_refs: Vec::new(),
@@ -433,6 +456,22 @@ fn shaping_resolution(
     request_id: &str,
     action_kind: UserActionKind,
 ) -> UserActionResolutionInsert {
+    shaping_resolution_with_outcome(
+        resolution_id,
+        request_id,
+        action_kind,
+        UserActionOptionAction::Accept,
+        JudgmentResolutionOutcome::Accepted,
+    )
+}
+
+fn shaping_resolution_with_outcome(
+    resolution_id: &str,
+    request_id: &str,
+    action_kind: UserActionKind,
+    machine_action: UserActionOptionAction,
+    resolution_outcome: JudgmentResolutionOutcome,
+) -> UserActionResolutionInsert {
     UserActionResolutionInsert {
         user_action_resolution_id: resolution_id.to_owned(),
         user_action_request_id: request_id.to_owned(),
@@ -440,9 +479,13 @@ fn shaping_resolution(
         channel_kind: UserActionChannelKind::Cli,
         channel_submission_id: format!("submission_{resolution_id}"),
         resolution: UserActionResolutionBody::Choice {
-            selected_option_id: UserActionOptionId::new("accept"),
-            machine_action: UserActionOptionAction::Accept,
-            resolution_outcome: JudgmentResolutionOutcome::Accepted,
+            selected_option_id: UserActionOptionId::new(match machine_action {
+                UserActionOptionAction::Accept => "accept",
+                UserActionOptionAction::Reject => "reject",
+                UserActionOptionAction::Defer => "defer",
+            }),
+            machine_action,
+            resolution_outcome,
             note: RequiredNullable::null(),
             accepted_risk_ids: Vec::new(),
         },
@@ -451,6 +494,236 @@ fn shaping_resolution(
         resolved_assurance_level: "local_user_channel".to_owned(),
         resolved_at: UtcTimestamp::parse("2026-01-01T00:00:02Z").expect("test timestamp"),
     }
+}
+
+#[test]
+fn outcome_specific_gap_resolution_is_atomic_and_only_accepted_can_apply(
+) -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let task_id = "task_shaping_rejected_atomic";
+    let checkpoint_id = "checkpoint_shaping_rejected_atomic";
+    let change_unit_id = "cu_shaping_rejected_atomic";
+    let gap_id = "gap_shaping_rejected_atomic";
+    let request_id = "request_shaping_rejected_atomic";
+    let resolution_id = "resolution_shaping_rejected_atomic";
+    let baseline = BaselineRef::new("baseline_shaping_rejected_atomic");
+    let mut task = task_insert(task_id);
+    task.shaping.baseline_ref = Some(baseline.clone());
+
+    store.commit_mutation(
+        commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordShaping,
+            Some(&IdempotencyKey::new("idem_shaping_rejected_atomic_initial")),
+            &RequestHash::new("sha256:shaping-rejected-atomic-initial"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task(
+                "shaping_rejected_atomic_initial",
+                task_id,
+            )],
+        ),
+        &[
+            CoreStorageMutation::Task(TaskMutation::insert(task)),
+            CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(ChangeUnitInsert {
+                change_unit_id: change_unit_id.to_owned(),
+                task_id: task_id.to_owned(),
+                scope_summary: StoredChangeUnitScopeSummary {
+                    scope_summary: Some("Outcome-specific shaping test.".to_owned()),
+                    affected_areas: Vec::new(),
+                    constraints: Vec::new(),
+                },
+                bounded_paths: vec!["src/lib.rs".to_owned()],
+                write_basis: StoredChangeUnitWriteBasis {
+                    baseline_ref: Some(baseline.clone()),
+                    git_workspace_context: None,
+                },
+                effect_contract: None,
+                lifecycle: StoredChangeUnitLifecycle {
+                    recovery_required: false,
+                },
+            })),
+            CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(shaping_request(
+                request_id,
+                task_id,
+                change_unit_id,
+                checkpoint_id,
+                gap_id,
+                baseline.clone(),
+                ShapingGapKind::UserScopeDecisionRequired,
+            ))),
+            CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(
+                ShapingCheckpointInsert {
+                    shaping_checkpoint_id: checkpoint_id.to_owned(),
+                    checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
+                    task_id: task_id.to_owned(),
+                    scope_revision: 0,
+                    baseline_ref: Some(baseline.clone()),
+                    summary: "One exact scope decision is pending.".to_owned(),
+                    implementation_boundary: Some(
+                        "Only accepted authority may be applied.".to_owned(),
+                    ),
+                    readiness: ShapingCheckpointReadiness::Blocked,
+                    source_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
+                    retired_user_action_request_ids: Vec::new(),
+                    gaps: vec![shaping_gap(
+                        gap_id,
+                        request_id,
+                        ShapingGapKind::UserScopeDecisionRequired,
+                    )],
+                },
+            )),
+        ],
+        response_json,
+    )?;
+
+    let rejected_resolution = shaping_resolution_with_outcome(
+        resolution_id,
+        request_id,
+        UserActionKind::ScopeDecision,
+        UserActionOptionAction::Reject,
+        JudgmentResolutionOutcome::Rejected,
+    );
+    let inconsistent = store
+        .commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new(
+                    "idem_shaping_rejected_atomic_inconsistent",
+                )),
+                &RequestHash::new("sha256:shaping-rejected-atomic-inconsistent"),
+                Some(replay_context(CONNECTION_ID, "user_only")),
+                Some(1),
+                vec![pending_event_for_task(
+                    "shaping_rejected_atomic_inconsistent",
+                    task_id,
+                )],
+            ),
+            &[
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                    rejected_resolution.clone(),
+                )),
+                CoreStorageMutation::Shaping(ShapingCheckpointMutation::ResolveLinkedGap {
+                    user_action_request_id: request_id.to_owned(),
+                    user_action_resolution_id: resolution_id.to_owned(),
+                    disposition: ShapingGapStatus::Accepted,
+                }),
+            ],
+            response_json,
+        )
+        .expect_err("rejected resolution cannot back an accepted gap");
+    assert!(matches!(inconsistent, StoreError::InvalidInput { .. }));
+    assert_eq!(store.project_state()?.state_version, 1);
+    assert_eq!(
+        store
+            .current_shaping_checkpoint(&TaskId::new(task_id))?
+            .expect("checkpoint remains current")
+            .gaps[0]
+            .status,
+        ShapingGapStatus::Current
+    );
+    let conn = rusqlite::Connection::open(harness.state_database_path())?;
+    let resolution_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_action_resolutions WHERE user_action_resolution_id = ?1",
+        [resolution_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(resolution_count, 0);
+
+    store.commit_mutation(
+        commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::ResolveUserAction,
+            Some(&IdempotencyKey::new("idem_shaping_rejected_atomic_exact")),
+            &RequestHash::new("sha256:shaping-rejected-atomic-exact"),
+            Some(replay_context(CONNECTION_ID, "user_only")),
+            Some(1),
+            vec![pending_event_for_task(
+                "shaping_rejected_atomic_exact",
+                task_id,
+            )],
+        ),
+        &[
+            CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                rejected_resolution,
+            )),
+            CoreStorageMutation::Shaping(ShapingCheckpointMutation::ResolveLinkedGap {
+                user_action_request_id: request_id.to_owned(),
+                user_action_resolution_id: resolution_id.to_owned(),
+                disposition: ShapingGapStatus::Rejected,
+            }),
+        ],
+        response_json,
+    )?;
+    assert_eq!(
+        store
+            .current_shaping_checkpoint(&TaskId::new(task_id))?
+            .expect("checkpoint remains current")
+            .gaps[0]
+            .status,
+        ShapingGapStatus::Rejected
+    );
+
+    let application = store
+        .commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::UpdateScope,
+                Some(&IdempotencyKey::new("idem_shaping_rejected_atomic_apply")),
+                &RequestHash::new("sha256:shaping-rejected-atomic-apply"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(2),
+                vec![pending_event_for_task(
+                    "shaping_rejected_atomic_apply",
+                    task_id,
+                )],
+            ),
+            &[CoreStorageMutation::Shaping(
+                ShapingCheckpointMutation::ApplyScopeAndRebaseCurrent {
+                    task_id: task_id.to_owned(),
+                    shaping_checkpoint_id: checkpoint_id.to_owned(),
+                    scope_revision: 0,
+                    baseline_ref: Some(baseline),
+                    applications: vec![ShapingGapApplication {
+                        shaping_gap_id: gap_id.to_owned(),
+                        user_action_resolution_id: resolution_id.to_owned(),
+                    }],
+                },
+            )],
+            response_json,
+        )
+        .expect_err("rejected authority cannot be applied");
+    assert!(matches!(application, StoreError::InvalidInput { .. }));
+    assert_eq!(store.project_state()?.state_version, 2);
+    assert_eq!(
+        store
+            .current_shaping_checkpoint(&TaskId::new(task_id))?
+            .expect("checkpoint remains current")
+            .gaps[0]
+            .status,
+        ShapingGapStatus::Rejected
+    );
+
+    conn.execute_batch(
+        "DROP TRIGGER trg_shaping_gap_disposition_transition;
+         DROP TRIGGER trg_shaping_gap_disposition_requires_matching_user_resolution;",
+    )?;
+    let corrupted = conn.execute(
+        "UPDATE shaping_checkpoint_gaps
+            SET status = 'accepted'
+          WHERE project_id = ?1 AND shaping_gap_id = ?2",
+        rusqlite::params![PROJECT_ID, gap_id],
+    )?;
+    assert_eq!(corrupted, 1);
+    let error = store
+        .current_shaping_checkpoint(&TaskId::new(task_id))
+        .expect_err("accepted disposition backed by rejection is corrupt current data");
+    assert!(matches!(error, StoreError::CorruptOwnerStateValue { .. }));
+    Ok(())
 }
 
 #[test]
@@ -533,6 +806,7 @@ fn current_checkpoint_read_rejects_persisted_detached_user_action_authority(
                     source_refs: Vec::new(),
                     evidence_refs: Vec::new(),
                     created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
+                    retired_user_action_request_ids: Vec::new(),
                     gaps: vec![shaping_gap(
                         gap_id,
                         request_id,

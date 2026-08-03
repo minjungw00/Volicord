@@ -554,7 +554,7 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - 검증된 선택적 Git workspace context를 Change Unit write basis에 캡처하되 현재
   Change Unit을 만들거나 교체해도 `work_phase`를 바꾸지 않습니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경에 대해 `tasks.scope_revision`을 증가시킵니다.
-- 선택한 정확한 resolved 범위 owner gap만 검증해 `applied`로 바꿉니다.
+- 선택한 정확한 accepted 범위 owner gap만 검증해 `applied`로 바꿉니다.
 - 호환되는 현재 checkpoint와 연결된 현재 UserAction basis를 보존하고 rebase하거나,
   전이가 권한 근거를 무효화하면 checkpoint를 supersede합니다.
 - 실질적 범위 변경에 대해 `tasks.close_basis_json`을 무효화하고 `tasks.close_basis_revision`을 증가시킵니다.
@@ -587,12 +587,13 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - `create_initial`이면 현재 checkpoint 부재를 검증하고, `replace_current`이면 정확한 기대
   checkpoint에 compare-and-swap을 수행합니다.
 - 허용된 교체이면 해당 exact predecessor를 supersede하고 predecessor identity가 있는
-  successor를 삽입합니다.
+  successor를 삽입합니다. Recovery가 필요하면 완전하고 정확한 거부·보류·만료 request-ref
+  집합을 검증하고 같은 transaction에서 해당 요청 근거를 `superseded`로 바꿉니다.
 - `shaping_checkpoints` row 하나와 그 모든 `shaping_checkpoint_gaps` row를 삽입합니다.
 - 사용자 소유 gap마다 대기 `UserActionRequest` 하나와 정확한
   `shaping_checkpoint_user_actions` link 하나를 원자적으로 만듭니다.
 - `operation=finalize_advice`이면 정확한 현재 advisor Task, ready checkpoint, 호환되는
-  비쓰기 Change Unit, scope, baseline, resolution 집합을 검증하고 advisor owner gap을
+  비쓰기 Change Unit, scope, baseline, accepted resolution 집합을 검증하고 advisor owner gap을
   적용하며 checkpoint를 보존하고 자문 결과, checkpoint 기반 close basis, 정확한 applied
   resolution lineage, evidence ref, risk record를 같은 transaction에서 갱신합니다.
 - authority event 하나와 정확한 replay row를 만들고 정규 Core UTC 하한을 진행시키며
@@ -604,16 +605,17 @@ resolution, work-phase 전환을 만들지 않습니다. Checkpoint, gap, 요청
 하나라도 유효하지 않으면 transaction 전체를 rollback합니다. 유효한 dry-run 미리보기와
 모든 거절 시도에는 이 row와 효과가 없습니다.
 
-연결된 live UserAction이 있는 교체는 mutation 전에 거부됩니다. Request, checkpoint, gap,
-link, predecessor 갱신, event, replay row, state-version 증가는 하나의 rollback 경계를
-공유합니다.
+Replacement는 pending, accepted, applied, stale, 외부 linked authority를 폐기할 수 없습니다.
+Recovery ref가 누락되거나 추가되면 mutation 전에 거부합니다. 폐기 요청, successor 요청,
+checkpoint, gap, link, predecessor 갱신, event, replay row, state-version 증가는 하나의
+rollback 경계를 공유하며 변경 불가능한 request와 resolution 이력은 그대로 남습니다.
 
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`
 
 커밋되는 `dry_run=false` 호출은 shaping인 정확한 현재 work Task, 구조적으로 ready이며
 superseded가 아닌 checkpoint, applied 범위 gap 집합, scope revision, baseline, 활성 Change
-Unit, 정확한 현재 advance owner resolution-ID 집합, recovery constraint 부재를 검증합니다.
+Unit, 정확한 현재 advance owner accepted resolution-ID 집합, recovery constraint 부재를 검증합니다.
 Transaction 하나에서 선택한 정확한 제품·기술·민감 gap만 `applied`로 만들고 Task 단계를
 `implementation`으로, lifecycle을 구현 진행 상태로 바꾸며 authority event 하나와
 정확한 replay row를 만들며 정규 Core UTC 하한을 진행시키고
@@ -960,6 +962,9 @@ replay 응답 전체가 현재의 닫힌 agent-safe 결과 형태로 strict deco
 
 - 변경 불가능한 일대일 `user_action_resolutions` 행 하나를 삽입해 Core 유효 상태 evaluator가 `resolved`를 반환하게 합니다.
 - 일치하는 폐쇄형 resolution 본문, channel kind와 submission ID, 파생 local-user 출처, verification basis, assurance level, Core 캡처 시각을 저장합니다. 본문은 선택지에서 도출한 choice 사실 또는 전체 Evidence 관찰 detail을 담습니다.
+- shaping에 연결된 choice에서는 변경 불가능한 machine action과 outcome에 따라 정확한
+  linked gap을 같은 transaction에서 `accepted`, `rejected`, `deferred` 중 하나로
+  갱신합니다. Accepted 상태만 application 대상이 될 수 있습니다.
 - 메서드 담당 문서가 선택할 때 수락된 제품, 기술, 범위 결정과 수락된 현재 잔여 위험에 대한 `project_continuity_records`를 생성합니다.
 - 종속 차단 사유 또는 다음 행동을 갱신합니다.
 - 이벤트를 추가합니다.
@@ -985,6 +990,10 @@ replay 응답 전체가 현재의 닫힌 agent-safe 결과 형태로 strict deco
 - 영속 정규 UTC 하한 갱신.
 
 사용자 행동 해결은 `tasks.scope_revision`이나 `tasks.close_basis_revision`을 증가시키지 않습니다.
+
+거부 및 보류 shaping resolution은 application, phase, Run, write ticket, Product Repository
+효과를 만들지 않습니다. 만료는 resolution을 삽입하지 않으며 read-only status가 Store
+mutation 없이 현재 시각에서 도출합니다.
 
 유효 `status=resolved`는 변경 불가능한 해결이 있다는 뜻이며 그 자체로 수락이나 증거 뒷받침이 아닙니다. Choice 해결에는 저장 선택지에서 파생한 action/outcome이 필요하고 관찰 해결에는 요청이 저장한 정확한 artifact ref를 보존하면서 현재 대상/아티팩트 detail을 검증해야 합니다. 종류별 권한 사실이 빠지면 유효하지 않은 담당 상태입니다.
 

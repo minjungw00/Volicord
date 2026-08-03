@@ -36,12 +36,12 @@ Unit, 현재 scope revision과 baseline, 이 메서드가 담당하는 제품·�
 Core는 `mode=work`, `work_phase=shaping`, 현재 `ready` 체크포인트, 일치하는
 Task/checkpoint scope revision, 호환되는 Task/checkpoint/Change Unit baseline 좌표,
 정확한 현재 활성 Change Unit과 recovery constraint 부재를 요구합니다. 모든 범위 owner
-gap은 이미 `applied`여야 합니다. 제품·기술·민감 owner gap은 모두 `resolved`이고 정확한
+gap은 이미 `applied`여야 합니다. 제품·기술·민감 owner gap은 모두 `accepted`이고 정확한
 현재 accepted User Channel resolution에 연결되어야 하며 요청에 한 번씩 제공되어야
 합니다. Core는 각 request, resolution, Task, checkpoint, scope revision, baseline, Change
 Unit 근거를 검증합니다. Store는 implementation 진입과 같은 transaction에서 선택된
 advance owner gap만 `applied`로 바꿉니다. stale 또는 superseded checkpoint, `current`
-gap, 적용되지 않은 범위 gap, 제공되지 않은 resolved advance owner gap, stale resolution,
+gap, 적용되지 않은 범위 gap, 제공되지 않은 accepted advance owner gap, stale resolution,
 stale scope revision, 잘못된 Change Unit, 빠지거나 추가된 resolution, 호환되지 않는
 baseline은 효과 없이 거부됩니다.
 
@@ -112,6 +112,11 @@ Task를 닫지 않습니다. `implementation`에서 `shaping`으로 자동 전�
 정확한 owner method, checkpoint와 UserAction request ref, effective UserAction status를
 담습니다. 분리된 live 결정은 `inconsistent_authority_state`가 되며 Task 전체 advance
 authority가 충족되지 않은 동안 workflow는 `ready_for_implementation`을 보고할 수 없습니다.
+
+거부, 보류, 만료 상태의 shaping 결정은 application 입력이 될 수 없습니다. 이 상태는
+`decision_recovery_required`를 선택하고 recovery owner를 `volicord.record_shaping`으로
+지정하며 phase 전이, Run 생성, Product Repository 효과를 차단합니다. 현재 호환되는
+accepted resolution만 정확히 한 번 적용할 수 있습니다.
 
 성공한 전환의 MCP presentation에는 Task가 `implementation`에 들어갔고, 전환이 write
 ticket을 만들지 않았고, Product Repository write에는 여전히 `volicord.prepare_write`가

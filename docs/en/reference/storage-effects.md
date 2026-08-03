@@ -585,7 +585,7 @@ Committed `dry_run=false` may:
   basis without changing `work_phase` when a current Change Unit is created or
   replaced
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
-- validate and set only exact selected resolved scope-owned gaps to `applied`
+- validate and set only exact selected accepted scope-owned gaps to `applied`
 - preserve and rebase a compatible current checkpoint and its linked current
   UserAction bases, or supersede it when the transition invalidates its
   authority basis
@@ -619,14 +619,16 @@ A committed `dry_run=false` call:
 - validates `create_initial` against absence of a current checkpoint or
   compare-and-swaps `replace_current` against its exact expected checkpoint;
 - for a permitted replacement, supersedes that exact predecessor and inserts
-  the successor with its predecessor identity;
+  the successor with its predecessor identity; when recovery is required, it
+  validates the complete exact rejected, deferred, or expired request-ref set
+  and changes those request bases to `superseded` in the same transaction;
 - inserts one `shaping_checkpoints` row and all of its
   `shaping_checkpoint_gaps` rows;
 - atomically creates one pending `UserActionRequest` and one exact
   `shaping_checkpoint_user_actions` link for every user-owned gap;
 - for `operation=finalize_advice`, verifies the exact current advisor Task,
   ready checkpoint, compatible non-write Change Unit, scope, baseline, and
-  resolution set; applies advisor-owned gaps; preserves the checkpoint; and
+  accepted resolution set; applies advisor-owned gaps; preserves the checkpoint; and
   updates the advice result, checkpoint-backed close basis, exact applied
   resolution lineage, evidence refs, and risk records in the same transaction;
 - appends one authority event, creates the exact replay row, advances the
@@ -641,9 +643,11 @@ whole transaction.
 A valid dry-run preview and every rejected attempt create none of these rows or
 effects.
 
-Replacement with a live linked UserAction is rejected before mutation. The
-request, checkpoint, gap, link, predecessor update, event, replay row, and
-state-version increment share one rollback boundary.
+Replacement cannot retire pending, accepted, applied, stale, or foreign linked
+authority. Omitted or extra recovery refs reject before mutation. The retired
+request, successor requests, checkpoint, gap, link, predecessor update, event,
+replay row, and state-version increment share one rollback boundary; immutable
+request and resolution history remains present.
 
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`
@@ -651,7 +655,7 @@ state-version increment share one rollback boundary.
 A committed `dry_run=false` call verifies the exact current work Task in
 shaping, structurally ready non-superseded checkpoint, applied scope gap set,
 scope revision, baseline, active Change Unit, exact current advance-owned
-resolution-ID set, and absence of a recovery constraint. In one transaction it
+accepted resolution-ID set, and absence of a recovery constraint. In one transaction it
 sets only the exact selected product, technical, and sensitive gaps to
 `applied`, changes the Task phase to `implementation` and lifecycle to the implementation progression state,
 appends one authority event, creates the exact replay row, advances the
@@ -1012,6 +1016,9 @@ Committed `dry_run=false` may:
 
 - insert one immutable one-to-one `user_action_resolutions` row, causing the Core effective-status evaluator to return `resolved`
 - store the matching closed resolution body, channel kind and submission id, derived local-user provenance, verification basis, assurance level, and Core capture time; the body carries either option-derived choice facts or the full evidence-observation detail
+- for a shaping-linked choice, update the exact linked gap to `accepted`,
+  `rejected`, or `deferred` according to the immutable machine action and
+  outcome in the same transaction; only accepted remains application-eligible
 - create `project_continuity_records` for accepted product, technical, or scope decisions and for accepted current residual risks when selected by the method owner
 - update dependent blockers or next actions
 - append events
@@ -1036,6 +1043,10 @@ Valid dry-run previews do not create:
 - persisted canonical-UTC floor update
 
 Resolving a user action does not increment `tasks.scope_revision` or `tasks.close_basis_revision`.
+
+Rejected and deferred shaping resolutions create no application, phase, Run,
+write-ticket, or Product Repository effect. Expiration inserts no resolution;
+read-only status derives it from current time without a Store mutation.
 
 Effective `status=resolved` records that an immutable resolution exists; it is not acceptance or supporting evidence by itself. A choice resolution requires its stored option-derived action/outcome. An observation resolution requires exact current target/artifact detail while preserving the exact artifact refs stored by the request. Missing kind-specific authority facts are invalid owner state.
 

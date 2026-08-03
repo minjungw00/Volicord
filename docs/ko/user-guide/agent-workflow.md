@@ -173,14 +173,18 @@ DDL, 템플릿, 로그, 증거 첨부 본문, 관련 없는 계약, 두 언어 �
 문장은 제공하지 않습니다. 결정을 적용할 때 반환된 현재 resolution 참조를 사용합니다.
 안정적인 CLI 대체 경로는 다음과 같습니다.
 
-Resolution은 shaping 결정을 적용하지 않습니다. Resolved scope gap은
-`volicord.update_scope`로 보냅니다. work의 resolved 제품·기술·민감 gap은
-`volicord.advance_task`에 제공합니다. advisor에서는 정확한 resolution을 보존하다가
+Resolution은 shaping 결정을 적용하지 않습니다. 정확한 outcome을 확인해야 합니다.
+Accepted scope gap은 `volicord.update_scope`로 보냅니다. work의 accepted 제품·기술·민감
+gap은 `volicord.advance_task`에 제공합니다. advisor에서는 정확한 accepted resolution을 보존하다가
 `ready_to_finalize_advice`가 요구하는 `volicord.record_shaping` advisor finalization에
 제공합니다. Finalization은 해당
 결정을 적용하고 결과와 evidence/risk lineage를 기록하며 checkpoint를 보존하고 close
 basis를 만듭니다. Scope와 다른 결정이 함께 있으면 scope gap만 먼저 적용하고 다른 gap은
 모드별 owner에 남깁니다.
+거부, 보류, 만료는 권한을 부여하지 않고 `decision_recovery_required`를 선택합니다.
+`volicord.record_shaping`으로 계획을 수정해야 하며 종료되었거나 만료된 요청의 resolution을
+다시 시도하면 안 됩니다. 수정된 계획에도 판단이 필요하면 successor UserAction 요청을
+만들고 chat을 resolution으로 취급하지 말고 User Channel에 제시합니다.
 
 ```sh cli-example
 volicord inbox --repo "<repo>"

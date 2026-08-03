@@ -2,7 +2,7 @@
 
 # `volicord.prepare_write` reference
 
-Write preparation requires `direct/implementation` or `work/implementation`, the current active Change Unit, and no unresolved current decision required for `scope_update`, `advance_task`, or `prepare_write`. A Change Unit created during shaping does not satisfy the phase gate.
+Write preparation requires `direct/implementation` or `work/implementation`, the current active Change Unit, and no pending, rejected, deferred, expired, or inconsistent current shaping decision required for `scope_update`, `advance_task`, or `prepare_write`. A Change Unit created during shaping does not satisfy the phase gate.
 
 A shaping `sensitive_approval_required` resolution is applied for progression
 by `volicord.advance_task`, but its exact current User Channel authority remains
@@ -186,6 +186,11 @@ Requires:
 - compatible `actor_source` for the agent workflow invocation
 
 A separate sensitive-action approval satisfies this method only when the user action is current, resolved with `resolved_by_actor_source=local_user` and compatible User Channel provenance, selected an option with `resolution_outcome=accepted`, and its `UserActionBasis` remains compatible with the current `scope_revision`, current Change Unit, intended operation, normalized `intended_paths`, sensitive categories, and `baseline_ref`. A user action cannot satisfy sensitive-action approval if it has invalid basis state or is stale, superseded, expired, rejected, deferred, missing required resolution authority, or incompatible. Callers do not submit revision fields to make an approval compatible.
+
+When the current checkpoint carries rejected, deferred, or expired decision
+authority, this method returns the typed `decision_recovery_required` workflow
+with `volicord.record_shaping` as owner and creates no write ticket or Product
+Repository delta.
 
 Ticket selection also requires a non-null
 `WriteTicketValidityBasis.write_authority_fingerprint` equal to the current

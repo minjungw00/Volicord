@@ -127,6 +127,16 @@ Core는 바깥 resolution에 resolution 캡처 시각 하나를 제공합니다.
 관찰 권한은 정확한 현재 `evidence_observation` 해결 본문에서만 나오며 최종 수락이나
 다른 판단이 아닙니다.
 
+Shaping에 연결된 choice에서 Core는 변경 불가능한 resolution과 정확한 gap disposition을
+원자적으로 기록합니다. `machine_action=accept`, `resolution_outcome=accepted`는
+`accepted`를 기록하고 결정을 미적용 상태로 유지하며 구조적 checkpoint readiness를
+계산한 뒤 `ShapingDecisionPolicy`의 application owner로 연결합니다. `reject/rejected`는
+`rejected`, `defer/deferred`는 `deferred`를 기록합니다. 두 결과 모두 권한을 부여하지 않고
+`decision_recovery_required`를 통해 `volicord.record_shaping`으로 연결합니다. 변경 불가능한
+요청은 다시 해결할 수 없습니다. 만료 요청은 해결되지 않은 감사 이력으로 남고 이 메서드를
+상태 변경 없이 거부하며 같은 agent 소유 recovery workflow를 사용합니다. Resolution 자체는
+shaping 결정을 적용하지 않습니다.
+
 Dry run, 잘못되거나 혼합된 payload, Agent Connection actor, stale 또는 superseded
 근거, `now >= expires_at`, 바뀐 후보나 bytes, replay 충돌, 잘못된 채널 binding은
 요청, 해결, event, replay, blocker, lifecycle, state version 효과 없이

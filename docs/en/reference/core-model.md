@@ -278,17 +278,29 @@ The concrete `Task.mode` and `work_phase` select the authority record and transi
 Shaping checkpoint succession is explicit authority. `create_initial` requires
 no current checkpoint; `replace_current` compare-and-swaps one exact current
 checkpoint and records it as the successor's predecessor. A linked live
-user-owned decision prevents replacement until its semantic owner applies it
-or a scope or Task transition authoritatively invalidates its basis. Work
+user-owned decision prevents replacement while it is pending, accepted but
+unapplied, or applied. A rejected, deferred, or expired request may be retired
+only by an exact `replace_current` operation naming every affected request ref.
+Each retired request remains immutable audit history with a superseded basis;
+if the successor plan still needs the judgment, it creates a distinct
+`UserActionRequest`. Work
 progression evaluates Task-wide effective UserActions required for
 `advance_task` as well as checkpoint-local gaps; advisor progression does the
 same for `finalize_advice` and scope update. Recording a gap-free successor
 does not bypass either Task-wide decision gate.
 
-Shaping resolution and application are separate. A linked gap is `current`
-until User Channel authority exists, `resolved` while that authority awaits its
-semantic owner, and `applied` only after that owner's state mutation consumes
-the exact resolution. The closed owner policy is:
+UserAction terminal state and shaping authority are separate. The canonical
+evaluator combines effective request status, immutable action and outcome,
+User Channel provenance, basis compatibility, checkpoint and gap identity,
+application state, scope revision, baseline, Change Unit, and Task mode. Its
+closed states are `awaiting_user`, `accepted_unapplied`, `applied`, `rejected`,
+`deferred`, `expired`, `stale`, `superseded`, and `inconsistent`. A linked gap
+is stored as `current`, `accepted`, `rejected`, `deferred`, or `applied`. Only
+an accepted, current, compatible User Channel resolution can move from
+`accepted` to `applied` through the semantic owner. Rejection, deferral, and
+expiration grant no authority.
+
+The closed owner policy is:
 
 | Mode | Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | Downstream retention |
 |---|---|---|---|---|---|---|
@@ -301,16 +313,25 @@ the exact resolution. The closed owner policy is:
 | `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.record_shaping` | unchanged | retained in close basis |
 
 Checkpoint `readiness=ready` is structural: the baseline and implementation
-boundary exist, non-user gaps are closed, and each user gap has a current
-resolution. It does not mean all decisions are applied. The workflow summary
-therefore exposes readiness and the remaining application owners separately.
-Only a resolved scope gap selects `ready_to_apply_decisions`. For `work`,
-resolved product, technical, and sensitive gaps wait for atomic application by
+boundary exist, non-user gaps are closed, and no user gap remains `current`.
+It does not mean the checkpoint is progressable. The workflow summary exposes
+structural readiness, accepted application owners, and exact decision recovery
+requirements separately. An accepted scope gap selects
+`ready_to_apply_decisions`. For `work`, accepted product, technical, and
+sensitive gaps wait for atomic application by
 `volicord.advance_task`. For `advisor`, they remain visible until the exact
 `finalize_advice` operation applies them. A structurally ready advisor
 checkpoint with a current compatible Change Unit selects
 `ready_to_finalize_advice`; it selects `close_review` only after finalization
 has established a current close basis.
+
+A rejected, deferred, or expired checkpoint decision selects
+`decision_recovery_required` with `next_actor=agent` and
+`required_action=volicord.record_shaping`. The state carries the exact
+checkpoint, request and available resolution refs, disposition, typed recovery
+reason, and expected state version. An expired request remains unresolved in
+audit history and cannot route to `volicord.resolve_user_action`. Pending
+requests alone select `awaiting_user_action` with `next_actor=user`.
 
 `advisor` is read-only with respect to Product Repository file effects and never uses a write-capable Change Unit, a write ticket, or `volicord.advance_task`. Its canonical Change Unit has no affected or allowed paths, has a non-null effect contract, allows only `artifact_registration`, `user_action_request`, and `evidence_update`, records no sensitive expectation, and forbids `product_file_write`, `run_recording`, `sensitive_action`, `external_network`, and `secret_access`. Core and Store reject any incompatible advisor Change Unit on scope update and current-state read. A Change Unit is a work boundary and does not change phase. A work Task enters implementation only through a successful explicit advance. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Progression authority does not satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
 

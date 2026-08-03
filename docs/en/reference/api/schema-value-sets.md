@@ -297,8 +297,8 @@ superseded
 
 `blocked` means the current checkpoint is structurally incomplete or has a
 `current` gap. `ready` means its baseline and implementation boundary exist,
-non-user shaping gaps are closed, and no gap is `current`; resolved user-owned
-gaps may still await their application owner. `superseded` is a non-current
+non-user shaping gaps are closed, and no gap is `current`; terminal user-owned
+gaps may still await their application owner or require recovery. `superseded` is a non-current
 predecessor replaced through the explicit checkpoint operation. Readiness does
 not apply a decision, advance a Task, finalize advice, or establish a close
 basis.
@@ -326,14 +326,22 @@ UserAction draft; all other kinds forbid one.
 
 ```text
 current
-resolved
+accepted
+rejected
+deferred
 applied
 ```
 
-`current` means the decision or shaping work is unresolved. `resolved` means
-exact User Channel authority exists but its semantic application owner has not
-applied it. `applied` means that owner consumed and bound the exact resolution
-to current state. Resolution alone never selects `applied`.
+`current` means the decision or shaping work is unanswered. `accepted` means
+an exact current compatible accepted User Channel resolution awaits its
+application owner. `rejected` and `deferred` are terminal non-authorizing
+dispositions. `applied` means the owner consumed and bound the exact accepted
+resolution to current state. Only `accepted` can transition to `applied`.
+
+`ShapingDecisionAuthorityState` uses exactly `awaiting_user`,
+`accepted_unapplied`, `applied`, `rejected`, `deferred`, `expired`, `stale`,
+`superseded`, and `inconsistent`. Recovery requirements use the exact reason
+values `rejected`, `deferred`, and `expired`.
 
 User-owned gaps use this mode-aware closed application-owner mapping:
 
@@ -357,6 +365,7 @@ The only `ShapingDecisionApplicationOwner` values are
 no_active_task
 shaping_required
 awaiting_user_action
+decision_recovery_required
 ready_to_apply_decisions
 ready_for_change_unit
 ready_to_finalize_advice
@@ -372,7 +381,8 @@ terminal
 no_current_checkpoint
 shaping_gaps_current
 user_action_pending
-resolved_decisions_not_applied
+accepted_decisions_not_applied
+decision_recovery_required
 change_unit_required
 advisor_finalization_required
 explicit_advance_required

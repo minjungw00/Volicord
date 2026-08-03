@@ -44,7 +44,7 @@ fn project_schema_declares_stable_ddl_vector() -> Result<(), Box<dyn std::error:
     use volicord_types::storage_contract::{GeneratedRelationKind, StorageDatabaseKind};
 
     let metadata = schema::generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 65);
+    assert_eq!(metadata.tables.len(), 67);
     assert_eq!(metadata.columns.len(), 636);
     assert_eq!(metadata.indexes.len(), 78);
     assert_eq!(metadata.constraints.len(), 49);
@@ -72,9 +72,11 @@ fn project_schema_declares_stable_ddl_vector() -> Result<(), Box<dyn std::error:
         "trg_shaping_checkpoint_successor_requires_exact_predecessor",
         "trg_shaping_checkpoint_live_user_action_not_detached",
         "trg_shaping_gap_not_added_to_ready_checkpoint",
+        "trg_shaping_gap_insert_is_current",
+        "trg_shaping_gap_disposition_transition",
         "trg_shaping_checkpoint_ready_has_no_current_gap",
-        "trg_shaping_gap_resolution_requires_user_resolution",
-        "trg_shaping_gap_application_requires_resolved_gap",
+        "trg_shaping_gap_disposition_requires_matching_user_resolution",
+        "trg_shaping_gap_application_requires_accepted_gap",
         "trg_applied_shaping_gap_is_terminal",
     ] {
         assert!(metadata.tables.iter().any(|relation| {

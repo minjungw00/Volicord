@@ -292,8 +292,10 @@ boundaries without requiring a fixed status/intake/check-close call ritual.
 - Do not modify Product Repository files outside an active compatible write authorization.
 - Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.
 - Follow the tagged workflow's `required_action`; do not call workflow tools speculatively or select progression from top-level array order.
-- Never replace the current shaping checkpoint to remove a pending or resolved-but-unapplied decision. Preserve its UserAction authority and follow the tagged recovery method.
-- User Channel resolution does not apply a shaping decision. Apply each resolved decision only through its `application_owner`, using the exact current resolution refs.
+- Never replace the current shaping checkpoint to remove a pending or accepted-but-unapplied decision. Preserve its UserAction authority and follow the tagged recovery method.
+- Inspect the exact User Channel resolution outcome. Resolution does not apply a shaping decision: apply only accepted, current, compatible authority through its `application_owner`, using the exact current resolution refs.
+- After rejection, deferral, or expiration, follow `decision_recovery_required` and revise shaping. Never retry resolution of a terminal or expired request. If the revised plan still needs that judgment, create a successor UserActionRequest with an independent identity; chat text cannot replace it.
+- A rejected, deferred, or expired decision grants no authority and keeps Product Repository mutation unavailable. Surface that outcome and do not hide it as success.
 - Do not invent a scope decision or pass a scope-decision ref for product-only or technical-only work; follow that decision's mode-specific application owner.
 - Creating or replacing a Change Unit does not advance the Task phase. For work, call `volicord.advance_task` only when the tagged workflow requires explicit advance and never while a UserAction is pending. Do not call `volicord.prepare_write` before the Task enters implementation.
 - Advisor work uses only a non-write Change Unit. On `ready_to_finalize_advice`, finalize the current advisor result with `volicord.record_shaping`; do not use `volicord.record_run`, `volicord.advance_task`, or `volicord.prepare_write` for advisor.

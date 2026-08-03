@@ -18,7 +18,7 @@ use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
     decision_rejected_response, dry_run_summary, no_active_task_response,
-    rejected_pipeline_response, validation_rejected,
+    rejected_pipeline_response, validation_rejected, workflow_rejection_plan_error,
 };
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
@@ -296,6 +296,33 @@ fn decide_update_scope_policy(
             next_control.as_str()
         )
     };
+    let checkpoint = store
+        .current_shaping_checkpoint(&request.task_id)
+        .map_err(CorePipelineError::from)?;
+    let shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &request.envelope.project_id,
+        project_state.state_version,
+        &task,
+        current_change_unit.as_ref(),
+        checkpoint.as_ref(),
+        &plan_now,
+    )?;
+    if !shaping_authority.recovery_required.is_empty() {
+        return workflow_rejection_plan_error(
+            store,
+            project_state,
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::UserDecisionUnresolved,
+            "scope updates cannot apply a rejected, deferred, or expired shaping decision",
+            MethodName::UpdateScope,
+            None,
+            Vec::new(),
+            false,
+            MethodName::RecordShaping,
+        );
+    }
     let validated_scope_decisions = validate_related_scope_decisions(
         store,
         project_state,
@@ -1051,7 +1078,7 @@ fn shaping_checkpoint_can_rebase(
             return true;
         }
         gap.status == ShapingGapStatus::Applied
-            || (gap.status == ShapingGapStatus::Resolved
+            || (gap.status == ShapingGapStatus::Accepted
                 && scope_gap_applications.iter().any(|application| {
                     application.shaping_gap_id == gap.shaping_gap_id
                         && gap.user_action.as_ref().is_some_and(|link| {
@@ -1319,7 +1346,7 @@ fn validate_related_scope_decisions(
                 .gaps
                 .iter()
                 .filter(|gap| {
-                    gap.status == ShapingGapStatus::Resolved
+                    gap.status == ShapingGapStatus::Accepted
                         && gap.gap_kind.decision_policy().is_some_and(|policy| {
                             policy.application_owner == ShapingDecisionApplicationOwner::UpdateScope
                         })
@@ -1332,7 +1359,7 @@ fn validate_related_scope_decisions(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "related_scope_decision_refs",
-            "related scope decision refs must exactly match every resolved current scope gap",
+            "related scope decision refs must exactly match every accepted current scope gap",
         );
     }
     let mut linked_scope_decision_refs = Vec::new();
@@ -1426,7 +1453,7 @@ fn validate_related_scope_decisions(
             PlanError::Response(Box::new(decision_rejected_response(
                 &request.envelope,
                 Some(project_state.state_version),
-                "related scope decision resolution is not linked to a current resolved scope gap",
+                "related scope decision resolution is not linked to a current accepted scope gap",
             )))
         })?;
         applications.push(ShapingGapApplication {
@@ -1440,7 +1467,7 @@ fn validate_related_scope_decisions(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "related_scope_decision_refs",
-            "related scope decision refs do not cover the exact current resolved scope gaps",
+            "related scope decision refs do not cover the exact current accepted scope gaps",
         );
     }
     Ok(ValidatedScopeDecisions {

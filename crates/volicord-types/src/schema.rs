@@ -2065,6 +2065,7 @@ pub enum ShapingCheckpointOperation {
     CreateInitial,
     ReplaceCurrent {
         expected_current_checkpoint_id: crate::ids::ShapingCheckpointId,
+        retired_user_action_request_refs: Vec<StateRecordRef>,
     },
 }
 
@@ -2107,8 +2108,20 @@ pub struct ShapingCheckpointGap {
     pub summary: String,
     pub affected_refs: Vec<StateRecordRef>,
     pub status: crate::values::ShapingGapStatus,
+    pub decision_authority_state: RequiredNullable<crate::values::ShapingDecisionAuthorityState>,
     pub user_action_request_ref: RequiredNullable<StateRecordRef>,
     pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
+}
+
+/// Exact non-authorizing decision that requires one successor shaping plan.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShapingDecisionRecoveryRequirement {
+    pub shaping_gap_id: crate::ids::ShapingGapId,
+    pub user_action_request_ref: StateRecordRef,
+    pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
+    pub disposition: crate::values::ShapingDecisionAuthorityState,
+    pub reason: crate::values::ShapingDecisionRecoveryReason,
 }
 
 /// Current shaping checkpoint projection used by workflow progression.
@@ -2124,6 +2137,7 @@ pub struct ShapingCheckpointSummary {
     pub gaps: Vec<ShapingCheckpointGap>,
     pub pending_decision_refs: Vec<StateRecordRef>,
     pub unresolved_application_owners: Vec<crate::values::ShapingDecisionApplicationOwner>,
+    pub decision_recovery_requirements: Vec<ShapingDecisionRecoveryRequirement>,
 }
 
 macro_rules! workflow_projection_variants {
@@ -2151,6 +2165,7 @@ workflow_projection_variants!(
     NoActiveTask,
     ShapingRequired,
     AwaitingUserAction,
+    DecisionRecoveryRequired,
     ReadyToApplyDecisions,
     ReadyForChangeUnit,
     ReadyToFinalizeAdvice,
@@ -2167,6 +2182,7 @@ impl WorkflowProjection {
             Self::NoActiveTask { next_actor, .. }
             | Self::ShapingRequired { next_actor, .. }
             | Self::AwaitingUserAction { next_actor, .. }
+            | Self::DecisionRecoveryRequired { next_actor, .. }
             | Self::ReadyToApplyDecisions { next_actor, .. }
             | Self::ReadyForChangeUnit { next_actor, .. }
             | Self::ReadyToFinalizeAdvice { next_actor, .. }
@@ -2187,6 +2203,9 @@ impl WorkflowProjection {
                 required_action, ..
             }
             | Self::AwaitingUserAction {
+                required_action, ..
+            }
+            | Self::DecisionRecoveryRequired {
                 required_action, ..
             }
             | Self::ReadyToApplyDecisions {
@@ -2225,6 +2244,9 @@ impl WorkflowProjection {
             | Self::AwaitingUserAction {
                 allowed_actions, ..
             }
+            | Self::DecisionRecoveryRequired {
+                allowed_actions, ..
+            }
             | Self::ReadyToApplyDecisions {
                 allowed_actions, ..
             }
@@ -2255,6 +2277,7 @@ impl WorkflowProjection {
             Self::NoActiveTask { required_refs, .. }
             | Self::ShapingRequired { required_refs, .. }
             | Self::AwaitingUserAction { required_refs, .. }
+            | Self::DecisionRecoveryRequired { required_refs, .. }
             | Self::ReadyToApplyDecisions { required_refs, .. }
             | Self::ReadyForChangeUnit { required_refs, .. }
             | Self::ReadyToFinalizeAdvice { required_refs, .. }

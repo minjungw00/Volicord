@@ -143,16 +143,17 @@ creation time. The predecessor foreign key enforces same-project and same-Task
 lineage; predecessor identity is immutable and cannot self-reference.
 
 `shaping_checkpoint_gaps` owns each gap's closed kind, summary, affected refs,
-and `current|resolved|applied` status. A `ready` checkpoint cannot receive or
+and `current|accepted|rejected|deferred|applied` status. A `ready` checkpoint cannot receive or
 retain a `current` gap. `shaping_checkpoint_user_actions` is a same-project,
 same-Task, same-checkpoint, same-gap link to the exact UserAction request and,
 after User Channel resolution, its immutable resolution. A user-owned gap must
 have exactly one such request link; a non-user-owned gap has none. Resolving a
-linked request changes only its gap to `resolved` and may make a structurally
-complete checkpoint `ready`. `volicord.update_scope` applies exact selected
+linked request changes only its gap to the outcome-specific `accepted`,
+`rejected`, or `deferred` disposition and may make a structurally complete
+checkpoint `ready`. `volicord.update_scope` applies exact selected accepted
 scope gaps; `volicord.advance_task` applies exact selected product, technical,
 and sensitive gaps atomically with phase transition. Neither operation updates
-every resolved gap by a Task-wide predicate. Applied gaps are terminal, while
+every accepted gap by a Task-wide predicate. Applied gaps are terminal, while
 sensitive resolution authority remains available to downstream policy.
 
 Every aggregate read strictly decodes identifiers, closed values, canonical
@@ -161,6 +162,13 @@ and link consistency. A malformed or inconsistent member is corrupt persisted
 owner data; Store does not omit it, invent a default, choose a checkpoint by
 row ordering, or detach a linked current-basis UserAction through checkpoint
 replacement.
+
+Exact checkpoint replacement may supersede the basis of rejected, deferred,
+or expired linked requests only when `retired_user_action_request_refs` is the
+complete predecessor-owned set. Pending, accepted, applied, stale, foreign,
+omitted, or extra refs are rejected. Retirement and successor aggregate
+creation share the same transaction, while the request and immutable
+resolution rows remain audit history.
 
 `project_workflow_policies` is the authoritative project workflow-policy
 record family. Its canonical aggregate contains the project identity, exact

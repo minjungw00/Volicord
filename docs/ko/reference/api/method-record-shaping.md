@@ -30,7 +30,9 @@
 `operation=record_checkpoint`는 정확한 현재 Task와 현재 scope revision을 가리킵니다.
 `checkpoint_operation.operation=create_initial`은 현재 checkpoint가 없어야 합니다.
 `checkpoint_operation.operation=replace_current`는
-`expected_current_checkpoint_id`로 정확한 현재 checkpoint를 지정해야 합니다. 교체
+`expected_current_checkpoint_id`로 정확한 현재 checkpoint를 지정하고,
+`retired_user_action_request_refs`로 근거를 폐기할 연결된 거부·보류·만료 요청의 완전하고
+정확한 집합을 지정해야 합니다. 교체
 checkpoint는 이 identity를 `predecessor_checkpoint_id`로 기록하며 Core는 row 정렬로
 대상을 선택하지 않고 compare-and-swap을 한 번 수행합니다. 요청은 형성 요약, 구현 또는
 자문 경계, 알려진 경우의 현재 baseline 좌표, 타입이 정해진 gap, source ref, evidence
@@ -41,16 +43,20 @@ Core는 선택지를 실행 가능한 것으로 제시하기 전에 같은 trans
 `UserActionRequest`를 만들고 연결합니다.
 
 Core가 구조적 `readiness`를 계산합니다. baseline과 implementation boundary가 완전하고,
-모든 비사용자 shaping gap이 닫혔으며, 모든 사용자 소유 gap에 현재 User Channel
-resolution이 있으면 checkpoint는 `ready`입니다. 해결된 결정은 의미 owner가 소비하기
-전까지 `applied`가 아니라 `resolved`일 수 있습니다. 그 밖에는
+모든 비사용자 shaping gap이 닫혔으며, 사용자 소유 gap이 `current` 상태로 남아 있지 않으면
+checkpoint는 `ready`입니다. 수락된 결정은 의미 owner가 적용할 때까지 `accepted`로
+남습니다. 거부와 보류는 구조적으로 완료되었지만 권한을 부여하지 않습니다. 그 밖에는
 `blocked`입니다. 허용된 교체는 정확한 predecessor를 `superseded`로 표시하고 predecessor
 supersession과 successor 생성을 같은 timestamp로 기록합니다. Task 하나에는
 superseded가 아닌 checkpoint가 최대 하나만 있습니다.
 
-정확한 현재 checkpoint에 연결된 UserAction이 현재 의미 권한을 가지는 동안은 교체할 수
-없습니다. 여기에는 pending 결정, gap이 아직 `applied`가 아닌 resolved 결정, 현재
-workflow gate가 요구하는 결정이 포함됩니다. 타입이 지정된 거부는 checkpoint, request
+Pending, 수락 후 미적용, 적용, stale, 외부 권한은 교체 operation으로 폐기할 수 없습니다.
+거부, 보류, 만료 상태인 predecessor 요청의 폐기 ref는 정확한 집합이어야 하므로 누락이나
+관련 없는 추가 ref는 operation을 거부합니다. 요청 근거 전이, predecessor supersession,
+successor checkpoint와 gap, successor UserAction 요청, event, replay row, state-version
+갱신은 한 transaction에서 커밋됩니다. 폐기된 요청과 존재하는 변경 불가능한 resolution은
+감사 이력으로 남습니다. Successor 계획에도 같은 판단이 필요하면 별도 요청 identity를
+만듭니다. 타입이 지정된 거부는 checkpoint, request
 ref, effective status, 필요한 owner method를 식별하고
 `state_change_applied=false`를 보고합니다. Scope 또는 Task 전환과 타입이 지정된 결정 적용
 operation만 자신이 소유한 전환 안에서 권한을 무효화할 수 있습니다.
@@ -67,13 +73,14 @@ Task의 제품·기술·민감 결정은 `required_for=[finalize_advice]`를 사
 [API 값 집합](schema-value-sets.md)이 담당합니다.
 
 `operation=finalize_advice`는 `Task.mode=advisor`, `work_phase=shaping`, 정확한 ready 현재
-checkpoint, 현재 비쓰기 Change Unit, scope revision, baseline, 모든 사용자 소유 checkpoint
-gap에 대한 중복 없는 정확한 현재 resolution 집합을 요구합니다. `current` gap은 남아 있을
+checkpoint, 현재 비쓰기 Change Unit, scope revision, baseline, 모든 advisor 소유 checkpoint
+gap에 대한 중복 없는 정확한 현재 accepted resolution 집합을 요구합니다. `current` gap은 남아 있을
 수 없고, scope owner gap은 이미 `applied`여야 하며, advisor owner resolution은 모두 현재
-상태로 수락되어 있어야 합니다. `finalize_advice` 또는 shaping 소유 scope update에 필요한
+상태로 수락되어 있어야 합니다. 거부, 보류, 만료, 불일치 권한은
+`decision_recovery_required`를 선택하며 finalize할 수 없습니다. `finalize_advice` 또는 shaping 소유 scope update에 필요한
 Task 전체 effective UserAction은 현재 checkpoint에 일관되게 표현되어야 하며, 분리된
-pending 또는 resolved 권한은 finalization을 거부합니다. 요청은 결과 요약, 지원되는 result와
-evidence ref, 잔여 위험, 복구 제약도 제공합니다. Core는 advisor 소유 resolved gap 적용, 자문 결과 기록,
+pending 또는 accepted 권한은 finalization을 거부합니다. 요청은 결과 요약, 지원되는 result와
+evidence ref, 잔여 위험, 복구 제약도 제공합니다. Core는 advisor 소유 accepted gap 적용, 자문 결과 기록,
 checkpoint 기반 `CurrentCloseBasis` 생성을 원자적으로 처리하며 checkpoint identity를
 유지하고 현재 workflow와 닫기 준비 상태 projection을 반환합니다. replacement checkpoint나
 새 UserAction 요청은 만들지 않습니다.
@@ -152,7 +159,7 @@ recovery owner 하나를 보고합니다. Core 또는 replay 효과는 없습니
 canonical Task 범위 inbox command를 반드시 surface합니다. Chat transcript는 User Channel
 resolution을 대신할 수 없습니다.
 
-해결 뒤에는 resolved scope gap이 있을 때만 `ready_to_apply_decisions`를 선택합니다.
+해결 뒤에는 accepted scope gap이 있을 때만 `ready_to_apply_decisions`를 선택합니다.
 제품 전용·기술 전용 checkpoint는 mode와 호환되는 현재 Change Unit이 없으면
 `ready_for_change_unit`을 선택하며 scope-decision ref를 요구하거나 합성하지 않습니다.
 `advance_task`, `finalize_advice`, shaping 소유 scope update에 필요한 Task 전체 effective

@@ -1278,6 +1278,13 @@ mod tests {
     }
 
     fn pending_choice_fixture(prefix: &str) -> Result<PendingChoiceFixture, Box<dyn Error>> {
+        pending_choice_fixture_for_kind(prefix, JudgmentKind::ProductDecision)
+    }
+
+    fn pending_choice_fixture_for_kind(
+        prefix: &str,
+        judgment_kind: JudgmentKind,
+    ) -> Result<PendingChoiceFixture, Box<dyn Error>> {
         let fixture = CoreFixture::new(prefix)?;
         fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
         let core = CoreService::for_mutation(&fixture.mutation_context()?);
@@ -1322,7 +1329,7 @@ mod tests {
                 expected_state_version: Some(state_version),
                 task_id: &task_id,
                 change_unit_id: None,
-                judgment_kind: JudgmentKind::ProductDecision,
+                judgment_kind,
             }),
             invocation,
         )?;
@@ -1793,6 +1800,43 @@ mod tests {
             diagnostic.project_id.as_deref(),
             Some(pending.fixture.project_id())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn inbox_rejected_choice_surfaces_exact_outcome_and_cannot_be_resolved_again(
+    ) -> Result<(), Box<dyn Error>> {
+        let pending = pending_choice_fixture_for_kind(
+            "cli-inbox-rejected-choice",
+            JudgmentKind::ScopeDecision,
+        )?;
+        let before = pending.fixture.counts()?;
+
+        let output = resolve_choice(&pending, true, "reject")?;
+        let response: Value = serde_json::from_str(&output)?;
+        assert_eq!(
+            response["user_action_resolution"]["body"]["machine_action"],
+            "reject"
+        );
+        assert_eq!(
+            response["user_action_resolution"]["body"]["resolution_outcome"],
+            "rejected"
+        );
+        assert_eq!(
+            pending
+                .fixture
+                .user_action_resolution_outcome(&pending.request_id)?,
+            Some("rejected".to_owned())
+        );
+        let after = pending.fixture.counts()?;
+        assert_eq!(after.state_version, before.state_version + 1);
+
+        let conflicting = resolve_choice(&pending, true, "defer")?;
+        let conflicting: Value = serde_json::from_str(&conflicting)?;
+        assert_eq!(conflicting["base"]["response_kind"], "rejected");
+        assert_eq!(conflicting["base"]["effect_kind"], "no_effect");
+        assert_eq!(conflicting["errors"][0]["code"], "STATE_VERSION_CONFLICT");
+        assert_eq!(pending.fixture.counts()?, after);
         Ok(())
     }
 

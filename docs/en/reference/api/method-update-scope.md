@@ -68,11 +68,11 @@ otherwise incompatible advisor Change Unit before committing scope effects.
 - `change_unit.operation` and the fields needed by that operation; supported operation values and their meanings are owned by [API Value Sets](schema-value-sets.md#method-local-values).
 - Optional `change_unit.effect_contract` when creating or replacing the current Change Unit. When present, the object uses `ChangeUnitEffectContract`; when absent, the Change Unit has no extra effect contract.
 - `related_scope_decision_refs` must exactly cover the current checkpoint's
-  resolved scope-owned gaps. It is empty when there is no such gap, including
+  accepted scope-owned gaps. It is empty when there is no such gap, including
   product-only and technical-only progression.
 
 When a scope update applies a `scope_decision`, each reference must identify the
-exact resolution linked to a resolved scope gap in the current checkpoint and
+exact resolution linked to an accepted scope gap in the current checkpoint and
 must have `judgment_kind=scope_decision`, `status=resolved`,
 `machine_action=accept`, `resolution_outcome=accepted`,
 `resolved_by_actor_source=local_user`, compatible User Channel provenance,
@@ -165,11 +165,17 @@ no-op, acceptance/non-goal/autonomy edit that does not change `scope_revision`,
 or the unrelated `state_version` increment does not invalidate the ticket.
 Invalidation does not consume or silently reuse it.
 
-Applying a scope decision changes only its selected gap from `resolved` to
+Applying a scope decision changes only its selected gap from `accepted` to
 `applied` and increments the scope revision. A compatible no-op or Change Unit
 creation can preserve and rebase the current checkpoint without a scope
 decision ref. A transition supersedes the checkpoint only when it genuinely
 invalidates the checkpoint's scope or baseline authority basis.
+
+A rejected, deferred, expired, or inconsistent shaping decision grants no
+scope authority. The method returns a no-effect workflow rejection whose
+current workflow is `decision_recovery_required` and whose recovery owner is
+`volicord.record_shaping`; a semantic no-op scope request cannot bypass this
+gate.
 
 ## Success result
 
