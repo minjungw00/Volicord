@@ -144,6 +144,27 @@ pub struct FixtureExpectation {
     pub out_of_scope_attempt_expected: bool,
     pub multi_session_expected: bool,
     pub shell_write_expected: bool,
+    #[serde(default)]
+    pub shaping_outcome: Option<ShapingOutcomeExpectation>,
+    #[serde(default)]
+    pub shaping_application_owner: Option<ShapingApplicationOwnerExpectation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingOutcomeExpectation {
+    Accepted,
+    Rejected,
+    Deferred,
+    Expired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingApplicationOwnerExpectation {
+    AdvanceTask,
+    UpdateScope,
+    RecordShaping,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,6 +304,26 @@ pub struct ShapingWorkflowObservation {
     pub advisor_finalizations_via_record_shaping: u64,
     pub completion_claim_opportunities: u64,
     pub premature_completion_claims: u64,
+    pub accepted_outcome_opportunities: u64,
+    pub accepted_outcomes_surfaced: u64,
+    pub rejected_outcome_opportunities: u64,
+    pub rejected_outcomes_surfaced: u64,
+    pub deferred_outcome_opportunities: u64,
+    pub deferred_outcomes_surfaced: u64,
+    pub expired_outcome_opportunities: u64,
+    pub expired_outcomes_surfaced: u64,
+    pub non_authorizing_outcome_opportunities: u64,
+    pub false_authority_claims: u64,
+    pub expired_resolution_instruction_opportunities: u64,
+    pub expired_resolution_instructions: u64,
+    pub shaping_recovery_opportunities: u64,
+    pub correct_shaping_recoveries: u64,
+    pub successor_user_action_opportunities: u64,
+    pub successor_user_actions_created: u64,
+    pub retained_authority_opportunities: u64,
+    pub retained_authority_preserved: u64,
+    pub application_owner_opportunities: u64,
+    pub exact_application_owners: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -8,9 +8,11 @@ use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
 use volicord_types::schema::{
     AcceptanceCriterion, CloseReadinessBlocker, EvidenceGateSummary, EvidenceSummary,
     GuaranteeDisplay, ProjectWorkflowPolicySummary, StateRecordRef, TaskLifecycleState,
-    TaskLineageSummary, WorkspaceContext, WriteTicketStateSummary,
+    TaskLineageSummary, WorkflowProjection, WorkspaceContext, WriteTicketStateSummary,
 };
-use volicord_types::values::{CloseState, StateRecordKind, TaskResult, WorkspaceVcs};
+use volicord_types::values::{
+    CloseState, StateRecordKind, TaskLifecyclePhase, TaskResult, WorkspaceVcs,
+};
 
 pub(crate) struct StateSummaryInput<'a> {
     pub(crate) project_id: &'a ProjectId,
@@ -110,6 +112,23 @@ pub(crate) fn state_summary(
     let scope = StoredScope::from_task(task)?;
     let change_unit_scope =
         current_change_unit.and_then(|record| record.scope_summary.scope_summary.clone());
+    let workflow = crate::workflow_projection::workflow_projection(
+        project_id,
+        state_version,
+        task,
+        current_change_unit,
+        shaping_checkpoint,
+        task_wide_shaping_authority,
+    );
+    let lifecycle_phase = if task.lifecycle_phase == TaskLifecyclePhase::WaitingUser
+        && matches!(
+            &workflow,
+            WorkflowProjection::DecisionRecoveryRequired { .. }
+        ) {
+        TaskLifecyclePhase::Ready
+    } else {
+        task.lifecycle_phase
+    };
     Ok(volicord_types::schema::StateSummary {
         project_id: project_id.clone(),
         state_version,
@@ -124,7 +143,7 @@ pub(crate) fn state_summary(
         acceptance_policy_reason: Some(task.acceptance_policy_reason.clone()),
         lineage,
         lifecycle: Some(TaskLifecycleState {
-            lifecycle_phase: task.lifecycle_phase,
+            lifecycle_phase,
             close_reason: task.close_summary.close_reason,
             result: task.result.unwrap_or(TaskResult::None),
             closed_at: task.closed_at.clone(),
@@ -139,14 +158,7 @@ pub(crate) fn state_summary(
         effect_contract,
         baseline_ref: scope.baseline_ref.map(BaselineRef::new),
         workspace_context,
-        workflow: crate::workflow_projection::workflow_projection(
-            project_id,
-            state_version,
-            task,
-            current_change_unit,
-            shaping_checkpoint,
-            task_wide_shaping_authority,
-        ),
+        workflow,
         pending_user_action_summaries:
             volicord_user_action_service::agent_safe_pending_user_action_summaries(
                 pending_user_action_refs,

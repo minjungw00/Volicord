@@ -12,9 +12,13 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
 
+use chrono::{DateTime, Duration, Utc};
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
@@ -68,6 +72,58 @@ use volicord_types::ids::{
 };
 use volicord_types::integration_revision::McpRuntimeSessionSource;
 use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile, WriteTicketStatus};
+
+/// Cloneable deterministic UTC clock control for tests that exercise time-bounded authority.
+#[derive(Debug, Clone)]
+pub struct DeterministicClock {
+    now: Arc<Mutex<DateTime<Utc>>>,
+    samples: Arc<AtomicU64>,
+}
+
+impl DeterministicClock {
+    /// Starts a deterministic clock at one RFC 3339 UTC timestamp.
+    pub fn at(timestamp: &str) -> Result<Self, chrono::ParseError> {
+        Ok(Self::from_datetime(
+            DateTime::parse_from_rfc3339(timestamp)?.with_timezone(&Utc),
+        ))
+    }
+
+    /// Starts a deterministic clock at one exact UTC value.
+    pub fn from_datetime(now: DateTime<Utc>) -> Self {
+        Self {
+            now: Arc::new(Mutex::new(now)),
+            samples: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Returns the current value without advancing time.
+    pub fn now(&self) -> DateTime<Utc> {
+        *self
+            .now
+            .lock()
+            .expect("deterministic clock mutex should not be poisoned")
+    }
+
+    /// Returns the current value and records one consumer sample.
+    pub fn sample(&self) -> DateTime<Utc> {
+        self.samples.fetch_add(1, Ordering::Relaxed);
+        self.now()
+    }
+
+    /// Advances the current value without sleeping or polling.
+    pub fn advance(&self, duration: Duration) {
+        let mut now = self
+            .now
+            .lock()
+            .expect("deterministic clock mutex should not be poisoned");
+        *now += duration;
+    }
+
+    /// Returns the number of explicit consumer samples.
+    pub fn sample_count(&self) -> u64 {
+        self.samples.load(Ordering::Relaxed)
+    }
+}
 
 /// Disposable Git repository with configuration isolated from the developer machine.
 #[derive(Debug)]
@@ -2308,6 +2364,114 @@ pub mod core_fixtures {
         }
     }
 
+    /// Disposable neutral planning-only Git Product Repository.
+    #[derive(Debug)]
+    pub struct PlanningRepository {
+        repository: IsolatedGitRepository,
+    }
+
+    impl PlanningRepository {
+        /// Initializes an existing disposable directory with maintained planning inputs only.
+        pub fn initialize_at(root: impl AsRef<Path>) -> Result<Self, Box<dyn Error>> {
+            let repository = IsolatedGitRepository::initialize_at(root)?;
+            repository.write(
+                "plans/product.md",
+                b"# Product plan\n\nThe user owns product judgments.\n",
+            )?;
+            repository.write(
+                "plans/technical.md",
+                b"# Technical plan\n\nImplementation starts only after explicit authority.\n",
+            )?;
+            repository.write(
+                "plans/operations.md",
+                b"# Operations plan\n\nKeep the first bounded change reversible.\n",
+            )?;
+            repository.commit_all("seed generic planning-only repository")?;
+            Ok(Self { repository })
+        }
+
+        /// Returns the isolated Git repository.
+        pub fn repository(&self) -> &IsolatedGitRepository {
+            &self.repository
+        }
+    }
+
+    impl std::ops::Deref for PlanningRepository {
+        type Target = IsolatedGitRepository;
+
+        fn deref(&self) -> &Self::Target {
+            self.repository()
+        }
+    }
+
+    /// Complete reusable planning fixture with current managed host and Guard state.
+    #[derive(Debug)]
+    pub struct ManagedPlanningFixture {
+        core: CoreFixture,
+        repository: PlanningRepository,
+        session: TestAgentSessionFixture,
+        clock: DeterministicClock,
+        guard_installation_id: String,
+    }
+
+    impl ManagedPlanningFixture {
+        /// Creates one offline disposable planning fixture at an exact deterministic time.
+        pub fn new(prefix: &str, now: &str) -> Result<Self, Box<dyn Error>> {
+            let core = CoreFixture::new(prefix)?;
+            let repository = PlanningRepository::initialize_at(core.product_repo_path())?;
+            let guard_installation_id = format!("guard_test_{}", core.project_id());
+            transition_test_connection_mode(
+                core.runtime_home_path(),
+                repository.repository().root(),
+                core.project_id(),
+                core.connection_id(),
+                CONNECTION_MODE_WORKFLOW,
+            )?;
+            let session = seed_test_agent_session(
+                core.runtime_home_path(),
+                core.project_id(),
+                core.connection_id(),
+                Some(&guard_installation_id),
+            )?;
+            let clock = DeterministicClock::at(now)?;
+            if core.store()?.project_state()?.active_task_id.is_some() {
+                return Err("new planning fixture unexpectedly has an active Task".into());
+            }
+            Ok(Self {
+                core,
+                repository,
+                session,
+                clock,
+                guard_installation_id,
+            })
+        }
+
+        /// Returns the Core/Runtime Home fixture.
+        pub fn core(&self) -> &CoreFixture {
+            &self.core
+        }
+
+        /// Returns the planning-only isolated Git repository.
+        pub fn repository(&self) -> &IsolatedGitRepository {
+            self.repository.repository()
+        }
+
+        /// Returns the current managed Agent Session coordinates.
+        pub fn session(&self) -> &TestAgentSessionFixture {
+            &self.session
+        }
+
+        /// Returns deterministic time control for expiration cases.
+        pub fn clock(&self) -> &DeterministicClock {
+            &self.clock
+        }
+
+        /// Returns the current Guard installation identity.
+        pub fn guard_installation_id(&self) -> &str {
+            &self.guard_installation_id
+        }
+    }
+
     /// Task owner JSON columns intentionally exposed for corruption fixtures.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum TaskOwnerJsonColumn {
@@ -2641,9 +2805,13 @@ pub mod core_fixtures {
 #[cfg(test)]
 mod tests {
     use super::{
-        core_fixtures::{choice_user_action_resolution, observation_user_action_resolution},
-        disposable_runtime_home, TempRuntimeHome,
+        core_fixtures::{
+            choice_user_action_resolution, observation_user_action_resolution,
+            ManagedPlanningFixture,
+        },
+        disposable_runtime_home, DeterministicClock, TempRuntimeHome,
     };
+    use chrono::Duration;
     use volicord_types::ids::{ArtifactId, EvidenceClaimId};
     use volicord_types::schema::{EvidenceTarget, UserActionResolutionInput};
     use volicord_types::values::EvidenceRelevanceStatus;
@@ -2667,6 +2835,37 @@ mod tests {
         assert!(runtime_home
             .artifacts_tmp_path("PRJ-helpers")
             .ends_with("projects/PRJ-helpers/artifacts/tmp"));
+    }
+
+    #[test]
+    fn managed_planning_fixture_is_clean_current_and_time_controlled() {
+        let fixture =
+            ManagedPlanningFixture::new("managed-planning-fixture", "2026-06-18T00:00:00Z")
+                .expect("managed planning fixture");
+
+        assert!(fixture
+            .repository()
+            .status_bytes()
+            .expect("Git status")
+            .is_empty());
+        assert!(!fixture.repository().root().join("src").exists());
+        assert!(!fixture.repository().root().join("tests").exists());
+        assert!(!fixture.session().runtime_session_id.as_str().is_empty());
+        assert!(fixture.guard_installation_id().starts_with("guard_test_"));
+        assert_eq!(fixture.core().counts().expect("empty Core state").tasks, 0);
+        fixture.clock().advance(Duration::minutes(2));
+        assert_eq!(
+            fixture.clock().now().to_rfc3339(),
+            "2026-06-18T00:02:00+00:00"
+        );
+    }
+
+    #[test]
+    fn deterministic_clock_samples_without_sleeping() {
+        let clock = DeterministicClock::at("2026-06-18T00:00:00Z").expect("fixed time");
+        assert_eq!(clock.sample_count(), 0);
+        assert_eq!(clock.sample(), clock.now());
+        assert_eq!(clock.sample_count(), 1);
     }
 
     #[test]

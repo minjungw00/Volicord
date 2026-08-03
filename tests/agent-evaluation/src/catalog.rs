@@ -5,7 +5,8 @@ use std::{
 
 use crate::{
     model::{
-        CheckStatus, EvaluationCondition, FixtureCatalog, FixtureCheck, ScenarioFixture, TaskGroup,
+        CheckStatus, EvaluationCondition, FixtureCatalog, FixtureCheck, ScenarioFixture,
+        ShapingApplicationOwnerExpectation, ShapingOutcomeExpectation, TaskGroup,
         FIXTURE_CATALOG_SCHEMA,
     },
     HarnessError, HarnessResult,
@@ -39,6 +40,8 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
 
     let mut scenario_ids = BTreeSet::new();
     let mut task_groups = BTreeSet::new();
+    let mut shaping_outcomes = BTreeSet::new();
+    let mut application_owners = BTreeSet::new();
     for scenario in &catalog.scenarios {
         validate_scenario(scenario)?;
         if !scenario_ids.insert(&scenario.scenario_id) {
@@ -48,14 +51,54 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
             )));
         }
         task_groups.insert(scenario.task_group);
+        if let Some(outcome) = scenario.expected.shaping_outcome {
+            shaping_outcomes.insert(outcome);
+        }
+        if let Some(owner) = scenario.expected.shaping_application_owner {
+            application_owners.insert(owner);
+        }
     }
     if task_groups != TaskGroup::ALL.into_iter().collect() {
         return Err(HarnessError::new(
             "fixture catalog does not cover every required task group",
         ));
     }
+    if shaping_outcomes
+        != [
+            ShapingOutcomeExpectation::Accepted,
+            ShapingOutcomeExpectation::Rejected,
+            ShapingOutcomeExpectation::Deferred,
+            ShapingOutcomeExpectation::Expired,
+        ]
+        .into_iter()
+        .collect()
+    {
+        return Err(HarnessError::new(
+            "fixture catalog does not cover every shaping decision outcome",
+        ));
+    }
+    if application_owners
+        != [
+            ShapingApplicationOwnerExpectation::AdvanceTask,
+            ShapingApplicationOwnerExpectation::UpdateScope,
+            ShapingApplicationOwnerExpectation::RecordShaping,
+        ]
+        .into_iter()
+        .collect()
+    {
+        return Err(HarnessError::new(
+            "fixture catalog does not cover every shaping application owner",
+        ));
+    }
 
     Ok(vec![
+        FixtureCheck {
+            check_id: "shaping_outcome_and_owner_coverage".to_owned(),
+            status: CheckStatus::Passed,
+            detail:
+                "accepted, rejected, deferred, and expired outcomes cover every application owner"
+                    .to_owned(),
+        },
         FixtureCheck {
             check_id: "evaluation_conditions".to_owned(),
             status: CheckStatus::Passed,

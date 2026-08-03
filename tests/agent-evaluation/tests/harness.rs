@@ -12,11 +12,17 @@ use volicord_agent_evaluation::{
 
 const SEED: u64 = 20_260_716;
 
+type ShapingMetricDefect = (
+    &'static str,
+    &'static str,
+    fn(&mut ShapingWorkflowObservation),
+);
+
 #[test]
 fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 5);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 10);
 
     let actual = catalog
         .scenarios
@@ -29,6 +35,11 @@ fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() 
         "planning-product-decision",
         "planning-technical-decision",
         "planning-advisor-recommendation",
+        "planning-scope-decision",
+        "planning-sensitive-decision",
+        "planning-rejected-outcome",
+        "planning-deferred-outcome",
+        "planning-expired-outcome",
     ] {
         assert!(catalog
             .scenarios
@@ -97,7 +108,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 28);
+    assert_eq!(result.criteria.len(), 38);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -235,14 +246,11 @@ fn planning_only_fixture_is_neutral_and_contains_no_implementation() {
 #[test]
 fn shaping_evaluation_fixtures_are_generic_plans_without_implementation() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
-    for scenario in catalog.scenarios.iter().filter(|scenario| {
-        matches!(
-            scenario.scenario_id.as_str(),
-            "planning-product-decision"
-                | "planning-technical-decision"
-                | "planning-advisor-recommendation"
-        )
-    }) {
+    for scenario in catalog
+        .scenarios
+        .iter()
+        .filter(|scenario| scenario.expected.shaping_outcome.is_some())
+    {
         assert!(scenario
             .initial_files
             .iter()
@@ -273,11 +281,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(28)
+        Some(38)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(28)
+        Some(38)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -305,11 +313,24 @@ impl TrialDriver for AggregateSyntheticDriver {
         let product_only = record && request.trial.scenario_id == "planning-product-decision";
         let technical_only = record && request.trial.scenario_id == "planning-technical-decision";
         let advisor = record && request.trial.scenario_id == "planning-advisor-recommendation";
+        let accepted = record
+            && matches!(
+                request.trial.scenario_id.as_str(),
+                "planning-product-decision"
+                    | "planning-technical-decision"
+                    | "planning-scope-decision"
+                    | "planning-sensitive-decision"
+                    | "planning-advisor-recommendation"
+            );
+        let rejected = record && request.trial.scenario_id == "planning-rejected-outcome";
+        let deferred = record && request.trial.scenario_id == "planning-deferred-outcome";
+        let expired = record && request.trial.scenario_id == "planning-expired-outcome";
+        let non_authorizing = rejected || deferred || expired;
         let shaping_scenario = planning || advisor;
         let planning_decisions =
             if request.trial.scenario_id == "planning-only-development-preparation" {
                 3
-            } else if product_only || technical_only {
+            } else if accepted || non_authorizing {
                 1
             } else {
                 0
@@ -405,6 +426,26 @@ impl TrialDriver for AggregateSyntheticDriver {
                 advisor_finalizations_via_record_shaping: u64::from(advisor),
                 completion_claim_opportunities: u64::from(shaping_scenario),
                 premature_completion_claims: 0,
+                accepted_outcome_opportunities: u64::from(accepted),
+                accepted_outcomes_surfaced: u64::from(accepted),
+                rejected_outcome_opportunities: u64::from(rejected),
+                rejected_outcomes_surfaced: u64::from(rejected),
+                deferred_outcome_opportunities: u64::from(deferred),
+                deferred_outcomes_surfaced: u64::from(deferred),
+                expired_outcome_opportunities: u64::from(expired),
+                expired_outcomes_surfaced: u64::from(expired),
+                non_authorizing_outcome_opportunities: u64::from(non_authorizing),
+                false_authority_claims: 0,
+                expired_resolution_instruction_opportunities: u64::from(expired),
+                expired_resolution_instructions: 0,
+                shaping_recovery_opportunities: u64::from(non_authorizing),
+                correct_shaping_recoveries: u64::from(non_authorizing),
+                successor_user_action_opportunities: u64::from(non_authorizing),
+                successor_user_actions_created: u64::from(non_authorizing),
+                retained_authority_opportunities: u64::from(shaping_scenario),
+                retained_authority_preserved: u64::from(shaping_scenario),
+                application_owner_opportunities: u64::from(accepted),
+                exact_application_owners: u64::from(accepted),
             },
         })
     }
@@ -542,6 +583,64 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
         "planning-only-development-preparation",
         "premature_completion_claim",
         |workflow| workflow.premature_completion_claims = 1,
+    );
+    let outcome_defects: [ShapingMetricDefect; 7] = [
+        (
+            "planning-product-decision",
+            "accepted_outcome_surfacing",
+            |workflow: &mut ShapingWorkflowObservation| workflow.accepted_outcomes_surfaced = 0,
+        ),
+        (
+            "planning-rejected-outcome",
+            "rejected_outcome_surfacing",
+            |workflow: &mut ShapingWorkflowObservation| workflow.rejected_outcomes_surfaced = 0,
+        ),
+        (
+            "planning-deferred-outcome",
+            "deferred_outcome_surfacing",
+            |workflow: &mut ShapingWorkflowObservation| workflow.deferred_outcomes_surfaced = 0,
+        ),
+        (
+            "planning-expired-outcome",
+            "expired_outcome_surfacing",
+            |workflow: &mut ShapingWorkflowObservation| workflow.expired_outcomes_surfaced = 0,
+        ),
+        (
+            "planning-rejected-outcome",
+            "shaping_recovery_request",
+            |workflow: &mut ShapingWorkflowObservation| workflow.correct_shaping_recoveries = 0,
+        ),
+        (
+            "planning-deferred-outcome",
+            "successor_user_action_creation",
+            |workflow: &mut ShapingWorkflowObservation| workflow.successor_user_actions_created = 0,
+        ),
+        (
+            "planning-scope-decision",
+            "exact_decision_application_owner",
+            |workflow: &mut ShapingWorkflowObservation| workflow.exact_application_owners = 0,
+        ),
+    ];
+    for (scenario_id, criterion_id, mutate) in outcome_defects {
+        assert_defect(&result.observations, scenario_id, criterion_id, mutate);
+    }
+    assert_defect(
+        &result.observations,
+        "planning-rejected-outcome",
+        "non_authorizing_outcome_authority_claim",
+        |workflow| workflow.false_authority_claims = 1,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-expired-outcome",
+        "expired_request_resolution_instruction",
+        |workflow| workflow.expired_resolution_instructions = 1,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-only-development-preparation",
+        "decision_authority_retention",
+        |workflow| workflow.retained_authority_preserved = 0,
     );
 }
 

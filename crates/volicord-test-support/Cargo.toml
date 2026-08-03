@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 volicord-host-contract = { path = "../volicord-host-contract" }
 volicord-platform-fs = { path = "../volicord-platform-fs" }
 volicord-store = { path = "../volicord-store", features = ["test-support"] }

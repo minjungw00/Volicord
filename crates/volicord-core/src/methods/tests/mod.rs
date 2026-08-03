@@ -29,8 +29,9 @@ use volicord_store::{
     workflow_records::{project_write_authority_fingerprint, ProjectWorkflowPolicyUpsert},
     RuntimeHomeMutationContext,
 };
+use volicord_test_support::core_fixtures::PlanningRepository;
 use volicord_test_support::{
-    open_project_fixture_database, with_test_runtime_home_setup, IsolatedGitRepository,
+    open_project_fixture_database, with_test_runtime_home_setup, DeterministicClock,
     TempRuntimeHome, TestRuntimeHomeMutation,
     TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
@@ -132,51 +133,34 @@ fn assert_record_run_close_projection_matches_status(response: &Value, status: &
 
 #[derive(Debug, Clone)]
 struct ManualClock {
-    now: Arc<Mutex<DateTime<Utc>>>,
-    samples: Arc<Mutex<usize>>,
+    control: DeterministicClock,
 }
 
 impl ManualClock {
     fn at(timestamp: &str) -> Self {
-        let now = DateTime::parse_from_rfc3339(timestamp)
-            .expect("test timestamp should be RFC3339")
-            .with_timezone(&Utc);
-        Self::from_datetime(now)
+        Self {
+            control: DeterministicClock::at(timestamp).expect("test timestamp should be RFC3339"),
+        }
     }
 
     fn from_datetime(now: DateTime<Utc>) -> Self {
         Self {
-            now: Arc::new(Mutex::new(now)),
-            samples: Arc::new(Mutex::new(0)),
+            control: DeterministicClock::from_datetime(now),
         }
     }
 
     fn advance(&self, duration: Duration) {
-        let mut now = self
-            .now
-            .lock()
-            .expect("manual clock mutex should not be poisoned");
-        *now += duration;
+        self.control.advance(duration);
     }
 
     fn sample_count(&self) -> usize {
-        *self
-            .samples
-            .lock()
-            .expect("manual clock sample counter mutex should not be poisoned")
+        usize::try_from(self.control.sample_count()).expect("test sample count fits usize")
     }
 }
 
 impl crate::pipeline::Clock for ManualClock {
     fn now(&self) -> DateTime<Utc> {
-        *self
-            .samples
-            .lock()
-            .expect("manual clock sample counter mutex should not be poisoned") += 1;
-        self.now
-            .lock()
-            .expect("manual clock mutex should not be poisoned")
-            .to_owned()
+        self.control.sample()
     }
 }
 

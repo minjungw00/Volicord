@@ -1250,17 +1250,24 @@ mod tests {
     use volicord_store::diagnostics::diagnostics_db_path;
     use volicord_test_support::{
         core_fixtures::{
-            artifact_input_for_handle, CoreFixture, ObservationUserActionFixture,
-            UpdateScopeFixture, UserActionFixture,
+            artifact_input_for_handle, CoreFixture, ManagedPlanningFixture,
+            ObservationUserActionFixture, UpdateScopeFixture, UserActionFixture,
         },
         seed_test_agent_session, TestRuntimeHomeSetup,
     };
     use volicord_types::ids::{
         AgentConnectionId, BaselineRef, ChangeUnitId, EvidenceClaimId, ShapingCheckpointId,
     };
-    use volicord_types::methods::{AdvanceTaskRequest, RecordShapingRequest};
-    use volicord_types::schema::{RequiredNullable, StagedArtifactHandle};
-    use volicord_types::values::{ChangeUnitOperation, JudgmentKind};
+    use volicord_types::methods::{
+        AdvanceTaskRequest, RecordShapingOperation, RecordShapingRequest,
+    };
+    use volicord_types::schema::{
+        ChangeUnitEffectContract, RequiredNullable, ShapingCheckpointOperation, ShapingGapInput,
+        ShapingUserActionDraft, StagedArtifactHandle,
+    };
+    use volicord_types::values::{
+        ChangeUnitEffectKind, ChangeUnitOperation, JudgmentKind, RequestedMode, ShapingGapKind,
+    };
 
     use super::*;
 
@@ -1275,6 +1282,181 @@ mod tests {
         request_id: String,
         claim_id: String,
         artifact_id: String,
+    }
+
+    struct PendingShapingChoiceFixture {
+        fixture: ManagedPlanningFixture,
+        task_id: String,
+        request_id: String,
+    }
+
+    fn pending_shaping_choice_fixture(
+        prefix: &str,
+        mode: RequestedMode,
+        judgment_kind: JudgmentKind,
+    ) -> Result<PendingShapingChoiceFixture, Box<dyn Error>> {
+        let fixture = ManagedPlanningFixture::new(prefix, "2026-06-18T00:00:00Z")?;
+        let core_fixture = fixture.core();
+        let core = CoreService::for_mutation(&core_fixture.mutation_context()?);
+        let validated = core.validate_agent_session(
+            AgentConnectionId::new(core_fixture.connection_id()),
+            ProjectId::new(core_fixture.project_id()),
+            fixture.session().runtime_session_id.clone(),
+            fixture.session().project_session_id.clone(),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let invocation =
+            InvocationContext::agent_connection(OperationCategory::AgentWorkflow, validated);
+        let mut intake_request = core_fixture.intake_request(
+            &format!("req_{prefix}_intake"),
+            &format!("idem_{prefix}_intake"),
+            false,
+            Some(0),
+        );
+        intake_request.requested_mode = mode;
+        intake_request.plain_language_request =
+            "Prepare one bounded change from the planning documents.".to_owned();
+        let intake = core.intake(
+            &core_fixture.mutation_context()?,
+            intake_request,
+            invocation.clone(),
+        )?;
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .expect("planning intake task")
+            .to_owned();
+        let mut scope_request = core_fixture.update_scope_request(UpdateScopeFixture {
+            request_id: &format!("req_{prefix}_scope"),
+            idempotency_key: &format!("idem_{prefix}_scope"),
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Keep the planning implementation inside one neutral path.",
+        });
+        if mode == RequestedMode::Advisor {
+            scope_request
+                .change_unit
+                .fields
+                .insert("affected_paths".to_owned(), serde_json::json!([]));
+            scope_request.change_unit.effect_contract = Some(ChangeUnitEffectContract {
+                allowed_effects: vec![
+                    ChangeUnitEffectKind::ArtifactRegistration,
+                    ChangeUnitEffectKind::UserActionRequest,
+                    ChangeUnitEffectKind::EvidenceUpdate,
+                ],
+                forbidden_effects: vec![
+                    ChangeUnitEffectKind::ProductFileWrite,
+                    ChangeUnitEffectKind::RunRecording,
+                    ChangeUnitEffectKind::SensitiveAction,
+                    ChangeUnitEffectKind::ExternalNetwork,
+                    ChangeUnitEffectKind::SecretAccess,
+                ],
+                allowed_paths: Vec::new(),
+                expected_outputs: vec!["Advice result".to_owned()],
+                invariants: vec!["Observe only".to_owned()],
+                evidence_expectations: Vec::new(),
+                sensitive_action_expectations: Vec::new(),
+            });
+        }
+        let scoped = core.update_scope(
+            &core_fixture.mutation_context()?,
+            scope_request,
+            invocation.clone(),
+        )?;
+        let change_unit_id = scoped.response_value["change_unit_ref"]["record_id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("planning Change Unit: {}", scoped.response_value))
+            .to_owned();
+        let gap_kind = match judgment_kind {
+            JudgmentKind::ProductDecision => ShapingGapKind::UserProductDecisionRequired,
+            JudgmentKind::TechnicalDecision => ShapingGapKind::UserTechnicalDecisionRequired,
+            JudgmentKind::ScopeDecision => ShapingGapKind::UserScopeDecisionRequired,
+            JudgmentKind::SensitiveApproval => ShapingGapKind::SensitiveApprovalRequired,
+            other => panic!("unsupported shaping fixture judgment kind: {other:?}"),
+        };
+        let action = core_fixture
+            .user_action_request(UserActionFixture {
+                request_id: "unused",
+                idempotency_key: "unused",
+                dry_run: false,
+                expected_state_version: Some(2),
+                task_id: &task_id,
+                change_unit_id: Some(&change_unit_id),
+                judgment_kind,
+            })
+            .action;
+        let shaped = core.record_shaping(
+            &core_fixture.mutation_context()?,
+            RecordShapingRequest {
+                envelope: core_fixture.envelope(
+                    &format!("req_{prefix}_shaping"),
+                    Some(&format!("idem_{prefix}_shaping")),
+                    false,
+                    Some(2),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                operation: RecordShapingOperation::RecordCheckpoint {
+                    checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
+                    scope_revision: 1,
+                    baseline_ref: RequiredNullable::some(BaselineRef::new(
+                        volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                    )),
+                    summary: "The plan has one exact user-owned shaping boundary.".to_owned(),
+                    implementation_boundary: RequiredNullable::some(
+                        "Apply only the exact resolved decision before implementation.".to_owned(),
+                    ),
+                    gaps: vec![ShapingGapInput {
+                        gap_kind,
+                        summary: "The user owns this exact shaping decision.".to_owned(),
+                        affected_refs: Vec::new(),
+                        user_action: RequiredNullable::some(ShapingUserActionDraft {
+                            action,
+                            expires_at: RequiredNullable::null(),
+                        }),
+                    }],
+                    source_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                },
+            },
+            invocation,
+        )?;
+        let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
+            .as_str()
+            .expect("record_shaping UserAction request")
+            .to_owned();
+        Ok(PendingShapingChoiceFixture {
+            fixture,
+            task_id,
+            request_id,
+        })
+    }
+
+    fn resolve_shaping_choice(
+        fixture: &PendingShapingChoiceFixture,
+        choice: &str,
+    ) -> Result<Value, Box<dyn Error>> {
+        let core_fixture = fixture.fixture.core();
+        let output = command_inbox_resolve(
+            InboxResolveArgs {
+                user_action_request_id: fixture.request_id.clone(),
+                choice: Some(choice.to_owned()),
+                note: None,
+                criterion: None,
+                claim: None,
+                artifact: Vec::new(),
+                summary: None,
+                contradicted: false,
+                repo: Some(core_fixture.product_repo_path()),
+                json: true,
+            },
+            |name| {
+                (name == "VOLICORD_HOME").then(|| OsString::from(core_fixture.runtime_home_path()))
+            },
+            &core_fixture.product_repo_path(),
+        )?;
+        Ok(serde_json::from_str(&output)?)
     }
 
     fn pending_choice_fixture(prefix: &str) -> Result<PendingChoiceFixture, Box<dyn Error>> {
@@ -1837,6 +2019,163 @@ mod tests {
         assert_eq!(conflicting["base"]["effect_kind"], "no_effect");
         assert_eq!(conflicting["errors"][0]["code"], "STATE_VERSION_CONFLICT");
         assert_eq!(pending.fixture.counts()?, after);
+        Ok(())
+    }
+
+    #[test]
+    fn shaping_cli_outcome_matrix_matches_immediate_status_and_exact_owner(
+    ) -> Result<(), Box<dyn Error>> {
+        for mode in [RequestedMode::Work, RequestedMode::Advisor] {
+            for judgment_kind in [
+                JudgmentKind::ProductDecision,
+                JudgmentKind::TechnicalDecision,
+                JudgmentKind::ScopeDecision,
+                JudgmentKind::SensitiveApproval,
+            ] {
+                let label = format!("cli_{mode:?}_{judgment_kind:?}_accepted").to_lowercase();
+                let pending = pending_shaping_choice_fixture(&label, mode, judgment_kind)?;
+                let before = pending.fixture.core().counts()?;
+                assert_eq!(
+                    pending
+                        .fixture
+                        .core()
+                        .user_action_status(&pending.request_id)?,
+                    "pending"
+                );
+
+                let response = resolve_shaping_choice(&pending, "accept")?;
+                let resolved_project = ResolvedUserProject {
+                    runtime_home: pending.fixture.core().runtime_home_path().to_path_buf(),
+                    project_id: pending.fixture.core().project_id().to_owned(),
+                };
+                let (status, _) = status_response(&resolved_project, Some(&pending.task_id))?;
+                let returned_workflow = &response["state"]["workflow"];
+                let status_workflow = &status.response_value["active_task"]["workflow"];
+                for field in ["kind", "next_actor", "required_action", "checkpoint"] {
+                    assert_eq!(
+                        returned_workflow[field], status_workflow[field],
+                        "{label}: {field}"
+                    );
+                }
+                assert_eq!(
+                    response["user_action_resolution"]["body"]["resolution_outcome"], "accepted",
+                    "{label}"
+                );
+                assert_eq!(
+                    status_workflow["checkpoint"]["gaps"][0]["status"],
+                    "accepted"
+                );
+                let expected_owner = match (mode, judgment_kind) {
+                    (_, JudgmentKind::ScopeDecision) => "volicord.update_scope",
+                    (RequestedMode::Advisor, _) => "volicord.record_shaping",
+                    _ => "volicord.advance_task",
+                };
+                assert_eq!(
+                    status_workflow["required_action"], expected_owner,
+                    "{label}"
+                );
+                assert_eq!(
+                    status_workflow["checkpoint"]["current_application_refs"],
+                    serde_json::json!([]),
+                    "accepted authority is not applied by resolution alone: {label}"
+                );
+                let after = pending.fixture.core().counts()?;
+                assert_eq!(after.state_version, before.state_version + 1, "{label}");
+                assert_eq!(after.write_tickets, 0, "{label}");
+                assert_eq!(
+                    pending.fixture.core().conn()?.query_row::<u64, _, _>(
+                        "SELECT COUNT(*) FROM shaping_decision_applications",
+                        [],
+                        |row| row.get(0),
+                    )?,
+                    0,
+                    "resolution alone creates no application: {label}"
+                );
+                assert!(
+                    pending.fixture.repository().status_bytes()?.is_empty(),
+                    "{label}"
+                );
+            }
+        }
+
+        for mode in [RequestedMode::Work, RequestedMode::Advisor] {
+            for judgment_kind in [JudgmentKind::ScopeDecision, JudgmentKind::SensitiveApproval] {
+                for (choice, outcome) in [("reject", "rejected"), ("defer", "deferred")] {
+                    let label = format!("cli_{mode:?}_{judgment_kind:?}_{outcome}").to_lowercase();
+                    let pending = pending_shaping_choice_fixture(&label, mode, judgment_kind)?;
+                    let before = pending.fixture.core().counts()?;
+                    let response = resolve_shaping_choice(&pending, choice)?;
+                    let resolved_project = ResolvedUserProject {
+                        runtime_home: pending.fixture.core().runtime_home_path().to_path_buf(),
+                        project_id: pending.fixture.core().project_id().to_owned(),
+                    };
+                    let (status, _) = status_response(&resolved_project, Some(&pending.task_id))?;
+                    let returned_workflow = &response["state"]["workflow"];
+                    let status_workflow = &status.response_value["active_task"]["workflow"];
+                    assert_eq!(
+                        response["user_action_resolution"]["body"]["resolution_outcome"], outcome,
+                        "{label}"
+                    );
+                    for field in ["kind", "next_actor", "required_action", "checkpoint"] {
+                        assert_eq!(
+                            returned_workflow[field], status_workflow[field],
+                            "{label}: {field}"
+                        );
+                    }
+                    assert_eq!(status_workflow["kind"], "decision_recovery_required");
+                    assert_eq!(status_workflow["next_actor"], "agent");
+                    assert_eq!(
+                        status_workflow["required_action"],
+                        "volicord.record_shaping"
+                    );
+                    assert_eq!(
+                        status_workflow["checkpoint"]["decision_recovery_requirements"][0]
+                            ["disposition"],
+                        outcome
+                    );
+                    assert_eq!(
+                        status_workflow["checkpoint"]["current_application_refs"],
+                        serde_json::json!([]),
+                        "{label} grants no authority"
+                    );
+                    assert_ne!(
+                        status.response_value["active_task"]["lifecycle"]["lifecycle_phase"],
+                        "waiting_user",
+                        "{label} must not remain waiting_user"
+                    );
+                    let after = pending.fixture.core().counts()?;
+                    assert_eq!(after.state_version, before.state_version + 1, "{label}");
+                    assert_eq!(after.write_tickets, 0, "{label}");
+                    assert_eq!(
+                        status.response_value["active_task"]["work_phase"], "shaping",
+                        "{label}"
+                    );
+                    let conn = pending.fixture.core().conn()?;
+                    assert_eq!(
+                        conn.query_row::<u64, _, _>(
+                            "SELECT COUNT(*) FROM shaping_decision_applications",
+                            [],
+                            |row| row.get(0),
+                        )?,
+                        0,
+                        "{label} grants no application authority"
+                    );
+                    assert_eq!(
+                        conn.query_row::<u64, _, _>(
+                            "SELECT COUNT(*) FROM unrecorded_changes",
+                            [],
+                            |row| row.get(0),
+                        )?,
+                        0,
+                        "{label} creates no Unrecorded Change"
+                    );
+                    assert!(
+                        pending.fixture.repository().status_bytes()?.is_empty(),
+                        "{label}"
+                    );
+                }
+            }
+        }
         Ok(())
     }
 

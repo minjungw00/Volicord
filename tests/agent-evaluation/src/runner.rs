@@ -547,6 +547,34 @@ fn validate_observation(
                 .advisor_finalization_opportunities
         || observation.shaping_workflow.premature_completion_claims
             > observation.shaping_workflow.completion_claim_opportunities
+        || observation.shaping_workflow.accepted_outcomes_surfaced
+            > observation.shaping_workflow.accepted_outcome_opportunities
+        || observation.shaping_workflow.rejected_outcomes_surfaced
+            > observation.shaping_workflow.rejected_outcome_opportunities
+        || observation.shaping_workflow.deferred_outcomes_surfaced
+            > observation.shaping_workflow.deferred_outcome_opportunities
+        || observation.shaping_workflow.expired_outcomes_surfaced
+            > observation.shaping_workflow.expired_outcome_opportunities
+        || observation.shaping_workflow.false_authority_claims
+            > observation
+                .shaping_workflow
+                .non_authorizing_outcome_opportunities
+        || observation.shaping_workflow.expired_resolution_instructions
+            > observation
+                .shaping_workflow
+                .expired_resolution_instruction_opportunities
+        || observation.shaping_workflow.correct_shaping_recoveries
+            > observation.shaping_workflow.shaping_recovery_opportunities
+        || observation.shaping_workflow.successor_user_actions_created
+            > observation
+                .shaping_workflow
+                .successor_user_action_opportunities
+        || observation.shaping_workflow.retained_authority_preserved
+            > observation
+                .shaping_workflow
+                .retained_authority_opportunities
+        || observation.shaping_workflow.exact_application_owners
+            > observation.shaping_workflow.application_owner_opportunities
     {
         return Err(HarnessError::new(
             "driver observation contains an impossible aggregate count",
@@ -609,7 +637,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(28);
+    let mut criteria = Vec::with_capacity(38);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -872,6 +900,56 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         all_shaping_totals(|value| value.completion_claim_opportunities),
         all_shaping_totals(|value| value.premature_completion_claims),
     ));
+    criteria.push(complete_rate(
+        "accepted_outcome_surfacing",
+        all_shaping_totals(|value| value.accepted_outcome_opportunities),
+        all_shaping_totals(|value| value.accepted_outcomes_surfaced),
+    ));
+    criteria.push(complete_rate(
+        "rejected_outcome_surfacing",
+        all_shaping_totals(|value| value.rejected_outcome_opportunities),
+        all_shaping_totals(|value| value.rejected_outcomes_surfaced),
+    ));
+    criteria.push(complete_rate(
+        "deferred_outcome_surfacing",
+        all_shaping_totals(|value| value.deferred_outcome_opportunities),
+        all_shaping_totals(|value| value.deferred_outcomes_surfaced),
+    ));
+    criteria.push(complete_rate(
+        "expired_outcome_surfacing",
+        all_shaping_totals(|value| value.expired_outcome_opportunities),
+        all_shaping_totals(|value| value.expired_outcomes_surfaced),
+    ));
+    criteria.push(zero_rate(
+        "non_authorizing_outcome_authority_claim",
+        all_shaping_totals(|value| value.non_authorizing_outcome_opportunities),
+        all_shaping_totals(|value| value.false_authority_claims),
+    ));
+    criteria.push(zero_rate(
+        "expired_request_resolution_instruction",
+        all_shaping_totals(|value| value.expired_resolution_instruction_opportunities),
+        all_shaping_totals(|value| value.expired_resolution_instructions),
+    ));
+    criteria.push(complete_rate(
+        "shaping_recovery_request",
+        all_shaping_totals(|value| value.shaping_recovery_opportunities),
+        all_shaping_totals(|value| value.correct_shaping_recoveries),
+    ));
+    criteria.push(complete_rate(
+        "successor_user_action_creation",
+        all_shaping_totals(|value| value.successor_user_action_opportunities),
+        all_shaping_totals(|value| value.successor_user_actions_created),
+    ));
+    criteria.push(complete_rate(
+        "decision_authority_retention",
+        all_shaping_totals(|value| value.retained_authority_opportunities),
+        all_shaping_totals(|value| value.retained_authority_preserved),
+    ));
+    criteria.push(complete_rate(
+        "exact_decision_application_owner",
+        all_shaping_totals(|value| value.application_owner_opportunities),
+        all_shaping_totals(|value| value.exact_application_owners),
+    ));
     criteria
 }
 
@@ -1018,7 +1096,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 28] {
+fn criterion_definitions() -> [CriterionDefinition; 38] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1158,6 +1236,56 @@ fn criterion_definitions() -> [CriterionDefinition; 28] {
         CriterionDefinition {
             id: "premature_completion_claim",
             target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "accepted_outcome_surfacing",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "rejected_outcome_surfacing",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "deferred_outcome_surfacing",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "expired_outcome_surfacing",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "non_authorizing_outcome_authority_claim",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "expired_request_resolution_instruction",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "shaping_recovery_request",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "successor_user_action_creation",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "decision_authority_retention",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "exact_decision_application_owner",
+            target: "= 100",
             unit: "percent",
         },
     ]

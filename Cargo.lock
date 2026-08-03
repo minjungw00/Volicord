@@ -1757,6 +1757,7 @@ dependencies = [
 name = "volicord-test-support"
 version = "0.9.1"
 dependencies = [
+ "chrono",
  "rusqlite",
  "serde_json",
  "tempfile",
