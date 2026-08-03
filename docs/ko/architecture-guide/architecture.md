@@ -183,13 +183,16 @@ identity, artifact policy, continuity planning, Write Ticket planning, 닫기 �
 ### Shaping 진행 소유권
 
 `volicord-types`는 공개 `ShapingCheckpoint`, gap input/projection, 폐쇄형
-shaping/workflow 값, `WorkflowProjection`, 메서드 요청과 결과, typed rejection detail을
+shaping/workflow 값과 kind별 정규 application-owner 정책, `WorkflowProjection`, 메서드 요청과 결과, typed rejection detail을
 담당합니다. `volicord-store::core_pipeline::shaping`은 엄격한 Task 범위 aggregate와
 checkpoint/gap/UserAction-link mutation을 담당합니다. Core의
-`methods/record_shaping.rs`와 `methods/advance_task.rs`는 의미 검증, 원자적 plan 조립,
-명시적 단계 전이를 담당하고 `workflow_projection.rs`는 Store가 검증한 fact에서 현재
+`methods/record_shaping.rs`, `methods/update_scope.rs`, `methods/advance_task.rs`는 이
+정책을 사용해 의미 검증, 정확한 결정 적용, 원자적 plan 조립, 명시적 단계 전이를
+담당하고 `workflow_projection.rs`는 Store가 검증한 fact에서 현재
 태그 기반 진행을 도출합니다. UserAction service는 연결 권한을 구성하고 검증하지만 그
-출력을 checkpoint transaction으로 조율하는 곳은 Core뿐입니다.
+출력을 checkpoint transaction으로 조율하는 곳은 Core뿐입니다. Store exact-ID mutation은
+잘못된 owner나 resolution을 거부하고 advance owner 적용을 단계 전이와 한 transaction에
+결속합니다.
 
 `volicord-mcp-wire`는 adapter 요청과 결과 projection을, `volicord-mcp`는
 `AgentToolId` registry, dispatch, 간결한 workflow/rejection presentation, session

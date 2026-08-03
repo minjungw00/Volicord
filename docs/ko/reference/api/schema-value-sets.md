@@ -331,6 +331,23 @@ resolved
 applied
 ```
 
+`current`는 결정이나 shaping 작업이 해결되지 않았다는 뜻입니다. `resolved`는 정확한 User
+Channel 권한이 있지만 의미 application owner가 아직 적용하지 않았다는 뜻입니다.
+`applied`는 owner가 정확한 resolution을 소비해 현재 상태에 결속했다는 뜻입니다.
+Resolution만으로 `applied`가 되지 않습니다.
+
+사용자 소유 gap은 다음 폐쇄형 application-owner mapping을 사용합니다.
+
+```text
+user_product_decision_required -> volicord.advance_task
+user_technical_decision_required -> volicord.advance_task
+user_scope_decision_required -> volicord.update_scope
+sensitive_approval_required -> volicord.advance_task
+```
+
+`ShapingDecisionApplicationOwner` 값은 `volicord.update_scope`와
+`volicord.advance_task`뿐입니다.
+
 `WorkflowProjection.kind`는 정확히 아래 값을 사용합니다.
 
 ```text

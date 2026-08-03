@@ -8,6 +8,10 @@
 담당합니다. 일곱 판단 종류와 `evidence_observation`에 대한 유일한 공개 요청
 메서드입니다.
 
+Resolution과 의미 application은 구분됩니다. Shaping에서 만든 요청을 해결하면 불변 User
+Channel 권한을 기록하고 연결된 gap을 `resolved`로 바꿀 뿐입니다. 범위를 바꾸거나 gap을
+적용하거나 Task를 advance하지 않습니다.
+
 ## 요청
 
 <!-- BEGIN GENERATED: contract-structures api.method.request_user_action.request[params] -->

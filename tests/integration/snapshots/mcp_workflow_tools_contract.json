@@ -170,6 +170,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -209,7 +210,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:590b09c1c6eb9a83c335e1be3304f9dc6e68f42685316d770c92014a5e33f410"
+        "sha256": "sha256:11342241d64ae222850118234bdac390987d6e7ea3f0a55d82564afa96ca5d38"
       }
     },
     {
@@ -297,15 +298,15 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpAuthoritativeRefreshFailure_for_McpUpdateScopeCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_UpdateScopeResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
-          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
-          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpMutationResponseBudgetExceeded_for_McpUpdateScopeCompactResult",
+          "McpMutationSummaryResponse_for_McpUpdateScopeCompactResult",
+          "McpMutationWorkflowResponse_for_McpUpdateScopeCompactResult",
           "McpOperationalErrorCode",
           "McpOperationalFailure",
           "McpOperationalOperation",
@@ -316,6 +317,7 @@
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUpdateScopeCompactResult",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
           "McpWorkflowDryRunResponse",
@@ -340,6 +342,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -381,7 +384,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3eec4a74e0e30c6150d1fc8c08d70b0f08c1f584ad516905ead9c58f31a4dab0"
+        "sha256": "sha256:f24917519d42f6c3e418f8d1708dc8e9b3129c57591d174a1daa1f9cfcccad2d"
       }
     },
     {
@@ -500,20 +503,21 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpAuthoritativeRefreshFailure_for_McpRecordShapingCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordShapingResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
-          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
-          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpMutationResponseBudgetExceeded_for_McpRecordShapingCompactResult",
+          "McpMutationSummaryResponse_for_McpRecordShapingCompactResult",
+          "McpMutationWorkflowResponse_for_McpRecordShapingCompactResult",
           "McpOperationalErrorCode",
           "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
+          "McpRecordShapingCompactResult",
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -547,6 +551,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "SourceLineRange",
@@ -589,7 +594,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:684740da3fda97bd29e5725ee59a4d65f6f819a7cf8a203fe066ba91b5da964d"
+        "sha256": "sha256:825dc5cc9b6c5c02016b250bda994b68b9b5a8e9aad8b298df3098564ca22447"
       }
     },
     {
@@ -668,16 +673,17 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpAdvanceTaskCompactResult",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpAuthoritativeRefreshFailure_for_McpAdvanceTaskCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_AdvanceTaskResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
-          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
-          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpMutationResponseBudgetExceeded_for_McpAdvanceTaskCompactResult",
+          "McpMutationSummaryResponse_for_McpAdvanceTaskCompactResult",
+          "McpMutationWorkflowResponse_for_McpAdvanceTaskCompactResult",
           "McpOperationalErrorCode",
           "McpOperationalFailure",
           "McpOperationalOperation",
@@ -712,6 +718,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -751,7 +758,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4bf87ecedd7c390fe854e7761a77e10cb4b1838d53993c0d273fbf133a4a8c6d"
+        "sha256": "sha256:416673967278e20b95135d626826fa9b33ed4a79a838f56954ba997bf55e38ea"
       }
     },
     {
@@ -849,6 +856,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -890,7 +898,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a07ec69eeb222dc905d972e78df5fea3986d5dc44dd5c7cef6040027e337a54e"
+        "sha256": "sha256:b31740bec5dab07aacbbd12cd3dcfdfcc2ee3a3cdd2032b58db8b3d7b84d724c"
       }
     },
     {
@@ -944,6 +952,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -964,7 +973,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4cc9891d8808d235808fc0b06e2a2da081a7a913dac5c57d0a1f3c28ff41ea03"
+        "sha256": "sha256:02902175471054addfd049dbc6eed96eb38dcfde5ab327b32205286dd92d0655"
       }
     },
     {
@@ -1065,6 +1074,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1089,7 +1099,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0354a0dcc3d9020edb8506b03d288f3e83460d62943f0c46d0845c14e95fad33"
+        "sha256": "sha256:b7c34f419cce6f64324717ee177ba5ea564f3ca9d2b7d495c9ba64c4f2323fc4"
       }
     },
     {
@@ -1218,6 +1228,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1267,7 +1278,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:749e041df46b9d32ade28cc759ce23ac85631fc0bbe32461799cdc49db4d08ed"
+        "sha256": "sha256:f6444ce2eb0da3ac9d09101c79b3fddff8fc9e5b191fff1856da43e7c3c5e164"
       }
     },
     {
@@ -1365,6 +1376,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StageArtifactResult",
@@ -1393,7 +1405,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:564348292856ad5d5ce384c5459ffb81892c327e9cc64a7cd87d7d8177c9ce90"
+        "sha256": "sha256:fa02fca96363047ea5ad9755a2c70c0ddf16685af695de296610ca8d9802918c"
       }
     },
     {
@@ -1574,6 +1586,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "SourceLineRange",
@@ -1616,7 +1629,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:312ecb288d3231b86daa0516715e85ef8395ce4cce62879aa3b969245ec255a3"
+        "sha256": "sha256:aab982c022c1b482ffe8dea8ce28d95d278b41b5ce100b023fa9abbe8381032f"
       }
     },
     {
@@ -1754,6 +1767,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1795,7 +1809,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c6fd0974ad78c2afd9307e43903fbbe3af9d6080250d3afc3b377199fe780ca3"
+        "sha256": "sha256:d0594c170f92173a266869e1a516caba0f8d28a9f234869c23db2a94d68e099f"
       }
     },
     {
@@ -1914,6 +1928,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -1959,7 +1974,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8fa77d8d6268c3754ec69851c6abaea3f6c77865c7cd4deee3bcf4feb21751ac"
+        "sha256": "sha256:e67e8cfb9cf51adaeec01e9d52ea3ba2d37c41f03c1a7dfac94da0ab6259c12b"
       }
     },
     {
@@ -2051,6 +2066,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -2089,7 +2105,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6e08c7a7804c8b89f645a1eee2187714a1107c567fe716cd9fd26cc7343468fe"
+        "sha256": "sha256:d470d70bd9245b33b3242af7e1b13c16ebd070f42b279f168fc1a29567221e8f"
       }
     },
     {
@@ -2218,6 +2234,7 @@
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -2258,7 +2275,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8e6391496f7223c8f19dcc34bfb929a8973d47f923890c0a81665f9294529df2"
+        "sha256": "sha256:09731c576d7bf66dfbb50ed5b88397cc4969e543c017d4f179da393267c263c3"
       }
     },
     {

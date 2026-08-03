@@ -141,9 +141,9 @@ pub use runs::{
     StoredRunSummary, StoredRunWriteTicketEffect, StoredRunWriteTicketEffectKind,
 };
 pub use shaping::{
-    ShapingCheckpointGapInsert, ShapingCheckpointGapRecord, ShapingCheckpointInsert,
-    ShapingCheckpointMutation, ShapingCheckpointRecord, ShapingCheckpointUserActionInsert,
-    ShapingCheckpointUserActionRecord,
+    ShapingAdvanceApplication, ShapingCheckpointGapInsert, ShapingCheckpointGapRecord,
+    ShapingCheckpointInsert, ShapingCheckpointMutation, ShapingCheckpointRecord,
+    ShapingCheckpointUserActionInsert, ShapingCheckpointUserActionRecord, ShapingGapApplication,
 };
 pub use tasks::{
     AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionStatus,

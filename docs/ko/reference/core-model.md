@@ -277,6 +277,25 @@ successor의 predecessor로 기록합니다. 연결된 live 사용자 소유 결
 Work 진행은 checkpoint-local gap뿐 아니라 `advance_task`에 필요한 Task 전체 effective
 UserAction도 평가합니다.
 
+Shaping resolution과 application은 구분됩니다. 연결된 gap은 User Channel 권한이 생기기
+전에는 `current`, 그 권한이 의미 owner의 적용을 기다리는 동안은 `resolved`, owner의 상태
+mutation이 정확한 resolution을 소비한 뒤에만 `applied`입니다. 폐쇄형 owner 정책은 다음과
+같습니다.
+
+| Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | downstream 유지 |
+|---|---|---|---|---|---|
+| `user_product_decision_required` | `product_decision` | `advance_task` | `volicord.advance_task` | 유지 | 아니요 |
+| `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | 유지 | 아니요 |
+| `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | 증가 | 아니요 |
+| `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | 유지 | 예 |
+
+Checkpoint `readiness=ready`는 구조적 상태입니다. baseline과 implementation boundary가
+있고, 비사용자 gap이 닫혔으며, 각 사용자 gap에 현재 resolution이 있다는 뜻입니다. 모든
+결정이 적용되었다는 뜻은 아닙니다. 따라서 workflow summary는 readiness와 남은
+application owner를 따로 노출합니다. Resolved scope gap만
+`ready_to_apply_decisions`를 선택하며, resolved 제품·기술·민감 gap은
+`volicord.advance_task`의 원자적 적용을 기다립니다.
+
 `advisor`는 Product Repository 파일 효과에 대해 읽기 전용이며 쓰기 가능한 Change Unit, 쓰기 티켓, `volicord.advance_task`를 사용하지 않습니다. Change Unit은 작업 경계이며 단계를 바꾸지 않습니다. work Task는 명시적 advance 성공으로만 구현에 진입합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 진행 권한 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
 
 ### 실행 기록

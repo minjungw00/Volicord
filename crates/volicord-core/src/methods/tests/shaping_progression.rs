@@ -970,7 +970,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         ChangeUnitOperation::ReplaceCurrent,
         "Scope authority applies the resolved shaping decision.",
     );
-    scope_request.related_scope_decision_refs = vec![resolution_ref];
+    scope_request.related_scope_decision_refs = vec![resolution_ref.clone()];
     let applied = harness
         .service
         .update_scope(scope_request, invocation(OperationCategory::AgentWorkflow))?;
@@ -1008,6 +1008,424 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         later.response_value["shaping_checkpoint"]["predecessor_checkpoint_id"],
         checkpoint_id
     );
+    let before_cross_checkpoint = harness.counts()?;
+    let cross_checkpoint = harness.service.advance_task(
+        AdvanceTaskRequest {
+            envelope: envelope(
+                "req_resolved_scope_cross_checkpoint",
+                Some("idem_resolved_scope_cross_checkpoint"),
+                false,
+                Some(before_cross_checkpoint.state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
+                &later.response_value,
+            )),
+            change_unit_id: ChangeUnitId::new(response_record_id(
+                &applied.response_value,
+                "change_unit_ref",
+            )),
+            scope_revision: 2,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: vec![UserActionResolutionId::new(
+                resolution_ref.record_id.as_str(),
+            )],
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        cross_checkpoint.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(harness.counts()?, before_cross_checkpoint);
+    Ok(())
+}
+
+#[test]
+fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<(), Box<dyn Error>>
+{
+    let product = (
+        ShapingGapKind::UserProductDecisionRequired,
+        JudgmentKind::ProductDecision,
+    );
+    let technical = (
+        ShapingGapKind::UserTechnicalDecisionRequired,
+        JudgmentKind::TechnicalDecision,
+    );
+    let scope = (
+        ShapingGapKind::UserScopeDecisionRequired,
+        JudgmentKind::ScopeDecision,
+    );
+    let sensitive = (
+        ShapingGapKind::SensitiveApprovalRequired,
+        JudgmentKind::SensitiveApproval,
+    );
+    let cases = vec![
+        ("none", vec![]),
+        ("product", vec![product]),
+        ("technical", vec![technical]),
+        ("scope", vec![scope]),
+        ("sensitive", vec![sensitive]),
+        ("product_technical", vec![product, technical]),
+        ("product_scope", vec![product, scope]),
+        ("technical_scope", vec![technical, scope]),
+        ("product_technical_scope", vec![product, technical, scope]),
+        ("scope_sensitive", vec![scope, sensitive]),
+        ("all", vec![product, technical, scope, sensitive]),
+    ];
+
+    for (label, decisions) in cases {
+        let harness = MethodHarness::new()?;
+        let (task_id, change_unit_id) = shaping_task(&harness, label)?;
+        let shaped =
+            record_user_owned_gaps(&harness, label, &task_id, Some(&change_unit_id), &decisions)?;
+        let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+        let request_refs = shaped.response_value["created_user_action_request_refs"]
+            .as_array()
+            .expect("created request refs");
+        assert_eq!(request_refs.len(), decisions.len(), "{label}");
+        if decisions.is_empty() {
+            assert_eq!(
+                shaped.response_value["workflow"]["kind"],
+                "ready_for_implementation"
+            );
+        } else {
+            assert_eq!(
+                shaped.response_value["workflow"]["kind"],
+                "awaiting_user_action"
+            );
+        }
+
+        let mut resolved = Vec::new();
+        for (index, ((gap_kind, _), request_ref)) in
+            decisions.iter().zip(request_refs.iter()).enumerate()
+        {
+            let request_id = request_ref["record_id"].as_str().expect("request id");
+            let response = harness.service.resolve_user_action(
+                resolve_user_action_request(
+                    &format!("req_{label}_resolve_{index}"),
+                    &format!("submission_{label}_{index}"),
+                    None,
+                    &task_id,
+                    request_id,
+                    "accept",
+                ),
+                invocation(OperationCategory::UserOnly),
+            )?;
+            assert_eq!(
+                response.response_value["base"]["response_kind"], "result",
+                "{label}"
+            );
+            let resolution_ref: StateRecordRef = serde_json::from_value(
+                response.response_value["user_action_resolution_ref"].clone(),
+            )?;
+            resolved.push((*gap_kind, resolution_ref));
+            if index + 1 < decisions.len() {
+                assert_eq!(
+                    response.response_value["state"]["workflow"]["kind"], "awaiting_user_action",
+                    "{label} partial resolution"
+                );
+            }
+        }
+
+        let has_scope = decisions
+            .iter()
+            .any(|(gap_kind, _)| *gap_kind == ShapingGapKind::UserScopeDecisionRequired);
+        if !decisions.is_empty() {
+            let status = harness.service.status(
+                StatusRequest {
+                    envelope: envelope(
+                        &format!("req_{label}_resolved_status"),
+                        None,
+                        false,
+                        None,
+                        Some(&task_id),
+                    ),
+                    include: status_include(),
+                    continuity_page: None,
+                },
+                invocation(OperationCategory::Read),
+            )?;
+            assert_eq!(
+                status.response_value["active_task"]["workflow"]["kind"],
+                if has_scope {
+                    "ready_to_apply_decisions"
+                } else {
+                    "ready_for_implementation"
+                },
+                "{label} all resolved"
+            );
+            assert_eq!(
+                status.response_value["active_task"]["workflow"]["required_action"],
+                if has_scope {
+                    "volicord.update_scope"
+                } else {
+                    "volicord.advance_task"
+                },
+                "{label} owner"
+            );
+            assert_eq!(
+                status.response_value["active_task"]["workflow"]["checkpoint"]["readiness"],
+                "ready",
+                "{label} structural readiness"
+            );
+        }
+
+        let mut scope_revision = 1;
+        if has_scope {
+            let scope_refs = resolved
+                .iter()
+                .filter(|(gap_kind, _)| *gap_kind == ShapingGapKind::UserScopeDecisionRequired)
+                .map(|(_, resolution_ref)| resolution_ref.clone())
+                .collect::<Vec<_>>();
+            let before = harness.counts()?;
+            let mut update = update_scope_request(
+                &format!("req_{label}_apply_scope"),
+                &format!("idem_{label}_apply_scope"),
+                false,
+                Some(before.state_version),
+                &task_id,
+                ChangeUnitOperation::KeepCurrent,
+                &format!("Apply the exact {label} scope decision."),
+            );
+            update.related_scope_decision_refs = scope_refs.clone();
+            let applied = harness
+                .service
+                .update_scope(update, invocation(OperationCategory::AgentWorkflow))?;
+            assert_eq!(
+                applied.response_value["base"]["response_kind"], "result",
+                "{label}"
+            );
+            assert_eq!(
+                applied.response_value["applied_scope_decision_refs"],
+                serde_json::to_value(&scope_refs)?,
+                "{label} scope refs"
+            );
+            assert_eq!(
+                applied.response_value["applied_shaping_gap_refs"]
+                    .as_array()
+                    .expect("applied scope gap refs")
+                    .len(),
+                1,
+                "{label} exact scope gap"
+            );
+            assert_eq!(
+                applied.response_value["state"]["workflow"]["kind"], "ready_for_implementation",
+                "{label} no workflow loop"
+            );
+            scope_revision = 2;
+            let checkpoint = harness
+                .store()?
+                .current_shaping_checkpoint(&TaskId::new(&task_id))?
+                .expect("current checkpoint");
+            for gap in checkpoint.gaps {
+                let expected = if gap.gap_kind == ShapingGapKind::UserScopeDecisionRequired {
+                    ShapingGapStatus::Applied
+                } else {
+                    ShapingGapStatus::Resolved
+                };
+                assert_eq!(gap.status, expected, "{label}: {:?}", gap.gap_kind);
+            }
+        }
+
+        let advance_resolution_ids = resolved
+            .iter()
+            .filter(|(gap_kind, _)| {
+                gap_kind.decision_policy().is_some_and(|policy| {
+                    policy.application_owner == ShapingDecisionApplicationOwner::AdvanceTask
+                })
+            })
+            .map(|(_, resolution_ref)| {
+                UserActionResolutionId::new(resolution_ref.record_id.as_str())
+            })
+            .collect::<Vec<_>>();
+        if !advance_resolution_ids.is_empty() {
+            let before = harness.counts()?;
+            let missing = harness.service.advance_task(
+                AdvanceTaskRequest {
+                    envelope: envelope(
+                        &format!("req_{label}_advance_missing"),
+                        Some(&format!("idem_{label}_advance_missing")),
+                        false,
+                        Some(before.state_version),
+                        Some(&task_id),
+                    ),
+                    task_id: TaskId::new(&task_id),
+                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    change_unit_id: ChangeUnitId::new(&change_unit_id),
+                    scope_revision,
+                    baseline_ref: BaselineRef::new("baseline_test"),
+                    user_action_resolution_ids: Vec::new(),
+                },
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(
+                missing.response_value["base"]["response_kind"], "rejected",
+                "{label}"
+            );
+            assert_eq!(harness.counts()?, before, "{label} atomic rejection");
+            assert_eq!(
+                harness
+                    .store()?
+                    .task_record(&TaskId::new(&task_id))?
+                    .expect("Task")
+                    .work_phase,
+                WorkPhase::Shaping,
+                "{label} remains shaping"
+            );
+        }
+
+        let expected_state = harness.counts()?.state_version;
+        let advance_request = AdvanceTaskRequest {
+            envelope: envelope(
+                &format!("req_{label}_advance"),
+                Some(&format!("idem_{label}_advance")),
+                false,
+                Some(expected_state),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: advance_resolution_ids.clone(),
+        };
+        let advanced = harness.service.advance_task(
+            advance_request.clone(),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            advanced.response_value["base"]["response_kind"], "result",
+            "{label}"
+        );
+        assert_eq!(
+            advanced.response_value["state"]["work_phase"], "implementation",
+            "{label}"
+        );
+        assert_eq!(
+            advanced.response_value["applied_user_action_resolution_refs"]
+                .as_array()
+                .expect("advance resolution refs")
+                .len(),
+            advance_resolution_ids.len(),
+            "{label} exact advance refs"
+        );
+        let replay = harness.service.advance_task(
+            advance_request,
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            replay.response_value, advanced.response_value,
+            "{label} replay"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn product_and_technical_resolutions_need_no_scope_ref_before_change_unit_creation(
+) -> Result<(), Box<dyn Error>> {
+    for (label, decision) in [
+        (
+            "product_without_cu",
+            (
+                ShapingGapKind::UserProductDecisionRequired,
+                JudgmentKind::ProductDecision,
+            ),
+        ),
+        (
+            "technical_without_cu",
+            (
+                ShapingGapKind::UserTechnicalDecisionRequired,
+                JudgmentKind::TechnicalDecision,
+            ),
+        ),
+    ] {
+        let harness = MethodHarness::new()?;
+        let intake = harness.service.intake(
+            intake_request(
+                &format!("req_{label}_task"),
+                &format!("idem_{label}_task"),
+                false,
+                Some(0),
+                RequestedMode::Work,
+            ),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        let task_id = response_record_id(&intake.response_value, "task_ref");
+        let scoped = harness.service.update_scope(
+            update_scope_request(
+                &format!("req_{label}_scope"),
+                &format!("idem_{label}_scope"),
+                false,
+                Some(1),
+                &task_id,
+                ChangeUnitOperation::KeepCurrent,
+                "Current scope without a Change Unit.",
+            ),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert!(scoped.response_value["change_unit_ref"].is_null());
+        let shaped = record_user_owned_gaps(&harness, label, &task_id, None, &[decision])?;
+        let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
+            .as_str()
+            .expect("request id");
+        let resolved = harness.service.resolve_user_action(
+            resolve_user_action_request(
+                &format!("req_{label}_resolve"),
+                &format!("submission_{label}"),
+                None,
+                &task_id,
+                request_id,
+                "accept",
+            ),
+            invocation(OperationCategory::UserOnly),
+        )?;
+        assert_eq!(
+            resolved.response_value["state"]["workflow"]["kind"],
+            "ready_for_change_unit"
+        );
+        assert_eq!(
+            resolved.response_value["state"]["workflow"]["required_action"],
+            "volicord.update_scope"
+        );
+        let before = harness.counts()?;
+        let mut create_change_unit = update_scope_request(
+            &format!("req_{label}_create_cu"),
+            &format!("idem_{label}_create_cu"),
+            false,
+            Some(before.state_version),
+            &task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Create the compatible current Change Unit.",
+        );
+        create_change_unit.goal_summary = RequiredNullable::null();
+        create_change_unit.scope_update = RequiredNullable::null();
+        create_change_unit.scope_boundary = RequiredNullable::null();
+        create_change_unit.non_goals = RequiredNullable::null();
+        create_change_unit.acceptance_criteria = RequiredNullable::null();
+        create_change_unit.autonomy_boundary = RequiredNullable::null();
+        create_change_unit.baseline_ref = RequiredNullable::null();
+        let created = harness.service.update_scope(
+            create_change_unit,
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(created.response_value["base"]["response_kind"], "result");
+        assert_eq!(
+            created.response_value["applied_scope_decision_refs"],
+            json!([])
+        );
+        assert_eq!(
+            created.response_value["applied_shaping_gap_refs"],
+            json!([])
+        );
+        assert_eq!(
+            created.response_value["state"]["workflow"]["kind"],
+            "ready_for_implementation"
+        );
+    }
     Ok(())
 }
 
@@ -1219,6 +1637,50 @@ fn record_user_owned_gap(
             expires_at: RequiredNullable::null(),
         }),
     }];
+    harness
+        .service
+        .record_shaping(request, invocation(OperationCategory::AgentWorkflow))
+}
+
+fn record_user_owned_gaps(
+    harness: &MethodHarness,
+    label: &str,
+    task_id: &str,
+    change_unit_id: Option<&str>,
+    decisions: &[(ShapingGapKind, JudgmentKind)],
+) -> CoreResult<PipelineResponse> {
+    let mut request = ready_shaping_request(
+        &format!("req_{label}_matrix_shaping"),
+        &format!("idem_{label}_matrix_shaping"),
+        2,
+        task_id,
+        ShapingCheckpointOperation::CreateInitial,
+        "Each User Channel decision has one semantic application owner.",
+    );
+    request.gaps = decisions
+        .iter()
+        .map(|(gap_kind, judgment_kind)| {
+            let action = user_action_request(
+                "unused",
+                "unused",
+                false,
+                Some(2),
+                task_id,
+                change_unit_id,
+                *judgment_kind,
+            )
+            .action;
+            ShapingGapInput {
+                gap_kind: *gap_kind,
+                summary: format!("Apply {gap_kind:?} only through its semantic owner."),
+                affected_refs: Vec::new(),
+                user_action: RequiredNullable::some(ShapingUserActionDraft {
+                    action,
+                    expires_at: RequiredNullable::null(),
+                }),
+            }
+        })
+        .collect();
     harness
         .service
         .record_shaping(request, invocation(OperationCategory::AgentWorkflow))

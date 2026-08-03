@@ -48,20 +48,24 @@ use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     AcceptanceCriteriaReplace, AcceptanceCriterionStatus, AcceptanceCriterionUpsert,
     ChangeUnitMutation, ChangeUnitRecord, CoreProjectStore, CoreStorageMutation,
-    ProjectStateHeader, ShapingCheckpointMutation, TaskAutonomyBoundary, TaskCloseBasisUpdate,
-    TaskControlLevelUpdate, TaskMutation, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
-    TaskShapingFacts, UserActionInvalidation, UserActionMutation, WriteTicketInvalidation,
-    WriteTicketMutation,
+    ProjectStateHeader, ShapingCheckpointMutation, ShapingGapApplication, TaskAutonomyBoundary,
+    TaskCloseBasisUpdate, TaskControlLevelUpdate, TaskMutation, TaskRecord,
+    TaskScopeRevisionUpdate, TaskScopeUpdate, TaskShapingFacts, UserActionBasisUpdate,
+    UserActionInvalidation, UserActionMutation, WriteTicketInvalidation, WriteTicketMutation,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{ChangeUnitId, TaskId};
 use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
 };
-use volicord_types::schema::{AcceptanceCriterion, JsonObject, StateRecordRef};
+use volicord_types::schema::{
+    AcceptanceCriterion, JsonObject, PersistedUserActionRequestMetadata, StateRecordRef,
+    UserActionBasis,
+};
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
-    StateRecordKind, TaskControlLevel, UtcTimestamp, WriteTicketInvalidationReason,
+    ShapingDecisionApplicationOwner, ShapingGapStatus, StateRecordKind, TaskControlLevel,
+    UserActionBasisStatus, UtcTimestamp, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
     pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
@@ -230,6 +234,7 @@ struct ScopePolicyDecision {
     control_level_reason: String,
     acceptance_policy_reason: String,
     linked_scope_decision_refs: Vec<StateRecordRef>,
+    scope_gap_applications: Vec<ShapingGapApplication>,
 }
 
 fn decide_update_scope_policy(
@@ -285,7 +290,7 @@ fn decide_update_scope_policy(
             next_control.as_str()
         )
     };
-    let linked_scope_decision_refs = validate_related_scope_decisions(
+    let validated_scope_decisions = validate_related_scope_decisions(
         store,
         project_state,
         &request,
@@ -350,7 +355,8 @@ fn decide_update_scope_policy(
         acceptance_raised,
         control_level_reason,
         acceptance_policy_reason,
-        linked_scope_decision_refs,
+        linked_scope_decision_refs: validated_scope_decisions.resolution_refs,
+        scope_gap_applications: validated_scope_decisions.applications,
     })
 }
 
@@ -367,6 +373,8 @@ struct PlannedScopeMutations {
     change_unit_ref: Option<StateRecordRef>,
     change_unit_id: Option<ChangeUnitId>,
     linked_scope_decision_refs: Vec<StateRecordRef>,
+    scope_gap_applications: Vec<ShapingGapApplication>,
+    checkpoint_preserved: bool,
     stale_write_ticket_refs: Vec<StateRecordRef>,
     storage_mutations: Vec<CoreStorageMutation>,
 }
@@ -391,6 +399,7 @@ fn plan_update_scope_mutations(
         control_level_reason,
         acceptance_policy_reason,
         linked_scope_decision_refs,
+        scope_gap_applications,
     } = policy;
     let current_scope = StoredScope::from_task(&task)?;
     let next_scope = current_scope.apply_request(&request);
@@ -407,10 +416,14 @@ fn plan_update_scope_mutations(
     }
     let (acceptance_criteria, acceptance_criteria_mutation, acceptance_criteria_changed) =
         plan_acceptance_criteria_replacement(service, store, project_state, &request)?;
+    let authority_basis_changed = current_scope != next_scope
+        || acceptance_criteria_changed
+        || request.change_unit.operation == ChangeUnitOperation::ReplaceCurrent;
     let scope_changed = current_scope != next_scope
         || acceptance_criteria_changed
         || request.change_unit.operation == ChangeUnitOperation::CreateCurrent
-        || request.change_unit.operation == ChangeUnitOperation::ReplaceCurrent;
+        || request.change_unit.operation == ChangeUnitOperation::ReplaceCurrent
+        || !scope_gap_applications.is_empty();
     let next_scope_revision = if scope_changed {
         task.scope_revision + 1
     } else {
@@ -489,6 +502,7 @@ fn plan_update_scope_mutations(
             TaskMutation::ReplaceAcceptanceCriteria(mutation),
         ));
     }
+    let mut checkpoint_preserved = false;
     if scope_changed {
         storage_mutations.push(CoreStorageMutation::Task(
             TaskMutation::UpdateScopeRevision(TaskScopeRevisionUpdate {
@@ -503,36 +517,6 @@ fn plan_update_scope_mutations(
                 close_basis: None,
             },
         )));
-        storage_mutations.push(CoreStorageMutation::UserAction(
-            UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
-                task_id: request.task_id.as_str().to_owned(),
-                action_kinds: Vec::new(),
-            }),
-        ));
-        if let Some(checkpoint) = store
-            .current_shaping_checkpoint(&request.task_id)
-            .map_err(CorePipelineError::from)?
-        {
-            let can_rebase = shaping_checkpoint_can_rebase(
-                &checkpoint,
-                next_scope.baseline_ref.as_deref(),
-                &linked_scope_decision_refs,
-            );
-            storage_mutations.push(CoreStorageMutation::Shaping(if can_rebase {
-                ShapingCheckpointMutation::RebaseCurrent {
-                    task_id: task.task_id.clone(),
-                    scope_revision: next_scope_revision,
-                    baseline_ref: next_scope
-                        .baseline_ref
-                        .as_ref()
-                        .map(|value| volicord_types::ids::BaselineRef::new(value.clone())),
-                }
-            } else {
-                ShapingCheckpointMutation::SupersedeCurrent {
-                    task_id: task.task_id.clone(),
-                }
-            }));
-        }
     }
 
     let mut synthetic_task = task.clone();
@@ -638,6 +622,94 @@ fn plan_update_scope_mutations(
             }
         };
 
+    if scope_changed {
+        let current_checkpoint = store
+            .current_shaping_checkpoint(&request.task_id)
+            .map_err(CorePipelineError::from)?;
+        if let Some(checkpoint) = current_checkpoint.as_ref() {
+            let preserve_checkpoint = shaping_checkpoint_can_rebase(
+                checkpoint,
+                next_scope.baseline_ref.as_deref(),
+                &scope_gap_applications,
+                authority_basis_changed,
+            );
+            if preserve_checkpoint {
+                checkpoint_preserved = true;
+                let rebased_change_unit_id = synthetic_change_unit
+                    .as_ref()
+                    .map(|change_unit| ChangeUnitId::new(change_unit.change_unit_id.clone()));
+                let mut preserved_request_ids = Vec::new();
+                for link in checkpoint
+                    .gaps
+                    .iter()
+                    .filter_map(|gap| gap.user_action.as_ref())
+                {
+                    let record = store
+                        .user_action_record(&link.user_action_request_id, &plan_now)
+                        .map_err(CorePipelineError::from)?
+                        .ok_or_else(|| CorePipelineError::Invariant {
+                            detail: "a preserved shaping checkpoint references a missing UserAction request"
+                                .to_owned(),
+                        })?;
+                    if record.request().basis_status() != UserActionBasisStatus::Current {
+                        continue;
+                    }
+                    let basis = rebase_shaping_user_action_basis(
+                        record.request().basis(),
+                        next_scope_revision,
+                        rebased_change_unit_id.as_ref(),
+                        synthetic_task.shaping.baseline_ref.as_ref(),
+                    );
+                    preserved_request_ids.push(link.user_action_request_id.clone());
+                    storage_mutations.push(CoreStorageMutation::UserAction(
+                        UserActionMutation::UpdateBasis(UserActionBasisUpdate {
+                            user_action_request_id: link.user_action_request_id.clone(),
+                            basis,
+                            basis_status: UserActionBasisStatus::Current,
+                        }),
+                    ));
+                }
+                storage_mutations.push(CoreStorageMutation::UserAction(
+                    UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
+                        task_id: request.task_id.as_str().to_owned(),
+                        action_kinds: Vec::new(),
+                        preserved_request_ids,
+                    }),
+                ));
+                storage_mutations.push(CoreStorageMutation::Shaping(
+                    ShapingCheckpointMutation::ApplyScopeAndRebaseCurrent {
+                        task_id: task.task_id.clone(),
+                        shaping_checkpoint_id: checkpoint.shaping_checkpoint_id.clone(),
+                        scope_revision: next_scope_revision,
+                        baseline_ref: synthetic_task.shaping.baseline_ref.clone(),
+                        applications: scope_gap_applications.clone(),
+                    },
+                ));
+            } else {
+                storage_mutations.push(CoreStorageMutation::UserAction(
+                    UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
+                        task_id: request.task_id.as_str().to_owned(),
+                        action_kinds: Vec::new(),
+                        preserved_request_ids: Vec::new(),
+                    }),
+                ));
+                storage_mutations.push(CoreStorageMutation::Shaping(
+                    ShapingCheckpointMutation::SupersedeCurrent {
+                        task_id: task.task_id.clone(),
+                    },
+                ));
+            }
+        } else {
+            storage_mutations.push(CoreStorageMutation::UserAction(
+                UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
+                    task_id: request.task_id.as_str().to_owned(),
+                    action_kinds: Vec::new(),
+                    preserved_request_ids: Vec::new(),
+                }),
+            ));
+        }
+    }
+
     if scope_changed && !active_write_tickets.is_empty() {
         let invalidation_reason = if current_scope.baseline_ref != next_scope.baseline_ref {
             WriteTicketInvalidationReason::BaselineChanged
@@ -686,6 +758,8 @@ fn plan_update_scope_mutations(
         change_unit_ref,
         change_unit_id,
         linked_scope_decision_refs,
+        scope_gap_applications,
+        checkpoint_preserved,
         stale_write_ticket_refs,
         storage_mutations,
     })
@@ -762,6 +836,8 @@ fn project_update_scope_response(
         change_unit_ref,
         change_unit_id: branch_change_unit_id,
         linked_scope_decision_refs,
+        scope_gap_applications,
+        checkpoint_preserved,
         stale_write_ticket_refs,
         storage_mutations,
     } = mutations;
@@ -781,21 +857,15 @@ fn project_update_scope_response(
         .map_err(CorePipelineError::from)?;
     if scope_changed {
         if let Some(checkpoint) = projected_shaping_checkpoint.as_mut() {
-            let can_rebase = shaping_checkpoint_can_rebase(
-                checkpoint,
-                synthetic_task
-                    .shaping
-                    .baseline_ref
-                    .as_ref()
-                    .map(volicord_types::ids::BaselineRef::as_str),
-                &linked_scope_decision_refs,
-            );
-            if can_rebase {
+            if checkpoint_preserved {
                 checkpoint.scope_revision = next_scope_revision;
                 checkpoint.baseline_ref = synthetic_task.shaping.baseline_ref.clone();
                 for gap in &mut checkpoint.gaps {
-                    if gap.status == volicord_types::values::ShapingGapStatus::Resolved {
-                        gap.status = volicord_types::values::ShapingGapStatus::Applied;
+                    if scope_gap_applications
+                        .iter()
+                        .any(|application| application.shaping_gap_id == gap.shaping_gap_id)
+                    {
+                        gap.status = ShapingGapStatus::Applied;
                     }
                 }
             } else {
@@ -905,10 +975,23 @@ fn project_update_scope_response(
         close_blockers: close_plan.blockers,
         guarantee_display: Some(guarantee_display),
     })?;
+    let applied_shaping_gap_refs = scope_gap_applications
+        .iter()
+        .map(|application| {
+            state_ref(
+                StateRecordKind::ShapingGap,
+                &application.shaping_gap_id,
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(planned_state_version),
+            )
+        })
+        .collect::<Vec<_>>();
     let result_fields = UpdateScopeResultFields {
         task_ref,
         change_unit_ref,
-        linked_scope_decision_refs,
+        applied_shaping_gap_refs,
+        applied_scope_decision_refs: linked_scope_decision_refs.clone(),
         stale_write_ticket_refs,
         blocker_refs,
         state,
@@ -918,7 +1001,15 @@ fn project_update_scope_response(
         "change_unit_operation": request.change_unit.operation,
         "scope_changed": scope_changed,
         "scope_revision": next_scope_revision,
-        "close_basis_revision": next_close_basis_revision
+        "close_basis_revision": next_close_basis_revision,
+        "applied_shaping_gap_ids": scope_gap_applications
+            .iter()
+            .map(|application| application.shaping_gap_id.clone())
+            .collect::<Vec<_>>(),
+        "applied_scope_decision_resolution_ids": scope_gap_applications
+            .iter()
+            .map(|application| application.user_action_resolution_id.clone())
+            .collect::<Vec<_>>(),
     }))?;
 
     Ok(UpdateScopeResponseProjection {
@@ -933,27 +1024,54 @@ fn project_update_scope_response(
 fn shaping_checkpoint_can_rebase(
     checkpoint: &volicord_store::core_pipeline::ShapingCheckpointRecord,
     next_baseline_ref: Option<&str>,
-    linked_scope_decision_refs: &[StateRecordRef],
+    scope_gap_applications: &[ShapingGapApplication],
+    authority_basis_changed: bool,
 ) -> bool {
-    let has_resolved_decisions = checkpoint
-        .gaps
-        .iter()
-        .any(|gap| gap.status == volicord_types::values::ShapingGapStatus::Resolved);
-    let decisions_are_resolved = checkpoint
-        .gaps
-        .iter()
-        .all(|gap| gap.status != volicord_types::values::ShapingGapStatus::Current);
-    let readiness_can_be_completed = checkpoint.readiness
-        == volicord_types::values::ShapingCheckpointReadiness::Blocked
-        && decisions_are_resolved
-        && next_baseline_ref.is_some()
-        && checkpoint
+    if checkpoint.readiness == volicord_types::values::ShapingCheckpointReadiness::Superseded
+        || next_baseline_ref.is_none()
+        || checkpoint
             .implementation_boundary
             .as_deref()
-            .is_some_and(|boundary| !boundary.trim().is_empty());
-    (checkpoint.readiness == volicord_types::values::ShapingCheckpointReadiness::Ready
-        || readiness_can_be_completed)
-        && (!has_resolved_decisions || !linked_scope_decision_refs.is_empty())
+            .is_none_or(|boundary| boundary.trim().is_empty())
+        || (authority_basis_changed && scope_gap_applications.is_empty())
+    {
+        return false;
+    }
+    checkpoint.gaps.iter().all(|gap| {
+        let Some(policy) = gap.gap_kind.decision_policy() else {
+            return true;
+        };
+        if policy.application_owner != ShapingDecisionApplicationOwner::UpdateScope {
+            return true;
+        }
+        gap.status == ShapingGapStatus::Applied
+            || (gap.status == ShapingGapStatus::Resolved
+                && scope_gap_applications.iter().any(|application| {
+                    application.shaping_gap_id == gap.shaping_gap_id
+                        && gap.user_action.as_ref().is_some_and(|link| {
+                            link.user_action_resolution_id.as_deref()
+                                == Some(application.user_action_resolution_id.as_str())
+                        })
+                }))
+    })
+}
+
+fn rebase_shaping_user_action_basis(
+    basis: &UserActionBasis,
+    scope_revision: u64,
+    change_unit_id: Option<&ChangeUnitId>,
+    baseline_ref: Option<&volicord_types::ids::BaselineRef>,
+) -> UserActionBasis {
+    let mut basis = basis.clone();
+    let coordinates = match &mut basis {
+        UserActionBasis::Choice(choice) => &mut choice.coordinates,
+        UserActionBasis::EvidenceObservation(observation) => &mut observation.coordinates,
+    };
+    coordinates.scope_revision = scope_revision;
+    coordinates.change_unit_id = change_unit_id.cloned().into();
+    coordinates.baseline_ref = baseline_ref.cloned().into();
+    coordinates.compatibility_status = UserActionBasisStatus::Current;
+    basis
 }
 
 fn scope_validation_rejection<T>(
@@ -1120,6 +1238,11 @@ fn validate_requested_effect_contract(
     .map(|_| ())
 }
 
+struct ValidatedScopeDecisions {
+    resolution_refs: Vec<StateRecordRef>,
+    applications: Vec<ShapingGapApplication>,
+}
+
 fn validate_related_scope_decisions(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
@@ -1127,7 +1250,7 @@ fn validate_related_scope_decisions(
     current_change_unit: Option<&ChangeUnitRecord>,
     scope_revision: u64,
     now: &UtcTimestamp,
-) -> Result<Vec<StateRecordRef>, PlanError> {
+) -> Result<ValidatedScopeDecisions, PlanError> {
     let current_change_unit_id =
         current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
     let mut transition_refs = vec![state_ref(
@@ -1153,7 +1276,35 @@ fn validate_related_scope_decisions(
         affected_refs: &transition_refs,
         now,
     };
+    let checkpoint = store
+        .current_shaping_checkpoint(&request.task_id)
+        .map_err(CorePipelineError::from)?;
+    let expected_scope_gaps = checkpoint
+        .as_ref()
+        .map(|checkpoint| {
+            checkpoint
+                .gaps
+                .iter()
+                .filter(|gap| {
+                    gap.status == ShapingGapStatus::Resolved
+                        && gap.gap_kind.decision_policy().is_some_and(|policy| {
+                            policy.application_owner == ShapingDecisionApplicationOwner::UpdateScope
+                        })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if request.related_scope_decision_refs.len() != expected_scope_gaps.len() {
+        return scope_validation_rejection(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "related_scope_decision_refs",
+            "related scope decision refs must exactly match every resolved current scope gap",
+        );
+    }
     let mut linked_scope_decision_refs = Vec::new();
+    let mut applications = Vec::new();
+    let mut supplied_resolution_ids = BTreeSet::new();
     for related_ref in &request.related_scope_decision_refs {
         if related_ref.record_kind != StateRecordKind::UserActionResolution
             || related_ref.project_id != request.envelope.project_id
@@ -1164,6 +1315,14 @@ fn validate_related_scope_decisions(
                 Some(project_state.state_version),
                 "related_scope_decision_refs",
                 "related scope decision refs must identify user-action resolutions for this Task",
+            );
+        }
+        if !supplied_resolution_ids.insert(related_ref.record_id.as_str()) {
+            return scope_validation_rejection(
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                "related_scope_decision_refs",
+                "related scope decision refs must be unique",
             );
         }
         let resolution = store
@@ -1189,14 +1348,70 @@ fn validate_related_scope_decisions(
         let authority = user_action_authority_from_record(&record).map_err(|error| {
             user_action_service_plan_error(&request.envelope, project_state, error)
         })?;
-        if !accepted_current_scope_decision_authority(&authority, &requirement) {
+        let Some(checkpoint) = checkpoint.as_ref() else {
+            return scope_validation_rejection(
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                "related_scope_decision_refs",
+                "scope decisions require one current shaping checkpoint",
+            );
+        };
+        let matching_gap = expected_scope_gaps.iter().find(|gap| {
+            gap.user_action.as_ref().is_some_and(|link| {
+                link.user_action_request_id == record.request().user_action_request_id()
+                    && link.user_action_resolution_id.as_deref()
+                        == Some(related_ref.record_id.as_str())
+            })
+        });
+        let metadata_matches = matching_gap.is_some_and(|gap| {
+            matches!(
+                record.request().metadata(),
+                PersistedUserActionRequestMetadata::Shaping(metadata)
+                    if metadata.shaping_checkpoint_id.as_str()
+                        == checkpoint.shaping_checkpoint_id
+                        && metadata.shaping_gap_id.as_str() == gap.shaping_gap_id
+            )
+        });
+        let policy_matches = matching_gap.is_some_and(|gap| {
+            gap.gap_kind.decision_policy().is_some_and(|policy| {
+                policy.application_owner == ShapingDecisionApplicationOwner::UpdateScope
+                    && policy.changes_scope_revision
+                    && record.request().required_for() == policy.required_for
+            })
+        });
+        if !accepted_current_scope_decision_authority(&authority, &requirement)
+            || !metadata_matches
+            || !policy_matches
+        {
             return Err(PlanError::Response(Box::new(decision_rejected_response(
                 &request.envelope,
                 Some(project_state.state_version),
                 "related scope decision resolution is not current",
             ))));
         }
+        let gap = matching_gap.ok_or_else(|| {
+            PlanError::Response(Box::new(decision_rejected_response(
+                &request.envelope,
+                Some(project_state.state_version),
+                "related scope decision resolution is not linked to a current resolved scope gap",
+            )))
+        })?;
+        applications.push(ShapingGapApplication {
+            shaping_gap_id: gap.shaping_gap_id.clone(),
+            user_action_resolution_id: related_ref.record_id.as_str().to_owned(),
+        });
         linked_scope_decision_refs.push(related_ref.clone());
     }
-    Ok(linked_scope_decision_refs)
+    if applications.len() != expected_scope_gaps.len() {
+        return scope_validation_rejection(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "related_scope_decision_refs",
+            "related scope decision refs do not cover the exact current resolved scope gaps",
+        );
+    }
+    Ok(ValidatedScopeDecisions {
+        resolution_refs: linked_scope_decision_refs,
+        applications,
+    })
 }

@@ -55,9 +55,16 @@
   ID는 커밋 전에 거절합니다.
 - `change_unit.operation`과 그 작업에 필요한 필드. 지원되는 작업 값과 그 의미는 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다.
 - 현재 적용 Change Unit을 만들거나 교체할 때 선택적으로 쓰는 `change_unit.effect_contract`. 값이 있으면 `ChangeUnitEffectContract`를 사용합니다. 생략하면 그 Change Unit에는 추가 효과 계약이 없습니다.
-- 해결된 `judgment_kind=scope_decision`을 적용한다면 `related_scope_decision_refs`.
+- `related_scope_decision_refs`는 현재 checkpoint의 resolved 범위 owner gap을 정확히 모두
+  포함해야 합니다. 그런 gap이 없으면 제품 전용·기술 전용 진행을 포함해 빈 배열입니다.
 
-범위 갱신이 `scope_decision`을 적용할 때, 각 참조 판단은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `basis.coordinates.compatibility_status=current`, 범위 갱신을 포함하는 `required_for`, 현재 Task, Change Unit, `scope_revision`, 영향받는 참조와 호환되는 근거가 필요합니다. 거절, 연기, 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 해결 권한 정보 누락, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
+범위 갱신이 `scope_decision`을 적용할 때 각 ref는 현재 checkpoint의 resolved 범위 gap에
+연결된 정확한 resolution이어야 합니다. 또한 `judgment_kind=scope_decision`,
+`status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`,
+`resolved_by_actor_source=local_user`, 호환 User Channel 출처,
+`basis.coordinates.compatibility_status=current`, 정확한 `required_for=[scope_update]`, 현재
+Task, Change Unit, checkpoint, `scope_revision`, baseline, request, 영향받는 ref와 호환되는
+근거가 필요합니다. 제품·기술·민감 resolution은 이 필드에서 허용되지 않습니다.
 
 범위 또는 Change Unit 효과를 적용하기 전에 Core는 현재 보류 중인 사용자 행동
 요청의 `required_for`에 `scope_update`가 있고 그 행동 종류, Task, 현재 Change Unit,
@@ -139,6 +146,11 @@
 없는 `state_version` 증가는 티켓을 무효화하지 않습니다. 무효화는 티켓을
 소비하거나 조용히 재사용하지 않습니다.
 
+범위 결정을 적용하면 선택한 scope gap만 `resolved`에서 `applied`로 바뀌고 scope
+revision이 증가합니다. 호환되는 no-op 또는 Change Unit 생성은 scope decision ref 없이
+현재 checkpoint를 보존하고 rebase할 수 있습니다. 전이가 checkpoint의 scope 또는
+baseline 권한 근거를 실제로 무효화할 때만 checkpoint를 supersede합니다.
+
 ## 성공 결과
 
 커밋된 `UpdateScopeResult`는 `base.response_kind=result`와
@@ -155,10 +167,11 @@
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
+| `applied_scope_decision_refs` | 예 | 아니요 | `StateRecordRef[]` |
+| `applied_shaping_gap_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `base` | 예 | 아니요 | `UpdateScopeResultBase` |
 | `blocker_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `change_unit_ref` | 아니요 | 예 | `StateRecordRef` |
-| `linked_scope_decision_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `stale_write_ticket_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `state` | 예 | 아니요 | `StateSummary` |
 | `task_ref` | 예 | 아니요 | `StateRecordRef` |
@@ -190,7 +203,9 @@
 
 `change_unit.operation=create_current` 또는 `change_unit.operation=replace_current`일 때 `change_unit.effect_contract`를 새 현재 적용 Change Unit에 기록할 수 있습니다. 효과 계약은 선택적 Core 상태입니다. 워크플로 엔진을 만들거나 사용자 소유 권한 기록을 대신하지 않으면서 허용 효과, 금지 효과, 허용 Product Repository 경로, 기대 출력, 불변 조건, 증거 기대, 민감 동작 기대를 표현할 수 있습니다. 같은 작업은 이후 쓰기 준비에 사용할 확인된 작업 공간 좌표도 기록합니다. Git 저장소가 아니면 VCS 결합을 기록하지 않고 Git 전용 비교 검사도 적용하지 않습니다.
 
-`linked_scope_decision_refs`에는 위의 호환성과 출처 확인을 통과한 범위 결정만 들어갑니다. 이력 또는 거절된 범위 결정은 주소 지정 가능한 판단 기록으로 남을 수 있지만 적용된 권한으로 연결되지 않습니다.
+`applied_shaping_gap_refs`와 `applied_scope_decision_refs`는 이 호출이 적용한 정확한 scope
+gap과 resolution만 식별합니다. 제품·기술·민감 gap은 각자의 application owner를 위해
+변경하지 않습니다.
 
 ## 차단 결과
 
@@ -309,7 +324,8 @@ change_unit_ref:
   project_id: proj_filter_001
   task_id: task_filter_001
   produced_at_state_version: 19
-linked_scope_decision_refs: []
+applied_shaping_gap_refs: []
+applied_scope_decision_refs: []
 stale_write_ticket_refs: []
 blocker_refs: []
 state:

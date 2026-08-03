@@ -545,6 +545,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
 
     let resolution_ids = resolution_refs
         .iter()
+        .take(2)
         .map(|reference| required_string(reference, "record_id"))
         .collect::<Result<Vec<_>, _>>()?;
     let advanced = live_mcp_call(

@@ -643,7 +643,8 @@ declare_method_result! {
         pub task_ref: StateRecordRef,
         pub shaping_checkpoint_ref: StateRecordRef,
         pub change_unit_ref: StateRecordRef,
-        pub user_action_resolution_refs: Vec<StateRecordRef>,
+        pub applied_shaping_gap_refs: Vec<StateRecordRef>,
+        pub applied_user_action_resolution_refs: Vec<StateRecordRef>,
         pub workflow: WorkflowProjection,
         pub state: StateSummary,
     }
@@ -742,7 +743,8 @@ declare_method_result! {
     pub struct UpdateScopeResult from UpdateScopeResultFields with UpdateScopeResultBase {
         pub task_ref: StateRecordRef,
         pub change_unit_ref: Option<StateRecordRef>,
-        pub linked_scope_decision_refs: Vec<StateRecordRef>,
+        pub applied_shaping_gap_refs: Vec<StateRecordRef>,
+        pub applied_scope_decision_refs: Vec<StateRecordRef>,
         pub stale_write_ticket_refs: Vec<StateRecordRef>,
         pub blocker_refs: Vec<StateRecordRef>,
         pub state: StateSummary,

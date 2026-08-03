@@ -123,7 +123,12 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 Choose only an option displayed for that pending judgment. One answer resolves
-only that judgment. The exact question and options appear in `volicord inbox`;
+that one judgment; it does not itself change scope or start implementation.
+After a scope answer, the agent applies that exact scope decision through
+`volicord.update_scope`. Product, technical, and sensitive shaping answers are
+applied when `volicord.advance_task` enters implementation. Sensitive approval
+continues to be checked for later write or sensitive effects.
+The exact question and options appear in `volicord inbox`;
 the agent-facing MCP connection cannot act as the local user channel or resolve
 the action on the user's behalf.
 

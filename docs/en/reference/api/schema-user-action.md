@@ -113,6 +113,13 @@ The closed compatibility matrix is:
 The request validator and operation-blocker projection use this one matrix.
 `informational` never keeps the Task waiting or blocks an operation by itself.
 
+The generic compatibility matrix does not choose shaping application owners.
+A request created by `volicord.record_shaping` uses the exact per-gap policy:
+product and technical use `[advance_task]`; scope uses `[scope_update]`; and
+sensitive approval uses `[advance_task, prepare_write, record_run,
+close_complete]`. Its immutable resolution changes the linked gap to
+`resolved`; the semantic owner method alone changes it to `applied`.
+
 The effective statuses are `pending`, `resolved`, `stale`, `superseded`, and
 `expired`. One Core evaluator derives status from current basis compatibility,
 immutable resolution presence, expiry, and current Core time. A stale or

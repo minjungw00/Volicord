@@ -2,6 +2,13 @@
 
 A user-owned shaping gap is not authority to infer a decision. Only a verified User Channel resolution can satisfy its exact request; chat content, agent claims, shaping summaries, and free-form Change Unit invariants cannot substitute for that resolution.
 
+Resolution is not application. Scope decisions are applied only by
+`volicord.update_scope`; product, technical, and sensitive shaping decisions
+are applied only by `volicord.advance_task`. Exact-ID Store validation and one
+transaction prevent unrelated gap application or phase transition after a
+failed application. Sensitive authority remains subject to downstream
+prepare-write and sensitive-effect checks after shaping application.
+
 This document owns supported security guarantees and explicit non-guarantees
 for the local Codex workflow. It does not define method schemas,
 storage effects, Codex configuration syntax, or operating-system policy.

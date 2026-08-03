@@ -682,6 +682,7 @@ pub(super) fn assemble_record_run_mutation_plan(
                 UserActionKind::FinalAcceptance,
                 UserActionKind::ResidualRiskAcceptance,
             ],
+            preserved_request_ids: Vec::new(),
         }),
     ));
     if let Some(lifecycle_phase) = lifecycle_phase {

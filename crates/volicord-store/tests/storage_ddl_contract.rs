@@ -34,7 +34,7 @@ use volicord_types::tool_names::AgentToolId;
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 63);
+    assert_eq!(metadata.tables.len(), 65);
     assert_eq!(metadata.columns.len(), 636);
     assert_eq!(metadata.indexes.len(), 78);
     assert_eq!(metadata.constraints.len(), 49);
@@ -376,11 +376,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:25fd20da58f874b1fc17b7239483e098d85d2a2eafc0c5ee8317ca26f781c312"
+        "sha256:1d94dd4cbc07a899eb99b7cd8663c9eacceda00b6ce95a5d7138e0775e0a21f9"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:61d6748c6365d5a58cecec9943e8c5e7f365ea44df7a9f030a3d1265b2162464"
+        "sha256:bc2e2730d54778556a35ef74936a9c4adcbb227d60c16f9198f9ba6756e9fc9f"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,14 +414,14 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:25fd20da58f874b1fc17b7239483e098d85d2a2eafc0c5ee8317ca26f781c312\",",
+            "{\"canonical_ddl_digest\":\"sha256:1d94dd4cbc07a899eb99b7cd8663c9eacceda00b6ce95a5d7138e0775e0a21f9\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"shaping_checkpoint_lineage\",",
             "\"shaping_progression\",",
             "\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:61d6748c6365d5a58cecec9943e8c5e7f365ea44df7a9f030a3d1265b2162464\"}"
+            "\"integrity_constraints_digest\":\"sha256:bc2e2730d54778556a35ef74936a9c4adcbb227d60c16f9198f9ba6756e9fc9f\"}"
         )
     );
     Ok(())

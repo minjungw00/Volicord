@@ -164,6 +164,14 @@ DDL, 템플릿, 로그, 증거 첨부 본문, 관련 없는 계약, 두 언어 �
 문장은 제공하지 않습니다. 결정을 적용할 때 반환된 현재 resolution 참조를 사용합니다.
 안정적인 CLI 대체 경로는 다음과 같습니다.
 
+Resolution은 shaping 결정을 적용하지 않습니다. Resolved scope gap은
+`volicord.update_scope`로 보내고, resolved 제품·기술·민감 gap은
+`volicord.advance_task`에 제공합니다. 제품 전용·기술 전용 checkpoint에는 scope decision
+ref가 필요하지 않습니다. Change Unit이 없으면 workflow가 생성을 위해
+`volicord.update_scope`를 요구하고, 현재 Change Unit이 있으면 `volicord.advance_task`를
+요구합니다. Scope와 다른 결정이 함께 있으면 scope gap만 먼저 적용하고 다른 gap은
+advance에 남깁니다.
+
 ```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"

@@ -178,6 +178,14 @@ stored resolution for that request supplies authority; chat text does not. Use
 the returned current resolution ref when applying the decision. The stable CLI
 fallback is:
 
+Resolution does not apply a shaping decision. Route resolved scope gaps through
+`volicord.update_scope`, and supply resolved product, technical, and sensitive
+gaps to `volicord.advance_task`. A product-only or technical-only checkpoint
+needs no scope-decision ref: without a Change Unit the workflow requests
+`volicord.update_scope` to create one; with a current Change Unit it requests
+`volicord.advance_task`. When scope and another decision coexist, apply only
+the scope gap first and leave the other gap for advance.
+
 ```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"

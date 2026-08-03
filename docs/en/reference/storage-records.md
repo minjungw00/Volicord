@@ -144,9 +144,12 @@ retain a `current` gap. `shaping_checkpoint_user_actions` is a same-project,
 same-Task, same-checkpoint, same-gap link to the exact UserAction request and,
 after User Channel resolution, its immutable resolution. A user-owned gap must
 have exactly one such request link; a non-user-owned gap has none. Resolving a
-linked request changes the gap to `resolved` and may make a complete checkpoint
-`ready`; applying the decision through the scope transition changes resolved
-gaps to `applied`.
+linked request changes only its gap to `resolved` and may make a structurally
+complete checkpoint `ready`. `volicord.update_scope` applies exact selected
+scope gaps; `volicord.advance_task` applies exact selected product, technical,
+and sensitive gaps atomically with phase transition. Neither operation updates
+every resolved gap by a Task-wide predicate. Applied gaps are terminal, while
+sensitive resolution authority remains available to downstream policy.
 
 Every aggregate read strictly decodes identifiers, closed values, canonical
 JSON arrays, timestamps, task ownership, predecessor ownership and timestamps,

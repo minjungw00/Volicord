@@ -58,9 +58,19 @@ exists, `keep_current` rejects a Task `baseline_ref` change; the caller must use
   duplicate IDs reject before commit.
 - `change_unit.operation` and the fields needed by that operation; supported operation values and their meanings are owned by [API Value Sets](schema-value-sets.md#method-local-values).
 - Optional `change_unit.effect_contract` when creating or replacing the current Change Unit. When present, the object uses `ChangeUnitEffectContract`; when absent, the Change Unit has no extra effect contract.
-- `related_scope_decision_refs` when the update applies a resolved `judgment_kind=scope_decision`.
+- `related_scope_decision_refs` must exactly cover the current checkpoint's
+  resolved scope-owned gaps. It is empty when there is no such gap, including
+  product-only and technical-only progression.
 
-When a scope update applies a `scope_decision`, each referenced judgment must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, `basis.coordinates.compatibility_status=current`, `required_for` that includes scope update, and a basis compatible with the current Task, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, stale, superseded, expired, invalid-basis, resolution-incomplete, or agent-recorded scope decisions do not authorize a scope transition.
+When a scope update applies a `scope_decision`, each reference must identify the
+exact resolution linked to a resolved scope gap in the current checkpoint and
+must have `judgment_kind=scope_decision`, `status=resolved`,
+`machine_action=accept`, `resolution_outcome=accepted`,
+`resolved_by_actor_source=local_user`, compatible User Channel provenance,
+`basis.coordinates.compatibility_status=current`, exact
+`required_for=[scope_update]`, and a basis compatible with the current Task,
+Change Unit, checkpoint, `scope_revision`, baseline, request, and affected refs.
+Product, technical, and sensitive resolutions are not accepted in this field.
 
 Before applying any scope or Change Unit effect, Core rejects with
 `DECISION_UNRESOLVED` when a current pending user-action request includes
@@ -144,6 +154,12 @@ no-op, acceptance/non-goal/autonomy edit that does not change `scope_revision`,
 or the unrelated `state_version` increment does not invalidate the ticket.
 Invalidation does not consume or silently reuse it.
 
+Applying a scope decision changes only its selected gap from `resolved` to
+`applied` and increments the scope revision. A compatible no-op or Change Unit
+creation can preserve and rebase the current checkpoint without a scope
+decision ref. A transition supersedes the checkpoint only when it genuinely
+invalidates the checkpoint's scope or baseline authority basis.
+
 ## Success result
 
 The committed `UpdateScopeResult` uses `base.response_kind=result` and
@@ -160,10 +176,11 @@ The committed `UpdateScopeResult` uses `base.response_kind=result` and
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
+| `applied_scope_decision_refs` | yes | no | `StateRecordRef[]` |
+| `applied_shaping_gap_refs` | yes | no | `StateRecordRef[]` |
 | `base` | yes | no | `UpdateScopeResultBase` |
 | `blocker_refs` | yes | no | `StateRecordRef[]` |
 | `change_unit_ref` | no | yes | `StateRecordRef` |
-| `linked_scope_decision_refs` | yes | no | `StateRecordRef[]` |
 | `stale_write_ticket_refs` | yes | no | `StateRecordRef[]` |
 | `state` | yes | no | `StateSummary` |
 | `task_ref` | yes | no | `StateRecordRef` |
@@ -195,7 +212,9 @@ The supported `change_unit.operation` values are owned by [API Value Sets](schem
 
 When `change_unit.operation=create_current` or `change_unit.operation=replace_current`, `change_unit.effect_contract` may be recorded on the new current Change Unit. The effect contract is optional Core state. It can express allowed effects, forbidden effects, allowed Product Repository paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations without creating a workflow engine or replacing user-owned authority records. The same operation records the verified workspace coordinate used by later write preparation. A non-Git repository records no VCS binding and does not receive Git-specific comparison checks.
 
-`linked_scope_decision_refs` contains only scope decisions that passed the compatibility and provenance checks above. Historical or rejected scope decisions may remain addressable judgment records, but they are not linked as applied authority.
+`applied_shaping_gap_refs` and `applied_scope_decision_refs` identify only the
+exact scope gaps and resolutions applied by this call. Product, technical, and
+sensitive gaps remain unchanged for their own application owner.
 
 ## Blocked result
 
@@ -314,7 +333,8 @@ change_unit_ref:
   project_id: proj_filter_001
   task_id: task_filter_001
   produced_at_state_version: 19
-linked_scope_decision_refs: []
+applied_shaping_gap_refs: []
+applied_scope_decision_refs: []
 stale_write_ticket_refs: []
 blocker_refs: []
 state:

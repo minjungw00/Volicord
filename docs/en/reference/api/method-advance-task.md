@@ -29,22 +29,23 @@ effect are `stable`.
 | `user_action_resolution_ids` | yes | no | `string[]` |
 <!-- END GENERATED: contract-structures api.method.advance_task.request[params] -->
 
-The request supplies the exact current Task, current ready shaping checkpoint,
+The request supplies the exact current Task, current structurally ready shaping checkpoint,
 current active Change Unit, current scope revision and baseline, and the exact
-current User Channel resolution refs required by the checkpoint. The envelope
+current User Channel resolution IDs for product, technical, and sensitive gaps
+owned by this method. The envelope
 supplies the current expected state version.
 
 Core requires `mode=work`, `work_phase=shaping`, a current `ready` checkpoint,
 matching Task/checkpoint scope revision, compatible Task/checkpoint/Change Unit
-baseline coordinates, the exact current active Change Unit, every checkpoint
-gap in `applied` status, the exact set of current resolution IDs linked from
-those gaps, and no current recovery constraint. Core also queries every
-effective Task UserAction whose `required_for` includes `advance_task`. Each
-such authority must be represented by the exact checkpoint and transition
-basis and every resolved decision must be validly applied. The supplied
-resolution set must equal both the checkpoint link set and this Task-wide
-authority set. A stale or superseded
-checkpoint, gap in `current` or `resolved` status, stale resolution, stale scope
+baseline coordinates, the exact current active Change Unit, and no current
+recovery constraint. Every scope-owned gap must already be `applied`. Every
+product-, technical-, or sensitive-owned gap must be `resolved`, linked to its
+exact accepted current User Channel resolution, and supplied exactly once.
+Core verifies each request, resolution, Task, checkpoint, scope revision,
+baseline, and Change Unit basis. The Store marks only those advance-owned gaps
+`applied` in the same transaction that enters implementation. A stale or superseded
+checkpoint, `current` gap, unapplied scope gap, resolved-but-unsupplied
+advance-owned gap, stale resolution, stale scope
 revision, wrong Change Unit, missing resolution, extra resolution, or
 incompatible baseline is rejected without an effect.
 
@@ -57,12 +58,13 @@ incompatible baseline is rejected without an effect.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
+| `applied_shaping_gap_refs` | yes | no | `StateRecordRef[]` |
+| `applied_user_action_resolution_refs` | yes | no | `StateRecordRef[]` |
 | `base` | yes | no | `AdvanceTaskResultBase` |
 | `change_unit_ref` | yes | no | `StateRecordRef` |
 | `shaping_checkpoint_ref` | yes | no | `StateRecordRef` |
 | `state` | yes | no | `StateSummary` |
 | `task_ref` | yes | no | `StateRecordRef` |
-| `user_action_resolution_refs` | yes | no | `StateRecordRef[]` |
 | `workflow` | yes | no | `WorkflowProjection` |
 
 ### `Result Metadata: core_committed` fields
@@ -88,10 +90,10 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 The response descriptor defines success, rejection, and preview as an exact `anyOf` branch union. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. Shared rejection and preview fields remain distinct from the success fields above.
 <!-- END GENERATED: contract-structures api.method.advance_task.response[response_variants] api.method.advance_task.response[result_body] api.method.advance_task.response[result_metadata] api.method.advance_task.response[rejection] api.method.advance_task.response[dry_run] -->
 
-A successful call sets `work_phase=implementation`, updates the lifecycle to
+A successful call sets the selected advance-owned gaps to `applied`, sets `work_phase=implementation`, updates the lifecycle to
 the implementation progression state, appends one typed transition event,
 stores the exact replay result, increments `state_version` exactly once, and
-returns the current workflow projection. Exact replay returns the original
+returns the exact applied gap and resolution refs plus the current workflow projection. Exact replay returns the original
 result; a conflicting replay is rejected.
 
 The transition does not modify Product Repository files, issue or consume a

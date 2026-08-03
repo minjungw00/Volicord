@@ -1,6 +1,6 @@
 # Storage Effects
 
-`volicord.record_shaping` commits checkpoint, gap, UserAction request/link, event, replay result, and one state-version increment in a single transaction. `volicord.advance_task` commits only the explicit Task phase transition and its event/replay result. Neither method writes Product Repository files or issues a write ticket.
+`volicord.record_shaping` commits checkpoint, gap, UserAction request/link, event, replay result, and one state-version increment in a single transaction. `volicord.advance_task` atomically applies its exact selected shaping decisions with the explicit Task phase transition and event/replay result. Neither method writes Product Repository files or issues a write ticket.
 
 This document defines baseline method-to-storage effect semantics.
 
@@ -580,6 +580,10 @@ Committed `dry_run=false` may:
   basis without changing `work_phase` when a current Change Unit is created or
   replaced
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
+- validate and set only exact selected resolved scope-owned gaps to `applied`
+- preserve and rebase a compatible current checkpoint and its linked current
+  UserAction bases, or supersede it when the transition invalidates its
+  authority basis
 - invalidate `tasks.close_basis_json` and increment `tasks.close_basis_revision` for material scope changes
 - mark incompatible user-action basis rows stale or superseded as owner-defined compatibility requires
 - update blockers or stale write-ticket refs as the method owner allows
@@ -635,18 +639,17 @@ state-version increment share one rollback boundary.
 ### `volicord.advance_task`
 
 A committed `dry_run=false` call verifies the exact current work Task in
-shaping, ready non-superseded checkpoint, applied gap set, scope revision,
-baseline, active Change Unit, exact current resolution-ID set, and absence of a
-recovery constraint. It also verifies every effective Task UserAction required
-for `advance_task`, including representation by the exact checkpoint and valid
-application of every resolution. In one transaction it changes only the Task phase to
-`implementation` and lifecycle to the implementation progression state,
+shaping, structurally ready non-superseded checkpoint, applied scope gap set,
+scope revision, baseline, active Change Unit, exact current advance-owned
+resolution-ID set, and absence of a recovery constraint. In one transaction it
+sets only the exact selected product, technical, and sensitive gaps to
+`applied`, changes the Task phase to `implementation` and lifecycle to the implementation progression state,
 appends one authority event, creates the exact replay row, advances the
 canonical Core UTC floor, and increments `project_state.state_version` exactly
 once.
 
-It does not change scope, create or replace a Change Unit, mutate the shaping
-aggregate, issue or consume a write ticket, record Evidence or a Run, establish
+It does not change scope, create or replace a Change Unit, apply scope-owned
+gaps, issue or consume a write ticket, record Evidence or a Run, establish
 a close basis, close the Task, or write Product Repository files. Dry-run and
 rejected branches have no storage effect.
 

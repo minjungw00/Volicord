@@ -48,8 +48,10 @@ draft가 없어야 합니다. 사용자 소유 gap에는 호환되는 draft가 �
 Core는 선택지를 실행 가능한 것으로 제시하기 전에 같은 transaction에서 현재
 `UserActionRequest`를 만들고 연결합니다.
 
-Core가 `readiness`를 계산합니다. 현재 필수 gap 집합이 비어 있고 경계, scope
-revision, baseline이 완전하고 현재일 때만 체크포인트는 `ready`입니다. 그 밖에는
+Core가 구조적 `readiness`를 계산합니다. baseline과 implementation boundary가 완전하고,
+모든 비사용자 shaping gap이 닫혔으며, 모든 사용자 소유 gap에 현재 User Channel
+resolution이 있으면 checkpoint는 `ready`입니다. 해결된 결정은 의미 owner가 소비하기
+전까지 `applied`가 아니라 `resolved`일 수 있습니다. 그 밖에는
 `blocked`입니다. 허용된 교체는 정확한 predecessor를 `superseded`로 표시하고 predecessor
 supersession과 successor 생성을 같은 timestamp로 기록합니다. Task 하나에는
 superseded가 아닌 checkpoint가 최대 하나만 있습니다.
@@ -61,8 +63,11 @@ ref, effective status, 필요한 owner method를 식별하고
 `state_change_applied=false`를 보고합니다. Scope 또는 Task 전환과 타입이 지정된 결정 적용
 operation만 자신이 소유한 전환 안에서 권한을 무효화할 수 있습니다.
 
-`work` Task에서 제품, 기술, 범위, 민감한 사용자 소유 gap 때문에 함께 만든 결정
-요청은 `required_for`에 `advance_task`를 포함합니다. `advisor` Task에서는 준비된
+`work` Task에서 제품·기술 결정은 `required_for=[advance_task]`를 사용하고
+`volicord.advance_task`가 적용합니다. 범위 결정은 `required_for=[scope_update]`를 사용하고
+`volicord.update_scope`가 적용합니다. 민감 승인은 `volicord.advance_task`가 적용하며 이후
+`volicord.prepare_write`, `volicord.record_run`, close-completion 정책에서 사용할 권한을
+유지합니다. User Channel resolution 자체는 어떤 결정도 적용하지 않습니다. `advisor` Task에서는 준비된
 체크포인트가 `close_assessment`를 제공했을 때 현재 자문 결과와 advisor 닫기 근거를
 세울 수 있습니다. work checkpoint에서는 이 닫기 평가를 허용하지 않으며 구현 닫기
 근거도 세우지 않습니다. 정확한 gap 종류, 상태, 요청 호환성은
@@ -139,6 +144,10 @@ recovery owner 하나를 보고합니다. Core 또는 replay 효과는 없습니
 `next_actor=user`, `chat_reply_is_resolution=false`, Product Repository mutation 경계,
 canonical Task 범위 inbox command를 반드시 surface합니다. Chat transcript는 User Channel
 resolution을 대신할 수 없습니다.
+
+해결 뒤에는 resolved scope gap이 있을 때만 `ready_to_apply_decisions`를 선택합니다.
+제품 전용·기술 전용 checkpoint는 Change Unit이 없으면 `ready_for_change_unit`, 현재
+Change Unit이 있으면 `ready_for_implementation`을 선택합니다.
 
 ## 관련 담당 문서
 

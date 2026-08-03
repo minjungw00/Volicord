@@ -49,9 +49,11 @@ not carry a user-action draft. A user-owned gap must carry exactly one
 compatible draft; Core creates and links its current `UserActionRequest` in the
 same transaction, before the choice can be presented as actionable.
 
-Core calculates `readiness`. A checkpoint is `ready` only when its current
-required-gap set is empty and its boundary, scope revision, and baseline are
-complete and current. Otherwise it is `blocked`. A permitted replacement marks
+Core calculates structural `readiness`. A checkpoint is `ready` when its
+baseline and implementation boundary are complete, every non-user shaping gap
+is closed, and every user-owned gap has a current User Channel resolution.
+Resolved decisions may still be `resolved` rather than `applied` until their
+semantic owners consume them. Otherwise it is `blocked`. A permitted replacement marks
 the exact predecessor `superseded`, gives predecessor supersession and
 successor creation the same timestamp, and leaves at most one non-superseded
 checkpoint for a Task.
@@ -65,8 +67,13 @@ refs, effective statuses, and required owner methods and reports
 decision-application operations may invalidate authority only within their
 owned transition.
 
-For a `work` Task, decision requests created for product, technical, scope, or
-sensitive user-owned gaps include `advance_task` in `required_for`. For an
+For a `work` Task, product and technical decisions use
+`required_for=[advance_task]` and are applied by `volicord.advance_task`; scope
+decisions use `required_for=[scope_update]` and are applied by
+`volicord.update_scope`; sensitive approval is applied by
+`volicord.advance_task` and remains available to `volicord.prepare_write`,
+`volicord.record_run`, and close-completion policy. User Channel resolution
+does not itself apply any decision. For an
 `advisor` Task, a ready checkpoint may establish the current advice result and
 advisor close basis when `close_assessment` is supplied. A work checkpoint
 forbids that close assessment and does not establish an implementation close
@@ -149,6 +156,11 @@ workflow is `awaiting_user_action`. MCP presentation must surface the exact
 request refs, `next_actor=user`, `chat_reply_is_resolution=false`, the Product
 Repository mutation boundary, and the canonical task-scoped inbox command.
 The chat transcript cannot substitute for a User Channel resolution.
+
+After resolution, only a resolved scope gap selects
+`ready_to_apply_decisions`. Product-only and technical-only checkpoints select
+`ready_for_change_unit` when no Change Unit exists and
+`ready_for_implementation` when one is current.
 
 ## Related owners
 

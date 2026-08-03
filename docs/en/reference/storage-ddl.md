@@ -1281,9 +1281,8 @@ CREATE TABLE shaping_checkpoints (
   PRIMARY KEY (project_id, shaping_checkpoint_id),
   UNIQUE (project_id, task_id, shaping_checkpoint_id),
   UNIQUE (project_id, predecessor_shaping_checkpoint_id),
-  FOREIGN KEY (project_id, task_id, scope_revision)
-    REFERENCES tasks (project_id, task_id, scope_revision)
-    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id, task_id)
+    REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, predecessor_shaping_checkpoint_id)
     REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id)
     DEFERRABLE INITIALLY DEFERRED,
@@ -1418,7 +1417,7 @@ CREATE TABLE shaping_checkpoint_gaps (
       AND user_action_kind IS NULL
       AND user_action_request_id IS NULL)
   ),
-  CHECK (status <> 'resolved' OR user_action_request_id IS NOT NULL)
+  CHECK (status = 'current' OR user_action_request_id IS NOT NULL)
 );
 
 CREATE TABLE shaping_checkpoint_user_actions (
@@ -1491,11 +1490,16 @@ BEGIN
   SELECT CASE WHEN EXISTS (
     SELECT 1
       FROM shaping_checkpoint_user_actions AS link
+      JOIN shaping_checkpoint_gaps AS gap
+        ON gap.project_id = link.project_id
+       AND gap.shaping_checkpoint_id = link.shaping_checkpoint_id
+       AND gap.shaping_gap_id = link.shaping_gap_id
       JOIN user_action_requests AS request
         ON request.project_id = link.project_id
        AND request.user_action_request_id = link.user_action_request_id
      WHERE link.project_id = OLD.project_id
        AND link.shaping_checkpoint_id = OLD.shaping_checkpoint_id
+       AND gap.status <> 'applied'
        AND request.basis_status = 'current'
   ) THEN RAISE(ABORT, 'live shaping UserAction authority cannot be detached') END;
 END;
@@ -1538,6 +1542,27 @@ BEGIN
        AND shaping_gap_id = NEW.shaping_gap_id
        AND user_action_resolution_id IS NOT NULL
   ) THEN RAISE(ABORT, 'resolved shaping gap requires a linked resolution') END;
+END;
+
+CREATE TRIGGER trg_shaping_gap_application_requires_resolved_gap
+BEFORE UPDATE OF status ON shaping_checkpoint_gaps
+WHEN NEW.status = 'applied'
+BEGIN
+  SELECT CASE WHEN OLD.status <> 'resolved' OR NOT EXISTS (
+    SELECT 1
+      FROM shaping_checkpoint_user_actions
+     WHERE project_id = NEW.project_id
+       AND shaping_checkpoint_id = NEW.shaping_checkpoint_id
+       AND shaping_gap_id = NEW.shaping_gap_id
+       AND user_action_resolution_id IS NOT NULL
+  ) THEN RAISE(ABORT, 'applied shaping gap requires an exact resolved gap') END;
+END;
+
+CREATE TRIGGER trg_applied_shaping_gap_is_terminal
+BEFORE UPDATE OF status ON shaping_checkpoint_gaps
+WHEN OLD.status = 'applied' AND NEW.status <> 'applied'
+BEGIN
+  SELECT RAISE(ABORT, 'applied shaping gap status is terminal');
 END;
 
 CREATE TABLE project_continuity_records (

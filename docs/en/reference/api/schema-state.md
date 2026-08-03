@@ -521,10 +521,12 @@ ShapingCheckpointSummary:
   implementation_boundary: string | null
   gaps: ShapingCheckpointGap[]
   pending_decision_refs: StateRecordRef[]
+  unresolved_application_owners: string[]
 
 ShapingCheckpointGap:
   shaping_gap_id: string
   gap_kind: string
+  application_owner: string | null
   summary: string
   affected_refs: StateRecordRef[]
   status: string
@@ -539,6 +541,14 @@ durable record and its compact state reference. `ShapingGapInput.user_action` is
 user-owned gap and carries the compatible typed draft that Core materializes
 and links atomically. Readiness, gap kinds, gap statuses, workflow kinds, and
 blocking reasons use the closed sets in [API Value Sets](schema-value-sets.md).
+
+Checkpoint readiness is structural and is independent from decision
+application. `application_owner` is non-null exactly for a user-owned gap.
+`unresolved_application_owners` is the unique stable set of owners for resolved
+decisions not yet applied. It can be non-empty while `readiness=ready`.
+`ready_to_apply_decisions` is selected only when that set includes
+`volicord.update_scope`; advance-owned decisions proceed toward a Change Unit
+or `ready_for_implementation` instead.
 
 The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Task-wide effective UserActions required for `advance_task` also participate in this projection. A detached live decision uses `inconsistent_authority_state`, contributes its request ref to `required_refs`, and prevents `ready_for_implementation`.
 

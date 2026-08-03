@@ -1,6 +1,6 @@
 # 저장 효과
 
-`volicord.record_shaping`은 checkpoint, gap, UserAction 요청과 링크, event, replay result, 단 한 번의 state-version 증가를 한 transaction에서 커밋합니다. `volicord.advance_task`는 명시적 Task 단계 전이와 해당 event/replay result만 커밋합니다. 두 메서드 모두 Product Repository 파일을 쓰거나 쓰기 티켓을 발급하지 않습니다.
+`volicord.record_shaping`은 checkpoint, gap, UserAction 요청과 링크, event, replay result, 단 한 번의 state-version 증가를 한 transaction에서 커밋합니다. `volicord.advance_task`는 선택한 정확한 shaping 결정을 명시적 Task 단계 전이 및 해당 event/replay result와 원자적으로 커밋합니다. 두 메서드 모두 Product Repository 파일을 쓰거나 쓰기 티켓을 발급하지 않습니다.
 
 이 문서는 기준 범위에서 메서드와 응답 분기가 만들 수 있는 저장 효과를 정의합니다.
 
@@ -550,6 +550,9 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - 검증된 선택적 Git workspace context를 Change Unit write basis에 캡처하되 현재
   Change Unit을 만들거나 교체해도 `work_phase`를 바꾸지 않습니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경에 대해 `tasks.scope_revision`을 증가시킵니다.
+- 선택한 정확한 resolved 범위 owner gap만 검증해 `applied`로 바꿉니다.
+- 호환되는 현재 checkpoint와 연결된 현재 UserAction basis를 보존하고 rebase하거나,
+  전이가 권한 근거를 무효화하면 checkpoint를 supersede합니다.
 - 실질적 범위 변경에 대해 `tasks.close_basis_json`을 무효화하고 `tasks.close_basis_revision`을 증가시킵니다.
 - 담당 문서가 정의한 호환성에 따라 호환되지 않는 사용자 행동 근거 행을 오래됨 또는 대체됨으로 표시합니다.
 - 메서드 담당 문서가 허용한 차단 사유 또는 오래된 쓰기 티켓 참조를 갱신합니다.
@@ -601,16 +604,15 @@ link, predecessor 갱신, event, replay row, state-version 증가는 하나의 r
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`
 
-커밋되는 `dry_run=false` 호출은 shaping인 정확한 현재 work Task, ready이며 superseded가
-아닌 checkpoint, applied gap 집합, scope revision, baseline, 활성 Change Unit, 정확한 현재
-resolution-ID 집합, recovery constraint 부재를 검증합니다. 또한 `advance_task`에 필요한
-Task의 모든 effective UserAction이 exact checkpoint에 표현되고 각 resolution이 유효하게
-적용되었는지 검증합니다. Transaction 하나에서 Task
-단계만 `implementation`으로, lifecycle을 구현 진행 상태로 바꾸고 authority event 하나와
+커밋되는 `dry_run=false` 호출은 shaping인 정확한 현재 work Task, 구조적으로 ready이며
+superseded가 아닌 checkpoint, applied 범위 gap 집합, scope revision, baseline, 활성 Change
+Unit, 정확한 현재 advance owner resolution-ID 집합, recovery constraint 부재를 검증합니다.
+Transaction 하나에서 선택한 정확한 제품·기술·민감 gap만 `applied`로 만들고 Task 단계를
+`implementation`으로, lifecycle을 구현 진행 상태로 바꾸며 authority event 하나와
 정확한 replay row를 만들며 정규 Core UTC 하한을 진행시키고
 `project_state.state_version`을 정확히 한 번 증가시킵니다.
 
-범위를 바꾸거나 Change Unit을 만들거나 교체하지 않으며, shaping aggregate를 변경하거나
+범위를 바꾸거나 Change Unit을 만들거나 교체하지 않으며, 범위 owner gap을 적용하거나
 write ticket을 발급·소비하거나 Evidence나 Run을 기록하거나 close basis를 세우거나 Task를
 닫거나 Product Repository 파일을 쓰지 않습니다. Dry-run과 거절 분기는 저장 효과가
 없습니다.

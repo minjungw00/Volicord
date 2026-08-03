@@ -322,6 +322,23 @@ resolved
 applied
 ```
 
+`current` means the decision or shaping work is unresolved. `resolved` means
+exact User Channel authority exists but its semantic application owner has not
+applied it. `applied` means that owner consumed and bound the exact resolution
+to current state. Resolution alone never selects `applied`.
+
+User-owned gaps use this closed application-owner mapping:
+
+```text
+user_product_decision_required -> volicord.advance_task
+user_technical_decision_required -> volicord.advance_task
+user_scope_decision_required -> volicord.update_scope
+sensitive_approval_required -> volicord.advance_task
+```
+
+The only `ShapingDecisionApplicationOwner` values are
+`volicord.update_scope` and `volicord.advance_task`.
+
 `WorkflowProjection.kind` uses exactly:
 
 ```text

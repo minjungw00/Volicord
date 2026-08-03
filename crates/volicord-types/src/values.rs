@@ -889,6 +889,37 @@ pub enum ShapingGapKind {
     SensitiveApprovalRequired,
 }
 
+/// Closed authority method that applies one resolved shaping decision.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub enum ShapingDecisionApplicationOwner {
+    #[serde(rename = "volicord.update_scope")]
+    UpdateScope,
+    #[serde(rename = "volicord.advance_task")]
+    AdvanceTask,
+}
+
+impl ShapingDecisionApplicationOwner {
+    /// Returns the public method that owns the semantic application effect.
+    pub const fn method(self) -> MethodName {
+        match self {
+            Self::UpdateScope => MethodName::UpdateScope,
+            Self::AdvanceTask => MethodName::AdvanceTask,
+        }
+    }
+}
+
+/// Canonical semantic policy for one user-owned shaping-gap kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShapingDecisionPolicy {
+    pub user_action_kind: UserActionKind,
+    pub required_for: &'static [UserActionRequiredFor],
+    pub application_owner: ShapingDecisionApplicationOwner,
+    pub changes_scope_revision: bool,
+    pub retain_resolution_for_downstream: bool,
+}
+
 impl ShapingGapKind {
     /// Returns whether this gap requires exact User Channel authority.
     pub const fn is_user_owned(self) -> bool {
@@ -903,11 +934,48 @@ impl ShapingGapKind {
 
     /// Returns the compatible UserAction kind for a user-owned gap.
     pub const fn user_action_kind(self) -> Option<UserActionKind> {
+        match self.decision_policy() {
+            Some(policy) => Some(policy.user_action_kind),
+            None => None,
+        }
+    }
+
+    /// Returns the one canonical policy for a user-owned shaping decision.
+    pub const fn decision_policy(self) -> Option<ShapingDecisionPolicy> {
         match self {
-            Self::UserProductDecisionRequired => Some(UserActionKind::ProductDecision),
-            Self::UserTechnicalDecisionRequired => Some(UserActionKind::TechnicalDecision),
-            Self::UserScopeDecisionRequired => Some(UserActionKind::ScopeDecision),
-            Self::SensitiveApprovalRequired => Some(UserActionKind::SensitiveApproval),
+            Self::UserProductDecisionRequired => Some(ShapingDecisionPolicy {
+                user_action_kind: UserActionKind::ProductDecision,
+                required_for: &[UserActionRequiredFor::AdvanceTask],
+                application_owner: ShapingDecisionApplicationOwner::AdvanceTask,
+                changes_scope_revision: false,
+                retain_resolution_for_downstream: false,
+            }),
+            Self::UserTechnicalDecisionRequired => Some(ShapingDecisionPolicy {
+                user_action_kind: UserActionKind::TechnicalDecision,
+                required_for: &[UserActionRequiredFor::AdvanceTask],
+                application_owner: ShapingDecisionApplicationOwner::AdvanceTask,
+                changes_scope_revision: false,
+                retain_resolution_for_downstream: false,
+            }),
+            Self::UserScopeDecisionRequired => Some(ShapingDecisionPolicy {
+                user_action_kind: UserActionKind::ScopeDecision,
+                required_for: &[UserActionRequiredFor::ScopeUpdate],
+                application_owner: ShapingDecisionApplicationOwner::UpdateScope,
+                changes_scope_revision: true,
+                retain_resolution_for_downstream: false,
+            }),
+            Self::SensitiveApprovalRequired => Some(ShapingDecisionPolicy {
+                user_action_kind: UserActionKind::SensitiveApproval,
+                required_for: &[
+                    UserActionRequiredFor::AdvanceTask,
+                    UserActionRequiredFor::PrepareWrite,
+                    UserActionRequiredFor::RecordRun,
+                    UserActionRequiredFor::CloseComplete,
+                ],
+                application_owner: ShapingDecisionApplicationOwner::AdvanceTask,
+                changes_scope_revision: false,
+                retain_resolution_for_downstream: true,
+            }),
             Self::GoalMissing
             | Self::ScopeBoundaryMissing
             | Self::NonGoalsMissing
@@ -2199,7 +2267,8 @@ mod tests {
 
     use super::{
         AuthorityNextActor, ErrorCode, FailureCategory, ObservationConfidence, ObservedEffectKind,
-        RequestedControlLevel, TaskControlLevel, UtcTimestamp, WriteTicketEffect,
+        RequestedControlLevel, ShapingDecisionApplicationOwner, ShapingGapKind, TaskControlLevel,
+        UserActionKind, UserActionRequiredFor, UtcTimestamp, WriteTicketEffect,
         WriteTicketInvalidationReason, WriteTicketState, WriteTicketStatus,
     };
 
@@ -2295,6 +2364,72 @@ mod tests {
             AuthorityNextActor::from_stable_str("user"),
             Some(AuthorityNextActor::User)
         );
+    }
+
+    #[test]
+    fn shaping_decision_policy_is_one_closed_application_owner_matrix() {
+        let cases = [
+            (
+                ShapingGapKind::UserProductDecisionRequired,
+                UserActionKind::ProductDecision,
+                &[UserActionRequiredFor::AdvanceTask][..],
+                ShapingDecisionApplicationOwner::AdvanceTask,
+                false,
+                false,
+            ),
+            (
+                ShapingGapKind::UserTechnicalDecisionRequired,
+                UserActionKind::TechnicalDecision,
+                &[UserActionRequiredFor::AdvanceTask][..],
+                ShapingDecisionApplicationOwner::AdvanceTask,
+                false,
+                false,
+            ),
+            (
+                ShapingGapKind::UserScopeDecisionRequired,
+                UserActionKind::ScopeDecision,
+                &[UserActionRequiredFor::ScopeUpdate][..],
+                ShapingDecisionApplicationOwner::UpdateScope,
+                true,
+                false,
+            ),
+            (
+                ShapingGapKind::SensitiveApprovalRequired,
+                UserActionKind::SensitiveApproval,
+                &[
+                    UserActionRequiredFor::AdvanceTask,
+                    UserActionRequiredFor::PrepareWrite,
+                    UserActionRequiredFor::RecordRun,
+                    UserActionRequiredFor::CloseComplete,
+                ][..],
+                ShapingDecisionApplicationOwner::AdvanceTask,
+                false,
+                true,
+            ),
+        ];
+
+        for (gap_kind, action_kind, required_for, owner, changes_scope, retain) in cases {
+            let policy = gap_kind.decision_policy().expect("user-owned policy");
+            assert_eq!(policy.user_action_kind, action_kind);
+            assert_eq!(policy.required_for, required_for);
+            assert_eq!(policy.application_owner, owner);
+            assert_eq!(policy.application_owner.method(), owner.method());
+            assert_eq!(policy.changes_scope_revision, changes_scope);
+            assert_eq!(policy.retain_resolution_for_downstream, retain);
+            assert_eq!(gap_kind.user_action_kind(), Some(action_kind));
+        }
+
+        for gap_kind in [
+            ShapingGapKind::GoalMissing,
+            ShapingGapKind::ScopeBoundaryMissing,
+            ShapingGapKind::NonGoalsMissing,
+            ShapingGapKind::AcceptanceCriteriaMissing,
+            ShapingGapKind::AutonomyBoundaryMissing,
+            ShapingGapKind::ImplementationBoundaryMissing,
+            ShapingGapKind::BaselineMissing,
+        ] {
+            assert!(gap_kind.decision_policy().is_none());
+        }
     }
 
     #[test]

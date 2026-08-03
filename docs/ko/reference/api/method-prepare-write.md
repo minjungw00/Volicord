@@ -4,6 +4,11 @@
 
 쓰기 준비에는 `direct/implementation` 또는 `work/implementation`, 현재 active Change Unit, 그리고 `scope_update`, `advance_task`, `prepare_write`에 필요한 미해결 현재 결정이 없다는 조건이 필요합니다. shaping에서 만든 Change Unit은 단계 gate를 만족하지 않습니다.
 
+Shaping `sensitive_approval_required` resolution은 진행을 위해
+`volicord.advance_task`가 적용하지만, 정확한 현재 User Channel 권한은 이 메서드와 기존
+민감 효과 정책에서도 계속 필요합니다. Applied shaping 상태는 쓰기 티켓이 아니며 민감
+승인 검사를 면제하지 않습니다.
+
 ## 담당하는 것
 
 이 문서는 기준 범위의 `volicord.prepare_write` 메서드 동작을 담당합니다.

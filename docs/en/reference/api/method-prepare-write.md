@@ -4,6 +4,11 @@
 
 Write preparation requires `direct/implementation` or `work/implementation`, the current active Change Unit, and no unresolved current decision required for `scope_update`, `advance_task`, or `prepare_write`. A Change Unit created during shaping does not satisfy the phase gate.
 
+A shaping `sensitive_approval_required` resolution is applied for progression
+by `volicord.advance_task`, but its exact current User Channel authority remains
+required here and in the existing sensitive-effect policy. Applied shaping
+status is not a write ticket and does not waive sensitive approval checks.
+
 ## What this document owns
 
 This document owns baseline method behavior for `volicord.prepare_write`:

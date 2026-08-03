@@ -127,9 +127,12 @@ predecessor identity는 불변이고 self-reference할 수 없습니다.
 추가하거나 유지할 수 없습니다. `shaping_checkpoint_user_actions`는 같은 project, Task,
 checkpoint, gap의 정확한 UserAction request와 User Channel 해결 뒤의 불변 resolution을
 연결합니다. 사용자 소유 gap에는 이 request link가 정확히 하나 있어야 하며 사용자 소유가
-아닌 gap에는 없어야 합니다. 연결된 요청을 해결하면 gap은 `resolved`가 되고 완전한
-checkpoint는 `ready`가 될 수 있습니다. 범위 전이로 결정을 적용하면 resolved gap은
-`applied`가 됩니다.
+아닌 gap에는 없어야 합니다. 연결된 요청을 해결하면 해당 gap만 `resolved`가 되고
+구조적으로 완전한 checkpoint는 `ready`가 될 수 있습니다. `volicord.update_scope`는
+선택된 정확한 scope gap을 적용하고, `volicord.advance_task`는 선택된 정확한 제품·기술·민감
+gap을 단계 전이와 원자적으로 적용합니다. 어떤 operation도 Task 전체 조건으로 모든
+resolved gap을 갱신하지 않습니다. Applied gap은 terminal이며 민감 resolution 권한은 이후
+정책에서 계속 사용할 수 있습니다.
 
 모든 aggregate read는 식별자, 폐쇄형 값, 정규 JSON 배열, timestamp, Task 소유권,
 predecessor 소유권과 timestamp, link 일관성을 엄격하게 decode합니다. 잘못되거나

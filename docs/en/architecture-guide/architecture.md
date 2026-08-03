@@ -195,14 +195,18 @@ typed-fact-to-view projections.
 ### Shaping progression ownership
 
 `volicord-types` owns the public `ShapingCheckpoint`, gap input/projection,
-closed shaping/workflow values, `WorkflowProjection`, method requests/results,
+closed shaping/workflow values and the canonical per-kind application-owner
+policy, `WorkflowProjection`, method requests/results,
 and typed rejection details. `volicord-store::core_pipeline::shaping` owns the
 strict Task-scoped aggregate and its checkpoint/gap/UserAction-link mutations.
-Core's `methods/record_shaping.rs` and `methods/advance_task.rs` own semantic
-validation, atomic plan composition, and the explicit phase transition;
+Core's `methods/record_shaping.rs`, `methods/update_scope.rs`, and
+`methods/advance_task.rs` consume that policy for semantic validation, exact
+decision application, atomic plan composition, and the explicit phase transition;
 `workflow_projection.rs` derives current tagged progression from Store-validated
 facts. The UserAction service constructs and validates linked authority, while
 Core alone coordinates that service output into the checkpoint transaction.
+Store exact-ID mutations reject the wrong owner or resolution and bind
+advance-owned application to the phase transition in one transaction.
 
 `volicord-mcp-wire` owns adapter request/result projections and `volicord-mcp`
 owns the `AgentToolId` registry, dispatch, compact workflow/rejection

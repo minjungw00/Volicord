@@ -30,7 +30,8 @@ use volicord_types::values::{
     EvidenceAssuranceLevel, EvidenceCoverageUpdateState, EvidenceDisplayState,
     EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentResolutionOutcome, MethodName,
     MutationDetailLevel, PrepareWriteDecision, RedactionState, RequestedControlLevel,
-    RequestedMode, ResumePolicy, RunKind, StatusDetailLevel, TaskMode, UserActionChannelKind,
+    RequestedMode, ResumePolicy, RunKind, ShapingCheckpointReadiness,
+    ShapingDecisionApplicationOwner, StatusDetailLevel, TaskMode, UserActionChannelKind,
     UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
     WorkPhase, WriteTicketEffect,
 };
@@ -232,6 +233,35 @@ pub struct McpMutationEffectSummary {
     pub effect_kind: EffectKind,
     pub state_version: Option<u64>,
     pub events: Vec<volicord_types::schema::EventRef>,
+}
+
+/// Compact `volicord.record_shaping` authority and routing outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpRecordShapingCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub shaping_checkpoint_id: ShapingCheckpointId,
+    pub readiness: ShapingCheckpointReadiness,
+    pub unresolved_application_owners: Vec<ShapingDecisionApplicationOwner>,
+    pub created_user_action_request_refs: Vec<StateRecordRef>,
+}
+
+/// Compact `volicord.update_scope` exact decision-application outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpUpdateScopeCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub applied_shaping_gap_refs: Vec<StateRecordRef>,
+    pub applied_scope_decision_refs: Vec<StateRecordRef>,
+}
+
+/// Compact `volicord.advance_task` exact decision-application outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpAdvanceTaskCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub applied_shaping_gap_refs: Vec<StateRecordRef>,
+    pub applied_user_action_resolution_refs: Vec<StateRecordRef>,
 }
 
 /// Compact `volicord.prepare_write` outcome needed by the next write step.
@@ -1031,13 +1061,13 @@ pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
             McpMutationStructuredContent<IntakeResponse, McpMutationEffectSummary>,
         >()),
         MethodName::UpdateScope => Some(response_schema::<
-            McpMutationStructuredContent<UpdateScopeResponse, McpMutationEffectSummary>,
+            McpMutationStructuredContent<UpdateScopeResponse, McpUpdateScopeCompactResult>,
         >()),
         MethodName::RecordShaping => Some(response_schema::<
-            McpMutationStructuredContent<RecordShapingResponse, McpMutationEffectSummary>,
+            McpMutationStructuredContent<RecordShapingResponse, McpRecordShapingCompactResult>,
         >()),
         MethodName::AdvanceTask => Some(response_schema::<
-            McpMutationStructuredContent<AdvanceTaskResponse, McpMutationEffectSummary>,
+            McpMutationStructuredContent<AdvanceTaskResponse, McpAdvanceTaskCompactResult>,
         >()),
         MethodName::Status => Some(response_schema::<
             McpReadOnlyToolStructuredContent<StatusResponse>,

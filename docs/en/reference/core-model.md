@@ -279,6 +279,26 @@ or a scope or Task transition authoritatively invalidates its basis. Work
 progression evaluates Task-wide effective UserActions required for
 `advance_task` as well as checkpoint-local gaps.
 
+Shaping resolution and application are separate. A linked gap is `current`
+until User Channel authority exists, `resolved` while that authority awaits its
+semantic owner, and `applied` only after that owner's state mutation consumes
+the exact resolution. The closed owner policy is:
+
+| Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | Downstream retention |
+|---|---|---|---|---|---|
+| `user_product_decision_required` | `product_decision` | `advance_task` | `volicord.advance_task` | unchanged | no |
+| `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | unchanged | no |
+| `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | incremented | no |
+| `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | unchanged | yes |
+
+Checkpoint `readiness=ready` is structural: the baseline and implementation
+boundary exist, non-user gaps are closed, and each user gap has a current
+resolution. It does not mean all decisions are applied. The workflow summary
+therefore exposes readiness and the remaining application owners separately.
+Only a resolved scope gap selects `ready_to_apply_decisions`; resolved product,
+technical, and sensitive gaps wait for atomic application by
+`volicord.advance_task`.
+
 `advisor` is read-only with respect to Product Repository file effects and never uses a write-capable Change Unit, a write ticket, or `volicord.advance_task`. A Change Unit is a work boundary and does not change phase. A work Task enters implementation only through a successful explicit advance. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Progression authority does not satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
 
 ### Run

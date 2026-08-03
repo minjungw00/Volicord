@@ -2071,6 +2071,7 @@ pub struct ShapingCheckpoint {
 pub struct ShapingCheckpointGap {
     pub shaping_gap_id: crate::ids::ShapingGapId,
     pub gap_kind: crate::values::ShapingGapKind,
+    pub application_owner: RequiredNullable<crate::values::ShapingDecisionApplicationOwner>,
     pub summary: String,
     pub affected_refs: Vec<StateRecordRef>,
     pub status: crate::values::ShapingGapStatus,
@@ -2090,6 +2091,7 @@ pub struct ShapingCheckpointSummary {
     pub implementation_boundary: RequiredNullable<String>,
     pub gaps: Vec<ShapingCheckpointGap>,
     pub pending_decision_refs: Vec<StateRecordRef>,
+    pub unresolved_application_owners: Vec<crate::values::ShapingDecisionApplicationOwner>,
 }
 
 macro_rules! workflow_projection_variants {

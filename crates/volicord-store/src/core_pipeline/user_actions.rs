@@ -97,6 +97,7 @@ pub struct UserActionBasisStatusMark {
 pub struct UserActionInvalidation {
     pub task_id: String,
     pub action_kinds: Vec<UserActionKind>,
+    pub preserved_request_ids: Vec<String>,
 }
 
 impl UserActionMutation {
@@ -1580,17 +1581,25 @@ impl MutationContext<'_> {
             "user_action_requests.basis_json",
             &user_action_basis_with_status(&input.basis, input.basis_status),
         )?;
+        let change_unit_id = input
+            .basis
+            .coordinates()
+            .change_unit_id
+            .as_ref()
+            .map(|change_unit_id| change_unit_id.as_str());
         let changed = self.tx.execute(
             "UPDATE user_action_requests
                 SET basis_json = ?3,
-                    basis_status = ?4
+                    basis_status = ?4,
+                    change_unit_id = ?5
               WHERE project_id = ?1
                 AND user_action_request_id = ?2",
             params![
                 self.project_id,
                 input.user_action_request_id,
                 basis_json,
-                user_action_basis_status_as_str(input.basis_status)
+                user_action_basis_status_as_str(input.basis_status),
+                change_unit_id,
             ],
         )?;
         if changed == 1 {
@@ -1663,13 +1672,21 @@ impl MutationContext<'_> {
         input: &UserActionInvalidation,
     ) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
+        for request_id in &input.preserved_request_ids {
+            validate_identifier("preserved_user_action_request_id", request_id)?;
+        }
         if input.action_kinds.is_empty() {
-            self.mark_user_actions_superseded_or_stale_for_kind(&input.task_id, None)?;
+            self.mark_user_actions_superseded_or_stale_for_kind(
+                &input.task_id,
+                None,
+                &input.preserved_request_ids,
+            )?;
         } else {
             for action_kind in &input.action_kinds {
                 self.mark_user_actions_superseded_or_stale_for_kind(
                     &input.task_id,
                     Some(*action_kind),
+                    &input.preserved_request_ids,
                 )?;
             }
         }
@@ -1680,6 +1697,7 @@ impl MutationContext<'_> {
         &mut self,
         task_id: &str,
         action_kind: Option<UserActionKind>,
+        preserved_request_ids: &[String],
     ) -> StoreResult<()> {
         let sql = if action_kind.is_some() {
             "SELECT
@@ -1723,6 +1741,9 @@ impl MutationContext<'_> {
             mapped.collect::<Result<Vec<_>, _>>()?
         };
         for (request_id, basis_json, has_resolution) in rows {
+            if preserved_request_ids.contains(&request_id) {
+                continue;
+            }
             let status = if has_resolution {
                 UserActionBasisStatus::Stale
             } else {

@@ -19,13 +19,14 @@ use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
-    McpAgentStateChange, McpMustSurfaceFact, McpMutationEffectSummary, McpMutationFullResponse,
-    McpMutationSummaryResponse, McpMutationWorkflowResponse, McpPostEffectFailureCode,
-    McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
+    McpAdvanceTaskCompactResult, McpAgentStateChange, McpMustSurfaceFact, McpMutationEffectSummary,
+    McpMutationFullResponse, McpMutationSummaryResponse, McpMutationWorkflowResponse,
+    McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
     McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
-    McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
-    McpTaskPhasePresentation, McpUserChannelInstructions, McpWorkflowBlockerSummary,
-    McpWorkflowDryRunResponse, McpWorkflowPresentation, McpWorkflowRejectedResponse,
+    McpRecordShapingCompactResult, McpRequestUserActionCompactResult, McpRequestUserActionResponse,
+    McpStageArtifactCompactResult, McpTaskPhasePresentation, McpUpdateScopeCompactResult,
+    McpUserChannelInstructions, McpWorkflowBlockerSummary, McpWorkflowDryRunResponse,
+    McpWorkflowPresentation, McpWorkflowRejectedResponse,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::RecordId;
@@ -683,17 +684,37 @@ pub(crate) fn compact_mutation_method_result(
         AgentToolId::UPDATE_SCOPE => {
             let result: UpdateScopeResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
+            serde_json::to_value(McpUpdateScopeCompactResult {
+                effect: compact_mutation_effect(&result),
+                applied_shaping_gap_refs: result.applied_shaping_gap_refs,
+                applied_scope_decision_refs: result.applied_scope_decision_refs,
+            })
+            .map_err(McpAdapterError::Json)
         }
         AgentToolId::RECORD_SHAPING => {
             let result: RecordShapingResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
+            let unresolved_application_owners = workflow_checkpoint(&result.workflow)
+                .map(|checkpoint| checkpoint.unresolved_application_owners.clone())
+                .unwrap_or_default();
+            serde_json::to_value(McpRecordShapingCompactResult {
+                effect: compact_mutation_effect(&result),
+                shaping_checkpoint_id: result.shaping_checkpoint.shaping_checkpoint_id,
+                readiness: result.shaping_checkpoint.readiness,
+                unresolved_application_owners,
+                created_user_action_request_refs: result.created_user_action_request_refs,
+            })
+            .map_err(McpAdapterError::Json)
         }
         AgentToolId::ADVANCE_TASK => {
             let result: AdvanceTaskResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
+            serde_json::to_value(McpAdvanceTaskCompactResult {
+                effect: compact_mutation_effect(&result),
+                applied_shaping_gap_refs: result.applied_shaping_gap_refs,
+                applied_user_action_resolution_refs: result.applied_user_action_resolution_refs,
+            })
+            .map_err(McpAdapterError::Json)
         }
         AgentToolId::CLOSE_TASK => {
             let result: CloseTaskResult =
@@ -703,6 +724,24 @@ pub(crate) fn compact_mutation_method_result(
         _ => Err(McpAdapterError::Protocol(format!(
             "missing compact mutation result projection for {tool_name}"
         ))),
+    }
+}
+
+fn workflow_checkpoint(
+    workflow: &volicord_types::schema::WorkflowProjection,
+) -> Option<&volicord_types::schema::ShapingCheckpointSummary> {
+    use volicord_types::schema::WorkflowProjection;
+
+    match workflow {
+        WorkflowProjection::NoActiveTask { checkpoint, .. }
+        | WorkflowProjection::ShapingRequired { checkpoint, .. }
+        | WorkflowProjection::AwaitingUserAction { checkpoint, .. }
+        | WorkflowProjection::ReadyToApplyDecisions { checkpoint, .. }
+        | WorkflowProjection::ReadyForChangeUnit { checkpoint, .. }
+        | WorkflowProjection::ReadyForImplementation { checkpoint, .. }
+        | WorkflowProjection::Implementation { checkpoint, .. }
+        | WorkflowProjection::CloseReview { checkpoint, .. }
+        | WorkflowProjection::Terminal { checkpoint, .. } => checkpoint.as_ref(),
     }
 }
 

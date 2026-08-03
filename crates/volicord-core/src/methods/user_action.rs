@@ -449,9 +449,39 @@ fn projected_user_action_state(
             error,
         )
     })?;
-    let shaping_checkpoint = store
+    let mut shaping_checkpoint = store
         .current_shaping_checkpoint(&task_id)
         .map_err(CorePipelineError::from)?;
+    if let Some(authority) = projected_authority
+        .as_ref()
+        .filter(|authority| authority.status == UserActionStatus::Resolved)
+    {
+        if let Some(checkpoint) = shaping_checkpoint.as_mut() {
+            if let Some(gap) = checkpoint.gaps.iter_mut().find(|gap| {
+                gap.user_action.as_ref().is_some_and(|link| {
+                    link.user_action_request_id == authority.user_action_request_id.as_str()
+                })
+            }) {
+                gap.status = volicord_types::values::ShapingGapStatus::Resolved;
+                if let Some(link) = gap.user_action.as_mut() {
+                    link.user_action_resolution_id = authority
+                        .user_action_resolution_id
+                        .as_ref()
+                        .map(|resolution_id| resolution_id.as_str().to_owned());
+                    link.resolved_at = Some(now.clone());
+                }
+            }
+            if checkpoint.baseline_ref.is_some()
+                && checkpoint.implementation_boundary.is_some()
+                && checkpoint
+                    .gaps
+                    .iter()
+                    .all(|gap| gap.status != volicord_types::values::ShapingGapStatus::Current)
+            {
+                checkpoint.readiness = volicord_types::values::ShapingCheckpointReadiness::Ready;
+            }
+        }
+    }
     let mut task_wide_shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
         store,
         &envelope.project_id,
@@ -499,20 +529,43 @@ fn projected_user_action_state(
                 UserActionStatus::Pending | UserActionStatus::Expired => {
                     MethodName::ResolveUserAction
                 }
-                UserActionStatus::Resolved => MethodName::UpdateScope,
+                UserActionStatus::Resolved => shaping_checkpoint
+                    .as_ref()
+                    .and_then(|checkpoint| {
+                        checkpoint.gaps.iter().find(|gap| {
+                            gap.user_action
+                                .as_ref()
+                                .is_some_and(|link| link.user_action_request_id == request_id)
+                        })
+                    })
+                    .and_then(|gap| gap.gap_kind.decision_policy())
+                    .map_or(MethodName::Status, |policy| {
+                        policy.application_owner.method()
+                    }),
                 UserActionStatus::Stale | UserActionStatus::Superseded => MethodName::Status,
             },
         };
+        let represented_by_checkpoint = shaping_checkpoint.as_ref().is_some_and(|checkpoint| {
+            checkpoint.gaps.iter().any(|gap| {
+                gap.user_action
+                    .as_ref()
+                    .is_some_and(|link| link.user_action_request_id == request_id)
+            })
+        });
         match authority.status {
             UserActionStatus::Pending | UserActionStatus::Expired => {
                 task_wide_shaping_authority.pending.push(fact.clone());
-                task_wide_shaping_authority.inconsistent.push(fact);
+                if !represented_by_checkpoint {
+                    task_wide_shaping_authority.inconsistent.push(fact);
+                }
             }
             UserActionStatus::Resolved => {
                 task_wide_shaping_authority
                     .resolved_unapplied
                     .push(fact.clone());
-                task_wide_shaping_authority.inconsistent.push(fact);
+                if !represented_by_checkpoint {
+                    task_wide_shaping_authority.inconsistent.push(fact);
+                }
             }
             UserActionStatus::Stale | UserActionStatus::Superseded => {}
         }

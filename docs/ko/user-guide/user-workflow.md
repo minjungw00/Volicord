@@ -119,7 +119,11 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-대기 판단에 표시된 선택지만 고릅니다. 답변 하나는 그 판단 하나만 해결합니다. 정확한
+대기 판단에 표시된 선택지만 고릅니다. 답변 하나는 그 판단 하나만 해결하며 그 자체로
+범위를 바꾸거나 implementation을 시작하지 않습니다. 범위 답변은 agent가 정확한 해당
+결정을 `volicord.update_scope`로 적용합니다. 제품·기술·민감 shaping 답변은
+`volicord.advance_task`가 implementation에 진입할 때 적용합니다. 민감 승인은 이후 쓰기나
+민감 효과에서도 계속 확인합니다. 정확한
 질문과 선택지는 `volicord inbox`에 나타납니다. 에이전트 대상 MCP 연결은 로컬 사용자
 채널로 동작하거나 사용자를 대신해 행동을 해결할 수 없습니다.
 

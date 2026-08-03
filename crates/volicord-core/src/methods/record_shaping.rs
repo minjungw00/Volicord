@@ -16,8 +16,7 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     ErrorCode, MethodName, ShapingCheckpointReadiness, ShapingGapStatus, StateRecordKind,
-    TaskLifecyclePhase, TaskMode, UserActionBasisStatus, UserActionRequiredFor, UserActionStatus,
-    WorkPhase,
+    TaskLifecyclePhase, TaskMode, UserActionBasisStatus, UserActionStatus, WorkPhase,
 };
 use volicord_user_action_service::{
     construct_user_action, materialize_user_action_request, UserActionConstructionContext,
@@ -174,112 +173,119 @@ fn plan_record_shaping(
     let current_checkpoint = store
         .current_shaping_checkpoint(&request.task_id)
         .map_err(CorePipelineError::from)?;
-    let predecessor_checkpoint_id = match &request.checkpoint_operation {
-        ShapingCheckpointOperation::CreateInitial => {
-            if current_checkpoint.is_some() {
-                return workflow_rejection_plan_error(
-                    store,
-                    project_state,
-                    &request.envelope,
-                    &request.task_id,
-                    ErrorCode::ShapingCheckpointStale,
-                    "create_initial requires that the Task have no current shaping checkpoint",
-                    MethodName::RecordShaping,
-                    None,
-                    Vec::new(),
-                    true,
-                    MethodName::RecordShaping,
-                );
-            }
-            None
-        }
-        ShapingCheckpointOperation::ReplaceCurrent {
-            expected_current_checkpoint_id,
-        } => {
-            let Some(current) = current_checkpoint.as_ref() else {
-                return workflow_rejection_plan_error(
-                    store,
-                    project_state,
-                    &request.envelope,
-                    &request.task_id,
-                    ErrorCode::ShapingCheckpointStale,
-                    "replace_current requires an exact current shaping checkpoint",
-                    MethodName::RecordShaping,
-                    None,
-                    Vec::new(),
-                    true,
-                    MethodName::RecordShaping,
-                );
-            };
-            if current.shaping_checkpoint_id != expected_current_checkpoint_id.as_str() {
-                return workflow_rejection_plan_error(
-                    store,
-                    project_state,
-                    &request.envelope,
-                    &request.task_id,
-                    ErrorCode::ShapingCheckpointStale,
-                    "expected_current_checkpoint_id is not the exact current checkpoint",
-                    MethodName::RecordShaping,
-                    None,
-                    Vec::new(),
-                    true,
-                    MethodName::RecordShaping,
-                );
-            }
-            let mut live_linked_decisions = Vec::new();
-            for link in current
-                .gaps
-                .iter()
-                .filter_map(|gap| gap.user_action.as_ref())
-            {
-                let record = store
-                    .user_action_record(&link.user_action_request_id, operation_now)
-                    .map_err(CorePipelineError::from)?
-                    .ok_or_else(|| CorePipelineError::Invariant {
-                        detail: "a shaping gap link references a missing UserAction request"
-                            .to_owned(),
-                    })?;
-                if record.request().basis_status() == UserActionBasisStatus::Current {
-                    live_linked_decisions.push(WorkflowRejectionUserAction {
-                        user_action_request_ref: crate::record_refs::state_ref(
-                            StateRecordKind::UserActionRequest,
-                            &link.user_action_request_id,
-                            &request.envelope.project_id,
-                            Some(&request.task_id),
-                            Some(project_state.state_version),
-                        ),
-                        effective_status: record.status(),
-                        required_owner_method: match record.status() {
-                            UserActionStatus::Pending | UserActionStatus::Expired => {
-                                MethodName::ResolveUserAction
-                            }
-                            UserActionStatus::Resolved => MethodName::UpdateScope,
-                            UserActionStatus::Stale | UserActionStatus::Superseded => {
-                                MethodName::Status
-                            }
-                        },
-                    });
+    let predecessor_checkpoint_id =
+        match &request.checkpoint_operation {
+            ShapingCheckpointOperation::CreateInitial => {
+                if current_checkpoint.is_some() {
+                    return workflow_rejection_plan_error(
+                        store,
+                        project_state,
+                        &request.envelope,
+                        &request.task_id,
+                        ErrorCode::ShapingCheckpointStale,
+                        "create_initial requires that the Task have no current shaping checkpoint",
+                        MethodName::RecordShaping,
+                        None,
+                        Vec::new(),
+                        true,
+                        MethodName::RecordShaping,
+                    );
                 }
+                None
             }
-            if !live_linked_decisions.is_empty() {
-                return workflow_rejection_plan_error_with_user_actions(
-                    store,
-                    project_state,
-                    &request.envelope,
-                    &request.task_id,
-                    ErrorCode::UserDecisionUnresolved,
-                    "the current shaping checkpoint has live linked UserAction authority",
-                    MethodName::RecordShaping,
-                    None,
-                    Vec::new(),
-                    false,
-                    MethodName::ResolveUserAction,
-                    live_linked_decisions,
-                );
+            ShapingCheckpointOperation::ReplaceCurrent {
+                expected_current_checkpoint_id,
+            } => {
+                let Some(current) = current_checkpoint.as_ref() else {
+                    return workflow_rejection_plan_error(
+                        store,
+                        project_state,
+                        &request.envelope,
+                        &request.task_id,
+                        ErrorCode::ShapingCheckpointStale,
+                        "replace_current requires an exact current shaping checkpoint",
+                        MethodName::RecordShaping,
+                        None,
+                        Vec::new(),
+                        true,
+                        MethodName::RecordShaping,
+                    );
+                };
+                if current.shaping_checkpoint_id != expected_current_checkpoint_id.as_str() {
+                    return workflow_rejection_plan_error(
+                        store,
+                        project_state,
+                        &request.envelope,
+                        &request.task_id,
+                        ErrorCode::ShapingCheckpointStale,
+                        "expected_current_checkpoint_id is not the exact current checkpoint",
+                        MethodName::RecordShaping,
+                        None,
+                        Vec::new(),
+                        true,
+                        MethodName::RecordShaping,
+                    );
+                }
+                let mut live_linked_decisions = Vec::new();
+                for gap in current.gaps.iter().filter(|gap| {
+                    gap.status != ShapingGapStatus::Applied && gap.user_action.is_some()
+                }) {
+                    let Some(link) = gap.user_action.as_ref() else {
+                        continue;
+                    };
+                    let record = store
+                        .user_action_record(&link.user_action_request_id, operation_now)
+                        .map_err(CorePipelineError::from)?
+                        .ok_or_else(|| CorePipelineError::Invariant {
+                            detail: "a shaping gap link references a missing UserAction request"
+                                .to_owned(),
+                        })?;
+                    if record.request().basis_status() == UserActionBasisStatus::Current {
+                        live_linked_decisions.push(WorkflowRejectionUserAction {
+                            user_action_request_ref: crate::record_refs::state_ref(
+                                StateRecordKind::UserActionRequest,
+                                &link.user_action_request_id,
+                                &request.envelope.project_id,
+                                Some(&request.task_id),
+                                Some(project_state.state_version),
+                            ),
+                            effective_status: record.status(),
+                            required_owner_method: match record.status() {
+                                UserActionStatus::Pending | UserActionStatus::Expired => {
+                                    MethodName::ResolveUserAction
+                                }
+                                UserActionStatus::Resolved => gap
+                                    .gap_kind
+                                    .decision_policy()
+                                    .map_or(MethodName::Status, |policy| {
+                                        policy.application_owner.method()
+                                    }),
+                                UserActionStatus::Stale | UserActionStatus::Superseded => {
+                                    MethodName::Status
+                                }
+                            },
+                        });
+                    }
+                }
+                if !live_linked_decisions.is_empty() {
+                    return workflow_rejection_plan_error_with_user_actions(
+                        store,
+                        project_state,
+                        &request.envelope,
+                        &request.task_id,
+                        ErrorCode::UserDecisionUnresolved,
+                        "the current shaping checkpoint has live linked UserAction authority",
+                        MethodName::RecordShaping,
+                        None,
+                        Vec::new(),
+                        false,
+                        MethodName::ResolveUserAction,
+                        live_linked_decisions,
+                    );
+                }
+                Some(expected_current_checkpoint_id.clone())
             }
-            Some(expected_current_checkpoint_id.clone())
-        }
-    };
+        };
     if request.summary.trim().is_empty() {
         return shaping_validation(
             &request,
@@ -338,7 +344,7 @@ fn plan_record_shaping(
             allocate_shaping_gap_id(service.durable_id_generator(), store, &reserved_gap_ids)
                 .map_err(PlanError::Core)?;
         reserved_gap_ids.insert(gap_id.as_str().to_owned());
-        let expected_action_kind = gap.gap_kind.user_action_kind();
+        let decision_policy = gap.gap_kind.decision_policy();
         let user_action_draft = gap.user_action.as_ref();
         if gap.gap_kind.is_user_owned() != user_action_draft.is_some() {
             return shaping_validation(
@@ -351,7 +357,15 @@ fn plan_record_shaping(
         let mut user_action_insert = None;
         let mut projected_user_action = None;
         if let Some(draft) = user_action_draft {
-            if draft.action.action_kind() != expected_action_kind.expect("user-owned kind") {
+            let Some(decision_policy) = decision_policy else {
+                return shaping_validation(
+                    &request,
+                    project_state,
+                    "gaps",
+                    "a UserAction draft requires a user-owned shaping gap",
+                );
+            };
+            if draft.action.action_kind() != decision_policy.user_action_kind {
                 return shaping_validation(
                     &request,
                     project_state,
@@ -375,18 +389,7 @@ fn plan_record_shaping(
                         volicord_types::ids::ChangeUnitId::new(cu.change_unit_id.clone())
                     }),
                     action: draft.action.clone(),
-                    required_for: if task.mode == TaskMode::Advisor {
-                        vec![UserActionRequiredFor::CloseComplete]
-                    } else if gap.gap_kind
-                        == volicord_types::values::ShapingGapKind::UserScopeDecisionRequired
-                    {
-                        vec![
-                            UserActionRequiredFor::ScopeUpdate,
-                            UserActionRequiredFor::AdvanceTask,
-                        ]
-                    } else {
-                        vec![UserActionRequiredFor::AdvanceTask]
-                    },
+                    required_for: decision_policy.required_for.to_vec(),
                     expires_at: draft.expires_at.clone(),
                 },
             })

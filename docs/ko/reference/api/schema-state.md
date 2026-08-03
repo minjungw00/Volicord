@@ -516,10 +516,12 @@ ShapingCheckpointSummary:
   implementation_boundary: string | null
   gaps: ShapingCheckpointGap[]
   pending_decision_refs: StateRecordRef[]
+  unresolved_application_owners: string[]
 
 ShapingCheckpointGap:
   shaping_gap_id: string
   gap_kind: string
+  application_owner: string | null
   summary: string
   affected_refs: StateRecordRef[]
   status: string
@@ -534,6 +536,13 @@ record에 정확한 predecessor identity를, compact state에는 해당 ref를 �
 materialize하고 연결하는 호환 typed draft를 담습니다. Readiness, gap kind, gap status,
 workflow kind, blocking reason은 [API 값 집합](schema-value-sets.md)의 폐쇄형 집합을
 사용합니다.
+
+Checkpoint readiness는 구조적이며 decision application과 독립적입니다.
+`application_owner`는 사용자 소유 gap일 때만 null이 아닙니다.
+`unresolved_application_owners`는 해결되었지만 아직 적용되지 않은 결정 owner의 고유하고
+안정적인 집합입니다. `readiness=ready`여도 비어 있지 않을 수 있습니다. 이 집합에
+`volicord.update_scope`가 있을 때만 `ready_to_apply_decisions`를 선택합니다. Advance owner
+결정은 대신 Change Unit 또는 `ready_for_implementation` 방향으로 진행합니다.
 
 workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`에 필요한 Task 전체 effective UserAction도 이 projection에 참여합니다. 분리된 live 결정은 `inconsistent_authority_state`를 사용하고 request ref를 `required_refs`에 추가하며 `ready_for_implementation`을 차단합니다.
 

@@ -9,9 +9,9 @@ use volicord_types::schema::{
     ShapingCheckpointSummary, StateRecordRef, WorkflowProjection, WorkflowRejectionUserAction,
 };
 use volicord_types::values::{
-    AuthorityNextActor, MethodName, ShapingCheckpointReadiness, ShapingGapStatus, StateRecordKind,
-    TaskLifecyclePhase, TaskMode, UserActionBasisStatus, UserActionRequiredFor, UserActionStatus,
-    UtcTimestamp, WorkPhase, WorkflowBlockingReason,
+    AuthorityNextActor, MethodName, ShapingCheckpointReadiness, ShapingDecisionApplicationOwner,
+    ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionBasisStatus,
+    UserActionRequiredFor, UserActionStatus, UtcTimestamp, WorkPhase, WorkflowBlockingReason,
 };
 
 use crate::pipeline::{CorePipelineError, CoreResult};
@@ -53,6 +53,10 @@ impl TaskWideShapingAuthority {
         !self.pending.is_empty()
             || !self.resolved_unapplied.is_empty()
             || !self.inconsistent.is_empty()
+    }
+
+    pub(crate) fn blocks_advance_application(&self) -> bool {
+        !self.pending.is_empty() || !self.inconsistent.is_empty()
     }
 
     pub(crate) fn blocking_user_actions(&self) -> Vec<WorkflowRejectionUserAction> {
@@ -158,7 +162,12 @@ pub(crate) fn task_wide_shaping_authority(
                 UserActionStatus::Pending | UserActionStatus::Expired => {
                     MethodName::ResolveUserAction
                 }
-                UserActionStatus::Resolved => MethodName::UpdateScope,
+                UserActionStatus::Resolved if origin_matches => represented_gap
+                    .and_then(|gap| gap.gap_kind.decision_policy())
+                    .map_or(MethodName::Status, |policy| {
+                        policy.application_owner.method()
+                    }),
+                UserActionStatus::Resolved => MethodName::Status,
                 UserActionStatus::Stale | UserActionStatus::Superseded => MethodName::Status,
             },
         };
@@ -211,6 +220,11 @@ fn checkpoint_summary(
         .map(|gap| ShapingCheckpointGap {
             shaping_gap_id: volicord_types::ids::ShapingGapId::new(gap.shaping_gap_id.clone()),
             gap_kind: gap.gap_kind,
+            application_owner: RequiredNullable::new(
+                gap.gap_kind
+                    .decision_policy()
+                    .map(|policy| policy.application_owner),
+            ),
             summary: gap.summary.clone(),
             affected_refs: gap.affected_refs.clone(),
             status: gap.status,
@@ -245,6 +259,13 @@ fn checkpoint_summary(
         .filter(|gap| gap.status == ShapingGapStatus::Current)
         .filter_map(|gap| gap.user_action_request_ref.as_ref().cloned())
         .collect();
+    let unresolved_application_owners = gaps
+        .iter()
+        .filter(|gap| gap.status == ShapingGapStatus::Resolved)
+        .filter_map(|gap| gap.application_owner.as_ref().copied())
+        .collect::<BTreeSet<ShapingDecisionApplicationOwner>>()
+        .into_iter()
+        .collect();
     ShapingCheckpointSummary {
         checkpoint_ref: state_ref(
             StateRecordKind::ShapingCheckpoint,
@@ -273,6 +294,7 @@ fn checkpoint_summary(
         implementation_boundary: RequiredNullable::new(checkpoint.implementation_boundary.clone()),
         gaps,
         pending_decision_refs,
+        unresolved_application_owners,
     }
 }
 
@@ -423,12 +445,13 @@ pub(crate) fn workflow_projection(
             checkpoint: RequiredNullable::new(summary),
         };
     }
-    if !task_wide_authority.resolved_unapplied.is_empty()
-        || checkpoint
-            .gaps
-            .iter()
-            .any(|gap| gap.status == ShapingGapStatus::Resolved)
-    {
+    let has_scope_decisions_to_apply = checkpoint.gaps.iter().any(|gap| {
+        gap.status == ShapingGapStatus::Resolved
+            && gap.gap_kind.decision_policy().is_some_and(|policy| {
+                policy.application_owner == ShapingDecisionApplicationOwner::UpdateScope
+            })
+    });
+    if has_scope_decisions_to_apply {
         return WorkflowProjection::ReadyToApplyDecisions {
             next_actor: AuthorityNextActor::Agent,
             required_action: RequiredNullable::some(MethodName::UpdateScope),

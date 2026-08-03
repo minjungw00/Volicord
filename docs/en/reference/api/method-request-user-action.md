@@ -8,6 +8,10 @@ This document owns the agent-workflow method that creates one pending
 `UserActionRequest`. It is the only public request method for the seven
 judgment kinds and `evidence_observation`.
 
+Resolution and semantic application are separate. Resolving a shaping-created
+request records immutable User Channel authority and changes the linked gap to
+`resolved`; it never changes scope, applies the gap, or advances the Task.
+
 ## Request
 
 <!-- BEGIN GENERATED: contract-structures api.method.request_user_action.request[params] -->

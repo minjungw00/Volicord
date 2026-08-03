@@ -2,16 +2,21 @@ use std::collections::BTreeSet;
 
 use serde_json::json;
 use volicord_store::core_pipeline::{
-    CoreProjectStore, CoreStorageMutation, ProjectStateHeader, TaskMutation,
+    CoreProjectStore, CoreStorageMutation, ProjectStateHeader, ShapingAdvanceApplication,
+    ShapingCheckpointMutation, ShapingGapApplication,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::methods::{
     AdvanceTaskRequest, AdvanceTaskResultFields, MethodOperationCategory,
 };
-use volicord_types::schema::StateRecordRef;
+use volicord_types::schema::{PersistedUserActionRequestMetadata, StateRecordRef};
 use volicord_types::values::{
-    ErrorCode, MethodName, ShapingCheckpointReadiness, ShapingGapStatus, StateRecordKind,
-    TaskLifecyclePhase, TaskMode, WorkPhase,
+    ErrorCode, MethodName, ShapingCheckpointReadiness, ShapingDecisionApplicationOwner,
+    ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionBasisStatus,
+    UserActionStatus, WorkPhase,
+};
+use volicord_user_action_service::{
+    accepted_current_user_authority, user_action_authority_from_record,
 };
 
 use crate::acceptance_facts::active_acceptance_criteria;
@@ -185,14 +190,14 @@ fn plan_advance_task(
         current_checkpoint.as_ref(),
         operation_now,
     )?;
-    if task_wide_authority.has_blockers() {
+    if task_wide_authority.blocks_advance_application() {
         return workflow_rejection_plan_error(
             store,
             project_state,
             &request.envelope,
             &request.task_id,
             ErrorCode::UserDecisionUnresolved,
-            "task-wide UserAction authority required for advance_task is not fully applied",
+            "task-wide UserAction authority required for advance_task is unresolved or inconsistent",
             MethodName::AdvanceTask,
             None,
             Vec::new(),
@@ -221,7 +226,7 @@ fn plan_advance_task(
     if checkpoint
         .gaps
         .iter()
-        .any(|gap| gap.status == ShapingGapStatus::Current && gap.user_action.is_some())
+        .any(|gap| gap.status == ShapingGapStatus::Current && gap.gap_kind.is_user_owned())
     {
         return workflow_rejection_plan_error(
             store,
@@ -241,10 +246,12 @@ fn plan_advance_task(
         || checkpoint.readiness != ShapingCheckpointReadiness::Ready
         || checkpoint.scope_revision != request.scope_revision
         || checkpoint.baseline_ref.as_ref() != Some(&request.baseline_ref)
-        || checkpoint
-            .gaps
-            .iter()
-            .any(|gap| gap.status != ShapingGapStatus::Applied)
+        || checkpoint.gaps.iter().any(|gap| {
+            gap.gap_kind.decision_policy().is_some_and(|policy| {
+                policy.application_owner == ShapingDecisionApplicationOwner::UpdateScope
+                    && gap.status != ShapingGapStatus::Applied
+            }) || (!gap.gap_kind.is_user_owned() && gap.status == ShapingGapStatus::Current)
+        })
     {
         return workflow_rejection_plan_error(
             store,
@@ -252,7 +259,7 @@ fn plan_advance_task(
             &request.envelope,
             &request.task_id,
             ErrorCode::ShapingCheckpointStale,
-            "shaping checkpoint is stale, blocked, or has unapplied gaps",
+            "shaping checkpoint is stale, structurally blocked, or has unapplied scope decisions",
             MethodName::AdvanceTask,
             None,
             Vec::new(),
@@ -296,19 +303,115 @@ fn plan_advance_task(
             MethodName::Status,
         );
     }
-    let expected_resolution_ids = checkpoint
-        .gaps
-        .iter()
-        .filter_map(|gap| gap.user_action.as_ref())
-        .filter_map(|link| link.user_action_resolution_id.clone())
-        .collect::<BTreeSet<_>>();
+    let mut applications = Vec::new();
+    let mut expected_resolution_ids = BTreeSet::new();
+    for gap in checkpoint.gaps.iter().filter(|gap| {
+        gap.gap_kind.decision_policy().is_some_and(|policy| {
+            policy.application_owner == ShapingDecisionApplicationOwner::AdvanceTask
+        })
+    }) {
+        if gap.status != ShapingGapStatus::Resolved {
+            return workflow_rejection_plan_error(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::UserDecisionUnresolved,
+                "every advance-owned shaping gap must be resolved and supplied exactly once",
+                MethodName::AdvanceTask,
+                None,
+                Vec::new(),
+                true,
+                MethodName::Status,
+            );
+        }
+        let Some(link) = gap.user_action.as_ref() else {
+            return Err(CorePipelineError::Invariant {
+                detail: "an advance-owned shaping gap has no UserAction link".to_owned(),
+            }
+            .into());
+        };
+        let Some(resolution_id) = link.user_action_resolution_id.as_ref() else {
+            return workflow_rejection_plan_error(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::UserDecisionUnresolved,
+                "an advance-owned shaping gap has no exact resolution",
+                MethodName::AdvanceTask,
+                None,
+                Vec::new(),
+                true,
+                MethodName::ResolveUserAction,
+            );
+        };
+        let record = store
+            .user_action_record(&link.user_action_request_id, operation_now)
+            .map_err(CorePipelineError::from)?
+            .ok_or_else(|| CorePipelineError::Invariant {
+                detail: "an advance-owned shaping gap references a missing UserAction request"
+                    .to_owned(),
+            })?;
+        let policy =
+            gap.gap_kind
+                .decision_policy()
+                .ok_or_else(|| CorePipelineError::Invariant {
+                    detail: "advance application policy is missing".to_owned(),
+                })?;
+        let metadata_matches = matches!(
+            record.request().metadata(),
+            PersistedUserActionRequestMetadata::Shaping(metadata)
+                if metadata.shaping_checkpoint_id.as_str() == checkpoint.shaping_checkpoint_id
+                    && metadata.shaping_gap_id.as_str() == gap.shaping_gap_id
+        );
+        let coordinates = record.request().basis().coordinates();
+        let authority = user_action_authority_from_record(&record).map_err(|error| {
+            CorePipelineError::Invariant {
+                detail: format!("advance-owned UserAction authority is invalid: {error}"),
+            }
+        })?;
+        let exact_basis = record.status() == UserActionStatus::Resolved
+            && record.request().basis_status() == UserActionBasisStatus::Current
+            && coordinates.compatibility_status == UserActionBasisStatus::Current
+            && coordinates.task_id == request.task_id
+            && coordinates.scope_revision == request.scope_revision
+            && coordinates.change_unit_id.as_ref() == Some(&request.change_unit_id)
+            && coordinates.baseline_ref.as_ref() == Some(&request.baseline_ref)
+            && record.request().required_for() == policy.required_for
+            && record
+                .resolution()
+                .is_some_and(|resolution| resolution.user_action_resolution_id() == resolution_id)
+            && metadata_matches
+            && accepted_current_user_authority(&authority, policy.user_action_kind);
+        if !exact_basis {
+            return workflow_rejection_plan_error(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::UserDecisionUnresolved,
+                "an advance-owned resolution does not match the exact current checkpoint basis",
+                MethodName::AdvanceTask,
+                None,
+                Vec::new(),
+                false,
+                MethodName::Status,
+            );
+        }
+        expected_resolution_ids.insert(resolution_id.clone());
+        applications.push(ShapingGapApplication {
+            shaping_gap_id: gap.shaping_gap_id.clone(),
+            user_action_resolution_id: resolution_id.clone(),
+        });
+    }
     let supplied_resolution_ids = request
         .user_action_resolution_ids
         .iter()
         .map(|id| id.as_str().to_owned())
         .collect::<BTreeSet<_>>();
-    if task_wide_authority.applied_resolution_ids != expected_resolution_ids
-        || supplied_resolution_ids != expected_resolution_ids
+    if supplied_resolution_ids != expected_resolution_ids
+        || supplied_resolution_ids.len() != request.user_action_resolution_ids.len()
     {
         return workflow_rejection_plan_error(
             store,
@@ -325,19 +428,39 @@ fn plan_advance_task(
         );
     }
     let planned_state_version = project_state.state_version + 1;
-    let resolution_refs = request
-        .user_action_resolution_ids
+    let resolution_refs = applications
         .iter()
-        .map(|id| {
+        .map(|application| {
             state_ref(
                 StateRecordKind::UserActionResolution,
-                id.as_str(),
+                &application.user_action_resolution_id,
                 &request.envelope.project_id,
                 Some(&request.task_id),
                 Some(planned_state_version),
             )
         })
         .collect::<Vec<StateRecordRef>>();
+    let gap_refs = applications
+        .iter()
+        .map(|application| {
+            state_ref(
+                StateRecordKind::ShapingGap,
+                &application.shaping_gap_id,
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(planned_state_version),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut projected_checkpoint = checkpoint.clone();
+    for gap in &mut projected_checkpoint.gaps {
+        if applications
+            .iter()
+            .any(|application| application.shaping_gap_id == gap.shaping_gap_id)
+        {
+            gap.status = ShapingGapStatus::Applied;
+        }
+    }
     let mut projected_task = task.clone();
     projected_task.work_phase = WorkPhase::Implementation;
     projected_task.lifecycle_phase = TaskLifecyclePhase::Executing;
@@ -346,7 +469,7 @@ fn plan_advance_task(
         planned_state_version,
         &projected_task,
         Some(&change_unit),
-        Some(&checkpoint),
+        Some(&projected_checkpoint),
         &task_wide_authority,
     );
     let state = state_summary(StateSummaryInput {
@@ -354,7 +477,7 @@ fn plan_advance_task(
         state_version: planned_state_version,
         task: &projected_task,
         current_change_unit: Some(&change_unit),
-        shaping_checkpoint: Some(&checkpoint),
+        shaping_checkpoint: Some(&projected_checkpoint),
         task_wide_shaping_authority: &task_wide_authority,
         project_policy: project_workflow_policy(store)
             .map_err(CorePipelineError::from)?
@@ -394,23 +517,37 @@ fn plan_advance_task(
         operation: OperationPlan::new(
             request.task_id.clone(),
             Some(request.change_unit_id.clone()),
-            vec![CoreStorageMutation::Task(
-                TaskMutation::AdvanceToImplementation {
+            vec![CoreStorageMutation::Shaping(
+                ShapingCheckpointMutation::ApplyAdvanceAndTransition(ShapingAdvanceApplication {
                     task_id: request.task_id.as_str().to_owned(),
-                },
+                    shaping_checkpoint_id: request.shaping_checkpoint_id.as_str().to_owned(),
+                    change_unit_id: request.change_unit_id.as_str().to_owned(),
+                    scope_revision: request.scope_revision,
+                    baseline_ref: request.baseline_ref.clone(),
+                    applications: applications.clone(),
+                }),
             )],
             object_from_value(json!({
                 "task_id": request.task_id,
                 "shaping_checkpoint_id": request.shaping_checkpoint_id,
                 "change_unit_id": request.change_unit_id,
                 "target_work_phase": "implementation",
+                "applied_shaping_gap_ids": applications
+                    .iter()
+                    .map(|application| application.shaping_gap_id.clone())
+                    .collect::<Vec<_>>(),
+                "applied_user_action_resolution_ids": applications
+                    .iter()
+                    .map(|application| application.user_action_resolution_id.clone())
+                    .collect::<Vec<_>>(),
             }))?,
         ),
         result_fields: AdvanceTaskResultFields {
             task_ref,
             shaping_checkpoint_ref: checkpoint_ref,
             change_unit_ref,
-            user_action_resolution_refs: resolution_refs,
+            applied_shaping_gap_refs: gap_refs,
+            applied_user_action_resolution_refs: resolution_refs,
             workflow,
             state,
         },

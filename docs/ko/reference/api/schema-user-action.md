@@ -108,6 +108,12 @@ Choice 요청의 모든 `affected_refs` 항목은 요청 프로젝트에 속해�
 요청 validator와 operation-blocker projection은 이 단일 행렬을 사용합니다.
 `informational`은 그 자체로 Task를 대기 상태로 유지하거나 연산을 막지 않습니다.
 
+이 일반 호환 행렬은 shaping application owner를 선택하지 않습니다.
+`volicord.record_shaping`이 만든 요청은 gap별 정확한 정책을 사용합니다. 제품·기술은
+`[advance_task]`, 범위는 `[scope_update]`, 민감 승인은 `[advance_task, prepare_write,
+record_run, close_complete]`를 사용합니다. 불변 resolution은 연결된 gap을 `resolved`로
+바꾸며, 의미 owner method만 `applied`로 바꿀 수 있습니다.
+
 유효 상태는 `pending`, `resolved`, `stale`, `superseded`, `expired`입니다. 하나의 Core
 evaluator가 현재 근거 호환성, 불변 resolution 존재 여부, expiry, 현재 Core 시각에서
 상태를 도출합니다. stale 또는 superseded 근거는 저장 resolution보다 우선하며, 현재

@@ -748,7 +748,7 @@ fn update_scope_dry_run_has_no_storage_effect() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn scope_decision_ref_alone_does_not_change_current_scope() -> Result<(), Box<dyn Error>> {
+fn unlinked_scope_decision_ref_cannot_change_current_scope() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(
         intake_request(
@@ -791,6 +791,7 @@ fn scope_decision_ref_alone_does_not_change_current_scope() -> Result<(), Box<dy
     let decision_ref: StateRecordRef =
         serde_json::from_value(resolved.response_value["user_action_resolution_ref"].clone())?;
 
+    let before = harness.counts()?;
     let response = harness.service.update_scope(
         UpdateScopeRequest {
             envelope: envelope(
@@ -818,17 +819,8 @@ fn scope_decision_ref_alone_does_not_change_current_scope() -> Result<(), Box<dy
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_eq!(
-        response.response_value["state"]["scope_summary"],
-        "Initial test scope."
-    );
-    assert_eq!(
-        response.response_value["linked_scope_decision_refs"]
-            .as_array()
-            .expect("linked refs should be an array")
-            .len(),
-        1
-    );
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
@@ -845,6 +837,7 @@ fn accepted_current_user_scope_decision_links_scope_update() -> Result<(), Box<d
         true,
     )?;
 
+    let before = harness.counts()?;
     let mut request = update_scope_request(
         "req_scope_link_accept_update",
         "idem_scope_link_accept_update",
@@ -859,13 +852,10 @@ fn accepted_current_user_scope_decision_links_scope_update() -> Result<(), Box<d
         .service
         .update_scope(request, invocation(OperationCategory::AgentWorkflow))?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_eq!(
-        response.response_value["linked_scope_decision_refs"],
-        json!([decision_ref])
-    );
-    assert_eq!(user_action_status(&harness, &decision_id)?, "stale");
-    assert_eq!(user_action_basis_status(&harness, &decision_id)?, "stale");
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(user_action_status(&harness, &decision_id)?, "resolved");
+    assert_eq!(user_action_basis_status(&harness, &decision_id)?, "current");
     Ok(())
 }
 
@@ -895,7 +885,7 @@ fn rejected_scope_decision_cannot_be_linked() -> Result<(), Box<dyn Error>> {
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "DECISION_UNRESOLVED"
+        "VALIDATION_FAILED"
     );
     assert_eq!(harness.counts()?, before);
     assert_eq!(
@@ -1196,7 +1186,7 @@ fn autonomous_scope_update_still_succeeds_without_scope_decision() -> Result<(),
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(harness.counts()?.state_version, before.state_version + 1);
     assert_eq!(
-        response.response_value["linked_scope_decision_refs"],
+        response.response_value["applied_scope_decision_refs"],
         json!([])
     );
     Ok(())

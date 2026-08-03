@@ -28,19 +28,20 @@
 | `user_action_resolution_ids` | 예 | 아니요 | `string[]` |
 <!-- END GENERATED: contract-structures api.method.advance_task.request[params] -->
 
-요청은 정확한 현재 Task, 현재 준비된 shaping checkpoint, 현재 활성 Change Unit, 현재
-scope revision과 baseline, 체크포인트가 요구하는 정확한 현재 User Channel resolution
-ref를 제공합니다. Envelope는 현재 기대 state version을 제공합니다.
+요청은 정확한 현재 Task, 구조적으로 ready인 현재 shaping checkpoint, 현재 활성 Change
+Unit, 현재 scope revision과 baseline, 이 메서드가 담당하는 제품·기술·민감 gap의 정확한
+현재 User Channel resolution ID를 제공합니다. Envelope는 현재 기대 state version을
+제공합니다.
 
 Core는 `mode=work`, `work_phase=shaping`, 현재 `ready` 체크포인트, 일치하는
 Task/checkpoint scope revision, 호환되는 Task/checkpoint/Change Unit baseline 좌표,
-정확한 현재 활성 Change Unit, 모든 checkpoint gap의 `applied` 상태, 해당 gap에서 연결된
-현재 resolution ID의 정확한 집합, 현재 recovery constraint 부재를 요구합니다. Core는
-`required_for`에 `advance_task`가 포함된 Task의 모든 effective UserAction도 조회합니다. 각
-권한은 정확한 checkpoint와 전환 근거에 표현되어야 하고 resolved 결정은 모두 유효하게
-적용되어야 합니다. 제공한 resolution 집합은 checkpoint link 집합과 Task 전체 권한 집합
-모두와 같아야 합니다. stale
-또는 superseded checkpoint, `current`이거나 아직 `resolved`에 머문 gap, stale resolution,
+정확한 현재 활성 Change Unit과 recovery constraint 부재를 요구합니다. 모든 범위 owner
+gap은 이미 `applied`여야 합니다. 제품·기술·민감 owner gap은 모두 `resolved`이고 정확한
+현재 accepted User Channel resolution에 연결되어야 하며 요청에 한 번씩 제공되어야
+합니다. Core는 각 request, resolution, Task, checkpoint, scope revision, baseline, Change
+Unit 근거를 검증합니다. Store는 implementation 진입과 같은 transaction에서 선택된
+advance owner gap만 `applied`로 바꿉니다. stale 또는 superseded checkpoint, `current`
+gap, 적용되지 않은 범위 gap, 제공되지 않은 resolved advance owner gap, stale resolution,
 stale scope revision, 잘못된 Change Unit, 빠지거나 추가된 resolution, 호환되지 않는
 baseline은 효과 없이 거부됩니다.
 
@@ -53,12 +54,13 @@ baseline은 효과 없이 거부됩니다.
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
+| `applied_shaping_gap_refs` | 예 | 아니요 | `StateRecordRef[]` |
+| `applied_user_action_resolution_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `base` | 예 | 아니요 | `AdvanceTaskResultBase` |
 | `change_unit_ref` | 예 | 아니요 | `StateRecordRef` |
 | `shaping_checkpoint_ref` | 예 | 아니요 | `StateRecordRef` |
 | `state` | 예 | 아니요 | `StateSummary` |
 | `task_ref` | 예 | 아니요 | `StateRecordRef` |
-| `user_action_resolution_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `workflow` | 예 | 아니요 | `WorkflowProjection` |
 
 ### `결과 Metadata: core_committed` 필드
@@ -84,9 +86,10 @@ baseline은 효과 없이 거부됩니다.
 응답 설명자는 성공, 거절, 미리보기를 정확한 `anyOf` 분기 union으로 정의합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.
 <!-- END GENERATED: contract-structures api.method.advance_task.response[response_variants] api.method.advance_task.response[result_body] api.method.advance_task.response[result_metadata] api.method.advance_task.response[rejection] api.method.advance_task.response[dry_run] -->
 
-성공하면 `work_phase=implementation`으로 바꾸고 lifecycle을 구현 진행 상태로
-갱신하며, 타입이 정해진 전환 event 하나와 정확한 replay 결과를 기록하고,
-`state_version`을 정확히 한 번 증가시키고, 현재 workflow projection을 반환합니다.
+성공하면 선택된 advance owner gap을 `applied`로 바꾸고
+`work_phase=implementation`과 lifecycle 구현 진행 상태를 설정하며, 타입이 정해진
+전환 event 하나와 정확한 replay 결과를 기록합니다. `state_version`을 정확히 한 번
+증가시키고 정확한 applied gap·resolution ref와 현재 workflow projection을 반환합니다.
 정확한 replay는 원래 결과를 반환하며 충돌하는 replay는 거부됩니다.
 
 이 전환은 Product Repository 파일을 변경하거나, 쓰기 티켓을 발급·소비하거나,
