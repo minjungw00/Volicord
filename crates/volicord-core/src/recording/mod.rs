@@ -228,6 +228,7 @@ pub(crate) enum RecordingRejection {
     },
     DecisionRejected {
         message: &'static str,
+        recovery_owner: volicord_types::values::MethodName,
     },
     WriteTicketRequired,
     WriteTicketInvalid {

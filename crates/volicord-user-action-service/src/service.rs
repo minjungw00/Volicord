@@ -312,7 +312,7 @@ pub fn resolved_user_action_facts_for_all_kinds(
     now: &UtcTimestamp,
 ) -> Result<Vec<crate::model::UserActionAuthority>, UserActionServiceError> {
     store
-        .user_action_records_for_task(task_id, now)
+        .user_action_history_for_task(task_id, now)
         .map_err(UserActionServiceError::from_store)?
         .into_iter()
         .filter(|record| record.status() == UserActionStatus::Resolved)

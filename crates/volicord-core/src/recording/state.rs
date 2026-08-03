@@ -39,6 +39,15 @@ pub(super) fn acquire_record_run_state(
         .map_err(crate::pipeline::CorePipelineError::from)?
         .summary;
     let shaping_checkpoint = store.current_shaping_checkpoint(&planned.request.task_id)?;
+    let shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &planned.request.project_id,
+        planned.planned_state_version,
+        &planned.projected_task,
+        Some(&planned.change_unit),
+        shaping_checkpoint.as_ref(),
+        &planned.plan_now,
+    )?;
     let write_ticket_summary = if let Some(ticket) = &planned.write_ticket_scope {
         let evaluated =
             project_stored_write_ticket_consumption(ticket.reusable(), planned.run_id.clone());
@@ -103,7 +112,7 @@ pub(super) fn acquire_record_run_state(
         task: &planned.projected_task,
         current_change_unit: Some(&planned.change_unit),
         shaping_checkpoint: shaping_checkpoint.as_ref(),
-        task_wide_shaping_authority: &Default::default(),
+        task_wide_shaping_authority: &shaping_authority,
         project_policy,
         acceptance_criteria: planned.acceptance_criteria.clone(),
         pending_user_action_refs: planned.pending_user_action_refs.clone(),

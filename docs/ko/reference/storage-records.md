@@ -412,6 +412,16 @@ artifact link, blocker, continuity ref는 소유 좌표에 맞춰 검증합니�
 immutable history가 남을 수 있지만 timestamp 비교나 record 이름 순서로 현재가 되지는
 않습니다.
 
+Store 소유 현재 유효 shaping 권한 graph는 생성 순서 선택이 아니라 타입이 정해진 관계형
+조회입니다. 이 graph는 열린 Task 하나를 정확한 현재 checkpoint gap, 현재 UserAction basis와
+변경 불가능한 resolution, 현재 checkpoint-application lineage, 현재 application, stale
+application 복구 의무, scope revision, baseline, Change Unit에 결속합니다. 분리되었거나
+소유 경계를 넘은 현재 권한, 중복된 현재 request/resolution 권한, superseded 요청을 근거로
+한 현재 application, 현재로 연결된 superseded application, 잘못된 변경 불가능 source 좌표는
+거부합니다. 명시적 이력 조회는 diagnostics, lineage 검사, export를 위해 모든 superseded
+요청과 application을 유지하지만 workflow 차단 사유로 제공하지 않습니다. 종료된 Task에는
+현재 graph가 없으며 정확한 shaping lineage는 이 이력 조회에 남습니다.
+
 정규 Product Repository 경로는
 [런타임 경계](runtime-boundaries.md#product-repository-api-path-normalization)를 따릅니다.
 Git object ID는 공유된 정확한 소문자 16진수 40자리 또는 64자리 계약을 사용합니다.

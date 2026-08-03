@@ -472,6 +472,19 @@ Current pointers must reference current same-project records. Immutable history
 may remain after current state advances, but it never becomes current through
 timestamp comparison or record-name ordering.
 
+The Store-owned current effective shaping authority graph is a typed relational
+read, not a creation-order selection. It binds one open Task to its exact current
+checkpoint gaps, current UserAction bases and immutable resolutions, current
+checkpoint-application lineage, current applications, stale application
+recovery obligations, scope revision, baseline, and Change Unit. The graph
+rejects detached or cross-owner current authority, duplicate current
+request/resolution authority, a current application backed by a superseded
+request, a superseded application linked as current, and malformed immutable
+source coordinates. Explicit history reads retain every superseded request and
+application for diagnostics, lineage inspection, and export without supplying
+workflow blockers. A terminal Task has no current graph; its exact shaping
+lineage remains in those history reads.
+
 Normalized Product Repository paths follow
 [Runtime Boundaries](runtime-boundaries.md#product-repository-api-path-normalization).
 Git object IDs use the shared exact 40- or 64-lowercase-hex contract; other

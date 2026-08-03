@@ -581,7 +581,7 @@ advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으�
 Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
 진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`, `finalize_advice`, shaping 소유 scope update에 필요한 Task 전체 effective UserAction도 이 projection에 참여합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. 현재 lineage link가 없으면 `inconsistent_authority_state`, 명시적으로 stale인 application이면 `application_authority_stale`를 사용하며 권한 ref를 `required_refs`에 추가하고 진행을 차단합니다.
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. 진행은 `advance_task`, `finalize_advice`, shaping 소유 scope update, write preparation, Run 기록, 닫기 준비 상태, mutation 거부에 Store 소유 현재 유효 shaping 권한 graph를 사용합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. 명시적으로 stale인 application에는 `application_authority_stale`를 사용하고, 모순된 현재 graph에는 `inconsistent_authority_state`를 사용합니다. 두 상태 모두 현재 권한 또는 복구 ref를 `required_refs`에 추가하고 진행을 차단합니다. Superseded 요청, resolution, application, checkpoint ref는 감사 이력으로 남으며 현재 checkpoint에 없다는 이유만으로 `required_refs`에 들어가지 않습니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task

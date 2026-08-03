@@ -357,19 +357,32 @@ fn plan_prepare_write(
             checkpoint.as_ref(),
             operation_now,
         )?;
-        if !shaping_authority.recovery_required.is_empty() {
+        let shaping_recovery_owner = if !shaping_authority.recovery_required.is_empty() {
+            Some(MethodName::RecordShaping)
+        } else if !shaping_authority.stale.is_empty() || !shaping_authority.inconsistent.is_empty()
+        {
+            Some(MethodName::Status)
+        } else if !shaping_authority.awaiting_user.is_empty() {
+            Some(MethodName::ResolveUserAction)
+        } else {
+            shaping_authority
+                .accepted_unapplied
+                .first()
+                .map(|fact| fact.required_owner_method)
+        };
+        if let Some(recovery_owner) = shaping_recovery_owner {
             let response = workflow_rejected_response(
                 store,
                 project_state,
                 &request.envelope,
                 task_id,
                 ErrorCode::UserDecisionUnresolved,
-                "write preparation cannot consume a rejected, deferred, or expired shaping decision",
+                "write preparation requires a current progressable shaping authority graph",
                 MethodName::PrepareWrite,
                 None,
                 Vec::new(),
                 false,
-                MethodName::RecordShaping,
+                recovery_owner,
             )
             .map_err(PlanError::Core)?;
             return Err(PlanError::Response(Box::new(response)));
@@ -786,13 +799,22 @@ fn project_prepare_write_response(
     let shaping_checkpoint = store
         .current_shaping_checkpoint(&task_id)
         .map_err(CorePipelineError::from)?;
+    let task_wide_shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &request.envelope.project_id,
+        planned_state_version,
+        &task,
+        Some(&change_unit),
+        shaping_checkpoint.as_ref(),
+        operation_now,
+    )?;
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task,
         current_change_unit: Some(&change_unit),
         shaping_checkpoint: shaping_checkpoint.as_ref(),
-        task_wide_shaping_authority: &Default::default(),
+        task_wide_shaping_authority: &task_wide_shaping_authority,
         project_policy,
         acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs,

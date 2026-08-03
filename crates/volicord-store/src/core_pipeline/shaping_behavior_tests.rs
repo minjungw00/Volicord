@@ -407,10 +407,19 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
     );
     assert_eq!(
         store
-            .shaping_decision_applications_for_task(&TaskId::new(task_id))?
+            .shaping_decision_application_history_for_task(&TaskId::new(task_id))?
             .len(),
         2
     );
+    let graph = store.current_shaping_authority_graph(
+        &TaskId::new(task_id),
+        &UtcTimestamp::parse("2026-01-01T00:00:05Z")?,
+    )?;
+    assert_eq!(graph.task_id, task_id);
+    assert_eq!(graph.current_gap_decisions.len(), 2);
+    assert_eq!(graph.current_applications.len(), 2);
+    assert!(graph.stale_recovery_obligations.is_empty());
+    assert_eq!(graph.current_resolution_ids.len(), 2);
     drop(store);
 
     let corruption = rusqlite::Connection::open(harness.state_database_path())?;
@@ -436,7 +445,10 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
 
     let store = harness.store()?;
     let error = store
-        .shaping_decision_applications_for_task(&TaskId::new(task_id))
+        .current_shaping_authority_graph(
+            &TaskId::new(task_id),
+            &UtcTimestamp::parse("2026-01-01T00:00:05Z")?,
+        )
         .expect_err("a current application without current checkpoint lineage is corrupt");
     assert!(matches!(
         error,

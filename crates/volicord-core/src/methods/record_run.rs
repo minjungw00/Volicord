@@ -168,7 +168,10 @@ fn record_run_rejection_response(
                 None,
             )],
         ),
-        RecordingRejection::DecisionRejected { message } => workflow_rejected_response(
+        RecordingRejection::DecisionRejected {
+            message,
+            recovery_owner,
+        } => workflow_rejected_response(
             store,
             project_state,
             &request.envelope,
@@ -179,7 +182,7 @@ fn record_run_rejection_response(
             Some(request.kind),
             Vec::new(),
             true,
-            MethodName::ResolveUserAction,
+            recovery_owner,
         ),
         RecordingRejection::WriteTicketRequired => Ok(write_ticket_required_response(
             &request.envelope,

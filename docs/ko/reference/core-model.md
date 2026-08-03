@@ -282,9 +282,16 @@ application마다 엄격한 lineage edge 하나가 필요합니다.
 `replace_current` operation으로만 폐기할 수 있습니다. 폐기된 요청은 superseded 근거와
 함께 변경 불가능한 감사 이력으로 남습니다. successor 계획에도 같은 판단이 필요하면
 별도 `UserActionRequest`를 만듭니다.
-Work 진행은 checkpoint-local gap뿐 아니라 `advance_task`에 필요한 Task 전체 effective
-UserAction도 평가하고, advisor 진행은 `finalize_advice`와 scope update에 대해 같은 검사를
-수행합니다. Gap이 없는 successor를 기록해도 어느 Task 전체 결정 gate도 우회하지 못합니다.
+
+Store는 열린 Task에 대해 정확한 project, Task, 현재 checkpoint와 gap, UserAction 요청과
+변경 불가능한 resolution, basis 호환성, checkpoint-application lineage, application 상태, scope revision,
+baseline, Change Unit 좌표에서 현재 유효 shaping 권한 graph 하나를 도출합니다. 이 graph는
+현재 결정 권한, 현재 적용 권한, stale 복구 의무를 구분합니다. Superseded 요청과
+application, 현재 carry-forward나 stale 복구 역할이 없는 checkpoint-local 권한은 graph에서
+제외합니다. 해당 record는 변경 불가능한 이력 조회, diagnostics, authority-bundle export에서
+계속 확인할 수 있습니다. Work 진행은 `advance_task`에 이 graph를 사용하고, advisor 진행은
+`finalize_advice`와 scope update에 사용합니다. Gap이 없는 checkpoint에는 graph가 현재
+application 또는 stale 복구 의무를 carry하지 않는 한 현재 결정 권한이 없습니다.
 
 UserAction 종료 상태와 shaping 권한은 별개입니다. 정규 evaluator는 유효 요청 상태,
 변경 불가능한 action과 outcome, User Channel provenance, 근거 호환성, checkpoint와 gap
@@ -296,6 +303,14 @@ Change Unit, Task mode를 함께 평가합니다.
 application 권한이 되지는 않습니다. 수락되었고 현재이며
 호환되는 User Channel resolution만 의미 owner를 통해 `accepted`에서 `applied`로 바뀔
 수 있습니다. 거부, 보류, 만료는 권한을 부여하지 않습니다.
+
+명시적으로 `superseded`인 요청이나 application은 현재 checkpoint identity를 평가하기 전에
+이력으로 분류합니다. 명시적으로 `stale`인 application은 복구 의무로 남으며 source
+checkpoint가 현재일 필요는 없지만 변경 불가능한 source 좌표는 엄격하게 decode합니다.
+정확한 현재 identity 검사는 현재 결정과 application 상태에 적용합니다. `inconsistent`는
+이 현재 graph 안의 모순을 식별하며 superseded 이력에는 사용하지 않습니다.
+종료된 Task에는 현재 shaping 권한 graph가 없으며 checkpoint, 요청, resolution,
+application lineage는 변경 불가능한 이력으로 남습니다.
 
 폐쇄형 owner 정책은 다음과 같습니다.
 

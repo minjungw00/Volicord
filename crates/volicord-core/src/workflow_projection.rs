@@ -1,8 +1,8 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, ShapingCheckpointRecord, ShapingDecisionApplicationRecord,
-    ShapingGapApplication, TaskRecord,
+    ChangeUnitRecord, CoreProjectStore, ShapingCheckpointGapRecord, ShapingCheckpointRecord,
+    ShapingDecisionApplicationRecord, ShapingGapApplication, StoredUserActionRecordSet, TaskRecord,
 };
 use volicord_types::ids::{
     shaping_decision_application_id, BaselineRef, ChangeUnitId, ProjectId, TaskId,
@@ -128,7 +128,7 @@ pub(crate) struct TaskWideShapingAuthority {
     pub(crate) applied: Vec<WorkflowUserActionFact>,
     pub(crate) stale: Vec<WorkflowUserActionFact>,
     pub(crate) inconsistent: Vec<WorkflowUserActionFact>,
-    pub(crate) applied_resolution_ids: BTreeSet<String>,
+    pub(crate) current_resolution_ids: BTreeSet<String>,
 }
 
 impl TaskWideShapingAuthority {
@@ -197,25 +197,116 @@ pub(crate) fn task_wide_shaping_authority(
     now: &UtcTimestamp,
 ) -> CoreResult<TaskWideShapingAuthority> {
     let task_id = TaskId::new(task.task_id.clone());
-    let records = store
-        .user_action_records_for_task(&task_id, now)
+    let graph = store
+        .current_shaping_authority_graph(&task_id, now)
         .map_err(CorePipelineError::from)?;
     let projecting_next_state = state_version
         > store
             .project_state()
             .map_err(CorePipelineError::from)?
             .state_version;
-    let mut applications = store
-        .shaping_decision_applications_for_task(&task_id)
-        .map_err(CorePipelineError::from)?;
+    let projected_checkpoint_replaces_stored = checkpoint.is_some_and(|checkpoint| {
+        graph
+            .current_checkpoint
+            .as_ref()
+            .is_none_or(|stored| stored.shaping_checkpoint_id != checkpoint.shaping_checkpoint_id)
+    });
+    let projected_application_ids = checkpoint
+        .map(|checkpoint| {
+            checkpoint
+                .applications
+                .iter()
+                .map(|application| application.shaping_decision_application_id.as_str())
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let mut records_by_request_id = BTreeMap::<String, StoredUserActionRecordSet>::new();
+    for decision in graph.current_gap_decisions {
+        let represented_by_projection = !projected_checkpoint_replaces_stored
+            || checkpoint.is_some_and(|checkpoint| {
+                checkpoint.gaps.iter().any(|gap| {
+                    gap.user_action.as_ref().is_some_and(|link| {
+                        link.user_action_request_id
+                            == decision.user_action.request().user_action_request_id()
+                    })
+                })
+            });
+        if represented_by_projection {
+            records_by_request_id.insert(
+                decision
+                    .user_action
+                    .request()
+                    .user_action_request_id()
+                    .to_owned(),
+                decision.user_action,
+            );
+        }
+    }
+    let mut application_sources = BTreeMap::<String, (String, ShapingCheckpointGapRecord)>::new();
+    let mut applications = Vec::new();
+    for authority in graph
+        .current_applications
+        .into_iter()
+        .filter(|authority| {
+            !projected_checkpoint_replaces_stored
+                || projected_application_ids.contains(
+                    authority
+                        .application
+                        .shaping_decision_application_id
+                        .as_str(),
+                )
+        })
+        .chain(graph.stale_recovery_obligations)
+    {
+        records_by_request_id.insert(
+            authority
+                .user_action
+                .request()
+                .user_action_request_id()
+                .to_owned(),
+            authority.user_action,
+        );
+        application_sources.insert(
+            authority
+                .application
+                .shaping_decision_application_id
+                .clone(),
+            (
+                authority.application.source_checkpoint_id.clone(),
+                authority.source_gap,
+            ),
+        );
+        applications.push(authority.application);
+    }
     if let Some(checkpoint) = checkpoint {
         for projected in &checkpoint.applications {
             applications.retain(|stored| {
                 stored.shaping_decision_application_id != projected.shaping_decision_application_id
             });
+            if !application_sources.contains_key(&projected.shaping_decision_application_id) {
+                let source_gap = (projected.source_checkpoint_id
+                    == checkpoint.shaping_checkpoint_id)
+                    .then(|| {
+                        checkpoint
+                            .gaps
+                            .iter()
+                            .find(|gap| gap.shaping_gap_id == projected.source_gap_id)
+                            .cloned()
+                    })
+                    .flatten()
+                    .ok_or_else(|| CorePipelineError::Invariant {
+                        detail: "a projected shaping application has no Store-validated source"
+                            .to_owned(),
+                    })?;
+                application_sources.insert(
+                    projected.shaping_decision_application_id.clone(),
+                    (projected.source_checkpoint_id.clone(), source_gap),
+                );
+            }
             applications.push(projected.clone());
         }
     }
+    let records = records_by_request_id.into_values().collect::<Vec<_>>();
     let mut assessment = TaskWideShapingAuthority::default();
     for record in records {
         let request = record.request();
@@ -234,13 +325,11 @@ pub(crate) fn task_wide_shaping_authority(
             })
         });
         let application_is_relevant = application.is_some_and(|application| {
-            application.authority_status == ShapingDecisionApplicationAuthorityStatus::Current
-                || checkpoint.is_none_or(|checkpoint| {
-                    !checkpoint
-                        .gaps
-                        .iter()
-                        .any(|gap| gap.gap_kind.judgment_kind() == Some(application.judgment_kind))
-                })
+            matches!(
+                application.authority_status,
+                ShapingDecisionApplicationAuthorityStatus::Current
+                    | ShapingDecisionApplicationAuthorityStatus::Stale
+            )
         });
         let participates_in_progression = represented_gap.is_some()
             || application_is_relevant
@@ -260,22 +349,9 @@ pub(crate) fn task_wide_shaping_authority(
             continue;
         }
         let source = if let Some(application) = application {
-            let source_checkpoint = if checkpoint.is_some_and(|checkpoint| {
-                checkpoint.shaping_checkpoint_id == application.source_checkpoint_id
-            }) {
-                checkpoint.cloned()
-            } else {
-                store
-                    .shaping_checkpoint_record(&task_id, &application.source_checkpoint_id)
-                    .map_err(CorePipelineError::from)?
-            };
-            source_checkpoint.and_then(|source_checkpoint| {
-                source_checkpoint
-                    .gaps
-                    .into_iter()
-                    .find(|gap| gap.shaping_gap_id == application.source_gap_id)
-                    .map(|gap| (source_checkpoint.shaping_checkpoint_id, gap))
-            })
+            application_sources
+                .get(&application.shaping_decision_application_id)
+                .cloned()
         } else {
             checkpoint.and_then(|checkpoint| {
                 represented_gap
@@ -483,7 +559,7 @@ pub(crate) fn task_wide_shaping_authority(
                 assessment.applied.push(fact);
                 if let Some(resolution) = record.resolution() {
                     assessment
-                        .applied_resolution_ids
+                        .current_resolution_ids
                         .insert(resolution.user_action_resolution_id().to_owned());
                 }
             }

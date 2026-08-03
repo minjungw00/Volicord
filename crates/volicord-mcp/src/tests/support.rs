@@ -980,7 +980,7 @@ pub(super) fn stored_action_record(
     )?;
     let now = store.current_timestamp()?;
     let record = store
-        .user_action_records_for_task(&volicord_types::ids::TaskId::new(task_id), &now)?
+        .user_action_history_for_task(&volicord_types::ids::TaskId::new(task_id), &now)?
         .into_iter()
         .find(|record| record.request().user_action_request_id() == request_id)
         .ok_or("stored user-action record should exist")?;

@@ -285,11 +285,20 @@ strict lineage edge per application. A rejected, deferred, or expired request ma
 only by an exact `replace_current` operation naming every affected request ref.
 Each retired request remains immutable audit history with a superseded basis;
 if the successor plan still needs the judgment, it creates a distinct
-`UserActionRequest`. Work
-progression evaluates Task-wide effective UserActions required for
-`advance_task` as well as checkpoint-local gaps; advisor progression does the
-same for `finalize_advice` and scope update. Recording a gap-free successor
-does not bypass either Task-wide decision gate.
+`UserActionRequest`.
+
+Store derives one current effective shaping authority graph for an open Task
+from the exact project, Task, current checkpoint and gaps, UserAction request
+and immutable resolution, basis compatibility, checkpoint-application lineage,
+application status, scope revision, baseline, and Change Unit coordinates. The graph keeps
+current decision authority, current applied authority, and stale recovery
+obligations distinct. It excludes superseded requests, superseded applications,
+and checkpoint-local authority that has no current carry-forward or stale
+recovery role. Those records remain available through immutable history reads,
+diagnostics, and authority-bundle export. Work progression consumes this graph
+for `advance_task`; advisor progression consumes it for `finalize_advice` and
+scope update. A gap-free checkpoint has no current decision authority unless
+the graph carries a current application or a stale recovery obligation.
 
 UserAction terminal state and shaping authority are separate. The canonical
 evaluator combines effective request status, immutable action and outcome,
@@ -303,6 +312,15 @@ that gap projection is not application authority by itself. Only
 an accepted, current, compatible User Channel resolution can move from
 `accepted` to `applied` through the semantic owner. Rejection, deferral, and
 expiration grant no authority.
+
+An explicit `superseded` request or application is historical before current
+checkpoint identity is considered. An explicit `stale` application remains a
+recovery obligation and retains strict immutable source decoding without
+requiring its source checkpoint to be current. Exact current identity checks
+apply to current decision and application states. `inconsistent` identifies a
+contradiction inside that current graph; superseded history does not select it.
+Terminal Tasks have no current shaping authority graph; their checkpoint,
+request, resolution, and application lineage remains immutable history.
 
 The closed owner policy is:
 

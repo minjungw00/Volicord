@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use rusqlite::{params, Connection, OptionalExtension};
 use volicord_types::canonical::canonical_json_string;
 use volicord_types::ids::{
@@ -10,11 +12,16 @@ use volicord_types::schema::{
 use volicord_types::values::{
     JudgmentKind, JudgmentResolutionOutcome, ShapingCheckpointReadiness,
     ShapingDecisionApplicationAuthorityStatus, ShapingDecisionApplicationOwner, ShapingGapKind,
-    ShapingGapStatus, TaskMode, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-    UtcTimestamp,
+    ShapingGapStatus, TaskLifecyclePhase, TaskMode, UserActionBasisStatus, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
 };
 
-use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
+use super::{
+    facade::CoreProjectStore,
+    mutations::MutationContext,
+    user_actions::{effective_user_action_records_for_task, StoredUserActionRecordSet},
+    validation::*,
+};
 use crate::{StoreError, StoreResult};
 
 const CHECKPOINT_COLUMNS: &str = "
@@ -163,6 +170,36 @@ pub struct ShapingDecisionApplicationRecord {
     pub carried_from_checkpoint_id: Option<String>,
 }
 
+/// One exact current-checkpoint gap and its Store-validated UserAction authority.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CurrentShapingGapDecision {
+    pub checkpoint_id: String,
+    pub gap: ShapingCheckpointGapRecord,
+    pub user_action: StoredUserActionRecordSet,
+}
+
+/// One exact application, immutable source gap, and Store-validated UserAction authority.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CurrentShapingApplicationAuthority {
+    pub application: ShapingDecisionApplicationRecord,
+    pub source_gap: ShapingCheckpointGapRecord,
+    pub user_action: StoredUserActionRecordSet,
+}
+
+/// Store-owned effective shaping authority used by current workflow progression.
+///
+/// Superseded requests and applications are intentionally absent. Complete
+/// immutable history remains available from the explicitly historical reads.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CurrentShapingAuthorityGraph {
+    pub task_id: String,
+    pub current_checkpoint: Option<ShapingCheckpointRecord>,
+    pub current_gap_decisions: Vec<CurrentShapingGapDecision>,
+    pub current_applications: Vec<CurrentShapingApplicationAuthority>,
+    pub stale_recovery_obligations: Vec<CurrentShapingApplicationAuthority>,
+    pub current_resolution_ids: BTreeSet<String>,
+}
+
 /// Strictly decoded shaping gap.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapingCheckpointGapRecord {
@@ -281,12 +318,47 @@ impl CoreProjectStore<'_> {
             .map_err(StoreError::from)
     }
 
-    /// Reads every durable decision application for one Task with its current-checkpoint link.
-    pub fn shaping_decision_applications_for_task(
+    /// Reads immutable decision-application history for one Task.
+    ///
+    /// This audit-oriented read includes current, stale, and superseded records.
+    /// Workflow progression must use `current_shaping_authority_graph` instead.
+    pub fn shaping_decision_application_history_for_task(
         &self,
         task_id: &TaskId,
     ) -> StoreResult<Vec<ShapingDecisionApplicationRecord>> {
         shaping_applications_for_task(&self.conn, &self.project.project_id, task_id.as_str())
+    }
+
+    /// Derives the exact effective shaping authority graph for current workflow progression.
+    pub fn current_shaping_authority_graph(
+        &self,
+        task_id: &TaskId,
+        now: &UtcTimestamp,
+    ) -> StoreResult<CurrentShapingAuthorityGraph> {
+        let checkpoint = shaping_checkpoint_where(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            None,
+            true,
+        )?;
+        let user_actions = effective_user_action_records_for_task(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            None,
+            now,
+        )?;
+        let applications =
+            shaping_applications_for_task(&self.conn, &self.project.project_id, task_id.as_str())?;
+        build_current_shaping_authority_graph(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            checkpoint,
+            user_actions,
+            applications,
+        )
     }
 
     /// Reads one durable decision application by exact identity.
@@ -2165,6 +2237,368 @@ fn shaping_applications_for_task(
         .into_iter()
         .map(|raw| decode_shaping_application(conn, raw))
         .collect()
+}
+
+fn build_current_shaping_authority_graph(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+    checkpoint: Option<ShapingCheckpointRecord>,
+    user_actions: Vec<StoredUserActionRecordSet>,
+    applications: Vec<ShapingDecisionApplicationRecord>,
+) -> StoreResult<CurrentShapingAuthorityGraph> {
+    let (
+        task_scope_revision,
+        task_baseline_ref,
+        task_change_unit_id,
+        task_mode_raw,
+        task_lifecycle_raw,
+        task_closed_at,
+    ): (
+        i64,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        Option<String>,
+    ) = conn.query_row(
+        "SELECT scope_revision,
+                json_extract(shaping_summary_json, '$.baseline_ref'),
+                current_change_unit_id,
+                mode,
+                lifecycle_phase,
+                closed_at
+           FROM tasks
+          WHERE project_id = ?1 AND task_id = ?2",
+        params![project_id, task_id],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        },
+    )?;
+    let task_scope_revision = u64::try_from(task_scope_revision)
+        .map_err(|_| StoreError::corrupt_owner_state_value("tasks", task_id, "scope_revision"))?;
+    let task_mode = decode_owner_closed_value("tasks", task_id, "mode", &task_mode_raw)?;
+    let task_lifecycle: TaskLifecyclePhase =
+        decode_owner_closed_value("tasks", task_id, "lifecycle_phase", &task_lifecycle_raw)?;
+    let task_closed_at = task_closed_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| StoreError::corrupt_owner_state_value("tasks", task_id, "closed_at"))?;
+    let task_is_terminal = matches!(
+        task_lifecycle,
+        TaskLifecyclePhase::Completed
+            | TaskLifecyclePhase::Cancelled
+            | TaskLifecyclePhase::Superseded
+    );
+    if task_is_terminal != task_closed_at.is_some() {
+        return Err(StoreError::corrupt_owner_state_value(
+            "tasks",
+            task_id,
+            "closed_at",
+        ));
+    }
+    if checkpoint.as_ref().is_some_and(|checkpoint| {
+        checkpoint.project_id != project_id || checkpoint.task_id != task_id
+    }) {
+        return Err(StoreError::corrupt_owner_state_value(
+            "shaping_checkpoints",
+            task_id,
+            "task_id",
+        ));
+    }
+
+    let user_actions = user_actions
+        .into_iter()
+        .map(|record| (record.request().user_action_request_id().to_owned(), record))
+        .collect::<BTreeMap<_, _>>();
+    let mut graph = CurrentShapingAuthorityGraph {
+        task_id: task_id.to_owned(),
+        current_checkpoint: if !task_is_terminal {
+            checkpoint.clone()
+        } else {
+            None
+        },
+        ..Default::default()
+    };
+    let mut represented_current_requests = BTreeSet::new();
+
+    if !task_is_terminal {
+        if let Some(checkpoint) = checkpoint.as_ref() {
+            for gap in checkpoint
+                .gaps
+                .iter()
+                .filter(|gap| gap.user_action.is_some())
+            {
+                let link = gap.user_action.as_ref().ok_or_else(|| {
+                    StoreError::corrupt_owner_state_value(
+                        "shaping_checkpoint_gaps",
+                        &gap.shaping_gap_id,
+                        "user_action_request_id",
+                    )
+                })?;
+                let record = user_actions
+                    .get(&link.user_action_request_id)
+                    .ok_or_else(|| {
+                        StoreError::corrupt_owner_state_value(
+                            "shaping_checkpoint_user_actions",
+                            &link.user_action_request_id,
+                            "user_action_request_id",
+                        )
+                    })?;
+                let request = record.request();
+                let coordinates = request.basis().coordinates();
+                let metadata_matches = matches!(
+                    request.metadata(),
+                    PersistedUserActionRequestMetadata::Shaping(metadata)
+                        if metadata.shaping_checkpoint_id.as_str()
+                            == checkpoint.shaping_checkpoint_id
+                            && metadata.shaping_gap_id.as_str() == gap.shaping_gap_id
+                );
+                if request.project_id() != project_id
+                    || request.task_id() != task_id
+                    || coordinates.task_id.as_str() != task_id
+                    || !metadata_matches
+                {
+                    return Err(StoreError::corrupt_owner_state_value(
+                        "user_action_requests",
+                        request.user_action_request_id(),
+                        "metadata_json",
+                    ));
+                }
+                match request.basis_status() {
+                    UserActionBasisStatus::Current => {
+                        if request.basis().compatibility_status() != UserActionBasisStatus::Current
+                            || coordinates.scope_revision != task_scope_revision
+                            || coordinates.baseline_ref.as_ref().map(BaselineRef::as_str)
+                                != task_baseline_ref.as_deref()
+                            || coordinates
+                                .change_unit_id
+                                .as_ref()
+                                .map(ChangeUnitId::as_str)
+                                != task_change_unit_id.as_deref()
+                        {
+                            return Err(StoreError::corrupt_owner_state_value(
+                                "user_action_requests",
+                                request.user_action_request_id(),
+                                "basis_json",
+                            ));
+                        }
+                        represented_current_requests
+                            .insert(request.user_action_request_id().to_owned());
+                        graph.current_gap_decisions.push(CurrentShapingGapDecision {
+                            checkpoint_id: checkpoint.shaping_checkpoint_id.clone(),
+                            gap: gap.clone(),
+                            user_action: record.clone(),
+                        });
+                    }
+                    UserActionBasisStatus::Stale => {}
+                    UserActionBasisStatus::Superseded => {
+                        return Err(StoreError::corrupt_owner_state_value(
+                            "shaping_checkpoint_user_actions",
+                            request.user_action_request_id(),
+                            "user_action_request_id",
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut current_application_keys = BTreeSet::new();
+    let mut stale_request_ids = BTreeSet::new();
+    for application in applications {
+        let record = user_actions
+            .get(&application.user_action_request_id)
+            .ok_or_else(|| {
+                StoreError::corrupt_owner_state_value(
+                    "shaping_decision_applications",
+                    &application.shaping_decision_application_id,
+                    "user_action_request_id",
+                )
+            })?;
+        let request = record.request();
+        let resolution_matches = record.resolution().is_some_and(|resolution| {
+            resolution.user_action_resolution_id() == application.user_action_resolution_id
+        });
+        if request.project_id() != project_id || request.task_id() != task_id || !resolution_matches
+        {
+            return Err(StoreError::corrupt_owner_state_value(
+                "shaping_decision_applications",
+                &application.shaping_decision_application_id,
+                "user_action_request_id",
+            ));
+        }
+        let source_checkpoint = shaping_checkpoint_where(
+            conn,
+            project_id,
+            task_id,
+            Some(&application.source_checkpoint_id),
+            false,
+        )?
+        .ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "shaping_decision_applications",
+                &application.shaping_decision_application_id,
+                "source_checkpoint_id",
+            )
+        })?;
+        let source_gap = source_checkpoint
+            .gaps
+            .into_iter()
+            .find(|gap| gap.shaping_gap_id == application.source_gap_id)
+            .ok_or_else(|| {
+                StoreError::corrupt_owner_state_value(
+                    "shaping_decision_applications",
+                    &application.shaping_decision_application_id,
+                    "source_gap_id",
+                )
+            })?;
+        let policy_matches = source_gap
+            .gap_kind
+            .decision_policy_for_mode(task_mode)
+            .is_some_and(|policy| {
+                policy.application_owner == application.application_owner
+                    && policy.user_action_kind == request.action_kind()
+                    && policy.required_for == request.required_for()
+                    && source_gap.gap_kind.judgment_kind() == Some(application.judgment_kind)
+            });
+        if !policy_matches {
+            return Err(StoreError::corrupt_owner_state_value(
+                "shaping_decision_applications",
+                &application.shaping_decision_application_id,
+                "application_owner",
+            ));
+        }
+        let authority = CurrentShapingApplicationAuthority {
+            application: application.clone(),
+            source_gap,
+            user_action: record.clone(),
+        };
+        match application.authority_status {
+            ShapingDecisionApplicationAuthorityStatus::Current => {
+                if task_is_terminal {
+                    return Err(StoreError::corrupt_owner_state_value(
+                        "shaping_decision_applications",
+                        &application.shaping_decision_application_id,
+                        "authority_status",
+                    ));
+                }
+                let current_checkpoint_id = checkpoint
+                    .as_ref()
+                    .map(|checkpoint| checkpoint.shaping_checkpoint_id.as_str());
+                if application.linked_checkpoint_id.as_deref() != current_checkpoint_id
+                    || request.basis_status() != UserActionBasisStatus::Current
+                    || request.basis().compatibility_status() != UserActionBasisStatus::Current
+                    || record.status() != UserActionStatus::Resolved
+                {
+                    return Err(StoreError::corrupt_owner_state_value(
+                        "shaping_decision_applications",
+                        &application.shaping_decision_application_id,
+                        "authority_status",
+                    ));
+                }
+                let key = (
+                    application.user_action_request_id.clone(),
+                    application.user_action_resolution_id.clone(),
+                );
+                if !current_application_keys.insert(key)
+                    || !graph
+                        .current_resolution_ids
+                        .insert(application.user_action_resolution_id.clone())
+                {
+                    return Err(StoreError::corrupt_owner_state_value(
+                        "shaping_decision_applications",
+                        &application.shaping_decision_application_id,
+                        "authority_status",
+                    ));
+                }
+                represented_current_requests.insert(application.user_action_request_id.clone());
+                graph.current_applications.push(authority);
+            }
+            ShapingDecisionApplicationAuthorityStatus::Stale => {
+                if request.basis_status() != UserActionBasisStatus::Stale
+                    || request.basis().compatibility_status() != UserActionBasisStatus::Stale
+                {
+                    return Err(StoreError::corrupt_owner_state_value(
+                        "shaping_decision_applications",
+                        &application.shaping_decision_application_id,
+                        "authority_status",
+                    ));
+                }
+                if !task_is_terminal {
+                    stale_request_ids.insert(application.user_action_request_id.clone());
+                    graph.stale_recovery_obligations.push(authority);
+                }
+            }
+            ShapingDecisionApplicationAuthorityStatus::Superseded => {
+                if request.basis_status() != UserActionBasisStatus::Superseded
+                    || request.basis().compatibility_status() != UserActionBasisStatus::Superseded
+                {
+                    return Err(StoreError::corrupt_owner_state_value(
+                        "shaping_decision_applications",
+                        &application.shaping_decision_application_id,
+                        "authority_status",
+                    ));
+                }
+                if !task_is_terminal && application.linked_checkpoint_id.is_some() {
+                    return Err(StoreError::corrupt_owner_state_value(
+                        "shaping_checkpoint_applications",
+                        &application.shaping_decision_application_id,
+                        "shaping_decision_application_id",
+                    ));
+                }
+            }
+        }
+    }
+
+    for record in user_actions.values().filter(|_| !task_is_terminal) {
+        let request = record.request();
+        if !matches!(
+            request.metadata(),
+            PersistedUserActionRequestMetadata::Shaping(_)
+        ) {
+            continue;
+        }
+        match request.basis_status() {
+            UserActionBasisStatus::Current
+                if !represented_current_requests.contains(request.user_action_request_id()) =>
+            {
+                return Err(StoreError::corrupt_owner_state_value(
+                    "user_action_requests",
+                    request.user_action_request_id(),
+                    "basis_status",
+                ));
+            }
+            UserActionBasisStatus::Stale
+                if checkpoint.as_ref().is_some_and(|checkpoint| {
+                    checkpoint.gaps.iter().any(|gap| {
+                        gap.user_action.as_ref().is_some_and(|link| {
+                            link.user_action_request_id == request.user_action_request_id()
+                        })
+                    })
+                }) && !stale_request_ids.contains(request.user_action_request_id()) =>
+            {
+                return Err(StoreError::corrupt_owner_state_value(
+                    "user_action_requests",
+                    request.user_action_request_id(),
+                    "basis_status",
+                ));
+            }
+            UserActionBasisStatus::Current
+            | UserActionBasisStatus::Stale
+            | UserActionBasisStatus::Superseded => {}
+        }
+    }
+
+    Ok(graph)
 }
 
 fn shaping_application_by_id(

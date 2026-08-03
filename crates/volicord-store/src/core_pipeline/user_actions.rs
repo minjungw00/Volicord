@@ -559,8 +559,11 @@ impl CoreProjectStore<'_> {
         )
     }
 
-    /// Lists all user-action records for a Task in stable creation order.
-    pub fn user_action_records_for_task(
+    /// Lists immutable user-action history for a Task in stable creation order.
+    ///
+    /// This audit-oriented read includes current, stale, and superseded records.
+    /// Workflow progression must use `current_shaping_authority_graph` instead.
+    pub fn user_action_history_for_task(
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
@@ -1045,7 +1048,7 @@ pub(crate) fn effective_user_action_record(
     }))
 }
 
-fn effective_user_action_records_for_task(
+pub(crate) fn effective_user_action_records_for_task(
     conn: &Connection,
     project_id: &str,
     task_id: &str,

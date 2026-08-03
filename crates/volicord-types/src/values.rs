@@ -1167,10 +1167,6 @@ pub struct ShapingDecisionAuthorityFacts {
 pub fn evaluate_shaping_decision_authority(
     facts: ShapingDecisionAuthorityFacts,
 ) -> ShapingDecisionAuthorityState {
-    let identity_matches = facts.checkpoint_identity_matches
-        && facts.gap_identity_matches
-        && facts.policy_matches
-        && facts.task_mode_matches;
     let exact_accepted_resolution = facts.resolution_present
         && facts.resolution_identity_matches
         && facts.verified_user_channel
@@ -1179,26 +1175,35 @@ pub fn evaluate_shaping_decision_authority(
             facts.resolution_outcome,
             Some(JudgmentResolutionOutcome::Accepted)
         );
-
-    if !identity_matches {
-        return ShapingDecisionAuthorityState::Inconsistent;
-    }
-    if facts.effective_user_action_status == UserActionStatus::Stale {
-        return ShapingDecisionAuthorityState::Stale;
-    }
-    if facts.effective_user_action_status == UserActionStatus::Superseded {
+    if facts.effective_user_action_status == UserActionStatus::Superseded
+        || facts.application_authority_status
+            == Some(ShapingDecisionApplicationAuthorityStatus::Superseded)
+    {
         return ShapingDecisionAuthorityState::Superseded;
     }
-    if facts.application_present {
-        match facts.application_authority_status {
-            Some(ShapingDecisionApplicationAuthorityStatus::Stale) => {
-                return ShapingDecisionAuthorityState::Stale;
-            }
-            Some(ShapingDecisionApplicationAuthorityStatus::Superseded) => {
-                return ShapingDecisionAuthorityState::Superseded;
-            }
-            Some(ShapingDecisionApplicationAuthorityStatus::Current) | None => {}
+    if facts.effective_user_action_status == UserActionStatus::Stale
+        || facts.application_authority_status
+            == Some(ShapingDecisionApplicationAuthorityStatus::Stale)
+    {
+        if facts.application_authority_status
+            == Some(ShapingDecisionApplicationAuthorityStatus::Stale)
+            && (!facts.application_present
+                || !facts.application_identity_matches
+                || !facts.policy_matches
+                || !facts.task_mode_matches
+                || !exact_accepted_resolution)
+        {
+            return ShapingDecisionAuthorityState::Inconsistent;
         }
+        return ShapingDecisionAuthorityState::Stale;
+    }
+
+    let identity_matches = facts.checkpoint_identity_matches
+        && facts.gap_identity_matches
+        && facts.policy_matches
+        && facts.task_mode_matches;
+    if !identity_matches {
+        return ShapingDecisionAuthorityState::Inconsistent;
     }
 
     let current_compatible_basis = facts.request_basis_status == UserActionBasisStatus::Current
@@ -2814,9 +2819,28 @@ mod tests {
         let mut superseded = accepted;
         superseded.effective_user_action_status = UserActionStatus::Superseded;
         superseded.request_basis_status = UserActionBasisStatus::Superseded;
+        superseded.checkpoint_identity_matches = false;
+        superseded.gap_identity_matches = false;
         assert_eq!(
             evaluate_shaping_decision_authority(superseded),
             ShapingDecisionAuthorityState::Superseded
+        );
+
+        let mut stale_application = applied;
+        stale_application.application_authority_status =
+            Some(super::ShapingDecisionApplicationAuthorityStatus::Stale);
+        stale_application.checkpoint_identity_matches = false;
+        stale_application.application_lineage_current = false;
+        assert_eq!(
+            evaluate_shaping_decision_authority(stale_application),
+            ShapingDecisionAuthorityState::Stale
+        );
+
+        let mut malformed_stale_application = stale_application;
+        malformed_stale_application.application_identity_matches = false;
+        assert_eq!(
+            evaluate_shaping_decision_authority(malformed_stale_application),
+            ShapingDecisionAuthorityState::Inconsistent
         );
 
         for contradictory in [

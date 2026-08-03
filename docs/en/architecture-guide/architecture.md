@@ -207,8 +207,9 @@ strict Task-scoped aggregate and its checkpoint/gap/UserAction-link mutations.
 Core's `methods/record_shaping.rs`, `methods/update_scope.rs`, and
 `methods/advance_task.rs` consume that policy for semantic validation, exact
 decision application, atomic plan composition, and the explicit phase transition;
-`workflow_projection.rs` derives current tagged progression from Store-validated
-facts. The UserAction service constructs and validates linked authority, while
+Store exposes one typed current effective shaping authority graph plus explicitly
+historical UserAction and application reads. `workflow_projection.rs` derives
+current tagged progression only from that graph. The UserAction service constructs and validates linked authority, while
 Core alone coordinates that service output into the checkpoint transaction.
 Store exact-ID mutations reject the wrong owner or resolution and bind
 advance-owned application to the phase transition in one transaction.

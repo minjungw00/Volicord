@@ -141,6 +141,7 @@ pub use runs::{
     StoredRunSummary, StoredRunWriteTicketEffect, StoredRunWriteTicketEffectKind,
 };
 pub use shaping::{
+    CurrentShapingApplicationAuthority, CurrentShapingAuthorityGraph, CurrentShapingGapDecision,
     ShapingAdvanceApplication, ShapingCheckpointGapInsert, ShapingCheckpointGapRecord,
     ShapingCheckpointInsert, ShapingCheckpointMutation, ShapingCheckpointRecord,
     ShapingCheckpointUserActionInsert, ShapingCheckpointUserActionRecord,

@@ -52,7 +52,7 @@ pub trait UserActionStoreReader {
         now: &UtcTimestamp,
     ) -> StoreResult<Vec<StoredUserActionRecordSet>>;
 
-    fn user_action_records_for_task(
+    fn user_action_history_for_task(
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
@@ -126,12 +126,12 @@ impl UserActionStoreReader for CoreProjectStore<'_> {
         CoreProjectStore::pending_user_action_records(self, task_id, now)
     }
 
-    fn user_action_records_for_task(
+    fn user_action_history_for_task(
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
     ) -> StoreResult<Vec<StoredUserActionRecordSet>> {
-        CoreProjectStore::user_action_records_for_task(self, task_id, now)
+        CoreProjectStore::user_action_history_for_task(self, task_id, now)
     }
 
     fn pending_user_action_refs(

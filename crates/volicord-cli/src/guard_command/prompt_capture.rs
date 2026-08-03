@@ -163,7 +163,7 @@ pub(super) fn pending_agent_user_action_summaries(
     now: &UtcTimestamp,
 ) -> Result<Vec<GuardPendingUserActionSummary>, GuardCommandError> {
     let expected_actor = ActorSource::agent_connection(envelope.connection_id.clone());
-    let records = store.user_action_records_for_task(task_id, now)?;
+    let records = store.user_action_history_for_task(task_id, now)?;
     let mut summaries = Vec::new();
     for record in records {
         if record.status() != UserActionStatus::Pending

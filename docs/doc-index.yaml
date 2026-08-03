@@ -1405,8 +1405,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1677,8 +1677,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - agents
   - implementers
@@ -1691,6 +1691,7 @@ documents:
   - canonical Core UTC temporal-authority meaning and separation from state version
   - current scope and current Change Unit authority context
   - current shaping checkpoint lineage, structural readiness, and live-decision replacement prohibition
+  - current effective shaping authority graph and immutable shaping authority history participation
   - resolution/application separation and the mode-aware shaping decision application-owner matrix
   - Task-wide decision gates, advisor finalization, explicit Task advance, and tagged workflow progression
   - current Change Unit effect contract authority boundary
@@ -2516,8 +2517,8 @@ documents:
   - cli.command.connection.mode
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2914,8 +2915,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - storage implementers
   - maintainers
@@ -2925,6 +2926,7 @@ documents:
   canonical_for:
   - canonical persisted record families and storage locations
   - strict stored owner values and JSON placement
+  - Store-owned current effective shaping authority graph and separate immutable history reads
   - canonical project time-floor and commit timestamp relationships
   - Agent Connection, project membership, and Codex binding records
   - immutable Store-owned Connection integration-instance identity and physical recreation boundary

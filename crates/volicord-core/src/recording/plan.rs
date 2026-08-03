@@ -29,8 +29,8 @@ use volicord_store::core_pipeline::{
 };
 use volicord_types::schema::{PersistedEvidenceMetadata, StateRecordRef, StateSummary};
 use volicord_types::values::{
-    AcceptancePolicy, StateRecordKind, TaskControlLevel, UserActionKind, UserActionRequiredFor,
-    UtcTimestamp,
+    AcceptancePolicy, MethodName, StateRecordKind, TaskControlLevel, UserActionKind,
+    UserActionRequiredFor, UtcTimestamp,
 };
 use volicord_user_action_service::{
     pending_user_action_authorities, pending_user_action_refs_for_operation,
@@ -72,6 +72,36 @@ pub(crate) fn plan_record_run(
     let raw = RecordRunRawRequest::new(request, operation_now);
     let normalized = normalize_record_run_request(store, project_state, raw)?;
     let facts = acquire_record_run_facts(store, normalized, verified_invocation)?;
+    let checkpoint = store.current_shaping_checkpoint(&facts.normalized.raw.request.task_id)?;
+    let shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &facts.normalized.raw.request.project_id,
+        project_state.state_version,
+        &facts.task,
+        Some(&facts.change_unit),
+        checkpoint.as_ref(),
+        operation_now,
+    )?;
+    let shaping_recovery_owner = if !shaping_authority.recovery_required.is_empty() {
+        Some(MethodName::RecordShaping)
+    } else if !shaping_authority.awaiting_user.is_empty() {
+        Some(MethodName::ResolveUserAction)
+    } else if !shaping_authority.accepted_unapplied.is_empty()
+        || !shaping_authority.stale.is_empty()
+        || !shaping_authority.inconsistent.is_empty()
+    {
+        Some(MethodName::Status)
+    } else {
+        None
+    };
+    if let Some(recovery_owner) = shaping_recovery_owner {
+        return Err(RecordingError::Rejected(
+            RecordingRejection::DecisionRejected {
+                message: "current shaping authority blocks Run recording",
+                recovery_owner,
+            },
+        ));
+    }
     let evidence_target_plan =
         plan_record_run_evidence_targets(store, &facts.normalized.raw.request)?;
     let policy =
@@ -267,6 +297,7 @@ pub(super) fn decide_record_run_policy(
             RecordingRejection::DecisionRejected {
                 message:
                     "a current pending user action must be resolved before this Run can be recorded",
+                recovery_owner: MethodName::ResolveUserAction,
             },
         ));
     }

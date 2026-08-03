@@ -809,12 +809,177 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
         let successor_request_id = replaced.response_value["created_user_action_request_refs"][0]
             ["record_id"]
             .as_str()
-            .expect("successor request id");
+            .expect("successor request id")
+            .to_owned();
         assert_ne!(successor_request_id, request_id);
         assert_eq!(user_action_status(&harness, &request_id)?, "superseded");
         assert_eq!(
-            user_action_status(&harness, successor_request_id)?,
+            user_action_status(&harness, &successor_request_id)?,
             "pending"
+        );
+        let graph = harness.store()?.current_shaping_authority_graph(
+            &TaskId::new(&task_id),
+            &UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+        )?;
+        assert!(graph.current_gap_decisions.iter().all(|decision| {
+            decision.user_action.request().user_action_request_id() != request_id
+        }));
+        assert!(graph.current_gap_decisions.iter().any(|decision| {
+            decision.user_action.request().user_action_request_id() == successor_request_id
+        }));
+        assert!(harness
+            .store()?
+            .user_action_history_for_task(
+                &TaskId::new(&task_id),
+                &UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+            )?
+            .iter()
+            .any(|record| record.request().user_action_request_id() == request_id));
+
+        let accepted = harness.service.resolve_user_action(
+            resolve_user_action_request(
+                &format!("req_{label}_successor_accept"),
+                &format!("submission_{label}_successor_accept"),
+                None,
+                &task_id,
+                &successor_request_id,
+                "accept",
+            ),
+            invocation(OperationCategory::UserOnly),
+        )?;
+        assert_eq!(accepted.response_value["base"]["response_kind"], "result");
+        let accepted_workflow = accepted.response_value["state"]["workflow"].clone();
+        assert_ne!(
+            accepted_workflow["blocking_reason"], "inconsistent_authority_state",
+            "{label}"
+        );
+        assert!(accepted_workflow["required_refs"]
+            .as_array()
+            .expect("current required refs")
+            .iter()
+            .all(|reference| reference["record_id"] != request_id));
+        let status = harness.service.status(
+            StatusRequest {
+                envelope: envelope(
+                    &format!("req_{label}_successor_status"),
+                    None,
+                    false,
+                    None,
+                    Some(&task_id),
+                ),
+                include: status_include(),
+                continuity_page: None,
+            },
+            invocation(OperationCategory::Read),
+        )?;
+        let status_workflow = &status.response_value["active_task"]["workflow"];
+        for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+            assert_eq!(
+                accepted_workflow[field], status_workflow[field],
+                "{label} {field}"
+            );
+        }
+
+        let resolution_ref: StateRecordRef =
+            serde_json::from_value(accepted.response_value["user_action_resolution_ref"].clone())?;
+        let before_application = harness.counts()?;
+        let application = match (
+            gap_kind
+                .decision_policy_for_mode(if mode == RequestedMode::Advisor {
+                    TaskMode::Advisor
+                } else {
+                    TaskMode::Work
+                })
+                .expect("successor decision policy")
+                .application_owner,
+            mode,
+        ) {
+            (ShapingDecisionApplicationOwner::UpdateScope, _) => {
+                let mut request = update_scope_request(
+                    &format!("req_{label}_successor_apply"),
+                    &format!("idem_{label}_successor_apply"),
+                    false,
+                    Some(before_application.state_version),
+                    &task_id,
+                    ChangeUnitOperation::KeepCurrent,
+                    "Apply the current successor scope decision.",
+                );
+                request.related_scope_decision_refs = vec![resolution_ref.clone()];
+                harness
+                    .service
+                    .update_scope(request, invocation(OperationCategory::AgentWorkflow))?
+            }
+            (ShapingDecisionApplicationOwner::AdvanceTask, RequestedMode::Work) => {
+                harness.service.advance_task(
+                    AdvanceTaskRequest {
+                        envelope: envelope(
+                            &format!("req_{label}_successor_apply"),
+                            Some(&format!("idem_{label}_successor_apply")),
+                            false,
+                            Some(before_application.state_version),
+                            Some(&task_id),
+                        ),
+                        task_id: TaskId::new(&task_id),
+                        shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
+                            &replaced.response_value,
+                        )),
+                        change_unit_id: ChangeUnitId::new(&change_unit_id),
+                        scope_revision: 1,
+                        baseline_ref: BaselineRef::new("baseline_test"),
+                        user_action_resolution_ids: vec![UserActionResolutionId::new(
+                            resolution_ref.record_id.as_str(),
+                        )],
+                    },
+                    invocation(OperationCategory::AgentWorkflow),
+                )?
+            }
+            (ShapingDecisionApplicationOwner::RecordShaping, RequestedMode::Advisor) => {
+                harness.service.record_shaping(
+                    RecordShapingRequest {
+                        envelope: envelope(
+                            &format!("req_{label}_successor_apply"),
+                            Some(&format!("idem_{label}_successor_apply")),
+                            false,
+                            Some(before_application.state_version),
+                            Some(&task_id),
+                        ),
+                        task_id: TaskId::new(&task_id),
+                        operation: RecordShapingOperation::FinalizeAdvice {
+                            shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
+                                &replaced.response_value,
+                            )),
+                            change_unit_id: ChangeUnitId::new(&change_unit_id),
+                            scope_revision: 1,
+                            baseline_ref: BaselineRef::new("baseline_test"),
+                            user_action_resolution_ids: vec![UserActionResolutionId::new(
+                                resolution_ref.record_id.as_str(),
+                            )],
+                            result_summary: "The accepted successor decision is applied."
+                                .to_owned(),
+                            result_refs: Vec::new(),
+                            evidence_refs: Vec::new(),
+                            residual_risks: Vec::new(),
+                            recovery_constraints: Vec::new(),
+                        },
+                    },
+                    invocation(OperationCategory::AgentWorkflow),
+                )?
+            }
+            _ => unreachable!("unsupported successor application owner"),
+        };
+        assert_eq!(
+            application.response_value["base"]["response_kind"], "result",
+            "{label}"
+        );
+        let application_workflow = application
+            .response_value
+            .get("state")
+            .and_then(|state| state.get("workflow"))
+            .or_else(|| application.response_value.get("workflow"))
+            .expect("application workflow");
+        assert_ne!(
+            application_workflow["blocking_reason"], "inconsistent_authority_state",
+            "{label}"
         );
     }
     Ok(())
@@ -1180,19 +1345,152 @@ fn assert_expired_shaping_kind_recovery(
     let successor_request_id = replaced.response_value["created_user_action_request_refs"][0]
         ["record_id"]
         .as_str()
-        .expect("successor request id");
+        .expect("successor request id")
+        .to_owned();
     assert_ne!(successor_request_id, request_id);
     assert_eq!(user_action_status(&harness, &request_id)?, "superseded");
     assert_eq!(
         harness
             .store()?
             .user_action_record(
-                successor_request_id,
+                &successor_request_id,
                 &UtcTimestamp::parse("2026-06-18T00:02:00Z")?,
             )?
             .expect("successor user action")
             .status(),
         UserActionStatus::Pending
+    );
+    let graph = harness.store()?.current_shaping_authority_graph(
+        &TaskId::new(&task_id),
+        &UtcTimestamp::parse("2026-06-18T00:02:00Z")?,
+    )?;
+    assert!(graph
+        .current_gap_decisions
+        .iter()
+        .all(|decision| { decision.user_action.request().user_action_request_id() != request_id }));
+    assert!(graph.current_gap_decisions.iter().any(|decision| {
+        decision.user_action.request().user_action_request_id() == successor_request_id
+    }));
+    assert!(harness
+        .store()?
+        .user_action_history_for_task(
+            &TaskId::new(&task_id),
+            &UtcTimestamp::parse("2026-06-18T00:02:00Z")?,
+        )?
+        .iter()
+        .any(|record| record.request().user_action_request_id() == request_id));
+
+    let accepted = harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_expired_recovery_successor_accept",
+            "submission_expired_recovery_successor_accept",
+            None,
+            &task_id,
+            &successor_request_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    assert_eq!(accepted.response_value["base"]["response_kind"], "result");
+    let accepted_workflow = accepted.response_value["state"]["workflow"].clone();
+    assert_ne!(
+        accepted_workflow["blocking_reason"],
+        "inconsistent_authority_state"
+    );
+    assert!(accepted_workflow["required_refs"]
+        .as_array()
+        .expect("current required refs")
+        .iter()
+        .all(|reference| reference["record_id"] != request_id));
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_expired_recovery_successor_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+            continuity_page: None,
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let status_workflow = &status.response_value["active_task"]["workflow"];
+    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+        assert_eq!(accepted_workflow[field], status_workflow[field], "{field}");
+    }
+
+    let resolution_ref: StateRecordRef =
+        serde_json::from_value(accepted.response_value["user_action_resolution_ref"].clone())?;
+    let before_application = harness.counts()?;
+    let application_owner = gap_kind
+        .decision_policy_for_mode(TaskMode::Work)
+        .expect("successor decision policy")
+        .application_owner;
+    let application = match application_owner {
+        ShapingDecisionApplicationOwner::UpdateScope => {
+            let mut request = update_scope_request(
+                "req_expired_recovery_successor_apply",
+                "idem_expired_recovery_successor_apply",
+                false,
+                Some(before_application.state_version),
+                &task_id,
+                ChangeUnitOperation::KeepCurrent,
+                "Apply the current successor scope decision.",
+            );
+            request.related_scope_decision_refs = vec![resolution_ref];
+            harness
+                .service
+                .update_scope(request, invocation(OperationCategory::AgentWorkflow))?
+        }
+        ShapingDecisionApplicationOwner::AdvanceTask => harness.service.advance_task(
+            AdvanceTaskRequest {
+                envelope: envelope(
+                    "req_expired_recovery_successor_apply",
+                    Some("idem_expired_recovery_successor_apply"),
+                    false,
+                    Some(before_application.state_version),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
+                    &replaced.response_value,
+                )),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: vec![UserActionResolutionId::new(
+                    resolution_ref.record_id.as_str(),
+                )],
+            },
+            invocation(OperationCategory::AgentWorkflow),
+        )?,
+        ShapingDecisionApplicationOwner::RecordShaping => {
+            unreachable!("work-mode successor cannot require advisor finalization")
+        }
+    };
+    assert_eq!(
+        application.response_value["base"]["response_kind"],
+        "result"
+    );
+    let application_workflow = application
+        .response_value
+        .get("state")
+        .and_then(|state| state.get("workflow"))
+        .or_else(|| application.response_value.get("workflow"))
+        .expect("application workflow");
+    assert_eq!(
+        application_workflow["kind"],
+        match application_owner {
+            ShapingDecisionApplicationOwner::UpdateScope => "ready_for_implementation",
+            ShapingDecisionApplicationOwner::AdvanceTask => "implementation",
+            ShapingDecisionApplicationOwner::RecordShaping => unreachable!(),
+        }
+    );
+    assert_ne!(
+        application_workflow["blocking_reason"],
+        "inconsistent_authority_state"
     );
     Ok(())
 }
@@ -3606,10 +3904,21 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
             closed.response_value["authority_receipt"]["completion_claim_allowed"], true,
             "{label}"
         );
+        let terminal_graph = harness.store()?.current_shaping_authority_graph(
+            &TaskId::new(&task_id),
+            &UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+        )?;
+        assert!(terminal_graph.current_checkpoint.is_none(), "{label}");
+        assert!(terminal_graph.current_gap_decisions.is_empty(), "{label}");
+        assert!(terminal_graph.current_applications.is_empty(), "{label}");
+        assert!(
+            terminal_graph.stale_recovery_obligations.is_empty(),
+            "{label}"
+        );
         assert!(
             harness
                 .store()?
-                .shaping_decision_applications_for_task(&TaskId::new(&task_id))?
+                .shaping_decision_application_history_for_task(&TaskId::new(&task_id))?
                 .iter()
                 .all(|application| {
                     application.authority_status
@@ -3739,7 +4048,7 @@ fn product_and_technical_resolutions_need_no_scope_ref_before_change_unit_creati
 }
 
 #[test]
-fn task_wide_advance_authority_blocks_a_gap_free_checkpoint_and_all_effects(
+fn detached_direct_request_does_not_enter_current_work_shaping_authority(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = shaping_task(&harness, "task_wide")?;
@@ -3774,13 +4083,28 @@ fn task_wide_advance_authority_blocks_a_gap_free_checkpoint_and_all_effects(
     )?;
     assert_eq!(
         shaped.response_value["workflow"]["kind"],
-        "awaiting_user_action"
+        "ready_for_implementation"
     );
     assert!(shaped.response_value["workflow"]["required_refs"]
         .as_array()
         .expect("workflow refs")
         .iter()
-        .any(|record| record["record_id"] == request_id));
+        .all(|record| record["record_id"] != request_id));
+    let graph = harness.store()?.current_shaping_authority_graph(
+        &TaskId::new(&task_id),
+        &UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+    )?;
+    assert!(graph.current_gap_decisions.is_empty());
+    assert!(graph.current_applications.is_empty());
+    assert!(graph.stale_recovery_obligations.is_empty());
+    assert!(harness
+        .store()?
+        .user_action_history_for_task(
+            &TaskId::new(&task_id),
+            &UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+        )?
+        .iter()
+        .any(|record| record.request().user_action_request_id() == request_id));
 
     let status = harness.service.status(
         StatusRequest {
@@ -3792,16 +4116,12 @@ fn task_wide_advance_authority_blocks_a_gap_free_checkpoint_and_all_effects(
     )?;
     assert_eq!(
         status.response_value["active_task"]["workflow"]["kind"],
-        "awaiting_user_action"
-    );
-    assert_eq!(
-        status.response_value["active_task"]["workflow"]["blocking_reason"],
-        "inconsistent_authority_state"
+        "ready_for_implementation"
     );
 
     let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
     let before = harness.counts()?;
-    let rejected = harness.service.advance_task(
+    let advanced = harness.service.advance_task(
         AdvanceTaskRequest {
             envelope: envelope(
                 "req_task_wide_advance",
@@ -3819,32 +4139,34 @@ fn task_wide_advance_authority_blocks_a_gap_free_checkpoint_and_all_effects(
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(rejected.response_value["base"]["effect_kind"], "no_effect");
+    assert_eq!(advanced.response_value["base"]["response_kind"], "result");
     assert_eq!(
-        rejected.response_value["errors"][0]["code"],
-        "USER_DECISION_UNRESOLVED"
+        advanced.response_value["state"]["work_phase"],
+        "implementation"
     );
     assert_eq!(
-        rejected.response_value["errors"][0]["details"]["blockers"][0]["user_actions"][0]
-            ["user_action_request_ref"]["record_id"],
-        request_id
+        advanced.response_value["workflow"]["kind"],
+        "implementation"
     );
-    assert_eq!(harness.counts()?, before);
+    let after = harness.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(before.write_tickets, 0);
     assert_eq!(before.runs, 0);
+    assert_eq!(after.write_tickets, 0);
+    assert_eq!(after.runs, 0);
     assert_eq!(
         harness
             .store()?
             .task_record(&TaskId::new(&task_id))?
             .expect("task")
             .work_phase,
-        WorkPhase::Shaping
+        WorkPhase::Implementation
     );
     Ok(())
 }
 
 #[test]
-fn task_wide_advisor_authority_blocks_gap_free_finalization_and_all_effects(
+fn detached_direct_request_does_not_enter_current_advisor_shaping_authority(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
@@ -3883,21 +4205,32 @@ fn task_wide_advisor_authority_blocks_gap_free_finalization_and_all_effects(
     )?;
     assert_eq!(
         shaped.response_value["workflow"]["kind"],
-        "awaiting_user_action"
-    );
-    assert_eq!(
-        shaped.response_value["workflow"]["blocking_reason"],
-        "inconsistent_authority_state"
+        "ready_to_finalize_advice"
     );
     assert!(shaped.response_value["workflow"]["required_refs"]
         .as_array()
         .expect("workflow refs")
         .iter()
-        .any(|record| record["record_id"] == request_id));
+        .all(|record| record["record_id"] != request_id));
+    let graph = harness.store()?.current_shaping_authority_graph(
+        &TaskId::new(&task_id),
+        &UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+    )?;
+    assert!(graph.current_gap_decisions.is_empty());
+    assert!(graph.current_applications.is_empty());
+    assert!(graph.stale_recovery_obligations.is_empty());
+    assert!(harness
+        .store()?
+        .user_action_history_for_task(
+            &TaskId::new(&task_id),
+            &UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+        )?
+        .iter()
+        .any(|record| record.request().user_action_request_id() == request_id));
 
     let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
     let before = harness.counts()?;
-    let rejected = harness.service.record_shaping(
+    let finalized = harness.service.record_shaping(
         RecordShapingRequest {
             envelope: envelope(
                 "req_task_wide_advisor_finalize",
@@ -3913,7 +4246,7 @@ fn task_wide_advisor_authority_blocks_gap_free_finalization_and_all_effects(
                 scope_revision: 1,
                 baseline_ref: BaselineRef::new("baseline_test"),
                 user_action_resolution_ids: Vec::new(),
-                result_summary: "Detached authority must prevent advisor finalization.".to_owned(),
+                result_summary: "The current checkpoint advice is complete.".to_owned(),
                 result_refs: Vec::new(),
                 evidence_refs: Vec::new(),
                 residual_risks: Vec::new(),
@@ -3922,19 +4255,12 @@ fn task_wide_advisor_authority_blocks_gap_free_finalization_and_all_effects(
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(rejected.response_value["base"]["effect_kind"], "no_effect");
-    assert_eq!(
-        rejected.response_value["errors"][0]["code"],
-        "USER_DECISION_UNRESOLVED"
-    );
-    assert_eq!(
-        rejected.response_value["errors"][0]["details"]["workflow"]["blocking_reason"],
-        "inconsistent_authority_state"
-    );
-    assert_eq!(harness.counts()?, before);
+    assert_eq!(finalized.response_value["base"]["response_kind"], "result");
+    assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+    assert_eq!(harness.counts()?.state_version, before.state_version + 1);
     assert!(task_revision(&harness, &task_id)?
         .current_close_basis
-        .is_none());
+        .is_some());
     Ok(())
 }
 
