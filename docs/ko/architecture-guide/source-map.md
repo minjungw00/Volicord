@@ -1,6 +1,7 @@
 # 소스 맵
 
-명시적 checkpoint succession, 결정 owner별 적용, advisor finalization, Task 전체 shaping 진행은
+정확한 결정 outcome과 recovery, 명시적 checkpoint succession과 application carry-forward,
+결정 owner별 적용, advisor finalization, Task 전체 shaping 진행은
 `volicord-core::methods::{record_shaping,update_scope,advance_task}`,
 `volicord-core::workflow_projection`, `volicord-store::core_pipeline::shaping`, 정규 project
 schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
@@ -17,7 +18,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-types/src/methods.rs` | 공개 메서드 요청 및 결과 schema, 메서드-연산 매핑, 메서드 소유 `ChangeUnitUpdate` object member의 정확한 typed accessor. |
 | `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계, 불변 `WriteTicketPathScope`의 고유성과 분리 조건. 파일시스템은 관찰하지 않습니다. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
-| `crates/volicord-types/src/managed_guidance.rs` | 생성된 managed host guidance를 위한 폐쇄형 semantic fact입니다. 현재 checkpoint/UserAction 보존, 결정 적용 담당, 명시적 advance, 비쓰기 advisor finalization, User Channel resolution, tagged rejection, close-review 경계를 포함하며 digest는 프로젝트 integration revision에 참여합니다. |
+| `crates/volicord-types/src/managed_guidance.rs` | 생성된 managed host guidance를 위한 폐쇄형 semantic fact입니다. 현재 checkpoint/UserAction 보존, 호환되는 적용 결정의 명시적 carry-forward, 결정 적용 담당, 정확한 resolution outcome과 비권한 recovery, 명시적 advance, 비쓰기 advisor finalization, User Channel resolution, tagged rejection, close-review 경계를 포함하며 digest는 프로젝트 integration revision에 참여합니다. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
 | `crates/volicord-types/src/diagnostics.rs` | Lifecycle별 occurrence/current finding 타입, opaque `DiagnosticSubjectIdentity`, `CurrentDiagnosticKey` 정규 identity와 고정 digest ID 파생, lifecycle-aware `StoredDiagnosticFinding` 및 `StoredDiagnosticGraph`, 별도의 `DiagnosticLookupReport`, 공유 read-only `DiagnosticFinding` 및 선택한 Connection의 `DiagnosticReport` 타입, 안정적인 네임스페이스 code 검증, 담당 크레이트의 typed fact에 한도와 민감정보 제거를 적용하는 projection, cause graph 검증, 예기치 않은 실패 대체 표현. |
@@ -136,7 +137,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-user-action-service/src/relevance.rs` | Typed 의미 fact에 대한 순수한 현재 권한 및 연산 관련성 판단. 저장소 접근 없이 component 기반 민감 경로 관계를 평가합니다. |
 | `crates/volicord-user-action-service/src/body.rs` | 검증된 intent와 취득한 fact에서 정규 typed `UserActionRequestBody`와 `UserActionBasis`를 순수하게 구성합니다. |
 | `crates/volicord-user-action-service/src/identity.rs` | 안정적인 source identity, 중복 제거 metadata, 집중된 request identity 가용성 검사. |
-| `crates/volicord-user-action-service/src/service.rs` | Core 요청 조율 없이 typed 구성, artifact, target, pending, resolved authority fact를 Store에서 취득합니다. |
+| `crates/volicord-user-action-service/src/service.rs` | Core 요청 조율 없이 typed 구성, artifact, target, pending authority fact와 정확한 machine action 및 outcome을 포함한 resolved request fact를 Store에서 취득합니다. |
 | `crates/volicord-user-action-service/src/materialization.rs` | Caller가 제공한 연산 identity를 적용하고 정규 공개 request와 불변 resolution을 구성합니다. |
 | `crates/volicord-user-action-service/src/persistence.rs` | 정규 request 또는 resolution 값을 Store mutation 입력으로 정확하게 typed 매핑합니다. |
 | `crates/volicord-user-action-service/src/authority.rs` | 물리 영속 row 검증 없이 Store가 검증한 typed 레코드에서 정규화된 authority와 공개 request를 투영합니다. |

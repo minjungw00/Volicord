@@ -18,12 +18,13 @@ use volicord_types::ids::{
     ArtifactId, IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId,
 };
 use volicord_types::methods::{
-    ResolveUserActionRequest, ResolveUserActionResponse, StatusInclude, StatusRequest,
-    StatusResponse, StatusResult,
+    ResolveUserActionRequest, ResolveUserActionResponse, ResolveUserActionResult, StatusInclude,
+    StatusRequest, StatusResponse, StatusResult,
 };
 use volicord_types::schema::{
-    EvidenceTarget, SummaryCard, ToolEnvelope, ToolResultOrRejected, UserActionResolutionChoice,
-    UserActionResolutionForm, UserActionResolutionInput,
+    EvidenceTarget, PreviewableToolResponse, SummaryCard, ToolEnvelope, ToolResultOrRejected,
+    UserActionResolutionBody, UserActionResolutionChoice, UserActionResolutionForm,
+    UserActionResolutionInput, WorkflowProjection,
 };
 use volicord_types::values::{
     ArtifactAvailability, ArtifactIntegrityStatus, EvidenceRelevanceStatus, MethodName,
@@ -1159,10 +1160,69 @@ fn render_resolve_response(
     if output == OutputFormat::Json {
         return pretty_response(response);
     }
-    if response_kind(response) != Some("result") {
-        return render_rejected_or_json(response);
+    let typed_response =
+        serde_json::from_value::<ResolveUserActionResponse>(response.response_value.clone())
+            .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
+    match typed_response {
+        PreviewableToolResponse::Result(result) => Ok(render_resolve_result(&result)),
+        PreviewableToolResponse::Rejected(_) | PreviewableToolResponse::DryRun(_) => {
+            render_rejected_or_json(response)
+        }
     }
-    Ok("User action resolved\n".to_owned())
+}
+
+fn render_resolve_result(result: &ResolveUserActionResult) -> String {
+    let (resolution_line, authority_effect) = match &result.user_action_resolution.body {
+        UserActionResolutionBody::Choice {
+            resolution_outcome, ..
+        } => {
+            let outcome = match resolution_outcome {
+                volicord_types::values::JudgmentResolutionOutcome::Accepted => "accepted",
+                volicord_types::values::JudgmentResolutionOutcome::Rejected => "rejected",
+                volicord_types::values::JudgmentResolutionOutcome::Deferred => "deferred",
+            };
+            let authority_effect = if outcome == "accepted" {
+                "accepted outcome recorded; current semantic owner determines applicability"
+            } else {
+                "none"
+            };
+            (format!("Resolution outcome: {outcome}"), authority_effect)
+        }
+        UserActionResolutionBody::EvidenceObservation { .. } => (
+            "Resolution type: evidence_observation".to_owned(),
+            "not applicable",
+        ),
+    };
+    let workflow = &result.state.workflow;
+    let required_action = workflow
+        .required_action()
+        .map(|method| method.as_str())
+        .unwrap_or("none");
+    format!(
+        "User action resolution recorded\nRequest status: {}\n{}\nAuthority effect: {}\nShaping application: none (`volicord.resolve_user_action` does not apply shaping decisions)\nWorkflow: {}\nNext actor: {}\nRequired action: {}\n",
+        result.user_action_request.status.as_str(),
+        resolution_line,
+        authority_effect,
+        workflow_kind(workflow),
+        workflow.next_actor().as_str(),
+        required_action,
+    )
+}
+
+fn workflow_kind(workflow: &WorkflowProjection) -> &'static str {
+    match workflow {
+        WorkflowProjection::NoActiveTask { .. } => "no_active_task",
+        WorkflowProjection::ShapingRequired { .. } => "shaping_required",
+        WorkflowProjection::AwaitingUserAction { .. } => "awaiting_user_action",
+        WorkflowProjection::DecisionRecoveryRequired { .. } => "decision_recovery_required",
+        WorkflowProjection::ReadyToApplyDecisions { .. } => "ready_to_apply_decisions",
+        WorkflowProjection::ReadyForChangeUnit { .. } => "ready_for_change_unit",
+        WorkflowProjection::ReadyToFinalizeAdvice { .. } => "ready_to_finalize_advice",
+        WorkflowProjection::ReadyForImplementation { .. } => "ready_for_implementation",
+        WorkflowProjection::Implementation { .. } => "implementation",
+        WorkflowProjection::CloseReview { .. } => "close_review",
+        WorkflowProjection::Terminal { .. } => "terminal",
+    }
 }
 
 fn render_user_channel_availability_text(
@@ -1202,10 +1262,6 @@ fn render_rejected_or_json(response: &PipelineResponse) -> Result<String, UserCo
     } else {
         pretty_response(response)
     }
-}
-
-fn response_kind(response: &PipelineResponse) -> Option<&str> {
-    response.response_value["base"]["response_kind"].as_str()
 }
 
 fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {
@@ -1457,6 +1513,31 @@ mod tests {
             &core_fixture.product_repo_path(),
         )?;
         Ok(serde_json::from_str(&output)?)
+    }
+
+    fn resolve_shaping_choice_text(
+        fixture: &PendingShapingChoiceFixture,
+        choice: &str,
+    ) -> Result<String, UserCommandError> {
+        let core_fixture = fixture.fixture.core();
+        command_inbox_resolve(
+            InboxResolveArgs {
+                user_action_request_id: fixture.request_id.clone(),
+                choice: Some(choice.to_owned()),
+                note: None,
+                criterion: None,
+                claim: None,
+                artifact: Vec::new(),
+                summary: None,
+                contradicted: false,
+                repo: Some(core_fixture.product_repo_path()),
+                json: false,
+            },
+            |name| {
+                (name == "VOLICORD_HOME").then(|| OsString::from(core_fixture.runtime_home_path()))
+            },
+            &core_fixture.product_repo_path(),
+        )
     }
 
     fn pending_choice_fixture(prefix: &str) -> Result<PendingChoiceFixture, Box<dyn Error>> {
@@ -2023,6 +2104,50 @@ mod tests {
     }
 
     #[test]
+    fn inbox_rejected_choice_text_surfaces_no_authority_and_current_workflow(
+    ) -> Result<(), Box<dyn Error>> {
+        let pending = pending_choice_fixture_for_kind(
+            "cli-inbox-rejected-choice-text",
+            JudgmentKind::ScopeDecision,
+        )?;
+
+        let output = resolve_choice(&pending, false, "reject")?;
+
+        assert!(output.contains("Request status: resolved"));
+        assert!(output.contains("Resolution outcome: rejected"));
+        assert!(output.contains("Authority effect: none"));
+        assert!(output.contains("Shaping application: none"));
+        assert!(
+            output.contains("Workflow: shaping_required"),
+            "unexpected CLI resolution output: {output}"
+        );
+        assert!(output.contains("Next actor: agent"));
+        assert!(output.contains("Required action: volicord.record_shaping"));
+        Ok(())
+    }
+
+    #[test]
+    fn shaping_rejection_text_surfaces_no_authority_and_exact_recovery_owner(
+    ) -> Result<(), Box<dyn Error>> {
+        let pending = pending_shaping_choice_fixture(
+            "cli_shaping_scope_rejected_text",
+            RequestedMode::Work,
+            JudgmentKind::ScopeDecision,
+        )?;
+
+        let output = resolve_shaping_choice_text(&pending, "reject")?;
+
+        assert!(output.contains("Request status: resolved"));
+        assert!(output.contains("Resolution outcome: rejected"));
+        assert!(output.contains("Authority effect: none"));
+        assert!(output.contains("Shaping application: none"));
+        assert!(output.contains("Workflow: decision_recovery_required"));
+        assert!(output.contains("Next actor: agent"));
+        assert!(output.contains("Required action: volicord.record_shaping"));
+        Ok(())
+    }
+
+    #[test]
     fn shaping_cli_outcome_matrix_matches_immediate_status_and_exact_owner(
     ) -> Result<(), Box<dyn Error>> {
         for mode in [RequestedMode::Work, RequestedMode::Advisor] {
@@ -2402,7 +2527,15 @@ mod tests {
 
         let output = resolve_choice(&pending, false, "accept")?;
 
-        assert_eq!(output, "User action resolved\n");
+        assert!(output.contains("Request status: resolved"));
+        assert!(output.contains("Resolution outcome: accepted"));
+        assert!(output.contains(
+            "Authority effect: accepted outcome recorded; current semantic owner determines applicability"
+        ));
+        assert!(output.contains("Shaping application: none"));
+        assert!(output.contains("Workflow:"));
+        assert!(output.contains("Next actor:"));
+        assert!(output.contains("Required action:"));
         assert_eq!(
             pending.fixture.user_action_status(&pending.request_id)?,
             "resolved"

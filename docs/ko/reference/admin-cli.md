@@ -2120,6 +2120,27 @@ command fallback이 들어갈 수 없습니다. `requirement`는 required/option
 `UserActionResolutionForm`과 후보는
 [API 사용자 행동 스키마](api/schema-user-action.md#resolution-form)가 담당합니다.
 
+성공한 `inbox resolve` text 응답에서 CLI는 동일한 typed result를 직접 표시합니다. 이
+표시는 terminal request status, 정확한 resolution outcome, shaping 결정 적용, 현재
+workflow를 서로 구분합니다.
+
+- `Request status`는 유효 `UserActionStatus`입니다.
+- Choice resolution은 `Resolution outcome`을 정확히 `accepted`, `rejected`,
+  `deferred` 중 하나로 표시합니다. Evidence observation은 그 대신 정확한 resolution
+  type을 표시합니다.
+- `Authority effect`는 accepted outcome도 현재 semantic owner의 적용 판단을 따라야
+  함을 표시하며, rejected 또는 deferred outcome에는 `none`을 표시합니다.
+- 이 명령의 `Shaping application`은 항상 `none`입니다.
+  `volicord.resolve_user_action`은 resolution을 기록할 뿐 shaping 결정을 적용하지 않기
+  때문입니다.
+- `Workflow`, `Next actor`, `Required action`은 반환된 tagged
+  `WorkflowProjection`에서 가져옵니다. CLI는 request status나 outcome만으로 progression을
+  추론하지 않습니다.
+
+따라서 rejected 또는 deferred choice는 성공한 불변 resolution record이지만 accepted
+authority나 shaping 적용으로 표시되지 않습니다. JSON 출력은 정확한 typed public method
+result를 그대로 유지합니다.
+
 Workflow presentation은 같은 owner를 사용해 adapter-neutral channel instruction을
 만듭니다.
 

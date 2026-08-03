@@ -1,7 +1,8 @@
 # Source Map
 
-Explicit checkpoint succession, decision-owner application, advisor
-finalization, and Task-wide shaping progression are implemented in
+Exact decision outcomes and recovery, explicit checkpoint succession and
+application carry-forward, decision-owner application, advisor finalization,
+and Task-wide shaping progression are implemented in
 `volicord-core::methods::{record_shaping,update_scope,advance_task}`,
 `volicord-core::workflow_projection`,
 `volicord-store::core_pipeline::shaping`, the canonical project schema, shared
@@ -19,7 +20,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/methods.rs` | Public method request and result schemas, method-operation mappings, and exact typed accessors for method-owned `ChangeUnitUpdate` object members. |
 | `crates/volicord-types/src/product_path.rs` | Platform-neutral Product Repository relative-path value, lexical validation, pure component-aware containment relationships, and immutable `WriteTicketPathScope` uniqueness and disjointness; no filesystem observation. |
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
-| `crates/volicord-types/src/managed_guidance.rs` | Closed semantic facts for generated managed-host guidance: current checkpoint/UserAction preservation, decision application ownership, explicit advance, non-write advisor finalization, User Channel resolution, tagged rejection, and close-review boundaries. Its digest participates in the project integration revision. |
+| `crates/volicord-types/src/managed_guidance.rs` | Closed semantic facts for generated managed-host guidance: current checkpoint/UserAction preservation, explicit carry-forward of compatible applied decisions, decision application ownership, exact resolution outcomes and non-authority recovery, explicit advance, non-write advisor finalization, User Channel resolution, tagged rejection, and close-review boundaries. Its digest participates in the project integration revision. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
 | `crates/volicord-types/src/diagnostics.rs` | Lifecycle-specific occurrence/current finding types, opaque `DiagnosticSubjectIdentity`, `CurrentDiagnosticKey` canonical identity and fixed digest ID derivation, lifecycle-aware `StoredDiagnosticFinding` and `StoredDiagnosticGraph`, separate `DiagnosticLookupReport`, shared read-only `DiagnosticFinding` and selected-Connection `DiagnosticReport` types, stable namespaced-code validation, bounded redacting projection of typed owner facts, cause-graph validation, and unexpected-failure fallback. |
@@ -138,7 +139,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-user-action-service/src/relevance.rs` | Pure current-authority and operation-relevance decisions over typed semantic facts, including component-aware sensitive-path relationships without repository access. |
 | `crates/volicord-user-action-service/src/body.rs` | Pure construction of canonical typed `UserActionRequestBody` and `UserActionBasis` values from validated intent and acquired facts. |
 | `crates/volicord-user-action-service/src/identity.rs` | Stable source identity, deduplication metadata, and focused request-identity availability checks. |
-| `crates/volicord-user-action-service/src/service.rs` | Store-backed acquisition of typed construction, artifact, target, pending, and resolved authority facts without Core request orchestration. |
+| `crates/volicord-user-action-service/src/service.rs` | Store-backed acquisition of typed construction, artifact, target, pending-authority, and resolved request facts, including exact machine action and outcome, without Core request orchestration. |
 | `crates/volicord-user-action-service/src/materialization.rs` | Application of caller-supplied operation identity and construction of canonical public requests and immutable resolutions. |
 | `crates/volicord-user-action-service/src/persistence.rs` | Exact typed mapping from canonical request or resolution values to Store mutation inputs. |
 | `crates/volicord-user-action-service/src/authority.rs` | Normalized authority and public request projection from Store-validated typed records without physical persisted-row validation. |

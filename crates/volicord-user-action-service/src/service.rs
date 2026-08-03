@@ -250,8 +250,9 @@ fn artifact_validation_error(field: &'static str) -> UserActionServiceError {
     ))
 }
 
-/// Loads resolved authority facts for one judgment kind.
-pub fn resolved_user_action_authorities(
+/// Loads resolved request facts, including exact machine action and outcome,
+/// for one judgment kind.
+pub fn resolved_user_action_facts(
     store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     judgment_kind: JudgmentKind,
@@ -304,8 +305,8 @@ pub fn pending_user_action_refs_for_operation(
     )
 }
 
-/// Loads every resolved UserAction authority for a Task.
-pub fn resolved_user_action_authorities_for_all_kinds(
+/// Loads every resolved UserAction request fact for a Task.
+pub fn resolved_user_action_facts_for_all_kinds(
     store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     now: &UtcTimestamp,

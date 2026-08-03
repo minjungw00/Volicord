@@ -22,6 +22,11 @@ pub(crate) fn server_instructions() -> String {
         AgentToolId::GET_OPERATION_RESULT.wire_name(),
         AgentToolId::STATUS.wire_name(),
     )
+    .replacen(
+        "Inspect the exact User Channel resolution outcome.",
+        "When revising a checkpoint, carry every current compatible applied decision explicitly through carry_forward_application_refs; never replace a checkpoint to discard applied authority. Inspect the exact User Channel resolution outcome.",
+        1,
+    )
 }
 pub(crate) const TRANSPORT_DISCLOSURE_TEXT: &str = "Does not prove: public API availability, authentication service status, security boundary, OS sandboxing, network isolation, write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
 
@@ -44,6 +49,9 @@ mod tests {
             "tagged workflow's required_action",
             "current shaping checkpoint and linked UserAction authority",
             "accepted-but-unapplied decision",
+            "carry every current compatible applied decision explicitly",
+            "carry_forward_application_refs",
+            "never replace a checkpoint to discard applied authority",
             "Inspect the exact User Channel resolution outcome",
             "apply only accepted, current, compatible authority",
             "through its application_owner",

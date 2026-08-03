@@ -2807,7 +2807,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
                 retired_user_action_request_refs: Vec::new(),
                 carry_forward_application_refs: Vec::new(),
             },
-            "Resolved authority is not yet applied.",
+            "Accepted shaping authority is not yet applied.",
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -3248,7 +3248,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                         retired_user_action_request_refs: Vec::new(),
                         carry_forward_application_refs: Vec::new(),
                     },
-                    "Resolved authority remains live until its semantic owner applies it.",
+                    "Accepted shaping authority remains live until its semantic owner applies it.",
                 ),
                 invocation(OperationCategory::AgentWorkflow),
             )?;

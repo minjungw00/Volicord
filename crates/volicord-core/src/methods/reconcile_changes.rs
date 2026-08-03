@@ -70,7 +70,7 @@ use volicord_types::values::{
 use volicord_user_action_service::{
     agent_safe_pending_user_action_summaries, construct_user_action,
     materialize_user_action_request, pending_user_action_authorities,
-    pending_user_action_instruction, resolved_user_action_authorities_for_all_kinds,
+    pending_user_action_instruction, resolved_user_action_facts_for_all_kinds,
     user_action_authority_from_state, user_action_has_current_basis,
     verified_user_channel_provenance, UserActionAuthority, UserActionConstructionContext,
     UserActionConstructionInput, UserActionIntent, UserActionMaterializationInput,
@@ -236,8 +236,8 @@ fn plan_reconcile_changes(
         .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let unresolved = unresolved_records_for_request(store, verified_invocation, &request)?;
     let request_by_change = resolution_requests_by_change(&request.resolution_requests);
-    let resolved_authorities =
-        resolved_user_action_authorities_for_all_kinds(store, &request.task_id, now).map_err(
+    let resolved_action_facts =
+        resolved_user_action_facts_for_all_kinds(store, &request.task_id, now).map_err(
             |error| user_action_service_plan_error(&request.envelope, project_state, error),
         )?;
     let existing_pending_authorities =
@@ -263,7 +263,7 @@ fn plan_reconcile_changes(
                 requested,
                 record,
                 &unrecorded_ref,
-                &resolved_authorities,
+                &resolved_action_facts,
                 &request,
             )? {
                 rejected_resolution_requests.push(rejection);
@@ -274,7 +274,7 @@ fn plan_reconcile_changes(
                         .as_ref()
                         .expect("validated accepted_by_user request has a resolution id"),
                     &unrecorded_ref,
-                    &resolved_authorities,
+                    &resolved_action_facts,
                     &request.task_id,
                 )
                 .expect("validated accepted_by_user request has accepted authority");
@@ -307,7 +307,7 @@ fn plan_reconcile_changes(
             deterministic_resolution(record, &runs, &write_tickets)?.or_else(|| {
                 accepted_resolution_candidate(
                     &unrecorded_ref,
-                    &resolved_authorities,
+                    &resolved_action_facts,
                     &request.task_id,
                 )
             })

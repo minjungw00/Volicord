@@ -121,7 +121,7 @@ use volicord_user_action_service::{
     materialize_user_action_request, materialize_user_action_resolution,
     pending_user_action_authorities, projected_user_action_lifecycle_phase,
     resolution_input_matches_body as domain_resolution_input_matches_body,
-    resolved_user_action_authorities_for_all_kinds, user_action_authority_from_record,
+    resolved_user_action_facts_for_all_kinds, user_action_authority_from_record,
     user_action_from_record, user_action_resolution_from_record as resolution_from_stored_record,
     validate_current_resolution_basis as validate_domain_resolution_basis, UserActionAuthority,
     UserActionConstructionContext, UserActionConstructionInput, UserActionIntent,
@@ -451,9 +451,8 @@ fn projected_user_action_state(
         pending_authorities
             .retain(|authority| &authority.user_action_request_id != resolved_request_id);
     }
-    let mut resolved_authorities =
-        resolved_user_action_authorities_for_all_kinds(store, &task_id, now)
-            .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
+    let mut resolved_action_facts = resolved_user_action_facts_for_all_kinds(store, &task_id, now)
+        .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
     if let Some(authority) = projected_authority.as_ref() {
         match authority.status {
             UserActionStatus::Pending => {
@@ -463,10 +462,10 @@ fn projected_user_action_state(
                 pending_authorities.push(authority.clone());
             }
             UserActionStatus::Resolved => {
-                resolved_authorities.retain(|existing| {
+                resolved_action_facts.retain(|existing| {
                     existing.user_action_request_id != authority.user_action_request_id
                 });
-                resolved_authorities.push(authority.clone());
+                resolved_action_facts.push(authority.clone());
             }
             UserActionStatus::Stale | UserActionStatus::Superseded | UserActionStatus::Expired => {}
         }
@@ -492,7 +491,7 @@ fn projected_user_action_state(
             ),
             pending_authorities,
         ),
-        resolved_authorities,
+        resolved_action_facts,
     );
     let close_plan = plan_projected_close_readiness(
         store,

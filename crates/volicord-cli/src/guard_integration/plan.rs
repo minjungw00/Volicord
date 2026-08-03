@@ -443,6 +443,11 @@ fn agents_guidance_block() -> String {
         IntegrationVerificationWorkflowState::REPAIR_REQUIRED_KIND,
         IntegrationVerificationWorkflowState::COMPLETE_KIND,
     )
+    .replacen(
+        "- Inspect the exact User Channel resolution outcome.",
+        "- Carry every current compatible applied decision explicitly through `carry_forward_application_refs` when revising a checkpoint. Never replace a checkpoint to discard applied authority.\n- Inspect the exact User Channel resolution outcome.",
+        1,
+    )
 }
 
 #[cfg(test)]
@@ -544,6 +549,9 @@ mod tests {
             "current shaping checkpoint",
             "Never replace the current shaping checkpoint",
             "accepted-but-unapplied decision",
+            "Carry every current compatible applied decision explicitly",
+            "`carry_forward_application_refs`",
+            "Never replace a checkpoint to discard applied authority",
             "Inspect the exact User Channel resolution outcome",
             "apply only accepted, current, compatible authority",
             "through its `application_owner`",

@@ -2282,6 +2282,27 @@ directly and does not parse an intermediate JSON tree. The semantic
 `UserActionResolutionForm` and its candidates remain owned by
 [API User Action Schemas](api/schema-user-action.md#resolution-form).
 
+For a successful `inbox resolve` text response, the CLI renders the same typed
+result directly. It separates the terminal request status from the exact
+resolution outcome, shaping-decision application, and current workflow:
+
+- `Request status` is the effective `UserActionStatus`.
+- A choice resolution renders `Resolution outcome` as exactly `accepted`,
+  `rejected`, or `deferred`. An evidence observation instead renders its exact
+  resolution type.
+- `Authority effect` says that an accepted outcome remains subject to its
+  current semantic owner, or says `none` for a rejected or deferred outcome.
+- `Shaping application` is always `none` for this command because
+  `volicord.resolve_user_action` records a resolution and never applies a
+  shaping decision.
+- `Workflow`, `Next actor`, and `Required action` come from the returned tagged
+  `WorkflowProjection`; the CLI does not infer progression from request status
+  or outcome alone.
+
+Consequently, a rejected or deferred choice is a successful immutable
+resolution record but is never displayed as accepted authority or as a shaping
+application. JSON output remains the exact typed public method result.
+
 Workflow presentation uses the same owner to build adapter-neutral channel
 instructions:
 

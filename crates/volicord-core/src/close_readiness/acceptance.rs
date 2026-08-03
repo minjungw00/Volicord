@@ -22,7 +22,7 @@ use volicord_types::values::{
 };
 use volicord_user_action_service::{
     current_cancellation_authority, current_sensitive_approval, pending_user_action_authorities,
-    resolved_user_action_authorities, user_action_blocks_operation, user_action_has_current_basis,
+    resolved_user_action_facts, user_action_blocks_operation, user_action_has_current_basis,
     user_action_required_for, verified_user_channel_provenance, CancellationAuthorityRequirement,
     SensitiveApprovalRequirement, UserActionAuthority, UserActionOperation,
     UserActionOperationContext,
@@ -313,7 +313,7 @@ fn resolved_judgment_authorities_for_context(
         return Ok(authorities.clone());
     }
     let authorities =
-        resolved_user_action_authorities(store, &request.task_id, judgment_kind, &context.now)?;
+        resolved_user_action_facts(store, &request.task_id, judgment_kind, &context.now)?;
     context
         .stored_resolved_judgment_authorities
         .insert(judgment_kind, authorities.clone());

@@ -225,8 +225,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-08-01'
-  last_verified_on: '2026-08-01'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -243,13 +243,13 @@ shared_documents:
 - doc_id: terminology.map
   path: docs/terminology-map.yaml
   kind: maintenance
-  summary: Structured terminology metadata, normalized write-authority terminology, and
-    identifier presentation and preservation policy.
+  summary: Structured terminology metadata, normalized write-authority and shaping-decision
+    lifecycle terminology, and identifier presentation and preservation policy.
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-31'
-  last_verified_on: '2026-07-31'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   applies_to:
   - terminology_map_schema
   primary_audience:
@@ -268,6 +268,8 @@ shared_documents:
   - Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, Volicord Runtime Home, Product Repository, Agent Connection, Connection Projects, and User Channel terminology routing
   - write ticket, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
+  - shaping request status, exact decision outcome, recovery, first-class application,
+    coordinate validity, checkpoint carry-forward, and authority invalidation distinctions
   - actor_source and operation_category terminology distinctions
   - natural Korean terminology guidance
 documents:
@@ -709,14 +711,15 @@ documents:
   path_ko: docs/ko/architecture-guide/source-map.md
   kind: explanation
   summary: Source path responsibility map for current Rust workspace modules, including checkpoint
-    succession, decision-owner application, advisor finalization, tagged workflow authority, storage
-    aggregates, managed-guidance revision identity, and MCP routing.
+    succession, exact decision outcomes, application carry-forward and ownership, advisor
+    finalization, tagged workflow authority, storage aggregates, managed-guidance revision identity,
+    and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1752,7 +1755,8 @@ documents:
   path_en: docs/en/reference/admin-cli.md
   path_ko: docs/ko/reference/admin-cli.md
   kind: reference
-  summary: Reference contract for administrative CLI behavior and local bootstrap commands.
+  summary: Reference contract for administrative CLI behavior, exact UserAction outcome and
+    workflow presentation, and local bootstrap commands.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -1775,8 +1779,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -1798,7 +1802,8 @@ documents:
   - exact read-only current `ConnectionListReport` membership projection, row-local unavailable states, and list exit routing
   - managed stdio MCP launch and preflight commands
   - exact typed CLI inbox JSON document, channel and capture-path schemas, listing,
-    and CLI-only UserAction resolution
+    CLI-only UserAction resolution, and text separation of request status, exact outcome,
+    authority effect, non-application, and tagged workflow
   - bounded finding and runtime-session diagnostic lookup commands, workflow metrics,
     privacy-footprint diagnostic projection, policy, authority-bundle export, and
     change-reconciliation commands
@@ -3145,13 +3150,14 @@ documents:
   path_ko: docs/ko/reference/template-bodies.md
   kind: reference
   summary: Reference contract for exact template body ownership, including managed explicit-shaping,
-    UserAction, Task advance, rejection, and close-review guidance.
+    exact decision outcome and application carry-forward, UserAction, Task advance, rejection, and
+    close-review guidance.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - implementers
   - maintainers

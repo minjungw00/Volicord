@@ -60,7 +60,7 @@ pub use resolution::{
 };
 pub use service::{
     construct_user_action, pending_user_action_authorities, pending_user_action_refs_for_operation,
-    projected_pending_user_action_refs, resolved_user_action_authorities,
-    resolved_user_action_authorities_for_all_kinds,
+    projected_pending_user_action_refs, resolved_user_action_facts,
+    resolved_user_action_facts_for_all_kinds,
 };
 pub use summary::{agent_safe_pending_user_action_summaries, pending_user_action_instruction};

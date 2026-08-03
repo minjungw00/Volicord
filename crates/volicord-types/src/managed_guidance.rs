@@ -10,6 +10,7 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "follow_tagged_required_action",
     "preserve_current_checkpoint_and_user_action_authority",
     "checkpoint_replacement_forbidden_while_decision_live",
+    "compatible_applied_decisions_require_explicit_checkpoint_carry_forward",
     "resolution_does_not_apply_shaping_decision",
     "inspect_exact_shaping_resolution_outcome",
     "only_accepted_current_shaping_authority_is_applicable",
