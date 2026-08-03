@@ -512,17 +512,18 @@ fn validate_task_aggregate(conn: &Connection, task: TaskRecord) -> StoreResult<T
                     change_unit.effect_contract.as_ref(),
                 )
         });
-        let applied_ids = {
+        let application_ids = {
             let mut statement = conn.prepare(
-                "SELECT l.user_action_resolution_id
-                   FROM shaping_checkpoint_gaps AS g
-                   JOIN shaping_checkpoint_user_actions AS l
-                     ON l.project_id = g.project_id
-                    AND l.shaping_checkpoint_id = g.shaping_checkpoint_id
-                    AND l.shaping_gap_id = g.shaping_gap_id
-                  WHERE g.project_id = ?1 AND g.shaping_checkpoint_id = ?2
-                    AND g.status = 'applied' AND l.user_action_resolution_id IS NOT NULL
-                  ORDER BY l.user_action_resolution_id",
+                "SELECT application.shaping_decision_application_id
+                   FROM shaping_checkpoint_applications AS link
+                   JOIN shaping_decision_applications AS application
+                     ON application.project_id = link.project_id
+                    AND application.task_id = link.task_id
+                    AND application.shaping_decision_application_id = link.shaping_decision_application_id
+                  WHERE link.project_id = ?1
+                    AND link.shaping_checkpoint_id = ?2
+                    AND application.authority_status = 'current'
+                  ORDER BY application.shaping_decision_application_id",
             )?;
             let rows = statement
                 .query_map(params![task.project_id, checkpoint_id], |row| {
@@ -532,21 +533,21 @@ fn validate_task_aggregate(conn: &Connection, task: TaskRecord) -> StoreResult<T
             rows
         };
         let mut basis_ids = basis
-            .applied_user_action_resolution_refs
+            .shaping_decision_application_refs
             .iter()
             .map(|reference| reference.record_id.as_str().to_owned())
             .collect::<Vec<_>>();
         basis_ids.sort();
-        if !checkpoint_matches || !change_unit_matches || applied_ids != basis_ids {
+        if !checkpoint_matches || !change_unit_matches || application_ids != basis_ids {
             return Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
-                detail: "advisor close basis does not match its current Change Unit, checkpoint, or applied resolutions"
+                detail: "advisor close basis does not match its current Change Unit, checkpoint, or shaping decision applications"
                     .to_owned(),
             });
         }
     } else if basis.source_run_ref.is_none()
         || basis.shaping_checkpoint_ref.is_some()
-        || !basis.applied_user_action_resolution_refs.is_empty()
+        || !basis.shaping_decision_application_refs.is_empty()
     {
         return Err(StoreError::SchemaInvariant {
             database_kind: "project_state",
@@ -1115,6 +1116,7 @@ impl MutationContext<'_> {
 
     fn supersede_task(&mut self, task_id: &str) -> StoreResult<()> {
         validate_identifier("task_id", task_id)?;
+        self.supersede_task_shaping_applications(task_id)?;
         self.tx.execute(
             "UPDATE tasks
                 SET lifecycle_phase = 'superseded',
@@ -1131,6 +1133,7 @@ impl MutationContext<'_> {
 
     fn close_task(&mut self, input: &TaskCloseUpdate) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
+        self.supersede_task_shaping_applications(&input.task_id)?;
         let lifecycle_phase = encode_closed_value("tasks.lifecycle_phase", &input.lifecycle_phase)?;
         let result = encode_closed_value("tasks.result", &input.result)?;
         let close_summary_json =

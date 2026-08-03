@@ -1,10 +1,11 @@
 # 에이전트 가이드
 
 advisor와 work Task는 shaping에서 시작합니다. 현재 checkpoint가 없으면 첫 checkpoint 생성을
-명시하고, 연결된 live 결정이 남아 있지 않을 때만 정확한 현재 checkpoint 교체를 명시하여
+명시하고, 현재 호환 application ref를 모두 정확히 carry-forward하여 현재 checkpoint 교체를 명시하고
 분석을 `volicord.record_shaping`으로 기록합니다. 실행 가능한
 사용자 소유 선택지를 제시하기 전에 현재 `UserActionRequest`를 만들며, 해결은 User
-Channel에서만 받아들입니다. 결정은 현재 resolution 참조로 적용하고, Change Unit 생성이나
+Channel에서만 받아들입니다. 결정은 현재 resolution 참조로 적용하고 반환된
+`ShapingDecisionApplication` ref를 유지하며, Change Unit 생성이나
 갱신은 단계를 바꾸지 않습니다. advisor는 비쓰기 Change Unit만 사용하며
 `ready_to_finalize_advice` 뒤에 `volicord.record_shaping`의 advisor finalization을 호출한
 다음 close review로 갑니다.
@@ -177,9 +178,11 @@ Resolution은 shaping 결정을 적용하지 않습니다. 정확한 outcome을 
 Accepted scope gap은 `volicord.update_scope`로 보냅니다. work의 accepted 제품·기술·민감
 gap은 `volicord.advance_task`에 제공합니다. advisor에서는 정확한 accepted resolution을 보존하다가
 `ready_to_finalize_advice`가 요구하는 `volicord.record_shaping` advisor finalization에
-제공합니다. Finalization은 해당
-결정을 적용하고 결과와 evidence/risk lineage를 기록하며 checkpoint를 보존하고 close
-basis를 만듭니다. Scope와 다른 결정이 함께 있으면 scope gap만 먼저 적용하고 다른 gap은
+제공합니다. Finalization은 해당 결정의 영속 application을 만들고 결과와 evidence/risk
+lineage를 기록하며 checkpoint를 보존하고 정확한 application ref가 있는 close basis를
+만듭니다. 호환되는 자문 수정은 해당 application ref를 successor checkpoint로
+carry-forward하며 자문 문구만 바뀌었다는 이유로 같은 판단을 다시 요청하지 않습니다.
+Scope와 다른 결정이 함께 있으면 scope gap만 먼저 적용하고 다른 gap은
 모드별 owner에 남깁니다.
 거부, 보류, 만료는 권한을 부여하지 않고 `decision_recovery_required`를 선택합니다.
 `volicord.record_shaping`으로 계획을 수정해야 하며 종료되었거나 만료된 요청의 resolution을

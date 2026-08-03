@@ -8,6 +8,7 @@ use volicord_store::core_pipeline::{
     TaskCloseBasisUpdate, TaskMutation, TaskScopeUpdate,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::shaping_decision_application_id;
 use volicord_types::methods::{
     MethodOperationCategory, RecordShapingOperation, RecordShapingRequest,
     RecordShapingResultFields,
@@ -201,6 +202,7 @@ fn plan_record_shaping(
     let current_checkpoint = store
         .current_shaping_checkpoint(&request.task_id)
         .map_err(CorePipelineError::from)?;
+    let mut carried_applications = Vec::new();
     let predecessor_checkpoint_id = match checkpoint_operation {
         ShapingCheckpointOperation::CreateInitial => {
             if current_checkpoint.is_some() {
@@ -223,6 +225,7 @@ fn plan_record_shaping(
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id,
             retired_user_action_request_refs,
+            carry_forward_application_refs,
         } => {
             let Some(current) = current_checkpoint.as_ref() else {
                 return workflow_rejection_plan_error(
@@ -254,6 +257,71 @@ fn plan_record_shaping(
                     MethodName::RecordShaping,
                 );
             }
+            let expected_application_ids = current
+                .applications
+                .iter()
+                .filter(|application| {
+                    application.authority_status
+                        == volicord_types::values::ShapingDecisionApplicationAuthorityStatus::Current
+                        && application.linked_checkpoint_id.as_deref()
+                            == Some(current.shaping_checkpoint_id.as_str())
+                })
+                .map(|application| application.shaping_decision_application_id.clone())
+                .collect::<BTreeSet<_>>();
+            let mut supplied_application_ids = BTreeSet::new();
+            for application_ref in carry_forward_application_refs {
+                if application_ref.record_kind != StateRecordKind::ShapingDecisionApplication
+                    || application_ref.project_id != request.envelope.project_id
+                    || application_ref.task_id.as_ref() != Some(&request.task_id)
+                    || application_ref.produced_at_state_version.as_ref()
+                        != Some(&project_state.state_version)
+                    || !supplied_application_ids
+                        .insert(application_ref.record_id.as_str().to_owned())
+                {
+                    return shaping_validation(
+                        &request,
+                        project_state,
+                        "operation.checkpoint_operation.carry_forward_application_refs",
+                        "carry-forward refs must be unique exact current Task shaping decision application refs",
+                    );
+                }
+            }
+            if supplied_application_ids != expected_application_ids {
+                return workflow_rejection_plan_error(
+                    store,
+                    project_state,
+                    &request.envelope,
+                    &request.task_id,
+                    ErrorCode::UserDecisionUnresolved,
+                    "carry-forward refs must exactly match every current compatible shaping decision application",
+                    MethodName::RecordShaping,
+                    None,
+                    Vec::new(),
+                    true,
+                    MethodName::Status,
+                );
+            }
+            if current.applications.iter().any(|application| {
+                expected_application_ids.contains(&application.shaping_decision_application_id)
+                    && gaps
+                        .iter()
+                        .any(|gap| gap.gap_kind.judgment_kind() == Some(application.judgment_kind))
+            }) {
+                return shaping_validation(
+                    &request,
+                    project_state,
+                    "operation.gaps",
+                    "a successor gap cannot conflict with carried application authority",
+                );
+            }
+            carried_applications = current
+                .applications
+                .iter()
+                .filter(|application| {
+                    expected_application_ids.contains(&application.shaping_decision_application_id)
+                })
+                .cloned()
+                .collect();
             let mut live_linked_decisions = Vec::new();
             let mut recoverable_request_ids = BTreeSet::new();
             for gap in current
@@ -574,10 +642,20 @@ fn plan_record_shaping(
                 .map(|reference| reference.record_id.as_str().to_owned())
                 .collect(),
         },
+        carry_forward_application_ids: match checkpoint_operation {
+            ShapingCheckpointOperation::CreateInitial => Vec::new(),
+            ShapingCheckpointOperation::ReplaceCurrent {
+                carry_forward_application_refs,
+                ..
+            } => carry_forward_application_refs
+                .iter()
+                .map(|reference| reference.record_id.as_str().to_owned())
+                .collect(),
+        },
         gaps: gap_inserts,
     };
     mutations.push(CoreStorageMutation::Shaping(
-        ShapingCheckpointMutation::Record(checkpoint_insert),
+        ShapingCheckpointMutation::Record(Box::new(checkpoint_insert)),
     ));
     if task.close_basis.is_some() {
         mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateCloseBasis(
@@ -617,6 +695,10 @@ fn plan_record_shaping(
         projected_task.close_basis_revision += 1;
         projected_task.close_basis = None;
     }
+    for application in &mut carried_applications {
+        application.carried_from_checkpoint_id = application.linked_checkpoint_id.clone();
+        application.linked_checkpoint_id = Some(checkpoint_id.as_str().to_owned());
+    }
     let projected_checkpoint = ShapingCheckpointRecord {
         project_id: request.envelope.project_id.as_str().to_owned(),
         shaping_checkpoint_id: checkpoint_id.as_str().to_owned(),
@@ -634,6 +716,7 @@ fn plan_record_shaping(
         created_at: operation_now.clone(),
         superseded_at: None,
         gaps: projected_gaps,
+        applications: carried_applications.clone(),
     };
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
@@ -688,9 +771,22 @@ fn plan_record_shaping(
         created_at: operation_now.clone(),
         superseded_at: RequiredNullable::null(),
     };
+    let carried_application_refs = carried_applications
+        .iter()
+        .map(|application| {
+            crate::record_refs::state_ref(
+                StateRecordKind::ShapingDecisionApplication,
+                &application.shaping_decision_application_id,
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(planned_state_version),
+            )
+        })
+        .collect::<Vec<_>>();
     let result_fields = RecordShapingResultFields {
         shaping_checkpoint,
         created_user_action_request_refs: created_request_refs,
+        applied_shaping_decision_application_refs: Vec::new(),
         workflow,
         state,
     };
@@ -704,6 +800,11 @@ fn plan_record_shaping(
             object_from_value(json!({
                 "shaping_checkpoint_id": checkpoint_id,
                 "readiness": readiness,
+                "carried_shaping_decision_application_ids": carried_applications
+                    .iter()
+                    .map(|application| application.shaping_decision_application_id.clone())
+                    .collect::<Vec<_>>(),
+                "carried_shaping_decision_application_refs": carried_application_refs,
             }))?,
         ),
         result_fields,
@@ -895,8 +996,36 @@ fn plan_finalize_advice(
     }
 
     let mut applications = Vec::new();
-    let mut expected_resolution_ids = BTreeSet::new();
-    let mut applied_resolution_refs = Vec::new();
+    let mut expected_resolution_ids = checkpoint
+        .applications
+        .iter()
+        .filter(|application| {
+            application.authority_status
+                == volicord_types::values::ShapingDecisionApplicationAuthorityStatus::Current
+                && application.linked_checkpoint_id.as_deref()
+                    == Some(checkpoint.shaping_checkpoint_id.as_str())
+        })
+        .map(|application| application.user_action_resolution_id.clone())
+        .collect::<BTreeSet<_>>();
+    let mut application_refs = checkpoint
+        .applications
+        .iter()
+        .filter(|application| {
+            application.authority_status
+                == volicord_types::values::ShapingDecisionApplicationAuthorityStatus::Current
+                && application.linked_checkpoint_id.as_deref()
+                    == Some(checkpoint.shaping_checkpoint_id.as_str())
+        })
+        .map(|application| {
+            crate::record_refs::state_ref(
+                StateRecordKind::ShapingDecisionApplication,
+                &application.shaping_decision_application_id,
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(project_state.state_version + 1),
+            )
+        })
+        .collect::<Vec<_>>();
     for gap in checkpoint
         .gaps
         .iter()
@@ -1011,17 +1140,24 @@ fn plan_finalize_advice(
             );
         }
         expected_resolution_ids.insert(resolution_id.clone());
-        applied_resolution_refs.push(crate::record_refs::state_ref(
-            StateRecordKind::UserActionResolution,
-            resolution_id,
-            &request.envelope.project_id,
-            Some(&request.task_id),
-            Some(project_state.state_version + 1),
-        ));
         if policy.application_owner == ShapingDecisionApplicationOwner::RecordShaping
             && gap.status == ShapingGapStatus::Accepted
         {
+            let application_id = shaping_decision_application_id(
+                &volicord_types::ids::UserActionResolutionId::new(resolution_id),
+                ShapingDecisionApplicationOwner::RecordShaping,
+            )
+            .map_err(CorePipelineError::from)?
+            .into_inner();
+            application_refs.push(crate::record_refs::state_ref(
+                StateRecordKind::ShapingDecisionApplication,
+                &application_id,
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(project_state.state_version + 1),
+            ));
             applications.push(ShapingGapApplication {
+                shaping_decision_application_id: application_id,
                 shaping_gap_id: gap.shaping_gap_id.clone(),
                 user_action_resolution_id: resolution_id.clone(),
             });
@@ -1116,18 +1252,19 @@ fn plan_finalize_advice(
         recovery_constraints: recovery_constraints.clone(),
         source_run_ref: RequiredNullable::null(),
         shaping_checkpoint_ref: RequiredNullable::some(checkpoint_ref.clone()),
-        applied_user_action_resolution_refs: applied_resolution_refs,
+        shaping_decision_application_refs: application_refs.clone(),
         updated_at: operation_now.clone(),
     };
     let mut projected_checkpoint = checkpoint.clone();
-    for gap in &mut projected_checkpoint.gaps {
-        if applications
-            .iter()
-            .any(|application| application.shaping_gap_id == gap.shaping_gap_id)
-        {
-            gap.status = ShapingGapStatus::Applied;
-        }
-    }
+    crate::workflow_projection::apply_projected_shaping_applications(
+        &mut projected_checkpoint,
+        &applications,
+        ShapingDecisionApplicationOwner::RecordShaping,
+        *scope_revision,
+        baseline_ref,
+        Some(change_unit_id),
+        operation_now,
+    )?;
     let mut projected_task = task.clone();
     projected_task.summary = Some(result_summary.trim().to_owned());
     projected_task.lifecycle_phase = TaskLifecyclePhase::Ready;
@@ -1259,12 +1396,38 @@ fn plan_finalize_advice(
                     .iter()
                     .map(|application| application.shaping_gap_id.clone())
                     .collect::<Vec<_>>(),
+                "applied_shaping_decision_application_ids": applications
+                    .iter()
+                    .map(|application| application.shaping_decision_application_id.clone())
+                    .collect::<Vec<_>>(),
+                "applied_shaping_decision_application_refs": applications
+                    .iter()
+                    .map(|application| crate::record_refs::state_ref(
+                        StateRecordKind::ShapingDecisionApplication,
+                        &application.shaping_decision_application_id,
+                        &request.envelope.project_id,
+                        Some(&request.task_id),
+                        Some(planned_state_version),
+                    ))
+                    .collect::<Vec<_>>(),
                 "close_basis_revision": projected_task.close_basis_revision,
             }))?,
         ),
         result_fields: RecordShapingResultFields {
             shaping_checkpoint,
             created_user_action_request_refs: Vec::new(),
+            applied_shaping_decision_application_refs: applications
+                .iter()
+                .map(|application| {
+                    crate::record_refs::state_ref(
+                        StateRecordKind::ShapingDecisionApplication,
+                        &application.shaping_decision_application_id,
+                        &request.envelope.project_id,
+                        Some(&request.task_id),
+                        Some(planned_state_version),
+                    )
+                })
+                .collect(),
             workflow,
             state,
         },

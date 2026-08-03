@@ -165,11 +165,16 @@ no-op, acceptance/non-goal/autonomy edit that does not change `scope_revision`,
 or the unrelated `state_version` increment does not invalidate the ticket.
 Invalidation does not consume or silently reuse it.
 
-Applying a scope decision changes only its selected gap from `accepted` to
-`applied` and increments the scope revision. A compatible no-op or Change Unit
+Applying a scope decision creates its deterministic
+`ShapingDecisionApplication`, binds it to the resulting scope revision,
+baseline, and Change Unit, links it to the current checkpoint, changes only its
+selected gap from `accepted` to `applied`, and increments the scope revision in
+one transaction. The result and event include the exact application refs. A compatible no-op or Change Unit
 creation can preserve and rebase the current checkpoint without a scope
 decision ref. A transition supersedes the checkpoint only when it genuinely
-invalidates the checkpoint's scope or baseline authority basis.
+invalidates the checkpoint's scope or baseline authority basis. A scope,
+baseline, or incompatible Change Unit change explicitly marks affected current
+applications `stale`; row absence is not invalidation.
 
 A rejected, deferred, expired, or inconsistent shaping decision grants no
 scope authority. The method returns a no-effect workflow rejection whose
@@ -194,6 +199,7 @@ The committed `UpdateScopeResult` uses `base.response_kind=result` and
 | Field | Required | Nullable | Type |
 |---|---|---|---|
 | `applied_scope_decision_refs` | yes | no | `StateRecordRef[]` |
+| `applied_shaping_decision_application_refs` | yes | no | `StateRecordRef[]` |
 | `applied_shaping_gap_refs` | yes | no | `StateRecordRef[]` |
 | `base` | yes | no | `UpdateScopeResultBase` |
 | `blocker_refs` | yes | no | `StateRecordRef[]` |
@@ -352,6 +358,7 @@ change_unit_ref:
   produced_at_state_version: 19
 applied_shaping_gap_refs: []
 applied_scope_decision_refs: []
+applied_shaping_decision_application_refs: []
 stale_write_ticket_refs: []
 blocker_refs: []
 state:

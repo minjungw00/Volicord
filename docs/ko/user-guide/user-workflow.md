@@ -226,7 +226,9 @@ volicord inbox resolve USER_ACTION_REQUEST_ID \
 위험을 수락하지 않습니다.
 
 advisor 작업에서는 기록된 checkpoint, 필요한 User Channel 결정, 명시적 자문
-finalization, close review, 최종 수락 순서를 확인합니다. 성공한 완료는 `advice_only`를
+finalization, close review, 최종 수락 순서를 확인합니다. Finalization 뒤 호환되는 자문이
+수정되면 Volicord는 기록된 decision application을 successor checkpoint로 carry-forward하며
+자문 문구만 바뀌었다는 이유로 같은 판단을 다시 요구하지 않습니다. 성공한 완료는 `advice_only`를
 기록하며 advisor workflow는 쓰기 티켓을 발급하거나 Product Repository 쓰기를 승인할 수
 없습니다.
 

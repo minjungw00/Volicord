@@ -723,6 +723,8 @@ pub(crate) fn compact_mutation_method_result(
                 effect: compact_mutation_effect(&result),
                 applied_shaping_gap_refs: result.applied_shaping_gap_refs,
                 applied_scope_decision_refs: result.applied_scope_decision_refs,
+                applied_shaping_decision_application_refs: result
+                    .applied_shaping_decision_application_refs,
             })
             .map_err(McpAdapterError::Json)
         }
@@ -742,6 +744,8 @@ pub(crate) fn compact_mutation_method_result(
                 unresolved_application_owners,
                 decision_recovery_requirements,
                 created_user_action_request_refs: result.created_user_action_request_refs,
+                applied_shaping_decision_application_refs: result
+                    .applied_shaping_decision_application_refs,
                 workflow_kind: workflow_state_kind(&result.workflow),
                 close_state: result.state.close_state,
                 close_blocker_count: result.state.close_blockers.len(),
@@ -755,6 +759,8 @@ pub(crate) fn compact_mutation_method_result(
                 effect: compact_mutation_effect(&result),
                 applied_shaping_gap_refs: result.applied_shaping_gap_refs,
                 applied_user_action_resolution_refs: result.applied_user_action_resolution_refs,
+                applied_shaping_decision_application_refs: result
+                    .applied_shaping_decision_application_refs,
             })
             .map_err(McpAdapterError::Json)
         }

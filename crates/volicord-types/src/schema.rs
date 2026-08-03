@@ -2066,6 +2066,7 @@ pub enum ShapingCheckpointOperation {
     ReplaceCurrent {
         expected_current_checkpoint_id: crate::ids::ShapingCheckpointId,
         retired_user_action_request_refs: Vec<StateRecordRef>,
+        carry_forward_application_refs: Vec<StateRecordRef>,
     },
 }
 
@@ -2113,6 +2114,27 @@ pub struct ShapingCheckpointGap {
     pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
 }
 
+/// Durable authority created when an accepted shaping decision is applied.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShapingDecisionApplication {
+    pub shaping_decision_application_id: crate::ids::ShapingDecisionApplicationId,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub source_checkpoint_id: crate::ids::ShapingCheckpointId,
+    pub source_gap_id: crate::ids::ShapingGapId,
+    pub user_action_request_id: crate::ids::UserActionRequestId,
+    pub user_action_resolution_id: crate::ids::UserActionResolutionId,
+    pub judgment_kind: crate::values::JudgmentKind,
+    pub application_owner: crate::values::ShapingDecisionApplicationOwner,
+    pub applied_scope_revision: u64,
+    pub applied_baseline_ref: BaselineRef,
+    pub applied_change_unit_id: RequiredNullable<ChangeUnitId>,
+    pub applied_at: UtcTimestamp,
+    pub authority_status: crate::values::ShapingDecisionApplicationAuthorityStatus,
+    pub superseded_at: RequiredNullable<UtcTimestamp>,
+}
+
 /// Exact non-authorizing decision that requires one successor shaping plan.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -2135,6 +2157,7 @@ pub struct ShapingCheckpointSummary {
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub implementation_boundary: RequiredNullable<String>,
     pub gaps: Vec<ShapingCheckpointGap>,
+    pub current_application_refs: Vec<StateRecordRef>,
     pub pending_decision_refs: Vec<StateRecordRef>,
     pub unresolved_application_owners: Vec<crate::values::ShapingDecisionApplicationOwner>,
     pub decision_recovery_requirements: Vec<ShapingDecisionRecoveryRequirement>,
@@ -2965,7 +2988,7 @@ pub struct CurrentCloseBasis {
     pub recovery_constraints: Vec<String>,
     pub source_run_ref: RequiredNullable<StateRecordRef>,
     pub shaping_checkpoint_ref: RequiredNullable<StateRecordRef>,
-    pub applied_user_action_resolution_refs: Vec<StateRecordRef>,
+    pub shaping_decision_application_refs: Vec<StateRecordRef>,
     pub updated_at: UtcTimestamp,
 }
 

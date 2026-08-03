@@ -54,6 +54,7 @@ use volicord_store::core_pipeline::{
     UserActionInvalidation, UserActionMutation, WriteTicketInvalidation, WriteTicketMutation,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::shaping_decision_application_id;
 use volicord_types::ids::{ChangeUnitId, TaskId};
 use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
@@ -715,6 +716,9 @@ fn plan_update_scope_mutations(
                         shaping_checkpoint_id: checkpoint.shaping_checkpoint_id.clone(),
                         scope_revision: next_scope_revision,
                         baseline_ref: synthetic_task.shaping.baseline_ref.clone(),
+                        change_unit_id: rebased_change_unit_id
+                            .as_ref()
+                            .map(|id| id.as_str().to_owned()),
                         applications: scope_gap_applications.clone(),
                     },
                 ));
@@ -891,16 +895,26 @@ fn project_update_scope_response(
     if scope_changed {
         if let Some(checkpoint) = projected_shaping_checkpoint.as_mut() {
             if checkpoint_preserved {
-                checkpoint.scope_revision = next_scope_revision;
-                checkpoint.baseline_ref = synthetic_task.shaping.baseline_ref.clone();
-                for gap in &mut checkpoint.gaps {
-                    if scope_gap_applications
-                        .iter()
-                        .any(|application| application.shaping_gap_id == gap.shaping_gap_id)
-                    {
-                        gap.status = ShapingGapStatus::Applied;
-                    }
-                }
+                let baseline_ref =
+                    synthetic_task
+                        .shaping
+                        .baseline_ref
+                        .as_ref()
+                        .ok_or_else(|| CorePipelineError::Invariant {
+                            detail: "a preserved shaping checkpoint requires a baseline".to_owned(),
+                        })?;
+                let projected_change_unit_id = synthetic_change_unit
+                    .as_ref()
+                    .map(|change_unit| ChangeUnitId::new(change_unit.change_unit_id.clone()));
+                crate::workflow_projection::apply_projected_shaping_applications(
+                    checkpoint,
+                    &scope_gap_applications,
+                    ShapingDecisionApplicationOwner::UpdateScope,
+                    next_scope_revision,
+                    baseline_ref,
+                    projected_change_unit_id.as_ref(),
+                    &plan_now,
+                )?;
             } else {
                 projected_shaping_checkpoint = None;
             }
@@ -990,13 +1004,54 @@ fn project_update_scope_response(
             error,
         )
     })?;
+    let task_wide_shaping_authority = if projected_shaping_checkpoint.is_some() {
+        crate::workflow_projection::task_wide_shaping_authority(
+            store,
+            &request.envelope.project_id,
+            planned_state_version,
+            &synthetic_task,
+            synthetic_change_unit.as_ref(),
+            projected_shaping_checkpoint.as_ref(),
+            &plan_now,
+        )?
+    } else if scope_changed {
+        let stored_task = store
+            .task_record(&request.task_id)
+            .map_err(CorePipelineError::from)?
+            .ok_or_else(|| CorePipelineError::Invariant {
+                detail: "scope projection lost its current Task".to_owned(),
+            })?;
+        let stored_change_unit = store
+            .current_change_unit(&request.task_id)
+            .map_err(CorePipelineError::from)?;
+        let stored_checkpoint = store
+            .current_shaping_checkpoint(&request.task_id)
+            .map_err(CorePipelineError::from)?;
+        let mut authority = crate::workflow_projection::task_wide_shaping_authority(
+            store,
+            &request.envelope.project_id,
+            planned_state_version.saturating_sub(1),
+            &stored_task,
+            stored_change_unit.as_ref(),
+            stored_checkpoint.as_ref(),
+            &plan_now,
+        )?;
+        for mut fact in std::mem::take(&mut authority.applied) {
+            fact.status = volicord_types::values::UserActionStatus::Stale;
+            fact.authority_state = volicord_types::values::ShapingDecisionAuthorityState::Stale;
+            authority.stale.push(fact);
+        }
+        authority
+    } else {
+        Default::default()
+    };
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &synthetic_task,
         current_change_unit: synthetic_change_unit.as_ref(),
         shaping_checkpoint: projected_shaping_checkpoint.as_ref(),
-        task_wide_shaping_authority: &Default::default(),
+        task_wide_shaping_authority: &task_wide_shaping_authority,
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: pending_refs,
@@ -1020,11 +1075,25 @@ fn project_update_scope_response(
             )
         })
         .collect::<Vec<_>>();
+    let applied_shaping_decision_application_refs = scope_gap_applications
+        .iter()
+        .map(|application| {
+            state_ref(
+                StateRecordKind::ShapingDecisionApplication,
+                &application.shaping_decision_application_id,
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(planned_state_version),
+            )
+        })
+        .collect::<Vec<_>>();
     let result_fields = UpdateScopeResultFields {
         task_ref,
         change_unit_ref,
         applied_shaping_gap_refs,
         applied_scope_decision_refs: linked_scope_decision_refs.clone(),
+        applied_shaping_decision_application_refs: applied_shaping_decision_application_refs
+            .clone(),
         stale_write_ticket_refs,
         blocker_refs,
         state,
@@ -1043,6 +1112,11 @@ fn project_update_scope_response(
             .iter()
             .map(|application| application.user_action_resolution_id.clone())
             .collect::<Vec<_>>(),
+        "applied_shaping_decision_application_ids": scope_gap_applications
+            .iter()
+            .map(|application| application.shaping_decision_application_id.clone())
+            .collect::<Vec<_>>(),
+        "applied_shaping_decision_application_refs": applied_shaping_decision_application_refs,
     }))?;
 
     Ok(UpdateScopeResponseProjection {
@@ -1457,6 +1531,12 @@ fn validate_related_scope_decisions(
             )))
         })?;
         applications.push(ShapingGapApplication {
+            shaping_decision_application_id: shaping_decision_application_id(
+                &volicord_types::ids::UserActionResolutionId::new(related_ref.record_id.as_str()),
+                ShapingDecisionApplicationOwner::UpdateScope,
+            )
+            .map_err(CorePipelineError::from)?
+            .into_inner(),
             shaping_gap_id: gap.shaping_gap_id.clone(),
             user_action_resolution_id: related_ref.record_id.as_str().to_owned(),
         });

@@ -751,6 +751,7 @@ pub enum StateRecordKind {
     ChangeUnit,
     ShapingCheckpoint,
     ShapingGap,
+    ShapingDecisionApplication,
     WriteTicket,
     UserActionRequest,
     UserActionResolution,
@@ -903,6 +904,26 @@ pub enum ShapingDecisionApplicationOwner {
     RecordShaping,
 }
 
+/// Closed current-authority status of one shaping decision application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingDecisionApplicationAuthorityStatus {
+    Current,
+    Stale,
+    Superseded,
+}
+
+impl ShapingDecisionApplicationAuthorityStatus {
+    /// Returns the stable stored and public spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Current => "current",
+            Self::Stale => "stale",
+            Self::Superseded => "superseded",
+        }
+    }
+}
+
 impl ShapingDecisionApplicationOwner {
     /// Returns the public method that owns the semantic application effect.
     pub const fn method(self) -> MethodName {
@@ -941,6 +962,23 @@ impl ShapingGapKind {
         match self.decision_policy() {
             Some(policy) => Some(policy.user_action_kind),
             None => None,
+        }
+    }
+
+    /// Returns the compatible judgment kind for a user-owned gap.
+    pub const fn judgment_kind(self) -> Option<JudgmentKind> {
+        match self {
+            Self::UserProductDecisionRequired => Some(JudgmentKind::ProductDecision),
+            Self::UserTechnicalDecisionRequired => Some(JudgmentKind::TechnicalDecision),
+            Self::UserScopeDecisionRequired => Some(JudgmentKind::ScopeDecision),
+            Self::SensitiveApprovalRequired => Some(JudgmentKind::SensitiveApproval),
+            Self::GoalMissing
+            | Self::ScopeBoundaryMissing
+            | Self::NonGoalsMissing
+            | Self::AcceptanceCriteriaMissing
+            | Self::AutonomyBoundaryMissing
+            | Self::ImplementationBoundaryMissing
+            | Self::BaselineMissing => None,
         }
     }
 
@@ -1118,6 +1156,10 @@ pub struct ShapingDecisionAuthorityFacts {
     pub baseline_matches: bool,
     pub change_unit_matches: bool,
     pub gap_status: ShapingGapStatus,
+    pub application_present: bool,
+    pub application_authority_status: Option<ShapingDecisionApplicationAuthorityStatus>,
+    pub application_identity_matches: bool,
+    pub application_lineage_current: bool,
 }
 
 /// Evaluates whether a shaping-linked UserAction is waiting, authorizing,
@@ -1147,6 +1189,17 @@ pub fn evaluate_shaping_decision_authority(
     if facts.effective_user_action_status == UserActionStatus::Superseded {
         return ShapingDecisionAuthorityState::Superseded;
     }
+    if facts.application_present {
+        match facts.application_authority_status {
+            Some(ShapingDecisionApplicationAuthorityStatus::Stale) => {
+                return ShapingDecisionAuthorityState::Stale;
+            }
+            Some(ShapingDecisionApplicationAuthorityStatus::Superseded) => {
+                return ShapingDecisionAuthorityState::Superseded;
+            }
+            Some(ShapingDecisionApplicationAuthorityStatus::Current) | None => {}
+        }
+    }
 
     let current_compatible_basis = facts.request_basis_status == UserActionBasisStatus::Current
         && facts.basis_compatibility_status == UserActionBasisStatus::Current
@@ -1168,13 +1221,35 @@ pub fn evaluate_shaping_decision_authority(
         {
             ShapingDecisionAuthorityState::Expired
         }
-        UserActionStatus::Resolved if exact_accepted_resolution => match facts.gap_status {
-            ShapingGapStatus::Accepted => ShapingDecisionAuthorityState::AcceptedUnapplied,
-            ShapingGapStatus::Applied => ShapingDecisionAuthorityState::Applied,
-            ShapingGapStatus::Current | ShapingGapStatus::Rejected | ShapingGapStatus::Deferred => {
+        UserActionStatus::Resolved if exact_accepted_resolution => {
+            if facts.application_present {
+                if !facts.application_identity_matches {
+                    ShapingDecisionAuthorityState::Inconsistent
+                } else {
+                    match facts.application_authority_status {
+                        Some(ShapingDecisionApplicationAuthorityStatus::Current)
+                            if facts.application_lineage_current
+                                && facts.gap_status == ShapingGapStatus::Applied =>
+                        {
+                            ShapingDecisionAuthorityState::Applied
+                        }
+                        Some(ShapingDecisionApplicationAuthorityStatus::Stale) => {
+                            ShapingDecisionAuthorityState::Stale
+                        }
+                        Some(ShapingDecisionApplicationAuthorityStatus::Superseded) => {
+                            ShapingDecisionAuthorityState::Superseded
+                        }
+                        Some(ShapingDecisionApplicationAuthorityStatus::Current) | None => {
+                            ShapingDecisionAuthorityState::Inconsistent
+                        }
+                    }
+                }
+            } else if facts.gap_status == ShapingGapStatus::Accepted {
+                ShapingDecisionAuthorityState::AcceptedUnapplied
+            } else {
                 ShapingDecisionAuthorityState::Inconsistent
             }
-        },
+        }
         UserActionStatus::Resolved
             if facts.resolution_present
                 && facts.resolution_identity_matches
@@ -1241,6 +1316,7 @@ pub enum WorkflowBlockingReason {
     UserActionPending,
     AcceptedDecisionsNotApplied,
     DecisionRecoveryRequired,
+    ApplicationAuthorityStale,
     ChangeUnitRequired,
     AdvisorFinalizationRequired,
     ExplicitAdvanceRequired,
@@ -2504,6 +2580,10 @@ mod tests {
             baseline_matches: true,
             change_unit_matches: true,
             gap_status: ShapingGapStatus::Current,
+            application_present: false,
+            application_authority_status: None,
+            application_identity_matches: false,
+            application_lineage_current: false,
         }
     }
 
@@ -2695,6 +2775,11 @@ mod tests {
 
         let mut applied = accepted;
         applied.gap_status = ShapingGapStatus::Applied;
+        applied.application_present = true;
+        applied.application_authority_status =
+            Some(super::ShapingDecisionApplicationAuthorityStatus::Current);
+        applied.application_identity_matches = true;
+        applied.application_lineage_current = true;
         assert_eq!(
             evaluate_shaping_decision_authority(applied),
             ShapingDecisionAuthorityState::Applied
@@ -2754,6 +2839,26 @@ mod tests {
         ] {
             assert_eq!(
                 evaluate_shaping_decision_authority(contradictory),
+                ShapingDecisionAuthorityState::Inconsistent
+            );
+        }
+
+        for incompatible_application in [
+            ShapingDecisionAuthorityFacts {
+                scope_revision_matches: false,
+                ..applied
+            },
+            ShapingDecisionAuthorityFacts {
+                baseline_matches: false,
+                ..applied
+            },
+            ShapingDecisionAuthorityFacts {
+                change_unit_matches: false,
+                ..applied
+            },
+        ] {
+            assert_eq!(
+                evaluate_shaping_decision_authority(incompatible_application),
                 ShapingDecisionAuthorityState::Inconsistent
             );
         }

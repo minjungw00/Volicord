@@ -86,6 +86,30 @@ opaque_string_type!(BaselineRef, "Opaque baseline identifier.");
 opaque_string_type!(ChangeUnitId, "Opaque Change Unit identifier.");
 opaque_string_type!(ShapingCheckpointId, "Opaque ShapingCheckpoint identifier.");
 opaque_string_type!(ShapingGapId, "Opaque shaping-gap identifier.");
+opaque_string_type!(
+    ShapingDecisionApplicationId,
+    "Deterministic shaping-decision-application identifier."
+);
+
+/// Derives the stable identity for one semantic-owner application of a resolution.
+pub fn shaping_decision_application_id(
+    resolution_id: &UserActionResolutionId,
+    owner: crate::values::ShapingDecisionApplicationOwner,
+) -> Result<ShapingDecisionApplicationId, serde_json::Error> {
+    #[derive(Serialize)]
+    struct IdentityBasis<'a> {
+        user_action_resolution_id: &'a UserActionResolutionId,
+        application_owner: crate::values::ShapingDecisionApplicationOwner,
+    }
+
+    let digest = crate::canonical::canonical_json_bare_sha256(&IdentityBasis {
+        user_action_resolution_id: resolution_id,
+        application_owner: owner,
+    })?;
+    Ok(ShapingDecisionApplicationId::new(format!(
+        "shaping_application_{digest}"
+    )))
+}
 opaque_string_type!(WriteTicketId, "Opaque write ticket identifier.");
 opaque_string_type!(RunId, "Opaque Run identifier.");
 opaque_string_type!(
@@ -563,6 +587,29 @@ fn is_uuid_v4_suffix(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shaping_application_identity_is_deterministic_and_owner_bound() {
+        let resolution_id = UserActionResolutionId::new("resolution_exact_application");
+        let first = shaping_decision_application_id(
+            &resolution_id,
+            crate::values::ShapingDecisionApplicationOwner::AdvanceTask,
+        )
+        .expect("application ID");
+        let replay = shaping_decision_application_id(
+            &resolution_id,
+            crate::values::ShapingDecisionApplicationOwner::AdvanceTask,
+        )
+        .expect("replayed application ID");
+        let other_owner = shaping_decision_application_id(
+            &resolution_id,
+            crate::values::ShapingDecisionApplicationOwner::RecordShaping,
+        )
+        .expect("other owner application ID");
+        assert_eq!(first, replay);
+        assert_ne!(first, other_owner);
+        assert!(first.as_str().starts_with("shaping_application_"));
+    }
 
     #[test]
     fn random_suffix_uses_uuid_v4_bits() {

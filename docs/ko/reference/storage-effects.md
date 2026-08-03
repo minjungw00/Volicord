@@ -555,10 +555,14 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
   Change Unit을 만들거나 교체해도 `work_phase`를 바꾸지 않습니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경에 대해 `tasks.scope_revision`을 증가시킵니다.
 - 선택한 정확한 accepted 범위 owner gap만 검증해 `applied`로 바꿉니다.
+- 선택된 결정의 결정적인 application row와 최초 checkpoint-application link를 같은
+  transaction에서 만듭니다.
 - 호환되는 현재 checkpoint와 연결된 현재 UserAction basis를 보존하고 rebase하거나,
   전이가 권한 근거를 무효화하면 checkpoint를 supersede합니다.
 - 실질적 범위 변경에 대해 `tasks.close_basis_json`을 무효화하고 `tasks.close_basis_revision`을 증가시킵니다.
 - 담당 문서가 정의한 호환성에 따라 호환되지 않는 사용자 행동 근거 행을 오래됨 또는 대체됨으로 표시합니다.
+- Scope, baseline, Change Unit 좌표가 호환되지 않는 현재 application을 감사 record 삭제
+  없이 `stale`로 표시합니다.
 - 메서드 담당 문서가 허용한 차단 사유 또는 오래된 쓰기 티켓 참조를 갱신합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
@@ -589,13 +593,16 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - 허용된 교체이면 해당 exact predecessor를 supersede하고 predecessor identity가 있는
   successor를 삽입합니다. Recovery가 필요하면 완전하고 정확한 거부·보류·만료 request-ref
   집합을 검증하고 같은 transaction에서 해당 요청 근거를 `superseded`로 바꿉니다.
+- 완전하고 정확한 `carry_forward_application_refs` 집합을 검증하고 엄격한
+  predecessor-to-successor application lineage를 삽입합니다.
 - `shaping_checkpoints` row 하나와 그 모든 `shaping_checkpoint_gaps` row를 삽입합니다.
 - 사용자 소유 gap마다 대기 `UserActionRequest` 하나와 정확한
   `shaping_checkpoint_user_actions` link 하나를 원자적으로 만듭니다.
 - `operation=finalize_advice`이면 정확한 현재 advisor Task, ready checkpoint, 호환되는
-  비쓰기 Change Unit, scope, baseline, accepted resolution 집합을 검증하고 advisor owner gap을
-  적용하며 checkpoint를 보존하고 자문 결과, checkpoint 기반 close basis, 정확한 applied
-  resolution lineage, evidence ref, risk record를 같은 transaction에서 갱신합니다.
+  비쓰기 Change Unit, scope, baseline, accepted resolution 집합을 검증하고 정확한 advisor
+  owner application row를 만들며 source gap을 적용합니다. Checkpoint를 보존하고 자문 결과,
+  checkpoint 기반 close basis, 정확한 application lineage, evidence ref, risk record를 같은
+  transaction에서 갱신합니다.
 - authority event 하나와 정확한 replay row를 만들고 정규 Core UTC 하한을 진행시키며
   `project_state.state_version`을 정확히 한 번 증가시킵니다.
 
@@ -605,8 +612,9 @@ resolution, work-phase 전환을 만들지 않습니다. Checkpoint, gap, 요청
 하나라도 유효하지 않으면 transaction 전체를 rollback합니다. 유효한 dry-run 미리보기와
 모든 거절 시도에는 이 row와 효과가 없습니다.
 
-Replacement는 pending, accepted, applied, stale, 외부 linked authority를 폐기할 수 없습니다.
-Recovery ref가 누락되거나 추가되면 mutation 전에 거부합니다. 폐기 요청, successor 요청,
+Replacement는 pending, accepted, stale, 외부 linked authority를 폐기할 수 없습니다.
+Applied 권한에는 정확한 carry-forward가 필요하며 application 또는 recovery ref가 누락되거나
+추가되면 mutation 전에 거부합니다. 폐기 요청, successor 요청,
 checkpoint, gap, link, predecessor 갱신, event, replay row, state-version 증가는 하나의
 rollback 경계를 공유하며 변경 불가능한 request와 resolution 이력은 그대로 남습니다.
 
@@ -616,7 +624,8 @@ rollback 경계를 공유하며 변경 불가능한 request와 resolution 이력
 커밋되는 `dry_run=false` 호출은 shaping인 정확한 현재 work Task, 구조적으로 ready이며
 superseded가 아닌 checkpoint, applied 범위 gap 집합, scope revision, baseline, 활성 Change
 Unit, 정확한 현재 advance owner accepted resolution-ID 집합, recovery constraint 부재를 검증합니다.
-Transaction 하나에서 선택한 정확한 제품·기술·민감 gap만 `applied`로 만들고 Task 단계를
+Transaction 하나에서 선택한 정확한 제품·기술·민감 application row와 link를 만들고 그
+source gap만 `applied`로 만들며 Task 단계를
 `implementation`으로, lifecycle을 구현 진행 상태로 바꾸며 authority event 하나와
 정확한 replay row를 만들며 정규 Core UTC 하한을 진행시키고
 `project_state.state_version`을 정확히 한 번 증가시킵니다.

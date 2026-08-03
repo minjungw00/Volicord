@@ -80,6 +80,7 @@ enabled_capabilities:
   - operational_mcp_sessions
   - project_continuity
   - shaping_checkpoint_lineage
+  - shaping_decision_applications
   - shaping_decision_recovery
   - shaping_progression
   - user_action_cli_resolution
@@ -105,6 +106,11 @@ numeric compatibility branch.
 same-Task ownership, immutable lineage, matching predecessor supersession and
 successor creation timestamps, and live-linked-UserAction detachment
 protection. It is part of exact manifest matching.
+
+`shaping_decision_applications` identifies deterministic first-class
+application records, closed authority invalidation, and exact
+checkpoint-application carry-forward lineage. It is part of exact manifest
+matching.
 
 `shaping_decision_recovery` identifies outcome-specific shaping gap
 dispositions, accepted-only application, exact rejected/deferred/expired

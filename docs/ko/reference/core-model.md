@@ -275,7 +275,9 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 Shaping checkpoint succession은 명시적 권한입니다. `create_initial`은 현재 checkpoint가
 없어야 하고, `replace_current`는 정확한 현재 checkpoint 하나를 compare-and-swap하여
 successor의 predecessor로 기록합니다. 연결된 live 사용자 소유 결정은 의미 owner가
-적용 대기 중이거나 수락되었지만 미적용 상태이거나 적용된 상태이면 교체를 차단합니다.
+적용 대기 중이거나 수락되었지만 미적용 상태이면 교체를 차단합니다. 적용된 권한은 일급
+`ShapingDecisionApplication`이며 교체에는 완전하고 정확한 호환 carry-forward 집합과
+application마다 엄격한 lineage edge 하나가 필요합니다.
 거부, 보류, 만료 상태의 요청은 영향받는 모든 request ref를 지정하는 정확한
 `replace_current` operation으로만 폐기할 수 있습니다. 폐기된 요청은 superseded 근거와
 함께 변경 불가능한 감사 이력으로 남습니다. successor 계획에도 같은 판단이 필요하면
@@ -286,10 +288,12 @@ UserAction도 평가하고, advisor 진행은 `finalize_advice`와 scope update�
 
 UserAction 종료 상태와 shaping 권한은 별개입니다. 정규 evaluator는 유효 요청 상태,
 변경 불가능한 action과 outcome, User Channel provenance, 근거 호환성, checkpoint와 gap
-identity, 적용 상태, scope revision, baseline, Change Unit, Task mode를 함께 평가합니다.
+identity, application identity, 권한 상태, checkpoint lineage, scope revision, baseline,
+Change Unit, Task mode를 함께 평가합니다.
 폐쇄형 상태는 `awaiting_user`, `accepted_unapplied`, `applied`, `rejected`, `deferred`,
 `expired`, `stale`, `superseded`, `inconsistent`입니다. 연결된 gap의 저장 상태는
-`current`, `accepted`, `rejected`, `deferred`, `applied`입니다. 수락되었고 현재이며
+`current`, `accepted`, `rejected`, `deferred`, `applied`이지만 이 gap projection만으로
+application 권한이 되지는 않습니다. 수락되었고 현재이며
 호환되는 User Channel resolution만 의미 owner를 통해 `accepted`에서 `applied`로 바뀔
 수 있습니다. 거부, 보류, 만료는 권한을 부여하지 않습니다.
 
@@ -399,7 +403,7 @@ Host는 이 receipt로 자연어에서 권한을 재구성하지 않고 기록�
 - 결과 요약, 결과 참조, 증거 참조
 - 잔여 위험, 민감 범주, 민감 동작 요구사항, 복구 제약
 - 모드와 호환되는 lineage 정확히 하나: direct/work의 출처 Run 또는 advisor의 현재
-  shaping checkpoint와 정확한 applied UserAction resolution
+  shaping checkpoint와 정확한 현재 shaping decision application
 - 갱신 시각과 현재 close-basis revision
 
 `CurrentCloseBasis`는 닫기 전 권한 입력입니다. 성공한 종료 닫기는 종료 닫기 요약을 만들 수 있지만, 그 종료 요약은 현재 닫기 전 근거가 아니며 열린 `Task`의 현재 닫기 근거를 재구성하는 데 쓰면 안 됩니다.
@@ -841,7 +845,7 @@ fact를 받거나 승인 policy 해석을 반복하지 않습니다.
   일치해야 하며 `Task`, Change Unit, 출처 실행 기록, 닫기 근거 증거 요약에
   대해 현재 상태여야 합니다. 오래되었거나, 출처가 없거나, 약한 출처만 있는
   범위 표시는 범위 라벨만으로 닫기 준비 상태를 만족하지 않습니다.
-- Core는 기준 참조를 저장하며 호출자가 제공한 상태 버전 메타데이터를 권한으로 취급하지 않습니다. Core는 모드 호환 lineage를 추가합니다. direct/work에는 현재 Run을, advisor에는 정확한 현재 shaping checkpoint와 applied UserAction resolution 집합을 추가하고 현재 Change Unit과 지원되는 evidence ref도 추가합니다.
+- Core는 기준 참조를 저장하며 호출자가 제공한 상태 버전 메타데이터를 권한으로 취급하지 않습니다. Core는 모드 호환 lineage를 추가합니다. direct/work에는 현재 Run을, advisor에는 정확한 현재 shaping checkpoint와 현재 shaping decision application 집합을 추가하고 현재 Change Unit과 지원되는 evidence ref도 추가합니다.
 - 현재 닫기 근거의 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓 호환성 기록에서 Core가 파생합니다. 범주만 담은 호출자 입력은 요구사항을 만들거나 지울 수 없습니다.
 
 현재 닫기 근거는 담당 문서가 정의한 전이를 통해 바뀝니다.
@@ -852,6 +856,8 @@ fact를 받거나 승인 policy 해석을 반복하지 않습니다.
   사실에서 현재 close basis를 만듭니다.
 - advisor checkpoint 기록이나 교체는 기존 advisor close basis를 무효화하고
   `close_basis_revision`을 증가시킵니다. 해당 basis를 조용히 rebase하지 않습니다.
+  Successor로 명시적으로 carry-forward된 호환 application은 current를 유지하며 중복
+  UserAction 권한 없이 수정된 자문을 다시 finalization할 수 있습니다.
 - 실질적 범위 변경이나 현재 적용 Change Unit 변경은 `scope_revision`을 증가시키고, 현재 닫기 근거를 무효화하며, `close_basis_revision`을 증가시킵니다.
 - 사용자 소유 해결 기록은 요구사항을 만족, 오래됨, 거절 상태로 만들 수 있지만 `scope_revision`이나 `close_basis_revision`을 증가시키지 않습니다.
 

@@ -198,6 +198,7 @@ task
 change_unit
 shaping_checkpoint
 shaping_gap
+shaping_decision_application
 write_ticket
 user_action_request
 user_action_resolution
@@ -359,6 +360,10 @@ The only `ShapingDecisionApplicationOwner` values are
 `volicord.update_scope`, `volicord.record_shaping`, and
 `volicord.advance_task`.
 
+`ShapingDecisionApplication.authority_status` uses exactly `current`, `stale`,
+and `superseded`. Only an owning scope, baseline, Change Unit, checkpoint, or
+terminal Task transition may change `current` to a non-current value.
+
 `WorkflowProjection.kind` uses exactly:
 
 ```text
@@ -383,6 +388,7 @@ shaping_gaps_current
 user_action_pending
 accepted_decisions_not_applied
 decision_recovery_required
+application_authority_stale
 change_unit_required
 advisor_finalization_required
 explicit_advance_required

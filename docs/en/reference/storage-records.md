@@ -1,10 +1,11 @@
 # Storage Records
 
-`shaping_checkpoints`, `shaping_checkpoint_gaps`, and
-`shaping_checkpoint_user_actions` form one Task-scoped aggregate. Exactly one
+`shaping_checkpoints`, `shaping_checkpoint_gaps`,
+`shaping_checkpoint_user_actions`, `shaping_decision_applications`, and
+`shaping_checkpoint_applications` form one Task-scoped authority aggregate. Exactly one
 non-superseded checkpoint can be current. User-owned gaps require same-Task
 request links, and ready checkpoints have no current gap. Advisor finalization
-updates gaps in this aggregate without replacing the checkpoint.
+creates application authority in this aggregate without replacing the checkpoint.
 
 This document owns semantic meaning and cross-record invariants for the
 supported storage contract. Exact tables, columns, constraints, indexes,
@@ -156,6 +157,17 @@ and sensitive gaps atomically with phase transition. Neither operation updates
 every accepted gap by a Task-wide predicate. Applied gaps are terminal, while
 sensitive resolution authority remains available to downstream policy.
 
+`shaping_decision_applications` is the authoritative accepted-decision
+application aggregate. Its deterministic identity binds one resolution and
+semantic owner to the source checkpoint/gap/request, judgment kind, applying
+scope revision, baseline, optional Change Unit, application timestamp, and
+closed `current|stale|superseded` authority status. All semantic fields are
+immutable; only the owning transition may record one current-to-stale or
+current-to-superseded invalidation. `shaping_checkpoint_applications` links an
+initial application to its source checkpoint and records every exact
+predecessor-to-successor carry edge. Current authority therefore may originate
+at an ancestor without copying its gap into the current checkpoint.
+
 Every aggregate read strictly decodes identifiers, closed values, canonical
 JSON arrays, timestamps, task ownership, predecessor ownership and timestamps,
 and link consistency. A malformed or inconsistent member is corrupt persisted
@@ -163,7 +175,10 @@ owner data; Store does not omit it, invent a default, choose a checkpoint by
 row ordering, or detach a linked current-basis UserAction through checkpoint
 replacement.
 
-Exact checkpoint replacement may supersede the basis of rejected, deferred,
+Exact checkpoint replacement requires `carry_forward_application_refs` to be
+the complete exact set of current compatible applications, rejects missing or
+extra refs and authority-boundary conflicts, and writes successor lineage in
+the same transaction. It may supersede the basis of rejected, deferred,
 or expired linked requests only when `retired_user_action_request_refs` is the
 complete predecessor-owned set. Pending, accepted, applied, stale, foreign,
 omitted, or extra refs are rejected. Retirement and successor aggregate
@@ -652,7 +667,7 @@ history. Absence is represented as absence, not a generated empty basis.
 Evidence and acceptance refs must remain exact and current under their owners.
 Direct/work bases identify an exact compatible source Run. Advisor bases have
 no source Run and instead identify the exact current shaping checkpoint and
-the exact set of applied UserAction resolutions. Store validates current Task,
+the exact set of current shaping decision applications linked to it. Store validates current Task,
 scope revision, close-basis revision, baseline, Change Unit, mode-compatible
 lineage, result/evidence refs, residual risks, and update time as one aggregate.
 An advisor basis whose Change Unit violates the canonical non-write predicate

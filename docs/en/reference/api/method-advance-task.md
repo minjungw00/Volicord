@@ -42,8 +42,10 @@ recovery constraint. Every scope-owned gap must already be `applied`. Every
 product-, technical-, or sensitive-owned gap must be `accepted`, linked to its
 exact accepted current User Channel resolution, and supplied exactly once.
 Core verifies each request, resolution, Task, checkpoint, scope revision,
-baseline, and Change Unit basis. The Store marks only those advance-owned gaps
-`applied` in the same transaction that enters implementation. A stale or superseded
+baseline, and Change Unit basis. For every selected decision, the Store creates
+the deterministic `ShapingDecisionApplication`, links it to the current
+checkpoint, and marks only that advance-owned gap `applied` in the same
+transaction that enters implementation. A stale or superseded
 checkpoint, `current` gap, unapplied scope gap, accepted-but-unsupplied
 advance-owned gap, stale resolution, stale scope
 revision, wrong Change Unit, missing resolution, extra resolution, or
@@ -58,6 +60,7 @@ incompatible baseline is rejected without an effect.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
+| `applied_shaping_decision_application_refs` | yes | no | `StateRecordRef[]` |
 | `applied_shaping_gap_refs` | yes | no | `StateRecordRef[]` |
 | `applied_user_action_resolution_refs` | yes | no | `StateRecordRef[]` |
 | `base` | yes | no | `AdvanceTaskResultBase` |
@@ -93,7 +96,7 @@ The response descriptor defines success, rejection, and preview as an exact `any
 A successful call sets the selected advance-owned gaps to `applied`, sets `work_phase=implementation`, updates the lifecycle to
 the implementation progression state, appends one typed transition event,
 stores the exact replay result, increments `state_version` exactly once, and
-returns the exact applied gap and resolution refs plus the current workflow projection. Exact replay returns the original
+returns the exact applied gap, resolution, and application refs plus the current workflow projection. Exact replay returns the original
 result; a conflicting replay is rejected.
 
 The transition does not modify Product Repository files, issue or consume a

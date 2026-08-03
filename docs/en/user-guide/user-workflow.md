@@ -244,6 +244,9 @@ required Evidence or accepts unrelated risks.
 
 For advisor work, expect a recorded checkpoint, any required User Channel
 decisions, explicit advice finalization, close review, and final acceptance.
+If compatible advice is revised after finalization, Volicord carries the
+recorded decision applications into the successor checkpoint; it does not ask
+you to repeat the same judgment solely because the advice wording changed.
 Successful completion records `advice_only`; the advisor workflow cannot issue
 a write ticket or authorize Product Repository writes.
 

@@ -34,6 +34,10 @@ checkpoint-readiness semantics are `stable`.
 `expected_current_checkpoint_id` to identify the exact current checkpoint and
 `retired_user_action_request_refs` to name the complete exact set of linked
 rejected, deferred, or expired requests whose basis the replacement retires.
+`carry_forward_application_refs` names the complete exact set of current,
+coordinate-compatible `ShapingDecisionApplication` records that remain
+authoritative in the successor. Missing, extra, stale, superseded, foreign, or
+decision-kind-conflicting application refs reject the replacement.
 A replacement checkpoint records that identity as
 `predecessor_checkpoint_id`; Core performs one compare-and-swap rather than
 selecting a row by ordering. The request supplies a shaping summary, an implementation or advisory boundary, the
@@ -54,8 +58,10 @@ the exact predecessor `superseded`, gives predecessor supersession and
 successor creation the same timestamp, and leaves at most one non-superseded
 checkpoint for a Task.
 
-Replacement cannot retire pending, accepted-but-unapplied, applied, stale, or
-foreign authority. For rejected, deferred, or expired predecessor requests,
+Replacement cannot retire pending, accepted-but-unapplied, stale, or foreign
+authority. Applied authority is preserved only through the exact typed
+carry-forward set and checkpoint-application lineage. For rejected, deferred,
+or expired predecessor requests,
 the retirement refs must be an exact set: omission and unrelated extras reject
 the operation. The request basis transition, predecessor supersession,
 successor checkpoint and gaps, successor UserAction requests, event, replay
@@ -88,14 +94,16 @@ accepted resolution set for every advisor-owned checkpoint gap. No gap may
 remain `current`; scope-owned gaps must already be `applied`; and every
 advisor-owned decision must remain current and accepted. Rejected, deferred,
 expired, or inconsistent authority selects `decision_recovery_required` and
-cannot be finalized. Task-wide effective UserActions
-required for `finalize_advice` or shaping-owned scope update must be represented
-consistently by the current checkpoint; detached pending or accepted authority
-rejects finalization. The request also supplies the
+cannot be finalized. Task-wide effective UserActions required for
+`finalize_advice` or shaping-owned scope update must be represented by a
+current gap or a current compatible application carried into the checkpoint
+lineage. Detached pending, accepted, or applied authority rejects finalization.
+The request also supplies the
 result summary, supported result and evidence refs, residual risks, and
-recovery constraints. Core atomically applies advisor-owned accepted gaps,
-records the advice result, establishes a checkpoint-backed
-`CurrentCloseBasis`, retains the checkpoint identity, and returns workflow and
+recovery constraints. Core atomically creates one immutable application record
+for each newly applied advisor-owned accepted gap, records the advice result,
+establishes a checkpoint-backed `CurrentCloseBasis` containing the exact
+current application refs, retains the checkpoint identity, and returns workflow and
 close-readiness projections. It creates no replacement checkpoint or new
 UserAction request.
 
@@ -109,8 +117,9 @@ the successor and gaps, links each user-owned gap to its exact request, updates
 the authoritative workflow state, appends the method event, stores the exact
 replay result, and increments `state_version` exactly once. One committed
 `finalize_advice` call applies the exact advisor-owned decisions and records
-the advice result, residual risks, recovery constraints, evidence lineage, and
-checkpoint-backed close basis in the same aggregate transaction.
+their application records, the advice result, residual risks, recovery
+constraints, evidence lineage, and checkpoint-backed close basis in the same
+aggregate transaction.
 
 Failure of any request, gap, checkpoint, event, replay row, or state-version
 effect rolls back the whole transaction. Exact replay returns the original
@@ -130,6 +139,7 @@ Channel resolution.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
+| `applied_shaping_decision_application_refs` | yes | no | `StateRecordRef[]` |
 | `base` | yes | no | `RecordShapingResultBase` |
 | `created_user_action_request_refs` | yes | no | `StateRecordRef[]` |
 | `shaping_checkpoint` | yes | no | `ShapingCheckpoint` |

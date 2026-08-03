@@ -334,7 +334,7 @@ mod tests {
             recovery_constraints: Vec::new(),
             source_run_ref: RequiredNullable::some(observation.run_ref.as_ref().unwrap().clone()),
             shaping_checkpoint_ref: RequiredNullable::null(),
-            applied_user_action_resolution_refs: Vec::new(),
+            shaping_decision_application_refs: Vec::new(),
             updated_at: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
         };
         assert!(projected_observation_matches_close_basis(

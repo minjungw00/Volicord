@@ -150,7 +150,7 @@ fn close_basis() -> CurrentCloseBasis {
             produced_at_state_version: Some(7).into(),
         }),
         shaping_checkpoint_ref: RequiredNullable::null(),
-        applied_user_action_resolution_refs: Vec::new(),
+        shaping_decision_application_refs: Vec::new(),
         updated_at: UtcTimestamp::parse("2026-07-27T00:00:00Z").unwrap(),
     }
 }

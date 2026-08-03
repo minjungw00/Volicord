@@ -1100,7 +1100,7 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "Update Task scope and Change Unit before more work."
         }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECORD_SHAPING) => {
-            "Record a shaping checkpoint or finalize the current advisor result."
+            "Record shaping or finalize the advisor result."
         }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::ADVANCE_TASK) => {
             "Explicitly advance ready work from shaping to implementation."

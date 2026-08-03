@@ -514,6 +514,7 @@ ShapingCheckpointSummary:
   scope_revision: integer
   baseline_ref: string | null
   implementation_boundary: string | null
+  current_application_refs: StateRecordRef[]
   gaps: ShapingCheckpointGap[]
   pending_decision_refs: StateRecordRef[]
   unresolved_application_owners: string[]
@@ -536,11 +537,32 @@ ShapingDecisionRecoveryRequirement:
   user_action_resolution_ref: StateRecordRef | null
   disposition: string
   reason: string
+
+ShapingDecisionApplication:
+  shaping_decision_application_id: string
+  project_id: string
+  task_id: string
+  source_checkpoint_id: string
+  source_gap_id: string
+  user_action_request_id: string
+  user_action_resolution_id: string
+  judgment_kind: string
+  application_owner: string
+  applied_scope_revision: integer
+  applied_baseline_ref: string
+  applied_change_unit_id: string | null
+  applied_at: string
+  authority_status: string
+  superseded_at: string | null
 ```
 
 `ShapingCheckpoint`는 `volicord.record_shaping`이 반환하는 일급 영속 기록입니다.
 workflow는 현재 checkpoint의 간결한 요약과 gap projection을 포함합니다. 교체는 영속
-record에 정확한 predecessor identity를, compact state에는 해당 ref를 담습니다.
+record에 정확한 predecessor identity를 담고 엄격한 checkpoint-application lineage로
+완전하고 명시적인 `current_application_refs` 집합을 전달합니다. `applied` gap만이 아니라
+`ShapingDecisionApplication`이 영속 권한 record입니다. 변경 불가능한 source와 적용 좌표는
+감사 이력을 보존하고 `authority_status`가 current, stale, superseded 무효화를 명시적으로
+소유합니다.
 `ShapingGapInput.user_action`은 사용자 소유 gap에만 null이 아니며, Core가 원자적으로
 materialize하고 연결하는 호환 typed draft를 담습니다. Readiness, gap kind, gap status,
 workflow kind, blocking reason은 [API 값 집합](schema-value-sets.md)의 폐쇄형 집합을
@@ -559,7 +581,7 @@ advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으�
 Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
 진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`, `finalize_advice`, shaping 소유 scope update에 필요한 Task 전체 effective UserAction도 이 projection에 참여하며 gap이 없는 successor로 우회할 수 없습니다. 분리된 live 결정은 `inconsistent_authority_state`를 사용하고 request ref를 `required_refs`에 추가하며 `ready_for_implementation` 또는 `ready_to_finalize_advice`를 차단합니다.
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`, `finalize_advice`, shaping 소유 scope update에 필요한 Task 전체 effective UserAction도 이 projection에 참여합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. 현재 lineage link가 없으면 `inconsistent_authority_state`, 명시적으로 stale인 application이면 `application_authority_stale`를 사용하며 권한 ref를 `required_refs`에 추가하고 진행을 차단합니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task
@@ -1115,7 +1137,7 @@ CurrentCloseBasis:
   recovery_constraints: string[]
   source_run_ref: StateRecordRef | null
   shaping_checkpoint_ref: StateRecordRef | null
-  applied_user_action_resolution_refs: StateRecordRef[]
+  shaping_decision_application_refs: StateRecordRef[]
   updated_at: string
 
 SensitiveActionRequirement:
@@ -1170,7 +1192,7 @@ GuaranteeDisclosure:
 - `close_basis_revision`과 `scope_revision`은 호환성 확인을 위해 드러나는 내부 현재 상태 좌표입니다. 호출자가 선택하는 권한이 아닙니다.
 - `ResidualRisk.risk_id`는 Core가 생성한 불투명 식별자입니다. `ResidualRisk.summary`와 `ResidualRisk.consequence`는 표시 문자열이며 텍스트 일치를 권한으로 만들지 않습니다.
 - `result_refs`, `evidence_refs`, `source_run_ref`, `shaping_checkpoint_ref`,
-  `applied_user_action_resolution_refs`, `source_refs`, `evidence_summary_ref`,
+  `shaping_decision_application_refs`, `source_refs`, `evidence_summary_ref`,
   `accepted_by_user_action_resolution_refs`는 `StateRecordRef`를 사용합니다.
 - `sensitive_categories`는 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 범주 분류 문자열입니다.
 - `sensitive_action_requirements`는 커밋된 실행 기록과 소비된 쓰기 티켓에서 Core가 파생한 닫기 요구사항입니다. 범주만 담은 호출자 입력은 이 요구사항을 만들거나 지울 수 없습니다.
@@ -1190,8 +1212,8 @@ GuaranteeDisclosure:
 
 닫기 근거 참조 규칙:
 - Direct/work basis는 null이 아닌 정확한 호환 `source_run_ref`, null인
-  `shaping_checkpoint_ref`, 빈 applied shaping resolution ref를 가집니다. Advisor basis는
-  null인 `source_run_ref`, 정확한 현재 shaping checkpoint, applied checkpoint resolution
+  `shaping_checkpoint_ref`, 빈 shaping decision application ref를 가집니다. Advisor basis는
+  null인 `source_run_ref`, 정확한 현재 shaping checkpoint, 현재 checkpoint application
   ref의 정확한 집합을 가집니다.
 - `CurrentCloseBasis.result_refs`나 `ResidualRisk.source_refs`로 받아들일 수 있는 direct/work 호출자 제공 닫기 평가 참조는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 결과/증거 기록 종류인 `run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다. Advisor finalization은 현재 같은 Task의 `change_unit`, `artifact`, `evidence_summary` result ref와 `artifact` 또는 `evidence_summary` evidence ref를 허용하며 Run은 허용하지 않습니다.
 - 담당 문서가 명시적으로 추가하지 않는 한 `project_state`, `write_ticket`, `user_action_request`, `user_action_resolution`, `blocker`, `task_event`, `task`는 호출자 제공 결과 참조가 아닙니다.

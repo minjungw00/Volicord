@@ -32,7 +32,10 @@
 `checkpoint_operation.operation=replace_current`는
 `expected_current_checkpoint_id`로 정확한 현재 checkpoint를 지정하고,
 `retired_user_action_request_refs`로 근거를 폐기할 연결된 거부·보류·만료 요청의 완전하고
-정확한 집합을 지정해야 합니다. 교체
+정확한 집합을 지정해야 합니다. `carry_forward_application_refs`는 successor에서도 권한을
+유지할 현재 상태이며 좌표가 호환되는 `ShapingDecisionApplication`의 완전하고 정확한
+집합을 지정합니다. 누락, 추가, stale, superseded, 외부 application ref 또는 successor의
+결정 종류와 충돌하는 ref가 있으면 교체를 거부합니다. 교체
 checkpoint는 이 identity를 `predecessor_checkpoint_id`로 기록하며 Core는 row 정렬로
 대상을 선택하지 않고 compare-and-swap을 한 번 수행합니다. 요청은 형성 요약, 구현 또는
 자문 경계, 알려진 경우의 현재 baseline 좌표, 타입이 정해진 gap, source ref, evidence
@@ -50,7 +53,9 @@ checkpoint는 `ready`입니다. 수락된 결정은 의미 owner가 적용할 �
 supersession과 successor 생성을 같은 timestamp로 기록합니다. Task 하나에는
 superseded가 아닌 checkpoint가 최대 하나만 있습니다.
 
-Pending, 수락 후 미적용, 적용, stale, 외부 권한은 교체 operation으로 폐기할 수 없습니다.
+Pending, 수락 후 미적용, stale, 외부 권한은 교체 operation으로 폐기할 수 없습니다.
+적용된 권한은 정확한 typed carry-forward 집합과 checkpoint-application lineage로만
+보존합니다.
 거부, 보류, 만료 상태인 predecessor 요청의 폐기 ref는 정확한 집합이어야 하므로 누락이나
 관련 없는 추가 ref는 operation을 거부합니다. 요청 근거 전이, predecessor supersession,
 successor checkpoint와 gap, successor UserAction 요청, event, replay row, state-version
@@ -78,10 +83,12 @@ gap에 대한 중복 없는 정확한 현재 accepted resolution 집합을 요�
 수 없고, scope owner gap은 이미 `applied`여야 하며, advisor owner resolution은 모두 현재
 상태로 수락되어 있어야 합니다. 거부, 보류, 만료, 불일치 권한은
 `decision_recovery_required`를 선택하며 finalize할 수 없습니다. `finalize_advice` 또는 shaping 소유 scope update에 필요한
-Task 전체 effective UserAction은 현재 checkpoint에 일관되게 표현되어야 하며, 분리된
-pending 또는 accepted 권한은 finalization을 거부합니다. 요청은 결과 요약, 지원되는 result와
-evidence ref, 잔여 위험, 복구 제약도 제공합니다. Core는 advisor 소유 accepted gap 적용, 자문 결과 기록,
-checkpoint 기반 `CurrentCloseBasis` 생성을 원자적으로 처리하며 checkpoint identity를
+Task 전체 effective UserAction은 현재 gap 또는 checkpoint lineage로 carry-forward된 현재
+호환 application으로 표현되어야 하며, 분리된 pending, accepted, applied 권한은
+finalization을 거부합니다. 요청은 결과 요약, 지원되는 result와 evidence ref, 잔여 위험,
+복구 제약도 제공합니다. Core는 새로 적용하는 advisor 소유 accepted gap마다 변경 불가능한
+application record 생성, 자문 결과 기록, 정확한 현재 application ref를 담은 checkpoint 기반
+`CurrentCloseBasis` 생성을 원자적으로 처리하며 checkpoint identity를
 유지하고 현재 workflow와 닫기 준비 상태 projection을 반환합니다. replacement checkpoint나
 새 UserAction 요청은 만들지 않습니다.
 
@@ -92,7 +99,7 @@ succession operation을 검증하고, 정규 UserAction draft와 근거 모델�
 결정을 materialize하며, 해당하면 정확한 predecessor를 원자적으로 supersede하고 successor와
 gap을 삽입하며, 각 사용자 소유 gap을 정확한 요청에 연결하고, 권한 있는 workflow 상태,
 메서드 event, 정확한 replay 결과를 기록하고 `state_version`을 정확히 한 번 증가시킵니다.
-커밋된 `finalize_advice` 호출 하나는 정확한 advisor 소유 결정 적용, 자문 결과, 잔여 위험,
+커밋된 `finalize_advice` 호출 하나는 정확한 advisor 소유 결정과 그 application record, 자문 결과, 잔여 위험,
 복구 제약, evidence lineage, checkpoint 기반 닫기 근거를 같은 aggregate transaction에
 기록합니다.
 
@@ -113,6 +120,7 @@ replay는 효과 없이 거부합니다.
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
+| `applied_shaping_decision_application_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `base` | 예 | 아니요 | `RecordShapingResultBase` |
 | `created_user_action_request_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `shaping_checkpoint` | 예 | 아니요 | `ShapingCheckpoint` |

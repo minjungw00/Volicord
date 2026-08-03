@@ -155,10 +155,14 @@ Task, Change Unit, checkpoint, `scope_revision`, baseline, request, 영향받는
 없는 `state_version` 증가는 티켓을 무효화하지 않습니다. 무효화는 티켓을
 소비하거나 조용히 재사용하지 않습니다.
 
-범위 결정을 적용하면 선택한 scope gap만 `accepted`에서 `applied`로 바뀌고 scope
-revision이 증가합니다. 호환되는 no-op 또는 Change Unit 생성은 scope decision ref 없이
+범위 결정을 적용하면 결정적인 `ShapingDecisionApplication`을 만들고 결과 scope revision,
+baseline, Change Unit에 결합하며 현재 checkpoint에 연결합니다. 같은 transaction에서 선택한
+scope gap만 `accepted`에서 `applied`로 바꾸고 scope revision을 증가시키며 결과와 event에
+정확한 application ref를 포함합니다. 호환되는 no-op 또는 Change Unit 생성은 scope decision ref 없이
 현재 checkpoint를 보존하고 rebase할 수 있습니다. 전이가 checkpoint의 scope 또는
-baseline 권한 근거를 실제로 무효화할 때만 checkpoint를 supersede합니다.
+baseline 권한 근거를 실제로 무효화할 때만 checkpoint를 supersede합니다. Scope, baseline,
+호환되지 않는 Change Unit 변경은 영향받는 현재 application을 명시적으로 `stale`로
+표시하며 row 부재를 무효화로 해석하지 않습니다.
 
 거부, 보류, 만료, 불일치 상태의 shaping 결정은 scope 권한을 부여하지 않습니다. 이
 메서드는 현재 workflow가 `decision_recovery_required`이고 recovery owner가
@@ -182,6 +186,7 @@ baseline 권한 근거를 실제로 무효화할 때만 checkpoint를 supersede�
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
 | `applied_scope_decision_refs` | 예 | 아니요 | `StateRecordRef[]` |
+| `applied_shaping_decision_application_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `applied_shaping_gap_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `base` | 예 | 아니요 | `UpdateScopeResultBase` |
 | `blocker_refs` | 예 | 아니요 | `StateRecordRef[]` |
@@ -340,6 +345,7 @@ change_unit_ref:
   produced_at_state_version: 19
 applied_shaping_gap_refs: []
 applied_scope_decision_refs: []
+applied_shaping_decision_application_refs: []
 stale_write_ticket_refs: []
 blocker_refs: []
 state:

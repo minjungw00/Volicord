@@ -682,7 +682,7 @@ mod tests {
             "recovery_constraints": ["Rollback requires restoring the previous exporter."],
             "source_run_ref": state_ref_json("run", "run_close_basis_001", "task_close_basis_001"),
             "shaping_checkpoint_ref": null,
-            "applied_user_action_resolution_refs": [],
+            "shaping_decision_application_refs": [],
             "updated_at": "2026-06-18T00:00:00.000Z"
         }))
         .expect("CurrentCloseBasis should deserialize");

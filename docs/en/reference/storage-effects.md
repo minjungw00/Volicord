@@ -586,11 +586,15 @@ Committed `dry_run=false` may:
   replaced
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
 - validate and set only exact selected accepted scope-owned gaps to `applied`
+- create deterministic application rows and initial checkpoint-application links
+  for those selected decisions in the same transaction
 - preserve and rebase a compatible current checkpoint and its linked current
   UserAction bases, or supersede it when the transition invalidates its
   authority basis
 - invalidate `tasks.close_basis_json` and increment `tasks.close_basis_revision` for material scope changes
 - mark incompatible user-action basis rows stale or superseded as owner-defined compatibility requires
+- mark current applications with incompatible scope, baseline, or Change Unit
+  coordinates `stale` without deleting their audit records
 - update blockers or stale write-ticket refs as the method owner allows
 - append events
 - create a replay row
@@ -622,15 +626,18 @@ A committed `dry_run=false` call:
   the successor with its predecessor identity; when recovery is required, it
   validates the complete exact rejected, deferred, or expired request-ref set
   and changes those request bases to `superseded` in the same transaction;
+- validates the complete exact `carry_forward_application_refs` set and inserts
+  strict predecessor-to-successor application lineage;
 - inserts one `shaping_checkpoints` row and all of its
   `shaping_checkpoint_gaps` rows;
 - atomically creates one pending `UserActionRequest` and one exact
   `shaping_checkpoint_user_actions` link for every user-owned gap;
 - for `operation=finalize_advice`, verifies the exact current advisor Task,
   ready checkpoint, compatible non-write Change Unit, scope, baseline, and
-  accepted resolution set; applies advisor-owned gaps; preserves the checkpoint; and
-  updates the advice result, checkpoint-backed close basis, exact applied
-  resolution lineage, evidence refs, and risk records in the same transaction;
+  accepted resolution set; creates exact advisor-owned application rows,
+  applies their source gaps, preserves the checkpoint, and updates the advice
+  result, checkpoint-backed close basis, exact application lineage, evidence
+  refs, and risk records in the same transaction;
 - appends one authority event, creates the exact replay row, advances the
   canonical Core UTC floor, and increments `project_state.state_version`
   exactly once.
@@ -643,8 +650,9 @@ whole transaction.
 A valid dry-run preview and every rejected attempt create none of these rows or
 effects.
 
-Replacement cannot retire pending, accepted, applied, stale, or foreign linked
-authority. Omitted or extra recovery refs reject before mutation. The retired
+Replacement cannot retire pending, accepted, stale, or foreign linked
+authority. Applied authority requires exact carry-forward; omitted or extra
+application or recovery refs reject before mutation. The retired
 request, successor requests, checkpoint, gap, link, predecessor update, event,
 replay row, and state-version increment share one rollback boundary; immutable
 request and resolution history remains present.
@@ -656,8 +664,9 @@ A committed `dry_run=false` call verifies the exact current work Task in
 shaping, structurally ready non-superseded checkpoint, applied scope gap set,
 scope revision, baseline, active Change Unit, exact current advance-owned
 accepted resolution-ID set, and absence of a recovery constraint. In one transaction it
-sets only the exact selected product, technical, and sensitive gaps to
-`applied`, changes the Task phase to `implementation` and lifecycle to the implementation progression state,
+creates and links the exact selected product, technical, and sensitive
+application rows, sets only their source gaps to `applied`, changes the Task
+phase to `implementation` and lifecycle to the implementation progression state,
 appends one authority event, creates the exact replay row, advances the
 canonical Core UTC floor, and increments `project_state.state_version` exactly
 once.

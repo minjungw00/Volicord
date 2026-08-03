@@ -278,8 +278,10 @@ The concrete `Task.mode` and `work_phase` select the authority record and transi
 Shaping checkpoint succession is explicit authority. `create_initial` requires
 no current checkpoint; `replace_current` compare-and-swaps one exact current
 checkpoint and records it as the successor's predecessor. A linked live
-user-owned decision prevents replacement while it is pending, accepted but
-unapplied, or applied. A rejected, deferred, or expired request may be retired
+user-owned decision prevents replacement while it is pending or accepted but
+unapplied. Applied authority is a first-class `ShapingDecisionApplication` and
+replacement requires the exact complete compatible carry-forward set and one
+strict lineage edge per application. A rejected, deferred, or expired request may be retired
 only by an exact `replace_current` operation naming every affected request ref.
 Each retired request remains immutable audit history with a superseded basis;
 if the successor plan still needs the judgment, it creates a distinct
@@ -292,10 +294,12 @@ does not bypass either Task-wide decision gate.
 UserAction terminal state and shaping authority are separate. The canonical
 evaluator combines effective request status, immutable action and outcome,
 User Channel provenance, basis compatibility, checkpoint and gap identity,
-application state, scope revision, baseline, Change Unit, and Task mode. Its
+application identity, authority status, checkpoint lineage, scope revision,
+baseline, Change Unit, and Task mode. Its
 closed states are `awaiting_user`, `accepted_unapplied`, `applied`, `rejected`,
 `deferred`, `expired`, `stale`, `superseded`, and `inconsistent`. A linked gap
-is stored as `current`, `accepted`, `rejected`, `deferred`, or `applied`. Only
+is stored as `current`, `accepted`, `rejected`, `deferred`, or `applied`, but
+that gap projection is not application authority by itself. Only
 an accepted, current, compatible User Channel resolution can move from
 `accepted` to `applied` through the semantic owner. Rejection, deferral, and
 expiration grant no authority.
@@ -411,7 +415,7 @@ decisions. It contains:
 - residual risks, sensitive categories, sensitive-action requirements, and
   recovery constraints
 - exactly one mode-compatible lineage: a source Run for direct/work, or the
-  current shaping checkpoint plus exact applied UserAction resolutions for
+  current shaping checkpoint plus exact current shaping decision applications for
   advisor
 - the update time and current close-basis revision
 
@@ -862,7 +866,7 @@ Close-basis authority:
   Run, and close-basis evidence summary. Stale, provenance-free, or
   weak-provenance coverage does not satisfy close readiness by coverage label
   alone.
-- Core stores canonical refs and never treats caller-supplied state-version metadata as authority. Core adds mode-compatible lineage: the current Run for direct/work, or the exact current shaping checkpoint and applied UserAction resolution set for advisor, plus the current Change Unit and supported evidence refs.
+- Core stores canonical refs and never treats caller-supplied state-version metadata as authority. Core adds mode-compatible lineage: the current Run for direct/work, or the exact current shaping checkpoint and current shaping decision application set for advisor, plus the current Change Unit and supported evidence refs.
 - Sensitive action requirements in the current close basis are derived by Core from committed Runs and consumed write-ticket compatibility records. Category-only caller input cannot establish or erase a requirement.
 
 The current close basis changes through owner-defined transitions:
@@ -874,7 +878,9 @@ The current close basis changes through owner-defined transitions:
   and recovery facts.
 - Recording or replacing an advisor checkpoint invalidates an existing advisor
   close basis and increments `close_basis_revision`; it never silently rebases
-  that basis.
+  that basis. Compatible applications explicitly carried into the successor
+  remain current and allow revised advice finalization without duplicate
+  UserAction authority.
 - A material scope or current Change Unit change increments `scope_revision`, invalidates the current close basis, and increments `close_basis_revision`.
 - Recording a user-owned resolution may make a requirement satisfied, stale, or rejected, but it does not increment `scope_revision` or `close_basis_revision`.
 

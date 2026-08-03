@@ -1485,6 +1485,258 @@ CREATE TABLE shaping_checkpoint_user_actions (
   )
 );
 
+CREATE TABLE shaping_decision_applications (
+  project_id TEXT NOT NULL,
+  shaping_decision_application_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  source_checkpoint_id TEXT NOT NULL,
+  source_gap_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
+  user_action_resolution_id TEXT NOT NULL,
+  judgment_kind TEXT NOT NULL CHECK (
+    judgment_kind IN (
+      'product_decision',
+      'technical_decision',
+      'scope_decision',
+      'sensitive_approval'
+    )
+  ),
+  application_owner TEXT NOT NULL CHECK (
+    application_owner IN (
+      'volicord.update_scope',
+      'volicord.advance_task',
+      'volicord.record_shaping'
+    )
+  ),
+  applied_scope_revision INTEGER NOT NULL CHECK (applied_scope_revision >= 0),
+  applied_baseline_ref TEXT NOT NULL CHECK (length(trim(applied_baseline_ref)) > 0),
+  applied_change_unit_id TEXT,
+  applied_at TEXT NOT NULL,
+  authority_status TEXT NOT NULL CHECK (
+    authority_status IN ('current', 'stale', 'superseded')
+  ),
+  superseded_at TEXT,
+  PRIMARY KEY (project_id, shaping_decision_application_id),
+  UNIQUE (project_id, task_id, shaping_decision_application_id),
+  UNIQUE (project_id, user_action_resolution_id, application_owner),
+  FOREIGN KEY (project_id, task_id)
+    REFERENCES tasks (project_id, task_id),
+  FOREIGN KEY (project_id, task_id, source_checkpoint_id)
+    REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id),
+  FOREIGN KEY (project_id, source_checkpoint_id, source_gap_id)
+    REFERENCES shaping_checkpoint_gaps (
+      project_id,
+      shaping_checkpoint_id,
+      shaping_gap_id
+    ),
+  FOREIGN KEY (
+    project_id,
+    source_checkpoint_id,
+    source_gap_id,
+    user_action_request_id,
+    judgment_kind
+  ) REFERENCES shaping_checkpoint_user_actions (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id,
+    user_action_request_id,
+    action_kind
+  ),
+  FOREIGN KEY (
+    project_id,
+    user_action_request_id,
+    user_action_resolution_id,
+    judgment_kind
+  ) REFERENCES user_action_resolutions (
+    project_id,
+    user_action_request_id,
+    user_action_resolution_id,
+    action_kind
+  ),
+  FOREIGN KEY (project_id, task_id, applied_change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id),
+  CHECK (
+    (authority_status = 'current' AND superseded_at IS NULL)
+    OR (authority_status IN ('stale', 'superseded') AND superseded_at IS NOT NULL)
+  )
+);
+
+CREATE TABLE shaping_checkpoint_applications (
+  project_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  shaping_checkpoint_id TEXT NOT NULL,
+  shaping_decision_application_id TEXT NOT NULL,
+  carried_from_checkpoint_id TEXT,
+  linked_at TEXT NOT NULL,
+  PRIMARY KEY (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_decision_application_id
+  ),
+  FOREIGN KEY (project_id, task_id, shaping_checkpoint_id)
+    REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id),
+  FOREIGN KEY (project_id, task_id, shaping_decision_application_id)
+    REFERENCES shaping_decision_applications (
+      project_id,
+      task_id,
+      shaping_decision_application_id
+    ),
+  FOREIGN KEY (project_id, task_id, carried_from_checkpoint_id)
+    REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id),
+  CHECK (
+    carried_from_checkpoint_id IS NULL
+    OR carried_from_checkpoint_id <> shaping_checkpoint_id
+  )
+);
+
+CREATE TRIGGER trg_shaping_decision_application_requires_accepted_resolution
+BEFORE INSERT ON shaping_decision_applications
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+      FROM shaping_checkpoint_gaps AS gap
+      JOIN shaping_checkpoint_user_actions AS link
+        ON link.project_id = gap.project_id
+       AND link.shaping_checkpoint_id = gap.shaping_checkpoint_id
+       AND link.shaping_gap_id = gap.shaping_gap_id
+      JOIN user_action_requests AS request
+        ON request.project_id = link.project_id
+       AND request.user_action_request_id = link.user_action_request_id
+      JOIN user_action_resolutions AS resolution
+        ON resolution.project_id = link.project_id
+       AND resolution.user_action_request_id = link.user_action_request_id
+       AND resolution.user_action_resolution_id = link.user_action_resolution_id
+     WHERE gap.project_id = NEW.project_id
+       AND gap.task_id = NEW.task_id
+       AND gap.shaping_checkpoint_id = NEW.source_checkpoint_id
+       AND gap.shaping_gap_id = NEW.source_gap_id
+       AND gap.status = 'accepted'
+       AND link.user_action_request_id = NEW.user_action_request_id
+       AND link.user_action_resolution_id = NEW.user_action_resolution_id
+       AND link.action_kind = NEW.judgment_kind
+       AND request.basis_status = 'current'
+       AND json_extract(request.basis_json, '$.coordinates.scope_revision') = NEW.applied_scope_revision
+       AND json_extract(request.basis_json, '$.coordinates.baseline_ref') = NEW.applied_baseline_ref
+       AND json_extract(request.basis_json, '$.coordinates.change_unit_id') IS NEW.applied_change_unit_id
+       AND json_extract(request.basis_json, '$.coordinates.compatibility_status') = 'current'
+       AND json_extract(resolution.resolution_json, '$.resolution_type') = 'choice'
+       AND json_extract(resolution.resolution_json, '$.machine_action') = 'accept'
+       AND json_extract(resolution.resolution_json, '$.resolution_outcome') = 'accepted'
+  ) THEN RAISE(ABORT, 'shaping application requires an exact accepted current resolution') END;
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+      FROM tasks AS task
+     WHERE task.project_id = NEW.project_id
+       AND task.task_id = NEW.task_id
+       AND task.scope_revision = NEW.applied_scope_revision
+       AND json_extract(task.shaping_summary_json, '$.baseline_ref') = NEW.applied_baseline_ref
+       AND task.current_change_unit_id IS NEW.applied_change_unit_id
+  ) THEN RAISE(ABORT, 'shaping application coordinates must match the current Task') END;
+  SELECT CASE WHEN NOT (
+    (NEW.judgment_kind = 'scope_decision'
+      AND NEW.application_owner = 'volicord.update_scope')
+    OR (NEW.judgment_kind IN ('product_decision', 'technical_decision', 'sensitive_approval')
+      AND NEW.application_owner = CASE (
+        SELECT mode FROM tasks
+         WHERE project_id = NEW.project_id AND task_id = NEW.task_id
+      ) WHEN 'advisor' THEN 'volicord.record_shaping'
+        ELSE 'volicord.advance_task' END)
+  ) THEN RAISE(ABORT, 'shaping application owner conflicts with decision policy') END;
+  SELECT CASE WHEN NEW.authority_status <> 'current' OR NEW.superseded_at IS NOT NULL
+    THEN RAISE(ABORT, 'new shaping application must be current') END;
+END;
+
+CREATE TRIGGER trg_shaping_decision_application_immutable
+BEFORE UPDATE ON shaping_decision_applications
+WHEN NEW.project_id IS NOT OLD.project_id
+  OR NEW.shaping_decision_application_id IS NOT OLD.shaping_decision_application_id
+  OR NEW.task_id IS NOT OLD.task_id
+  OR NEW.source_checkpoint_id IS NOT OLD.source_checkpoint_id
+  OR NEW.source_gap_id IS NOT OLD.source_gap_id
+  OR NEW.user_action_request_id IS NOT OLD.user_action_request_id
+  OR NEW.user_action_resolution_id IS NOT OLD.user_action_resolution_id
+  OR NEW.judgment_kind IS NOT OLD.judgment_kind
+  OR NEW.application_owner IS NOT OLD.application_owner
+  OR NEW.applied_scope_revision IS NOT OLD.applied_scope_revision
+  OR NEW.applied_baseline_ref IS NOT OLD.applied_baseline_ref
+  OR NEW.applied_change_unit_id IS NOT OLD.applied_change_unit_id
+  OR NEW.applied_at IS NOT OLD.applied_at
+BEGIN
+  SELECT RAISE(ABORT, 'shaping application identity and semantic coordinates are immutable');
+END;
+
+CREATE TRIGGER trg_shaping_decision_application_status_transition
+BEFORE UPDATE OF authority_status ON shaping_decision_applications
+WHEN NEW.authority_status <> OLD.authority_status
+  AND NOT (
+    OLD.authority_status = 'current'
+    AND NEW.authority_status IN ('stale', 'superseded')
+    AND NEW.superseded_at IS NOT NULL
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'invalid shaping application authority transition');
+END;
+
+CREATE TRIGGER trg_shaping_decision_application_invalidation_immutable
+BEFORE UPDATE OF authority_status, superseded_at ON shaping_decision_applications
+WHEN (OLD.authority_status <> 'current'
+      AND (NEW.authority_status IS NOT OLD.authority_status
+           OR NEW.superseded_at IS NOT OLD.superseded_at))
+  OR (NEW.authority_status IS OLD.authority_status
+      AND NEW.superseded_at IS NOT OLD.superseded_at)
+BEGIN
+  SELECT RAISE(ABORT, 'shaping application invalidation is immutable once recorded');
+END;
+
+CREATE TRIGGER trg_shaping_decision_application_delete_forbidden
+BEFORE DELETE ON shaping_decision_applications
+BEGIN
+  SELECT RAISE(ABORT, 'shaping application audit records are immutable');
+END;
+
+CREATE TRIGGER trg_shaping_checkpoint_application_lineage
+BEFORE INSERT ON shaping_checkpoint_applications
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM shaping_decision_applications AS application
+     WHERE application.project_id = NEW.project_id
+       AND application.task_id = NEW.task_id
+       AND application.shaping_decision_application_id = NEW.shaping_decision_application_id
+       AND application.authority_status = 'current'
+  ) THEN RAISE(ABORT, 'checkpoint lineage requires a current shaping application') END;
+  SELECT CASE WHEN NEW.carried_from_checkpoint_id IS NULL AND NOT EXISTS (
+    SELECT 1 FROM shaping_decision_applications AS application
+     WHERE application.project_id = NEW.project_id
+       AND application.shaping_decision_application_id = NEW.shaping_decision_application_id
+       AND application.source_checkpoint_id = NEW.shaping_checkpoint_id
+  ) THEN RAISE(ABORT, 'initial shaping application link must use its source checkpoint') END;
+  SELECT CASE WHEN NEW.carried_from_checkpoint_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1
+      FROM shaping_checkpoints AS successor
+      JOIN shaping_checkpoint_applications AS predecessor_link
+        ON predecessor_link.project_id = successor.project_id
+       AND predecessor_link.task_id = successor.task_id
+       AND predecessor_link.shaping_checkpoint_id = successor.predecessor_shaping_checkpoint_id
+       AND predecessor_link.shaping_decision_application_id = NEW.shaping_decision_application_id
+     WHERE successor.project_id = NEW.project_id
+       AND successor.task_id = NEW.task_id
+       AND successor.shaping_checkpoint_id = NEW.shaping_checkpoint_id
+       AND successor.predecessor_shaping_checkpoint_id = NEW.carried_from_checkpoint_id
+  ) THEN RAISE(ABORT, 'carried shaping application requires exact predecessor lineage') END;
+END;
+
+CREATE TRIGGER trg_shaping_checkpoint_application_immutable
+BEFORE UPDATE ON shaping_checkpoint_applications
+BEGIN
+  SELECT RAISE(ABORT, 'shaping checkpoint application lineage is immutable');
+END;
+
+CREATE TRIGGER trg_shaping_checkpoint_application_delete_forbidden
+BEFORE DELETE ON shaping_checkpoint_applications
+BEGIN
+  SELECT RAISE(ABORT, 'shaping checkpoint application lineage is immutable');
+END;
+
 CREATE TRIGGER trg_shaping_checkpoint_live_user_action_not_detached
 BEFORE UPDATE OF readiness ON shaping_checkpoints
 WHEN OLD.readiness <> 'superseded' AND NEW.readiness = 'superseded'
@@ -1501,8 +1753,18 @@ BEGIN
        AND request.user_action_request_id = link.user_action_request_id
      WHERE link.project_id = OLD.project_id
        AND link.shaping_checkpoint_id = OLD.shaping_checkpoint_id
-       AND gap.status <> 'applied'
        AND request.basis_status = 'current'
+       AND NOT EXISTS (
+         SELECT 1
+           FROM shaping_decision_applications AS application
+           JOIN shaping_checkpoint_applications AS application_link
+             ON application_link.project_id = application.project_id
+            AND application_link.shaping_decision_application_id = application.shaping_decision_application_id
+          WHERE application.project_id = link.project_id
+            AND application.user_action_request_id = link.user_action_request_id
+            AND application.authority_status = 'current'
+            AND application_link.shaping_checkpoint_id = OLD.shaping_checkpoint_id
+       )
   ) THEN RAISE(ABORT, 'live shaping UserAction authority cannot be detached') END;
 END;
 
@@ -1596,6 +1858,20 @@ BEGIN
        AND json_extract(resolution.resolution_json, '$.resolution_type') = 'choice'
        AND json_extract(resolution.resolution_json, '$.machine_action') = 'accept'
        AND json_extract(resolution.resolution_json, '$.resolution_outcome') = 'accepted'
+       AND EXISTS (
+         SELECT 1
+           FROM shaping_decision_applications AS application
+           JOIN shaping_checkpoint_applications AS application_link
+             ON application_link.project_id = application.project_id
+            AND application_link.shaping_decision_application_id = application.shaping_decision_application_id
+          WHERE application.project_id = NEW.project_id
+            AND application.source_checkpoint_id = NEW.shaping_checkpoint_id
+            AND application.source_gap_id = NEW.shaping_gap_id
+            AND application.user_action_request_id = link.user_action_request_id
+            AND application.user_action_resolution_id = link.user_action_resolution_id
+            AND application.authority_status = 'current'
+            AND application_link.shaping_checkpoint_id = NEW.shaping_checkpoint_id
+       )
   ) THEN RAISE(ABORT, 'applied shaping gap requires an exact accepted resolution') END;
 END;
 

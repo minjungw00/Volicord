@@ -196,7 +196,7 @@ pub(crate) fn build_record_run_close_basis(
         recovery_constraints: normalize_display_string_list(&assessment.recovery_constraints),
         source_run_ref: RequiredNullable::some(run_ref.clone()),
         shaping_checkpoint_ref: RequiredNullable::null(),
-        applied_user_action_resolution_refs: Vec::new(),
+        shaping_decision_application_refs: Vec::new(),
         updated_at: now.clone(),
     }))
 }

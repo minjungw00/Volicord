@@ -681,6 +681,7 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                 ShapingCheckpointOperation::ReplaceCurrent {
                     expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                     retired_user_action_request_refs: Vec::new(),
+                    carry_forward_application_refs: Vec::new(),
                 },
                 "Recovery requires the exact predecessor decision ref.",
             ),
@@ -697,6 +698,7 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                 retired_user_action_request_refs: vec![retirement_ref],
+                carry_forward_application_refs: Vec::new(),
             },
             "The revised plan asks for a fresh decision.",
         );
@@ -849,6 +851,7 @@ fn expired_shaping_request_routes_to_read_only_recovery_and_can_be_reissued(
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
             retired_user_action_request_refs: vec![retirement_ref],
+            carry_forward_application_refs: Vec::new(),
         },
         "The revised plan creates a fresh bounded request.",
     );
@@ -1139,25 +1142,42 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
         "advisor_checkpoint_invalidation",
         RequestedMode::Advisor,
     )?;
-    let shaped = harness.service.record_shaping(
-        ready_shaping_request(
-            "req_advisor_checkpoint_invalidation_record",
-            "idem_advisor_checkpoint_invalidation_record",
-            2,
-            &task_id,
-            ShapingCheckpointOperation::CreateInitial,
-            "Current bounded advice.",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
+    let shaped = record_user_owned_gaps(
+        &harness,
+        "advisor_checkpoint_invalidation",
+        &task_id,
+        Some(&change_unit_id),
+        &[(
+            ShapingGapKind::UserProductDecisionRequired,
+            JudgmentKind::ProductDecision,
+        )],
     )?;
     let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+    let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
+        .as_str()
+        .expect("advisor request id");
+    let resolved = harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_advisor_checkpoint_invalidation_resolve",
+            "submission_advisor_checkpoint_invalidation",
+            None,
+            &task_id,
+            request_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    let resolution_id = resolved.response_value["user_action_resolution_ref"]["record_id"]
+        .as_str()
+        .expect("advisor resolution id")
+        .to_owned();
     let finalized = harness.service.record_shaping(
         RecordShapingRequest {
             envelope: envelope(
                 "req_advisor_checkpoint_invalidation_finalize",
                 Some("idem_advisor_checkpoint_invalidation_finalize"),
                 false,
-                Some(3),
+                Some(4),
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
@@ -1166,7 +1186,7 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision: 1,
                 baseline_ref: BaselineRef::new("baseline_test"),
-                user_action_resolution_ids: Vec::new(),
+                user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
                 result_summary: "Current bounded advice result.".to_owned(),
                 result_refs: Vec::new(),
                 evidence_refs: Vec::new(),
@@ -1177,6 +1197,10 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+    let application_refs: Vec<StateRecordRef> = serde_json::from_value(
+        finalized.response_value["applied_shaping_decision_application_refs"].clone(),
+    )?;
+    assert_eq!(application_refs.len(), 1);
     let before = task_revision(&harness, &task_id)?;
     assert!(before.current_close_basis.is_some());
 
@@ -1184,11 +1208,12 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
         ready_shaping_request(
             "req_advisor_checkpoint_invalidation_replace",
             "idem_advisor_checkpoint_invalidation_replace",
-            4,
+            5,
             &task_id,
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                 retired_user_action_request_refs: Vec::new(),
+                carry_forward_application_refs: application_refs.clone(),
             },
             "Replacement bounded advice.",
         ),
@@ -1205,6 +1230,53 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
     let after = task_revision(&harness, &task_id)?;
     assert!(after.current_close_basis.is_none());
     assert_eq!(after.close_basis_revision, before.close_basis_revision + 1);
+    let successor_id = shaping_checkpoint_id(&replaced.response_value);
+    let current = harness
+        .store()?
+        .current_shaping_checkpoint(&TaskId::new(&task_id))?
+        .expect("successor checkpoint");
+    assert_eq!(current.applications.len(), 1);
+    assert_eq!(
+        current.applications[0].linked_checkpoint_id.as_deref(),
+        Some(successor_id.as_str())
+    );
+    assert_eq!(
+        current.applications[0]
+            .carried_from_checkpoint_id
+            .as_deref(),
+        Some(checkpoint_id.as_str())
+    );
+    let revised = harness.service.record_shaping(
+        RecordShapingRequest {
+            envelope: envelope(
+                "req_advisor_checkpoint_invalidation_refinalize",
+                Some("idem_advisor_checkpoint_invalidation_refinalize"),
+                false,
+                Some(6),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            operation: RecordShapingOperation::FinalizeAdvice {
+                shaping_checkpoint_id: ShapingCheckpointId::new(&successor_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
+                result_summary: "Revised bounded advice result.".to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
+            },
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(revised.response_value["base"]["response_kind"], "result");
+    assert_eq!(revised.response_value["workflow"]["kind"], "close_review");
+    assert!(revised.response_value["created_user_action_request_refs"]
+        .as_array()
+        .expect("created request refs")
+        .is_empty());
     Ok(())
 }
 
@@ -1568,6 +1640,38 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             .as_array()
             .expect("created request refs")
             .is_empty());
+        let advisor_owned_count = decisions
+            .iter()
+            .filter(|(kind, _)| *kind != ShapingGapKind::UserScopeDecisionRequired)
+            .count();
+        assert_eq!(
+            finalized.response_value["applied_shaping_decision_application_refs"]
+                .as_array()
+                .expect("advisor application refs")
+                .len(),
+            advisor_owned_count,
+            "{label} exact advisor applications"
+        );
+        let current_checkpoint = harness
+            .store()?
+            .current_shaping_checkpoint(&TaskId::new(&task_id))?
+            .expect("advisor checkpoint after finalization");
+        assert_eq!(
+            current_checkpoint.applications.len(),
+            decisions.len(),
+            "{label}"
+        );
+        let task_after_finalization = task_revision(&harness, &task_id)?;
+        assert_eq!(
+            task_after_finalization
+                .current_close_basis
+                .as_ref()
+                .expect("advisor close basis")
+                .shaping_decision_application_refs
+                .len(),
+            decisions.len(),
+            "{label} close-basis application lineage"
+        );
         let basis = &finalized.response_value["state"];
         assert_eq!(basis["close_state"], "blocked");
         let after_acceptance = record_final_acceptance(
@@ -1766,6 +1870,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new("checkpoint_unknown"),
                 retired_user_action_request_refs: Vec::new(),
+                carry_forward_application_refs: Vec::new(),
             },
             "Stale replacement authority.",
         ),
@@ -1785,6 +1890,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
             retired_user_action_request_refs: Vec::new(),
+            carry_forward_application_refs: Vec::new(),
         },
         "Exact successor authority.",
     );
@@ -1834,6 +1940,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
                 retired_user_action_request_refs: Vec::new(),
+                carry_forward_application_refs: Vec::new(),
             },
             "A competing replacement cannot displace the committed successor.",
         ),
@@ -1884,6 +1991,7 @@ fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
             retired_user_action_request_refs: Vec::new(),
+            carry_forward_application_refs: Vec::new(),
         },
         "First competing successor.",
     );
@@ -1895,6 +2003,7 @@ fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
             retired_user_action_request_refs: Vec::new(),
+            carry_forward_application_refs: Vec::new(),
         },
         "Second competing successor.",
     );
@@ -1999,6 +2108,7 @@ fn every_live_user_owned_shaping_decision_blocks_replacement() -> Result<(), Box
                 ShapingCheckpointOperation::ReplaceCurrent {
                     expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                     retired_user_action_request_refs: Vec::new(),
+                    carry_forward_application_refs: Vec::new(),
                 },
                 "A free-form replacement cannot remove decision authority.",
             ),
@@ -2068,12 +2178,13 @@ fn direct_store_mutation_cannot_detach_live_shaping_authority() -> Result<(), Bo
         }],
     );
     let mutation = volicord_store::core_pipeline::CoreStorageMutation::Shaping(
-        volicord_store::core_pipeline::ShapingCheckpointMutation::Record(
+        volicord_store::core_pipeline::ShapingCheckpointMutation::Record(Box::new(
             volicord_store::core_pipeline::ShapingCheckpointInsert {
                 shaping_checkpoint_id: "checkpoint_direct_store_successor".to_owned(),
                 checkpoint_operation: ShapingCheckpointOperation::ReplaceCurrent {
                     expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                     retired_user_action_request_refs: Vec::new(),
+                    carry_forward_application_refs: Vec::new(),
                 },
                 task_id: task_id.clone(),
                 scope_revision: 1,
@@ -2085,9 +2196,10 @@ fn direct_store_mutation_cannot_detach_live_shaping_authority() -> Result<(), Bo
                 evidence_refs: Vec::new(),
                 created_at: UtcTimestamp::parse("2026-06-18T00:00:01Z")?,
                 retired_user_action_request_ids: Vec::new(),
+                carry_forward_application_ids: Vec::new(),
                 gaps: Vec::new(),
             },
-        ),
+        )),
     );
     let error = store
         .commit_mutation(input, &[mutation], |_| Ok("{}".to_owned()))
@@ -2155,6 +2267,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                 retired_user_action_request_refs: Vec::new(),
+                carry_forward_application_refs: Vec::new(),
             },
             "Resolved authority is not yet applied.",
         ),
@@ -2189,16 +2302,77 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         .gaps
         .iter()
         .all(|gap| gap.status == ShapingGapStatus::Applied));
-    let mut later_request = ready_shaping_request(
-        "req_resolved_scope_replace_after_apply",
-        "idem_resolved_scope_replace_after_apply",
-        applied.response_value["base"]["state_version"]
-            .as_u64()
-            .expect("state version"),
+    let carry_forward_application_refs: Vec<StateRecordRef> = serde_json::from_value(
+        applied.response_value["applied_shaping_decision_application_refs"].clone(),
+    )?;
+    let application_state_version = applied.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("application state version");
+    let mut missing_carry = ready_shaping_request(
+        "req_resolved_scope_replace_missing_carry",
+        "idem_resolved_scope_replace_missing_carry",
+        application_state_version,
         &task_id,
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             retired_user_action_request_refs: Vec::new(),
+            carry_forward_application_refs: Vec::new(),
+        },
+        "Missing carry authority must reject.",
+    );
+    if let RecordShapingOperation::RecordCheckpoint { scope_revision, .. } =
+        &mut missing_carry.operation
+    {
+        *scope_revision = 2;
+    }
+    let before_missing = harness.counts()?;
+    let missing = harness
+        .service
+        .record_shaping(missing_carry, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(missing.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before_missing);
+
+    let mut extra_refs = carry_forward_application_refs.clone();
+    extra_refs.push(StateRecordRef::new(
+        StateRecordKind::ShapingDecisionApplication,
+        "shaping_application_unrelated",
+        ProjectId::new(PROJECT_ID),
+        Some(TaskId::new(&task_id)),
+        Some(application_state_version),
+    ));
+    let mut extra_carry = ready_shaping_request(
+        "req_resolved_scope_replace_extra_carry",
+        "idem_resolved_scope_replace_extra_carry",
+        application_state_version,
+        &task_id,
+        ShapingCheckpointOperation::ReplaceCurrent {
+            expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            retired_user_action_request_refs: Vec::new(),
+            carry_forward_application_refs: extra_refs,
+        },
+        "Extra carry authority must reject.",
+    );
+    if let RecordShapingOperation::RecordCheckpoint { scope_revision, .. } =
+        &mut extra_carry.operation
+    {
+        *scope_revision = 2;
+    }
+    let before_extra = harness.counts()?;
+    let extra = harness
+        .service
+        .record_shaping(extra_carry, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(extra.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before_extra);
+
+    let mut later_request = ready_shaping_request(
+        "req_resolved_scope_replace_after_apply",
+        "idem_resolved_scope_replace_after_apply",
+        application_state_version,
+        &task_id,
+        ShapingCheckpointOperation::ReplaceCurrent {
+            expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            retired_user_action_request_refs: Vec::new(),
+            carry_forward_application_refs: carry_forward_application_refs.clone(),
         },
         "Applied authority permits exact checkpoint succession.",
     );
@@ -2220,6 +2394,10 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
     assert_eq!(
         later.response_value["shaping_checkpoint"]["predecessor_checkpoint_id"],
         checkpoint_id
+    );
+    assert_eq!(
+        later.response_value["workflow"]["checkpoint"]["current_application_refs"][0]["record_id"],
+        carry_forward_application_refs[0].record_id.as_str()
     );
     let before_cross_checkpoint = harness.counts()?;
     let cross_checkpoint = harness.service.advance_task(
@@ -2252,6 +2430,39 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         "rejected"
     );
     assert_eq!(harness.counts()?, before_cross_checkpoint);
+    let mut incompatible = update_scope_request(
+        "req_resolved_scope_invalidate_application",
+        "idem_resolved_scope_invalidate_application",
+        false,
+        Some(before_cross_checkpoint.state_version),
+        &task_id,
+        ChangeUnitOperation::ReplaceCurrent,
+        "A revised scope, baseline, and Change Unit require new authority.",
+    );
+    incompatible.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
+    let invalidated = harness
+        .service
+        .update_scope(incompatible, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        invalidated.response_value["base"]["response_kind"],
+        "result"
+    );
+    assert_eq!(
+        invalidated.response_value["state"]["workflow"]["blocking_reason"],
+        "application_authority_stale"
+    );
+    let application = harness
+        .store()?
+        .shaping_decision_application_record(
+            &TaskId::new(&task_id),
+            carry_forward_application_refs[0].record_id.as_str(),
+        )?
+        .expect("durable shaping application audit record");
+    assert_eq!(
+        application.authority_status,
+        volicord_types::values::ShapingDecisionApplicationAuthorityStatus::Stale
+    );
+    assert!(application.superseded_at.is_some());
     Ok(())
 }
 
@@ -2376,6 +2587,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                     ShapingCheckpointOperation::ReplaceCurrent {
                         expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                         retired_user_action_request_refs: Vec::new(),
+                        carry_forward_application_refs: Vec::new(),
                     },
                     "Pending user authority remains attached to the current checkpoint.",
                 ),
@@ -2496,6 +2708,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                     ShapingCheckpointOperation::ReplaceCurrent {
                         expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                         retired_user_action_request_refs: Vec::new(),
+                        carry_forward_application_refs: Vec::new(),
                     },
                     "Resolved authority remains live until its semantic owner applies it.",
                 ),
@@ -2612,6 +2825,14 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                 "{label} exact scope gap"
             );
             assert_eq!(
+                applied.response_value["applied_shaping_decision_application_refs"]
+                    .as_array()
+                    .expect("applied scope application refs")
+                    .len(),
+                1,
+                "{label} exact scope application"
+            );
+            assert_eq!(
                 applied.response_value["state"]["workflow"]["kind"], "ready_for_implementation",
                 "{label} no workflow loop"
             );
@@ -2705,6 +2926,14 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                 .len(),
             advance_resolution_ids.len(),
             "{label} exact advance refs"
+        );
+        assert_eq!(
+            advanced.response_value["applied_shaping_decision_application_refs"]
+                .as_array()
+                .expect("advance application refs")
+                .len(),
+            advance_resolution_ids.len(),
+            "{label} exact advance applications"
         );
         let replay = harness.service.advance_task(
             advance_request,
@@ -2838,6 +3067,17 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
         assert_eq!(
             closed.response_value["authority_receipt"]["completion_claim_allowed"], true,
             "{label}"
+        );
+        assert!(
+            harness
+                .store()?
+                .shaping_decision_applications_for_task(&TaskId::new(&task_id))?
+                .iter()
+                .all(|application| {
+                    application.authority_status
+                        == volicord_types::values::ShapingDecisionApplicationAuthorityStatus::Superseded
+                }),
+            "{label} terminal transition supersedes application authority"
         );
     }
     Ok(())

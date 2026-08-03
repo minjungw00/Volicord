@@ -206,6 +206,7 @@ task
 change_unit
 shaping_checkpoint
 shaping_gap
+shaping_decision_application
 write_ticket
 user_action_request
 user_action_resolution
@@ -365,6 +366,10 @@ advisor + sensitive_approval_required -> volicord.record_shaping
 `ShapingDecisionApplicationOwner` 값은 `volicord.update_scope`,
 `volicord.record_shaping`, `volicord.advance_task`뿐입니다.
 
+`ShapingDecisionApplication.authority_status`는 정확히 `current`, `stale`,
+`superseded`를 사용합니다. 이를 소유하는 scope, baseline, Change Unit, checkpoint 또는
+terminal Task 전이만 `current`를 현재가 아닌 값으로 바꿀 수 있습니다.
+
 `WorkflowProjection.kind`는 정확히 아래 값을 사용합니다.
 
 ```text
@@ -389,6 +394,7 @@ shaping_gaps_current
 user_action_pending
 accepted_decisions_not_applied
 decision_recovery_required
+application_authority_stale
 change_unit_required
 advisor_finalization_required
 explicit_advance_required

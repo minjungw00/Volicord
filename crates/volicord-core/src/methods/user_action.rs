@@ -109,6 +109,10 @@ fn projected_resolved_shaping_authority_state(
         baseline_matches: true,
         change_unit_matches: true,
         gap_status: disposition,
+        application_present: false,
+        application_authority_status: None,
+        application_identity_matches: false,
+        application_lineage_current: false,
     })
 }
 use volicord_user_action_service::{

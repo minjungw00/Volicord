@@ -20,6 +20,7 @@ pub const STORAGE_ENABLED_CAPABILITIES: &[&str] = &[
     "operational_mcp_sessions",
     "project_continuity",
     "shaping_checkpoint_lineage",
+    "shaping_decision_applications",
     "shaping_decision_recovery",
     "shaping_progression",
     "user_action_cli_resolution",

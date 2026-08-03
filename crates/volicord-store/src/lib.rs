@@ -44,15 +44,17 @@ fn project_schema_declares_stable_ddl_vector() -> Result<(), Box<dyn std::error:
     use volicord_types::storage_contract::{GeneratedRelationKind, StorageDatabaseKind};
 
     let metadata = schema::generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 67);
-    assert_eq!(metadata.columns.len(), 636);
+    assert_eq!(metadata.tables.len(), 77);
+    assert_eq!(metadata.columns.len(), 657);
     assert_eq!(metadata.indexes.len(), 78);
-    assert_eq!(metadata.constraints.len(), 49);
+    assert_eq!(metadata.constraints.len(), 51);
 
     for table in [
         "shaping_checkpoints",
         "shaping_checkpoint_gaps",
         "shaping_checkpoint_user_actions",
+        "shaping_decision_applications",
+        "shaping_checkpoint_applications",
     ] {
         assert!(metadata.tables.iter().any(|relation| {
             relation.database == StorageDatabaseKind::ProjectState
@@ -78,6 +80,8 @@ fn project_schema_declares_stable_ddl_vector() -> Result<(), Box<dyn std::error:
         "trg_shaping_gap_disposition_requires_matching_user_resolution",
         "trg_shaping_gap_application_requires_accepted_gap",
         "trg_applied_shaping_gap_is_terminal",
+        "trg_shaping_decision_application_requires_accepted_resolution",
+        "trg_shaping_checkpoint_application_lineage",
     ] {
         assert!(metadata.tables.iter().any(|relation| {
             relation.database == StorageDatabaseKind::ProjectState

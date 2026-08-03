@@ -39,8 +39,9 @@ Task/checkpoint scope revision, 호환되는 Task/checkpoint/Change Unit baselin
 gap은 이미 `applied`여야 합니다. 제품·기술·민감 owner gap은 모두 `accepted`이고 정확한
 현재 accepted User Channel resolution에 연결되어야 하며 요청에 한 번씩 제공되어야
 합니다. Core는 각 request, resolution, Task, checkpoint, scope revision, baseline, Change
-Unit 근거를 검증합니다. Store는 implementation 진입과 같은 transaction에서 선택된
-advance owner gap만 `applied`로 바꿉니다. stale 또는 superseded checkpoint, `current`
+Unit 근거를 검증합니다. Store는 선택된 결정마다 결정적인
+`ShapingDecisionApplication`을 만들고 현재 checkpoint에 연결하며 implementation 진입과
+같은 transaction에서 해당 advance owner gap만 `applied`로 바꿉니다. stale 또는 superseded checkpoint, `current`
 gap, 적용되지 않은 범위 gap, 제공되지 않은 accepted advance owner gap, stale resolution,
 stale scope revision, 잘못된 Change Unit, 빠지거나 추가된 resolution, 호환되지 않는
 baseline은 효과 없이 거부됩니다.
@@ -54,6 +55,7 @@ baseline은 효과 없이 거부됩니다.
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
+| `applied_shaping_decision_application_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `applied_shaping_gap_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `applied_user_action_resolution_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `base` | 예 | 아니요 | `AdvanceTaskResultBase` |
@@ -89,7 +91,7 @@ baseline은 효과 없이 거부됩니다.
 성공하면 선택된 advance owner gap을 `applied`로 바꾸고
 `work_phase=implementation`과 lifecycle 구현 진행 상태를 설정하며, 타입이 정해진
 전환 event 하나와 정확한 replay 결과를 기록합니다. `state_version`을 정확히 한 번
-증가시키고 정확한 applied gap·resolution ref와 현재 workflow projection을 반환합니다.
+증가시키고 정확한 applied gap·resolution·application ref와 현재 workflow projection을 반환합니다.
 정확한 replay는 원래 결과를 반환하며 충돌하는 replay는 거부됩니다.
 
 이 전환은 Product Repository 파일을 변경하거나, 쓰기 티켓을 발급·소비하거나,

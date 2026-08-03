@@ -519,6 +519,7 @@ ShapingCheckpointSummary:
   scope_revision: integer
   baseline_ref: string | null
   implementation_boundary: string | null
+  current_application_refs: StateRecordRef[]
   gaps: ShapingCheckpointGap[]
   pending_decision_refs: StateRecordRef[]
   unresolved_application_owners: string[]
@@ -541,12 +542,33 @@ ShapingDecisionRecoveryRequirement:
   user_action_resolution_ref: StateRecordRef | null
   disposition: string
   reason: string
+
+ShapingDecisionApplication:
+  shaping_decision_application_id: string
+  project_id: string
+  task_id: string
+  source_checkpoint_id: string
+  source_gap_id: string
+  user_action_request_id: string
+  user_action_resolution_id: string
+  judgment_kind: string
+  application_owner: string
+  applied_scope_revision: integer
+  applied_baseline_ref: string
+  applied_change_unit_id: string | null
+  applied_at: string
+  authority_status: string
+  superseded_at: string | null
 ```
 
 `ShapingCheckpoint` is the first-class durable record returned by
 `volicord.record_shaping`; the workflow embeds its current compact summary and
-gap projections. A replacement carries the exact predecessor identity in the
-durable record and its compact state reference. `ShapingGapInput.user_action` is non-null exactly for a
+gap projections. A replacement carries the exact predecessor identity and the
+complete explicit `current_application_refs` set through strict
+checkpoint-application lineage. `ShapingDecisionApplication`, rather than an
+`applied` gap alone, is the durable authority record. Its immutable source and
+application coordinates preserve audit history while `authority_status` owns
+explicit current, stale, or superseded invalidation. `ShapingGapInput.user_action` is non-null exactly for a
 user-owned gap and carries the compatible typed draft that Core materializes
 and links atomically. Readiness, gap kinds, gap statuses, workflow kinds, and
 blocking reasons use the closed sets in [API Value Sets](schema-value-sets.md).
@@ -566,7 +588,7 @@ Unit or `ready_for_implementation`. Advisor finalization-owned decisions
 proceed toward a non-write Change Unit and `ready_to_finalize_advice`; only a
 current checkpoint-backed close basis selects `close_review`.
 
-The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Task-wide effective UserActions required for `advance_task`, `finalize_advice`, or shaping-owned scope update also participate in this projection. A gap-free successor does not bypass them. A detached live decision uses `inconsistent_authority_state`, contributes its request ref to `required_refs`, and prevents `ready_for_implementation` or `ready_to_finalize_advice`.
+The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Task-wide effective UserActions required for `advance_task`, `finalize_advice`, or shaping-owned scope update also participate in this projection. A compatible application carried from an ancestor remains `applied` without copying its source gap. A missing current lineage link uses `inconsistent_authority_state`; an explicitly stale application uses `application_authority_stale`. Both contribute authority refs to `required_refs` and prevent progression.
 
 Workflow mutation rejection details embed this same complete tagged
 `WorkflowProjection`; they do not reconstruct progression from the received
@@ -1138,7 +1160,7 @@ CurrentCloseBasis:
   recovery_constraints: string[]
   source_run_ref: StateRecordRef | null
   shaping_checkpoint_ref: StateRecordRef | null
-  applied_user_action_resolution_refs: StateRecordRef[]
+  shaping_decision_application_refs: StateRecordRef[]
   updated_at: string
 
 SensitiveActionRequirement:
@@ -1193,7 +1215,7 @@ Meaning:
 - `close_basis_revision` and `scope_revision` are internal current-state coordinates surfaced for compatibility checks. They are not caller-selected authority.
 - `ResidualRisk.risk_id` is an opaque Core-generated identifier. `ResidualRisk.summary` and `ResidualRisk.consequence` are display strings and do not authorize text matching.
 - `result_refs`, `evidence_refs`, `source_run_ref`, `shaping_checkpoint_ref`,
-  `applied_user_action_resolution_refs`, `source_refs`,
+  `shaping_decision_application_refs`, `source_refs`,
   `evidence_summary_ref`, and `accepted_by_user_action_resolution_refs` use
   `StateRecordRef`.
 - `sensitive_categories` are opaque sensitive-category classification strings unless an affected method or profile owner publishes a narrower local list.
@@ -1214,9 +1236,9 @@ These shapes do not define close-readiness meaning, response routing, or persist
 
 Close-basis reference rules:
 - Direct/work bases have a non-null exact compatible `source_run_ref`, a null
-  `shaping_checkpoint_ref`, and no applied shaping resolution refs. Advisor
+  `shaping_checkpoint_ref`, and no shaping decision application refs. Advisor
   bases have a null `source_run_ref`, the exact current shaping checkpoint,
-  and the exact set of applied checkpoint resolution refs.
+  and the exact set of current checkpoint application refs.
 - Caller-supplied direct/work close-assessment refs accepted into `CurrentCloseBasis.result_refs` or `ResidualRisk.source_refs` are limited to result/evidence record kinds `run`, `artifact`, `evidence_summary`, and `change_unit` unless an owner document explicitly adds another kind. Advisor finalization accepts current same-Task `change_unit`, `artifact`, and `evidence_summary` result refs and `artifact` or `evidence_summary` evidence refs; it does not accept a Run.
 - `project_state`, `write_ticket`, `user_action_request`,
   `user_action_resolution`, `blocker`, `task_event`, and `task` are not

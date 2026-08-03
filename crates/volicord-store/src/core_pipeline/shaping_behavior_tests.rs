@@ -1,8 +1,9 @@
 use std::error::Error;
 
 use volicord_types::ids::{
-    AgentConnectionId, BaselineRef, IdempotencyKey, ProjectId, RequestHash, ShapingCheckpointId,
-    ShapingGapId, TaskId, UserActionOptionId,
+    shaping_decision_application_id, AgentConnectionId, BaselineRef, IdempotencyKey, ProjectId,
+    RequestHash, ShapingCheckpointId, ShapingGapId, TaskId, UserActionOptionId,
+    UserActionResolutionId,
 };
 use volicord_types::schema::{
     PersistedUserActionRequest, PersistedUserActionRequestMetadata,
@@ -32,6 +33,12 @@ use crate::core_pipeline::{
     TaskMutation, UserActionMutation, UserActionRequestInsert, UserActionResolutionInsert,
 };
 use crate::StoreError;
+
+fn application_id(resolution_id: &str, owner: ShapingDecisionApplicationOwner) -> String {
+    shaping_decision_application_id(&UserActionResolutionId::new(resolution_id), owner)
+        .expect("application identity")
+        .into_inner()
+}
 
 #[test]
 fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<(), Box<dyn Error>> {
@@ -107,32 +114,35 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
             scope_request_id,
             UserActionKind::ScopeDecision,
         ))),
-        CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(ShapingCheckpointInsert {
-            shaping_checkpoint_id: checkpoint_id.to_owned(),
-            checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
-            task_id: task_id.to_owned(),
-            scope_revision: 0,
-            baseline_ref: Some(baseline.clone()),
-            summary: "Two independently owned decisions are resolved.".to_owned(),
-            implementation_boundary: Some("Apply each decision by its owner.".to_owned()),
-            readiness: ShapingCheckpointReadiness::Blocked,
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
-            retired_user_action_request_ids: Vec::new(),
-            gaps: vec![
-                shaping_gap(
-                    product_gap_id,
-                    product_request_id,
-                    ShapingGapKind::UserProductDecisionRequired,
-                ),
-                shaping_gap(
-                    scope_gap_id,
-                    scope_request_id,
-                    ShapingGapKind::UserScopeDecisionRequired,
-                ),
-            ],
-        })),
+        CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(Box::new(
+            ShapingCheckpointInsert {
+                shaping_checkpoint_id: checkpoint_id.to_owned(),
+                checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
+                task_id: task_id.to_owned(),
+                scope_revision: 0,
+                baseline_ref: Some(baseline.clone()),
+                summary: "Two independently owned decisions are resolved.".to_owned(),
+                implementation_boundary: Some("Apply each decision by its owner.".to_owned()),
+                readiness: ShapingCheckpointReadiness::Blocked,
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
+                retired_user_action_request_ids: Vec::new(),
+                carry_forward_application_ids: Vec::new(),
+                gaps: vec![
+                    shaping_gap(
+                        product_gap_id,
+                        product_request_id,
+                        ShapingGapKind::UserProductDecisionRequired,
+                    ),
+                    shaping_gap(
+                        scope_gap_id,
+                        scope_request_id,
+                        ShapingGapKind::UserScopeDecisionRequired,
+                    ),
+                ],
+            },
+        ))),
         CoreStorageMutation::Shaping(ShapingCheckpointMutation::ResolveLinkedGap {
             user_action_request_id: product_request_id.to_owned(),
             user_action_resolution_id: product_resolution_id.to_owned(),
@@ -164,7 +174,12 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
                     shaping_checkpoint_id: checkpoint_id.to_owned(),
                     scope_revision: 1,
                     baseline_ref: Some(baseline.clone()),
+                    change_unit_id: Some(change_unit_id.to_owned()),
                     applications: vec![ShapingGapApplication {
+                        shaping_decision_application_id: application_id(
+                            scope_resolution_id,
+                            ShapingDecisionApplicationOwner::UpdateScope,
+                        ),
                         shaping_gap_id: scope_gap_id.to_owned(),
                         user_action_resolution_id: scope_resolution_id.to_owned(),
                     }],
@@ -204,7 +219,12 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
                 shaping_checkpoint_id: checkpoint_id.to_owned(),
                 scope_revision: 0,
                 baseline_ref: Some(baseline.clone()),
+                change_unit_id: Some(change_unit_id.to_owned()),
                 applications: vec![ShapingGapApplication {
+                    shaping_decision_application_id: application_id(
+                        scope_resolution_id,
+                        ShapingDecisionApplicationOwner::UpdateScope,
+                    ),
                     shaping_gap_id: scope_gap_id.to_owned(),
                     user_action_resolution_id: scope_resolution_id.to_owned(),
                 }],
@@ -234,6 +254,44 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
         ShapingGapStatus::Accepted
     );
 
+    let duplicate_application = commit_input(
+        &ProjectId::new(PROJECT_ID),
+        MethodName::UpdateScope,
+        Some(&IdempotencyKey::new("idem_shaping_duplicate_application")),
+        &RequestHash::new("sha256:shaping-duplicate-application"),
+        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+        Some(2),
+        vec![pending_event_for_task(
+            "shaping_duplicate_application",
+            task_id,
+        )],
+    );
+    let error = store
+        .commit_mutation(
+            duplicate_application,
+            &[CoreStorageMutation::Shaping(
+                ShapingCheckpointMutation::ApplyScopeAndRebaseCurrent {
+                    task_id: task_id.to_owned(),
+                    shaping_checkpoint_id: checkpoint_id.to_owned(),
+                    scope_revision: 0,
+                    baseline_ref: Some(baseline.clone()),
+                    change_unit_id: Some(change_unit_id.to_owned()),
+                    applications: vec![ShapingGapApplication {
+                        shaping_decision_application_id: application_id(
+                            scope_resolution_id,
+                            ShapingDecisionApplicationOwner::UpdateScope,
+                        ),
+                        shaping_gap_id: scope_gap_id.to_owned(),
+                        user_action_resolution_id: scope_resolution_id.to_owned(),
+                    }],
+                },
+            )],
+            response_json,
+        )
+        .expect_err("one accepted resolution cannot create a duplicate application");
+    assert!(matches!(error, StoreError::InvalidInput { .. }));
+    assert_eq!(store.project_state()?.state_version, 2);
+
     let failed_advance = commit_input(
         &ProjectId::new(PROJECT_ID),
         MethodName::AdvanceTask,
@@ -258,10 +316,18 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
                     baseline_ref: baseline.clone(),
                     applications: vec![
                         ShapingGapApplication {
+                            shaping_decision_application_id: application_id(
+                                product_resolution_id,
+                                ShapingDecisionApplicationOwner::AdvanceTask,
+                            ),
                             shaping_gap_id: product_gap_id.to_owned(),
                             user_action_resolution_id: product_resolution_id.to_owned(),
                         },
                         ShapingGapApplication {
+                            shaping_decision_application_id: application_id(
+                                scope_resolution_id,
+                                ShapingDecisionApplicationOwner::AdvanceTask,
+                            ),
                             shaping_gap_id: scope_gap_id.to_owned(),
                             user_action_resolution_id: scope_resolution_id.to_owned(),
                         },
@@ -311,6 +377,10 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
                 scope_revision: 0,
                 baseline_ref: baseline,
                 applications: vec![ShapingGapApplication {
+                    shaping_decision_application_id: application_id(
+                        product_resolution_id,
+                        ShapingDecisionApplicationOwner::AdvanceTask,
+                    ),
                     shaping_gap_id: product_gap_id.to_owned(),
                     user_action_resolution_id: product_resolution_id.to_owned(),
                 }],
@@ -331,6 +401,51 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
         .gaps
         .iter()
         .all(|gap| gap.status == ShapingGapStatus::Applied));
+    let product_application_id = application_id(
+        product_resolution_id,
+        ShapingDecisionApplicationOwner::AdvanceTask,
+    );
+    assert_eq!(
+        store
+            .shaping_decision_applications_for_task(&TaskId::new(task_id))?
+            .len(),
+        2
+    );
+    drop(store);
+
+    let corruption = rusqlite::Connection::open(harness.state_database_path())?;
+    let trigger_sql: String = corruption.query_row(
+        "SELECT sql FROM sqlite_master
+          WHERE type = 'trigger'
+            AND name = 'trg_shaping_checkpoint_application_delete_forbidden'",
+        [],
+        |row| row.get(0),
+    )?;
+    corruption.execute_batch("DROP TRIGGER trg_shaping_checkpoint_application_delete_forbidden")?;
+    let detached = corruption.execute(
+        "DELETE FROM shaping_checkpoint_applications
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND shaping_checkpoint_id = ?3
+            AND shaping_decision_application_id = ?4",
+        rusqlite::params![PROJECT_ID, task_id, checkpoint_id, product_application_id],
+    )?;
+    assert_eq!(detached, 1, "fixture must detach one current application");
+    corruption.execute_batch(&trigger_sql)?;
+    drop(corruption);
+
+    let store = harness.store()?;
+    let error = store
+        .shaping_decision_applications_for_task(&TaskId::new(task_id))
+        .expect_err("a current application without current checkpoint lineage is corrupt");
+    assert!(matches!(
+        error,
+        StoreError::CorruptOwnerStateValue {
+            table,
+            logical_column,
+            ..
+        } if table == "shaping_decision_applications" && logical_column == "authority_status"
+    ));
     Ok(())
 }
 
@@ -553,7 +668,7 @@ fn outcome_specific_gap_resolution_is_atomic_and_only_accepted_can_apply(
                 baseline.clone(),
                 ShapingGapKind::UserScopeDecisionRequired,
             ))),
-            CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(
+            CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(Box::new(
                 ShapingCheckpointInsert {
                     shaping_checkpoint_id: checkpoint_id.to_owned(),
                     checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
@@ -569,13 +684,14 @@ fn outcome_specific_gap_resolution_is_atomic_and_only_accepted_can_apply(
                     evidence_refs: Vec::new(),
                     created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
                     retired_user_action_request_ids: Vec::new(),
+                    carry_forward_application_ids: Vec::new(),
                     gaps: vec![shaping_gap(
                         gap_id,
                         request_id,
                         ShapingGapKind::UserScopeDecisionRequired,
                     )],
                 },
-            )),
+            ))),
         ],
         response_json,
     )?;
@@ -688,7 +804,12 @@ fn outcome_specific_gap_resolution_is_atomic_and_only_accepted_can_apply(
                     shaping_checkpoint_id: checkpoint_id.to_owned(),
                     scope_revision: 0,
                     baseline_ref: Some(baseline),
+                    change_unit_id: Some(change_unit_id.to_owned()),
                     applications: vec![ShapingGapApplication {
+                        shaping_decision_application_id: application_id(
+                            resolution_id,
+                            ShapingDecisionApplicationOwner::UpdateScope,
+                        ),
                         shaping_gap_id: gap_id.to_owned(),
                         user_action_resolution_id: resolution_id.to_owned(),
                     }],
@@ -793,7 +914,7 @@ fn current_checkpoint_read_rejects_persisted_detached_user_action_authority(
                 baseline.clone(),
                 ShapingGapKind::UserProductDecisionRequired,
             ))),
-            CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(
+            CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(Box::new(
                 ShapingCheckpointInsert {
                     shaping_checkpoint_id: checkpoint_id.to_owned(),
                     checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
@@ -807,13 +928,14 @@ fn current_checkpoint_read_rejects_persisted_detached_user_action_authority(
                     evidence_refs: Vec::new(),
                     created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
                     retired_user_action_request_ids: Vec::new(),
+                    carry_forward_application_ids: Vec::new(),
                     gaps: vec![shaping_gap(
                         gap_id,
                         request_id,
                         ShapingGapKind::UserProductDecisionRequired,
                     )],
                 },
-            )),
+            ))),
         ],
         response_json,
     )?;

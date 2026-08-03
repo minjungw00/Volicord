@@ -1,10 +1,11 @@
 # 저장소 기록
 
-`shaping_checkpoints`, `shaping_checkpoint_gaps`, `shaping_checkpoint_user_actions`는 하나의
-Task 범위 aggregate를 이룹니다. Task마다 superseded가 아닌 checkpoint는 최대 하나이며,
+`shaping_checkpoints`, `shaping_checkpoint_gaps`, `shaping_checkpoint_user_actions`,
+`shaping_decision_applications`, `shaping_checkpoint_applications`는 하나의 Task 범위 권한
+aggregate를 이룹니다. Task마다 superseded가 아닌 checkpoint는 최대 하나이며,
 사용자 소유 gap은 같은 Task의 요청 링크를 반드시 포함하고, ready checkpoint에는 current
-gap이 없습니다. Advisor finalization은 checkpoint를 교체하지 않고 이 aggregate의 gap을
-갱신합니다.
+gap이 없습니다. Advisor finalization은 checkpoint를 교체하지 않고 이 aggregate에
+application 권한을 만듭니다.
 
 이 문서는 지원되는 저장 계약의 의미와 기록 간 불변식을 담당합니다. 정확한
 테이블, column, constraint, index, 정규 SQL은 [저장소 DDL](storage-ddl.md)이
@@ -139,13 +140,24 @@ gap을 단계 전이와 원자적으로 적용합니다. 어떤 operation도 Tas
 accepted gap을 갱신하지 않습니다. Applied gap은 terminal이며 민감 resolution 권한은 이후
 정책에서 계속 사용할 수 있습니다.
 
+`shaping_decision_applications`는 accepted 결정 적용을 담당하는 권위 aggregate입니다.
+결정적인 identity는 resolution과 의미 owner 하나를 source checkpoint/gap/request,
+judgment kind, 적용 scope revision, baseline, 선택적 Change Unit, 적용 timestamp, 폐쇄형
+`current|stale|superseded` 권한 상태에 결합합니다. 의미 필드는 모두 불변이며 소유 전이만
+current-to-stale 또는 current-to-superseded 무효화를 한 번 기록할 수 있습니다.
+`shaping_checkpoint_applications`는 최초 application을 source checkpoint에 연결하고 정확한
+predecessor-to-successor carry edge를 모두 기록합니다. 따라서 현재 권한은 gap을 현재
+checkpoint에 복사하지 않고도 ancestor에서 시작할 수 있습니다.
+
 모든 aggregate read는 식별자, 폐쇄형 값, 정규 JSON 배열, timestamp, Task 소유권,
 predecessor 소유권과 timestamp, link 일관성을 엄격하게 decode합니다. 잘못되거나
 모순되는 member는 손상된 영속 owner 데이터입니다. Store는 이를 생략하거나 기본값을
 만들거나 row 정렬로 checkpoint를 선택하거나 checkpoint 교체로 연결된 current-basis
 UserAction을 분리하지 않습니다.
 
-정확한 checkpoint replacement는 `retired_user_action_request_refs`가 predecessor 소유의
+정확한 checkpoint replacement는 `carry_forward_application_refs`가 현재 호환 application의
+완전하고 정확한 집합이어야 하며 누락, 추가 ref, 권한 경계 충돌을 거부하고 같은
+transaction에서 successor lineage를 기록합니다. 또한 `retired_user_action_request_refs`가 predecessor 소유의
 완전한 집합일 때만 거부, 보류, 만료 상태인 연결 요청의 근거를 supersede할 수 있습니다.
 Pending, accepted, applied, stale, 외부, 누락, 추가 ref는 거부됩니다. Retirement와
 successor aggregate 생성은 같은 transaction에 속하며 요청과 변경 불가능한 resolution
@@ -570,8 +582,8 @@ resolution 본문, 비공개 resolution form, credential을 담지 않습니다.
 basis가 아니라 없음으로 표현합니다. Evidence와 acceptance ref는 담당 문서 아래에서
 정확하고 현재 상태여야 합니다.
 Direct/work basis는 정확히 호환되는 source Run을 식별합니다. Advisor basis에는 source
-Run이 없고 대신 정확한 현재 shaping checkpoint와 applied UserAction resolution의 정확한
-집합을 식별합니다. Store는 현재 Task, scope revision, close-basis revision, baseline,
+Run이 없고 대신 정확한 현재 shaping checkpoint와 여기에 연결된 현재 shaping decision
+application의 정확한 집합을 식별합니다. Store는 현재 Task, scope revision, close-basis revision, baseline,
 Change Unit, 모드 호환 lineage, result/evidence ref, 잔여 위험, 갱신 시각을 하나의
 aggregate로 검증합니다. 정규 비쓰기 조건을 위반하는 Change Unit이나 정확한 현재 상태가
 아닌 checkpoint에 연결된 advisor basis는 영속 데이터 손상입니다.

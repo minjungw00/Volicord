@@ -246,6 +246,7 @@ pub struct McpRecordShapingCompactResult {
     pub decision_recovery_requirements:
         Vec<volicord_types::schema::ShapingDecisionRecoveryRequirement>,
     pub created_user_action_request_refs: Vec<StateRecordRef>,
+    pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
     pub workflow_kind: WorkflowStateKind,
     pub close_state: Option<CloseState>,
     pub close_blocker_count: usize,
@@ -258,6 +259,7 @@ pub struct McpUpdateScopeCompactResult {
     pub effect: McpMutationEffectSummary,
     pub applied_shaping_gap_refs: Vec<StateRecordRef>,
     pub applied_scope_decision_refs: Vec<StateRecordRef>,
+    pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
 }
 
 /// Compact `volicord.advance_task` exact decision-application outcome.
@@ -267,6 +269,7 @@ pub struct McpAdvanceTaskCompactResult {
     pub effect: McpMutationEffectSummary,
     pub applied_shaping_gap_refs: Vec<StateRecordRef>,
     pub applied_user_action_resolution_refs: Vec<StateRecordRef>,
+    pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
 }
 
 /// Compact `volicord.prepare_write` outcome needed by the next write step.

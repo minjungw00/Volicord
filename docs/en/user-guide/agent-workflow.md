@@ -3,9 +3,10 @@
 Advisor and work Tasks begin in shaping. Record analysis with
 `volicord.record_shaping`, explicitly creating the
 first checkpoint when none is current or replacing the exact current checkpoint
-only when no linked live decision remains. Create a current `UserActionRequest`
+with every exact current compatible application ref carried forward. Create a current `UserActionRequest`
 before presenting an actionable user-owned choice; accept a resolution only
-through the User Channel; apply decisions through their current resolution refs;
+through the User Channel; apply decisions through their current resolution refs
+and retain the returned `ShapingDecisionApplication` refs;
 and create or update the Change Unit without changing phase. For advisor, use
 only a non-write Change Unit and follow `ready_to_finalize_advice` with
 advisor finalization through `volicord.record_shaping` before close review. For
@@ -192,9 +193,12 @@ Resolution does not apply a shaping decision. Inspect its exact outcome. Route
 accepted scope gaps through `volicord.update_scope`. For work, supply accepted
 product, technical, and sensitive gaps to `volicord.advance_task`. For advisor,
 preserve those exact accepted resolutions until `ready_to_finalize_advice` requires advisor finalization
-through `volicord.record_shaping`; finalization applies them,
+through `volicord.record_shaping`; finalization creates their durable applications,
 records the result and evidence/risk lineage, preserves the checkpoint, and
-establishes the close basis. When scope and another decision coexist, apply
+establishes the close basis with exact application refs. A compatible advice
+revision carries those application refs into the successor checkpoint; it does
+not request the same judgment again solely because the advice text changed.
+When scope and another decision coexist, apply
 only the scope gap first and leave the other gap for its mode-specific owner.
 Rejection, deferral, or expiration grants no authority and selects
 `decision_recovery_required`; revise the plan with `volicord.record_shaping`.

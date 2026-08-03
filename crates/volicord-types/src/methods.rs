@@ -633,6 +633,7 @@ declare_method_result! {
     pub struct RecordShapingResult from RecordShapingResultFields with RecordShapingResultBase {
         pub shaping_checkpoint: ShapingCheckpoint,
         pub created_user_action_request_refs: Vec<StateRecordRef>,
+        pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
         pub workflow: WorkflowProjection,
         pub state: StateSummary,
     }
@@ -669,6 +670,7 @@ declare_method_result! {
         pub change_unit_ref: StateRecordRef,
         pub applied_shaping_gap_refs: Vec<StateRecordRef>,
         pub applied_user_action_resolution_refs: Vec<StateRecordRef>,
+        pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
         pub workflow: WorkflowProjection,
         pub state: StateSummary,
     }
@@ -769,6 +771,7 @@ declare_method_result! {
         pub change_unit_ref: Option<StateRecordRef>,
         pub applied_shaping_gap_refs: Vec<StateRecordRef>,
         pub applied_scope_decision_refs: Vec<StateRecordRef>,
+        pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
         pub stale_write_ticket_refs: Vec<StateRecordRef>,
         pub blocker_refs: Vec<StateRecordRef>,
         pub state: StateSummary,

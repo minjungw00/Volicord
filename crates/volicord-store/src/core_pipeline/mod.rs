@@ -143,7 +143,8 @@ pub use runs::{
 pub use shaping::{
     ShapingAdvanceApplication, ShapingCheckpointGapInsert, ShapingCheckpointGapRecord,
     ShapingCheckpointInsert, ShapingCheckpointMutation, ShapingCheckpointRecord,
-    ShapingCheckpointUserActionInsert, ShapingCheckpointUserActionRecord, ShapingGapApplication,
+    ShapingCheckpointUserActionInsert, ShapingCheckpointUserActionRecord,
+    ShapingDecisionApplicationRecord, ShapingGapApplication,
 };
 pub use tasks::{
     AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionStatus,

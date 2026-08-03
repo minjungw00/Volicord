@@ -6,6 +6,7 @@ use volicord_store::core_pipeline::{
     ShapingCheckpointMutation, ShapingGapApplication,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::shaping_decision_application_id;
 use volicord_types::methods::{
     AdvanceTaskRequest, AdvanceTaskResultFields, MethodOperationCategory,
 };
@@ -408,6 +409,12 @@ fn plan_advance_task(
         }
         expected_resolution_ids.insert(resolution_id.clone());
         applications.push(ShapingGapApplication {
+            shaping_decision_application_id: shaping_decision_application_id(
+                &volicord_types::ids::UserActionResolutionId::new(resolution_id),
+                ShapingDecisionApplicationOwner::AdvanceTask,
+            )
+            .map_err(CorePipelineError::from)?
+            .into_inner(),
             shaping_gap_id: gap.shaping_gap_id.clone(),
             user_action_resolution_id: resolution_id.clone(),
         });
@@ -460,17 +467,27 @@ fn plan_advance_task(
         })
         .collect::<Vec<_>>();
     let mut projected_checkpoint = checkpoint.clone();
-    for gap in &mut projected_checkpoint.gaps {
-        if applications
-            .iter()
-            .any(|application| application.shaping_gap_id == gap.shaping_gap_id)
-        {
-            gap.status = ShapingGapStatus::Applied;
-        }
-    }
+    crate::workflow_projection::apply_projected_shaping_applications(
+        &mut projected_checkpoint,
+        &applications,
+        ShapingDecisionApplicationOwner::AdvanceTask,
+        request.scope_revision,
+        &request.baseline_ref,
+        Some(&request.change_unit_id),
+        operation_now,
+    )?;
     let mut projected_task = task.clone();
     projected_task.work_phase = WorkPhase::Implementation;
     projected_task.lifecycle_phase = TaskLifecyclePhase::Executing;
+    let task_wide_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &request.envelope.project_id,
+        planned_state_version,
+        &projected_task,
+        Some(&change_unit),
+        Some(&projected_checkpoint),
+        operation_now,
+    )?;
     let workflow = crate::workflow_projection::workflow_projection(
         &request.envelope.project_id,
         planned_state_version,
@@ -520,6 +537,18 @@ fn plan_advance_task(
         Some(&request.task_id),
         Some(change_unit.basis_state_version),
     );
+    let application_refs = applications
+        .iter()
+        .map(|application| {
+            state_ref(
+                StateRecordKind::ShapingDecisionApplication,
+                &application.shaping_decision_application_id,
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(planned_state_version),
+            )
+        })
+        .collect::<Vec<_>>();
     Ok(AdvanceTaskPlan {
         operation: OperationPlan::new(
             request.task_id.clone(),
@@ -547,6 +576,11 @@ fn plan_advance_task(
                     .iter()
                     .map(|application| application.user_action_resolution_id.clone())
                     .collect::<Vec<_>>(),
+                "applied_shaping_decision_application_ids": applications
+                    .iter()
+                    .map(|application| application.shaping_decision_application_id.clone())
+                    .collect::<Vec<_>>(),
+                "applied_shaping_decision_application_refs": application_refs.clone(),
             }))?,
         ),
         result_fields: AdvanceTaskResultFields {
@@ -555,6 +589,7 @@ fn plan_advance_task(
             change_unit_ref,
             applied_shaping_gap_refs: gap_refs,
             applied_user_action_resolution_refs: resolution_refs,
+            applied_shaping_decision_application_refs: application_refs,
             workflow,
             state,
         },
