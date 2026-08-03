@@ -25,7 +25,7 @@ pub(crate) fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
 }
 
 #[cfg(test)]
-pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 48_000;
+pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 50_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CanonicalToolDefinition {

@@ -3,17 +3,19 @@ use std::collections::{BTreeMap, BTreeSet};
 use rusqlite::{params, Connection, OptionalExtension};
 use volicord_types::canonical::canonical_json_string;
 use volicord_types::ids::{
-    shaping_decision_application_id, BaselineRef, ChangeUnitId, TaskId, UserActionResolutionId,
+    shaping_authority_reauthorization_id, shaping_decision_application_id, BaselineRef,
+    ChangeUnitId, ShapingDecisionApplicationId, TaskId, UserActionResolutionId,
 };
 use volicord_types::schema::{
-    PersistedUserActionRequestMetadata, ShapingCheckpointOperation, SourceRef, StateRecordRef,
-    UserActionResolutionBody,
+    PersistedUserActionRequestMetadata, ShapingCheckpointOperation, SourceRef,
+    StaleShapingAuthorityAction, StateRecordRef, UserActionResolutionBody,
 };
 use volicord_types::values::{
-    JudgmentKind, JudgmentResolutionOutcome, ShapingCheckpointReadiness,
-    ShapingDecisionApplicationAuthorityStatus, ShapingDecisionApplicationOwner, ShapingGapKind,
-    ShapingGapStatus, TaskLifecyclePhase, TaskMode, UserActionBasisStatus, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    JudgmentKind, JudgmentResolutionOutcome, ShapingAuthorityReauthorizationOutcome,
+    ShapingCheckpointReadiness, ShapingDecisionApplicationAuthorityStatus,
+    ShapingDecisionApplicationOwner, ShapingGapKind, ShapingGapStatus, TaskLifecyclePhase,
+    TaskMode, UserActionBasisStatus, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
+    UserActionStatus, UtcTimestamp,
 };
 
 use super::{
@@ -32,7 +34,7 @@ const CHECKPOINT_COLUMNS: &str = "
 
 const GAP_COLUMNS: &str = "
     project_id, shaping_checkpoint_id, shaping_gap_id, task_id, gap_kind,
-    summary, affected_refs_json, status, user_action_request_id,
+    summary, affected_refs_json, status, reauthorizes_application_id, user_action_request_id,
     user_action_kind";
 
 const APPLICATION_COLUMNS: &str = "
@@ -40,7 +42,8 @@ const APPLICATION_COLUMNS: &str = "
     application.source_checkpoint_id, application.source_gap_id, application.user_action_request_id,
     application.user_action_resolution_id, application.judgment_kind, application.application_owner,
     application.applied_scope_revision, application.applied_baseline_ref, application.applied_change_unit_id,
-    application.applied_at, application.authority_status, application.superseded_at";
+    application.applied_at, application.authority_status, application.stale_at,
+    application.superseded_at";
 
 /// Shaping-checkpoint mutation applied inside one Core commit transaction.
 #[derive(Debug, Clone, PartialEq)]
@@ -106,9 +109,20 @@ pub struct ShapingCheckpointInsert {
     pub source_refs: Vec<SourceRef>,
     pub evidence_refs: Vec<StateRecordRef>,
     pub created_at: UtcTimestamp,
-    pub retired_user_action_request_ids: Vec<String>,
+    pub retired_non_authorizing_request_ids: Vec<String>,
     pub carry_forward_application_ids: Vec<String>,
+    pub stale_authority_dispositions: Vec<ShapingStaleAuthorityDisposition>,
     pub gaps: Vec<ShapingCheckpointGapInsert>,
+}
+
+/// Store materialization of one exact stale-authority action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShapingStaleAuthorityDisposition {
+    pub stale_application_id: String,
+    pub stale_user_action_request_id: String,
+    pub outcome: ShapingAuthorityReauthorizationOutcome,
+    pub successor_gap_id: Option<String>,
+    pub successor_user_action_request_id: Option<String>,
 }
 
 /// Storage input for one typed checkpoint gap.
@@ -118,6 +132,7 @@ pub struct ShapingCheckpointGapInsert {
     pub gap_kind: ShapingGapKind,
     pub summary: String,
     pub affected_refs: Vec<StateRecordRef>,
+    pub reauthorizes_application_id: Option<String>,
     pub user_action: Option<ShapingCheckpointUserActionInsert>,
 }
 
@@ -165,9 +180,25 @@ pub struct ShapingDecisionApplicationRecord {
     pub applied_change_unit_id: Option<ChangeUnitId>,
     pub applied_at: UtcTimestamp,
     pub authority_status: ShapingDecisionApplicationAuthorityStatus,
+    pub stale_at: Option<UtcTimestamp>,
     pub superseded_at: Option<UtcTimestamp>,
     pub linked_checkpoint_id: Option<String>,
     pub carried_from_checkpoint_id: Option<String>,
+}
+
+/// Strictly decoded immutable stale-authority disposition lineage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShapingAuthorityReauthorizationRecord {
+    pub project_id: String,
+    pub shaping_authority_reauthorization_id: String,
+    pub task_id: String,
+    pub stale_application_id: String,
+    pub stale_user_action_request_id: String,
+    pub successor_checkpoint_id: String,
+    pub successor_gap_id: Option<String>,
+    pub successor_user_action_request_id: Option<String>,
+    pub outcome: ShapingAuthorityReauthorizationOutcome,
+    pub created_at: UtcTimestamp,
 }
 
 /// One exact current-checkpoint gap and its Store-validated UserAction authority.
@@ -208,6 +239,7 @@ pub struct ShapingCheckpointGapRecord {
     pub summary: String,
     pub affected_refs: Vec<StateRecordRef>,
     pub status: ShapingGapStatus,
+    pub reauthorizes_application_id: Option<String>,
     pub user_action: Option<ShapingCheckpointUserActionRecord>,
 }
 
@@ -329,6 +361,18 @@ impl CoreProjectStore<'_> {
         shaping_applications_for_task(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
+    /// Reads immutable stale-authority disposition history for one Task.
+    pub fn shaping_authority_reauthorization_history_for_task(
+        &self,
+        task_id: &TaskId,
+    ) -> StoreResult<Vec<ShapingAuthorityReauthorizationRecord>> {
+        shaping_reauthorization_history_for_task(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+        )
+    }
+
     /// Derives the exact effective shaping authority graph for current workflow progression.
     pub fn current_shaping_authority_graph(
         &self,
@@ -436,6 +480,7 @@ impl MutationContext<'_> {
         for gap in &input.gaps {
             self.insert_shaping_gap(input, gap)?;
         }
+        self.insert_stale_authority_lineage(input)?;
         if let Some(predecessor_id) = predecessor_shaping_checkpoint_id.as_deref() {
             self.insert_carried_application_links(input, predecessor_id)?;
         }
@@ -493,6 +538,7 @@ impl MutationContext<'_> {
                 }
                 self.validate_carry_forward_applications(input, expected)?;
                 self.retire_checkpoint_user_actions(input, expected)?;
+                self.consume_stale_authority(input)?;
                 let changed = self.tx.execute(
                     "UPDATE shaping_checkpoints
                         SET readiness = 'superseded', superseded_at = ?4
@@ -525,7 +571,7 @@ impl MutationContext<'_> {
         checkpoint_id: &str,
     ) -> StoreResult<()> {
         let ShapingCheckpointOperation::ReplaceCurrent {
-            retired_user_action_request_refs,
+            retired_non_authorizing_request_refs,
             ..
         } = &input.checkpoint_operation
         else {
@@ -533,7 +579,7 @@ impl MutationContext<'_> {
                 detail: "shaping retirement requires replace_current".to_owned(),
             });
         };
-        let operation_ids = retired_user_action_request_refs
+        let operation_ids = retired_non_authorizing_request_refs
             .iter()
             .map(|reference| {
                 if reference.record_kind
@@ -551,12 +597,12 @@ impl MutationContext<'_> {
             })
             .collect::<StoreResult<std::collections::BTreeSet<_>>>()?;
         let input_ids = input
-            .retired_user_action_request_ids
+            .retired_non_authorizing_request_ids
             .iter()
             .cloned()
             .collect::<std::collections::BTreeSet<_>>();
-        if operation_ids.len() != retired_user_action_request_refs.len()
-            || input_ids.len() != input.retired_user_action_request_ids.len()
+        if operation_ids.len() != retired_non_authorizing_request_refs.len()
+            || input_ids.len() != input.retired_non_authorizing_request_ids.len()
             || operation_ids != input_ids
         {
             return Err(StoreError::InvalidInput {
@@ -653,11 +699,11 @@ impl MutationContext<'_> {
             required_retirements.insert(request_id);
         }
         let supplied = input
-            .retired_user_action_request_ids
+            .retired_non_authorizing_request_ids
             .iter()
             .cloned()
             .collect::<std::collections::BTreeSet<_>>();
-        if supplied.len() != input.retired_user_action_request_ids.len()
+        if supplied.len() != input.retired_non_authorizing_request_ids.len()
             || supplied != required_retirements
         {
             return Err(StoreError::InvalidInput {
@@ -682,6 +728,252 @@ impl MutationContext<'_> {
                     detail: "exact shaping decision retirement compare-and-swap failed".to_owned(),
                 });
             }
+        }
+        Ok(())
+    }
+
+    fn consume_stale_authority(&self, input: &ShapingCheckpointInsert) -> StoreResult<()> {
+        let ShapingCheckpointOperation::ReplaceCurrent {
+            stale_authority_actions,
+            ..
+        } = &input.checkpoint_operation
+        else {
+            return Err(StoreError::InvalidInput {
+                detail: "stale authority disposition requires replace_current".to_owned(),
+            });
+        };
+        let mut action_outcomes = BTreeMap::new();
+        for action in stale_authority_actions {
+            let (reference, outcome) = match action {
+                StaleShapingAuthorityAction::Retire {
+                    stale_application_ref,
+                } => (
+                    stale_application_ref,
+                    ShapingAuthorityReauthorizationOutcome::Retired,
+                ),
+                StaleShapingAuthorityAction::Reauthorize {
+                    stale_application_ref,
+                    ..
+                } => (
+                    stale_application_ref,
+                    ShapingAuthorityReauthorizationOutcome::Reissued,
+                ),
+            };
+            if reference.record_kind
+                != volicord_types::values::StateRecordKind::ShapingDecisionApplication
+                || reference.project_id.as_str() != self.project_id
+                || reference.task_id.as_ref().map(TaskId::as_str) != Some(input.task_id.as_str())
+                || action_outcomes
+                    .insert(reference.record_id.as_str().to_owned(), outcome)
+                    .is_some()
+            {
+                return Err(StoreError::InvalidInput {
+                    detail: "stale authority actions must use unique exact Task application refs"
+                        .to_owned(),
+                });
+            }
+        }
+        let dispositions = input
+            .stale_authority_dispositions
+            .iter()
+            .map(|disposition| (disposition.stale_application_id.clone(), disposition))
+            .collect::<BTreeMap<_, _>>();
+        if dispositions.len() != input.stale_authority_dispositions.len()
+            || action_outcomes.len() != stale_authority_actions.len()
+            || dispositions.keys().collect::<BTreeSet<_>>()
+                != action_outcomes.keys().collect::<BTreeSet<_>>()
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "typed stale actions and materialized dispositions must match exactly"
+                    .to_owned(),
+            });
+        }
+        let stored_stale = {
+            let mut statement = self.tx.prepare(
+                "SELECT application.shaping_decision_application_id,
+                        application.user_action_request_id,
+                        application.judgment_kind,
+                        application.application_owner
+                   FROM shaping_decision_applications AS application
+                   JOIN user_action_requests AS request
+                     ON request.project_id = application.project_id
+                    AND request.user_action_request_id = application.user_action_request_id
+                  WHERE application.project_id = ?1
+                    AND application.task_id = ?2
+                    AND application.authority_status = 'stale'
+                    AND application.stale_at IS NOT NULL
+                    AND application.superseded_at IS NULL
+                    AND request.basis_status = 'stale'
+                    AND json_extract(request.basis_json, '$.coordinates.compatibility_status') = 'stale'",
+            )?;
+            let rows = statement
+                .query_map(params![self.project_id, input.task_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        let stored_ids = stored_stale
+            .iter()
+            .map(|row| row.0.as_str())
+            .collect::<BTreeSet<_>>();
+        if stored_ids != action_outcomes.keys().map(String::as_str).collect() {
+            return Err(StoreError::InvalidInput {
+                detail: "stale authority actions must exactly consume every Task stale application"
+                    .to_owned(),
+            });
+        }
+        for (application_id, request_id, judgment_kind_raw, owner_raw) in stored_stale {
+            let disposition = dispositions[&application_id];
+            if disposition.stale_user_action_request_id != request_id
+                || action_outcomes[&application_id] != disposition.outcome
+            {
+                return Err(StoreError::InvalidInput {
+                    detail: "stale authority disposition does not match its exact application"
+                        .to_owned(),
+                });
+            }
+            let judgment_kind: JudgmentKind = decode_owner_closed_value(
+                "shaping_decision_applications",
+                &application_id,
+                "judgment_kind",
+                &judgment_kind_raw,
+            )?;
+            let owner: ShapingDecisionApplicationOwner = decode_owner_closed_value(
+                "shaping_decision_applications",
+                &application_id,
+                "application_owner",
+                &owner_raw,
+            )?;
+            match disposition.outcome {
+                ShapingAuthorityReauthorizationOutcome::Retired => {
+                    if disposition.successor_gap_id.is_some()
+                        || disposition.successor_user_action_request_id.is_some()
+                    {
+                        return Err(StoreError::InvalidInput {
+                            detail: "retired stale authority cannot identify a successor request"
+                                .to_owned(),
+                        });
+                    }
+                }
+                ShapingAuthorityReauthorizationOutcome::Reissued => {
+                    let (Some(gap_id), Some(successor_request_id)) = (
+                        disposition.successor_gap_id.as_deref(),
+                        disposition.successor_user_action_request_id.as_deref(),
+                    ) else {
+                        return Err(StoreError::InvalidInput {
+                            detail: "reissued stale authority requires a successor gap and request"
+                                .to_owned(),
+                        });
+                    };
+                    let gap = input
+                        .gaps
+                        .iter()
+                        .find(|gap| gap.shaping_gap_id == gap_id)
+                        .ok_or_else(|| StoreError::InvalidInput {
+                            detail: "reauthorization successor gap is absent from the checkpoint"
+                                .to_owned(),
+                        })?;
+                    let policy = gap
+                        .gap_kind
+                        .decision_policy_for_mode(self.task_mode(&input.task_id)?)
+                        .ok_or_else(|| StoreError::InvalidInput {
+                            detail: "reauthorization successor must be a user-owned gap".to_owned(),
+                        })?;
+                    if gap.reauthorizes_application_id.as_deref() != Some(application_id.as_str())
+                        || gap.gap_kind.judgment_kind() != Some(judgment_kind)
+                        || policy.application_owner != owner
+                        || gap
+                            .user_action
+                            .as_ref()
+                            .map(|link| link.user_action_request_id.as_str())
+                            != Some(successor_request_id)
+                        || successor_request_id == request_id
+                    {
+                        return Err(StoreError::InvalidInput {
+                            detail:
+                                "reauthorization successor conflicts with stale authority policy"
+                                    .to_owned(),
+                        });
+                    }
+                }
+            }
+            let changed = self.tx.execute(
+                "UPDATE shaping_decision_applications
+                    SET authority_status = 'superseded', superseded_at = ?3
+                  WHERE project_id = ?1
+                    AND shaping_decision_application_id = ?2
+                    AND authority_status = 'stale'
+                    AND stale_at IS NOT NULL
+                    AND superseded_at IS NULL",
+                params![self.project_id, application_id, self.committed_at],
+            )?;
+            if changed != 1 {
+                return Err(StoreError::Conflict {
+                    entity: "shaping_decision_application",
+                    id: application_id,
+                    detail: "stale authority compare-and-swap failed".to_owned(),
+                });
+            }
+            let changed = self.tx.execute(
+                "UPDATE user_action_requests
+                    SET basis_status = 'superseded',
+                        basis_json = json_set(
+                          basis_json,
+                          '$.coordinates.compatibility_status',
+                          'superseded'
+                        )
+                  WHERE project_id = ?1
+                    AND user_action_request_id = ?2
+                    AND basis_status = 'stale'",
+                params![self.project_id, request_id],
+            )?;
+            if changed != 1 {
+                return Err(StoreError::Conflict {
+                    entity: "user_action_request",
+                    id: request_id,
+                    detail: "stale UserAction basis compare-and-swap failed".to_owned(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn insert_stale_authority_lineage(&self, input: &ShapingCheckpointInsert) -> StoreResult<()> {
+        for disposition in &input.stale_authority_dispositions {
+            let application_id =
+                ShapingDecisionApplicationId::new(disposition.stale_application_id.clone());
+            let lineage_id =
+                shaping_authority_reauthorization_id(&application_id).map_err(|_| {
+                    StoreError::InvalidInput {
+                        detail: "stale authority lineage identity could not be derived".to_owned(),
+                    }
+                })?;
+            self.tx.execute(
+                "INSERT INTO shaping_authority_reauthorizations (
+                   project_id, shaping_authority_reauthorization_id, task_id,
+                   stale_application_id, stale_user_action_request_id,
+                   successor_checkpoint_id, successor_gap_id,
+                   successor_user_action_request_id, outcome, created_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    self.project_id,
+                    lineage_id.as_str(),
+                    input.task_id,
+                    disposition.stale_application_id,
+                    disposition.stale_user_action_request_id,
+                    input.shaping_checkpoint_id,
+                    disposition.successor_gap_id,
+                    disposition.successor_user_action_request_id,
+                    disposition.outcome.as_str(),
+                    self.committed_at,
+                ],
+            )?;
         }
         Ok(())
     }
@@ -939,6 +1231,11 @@ impl MutationContext<'_> {
                 detail: "user-owned shaping gaps require one exact UserAction link".to_owned(),
             });
         }
+        if gap.reauthorizes_application_id.is_some() && !gap.gap_kind.is_user_owned() {
+            return Err(StoreError::InvalidInput {
+                detail: "only a user-owned shaping gap may reauthorize stale authority".to_owned(),
+            });
+        }
         if gap
             .user_action
             .as_ref()
@@ -963,8 +1260,8 @@ impl MutationContext<'_> {
             "INSERT INTO shaping_checkpoint_gaps (
                project_id, shaping_checkpoint_id, shaping_gap_id, task_id,
                gap_kind, summary, affected_refs_json, status,
-               user_action_request_id, user_action_kind
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+               reauthorizes_application_id, user_action_request_id, user_action_kind
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 self.project_id,
                 checkpoint.shaping_checkpoint_id,
@@ -974,6 +1271,7 @@ impl MutationContext<'_> {
                 gap.summary,
                 affected_refs_json,
                 status,
+                gap.reauthorizes_application_id,
                 gap.user_action
                     .as_ref()
                     .map(|link| link.user_action_request_id.as_str()),
@@ -1572,8 +1870,8 @@ impl MutationContext<'_> {
                    source_checkpoint_id, source_gap_id, user_action_request_id,
                    user_action_resolution_id, judgment_kind, application_owner,
                    applied_scope_revision, applied_baseline_ref, applied_change_unit_id,
-                   applied_at, authority_status, superseded_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'current', NULL)",
+                   applied_at, authority_status, stale_at, superseded_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'current', NULL, NULL)",
                 params![
                     self.project_id,
                     application.shaping_decision_application_id,
@@ -1760,9 +2058,20 @@ impl MutationContext<'_> {
             });
         }
         for (application_id, request_id) in rows {
+            let (stale_at, superseded_at) = match status {
+                ShapingDecisionApplicationAuthorityStatus::Stale => (Some(self.committed_at), None),
+                ShapingDecisionApplicationAuthorityStatus::Superseded => {
+                    (None, Some(self.committed_at))
+                }
+                ShapingDecisionApplicationAuthorityStatus::Current => {
+                    return Err(StoreError::InvalidInput {
+                        detail: "application invalidation requires a non-current status".to_owned(),
+                    })
+                }
+            };
             let changed = self.tx.execute(
                 "UPDATE shaping_decision_applications
-                    SET authority_status = ?3, superseded_at = ?4
+                    SET authority_status = ?3, stale_at = ?4, superseded_at = ?5
                   WHERE project_id = ?1
                     AND shaping_decision_application_id = ?2
                     AND authority_status = 'current'",
@@ -1770,7 +2079,8 @@ impl MutationContext<'_> {
                     self.project_id,
                     application_id,
                     status.as_str(),
-                    self.committed_at,
+                    stale_at,
+                    superseded_at,
                 ],
             )?;
             if changed != 1 {
@@ -1780,15 +2090,61 @@ impl MutationContext<'_> {
                     detail: "application authority invalidation compare-and-swap failed".to_owned(),
                 });
             }
-            self.tx.execute(
-                "UPDATE user_action_requests
-                    SET basis_status = ?3,
-                        basis_json = json_set(basis_json, '$.coordinates.compatibility_status', ?3)
-                  WHERE project_id = ?1
-                    AND user_action_request_id = ?2
-                    AND basis_status = 'current'",
-                params![self.project_id, request_id, status.as_str()],
-            )?;
+            let request_changed = if status == ShapingDecisionApplicationAuthorityStatus::Superseded
+            {
+                self.tx.execute(
+                    "UPDATE user_action_requests
+                        SET basis_status = 'superseded',
+                            basis_json = json_set(
+                              basis_json,
+                              '$.coordinates.compatibility_status',
+                              'superseded'
+                            )
+                      WHERE project_id = ?1
+                        AND user_action_request_id = ?2
+                        AND basis_status IN ('current', 'stale')",
+                    params![self.project_id, request_id],
+                )?
+            } else {
+                self.tx.execute(
+                    "UPDATE user_action_requests
+                        SET basis_status = 'stale',
+                            basis_json = json_set(
+                              basis_json,
+                              '$.coordinates.compatibility_status',
+                              'stale'
+                            )
+                      WHERE project_id = ?1
+                        AND user_action_request_id = ?2
+                        AND basis_status = 'current'",
+                    params![self.project_id, request_id],
+                )?
+            };
+            if request_changed != 1 {
+                let expected_status = status.as_str();
+                let already_invalidated: bool = self.tx.query_row(
+                    "SELECT EXISTS (
+                       SELECT 1 FROM user_action_requests
+                        WHERE project_id = ?1
+                          AND user_action_request_id = ?2
+                          AND basis_status = ?3
+                          AND json_extract(
+                            basis_json,
+                            '$.coordinates.compatibility_status'
+                          ) = ?3
+                     )",
+                    params![self.project_id, request_id, expected_status],
+                    |row| row.get(0),
+                )?;
+                if !already_invalidated {
+                    return Err(StoreError::Conflict {
+                        entity: "user_action_request",
+                        id: request_id,
+                        detail: "application request-basis invalidation compare-and-swap failed"
+                            .to_owned(),
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -1803,7 +2159,7 @@ impl MutationContext<'_> {
     fn supersede_current_shaping_checkpoint(&mut self, task_id: &str) -> StoreResult<()> {
         self.invalidate_all_current_applications(
             task_id,
-            ShapingDecisionApplicationAuthorityStatus::Stale,
+            ShapingDecisionApplicationAuthorityStatus::Superseded,
         )?;
         self.tx.execute(
             "UPDATE shaping_checkpoints
@@ -1827,8 +2183,9 @@ fn validate_checkpoint_insert(input: &ShapingCheckpointInsert) -> StoreResult<()
     if matches!(
         input.checkpoint_operation,
         ShapingCheckpointOperation::CreateInitial
-    ) && (!input.retired_user_action_request_ids.is_empty()
-        || !input.carry_forward_application_ids.is_empty())
+    ) && (!input.retired_non_authorizing_request_ids.is_empty()
+        || !input.carry_forward_application_ids.is_empty()
+        || !input.stale_authority_dispositions.is_empty())
     {
         return Err(StoreError::InvalidInput {
             detail: "create_initial cannot retire requests or carry applications".to_owned(),
@@ -2181,6 +2538,7 @@ struct RawShapingApplication {
     applied_change_unit_id: Option<String>,
     applied_at: String,
     authority_status: String,
+    stale_at: Option<String>,
     superseded_at: Option<String>,
     linked_checkpoint_id: Option<String>,
     carried_from_checkpoint_id: Option<String>,
@@ -2202,9 +2560,10 @@ fn raw_shaping_application(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawShapi
         applied_change_unit_id: row.get(11)?,
         applied_at: row.get(12)?,
         authority_status: row.get(13)?,
-        superseded_at: row.get(14)?,
-        linked_checkpoint_id: row.get(15)?,
-        carried_from_checkpoint_id: row.get(16)?,
+        stale_at: row.get(14)?,
+        superseded_at: row.get(15)?,
+        linked_checkpoint_id: row.get(16)?,
+        carried_from_checkpoint_id: row.get(17)?,
     })
 }
 
@@ -2361,6 +2720,8 @@ fn build_current_shaping_authority_graph(
                         if metadata.shaping_checkpoint_id.as_str()
                             == checkpoint.shaping_checkpoint_id
                             && metadata.shaping_gap_id.as_str() == gap.shaping_gap_id
+                            && metadata.reauthorizes_application_id.as_ref().map(|id| id.as_str())
+                                == gap.reauthorizes_application_id.as_deref()
                 );
                 if request.project_id() != project_id
                     || request.task_id() != task_id
@@ -2635,6 +2996,187 @@ fn shaping_application_by_id(
     .transpose()
 }
 
+fn shaping_reauthorization_history_for_task(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+) -> StoreResult<Vec<ShapingAuthorityReauthorizationRecord>> {
+    let mut statement = conn.prepare(
+        "SELECT project_id, shaping_authority_reauthorization_id, task_id,
+                stale_application_id, stale_user_action_request_id,
+                successor_checkpoint_id, successor_gap_id,
+                successor_user_action_request_id, outcome, created_at
+           FROM shaping_authority_reauthorizations
+          WHERE project_id = ?1 AND task_id = ?2
+          ORDER BY shaping_authority_reauthorization_id",
+    )?;
+    let rows = statement
+        .query_map(params![project_id, task_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.into_iter()
+        .map(
+            |(
+                row_project_id,
+                lineage_id,
+                row_task_id,
+                stale_application_id,
+                stale_request_id,
+                successor_checkpoint_id,
+                successor_gap_id,
+                successor_request_id,
+                outcome_raw,
+                created_at_raw,
+            )| {
+                let corrupt = |column| {
+                    StoreError::corrupt_owner_state_value(
+                        "shaping_authority_reauthorizations",
+                        lineage_id.clone(),
+                        column,
+                    )
+                };
+                if row_project_id != project_id || row_task_id != task_id {
+                    return Err(corrupt("task_id"));
+                }
+                let outcome: ShapingAuthorityReauthorizationOutcome = decode_owner_closed_value(
+                    "shaping_authority_reauthorizations",
+                    &lineage_id,
+                    "outcome",
+                    &outcome_raw,
+                )?;
+                let expected_id = shaping_authority_reauthorization_id(
+                    &ShapingDecisionApplicationId::new(stale_application_id.clone()),
+                )
+                .map_err(|_| corrupt("shaping_authority_reauthorization_id"))?;
+                if expected_id.as_str() != lineage_id
+                    || matches!(outcome, ShapingAuthorityReauthorizationOutcome::Retired)
+                        != (successor_gap_id.is_none() && successor_request_id.is_none())
+                    || matches!(outcome, ShapingAuthorityReauthorizationOutcome::Reissued)
+                        != (successor_gap_id.is_some() && successor_request_id.is_some())
+                {
+                    return Err(corrupt("outcome"));
+                }
+                let exact_matches: bool = conn.query_row(
+                    "SELECT EXISTS (
+                       SELECT 1
+                         FROM shaping_decision_applications AS application
+                         JOIN user_action_requests AS old_request
+                           ON old_request.project_id = application.project_id
+                          AND old_request.user_action_request_id = application.user_action_request_id
+                         JOIN shaping_checkpoints AS successor
+                           ON successor.project_id = application.project_id
+                          AND successor.task_id = application.task_id
+                          AND successor.shaping_checkpoint_id = ?6
+                        WHERE application.project_id = ?1
+                          AND application.task_id = ?2
+                          AND application.shaping_decision_application_id = ?3
+                          AND application.user_action_request_id = ?4
+                          AND application.authority_status = 'superseded'
+                          AND application.stale_at IS NOT NULL
+                          AND application.superseded_at = ?5
+                          AND old_request.basis_status = 'superseded'
+                     )",
+                    params![
+                        project_id,
+                        task_id,
+                        stale_application_id,
+                        stale_request_id,
+                        created_at_raw,
+                        successor_checkpoint_id,
+                    ],
+                    |row| row.get(0),
+                )?;
+                if !exact_matches {
+                    return Err(corrupt("stale_application_id"));
+                }
+                if matches!(outcome, ShapingAuthorityReauthorizationOutcome::Reissued) {
+                    let successor_gap_id = successor_gap_id
+                        .as_deref()
+                        .ok_or_else(|| corrupt("successor_gap_id"))?;
+                    let successor_request_id = successor_request_id
+                        .as_deref()
+                        .ok_or_else(|| corrupt("successor_user_action_request_id"))?;
+                    let exact_successor: bool = conn.query_row(
+                        "SELECT EXISTS (
+                           SELECT 1
+                             FROM shaping_checkpoint_gaps AS gap
+                             JOIN shaping_checkpoint_user_actions AS link
+                               ON link.project_id = gap.project_id
+                              AND link.shaping_checkpoint_id = gap.shaping_checkpoint_id
+                              AND link.shaping_gap_id = gap.shaping_gap_id
+                             JOIN user_action_requests AS request
+                               ON request.project_id = link.project_id
+                              AND request.user_action_request_id = link.user_action_request_id
+                             JOIN shaping_decision_applications AS application
+                               ON application.project_id = gap.project_id
+                              AND application.task_id = gap.task_id
+                              AND application.shaping_decision_application_id = gap.reauthorizes_application_id
+                            WHERE gap.project_id = ?1
+                              AND gap.task_id = ?2
+                              AND gap.shaping_checkpoint_id = ?3
+                              AND gap.shaping_gap_id = ?4
+                              AND gap.reauthorizes_application_id = ?5
+                              AND gap.user_action_request_id = ?6
+                              AND gap.gap_kind = CASE application.judgment_kind
+                                WHEN 'product_decision' THEN 'user_product_decision_required'
+                                WHEN 'technical_decision' THEN 'user_technical_decision_required'
+                                WHEN 'scope_decision' THEN 'user_scope_decision_required'
+                                WHEN 'sensitive_approval' THEN 'sensitive_approval_required'
+                              END
+                              AND request.task_id = ?2
+                              AND link.linked_at = ?8
+                              AND request.requested_at = ?8
+                              AND request.source_method = 'volicord.record_shaping'
+                              AND json_extract(request.metadata_json, '$.reauthorizes_application_id') = ?5
+                              AND request.user_action_request_id <> ?7
+                         )",
+                        params![
+                            project_id,
+                            task_id,
+                            successor_checkpoint_id,
+                            successor_gap_id,
+                            stale_application_id,
+                            successor_request_id,
+                            stale_request_id,
+                            created_at_raw,
+                        ],
+                        |row| row.get(0),
+                    )?;
+                    if !exact_successor {
+                        return Err(corrupt("successor_gap_id"));
+                    }
+                }
+                let created_at =
+                    UtcTimestamp::parse(&created_at_raw).map_err(|_| corrupt("created_at"))?;
+                Ok(ShapingAuthorityReauthorizationRecord {
+                    project_id: row_project_id,
+                    shaping_authority_reauthorization_id: lineage_id,
+                    task_id: row_task_id,
+                    stale_application_id,
+                    stale_user_action_request_id: stale_request_id,
+                    successor_checkpoint_id,
+                    successor_gap_id,
+                    successor_user_action_request_id: successor_request_id,
+                    outcome,
+                    created_at,
+                })
+            },
+        )
+        .collect()
+}
+
 fn shaping_applications_for_checkpoint(
     conn: &Connection,
     project_id: &str,
@@ -2696,17 +3238,48 @@ fn decode_shaping_application(
     let applied_scope_revision =
         u64::try_from(raw.applied_scope_revision).map_err(|_| corrupt("applied_scope_revision"))?;
     let applied_at = UtcTimestamp::parse(&raw.applied_at).map_err(|_| corrupt("applied_at"))?;
+    let stale_at = raw
+        .stale_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| corrupt("stale_at"))?;
     let superseded_at = raw
         .superseded_at
         .as_deref()
         .map(UtcTimestamp::parse)
         .transpose()
         .map_err(|_| corrupt("superseded_at"))?;
-    if (authority_status == ShapingDecisionApplicationAuthorityStatus::Current)
-        == superseded_at.is_some()
-        || raw.applied_baseline_ref.trim().is_empty()
-    {
+    let timestamps_match = match authority_status {
+        ShapingDecisionApplicationAuthorityStatus::Current => {
+            stale_at.is_none() && superseded_at.is_none()
+        }
+        ShapingDecisionApplicationAuthorityStatus::Stale => {
+            stale_at.is_some() && superseded_at.is_none()
+        }
+        ShapingDecisionApplicationAuthorityStatus::Superseded => superseded_at.is_some(),
+    };
+    if !timestamps_match || raw.applied_baseline_ref.trim().is_empty() {
         return Err(corrupt("authority_status"));
+    }
+    let has_reauthorization_lineage: bool = conn.query_row(
+        "SELECT EXISTS (
+           SELECT 1 FROM shaping_authority_reauthorizations
+            WHERE project_id = ?1 AND task_id = ?2
+              AND stale_application_id = ?3
+         )",
+        params![raw.project_id, raw.task_id, raw.application_id],
+        |row| row.get(0),
+    )?;
+    let lifecycle_matches_lineage = match authority_status {
+        ShapingDecisionApplicationAuthorityStatus::Current
+        | ShapingDecisionApplicationAuthorityStatus::Stale => !has_reauthorization_lineage,
+        ShapingDecisionApplicationAuthorityStatus::Superseded => {
+            stale_at.is_some() == has_reauthorization_lineage
+        }
+    };
+    if !lifecycle_matches_lineage {
+        return Err(corrupt("stale_at"));
     }
     let expected_id = shaping_decision_application_id(
         &UserActionResolutionId::new(&raw.resolution_id),
@@ -2813,6 +3386,7 @@ fn decode_shaping_application(
         applied_change_unit_id: raw.applied_change_unit_id.map(ChangeUnitId::new),
         applied_at,
         authority_status,
+        stale_at,
         superseded_at,
         linked_checkpoint_id: raw.linked_checkpoint_id,
         carried_from_checkpoint_id: raw.carried_from_checkpoint_id,
@@ -2841,11 +3415,21 @@ fn shaping_gaps(
             row.get::<_, String>(7)?,
             row.get::<_, Option<String>>(8)?,
             row.get::<_, Option<String>>(9)?,
+            row.get::<_, Option<String>>(10)?,
         ))
     })?;
     let mut gaps = Vec::new();
     for row in rows {
-        let (gap_id, gap_kind, summary, affected_refs_json, status, request_id, action_kind) = row?;
+        let (
+            gap_id,
+            gap_kind,
+            summary,
+            affected_refs_json,
+            status,
+            reauthorizes_application_id,
+            request_id,
+            action_kind,
+        ) = row?;
         let decoded_kind: ShapingGapKind = decode_owner_closed_value(
             "shaping_checkpoint_gaps",
             gap_id.clone(),
@@ -2881,6 +3465,7 @@ fn shaping_gaps(
                         checkpoint_id,
                         gap_id: &gap_id,
                         request_id: &request_id,
+                        reauthorizes_application_id: reauthorizes_application_id.as_deref(),
                         gap_kind: decoded_kind,
                         task_mode,
                         status: decoded_status,
@@ -2937,6 +3522,7 @@ fn shaping_gaps(
                 &affected_refs_json,
             )?,
             status: decoded_status,
+            reauthorizes_application_id,
             user_action,
         });
     }
@@ -2947,6 +3533,7 @@ struct ShapingLinkExpectation<'a> {
     checkpoint_id: &'a str,
     gap_id: &'a str,
     request_id: &'a str,
+    reauthorizes_application_id: Option<&'a str>,
     gap_kind: ShapingGapKind,
     task_mode: TaskMode,
     status: ShapingGapStatus,
@@ -3039,6 +3626,8 @@ fn shaping_link(
         PersistedUserActionRequestMetadata::Shaping(metadata)
             if metadata.shaping_checkpoint_id.as_str() == expected.checkpoint_id
                 && metadata.shaping_gap_id.as_str() == expected.gap_id
+                && metadata.reauthorizes_application_id.as_ref().map(|id| id.as_str())
+                    == expected.reauthorizes_application_id
     );
     if linked_task_id != task_id
         || action_kind != policy.user_action_kind

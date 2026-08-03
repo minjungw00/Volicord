@@ -163,7 +163,7 @@
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:3059bccba1d172694bcfbbbf096abe304ebb3e6308a83d2d264f902cc0f17ae4"
+      "sha256": "sha256:3f3141a7f8f2d4cb8ba2794b5c301499b8976754c2b97dc0c643eb8916b16b7b"
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
@@ -297,7 +297,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:9cc23759cd620dfac42ba914af63baa6514fd40b839dfd31f2698e1f9a3e2de5"
+      "sha256": "sha256:8ef288f75d94b65748d051914032586b80fd081546fc282ac3331ba100841683"
     },
     "volicord.record_shaping": {
       "definitions": [
@@ -324,6 +324,7 @@
         "ShapingUserActionDraft",
         "SourceLineRange",
         "SourceRef",
+        "StaleShapingAuthorityAction",
         "StateRecordKind",
         "StateRecordRef",
         "ToolEnvelope",
@@ -343,7 +344,7 @@
         "operation",
         "task_id"
       ],
-      "sha256": "sha256:4473ca22b253ea1eb0055857121e15f6e0e6d9e7b96d29917071d654428fcc23"
+      "sha256": "sha256:96e7303aca2637cba425ca2a4d00174f63fa77cec92ed9745cb0296d8ef84e28"
     },
     "volicord.request_user_action": {
       "definitions": [
@@ -382,7 +383,7 @@
         "required_for",
         "task_id"
       ],
-      "sha256": "sha256:cfed33d57c6b7d90deccfd1012f6d40b4f44e5fa58739c6105a7fad9979af8ff"
+      "sha256": "sha256:46f3761d41bf32bd2b14a485296103eaca8ab05d24a0560634da8567488a7b40"
     },
     "volicord.resolve_user_action": {
       "definitions": [
@@ -492,7 +493,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:ea5d12a2dd5332983466e38f27bf25b8fccf7bd035a6ae5c712c7fb5d5cb9f82"
+      "sha256": "sha256:36acb3e4e14d7e4482e85a24ab2391bba0419cd0924899b4dba7786d261dc994"
     }
   }
 }

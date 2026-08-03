@@ -2059,14 +2059,28 @@ pub struct ShapingUserActionDraft {
 }
 
 /// Exact succession operation for one shaping-checkpoint recording request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ShapingCheckpointOperation {
     CreateInitial,
     ReplaceCurrent {
         expected_current_checkpoint_id: crate::ids::ShapingCheckpointId,
-        retired_user_action_request_refs: Vec<StateRecordRef>,
+        retired_non_authorizing_request_refs: Vec<StateRecordRef>,
         carry_forward_application_refs: Vec<StateRecordRef>,
+        stale_authority_actions: Vec<StaleShapingAuthorityAction>,
+    },
+}
+
+/// Exact terminal action for one stale shaping-decision application.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum StaleShapingAuthorityAction {
+    Retire {
+        stale_application_ref: StateRecordRef,
+    },
+    Reauthorize {
+        stale_application_ref: StateRecordRef,
+        successor_gap: ShapingGapInput,
     },
 }
 
@@ -2112,6 +2126,7 @@ pub struct ShapingCheckpointGap {
     pub decision_authority_state: RequiredNullable<crate::values::ShapingDecisionAuthorityState>,
     pub user_action_request_ref: RequiredNullable<StateRecordRef>,
     pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
+    pub reauthorizes_application_ref: RequiredNullable<StateRecordRef>,
 }
 
 /// Durable authority created when an accepted shaping decision is applied.
@@ -2132,7 +2147,24 @@ pub struct ShapingDecisionApplication {
     pub applied_change_unit_id: RequiredNullable<ChangeUnitId>,
     pub applied_at: UtcTimestamp,
     pub authority_status: crate::values::ShapingDecisionApplicationAuthorityStatus,
+    pub stale_at: RequiredNullable<UtcTimestamp>,
     pub superseded_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Immutable lineage for one stale application consumed by checkpoint replacement.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShapingAuthorityReauthorization {
+    pub shaping_authority_reauthorization_id: crate::ids::ShapingAuthorityReauthorizationId,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub stale_application_id: crate::ids::ShapingDecisionApplicationId,
+    pub stale_user_action_request_id: crate::ids::UserActionRequestId,
+    pub successor_checkpoint_id: crate::ids::ShapingCheckpointId,
+    pub successor_gap_id: RequiredNullable<crate::ids::ShapingGapId>,
+    pub successor_user_action_request_id: RequiredNullable<crate::ids::UserActionRequestId>,
+    pub outcome: crate::values::ShapingAuthorityReauthorizationOutcome,
+    pub created_at: UtcTimestamp,
 }
 
 /// Exact non-authorizing decision that requires one successor shaping plan.
@@ -3776,6 +3808,7 @@ pub struct PersistedUserActionShapingMetadata {
     pub created_by: MethodName,
     pub shaping_checkpoint_id: ShapingCheckpointId,
     pub shaping_gap_id: ShapingGapId,
+    pub reauthorizes_application_id: RequiredNullable<crate::ids::ShapingDecisionApplicationId>,
 }
 
 /// Empty metadata for a direct user-action request.

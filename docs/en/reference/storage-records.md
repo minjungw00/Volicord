@@ -144,7 +144,8 @@ creation time. The predecessor foreign key enforces same-project and same-Task
 lineage; predecessor identity is immutable and cannot self-reference.
 
 `shaping_checkpoint_gaps` owns each gap's closed kind, summary, affected refs,
-and `current|accepted|rejected|deferred|applied` status. A `ready` checkpoint cannot receive or
+nullable stale-application reauthorization origin, and
+`current|accepted|rejected|deferred|applied` status. A `ready` checkpoint cannot receive or
 retain a `current` gap. `shaping_checkpoint_user_actions` is a same-project,
 same-Task, same-checkpoint, same-gap link to the exact UserAction request and,
 after User Channel resolution, its immutable resolution. A user-owned gap must
@@ -162,8 +163,10 @@ application aggregate. Its deterministic identity binds one resolution and
 semantic owner to the source checkpoint/gap/request, judgment kind, applying
 scope revision, baseline, optional Change Unit, application timestamp, and
 closed `current|stale|superseded` authority status. All semantic fields are
-immutable; only the owning transition may record one current-to-stale or
-current-to-superseded invalidation. `shaping_checkpoint_applications` links an
+immutable. `stale_at` records only the current-to-stale boundary;
+`superseded_at` records current-to-superseded or stale-to-superseded. No
+transition returns an application to `current`.
+`shaping_checkpoint_applications` links an
 initial application to its source checkpoint and records every exact
 predecessor-to-successor carry edge. Current authority therefore may originate
 at an ancestor without copying its gap into the current checkpoint.
@@ -175,15 +178,29 @@ owner data; Store does not omit it, invent a default, choose a checkpoint by
 row ordering, or detach a linked current-basis UserAction through checkpoint
 replacement.
 
+`shaping_authority_reauthorizations` is immutable lineage keyed by one stale
+application. Its closed outcome is `retired` or `reissued`. Every row binds the
+same-project, same-Task stale application and old request to the exact successor
+checkpoint. A `reissued` row additionally binds the fresh successor gap and
+fresh request; a `retired` row has neither. Update and delete are forbidden.
+
 Exact checkpoint replacement requires `carry_forward_application_refs` to be
 the complete exact set of current compatible applications, rejects missing or
 extra refs and authority-boundary conflicts, and writes successor lineage in
 the same transaction. It may supersede the basis of rejected, deferred,
-or expired linked requests only when `retired_user_action_request_refs` is the
+or expired linked requests only when `retired_non_authorizing_request_refs` is the
 complete predecessor-owned set. Pending, accepted, applied, stale, foreign,
 omitted, or extra refs are rejected. Retirement and successor aggregate
 creation share the same transaction, while the request and immutable
 resolution rows remain audit history.
+The separate `stale_authority_actions` set must exactly consume every relevant
+stale application. Each retire action writes terminal lineage. Each
+reauthorize action supersedes the stale application and request basis, writes
+the successor gap with the stale application origin, creates a distinct
+current request with no resolution, and writes exact lineage in the same
+transaction. Missing, duplicate, extra, cross-Task, cross-project,
+wrong-status, owner-mismatched, or reused-identity members reject the whole
+mutation.
 
 `project_workflow_policies` is the authoritative project workflow-policy
 record family. Its canonical aggregate contains the project identity, exact

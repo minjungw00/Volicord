@@ -464,8 +464,8 @@ documents:
   - cli.surface.public
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - users
   - agents
@@ -482,12 +482,13 @@ documents:
   translation_policy: semantic_parity
   contracts:
   - api.methods
+  - api.method.record_shaping.request
   - api.schema.state
   - api.schema.user_action
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - agents
   - agent operators
@@ -2042,8 +2043,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2070,8 +2071,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-08-02'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2659,8 +2660,8 @@ documents:
   - cli.surface.public
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - API implementers
   - agent integrators

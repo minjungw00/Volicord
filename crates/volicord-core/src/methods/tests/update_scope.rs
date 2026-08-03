@@ -1,4 +1,131 @@
+use super::shaping_progression::{record_user_owned_gap, shaping_checkpoint_id, shaping_task};
 use super::*;
+
+#[test]
+fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_recovery(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = shaping_task(&harness, "implementation_scope_guard")?;
+    let shaped = record_user_owned_gap(
+        &harness,
+        "implementation_scope_guard",
+        &task_id,
+        &change_unit_id,
+        ShapingGapKind::UserProductDecisionRequired,
+        JudgmentKind::ProductDecision,
+    )?;
+    let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+    let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
+        .as_str()
+        .expect("product decision request");
+    let resolved = harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_implementation_scope_guard_resolve",
+            "submission_implementation_scope_guard_resolve",
+            None,
+            &task_id,
+            request_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    let resolution_id = resolved.response_value["user_action_resolution_ref"]["record_id"]
+        .as_str()
+        .expect("accepted resolution");
+    let before_advance = harness.counts()?;
+    let advanced = harness.service.advance_task(
+        AdvanceTaskRequest {
+            envelope: envelope(
+                "req_implementation_scope_guard_advance",
+                Some("idem_implementation_scope_guard_advance"),
+                false,
+                Some(before_advance.state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: vec![UserActionResolutionId::new(resolution_id)],
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        advanced.response_value["state"]["work_phase"],
+        "implementation"
+    );
+    let application_ref: StateRecordRef = serde_json::from_value(
+        advanced.response_value["applied_shaping_decision_application_refs"][0].clone(),
+    )?;
+
+    let before_rejection = harness.counts()?;
+    let rejected = harness.service.update_scope(
+        update_scope_request(
+            "req_implementation_scope_guard_reject",
+            "idem_implementation_scope_guard_reject",
+            false,
+            Some(before_rejection.state_version),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "A changed implementation boundary must not stale authority silently.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        rejected.response_value["errors"][0]["code"],
+        ErrorCode::TaskPhaseTransitionRequired.as_str()
+    );
+    let details: WorkflowRejectionDetails =
+        serde_json::from_value(rejected.response_value["errors"][0]["details"].clone())?;
+    assert_eq!(details.current_work_phase, WorkPhase::Implementation);
+    assert_eq!(details.recovery.owner_method, MethodName::CloseTask);
+    assert!(!details.corrected_retry_allowed);
+    assert!(details.blockers[0].required_refs.contains(&application_ref));
+    assert_eq!(harness.counts()?, before_rejection);
+    let application = harness
+        .store()?
+        .shaping_decision_application_record(
+            &TaskId::new(&task_id),
+            application_ref.record_id.as_str(),
+        )?
+        .expect("current implementation authority");
+    assert_eq!(
+        application.authority_status,
+        ShapingDecisionApplicationAuthorityStatus::Current
+    );
+    assert!(application.stale_at.is_none());
+    assert!(application.superseded_at.is_none());
+
+    let mut compatible_noop = update_scope_request(
+        "req_implementation_scope_guard_noop",
+        "idem_implementation_scope_guard_noop",
+        false,
+        Some(before_rejection.state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "ignored for a normalized no-op",
+    );
+    compatible_noop.goal_summary = RequiredNullable::null();
+    compatible_noop.scope_update = RequiredNullable::null();
+    compatible_noop.scope_boundary = RequiredNullable::null();
+    compatible_noop.non_goals = RequiredNullable::null();
+    compatible_noop.acceptance_criteria = RequiredNullable::null();
+    compatible_noop.autonomy_boundary = RequiredNullable::null();
+    compatible_noop.baseline_ref = RequiredNullable::null();
+    compatible_noop.change_unit.fields = Map::new();
+    let no_op = harness.service.update_scope(
+        compatible_noop,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        no_op.response_value["base"]["response_kind"], "result",
+        "{}",
+        no_op.response_value
+    );
+    Ok(())
+}
 
 #[test]
 fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<(), Box<dyn Error>>

@@ -127,7 +127,8 @@ predecessor를 `readiness=superseded`로 바꾸며 supersession 시각을 succes
 같게 기록합니다. Predecessor foreign key는 같은 project와 Task lineage를 강제하며
 predecessor identity는 불변이고 self-reference할 수 없습니다.
 
-`shaping_checkpoint_gaps`는 각 gap의 폐쇄형 kind, summary, affected ref,
+`shaping_checkpoint_gaps`는 각 gap의 폐쇄형 kind, summary, affected ref, nullable stale
+application 재권한 origin,
 `current|accepted|rejected|deferred|applied` 상태를 소유합니다. `ready` checkpoint에는 `current` gap을
 추가하거나 유지할 수 없습니다. `shaping_checkpoint_user_actions`는 같은 project, Task,
 checkpoint, gap의 정확한 UserAction request와 User Channel 해결 뒤의 불변 resolution을
@@ -145,6 +146,9 @@ accepted gap을 갱신하지 않습니다. Applied gap은 terminal이며 민감 
 judgment kind, 적용 scope revision, baseline, 선택적 Change Unit, 적용 timestamp, 폐쇄형
 `current|stale|superseded` 권한 상태에 결합합니다. 의미 필드는 모두 불변이며 소유 전이만
 current-to-stale 또는 current-to-superseded 무효화를 한 번 기록할 수 있습니다.
+`stale_at`은 current-to-stale 경계만 기록하고 `superseded_at`은
+current-to-superseded 또는 stale-to-superseded 경계를 기록합니다. 어떤 전이도
+application을 `current`로 되돌리지 않습니다.
 `shaping_checkpoint_applications`는 최초 application을 source checkpoint에 연결하고 정확한
 predecessor-to-successor carry edge를 모두 기록합니다. 따라서 현재 권한은 gap을 현재
 checkpoint에 복사하지 않고도 ancestor에서 시작할 수 있습니다.
@@ -155,13 +159,25 @@ predecessor 소유권과 timestamp, link 일관성을 엄격하게 decode합니�
 만들거나 row 정렬로 checkpoint를 선택하거나 checkpoint 교체로 연결된 current-basis
 UserAction을 분리하지 않습니다.
 
+`shaping_authority_reauthorizations`는 stale application 하나를 key로 삼는 변경 불가능한
+lineage입니다. 폐쇄형 outcome은 `retired` 또는 `reissued`입니다. 각 row는 같은 project와
+Task의 stale application 및 이전 요청을 정확한 successor checkpoint에 결합합니다.
+`reissued` row는 새 successor gap과 새 요청도 결합하고, `retired` row에는 둘 다 없습니다.
+Update와 delete는 금지됩니다.
+
 정확한 checkpoint replacement는 `carry_forward_application_refs`가 현재 호환 application의
 완전하고 정확한 집합이어야 하며 누락, 추가 ref, 권한 경계 충돌을 거부하고 같은
-transaction에서 successor lineage를 기록합니다. 또한 `retired_user_action_request_refs`가 predecessor 소유의
+transaction에서 successor lineage를 기록합니다. 또한 `retired_non_authorizing_request_refs`가 predecessor 소유의
 완전한 집합일 때만 거부, 보류, 만료 상태인 연결 요청의 근거를 supersede할 수 있습니다.
 Pending, accepted, applied, stale, 외부, 누락, 추가 ref는 거부됩니다. Retirement와
 successor aggregate 생성은 같은 transaction에 속하며 요청과 변경 불가능한 resolution
 row는 감사 이력으로 남습니다.
+별도 `stale_authority_actions` 집합은 관련된 모든 stale application을 정확히 소비해야
+합니다. Retire action은 종료 lineage를 기록합니다. Reauthorize action은 stale
+application과 request basis를 supersede하고, stale application origin이 있는 successor
+gap과 resolution이 없는 별도 current 요청을 만들며, 정확한 lineage를 같은 transaction에
+기록합니다. 누락, 중복, 추가, 다른 Task나 project, 잘못된 상태, owner 불일치, identity
+재사용이 있으면 전체 mutation을 거부합니다.
 
 `project_workflow_policies`는 권위 있는 프로젝트 workflow policy record
 family입니다. 정규 aggregate에는 프로젝트 identity, 정확한

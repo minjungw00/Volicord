@@ -247,6 +247,7 @@ pub struct McpRecordShapingCompactResult {
         Vec<volicord_types::schema::ShapingDecisionRecoveryRequirement>,
     pub created_user_action_request_refs: Vec<StateRecordRef>,
     pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
+    pub shaping_authority_reauthorization_refs: Vec<StateRecordRef>,
     pub workflow_kind: WorkflowStateKind,
     pub close_state: Option<CloseState>,
     pub close_blocker_count: usize,

@@ -1361,6 +1361,7 @@ CREATE TABLE shaping_checkpoint_gaps (
   status TEXT NOT NULL CHECK (
     status IN ('current', 'accepted', 'rejected', 'deferred', 'applied')
   ),
+  reauthorizes_application_id TEXT,
   user_action_request_id TEXT,
   user_action_kind TEXT,
   PRIMARY KEY (project_id, shaping_checkpoint_id, shaping_gap_id),
@@ -1371,6 +1372,7 @@ CREATE TABLE shaping_checkpoint_gaps (
     user_action_request_id,
     user_action_kind
   ),
+  UNIQUE (project_id, reauthorizes_application_id),
   FOREIGN KEY (project_id, task_id, shaping_checkpoint_id)
     REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id),
   FOREIGN KEY (project_id, task_id, user_action_request_id, user_action_kind)
@@ -1381,6 +1383,12 @@ CREATE TABLE shaping_checkpoint_gaps (
       action_kind
     )
     DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id, task_id, reauthorizes_application_id)
+    REFERENCES shaping_decision_applications (
+      project_id,
+      task_id,
+      shaping_decision_application_id
+    ) DEFERRABLE INITIALLY DEFERRED,
   FOREIGN KEY (
     project_id,
     shaping_checkpoint_id,
@@ -1515,6 +1523,7 @@ CREATE TABLE shaping_decision_applications (
   authority_status TEXT NOT NULL CHECK (
     authority_status IN ('current', 'stale', 'superseded')
   ),
+  stale_at TEXT,
   superseded_at TEXT,
   PRIMARY KEY (project_id, shaping_decision_application_id),
   UNIQUE (project_id, task_id, shaping_decision_application_id),
@@ -1556,8 +1565,9 @@ CREATE TABLE shaping_decision_applications (
   FOREIGN KEY (project_id, task_id, applied_change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
   CHECK (
-    (authority_status = 'current' AND superseded_at IS NULL)
-    OR (authority_status IN ('stale', 'superseded') AND superseded_at IS NOT NULL)
+    (authority_status = 'current' AND stale_at IS NULL AND superseded_at IS NULL)
+    OR (authority_status = 'stale' AND stale_at IS NOT NULL AND superseded_at IS NULL)
+    OR (authority_status = 'superseded' AND superseded_at IS NOT NULL)
   )
 );
 
@@ -1586,6 +1596,50 @@ CREATE TABLE shaping_checkpoint_applications (
   CHECK (
     carried_from_checkpoint_id IS NULL
     OR carried_from_checkpoint_id <> shaping_checkpoint_id
+  )
+);
+
+CREATE TABLE shaping_authority_reauthorizations (
+  project_id TEXT NOT NULL,
+  shaping_authority_reauthorization_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  stale_application_id TEXT NOT NULL,
+  stale_user_action_request_id TEXT NOT NULL,
+  successor_checkpoint_id TEXT NOT NULL,
+  successor_gap_id TEXT,
+  successor_user_action_request_id TEXT,
+  outcome TEXT NOT NULL CHECK (outcome IN ('retired', 'reissued')),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, shaping_authority_reauthorization_id),
+  UNIQUE (project_id, stale_application_id),
+  FOREIGN KEY (project_id, task_id, stale_application_id)
+    REFERENCES shaping_decision_applications (
+      project_id,
+      task_id,
+      shaping_decision_application_id
+    ),
+  FOREIGN KEY (project_id, stale_user_action_request_id)
+    REFERENCES user_action_requests (project_id, user_action_request_id),
+  FOREIGN KEY (project_id, task_id, successor_checkpoint_id)
+    REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id),
+  FOREIGN KEY (
+    project_id,
+    successor_checkpoint_id,
+    successor_gap_id
+  ) REFERENCES shaping_checkpoint_gaps (
+    project_id,
+    shaping_checkpoint_id,
+    shaping_gap_id
+  ),
+  FOREIGN KEY (project_id, successor_user_action_request_id)
+    REFERENCES user_action_requests (project_id, user_action_request_id),
+  CHECK (
+    (outcome = 'retired'
+      AND successor_gap_id IS NULL
+      AND successor_user_action_request_id IS NULL)
+    OR (outcome = 'reissued'
+      AND successor_gap_id IS NOT NULL
+      AND successor_user_action_request_id IS NOT NULL)
   )
 );
 
@@ -1642,7 +1696,8 @@ BEGIN
       ) WHEN 'advisor' THEN 'volicord.record_shaping'
         ELSE 'volicord.advance_task' END)
   ) THEN RAISE(ABORT, 'shaping application owner conflicts with decision policy') END;
-  SELECT CASE WHEN NEW.authority_status <> 'current' OR NEW.superseded_at IS NOT NULL
+  SELECT CASE WHEN NEW.authority_status <> 'current'
+    OR NEW.stale_at IS NOT NULL OR NEW.superseded_at IS NOT NULL
     THEN RAISE(ABORT, 'new shaping application must be current') END;
 END;
 
@@ -1666,26 +1721,163 @@ BEGIN
 END;
 
 CREATE TRIGGER trg_shaping_decision_application_status_transition
-BEFORE UPDATE OF authority_status ON shaping_decision_applications
+BEFORE UPDATE OF authority_status, stale_at, superseded_at ON shaping_decision_applications
 WHEN NEW.authority_status <> OLD.authority_status
   AND NOT (
-    OLD.authority_status = 'current'
-    AND NEW.authority_status IN ('stale', 'superseded')
-    AND NEW.superseded_at IS NOT NULL
+    (OLD.authority_status = 'current'
+      AND NEW.authority_status = 'stale'
+      AND OLD.stale_at IS NULL AND NEW.stale_at IS NOT NULL
+      AND OLD.superseded_at IS NULL AND NEW.superseded_at IS NULL)
+    OR (OLD.authority_status = 'current'
+      AND NEW.authority_status = 'superseded'
+      AND OLD.stale_at IS NULL AND NEW.stale_at IS NULL
+      AND OLD.superseded_at IS NULL AND NEW.superseded_at IS NOT NULL)
+    OR (OLD.authority_status = 'stale'
+      AND NEW.authority_status = 'superseded'
+      AND OLD.stale_at IS NOT NULL AND NEW.stale_at IS OLD.stale_at
+      AND OLD.superseded_at IS NULL AND NEW.superseded_at IS NOT NULL)
   )
 BEGIN
   SELECT RAISE(ABORT, 'invalid shaping application authority transition');
 END;
 
 CREATE TRIGGER trg_shaping_decision_application_invalidation_immutable
-BEFORE UPDATE OF authority_status, superseded_at ON shaping_decision_applications
-WHEN (OLD.authority_status <> 'current'
+BEFORE UPDATE OF authority_status, stale_at, superseded_at ON shaping_decision_applications
+WHEN (OLD.authority_status = 'superseded'
       AND (NEW.authority_status IS NOT OLD.authority_status
+           OR NEW.stale_at IS NOT OLD.stale_at
            OR NEW.superseded_at IS NOT OLD.superseded_at))
   OR (NEW.authority_status IS OLD.authority_status
-      AND NEW.superseded_at IS NOT OLD.superseded_at)
+      AND (NEW.stale_at IS NOT OLD.stale_at
+       OR NEW.superseded_at IS NOT OLD.superseded_at))
 BEGIN
   SELECT RAISE(ABORT, 'shaping application invalidation is immutable once recorded');
+END;
+
+CREATE TRIGGER trg_shaping_authority_reauthorization_exact_lineage
+BEFORE INSERT ON shaping_authority_reauthorizations
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+      FROM shaping_decision_applications AS application
+      JOIN user_action_requests AS old_request
+        ON old_request.project_id = application.project_id
+       AND old_request.user_action_request_id = application.user_action_request_id
+     WHERE application.project_id = NEW.project_id
+       AND application.task_id = NEW.task_id
+       AND application.shaping_decision_application_id = NEW.stale_application_id
+       AND application.user_action_request_id = NEW.stale_user_action_request_id
+       AND application.authority_status = 'superseded'
+       AND application.stale_at IS NOT NULL
+       AND application.superseded_at = NEW.created_at
+       AND old_request.task_id = NEW.task_id
+       AND old_request.basis_status = 'superseded'
+  ) THEN RAISE(ABORT, 'reauthorization requires one exact superseded stale application') END;
+  SELECT CASE WHEN NEW.outcome = 'reissued' AND NOT EXISTS (
+    SELECT 1
+      FROM shaping_checkpoint_gaps AS gap
+      JOIN shaping_checkpoint_user_actions AS link
+        ON link.project_id = gap.project_id
+       AND link.shaping_checkpoint_id = gap.shaping_checkpoint_id
+       AND link.shaping_gap_id = gap.shaping_gap_id
+      JOIN user_action_requests AS request
+        ON request.project_id = link.project_id
+       AND request.user_action_request_id = link.user_action_request_id
+      JOIN shaping_decision_applications AS application
+        ON application.project_id = gap.project_id
+       AND application.shaping_decision_application_id = gap.reauthorizes_application_id
+     WHERE gap.project_id = NEW.project_id
+       AND gap.task_id = NEW.task_id
+       AND gap.shaping_checkpoint_id = NEW.successor_checkpoint_id
+       AND gap.shaping_gap_id = NEW.successor_gap_id
+       AND gap.reauthorizes_application_id = NEW.stale_application_id
+       AND gap.user_action_request_id = NEW.successor_user_action_request_id
+       AND gap.status = 'current'
+       AND gap.gap_kind = CASE application.judgment_kind
+         WHEN 'product_decision' THEN 'user_product_decision_required'
+         WHEN 'technical_decision' THEN 'user_technical_decision_required'
+         WHEN 'scope_decision' THEN 'user_scope_decision_required'
+         WHEN 'sensitive_approval' THEN 'sensitive_approval_required'
+       END
+       AND link.user_action_resolution_id IS NULL
+       AND request.task_id = NEW.task_id
+       AND request.basis_status = 'current'
+       AND json_extract(request.metadata_json, '$.reauthorizes_application_id') = NEW.stale_application_id
+       AND NOT EXISTS (
+         SELECT 1 FROM user_action_resolutions AS resolution
+          WHERE resolution.project_id = request.project_id
+            AND resolution.user_action_request_id = request.user_action_request_id
+       )
+       AND request.user_action_request_id <> NEW.stale_user_action_request_id
+  ) THEN RAISE(ABORT, 'reissued authority requires one exact fresh successor gap and request') END;
+END;
+
+CREATE TRIGGER trg_shaping_authority_reauthorization_immutable
+BEFORE UPDATE ON shaping_authority_reauthorizations
+BEGIN
+  SELECT RAISE(ABORT, 'shaping authority reauthorization lineage is immutable');
+END;
+
+CREATE TRIGGER trg_shaping_authority_reauthorization_delete_forbidden
+BEFORE DELETE ON shaping_authority_reauthorizations
+BEGIN
+  SELECT RAISE(ABORT, 'shaping authority reauthorization lineage is immutable');
+END;
+
+CREATE TRIGGER trg_shaping_gap_reauthorization_origin
+BEFORE INSERT ON shaping_checkpoint_gaps
+WHEN NEW.reauthorizes_application_id IS NOT NULL
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+      FROM shaping_decision_applications AS application
+      JOIN tasks AS task
+        ON task.project_id = application.project_id
+       AND task.task_id = application.task_id
+     WHERE application.project_id = NEW.project_id
+       AND application.task_id = NEW.task_id
+       AND application.shaping_decision_application_id = NEW.reauthorizes_application_id
+       AND application.authority_status = 'superseded'
+       AND application.stale_at IS NOT NULL
+       AND application.superseded_at IS NOT NULL
+       AND NEW.gap_kind = CASE application.judgment_kind
+         WHEN 'product_decision' THEN 'user_product_decision_required'
+         WHEN 'technical_decision' THEN 'user_technical_decision_required'
+         WHEN 'scope_decision' THEN 'user_scope_decision_required'
+         WHEN 'sensitive_approval' THEN 'sensitive_approval_required'
+       END
+       AND application.application_owner = CASE
+         WHEN NEW.gap_kind = 'user_scope_decision_required'
+           THEN 'volicord.update_scope'
+         WHEN task.mode = 'advisor' THEN 'volicord.record_shaping'
+         ELSE 'volicord.advance_task'
+       END
+  ) THEN RAISE(ABORT, 'successor gap reauthorization origin is invalid') END;
+END;
+
+CREATE TRIGGER trg_shaping_gap_reauthorization_origin_immutable
+BEFORE UPDATE OF reauthorizes_application_id ON shaping_checkpoint_gaps
+WHEN NEW.reauthorizes_application_id IS NOT OLD.reauthorizes_application_id
+BEGIN
+  SELECT RAISE(ABORT, 'successor gap reauthorization origin is immutable');
+END;
+
+CREATE TRIGGER trg_implementation_task_shaping_authority_guard
+BEFORE UPDATE OF scope_revision, shaping_summary_json, current_change_unit_id ON tasks
+WHEN OLD.work_phase = 'implementation'
+ AND EXISTS (
+   SELECT 1 FROM shaping_decision_applications AS application
+    WHERE application.project_id = OLD.project_id
+      AND application.task_id = OLD.task_id
+      AND application.authority_status = 'current'
+      AND (
+        application.applied_scope_revision <> NEW.scope_revision
+        OR application.applied_baseline_ref IS NOT json_extract(NEW.shaping_summary_json, '$.baseline_ref')
+        OR application.applied_change_unit_id IS NOT NEW.current_change_unit_id
+      )
+ )
+BEGIN
+  SELECT RAISE(ABORT, 'implementation scope update would stale current shaping authority');
 END;
 
 CREATE TRIGGER trg_shaping_decision_application_delete_forbidden

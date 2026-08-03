@@ -361,8 +361,9 @@ The only `ShapingDecisionApplicationOwner` values are
 `volicord.advance_task`.
 
 `ShapingDecisionApplication.authority_status` uses exactly `current`, `stale`,
-and `superseded`. Only an owning scope, baseline, Change Unit, checkpoint, or
-terminal Task transition may change `current` to a non-current value.
+and `superseded`. `current` may transition to `stale` or `superseded`; `stale`
+may transition only to `superseded`. A replacement reauthorization lineage
+uses exactly the outcomes `retired` and `reissued`.
 
 `WorkflowProjection.kind` uses exactly:
 

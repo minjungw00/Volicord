@@ -136,6 +136,14 @@ visible until the agent finalizes the exact advice result through
 `volicord.update_scope`. Finalization does not write Product Repository files or
 record a Run, and close review still requires your separate final acceptance.
 
+If a later scope, baseline, or current Change Unit revision makes an applied
+answer stale, the old answer no longer authorizes progress. The agent must
+explicitly retire it or ask you again through a fresh successor UserAction
+request. A fresh request is a new judgment boundary: resolve only the option
+shown for that request, and do not assume the earlier accepted answer carries
+over. Volicord retains the old request, application, and their reauthorization
+lineage as history.
+
 The exact question and options appear in `volicord inbox`;
 the agent-facing MCP connection cannot act as the local user channel or resolve
 the action on the user's behalf.

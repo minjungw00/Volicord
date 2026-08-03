@@ -175,6 +175,11 @@ decision ref. A transition supersedes the checkpoint only when it genuinely
 invalidates the checkpoint's scope or baseline authority basis. A scope,
 baseline, or incompatible Change Unit change explicitly marks affected current
 applications `stale`; row absence is not invalidation.
+During `work/implementation`, a scope, baseline, or Change Unit update that
+would make any current shaping application stale is rejected before mutation.
+The typed no-effect recovery names the affected application refs and requires
+the Task to leave implementation through its owned close/supersede transition;
+the method never silently returns the Task to shaping.
 
 A rejected, deferred, expired, or inconsistent shaping decision grants no
 scope authority. The method returns a no-effect workflow rejection whose

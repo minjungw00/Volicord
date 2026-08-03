@@ -32,12 +32,18 @@ checkpoint-readiness semantics are `stable`.
 `checkpoint_operation.operation=create_initial` requires no current checkpoint.
 `checkpoint_operation.operation=replace_current` requires
 `expected_current_checkpoint_id` to identify the exact current checkpoint and
-`retired_user_action_request_refs` to name the complete exact set of linked
+`retired_non_authorizing_request_refs` to name the complete exact set of linked
 rejected, deferred, or expired requests whose basis the replacement retires.
 `carry_forward_application_refs` names the complete exact set of current,
 coordinate-compatible `ShapingDecisionApplication` records that remain
 authoritative in the successor. Missing, extra, stale, superseded, foreign, or
 decision-kind-conflicting application refs reject the replacement.
+`stale_authority_actions` separately names the complete exact set of stale
+applications relevant to the Task. Each tagged action either retires one stale
+application or reauthorizes it through one fresh user-owned successor gap and
+fresh `UserActionRequest`. Reauthorization preserves the judgment kind and
+application owner, records the stale application as the successor gap origin,
+and never reuses the stale request's accepted resolution.
 A replacement checkpoint records that identity as
 `predecessor_checkpoint_id`; Core performs one compare-and-swap rather than
 selecting a row by ordering. The request supplies a shaping summary, an implementation or advisory boundary, the
@@ -58,14 +64,20 @@ the exact predecessor `superseded`, gives predecessor supersession and
 successor creation the same timestamp, and leaves at most one non-superseded
 checkpoint for a Task.
 
-Replacement cannot retire pending, accepted-but-unapplied, stale, or foreign
-authority. Applied authority is preserved only through the exact typed
-carry-forward set and checkpoint-application lineage. For rejected, deferred,
+Replacement cannot retire pending, accepted-but-unapplied, or foreign
+non-authorizing authority. Current applied authority is preserved only through
+the exact typed carry-forward set and checkpoint-application lineage. Stale
+applied authority must be consumed by exactly one `stale_authority_actions`
+entry. Retirement records an immutable terminal lineage outcome;
+reauthorization atomically supersedes the stale application and its request
+basis, creates the successor gap and fresh request, and records immutable
+lineage to both. For rejected, deferred,
 or expired predecessor requests,
 the retirement refs must be an exact set: omission and unrelated extras reject
 the operation. The request basis transition, predecessor supersession,
 successor checkpoint and gaps, successor UserAction requests, event, replay
-row, and state-version update commit in one transaction. The retired request
+row, stale-authority lineage, and state-version update commit in one
+transaction. The retired request
 and its immutable resolution, if present, remain audit history. A successor
 plan that still needs the judgment creates a distinct request identity. The
 typed rejection identifies the checkpoint, request
@@ -142,6 +154,7 @@ Channel resolution.
 | `applied_shaping_decision_application_refs` | yes | no | `StateRecordRef[]` |
 | `base` | yes | no | `RecordShapingResultBase` |
 | `created_user_action_request_refs` | yes | no | `StateRecordRef[]` |
+| `shaping_authority_reauthorization_refs` | yes | no | `StateRecordRef[]` |
 | `shaping_checkpoint` | yes | no | `ShapingCheckpoint` |
 | `state` | yes | no | `StateSummary` |
 | `workflow` | yes | no | `WorkflowProjection` |

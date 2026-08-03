@@ -66,7 +66,7 @@ use volicord_types::schema::{
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
     ShapingDecisionApplicationOwner, ShapingGapStatus, StateRecordKind, TaskControlLevel, TaskMode,
-    UserActionBasisStatus, UtcTimestamp, WriteTicketInvalidationReason,
+    UserActionBasisStatus, UtcTimestamp, WorkPhase, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
     pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
@@ -468,6 +468,27 @@ fn plan_update_scope_mutations(
     } else {
         task.close_basis_revision
     };
+
+    if scope_changed && task.work_phase == WorkPhase::Implementation {
+        let authority_graph = store
+            .current_shaping_authority_graph(&request.task_id, &plan_now)
+            .map_err(CorePipelineError::from)?;
+        if !authority_graph.current_applications.is_empty() {
+            return workflow_rejection_plan_error(
+                store,
+                project_state,
+                &request.envelope,
+                &request.task_id,
+                ErrorCode::TaskPhaseTransitionRequired,
+                "an implementation-phase scope update cannot stale current shaping authority; close or supersede the Task first",
+                MethodName::UpdateScope,
+                None,
+                Vec::new(),
+                false,
+                MethodName::CloseTask,
+            );
+        }
+    }
 
     let active_write_tickets = store
         .active_write_tickets(&request.task_id)
@@ -1140,7 +1161,12 @@ fn shaping_checkpoint_can_rebase(
             .implementation_boundary
             .as_deref()
             .is_none_or(|boundary| boundary.trim().is_empty())
-        || (authority_basis_changed && scope_gap_applications.is_empty())
+        || (authority_basis_changed
+            && scope_gap_applications.is_empty()
+            && checkpoint
+                .gaps
+                .iter()
+                .any(|gap| gap.status != ShapingGapStatus::Applied))
     {
         return false;
     }

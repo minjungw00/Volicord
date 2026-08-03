@@ -34,10 +34,10 @@ use volicord_types::tool_names::AgentToolId;
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 77);
-    assert_eq!(metadata.columns.len(), 657);
+    assert_eq!(metadata.tables.len(), 84);
+    assert_eq!(metadata.columns.len(), 669);
     assert_eq!(metadata.indexes.len(), 78);
-    assert_eq!(metadata.constraints.len(), 51);
+    assert_eq!(metadata.constraints.len(), 52);
     let runtime_home_columns = metadata
         .columns
         .iter()
@@ -376,11 +376,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:5609acd19ec28cbe1427aba1b41634a67379494885f296681b714bdff0cbbbb8"
+        "sha256:099512522405a36a17ca8a747839ef6ac9a8dc8a11d0ef70901818ddc1d9e3b1"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:b5da1960b709aaea6e0326c4cec986a108daec15fe8f83fa193d13d0f324741f"
+        "sha256:881fd7e1255fdd7a635e9430345c1eaffc06f8c5a3bbff08e296ea001203cbe6"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,14 +414,15 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:5609acd19ec28cbe1427aba1b41634a67379494885f296681b714bdff0cbbbb8\",",
+            "{\"canonical_ddl_digest\":\"sha256:099512522405a36a17ca8a747839ef6ac9a8dc8a11d0ef70901818ddc1d9e3b1\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
-            "\"operational_mcp_sessions\",\"project_continuity\",\"shaping_checkpoint_lineage\",",
+            "\"operational_mcp_sessions\",\"project_continuity\",\"shaping_authority_reauthorization\",",
+            "\"shaping_checkpoint_lineage\",",
             "\"shaping_decision_applications\",\"shaping_decision_recovery\",\"shaping_progression\",",
             "\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:b5da1960b709aaea6e0326c4cec986a108daec15fe8f83fa193d13d0f324741f\"}"
+            "\"integrity_constraints_digest\":\"sha256:881fd7e1255fdd7a635e9430345c1eaffc06f8c5a3bbff08e296ea001203cbe6\"}"
         )
     );
     Ok(())

@@ -752,6 +752,7 @@ pub enum StateRecordKind {
     ShapingCheckpoint,
     ShapingGap,
     ShapingDecisionApplication,
+    ShapingAuthorityReauthorization,
     WriteTicket,
     UserActionRequest,
     UserActionResolution,
@@ -911,6 +912,26 @@ pub enum ShapingDecisionApplicationAuthorityStatus {
     Current,
     Stale,
     Superseded,
+}
+
+/// Closed terminal outcome of consuming one stale shaping application.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingAuthorityReauthorizationOutcome {
+    Retired,
+    Reissued,
+}
+
+impl ShapingAuthorityReauthorizationOutcome {
+    /// Returns the stable stored and public spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Retired => "retired",
+            Self::Reissued => "reissued",
+        }
+    }
 }
 
 impl ShapingDecisionApplicationAuthorityStatus {

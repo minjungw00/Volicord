@@ -3494,7 +3494,8 @@ terms:
       - "predecessor_checkpoint_ref"
       - "ShapingCheckpointOperation"
       - "expected_current_checkpoint_id"
-      - "retired_user_action_request_refs"
+      - "retired_non_authorizing_request_refs"
+      - "stale_authority_actions"
       - "carry_forward_application_refs"
       - "volicord.record_shaping"
     primary_owner:

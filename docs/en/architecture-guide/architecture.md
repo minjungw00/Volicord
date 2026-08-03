@@ -203,12 +203,14 @@ typed-fact-to-view projections.
 closed shaping/workflow values and the canonical per-kind application-owner
 policy, `WorkflowProjection`, method requests/results,
 and typed rejection details. `volicord-store::core_pipeline::shaping` owns the
-strict Task-scoped aggregate and its checkpoint/gap/UserAction-link mutations.
+strict Task-scoped aggregate, exact stale-authority consumption, immutable
+reauthorization lineage, and checkpoint/gap/UserAction-link mutations.
 Core's `methods/record_shaping.rs`, `methods/update_scope.rs`, and
 `methods/advance_task.rs` consume that policy for semantic validation, exact
 decision application, atomic plan composition, and the explicit phase transition;
 Store exposes one typed current effective shaping authority graph plus explicitly
-historical UserAction and application reads. `workflow_projection.rs` derives
+historical UserAction, application, and reauthorization reads.
+`workflow_projection.rs` derives
 current tagged progression only from that graph. The UserAction service constructs and validates linked authority, while
 Core alone coordinates that service output into the checkpoint transaction.
 Store exact-ID mutations reject the wrong owner or resolution and bind

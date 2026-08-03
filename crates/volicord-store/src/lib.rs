@@ -44,10 +44,10 @@ fn project_schema_declares_stable_ddl_vector() -> Result<(), Box<dyn std::error:
     use volicord_types::storage_contract::{GeneratedRelationKind, StorageDatabaseKind};
 
     let metadata = schema::generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 77);
-    assert_eq!(metadata.columns.len(), 657);
+    assert_eq!(metadata.tables.len(), 84);
+    assert_eq!(metadata.columns.len(), 669);
     assert_eq!(metadata.indexes.len(), 78);
-    assert_eq!(metadata.constraints.len(), 51);
+    assert_eq!(metadata.constraints.len(), 52);
 
     for table in [
         "shaping_checkpoints",
@@ -55,6 +55,7 @@ fn project_schema_declares_stable_ddl_vector() -> Result<(), Box<dyn std::error:
         "shaping_checkpoint_user_actions",
         "shaping_decision_applications",
         "shaping_checkpoint_applications",
+        "shaping_authority_reauthorizations",
     ] {
         assert!(metadata.tables.iter().any(|relation| {
             relation.database == StorageDatabaseKind::ProjectState

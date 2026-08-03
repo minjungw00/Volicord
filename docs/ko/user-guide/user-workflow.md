@@ -130,6 +130,12 @@ advisor Task에서는 제품·기술·민감 shaping 답변이 agent가 정확�
 `volicord.update_scope`를 사용합니다. Finalization은 Product Repository 파일을 쓰거나
 Run을 기록하지 않으며 close review에는 별도의 최종 수락이 계속 필요합니다.
 
+이후 범위, baseline 또는 현재 Change Unit 수정으로 적용된 답변이 stale이 되면 이전 답변은
+더 이상 진행 권한을 제공하지 않습니다. Agent는 해당 권한을 명시적으로 retire하거나 새
+successor UserAction 요청으로 다시 물어야 합니다. 새 요청은 새로운 판단 경계입니다. 그
+요청에 표시된 선택지만 해결하고 이전 accepted 답변이 이어진다고 가정하면 안 됩니다.
+Volicord는 이전 요청, application 및 reauthorization lineage를 이력으로 보존합니다.
+
 정확한 질문과 선택지는 `volicord inbox`에 나타납니다. 에이전트 대상 MCP 연결은 로컬
 사용자 채널로 동작하거나 사용자를 대신해 행동을 해결할 수 없습니다.
 

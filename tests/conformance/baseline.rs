@@ -17,21 +17,85 @@ use volicord_test_support::core_fixtures::{
 use volicord_test_support::IsolatedGitRepository;
 use volicord_types::ids::{
     AcceptanceCriterionId, AgentConnectionId, ArtifactInputId, EvidenceClaimId, ProjectId, RunId,
-    TaskId, WriteTicketId,
+    ShapingCheckpointId, TaskId, WriteTicketId,
 };
 use volicord_types::methods::StatusRequest;
 use volicord_types::schema::{
     ArtifactInput, ArtifactRef, CloseAssessmentInput, EvidenceObservationInput, EvidenceTarget,
-    JsonObject, ResidualRiskInput, StagedArtifactHandle, StateRecordRef, UserActionBasis,
+    JsonObject, RequiredNullable, ResidualRiskInput, ShapingCheckpointOperation, ShapingGapInput,
+    StagedArtifactHandle, StaleShapingAuthorityAction, StateRecordRef, UserActionBasis,
     UserActionRequestBody, UserActionResolutionBody,
 };
 use volicord_types::values::{
     ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
     EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
-    JudgmentResolutionOutcome, OperationCategory, ResponseKind, StateRecordKind,
+    JudgmentResolutionOutcome, OperationCategory, ResponseKind, ShapingGapKind, StateRecordKind,
     UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
 };
 use volicord_user_action_service::PendingUserActionFactsRequest;
+
+#[test]
+fn stale_shaping_reauthorization_public_contract_is_closed_and_has_no_legacy_shape(
+) -> Result<(), Box<dyn Error>> {
+    let stale_application_ref = StateRecordRef::new(
+        StateRecordKind::ShapingDecisionApplication,
+        "shaping_application_contract",
+        ProjectId::new("project_contract"),
+        Some(TaskId::new("task_contract")),
+        Some(7),
+    );
+    let operation = ShapingCheckpointOperation::ReplaceCurrent {
+        expected_current_checkpoint_id: ShapingCheckpointId::new("shaping_contract"),
+        retired_non_authorizing_request_refs: Vec::new(),
+        carry_forward_application_refs: Vec::new(),
+        stale_authority_actions: vec![
+            StaleShapingAuthorityAction::Retire {
+                stale_application_ref: stale_application_ref.clone(),
+            },
+            StaleShapingAuthorityAction::Reauthorize {
+                stale_application_ref,
+                successor_gap: ShapingGapInput {
+                    gap_kind: ShapingGapKind::GoalMissing,
+                    summary: "Schema-only successor gap shape.".to_owned(),
+                    affected_refs: Vec::new(),
+                    user_action: RequiredNullable::null(),
+                },
+            },
+        ],
+    };
+    let value = serde_json::to_value(&operation)?;
+    assert_eq!(value["operation"], "replace_current");
+    assert!(value.get("retired_non_authorizing_request_refs").is_some());
+    assert!(value.get("retired_user_action_request_refs").is_none());
+    assert_eq!(value["stale_authority_actions"][0]["action"], "retire");
+    assert_eq!(value["stale_authority_actions"][1]["action"], "reauthorize");
+    assert!(value["stale_authority_actions"][1]
+        .get("successor_gap")
+        .is_some());
+    assert_eq!(
+        serde_json::from_value::<ShapingCheckpointOperation>(value.clone())?,
+        operation
+    );
+
+    let mut legacy = value.clone();
+    legacy
+        .as_object_mut()
+        .expect("operation object")
+        .insert("retired_user_action_request_refs".to_owned(), json!([]));
+    assert!(serde_json::from_value::<ShapingCheckpointOperation>(legacy).is_err());
+
+    let mut missing_actions = value.clone();
+    missing_actions
+        .as_object_mut()
+        .expect("operation object")
+        .remove("stale_authority_actions");
+    assert!(serde_json::from_value::<ShapingCheckpointOperation>(missing_actions).is_err());
+
+    let mut unknown_action = value;
+    unknown_action["stale_authority_actions"][0]["action"] = json!("reuse_resolution");
+    assert!(serde_json::from_value::<ShapingCheckpointOperation>(unknown_action).is_err());
+    Ok(())
+}
 
 #[test]
 fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), Box<dyn Error>> {

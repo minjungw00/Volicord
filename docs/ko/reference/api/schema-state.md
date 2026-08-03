@@ -553,7 +553,20 @@ ShapingDecisionApplication:
   applied_change_unit_id: string | null
   applied_at: string
   authority_status: string
+  stale_at: string | null
   superseded_at: string | null
+
+ShapingAuthorityReauthorization:
+  shaping_authority_reauthorization_id: string
+  project_id: string
+  task_id: string
+  stale_application_id: string
+  stale_user_action_request_id: string
+  successor_checkpoint_id: string
+  successor_gap_id: string | null
+  successor_user_action_request_id: string | null
+  outcome: string
+  created_at: string
 ```
 
 `ShapingCheckpoint`는 `volicord.record_shaping`이 반환하는 일급 영속 기록입니다.
@@ -567,6 +580,9 @@ record에 정확한 predecessor identity를 담고 엄격한 checkpoint-applicat
 materialize하고 연결하는 호환 typed draft를 담습니다. Readiness, gap kind, gap status,
 workflow kind, blocking reason은 [API 값 집합](schema-value-sets.md)의 폐쇄형 집합을
 사용합니다.
+`ShapingAuthorityReauthorization`은 변경 불가능한 감사 lineage입니다. `retired`
+outcome의 successor gap/request identity는 null이고, `reissued` outcome은 둘 다 가지며
+항상 새 unresolved 요청을 가리킵니다.
 
 Checkpoint readiness는 구조적이며 decision application과 독립적입니다.
 `application_owner`는 사용자 소유 gap일 때만 null이 아닙니다.

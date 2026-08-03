@@ -103,7 +103,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-store/src/core_pipeline/clock.rs` | Store handle clock sample, 프로젝트 UTC floor 읽기, transaction floor 전진. |
 | `crates/volicord-store/src/core_pipeline/tasks.rs` | Task와 수락 mutation 입력, 저장 검증과 SQL 적용, Task·수락 기준·증거 주장·Task revision projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/change_units.rs` | Change Unit mutation 입력, 저장 검증과 SQL 적용, projection, 엄격한 row 및 JSON decoding, facade 읽기, 집중 테스트. |
-| `crates/volicord-store/src/core_pipeline/shaping.rs` | 원자적인 shaping checkpoint, gap, link, shaping 소유 UserAction mutation과 엄격한 현재 aggregate 읽기 및 영속 invariant 검증. |
+| `crates/volicord-store/src/core_pipeline/shaping.rs` | 원자적인 shaping checkpoint, gap, link, shaping 소유 UserAction, 정확한 stale 권한 mutation과 엄격한 현재 aggregate 및 불변 reauthorization 이력 읽기, 영속 invariant 검증. |
 | `crates/volicord-store/src/core_pipeline/write_tickets.rs` | 물리 Write Ticket 테이블과 column의 유일한 담당 모듈, `WriteTicketPathScope` 하나에서 완전한 typed insertion 직렬화, 불변 scope를 다시 구성하며 물리 표현에서 opaque `StoredWriteTicket`으로 이어지는 비공개 row projection 하나와 일반/transaction 정규 decoder, 의미 accessor로 제공하는 비공개 field, 폐쇄형 값·구조화 field·typed 필드 간 영속 invariant 검증, 집중된 authority view, 모든 후보를 반환하는 facade 읽기, 의미 권한을 부여하지 않는 결정적 진단 순서, aggregate 테스트. |
 | `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation 입력, 저장 검증과 SQL 적용, Run 및 observed-change projection, 엄격한 decoding, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/evidence.rs` | 증거 mutation 입력, 저장 검증과 SQL 적용, 증거 요약 및 관찰 projection, 엄격한 row decoding, record reference projection, facade 읽기, 집중 테스트. |

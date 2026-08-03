@@ -127,8 +127,9 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
                 source_refs: Vec::new(),
                 evidence_refs: Vec::new(),
                 created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
-                retired_user_action_request_ids: Vec::new(),
+                retired_non_authorizing_request_ids: Vec::new(),
                 carry_forward_application_ids: Vec::new(),
+                stale_authority_dispositions: Vec::new(),
                 gaps: vec![
                     shaping_gap(
                         product_gap_id,
@@ -420,6 +421,20 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
     assert_eq!(graph.current_applications.len(), 2);
     assert!(graph.stale_recovery_obligations.is_empty());
     assert_eq!(graph.current_resolution_ids.len(), 2);
+    let timestamp_guard = rusqlite::Connection::open(harness.state_database_path())?;
+    assert!(
+        timestamp_guard
+            .execute(
+                "UPDATE shaping_decision_applications
+                SET stale_at = '2026-01-01T00:00:06Z'
+              WHERE project_id = ?1
+                AND shaping_decision_application_id = ?2",
+                rusqlite::params![PROJECT_ID, product_application_id],
+            )
+            .is_err(),
+        "a current application cannot acquire a stale timestamp without the exact transition"
+    );
+    drop(timestamp_guard);
     drop(store);
 
     let corruption = rusqlite::Connection::open(harness.state_database_path())?;
@@ -472,6 +487,7 @@ fn shaping_gap(
         gap_kind,
         summary: "Exact decision application test gap.".to_owned(),
         affected_refs: Vec::new(),
+        reauthorizes_application_id: None,
         user_action: Some(ShapingCheckpointUserActionInsert {
             user_action_request_id: request_id.to_owned(),
             action_kind: policy.user_action_kind,
@@ -574,6 +590,7 @@ fn shaping_request(
             created_by: MethodName::RecordShaping,
             shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
             shaping_gap_id: ShapingGapId::new(gap_id),
+            reauthorizes_application_id: RequiredNullable::null(),
         }),
     }
 }
@@ -695,8 +712,9 @@ fn outcome_specific_gap_resolution_is_atomic_and_only_accepted_can_apply(
                     source_refs: Vec::new(),
                     evidence_refs: Vec::new(),
                     created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
-                    retired_user_action_request_ids: Vec::new(),
+                    retired_non_authorizing_request_ids: Vec::new(),
                     carry_forward_application_ids: Vec::new(),
+                    stale_authority_dispositions: Vec::new(),
                     gaps: vec![shaping_gap(
                         gap_id,
                         request_id,
@@ -939,8 +957,9 @@ fn current_checkpoint_read_rejects_persisted_detached_user_action_authority(
                     source_refs: Vec::new(),
                     evidence_refs: Vec::new(),
                     created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
-                    retired_user_action_request_ids: Vec::new(),
+                    retired_non_authorizing_request_ids: Vec::new(),
                     carry_forward_application_ids: Vec::new(),
+                    stale_authority_dispositions: Vec::new(),
                     gaps: vec![shaping_gap(
                         gap_id,
                         request_id,

@@ -2,26 +2,31 @@ use std::collections::BTreeSet;
 
 use serde_json::json;
 use volicord_store::core_pipeline::{
-    CoreProjectStore, CoreStorageMutation, ProjectStateHeader, ShapingAdvanceApplication,
-    ShapingCheckpointGapInsert, ShapingCheckpointInsert, ShapingCheckpointMutation,
-    ShapingCheckpointRecord, ShapingCheckpointUserActionInsert, ShapingGapApplication,
-    TaskCloseBasisUpdate, TaskMutation, TaskScopeUpdate,
+    CoreProjectStore, CoreStorageMutation, CurrentShapingApplicationAuthority, ProjectStateHeader,
+    ShapingAdvanceApplication, ShapingCheckpointGapInsert, ShapingCheckpointInsert,
+    ShapingCheckpointMutation, ShapingCheckpointRecord, ShapingCheckpointUserActionInsert,
+    ShapingGapApplication, ShapingStaleAuthorityDisposition, TaskCloseBasisUpdate, TaskMutation,
+    TaskScopeUpdate,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
-use volicord_types::ids::shaping_decision_application_id;
+use volicord_types::ids::{
+    shaping_authority_reauthorization_id, shaping_decision_application_id,
+    ShapingDecisionApplicationId,
+};
 use volicord_types::methods::{
     MethodOperationCategory, RecordShapingOperation, RecordShapingRequest,
     RecordShapingResultFields,
 };
 use volicord_types::schema::{
     advisor_compatible_change_unit, CurrentCloseBasis, PersistedUserActionRequestMetadata,
-    RequiredNullable, ResidualRisk, ShapingCheckpoint, ShapingCheckpointOperation, StateRecordRef,
-    WorkflowRejectionUserAction,
+    RequiredNullable, ResidualRisk, ShapingCheckpoint, ShapingCheckpointOperation, ShapingGapInput,
+    StaleShapingAuthorityAction, StateRecordRef, WorkflowRejectionUserAction,
 };
 use volicord_types::values::{
-    ErrorCode, MethodName, ShapingCheckpointReadiness, ShapingDecisionApplicationOwner,
-    ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionBasisStatus,
-    UserActionStatus, WorkPhase,
+    ErrorCode, MethodName, ShapingAuthorityReauthorizationOutcome, ShapingCheckpointReadiness,
+    ShapingDecisionApplicationAuthorityStatus, ShapingDecisionApplicationOwner, ShapingGapStatus,
+    StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionBasisStatus, UserActionStatus,
+    WorkPhase,
 };
 use volicord_user_action_service::{
     accepted_current_user_authority, construct_user_action, materialize_user_action_request,
@@ -144,6 +149,13 @@ struct RecordShapingPlan {
     result_fields: RecordShapingResultFields,
 }
 
+#[derive(Clone)]
+struct StaleAuthorityPlan {
+    authority: CurrentShapingApplicationAuthority,
+    outcome: ShapingAuthorityReauthorizationOutcome,
+    successor_gap: Option<ShapingGapInput>,
+}
+
 fn plan_record_shaping(
     service: &CoreService,
     store: &CoreProjectStore,
@@ -202,7 +214,11 @@ fn plan_record_shaping(
     let current_checkpoint = store
         .current_shaping_checkpoint(&request.task_id)
         .map_err(CorePipelineError::from)?;
+    let authority_graph = store
+        .current_shaping_authority_graph(&request.task_id, operation_now)
+        .map_err(CorePipelineError::from)?;
     let mut carried_applications = Vec::new();
+    let mut stale_authority_plans = Vec::<StaleAuthorityPlan>::new();
     let predecessor_checkpoint_id = match checkpoint_operation {
         ShapingCheckpointOperation::CreateInitial => {
             if current_checkpoint.is_some() {
@@ -220,12 +236,28 @@ fn plan_record_shaping(
                     MethodName::RecordShaping,
                 );
             }
+            if !authority_graph.stale_recovery_obligations.is_empty() {
+                return workflow_rejection_plan_error(
+                    store,
+                    project_state,
+                    &request.envelope,
+                    &request.task_id,
+                    ErrorCode::ShapingCheckpointStale,
+                    "stale shaping authority requires exact checkpoint replacement",
+                    MethodName::RecordShaping,
+                    None,
+                    Vec::new(),
+                    false,
+                    MethodName::Status,
+                );
+            }
             None
         }
         ShapingCheckpointOperation::ReplaceCurrent {
             expected_current_checkpoint_id,
-            retired_user_action_request_refs,
+            retired_non_authorizing_request_refs,
             carry_forward_application_refs,
+            stale_authority_actions,
         } => {
             let Some(current) = current_checkpoint.as_ref() else {
                 return workflow_rejection_plan_error(
@@ -322,6 +354,104 @@ fn plan_record_shaping(
                 })
                 .cloned()
                 .collect();
+            let expected_stale_ids = authority_graph
+                .stale_recovery_obligations
+                .iter()
+                .map(|authority| {
+                    authority
+                        .application
+                        .shaping_decision_application_id
+                        .clone()
+                })
+                .collect::<BTreeSet<_>>();
+            let mut supplied_stale_ids = BTreeSet::new();
+            for action in stale_authority_actions {
+                let (reference, outcome, successor_gap) = match action {
+                    StaleShapingAuthorityAction::Retire {
+                        stale_application_ref,
+                    } => (
+                        stale_application_ref,
+                        ShapingAuthorityReauthorizationOutcome::Retired,
+                        None,
+                    ),
+                    StaleShapingAuthorityAction::Reauthorize {
+                        stale_application_ref,
+                        successor_gap,
+                    } => (
+                        stale_application_ref,
+                        ShapingAuthorityReauthorizationOutcome::Reissued,
+                        Some(successor_gap.clone()),
+                    ),
+                };
+                if reference.record_kind != StateRecordKind::ShapingDecisionApplication
+                    || reference.project_id != request.envelope.project_id
+                    || reference.task_id.as_ref() != Some(&request.task_id)
+                    || reference.produced_at_state_version.as_ref()
+                        != Some(&project_state.state_version)
+                    || !supplied_stale_ids.insert(reference.record_id.as_str().to_owned())
+                {
+                    return shaping_validation(
+                        &request,
+                        project_state,
+                        "operation.checkpoint_operation.stale_authority_actions",
+                        "stale authority actions must use unique exact current-state Task application refs",
+                    );
+                }
+                let authority =
+                    authority_graph
+                        .stale_recovery_obligations
+                        .iter()
+                        .find(|authority| {
+                            authority.application.shaping_decision_application_id
+                                == reference.record_id.as_str()
+                        });
+                let Some(authority) = authority else {
+                    return shaping_validation(
+                        &request,
+                        project_state,
+                        "operation.checkpoint_operation.stale_authority_actions",
+                        "each stale authority action must identify one exact stale application",
+                    );
+                };
+                if let Some(successor_gap) = successor_gap.as_ref() {
+                    let policy = successor_gap.gap_kind.decision_policy_for_mode(task.mode);
+                    if !successor_gap.gap_kind.is_user_owned()
+                        || successor_gap.user_action.as_ref().is_none()
+                        || successor_gap.gap_kind.judgment_kind()
+                            != Some(authority.application.judgment_kind)
+                        || policy.is_none_or(|policy| {
+                            policy.application_owner != authority.application.application_owner
+                        })
+                    {
+                        return shaping_validation(
+                            &request,
+                            project_state,
+                            "operation.checkpoint_operation.stale_authority_actions",
+                            "reauthorization must preserve the stale judgment kind and application owner through a user-owned successor gap",
+                        );
+                    }
+                }
+                stale_authority_plans.push(StaleAuthorityPlan {
+                    authority: authority.clone(),
+                    outcome,
+                    successor_gap,
+                });
+            }
+            if supplied_stale_ids != expected_stale_ids {
+                return workflow_rejection_plan_error(
+                    store,
+                    project_state,
+                    &request.envelope,
+                    &request.task_id,
+                    ErrorCode::UserDecisionUnresolved,
+                    "stale authority actions must exactly consume every stale shaping application",
+                    MethodName::RecordShaping,
+                    None,
+                    Vec::new(),
+                    true,
+                    MethodName::RecordShaping,
+                );
+            }
             let mut live_linked_decisions = Vec::new();
             let mut recoverable_request_ids = BTreeSet::new();
             for gap in current
@@ -411,7 +541,7 @@ fn plan_record_shaping(
                 );
             }
             let mut supplied_request_ids = BTreeSet::new();
-            for retired_ref in retired_user_action_request_refs {
+            for retired_ref in retired_non_authorizing_request_refs {
                 if retired_ref.record_kind != StateRecordKind::UserActionRequest
                     || retired_ref.project_id != request.envelope.project_id
                     || retired_ref.task_id.as_ref() != Some(&request.task_id)
@@ -422,7 +552,7 @@ fn plan_record_shaping(
                     return shaping_validation(
                             &request,
                             project_state,
-                            "operation.checkpoint_operation.retired_user_action_request_refs",
+                            "operation.checkpoint_operation.retired_non_authorizing_request_refs",
                             "retired request refs must be unique exact current Task UserAction request refs",
                         );
                 }
@@ -490,7 +620,52 @@ fn plan_record_shaping(
     let mut gap_inserts = Vec::new();
     let mut projected_gaps = Vec::new();
     let mut created_request_refs = Vec::new();
-    for gap in gaps {
+    let mut materialized_stale_dispositions = stale_authority_plans
+        .iter()
+        .filter(|plan| plan.outcome == ShapingAuthorityReauthorizationOutcome::Retired)
+        .map(|plan| ShapingStaleAuthorityDisposition {
+            stale_application_id: plan
+                .authority
+                .application
+                .shaping_decision_application_id
+                .clone(),
+            stale_user_action_request_id: plan.authority.application.user_action_request_id.clone(),
+            outcome: plan.outcome,
+            successor_gap_id: None,
+            successor_user_action_request_id: None,
+        })
+        .collect::<Vec<_>>();
+    let mut planned_gaps = gaps
+        .iter()
+        .cloned()
+        .map(|gap| (gap, None))
+        .collect::<Vec<_>>();
+    planned_gaps.extend(stale_authority_plans.iter().filter_map(|plan| {
+        plan.successor_gap.clone().map(|gap| {
+            (
+                gap,
+                Some(
+                    plan.authority
+                        .application
+                        .shaping_decision_application_id
+                        .clone(),
+                ),
+            )
+        })
+    }));
+    if carried_applications.iter().any(|application| {
+        planned_gaps
+            .iter()
+            .any(|(gap, _)| gap.gap_kind.judgment_kind() == Some(application.judgment_kind))
+    }) {
+        return shaping_validation(
+            &request,
+            project_state,
+            "operation.gaps",
+            "a successor gap cannot conflict with carried application authority",
+        );
+    }
+    for (gap, reauthorizes_application_id) in &planned_gaps {
         if gap.summary.trim().is_empty() {
             return shaping_validation(
                 &request,
@@ -568,6 +743,9 @@ fn plan_record_shaping(
                 origin: UserActionOrigin::Shaping {
                     shaping_checkpoint_id: checkpoint_id.clone(),
                     shaping_gap_id: gap_id.clone(),
+                    reauthorizes_application_id: reauthorizes_application_id
+                        .as_ref()
+                        .map(|id| ShapingDecisionApplicationId::new(id.clone())),
                 },
                 constructed,
             })
@@ -592,6 +770,31 @@ fn plan_record_shaping(
                     resolved_at: None,
                 }
             });
+            if let Some(stale_application_id) = reauthorizes_application_id.as_ref() {
+                materialized_stale_dispositions.push(ShapingStaleAuthorityDisposition {
+                    stale_application_id: stale_application_id.clone(),
+                    stale_user_action_request_id: stale_authority_plans
+                        .iter()
+                        .find(|plan| {
+                            plan.authority.application.shaping_decision_application_id
+                                == *stale_application_id
+                        })
+                        .map(|plan| plan.authority.application.user_action_request_id.clone())
+                        .ok_or_else(|| CorePipelineError::Invariant {
+                            detail: "a reauthorization gap lost its stale authority source"
+                                .to_owned(),
+                        })?,
+                    outcome: ShapingAuthorityReauthorizationOutcome::Reissued,
+                    successor_gap_id: Some(gap_id.as_str().to_owned()),
+                    successor_user_action_request_id: Some(
+                        materialized
+                            .public_request
+                            .user_action_request_id
+                            .as_str()
+                            .to_owned(),
+                    ),
+                });
+            }
             mutations.push(materialized.mutation);
         }
         gap_inserts.push(ShapingCheckpointGapInsert {
@@ -599,6 +802,7 @@ fn plan_record_shaping(
             gap_kind: gap.gap_kind,
             summary: gap.summary.clone(),
             affected_refs: gap.affected_refs.clone(),
+            reauthorizes_application_id: reauthorizes_application_id.clone(),
             user_action: user_action_insert,
         });
         projected_gaps.push(volicord_store::core_pipeline::ShapingCheckpointGapRecord {
@@ -607,10 +811,11 @@ fn plan_record_shaping(
             summary: gap.summary.clone(),
             affected_refs: gap.affected_refs.clone(),
             status: ShapingGapStatus::Current,
+            reauthorizes_application_id: reauthorizes_application_id.clone(),
             user_action: projected_user_action,
         });
     }
-    let readiness = if gaps.is_empty()
+    let readiness = if planned_gaps.is_empty()
         && baseline_ref.is_some()
         && implementation_boundary
             .as_ref()
@@ -632,12 +837,12 @@ fn plan_record_shaping(
         source_refs: source_refs.clone(),
         evidence_refs: evidence_refs.clone(),
         created_at: operation_now.clone(),
-        retired_user_action_request_ids: match checkpoint_operation {
+        retired_non_authorizing_request_ids: match checkpoint_operation {
             ShapingCheckpointOperation::CreateInitial => Vec::new(),
             ShapingCheckpointOperation::ReplaceCurrent {
-                retired_user_action_request_refs,
+                retired_non_authorizing_request_refs,
                 ..
-            } => retired_user_action_request_refs
+            } => retired_non_authorizing_request_refs
                 .iter()
                 .map(|reference| reference.record_id.as_str().to_owned())
                 .collect(),
@@ -652,6 +857,7 @@ fn plan_record_shaping(
                 .map(|reference| reference.record_id.as_str().to_owned())
                 .collect(),
         },
+        stale_authority_dispositions: materialized_stale_dispositions.clone(),
         gaps: gap_inserts,
     };
     mutations.push(CoreStorageMutation::Shaping(
@@ -699,6 +905,15 @@ fn plan_record_shaping(
         application.carried_from_checkpoint_id = application.linked_checkpoint_id.clone();
         application.linked_checkpoint_id = Some(checkpoint_id.as_str().to_owned());
     }
+    let mut projected_applications = carried_applications.clone();
+    projected_applications.extend(stale_authority_plans.iter().map(|plan| {
+        let mut application = plan.authority.application.clone();
+        application.authority_status = ShapingDecisionApplicationAuthorityStatus::Superseded;
+        application.superseded_at = Some(operation_now.clone());
+        application.linked_checkpoint_id = None;
+        application.carried_from_checkpoint_id = None;
+        application
+    }));
     let projected_checkpoint = ShapingCheckpointRecord {
         project_id: request.envelope.project_id.as_str().to_owned(),
         shaping_checkpoint_id: checkpoint_id.as_str().to_owned(),
@@ -716,7 +931,7 @@ fn plan_record_shaping(
         created_at: operation_now.clone(),
         superseded_at: None,
         gaps: projected_gaps,
-        applications: carried_applications.clone(),
+        applications: projected_applications,
     };
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
@@ -783,10 +998,35 @@ fn plan_record_shaping(
             )
         })
         .collect::<Vec<_>>();
+    let shaping_authority_reauthorization_refs = stale_authority_plans
+        .iter()
+        .map(|plan| {
+            let application_id = ShapingDecisionApplicationId::new(
+                plan.authority
+                    .application
+                    .shaping_decision_application_id
+                    .clone(),
+            );
+            let lineage_id =
+                shaping_authority_reauthorization_id(&application_id).map_err(|_| {
+                    CorePipelineError::Invariant {
+                        detail: "stale authority lineage identity could not be derived".to_owned(),
+                    }
+                })?;
+            Ok(crate::record_refs::state_ref(
+                StateRecordKind::ShapingAuthorityReauthorization,
+                lineage_id.as_str(),
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(planned_state_version),
+            ))
+        })
+        .collect::<CoreResult<Vec<_>>>()?;
     let result_fields = RecordShapingResultFields {
         shaping_checkpoint,
         created_user_action_request_refs: created_request_refs,
         applied_shaping_decision_application_refs: Vec::new(),
+        shaping_authority_reauthorization_refs: shaping_authority_reauthorization_refs.clone(),
         workflow,
         state,
     };
@@ -805,6 +1045,7 @@ fn plan_record_shaping(
                     .map(|application| application.shaping_decision_application_id.clone())
                     .collect::<Vec<_>>(),
                 "carried_shaping_decision_application_refs": carried_application_refs,
+                "shaping_authority_reauthorization_refs": shaping_authority_reauthorization_refs,
             }))?,
         ),
         result_fields,
@@ -1428,6 +1669,7 @@ fn plan_finalize_advice(
                     )
                 })
                 .collect(),
+            shaping_authority_reauthorization_refs: Vec::new(),
             workflow,
             state,
         },

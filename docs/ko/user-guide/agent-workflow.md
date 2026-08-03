@@ -182,6 +182,14 @@ gap은 `volicord.advance_task`에 제공합니다. advisor에서는 정확한 ac
 lineage를 기록하며 checkpoint를 보존하고 정확한 application ref가 있는 close basis를
 만듭니다. 호환되는 자문 수정은 해당 application ref를 successor checkpoint로
 carry-forward하며 자문 문구만 바뀌었다는 이유로 같은 판단을 다시 요청하지 않습니다.
+범위, baseline 또는 현재 Change Unit 수정으로 적용된 결정이 stale이 되면 반환된 stale
+application ref를 정확한 복구 목록으로 취급합니다. 교체 checkpoint는 모든 stale
+application을 정확히 한 번씩 지정하고 각각 `retire` 또는 `reauthorize`를 선택해야 합니다.
+Reauthorization은 새 successor gap과 `UserActionRequest`를 만듭니다. stale 요청이나 그
+요청의 accepted resolution을 재사용하면 안 됩니다. Predecessor application과 요청은
+successor checkpoint 및 불변 reauthorization lineage가 함께 commit될 때만 superseded가
+됩니다. Work implementation 중 현재 shaping 권한을 stale로 만들 update는 mutation 전에
+거부됩니다. 범위를 제자리에서 수정하지 말고 typed close 복구를 따라야 합니다.
 Scope와 다른 결정이 함께 있으면 scope gap만 먼저 적용하고 다른 gap은
 모드별 owner에 남깁니다.
 거부, 보류, 만료는 권한을 부여하지 않고 `decision_recovery_required`를 선택합니다.

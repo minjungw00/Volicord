@@ -558,7 +558,20 @@ ShapingDecisionApplication:
   applied_change_unit_id: string | null
   applied_at: string
   authority_status: string
+  stale_at: string | null
   superseded_at: string | null
+
+ShapingAuthorityReauthorization:
+  shaping_authority_reauthorization_id: string
+  project_id: string
+  task_id: string
+  stale_application_id: string
+  stale_user_action_request_id: string
+  successor_checkpoint_id: string
+  successor_gap_id: string | null
+  successor_user_action_request_id: string | null
+  outcome: string
+  created_at: string
 ```
 
 `ShapingCheckpoint` is the first-class durable record returned by
@@ -572,6 +585,9 @@ explicit current, stale, or superseded invalidation. `ShapingGapInput.user_actio
 user-owned gap and carries the compatible typed draft that Core materializes
 and links atomically. Readiness, gap kinds, gap statuses, workflow kinds, and
 blocking reasons use the closed sets in [API Value Sets](schema-value-sets.md).
+`ShapingAuthorityReauthorization` is immutable audit lineage. A `retired`
+outcome has null successor gap/request identities; a `reissued` outcome has
+both and always points to a fresh unresolved request.
 
 Checkpoint readiness is structural and is independent from decision
 application. `application_owner` is non-null exactly for a user-owned gap.

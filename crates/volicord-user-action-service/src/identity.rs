@@ -1,8 +1,11 @@
 use crate::error::UserActionServiceError;
-use volicord_types::ids::{IdempotencyKey, ShapingCheckpointId, ShapingGapId, UnrecordedChangeId};
+use volicord_types::ids::{
+    IdempotencyKey, ShapingCheckpointId, ShapingDecisionApplicationId, ShapingGapId,
+    UnrecordedChangeId,
+};
 use volicord_types::schema::{
     PersistedUserActionDirectRequestMetadata, PersistedUserActionReconciliationMetadata,
-    PersistedUserActionRequestMetadata, PersistedUserActionShapingMetadata,
+    PersistedUserActionRequestMetadata, PersistedUserActionShapingMetadata, RequiredNullable,
 };
 use volicord_types::values::MethodName;
 
@@ -13,6 +16,7 @@ pub enum UserActionOrigin {
     Shaping {
         shaping_checkpoint_id: ShapingCheckpointId,
         shaping_gap_id: ShapingGapId,
+        reauthorizes_application_id: Option<ShapingDecisionApplicationId>,
     },
     Reconciliation {
         unrecorded_change_id: UnrecordedChangeId,
@@ -43,10 +47,14 @@ impl UserActionOrigin {
             Self::Shaping {
                 shaping_checkpoint_id,
                 shaping_gap_id,
+                reauthorizes_application_id,
             } => PersistedUserActionRequestMetadata::Shaping(PersistedUserActionShapingMetadata {
                 created_by: MethodName::RecordShaping,
                 shaping_checkpoint_id: shaping_checkpoint_id.clone(),
                 shaping_gap_id: shaping_gap_id.clone(),
+                reauthorizes_application_id: RequiredNullable::new(
+                    reauthorizes_application_id.clone(),
+                ),
             }),
             Self::Reconciliation {
                 unrecorded_change_id,

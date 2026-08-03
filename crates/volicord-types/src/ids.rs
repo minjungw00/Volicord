@@ -90,6 +90,10 @@ opaque_string_type!(
     ShapingDecisionApplicationId,
     "Deterministic shaping-decision-application identifier."
 );
+opaque_string_type!(
+    ShapingAuthorityReauthorizationId,
+    "Deterministic stale shaping-authority reauthorization identifier."
+);
 
 /// Derives the stable identity for one semantic-owner application of a resolution.
 pub fn shaping_decision_application_id(
@@ -108,6 +112,23 @@ pub fn shaping_decision_application_id(
     })?;
     Ok(ShapingDecisionApplicationId::new(format!(
         "shaping_application_{digest}"
+    )))
+}
+
+/// Derives the stable identity for one terminal disposition of a stale application.
+pub fn shaping_authority_reauthorization_id(
+    stale_application_id: &ShapingDecisionApplicationId,
+) -> Result<ShapingAuthorityReauthorizationId, serde_json::Error> {
+    #[derive(Serialize)]
+    struct IdentityBasis<'a> {
+        stale_application_id: &'a ShapingDecisionApplicationId,
+    }
+
+    let digest = crate::canonical::canonical_json_bare_sha256(&IdentityBasis {
+        stale_application_id,
+    })?;
+    Ok(ShapingAuthorityReauthorizationId::new(format!(
+        "shaping_reauthorization_{digest}"
     )))
 }
 opaque_string_type!(WriteTicketId, "Opaque write ticket identifier.");

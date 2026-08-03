@@ -142,10 +142,10 @@ pub use runs::{
 };
 pub use shaping::{
     CurrentShapingApplicationAuthority, CurrentShapingAuthorityGraph, CurrentShapingGapDecision,
-    ShapingAdvanceApplication, ShapingCheckpointGapInsert, ShapingCheckpointGapRecord,
-    ShapingCheckpointInsert, ShapingCheckpointMutation, ShapingCheckpointRecord,
-    ShapingCheckpointUserActionInsert, ShapingCheckpointUserActionRecord,
-    ShapingDecisionApplicationRecord, ShapingGapApplication,
+    ShapingAdvanceApplication, ShapingAuthorityReauthorizationRecord, ShapingCheckpointGapInsert,
+    ShapingCheckpointGapRecord, ShapingCheckpointInsert, ShapingCheckpointMutation,
+    ShapingCheckpointRecord, ShapingCheckpointUserActionInsert, ShapingCheckpointUserActionRecord,
+    ShapingDecisionApplicationRecord, ShapingGapApplication, ShapingStaleAuthorityDisposition,
 };
 pub use tasks::{
     AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionStatus,

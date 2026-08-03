@@ -40,7 +40,8 @@ pub(crate) fn apply_projected_shaping_applications(
                 || existing.applied_change_unit_id.as_ref() != change_unit_id)
         {
             existing.authority_status = ShapingDecisionApplicationAuthorityStatus::Stale;
-            existing.superseded_at = Some(applied_at.clone());
+            existing.stale_at = Some(applied_at.clone());
+            existing.superseded_at = None;
         }
     }
     checkpoint.scope_revision = scope_revision;
@@ -103,6 +104,7 @@ pub(crate) fn apply_projected_shaping_applications(
                 applied_change_unit_id: change_unit_id.cloned(),
                 applied_at: applied_at.clone(),
                 authority_status: ShapingDecisionApplicationAuthorityStatus::Current,
+                stale_at: None,
                 superseded_at: None,
                 linked_checkpoint_id: Some(checkpoint.shaping_checkpoint_id.clone()),
                 carried_from_checkpoint_id: None,
@@ -379,6 +381,11 @@ pub(crate) fn task_wide_shaping_authority(
             (PersistedUserActionRequestMetadata::Shaping(metadata), Some((checkpoint_id, gap))) => {
                 metadata.shaping_checkpoint_id.as_str() == checkpoint_id
                     && metadata.shaping_gap_id.as_str() == gap.shaping_gap_id
+                    && metadata
+                        .reauthorizes_application_id
+                        .as_ref()
+                        .map(|id| id.as_str())
+                        == gap.reauthorizes_application_id.as_deref()
             }
             _ => false,
         };
@@ -634,6 +641,19 @@ fn checkpoint_summary(
                                 )
                             })
                     }),
+                ),
+                reauthorizes_application_ref: RequiredNullable::new(
+                    gap.reauthorizes_application_id
+                        .as_ref()
+                        .map(|application_id| {
+                            state_ref(
+                                StateRecordKind::ShapingDecisionApplication,
+                                application_id,
+                                project_id,
+                                Some(task_id),
+                                Some(state_version),
+                            )
+                        }),
                 ),
             }
         })

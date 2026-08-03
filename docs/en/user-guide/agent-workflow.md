@@ -198,6 +198,16 @@ records the result and evidence/risk lineage, preserves the checkpoint, and
 establishes the close basis with exact application refs. A compatible advice
 revision carries those application refs into the successor checkpoint; it does
 not request the same judgment again solely because the advice text changed.
+If a scope, baseline, or current Change Unit revision makes an applied decision
+stale, treat the returned stale application refs as an exact recovery inventory.
+The replacement checkpoint must name every stale application exactly once and
+choose either `retire` or `reauthorize` for each one. Reauthorization creates a
+fresh successor gap and `UserActionRequest`; never reuse the stale request or
+its accepted resolution. The predecessor application and request become
+superseded only when the successor checkpoint and immutable reauthorization
+lineage commit together. During work implementation, an update that would make
+current shaping authority stale is rejected before mutation; follow the typed
+close recovery instead of revising scope in place.
 When scope and another decision coexist, apply
 only the scope gap first and leave the other gap for its mode-specific owner.
 Rejection, deferral, or expiration grants no authority and selects

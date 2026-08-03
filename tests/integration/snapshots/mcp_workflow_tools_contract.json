@@ -79,7 +79,7 @@
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:3a539bb3f51090f4f240f8f1518ff99bdec51c2082c78543b1a90e8d833cb1d2"
+        "sha256": "sha256:85d194108e69c0d1e7572058ffe0e14cf5cc4aceb855adae621a44c1ce33c7f1"
       },
       "name": "volicord.intake",
       "output_schema": {
@@ -213,7 +213,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:96f349a52dd335ac70c9fae3e580c90cd1180bd62967fa780f08217ff0c8955c"
+        "sha256": "sha256:45012b958c7ea758c7d74a725ef5bd28307e1554c6fa263ae5be235acdce7d4b"
       }
     },
     {
@@ -255,7 +255,7 @@
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:ce6a6777b47491548938df6f68f7499939156452c7f5a02dbc4597e123ebb663"
+        "sha256": "sha256:213b0b4af21229c39e5e6771f601dd87761dcfdb6bee4fb1e851d1bf78d8b98c"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -390,7 +390,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:86e47da777b7281cfc28bb6a011d5701239eda6b448baca6f8e18236e42e509f"
+        "sha256": "sha256:b774b754347a621f5de99d59914e4cc9b68a75c6d035061477c2f2463998a85b"
       }
     },
     {
@@ -427,6 +427,7 @@
           "ShapingUserActionDraft",
           "SourceLineRange",
           "SourceRef",
+          "StaleShapingAuthorityAction",
           "StateRecordKind",
           "StateRecordRef",
           "UserActionContext",
@@ -445,7 +446,7 @@
           "operation",
           "task_id"
         ],
-        "sha256": "sha256:301944fbfce4d87cd6efc8adffb3ff126cd6b5d678931a5696eae86b0347f82b"
+        "sha256": "sha256:1bfe9e7580a9de45ccf7fe29e3fe215bc1d57fb2f9b5091be1dbd1d2858b8c6c"
       },
       "name": "volicord.record_shaping",
       "output_schema": {
@@ -590,7 +591,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:45676aac7ac8827b515c4d6b9dc8947a15c0577f2ae2576ca214a603a969f071"
+        "sha256": "sha256:87923c7f64332141a0dc9beaae33f9da2b5d76f546534e0ae8a432cfc5b543bb"
       }
     },
     {
@@ -757,7 +758,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:72128d2cfd93d6654f722c7a6c54ade7a44a129c51e9239b695c9712a56e7a63"
+        "sha256": "sha256:5e817e0961d19e7e7df7dd70ee6ae0d0ec8e11152e0a5d22a7315491199c720f"
       }
     },
     {
@@ -900,7 +901,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:97e7311ed58c8d109603b49d0bf9ed875f95c69a599238a1d6b68347feb9ac63"
+        "sha256": "sha256:4a3d87c06b2358e11cba0a5ed79ab6339b01e1e7569f7d80ece8c3f65c2e7c7b"
       }
     },
     {
@@ -978,7 +979,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:aef52e74912713b8ef33cf74105a7014bfe1695cb81a81533d7aff09cfb60c23"
+        "sha256": "sha256:c052d199e179b8fb6fb239d39cae90bc2b18e59e2f18a84da8b8c142f1099ede"
       }
     },
     {
@@ -1107,7 +1108,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ed6d9fda63470c26cf8c521580c5ba86878dc7c2f592911b339fd43fe3ae32ab"
+        "sha256": "sha256:d1feede2f0dc920f6eef286f3f76d89bd84427fbbc97c14b65ec44c9cf92b29a"
       }
     },
     {
@@ -1289,7 +1290,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d59d96d3ec21c3ec8ef9bd57e273ec0345784946a09f9273b2d1bb52887443f3"
+        "sha256": "sha256:6e869fbbf5fe64085c006ef6fbe2e80ad9190043f1834cd5ed14b6d187a2ea35"
       }
     },
     {
@@ -1419,7 +1420,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6f34535e5c69ef6e8db32da891c15b559b784b8188d8cb1b007b43ddb47e66a1"
+        "sha256": "sha256:77874ecdd164bdd966dbf9af0d3276f6164938a2e144df71ce985fee0cc6fb3b"
       }
     },
     {
@@ -1489,7 +1490,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:ea3ace5b28b753338698e495a210d0eb361acca4abbdfae2c3be0d4659a61774"
+        "sha256": "sha256:7dc70130c7d210f189eb6388bfc90eac286aee8a31c78f346b84b7925cbcc740"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -1646,7 +1647,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1494ed89bb70ece7b1bde74be12aee3ccf81b46e738d49cbc85ac8b93a182966"
+        "sha256": "sha256:8005c67a9ead00bbe6ad8bbad66f7f0cbe339b4f72872e36ffcd2d90f215de4f"
       }
     },
     {
@@ -1687,7 +1688,7 @@
         "root_required": [
           "request"
         ],
-        "sha256": "sha256:c7f8846309755c83334cfc4cdb8359ed815cf6172bc07088e95e0bd9d5fbeeb2"
+        "sha256": "sha256:b5f996b51b295995b43000161e1b660b99b8e7a8271d229c2e071cdec9e8a8d1"
       },
       "name": "volicord.request_user_action",
       "output_schema": {
@@ -1829,7 +1830,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f3fe2333d7faca5d1a25ba0bf8787937a289d133f2b1c2074bab59b50879fa66"
+        "sha256": "sha256:dc5833560b10b07081df035a8d460f77ca96c676be59f63eada800eac0c38dda"
       }
     },
     {
@@ -1997,7 +1998,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6d913ab1597d8615a3e3d3b0940525cde9b44db8e328c2b2e9623e6e1b529b55"
+        "sha256": "sha256:e3b2add7623bd46a9b79a3990d4e68ddfd0a3e8541fd3f3c7eb1384f3a869093"
       }
     },
     {
@@ -2131,7 +2132,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a4ab5451c83a56cefaf2b8771d1c404fea0c5576a07b46434a166c422ffec18a"
+        "sha256": "sha256:3fa63b804194485c4230113d1c50c8e0c91760f4f16df9143228f35b10bccf0a"
       }
     },
     {
@@ -2304,7 +2305,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4409b27571ae2e88d1f58e0ca7b80603b0f387566783096d069f6effdb0e6595"
+        "sha256": "sha256:35072c2af2c2474ad88303f8bf3f1c42043369b95a2fdd0db75a919f29c4b1a7"
       }
     },
     {

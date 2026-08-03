@@ -367,8 +367,9 @@ advisor + sensitive_approval_required -> volicord.record_shaping
 `volicord.record_shaping`, `volicord.advance_task`뿐입니다.
 
 `ShapingDecisionApplication.authority_status`는 정확히 `current`, `stale`,
-`superseded`를 사용합니다. 이를 소유하는 scope, baseline, Change Unit, checkpoint 또는
-terminal Task 전이만 `current`를 현재가 아닌 값으로 바꿀 수 있습니다.
+`superseded`를 사용합니다. `current`는 `stale` 또는 `superseded`로 전이할 수 있고,
+`stale`은 `superseded`로만 전이할 수 있습니다. Checkpoint 교체 재권한 lineage의
+outcome은 정확히 `retired`, `reissued`를 사용합니다.
 
 `WorkflowProjection.kind`는 정확히 아래 값을 사용합니다.
 

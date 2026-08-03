@@ -163,6 +163,10 @@ scope gap만 `accepted`에서 `applied`로 바꾸고 scope revision을 증가시
 baseline 권한 근거를 실제로 무효화할 때만 checkpoint를 supersede합니다. Scope, baseline,
 호환되지 않는 Change Unit 변경은 영향받는 현재 application을 명시적으로 `stale`로
 표시하며 row 부재를 무효화로 해석하지 않습니다.
+`work/implementation` 중에는 현재 shaping application을 stale로 만들 scope, baseline,
+Change Unit 갱신을 mutation 전에 거부합니다. 타입이 지정된 무효과 recovery는 영향받는
+application ref를 제시하고 Task가 소유된 close/supersede 전이를 통해 implementation을
+벗어나도록 요구합니다. 이 메서드는 Task를 shaping으로 조용히 되돌리지 않습니다.
 
 거부, 보류, 만료, 불일치 상태의 shaping 결정은 scope 권한을 부여하지 않습니다. 이
 메서드는 현재 workflow가 `decision_recovery_required`이고 recovery owner가

@@ -634,6 +634,7 @@ declare_method_result! {
         pub shaping_checkpoint: ShapingCheckpoint,
         pub created_user_action_request_refs: Vec<StateRecordRef>,
         pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
+        pub shaping_authority_reauthorization_refs: Vec<StateRecordRef>,
         pub workflow: WorkflowProjection,
         pub state: StateSummary,
     }

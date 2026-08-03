@@ -746,6 +746,8 @@ pub(crate) fn compact_mutation_method_result(
                 created_user_action_request_refs: result.created_user_action_request_refs,
                 applied_shaping_decision_application_refs: result
                     .applied_shaping_decision_application_refs,
+                shaping_authority_reauthorization_refs: result
+                    .shaping_authority_reauthorization_refs,
                 workflow_kind: workflow_state_kind(&result.workflow),
                 close_state: result.state.close_state,
                 close_blocker_count: result.state.close_blockers.len(),

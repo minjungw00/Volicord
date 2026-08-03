@@ -31,11 +31,17 @@
 `checkpoint_operation.operation=create_initial`은 현재 checkpoint가 없어야 합니다.
 `checkpoint_operation.operation=replace_current`는
 `expected_current_checkpoint_id`로 정확한 현재 checkpoint를 지정하고,
-`retired_user_action_request_refs`로 근거를 폐기할 연결된 거부·보류·만료 요청의 완전하고
+`retired_non_authorizing_request_refs`로 근거를 폐기할 연결된 거부·보류·만료 요청의 완전하고
 정확한 집합을 지정해야 합니다. `carry_forward_application_refs`는 successor에서도 권한을
 유지할 현재 상태이며 좌표가 호환되는 `ShapingDecisionApplication`의 완전하고 정확한
 집합을 지정합니다. 누락, 추가, stale, superseded, 외부 application ref 또는 successor의
 결정 종류와 충돌하는 ref가 있으면 교체를 거부합니다. 교체
+요청의 `stale_authority_actions`는 Task에 관련된 stale application의 완전하고 정확한
+집합을 별도로 지정합니다. 태그가 있는 각 action은 stale application 하나를 폐기하거나,
+사용자 소유 successor gap 하나와 새로운 `UserActionRequest`를 통해 다시 권한을
+요청합니다. 재권한 요청은 judgment kind와 application owner를 보존하고 stale
+application을 successor gap의 origin으로 기록하며, stale 요청의 accepted resolution을
+재사용하지 않습니다. 교체
 checkpoint는 이 identity를 `predecessor_checkpoint_id`로 기록하며 Core는 row 정렬로
 대상을 선택하지 않고 compare-and-swap을 한 번 수행합니다. 요청은 형성 요약, 구현 또는
 자문 경계, 알려진 경우의 현재 baseline 좌표, 타입이 정해진 gap, source ref, evidence
@@ -53,13 +59,16 @@ checkpoint는 `ready`입니다. 수락된 결정은 의미 owner가 적용할 �
 supersession과 successor 생성을 같은 timestamp로 기록합니다. Task 하나에는
 superseded가 아닌 checkpoint가 최대 하나만 있습니다.
 
-Pending, 수락 후 미적용, stale, 외부 권한은 교체 operation으로 폐기할 수 없습니다.
-적용된 권한은 정확한 typed carry-forward 집합과 checkpoint-application lineage로만
-보존합니다.
+Pending, 수락 후 미적용, 외부의 비권한 근거는 교체 operation으로 폐기할 수 없습니다.
+현재 적용 권한은 정확한 typed carry-forward 집합과 checkpoint-application lineage로만
+보존합니다. Stale 적용 권한은 `stale_authority_actions` 항목 하나로 정확히 소비해야
+합니다. 폐기는 변경 불가능한 종료 lineage outcome을 기록합니다. 재권한 요청은 stale
+application과 그 request basis를 원자적으로 supersede하고, successor gap과 새 요청을
+만들며, 양쪽을 잇는 변경 불가능한 lineage를 기록합니다.
 거부, 보류, 만료 상태인 predecessor 요청의 폐기 ref는 정확한 집합이어야 하므로 누락이나
 관련 없는 추가 ref는 operation을 거부합니다. 요청 근거 전이, predecessor supersession,
 successor checkpoint와 gap, successor UserAction 요청, event, replay row, state-version
-갱신은 한 transaction에서 커밋됩니다. 폐기된 요청과 존재하는 변경 불가능한 resolution은
+갱신, stale 권한 lineage는 한 transaction에서 커밋됩니다. 폐기된 요청과 존재하는 변경 불가능한 resolution은
 감사 이력으로 남습니다. Successor 계획에도 같은 판단이 필요하면 별도 요청 identity를
 만듭니다. 타입이 지정된 거부는 checkpoint, request
 ref, effective status, 필요한 owner method를 식별하고
@@ -123,6 +132,7 @@ replay는 효과 없이 거부합니다.
 | `applied_shaping_decision_application_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `base` | 예 | 아니요 | `RecordShapingResultBase` |
 | `created_user_action_request_refs` | 예 | 아니요 | `StateRecordRef[]` |
+| `shaping_authority_reauthorization_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `shaping_checkpoint` | 예 | 아니요 | `ShapingCheckpoint` |
 | `state` | 예 | 아니요 | `StateSummary` |
 | `workflow` | 예 | 아니요 | `WorkflowProjection` |
