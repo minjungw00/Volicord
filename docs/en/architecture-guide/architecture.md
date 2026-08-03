@@ -1,6 +1,11 @@
 # Implementation architecture
 
-Core owns shaping progression through typed method planners, the UserAction service, and ordered Store mutations. Store owns strict aggregate decoding and canonical DDL. MCP maps generated wire arguments into Core requests and does not implement phase-transition policy.
+Core owns explicit checkpoint succession, decision-owner application, advisor
+finalization, and Task-wide tagged progression through typed method planners,
+the UserAction service, and ordered Store mutations. Store owns strict
+aggregate decoding, live-decision and lineage invariants, atomic application,
+and canonical DDL. MCP maps generated wire arguments into Core requests and
+does not implement progression or phase-transition policy.
 
 This page is the top-level Architecture Guide overview for the local Rust
 workspace. It owns guide-level operational paths, workspace shape, dependency
@@ -117,20 +122,20 @@ Each current workspace package has one responsibility entry in the root Cargo me
 | `volicord-cli` | `cli-adapter` | adapter | production | adapter | Administrative CLI, typed User Channel resolution, Guard lifecycle observation/terminalization, managed tagged-workflow guidance, Codex setup, rendering, and MCP supervision. |
 | `volicord-command-model` | `command-model` | schema | production | neutral | Execution-free administrative command declaration, syntax model, and canonical invocation builders. |
 | `volicord-conformance-tests` | `conformance-validation` | validation | non-production | neutral | Cross-method conformance scenarios over Core-facing APIs. |
-| `volicord-core` | `core` | application | production | Core | Adapter-independent record_shaping and advance_task orchestration, tagged workflow projection, typed recovery, policy evaluation, method planning, and atomic commit coordination. |
+| `volicord-core` | `core` | application | production | Core | Adapter-independent checkpoint succession, decision-owner application, advisor finalization, explicit advance, Task-wide tagged workflow projection, typed recovery, policy evaluation, and atomic commit coordination. |
 | `volicord-host-contract` | `host-contract` | schema | production | Core-facing | Dependency-safe host contracts for exact Guard hook correlation and prospective effect classification, without user or Core progression authority. |
 | `volicord-integration-tests` | `integration-validation` | validation | non-production | neutral | Cross-layer integration, Agent Connection, and public contract snapshot tests. |
-| `volicord-mcp` | `mcp-adapter` | adapter | production | adapter | MCP lifecycle, canonical AgentToolId registry, compact tagged-workflow and rejection projection, session binding, shaping/advance dispatch, and Core invocation adaptation. |
+| `volicord-mcp` | `mcp-adapter` | adapter | production | adapter | MCP lifecycle, canonical AgentToolId registry, compact tagged-workflow and rejection projection, session binding, checkpoint/finalization/advance dispatch, and Core invocation adaptation. |
 | `volicord-mcp-protocol` | `mcp-protocol` | schema | production | neutral | Host-independent MCP revision profiles and semantic capability registry. |
-| `volicord-mcp-wire` | `mcp-wire` | schema | production | adapter | MCP shaping and advance arguments/results, tagged workflow presentation shapes, errors, structured content, JSON-RPC envelopes, and generated wire schemas. |
+| `volicord-mcp-wire` | `mcp-wire` | schema | production | adapter | MCP checkpoint/finalization and advance arguments/results, tagged workflow presentation shapes, errors, structured content, JSON-RPC envelopes, and generated wire schemas. |
 | `volicord-platform-fs` | `platform-filesystem` | infrastructure | production | Core-facing | Invocation-scoped Product Repository observation, platform filesystem observation, publication, mutation admission, and Git layout primitives. |
 | `volicord-platform-process` | `platform-process` | infrastructure | production | neutral | Platform child-process containment, termination, and pipe-readiness primitives. |
 | `volicord-release-integrity-tests` | `release-integrity` | validation | non-production | neutral | Release packaging, version, canonical-byte, checksum, and workflow integrity validation. |
 | `volicord-release-smoke` | `release-smoke` | validation | non-production | neutral | Cross-platform actual-binary release smoke orchestration and transcript validation. |
-| `volicord-store` | `storage` | infrastructure | production | Core-facing | Canonical Runtime Home persistence, strict shaping-aggregate and persisted-row decoding, atomic checkpoint/UserAction/phase transitions, and invariant-preserving transaction application. |
+| `volicord-store` | `storage` | infrastructure | production | Core-facing | Canonical Runtime Home persistence, strict shaping-aggregate decoding, lineage and live-decision invariants, atomic owner-specific decision application/finalization/phase transitions, and invariant-preserving transactions. |
 | `volicord-test-process` | `test-process` | test support | non-production | neutral | Reusable bounded process execution and cleanup for tests and smoke harnesses. |
 | `volicord-test-support` | `test-support` | test support | non-production | neutral | Reusable disposable Runtime Home, Store, Core request, and Agent Connection fixtures. |
-| `volicord-types` | `shared-types` | schema | production | Core-facing | Dependency-safe public schemas and closed values, including first-class shaping checkpoints, tagged workflow progression, typed workflow rejection, canonical encodings, and platform-neutral facts. |
+| `volicord-types` | `shared-types` | schema | production | Core-facing | Dependency-safe public schemas and closed values for checkpoint lineage, decision application ownership, advisor finalization, tagged workflow progression, typed rejection, canonical encodings, and platform-neutral facts. |
 | `volicord-user-action-presentation` | `user-action-presentation` | presentation | production | adapter | Typed User Channel presentation, CLI JSON Schemas, chat-nonauthority boundaries, and command-model-backed resolution instructions. |
 | `volicord-user-action-service` | `user-action-service` | application | production | Core-facing | Semantic UserAction construction, validation, authority, lifecycle, shaping-link identity, persistence mapping, resolution, continuity, and projection from Store-validated records. |
 | `xtask` | `repository-validation` | validation | non-production | neutral | Repository architecture, documentation, protocol fixture, release metadata, and Git-tree source-bundle validation, generation, and synchronization. |

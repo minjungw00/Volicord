@@ -100,9 +100,10 @@ session 경계이며 binary, host, client, actor, 운영체제 사용자, human 
 수 있다는 이유로 작업 흐름 도구를 시험하거나 status, intake, 쓰기, 닫기를 고정 순서로
 호출하지 않고 이 권한을 따라야 합니다. work Task는 shaping을 먼저 기록하고, Change
 Unit 생성은 단계를 바꾸지 않으며, 명시적 `volicord.advance_task`만 implementation에
-진입시킵니다. 조언과 읽기 전용 조사에는 쓰기나 닫기 절차가 필요하지 않습니다. 제품
-파일 변경에는 여전히 현재 상태와 호환되는 쓰기 권한이 필요하며, 막힌 세션은 Task가
-완료됐다고 주장하지 않고 끝날 수 있습니다.
+진입시킵니다. Advisor Task는 비쓰기 Change Unit을 사용하고 현재 결과를
+`volicord.record_shaping`으로 finalization하며, 그 finalization이 닫기 근거를 만든 뒤에만
+close review로 갑니다. 제품 파일 변경에는 여전히 현재 상태와 호환되는 쓰기 권한이
+필요하며, 막힌 세션은 Task가 완료됐다고 주장하지 않고 끝날 수 있습니다.
 
 사용자 행동을 기록해야 하면 Volicord가 보여 주는 해결 경로를 사용합니다. 안정적인
 수동 경로는 CLI inbox입니다.

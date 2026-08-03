@@ -210,6 +210,7 @@ const UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_fil
 const UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_003","scope_boundary":"Saved-filter owner, label, and visibility edits.","baseline_ref":"baseline_filter_003","change_unit":{"operation":"replace_current","scope_summary":"Expanded saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
 
 const RECORD_SHAPING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_shape_001","operation":{"operation":"record_checkpoint","checkpoint_operation":{"operation":"create_initial"},"scope_revision":4,"baseline_ref":"baseline_shape_001","summary":"The implementation boundary and open decisions are recorded.","implementation_boundary":"Implement only the current saved-filter scope.","gaps":[],"source_refs":[],"evidence_refs":[]}}"#;
+const FINALIZE_ADVICE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_advice_001","operation":{"operation":"finalize_advice","shaping_checkpoint_id":"shaping_checkpoint_advice_001","change_unit_id":"change_unit_advice_001","scope_revision":2,"baseline_ref":"baseline_advice_001","user_action_resolution_ids":[],"result_summary":"The current advisory result is finalized.","result_refs":[],"evidence_refs":[],"residual_risks":[],"recovery_constraints":[]}}"#;
 const ADVANCE_TASK_ARGUMENTS_JSON: &str = r#"{"task_id":"task_shape_001","shaping_checkpoint_id":"shaping_checkpoint_001","change_unit_id":"change_unit_001","scope_revision":4,"baseline_ref":"baseline_shape_001","user_action_resolution_ids":[]}"#;
 
 pub(crate) const STATUS_READ_ONLY_EXAMPLE_ID: &str = "read_only_status";
@@ -294,11 +295,18 @@ const UPDATE_SCOPE_EXAMPLES: [McpToolExample; 3] = [
     },
 ];
 
-const RECORD_SHAPING_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: "record_current_shaping",
-    description: "Record the current shaping checkpoint.",
-    arguments_json: RECORD_SHAPING_ARGUMENTS_JSON,
-}];
+const RECORD_SHAPING_EXAMPLES: [McpToolExample; 2] = [
+    McpToolExample {
+        id: "record_current_shaping",
+        description: "Explicitly create the initial current shaping checkpoint.",
+        arguments_json: RECORD_SHAPING_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "finalize_current_advice",
+        description: "Finalize the current advisor result and checkpoint-backed close basis.",
+        arguments_json: FINALIZE_ADVICE_ARGUMENTS_JSON,
+    },
+];
 
 const ADVANCE_TASK_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     id: "enter_implementation",
@@ -1092,7 +1100,7 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "Update Task scope and Change Unit before more work."
         }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECORD_SHAPING) => {
-            "Record a shaping checkpoint and any linked user decisions."
+            "Record a shaping checkpoint or finalize the current advisor result."
         }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::ADVANCE_TASK) => {
             "Explicitly advance ready work from shaping to implementation."
@@ -1146,7 +1154,7 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "Update the current Task scope and keep, create, or replace its current Change Unit."
         }
         (_, AgentToolId::RECORD_SHAPING) => {
-            "Atomically record the current shaping checkpoint, typed gaps, and linked UserAction requests."
+            "Atomically record or replace the current shaping checkpoint and linked UserAction requests, or finalize the current advisor result and close basis."
         }
         (_, AgentToolId::ADVANCE_TASK) => {
             "Advance an exact ready work Task checkpoint and current Change Unit into implementation."

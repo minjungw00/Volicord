@@ -921,6 +921,13 @@ A successful `advance_task` adds that implementation was entered, no write
 ticket was created, and Product Repository writes still require
 `volicord.prepare_write`.
 
+The tagged `workflow.required_action` is the only progression selector.
+Top-level arrays, blocker arrays, compact text, and presentation ordering do
+not select a next method. For shaping decisions, presentation preserves the
+current checkpoint and request refs and surfaces the exact application owner;
+it does not turn resolution into application or synthesize a scope-decision
+ref for product-only or technical-only progression.
+
 Rejected and dry-run branches retain the exact raw Core response together with
 fresh workflow authority and presentation. Compact text distinguishes
 committed Core authority, staging, dry run, rejection, and read-only resume.

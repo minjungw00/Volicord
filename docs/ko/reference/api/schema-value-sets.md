@@ -303,6 +303,13 @@ ready
 superseded
 ```
 
+`blocked`는 현재 checkpoint가 구조적으로 완전하지 않거나 `current` gap이 있다는
+뜻입니다. `ready`는 baseline과 implementation boundary가 있고 비사용자 shaping gap이
+닫혔으며 어떤 gap도 `current`가 아니라는 뜻입니다. 해결된 사용자 소유 gap은 아직
+application owner의 적용을 기다릴 수 있습니다. `superseded`는 명시적 checkpoint
+operation으로 교체되어 현재가 아닌 predecessor입니다. Readiness 자체는 결정을 적용하거나,
+Task를 advance하거나, 자문을 finalization하거나, 닫기 근거를 만들지 않습니다.
+
 `ShapingGapInput.gap_kind`와 `ShapingCheckpointGap.gap_kind`는 정확히 아래 값을
 사용합니다.
 

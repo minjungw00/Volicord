@@ -295,6 +295,14 @@ ready
 superseded
 ```
 
+`blocked` means the current checkpoint is structurally incomplete or has a
+`current` gap. `ready` means its baseline and implementation boundary exist,
+non-user shaping gaps are closed, and no gap is `current`; resolved user-owned
+gaps may still await their application owner. `superseded` is a non-current
+predecessor replaced through the explicit checkpoint operation. Readiness does
+not apply a decision, advance a Task, finalize advice, or establish a close
+basis.
+
 `ShapingGapInput.gap_kind` and `ShapingCheckpointGap.gap_kind` use exactly:
 
 ```text

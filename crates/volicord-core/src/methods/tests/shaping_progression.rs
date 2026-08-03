@@ -2687,6 +2687,101 @@ fn task_wide_advance_authority_blocks_a_gap_free_checkpoint_and_all_effects(
     Ok(())
 }
 
+#[test]
+fn task_wide_advisor_authority_blocks_gap_free_finalization_and_all_effects(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+        &harness,
+        "task_wide_advisor",
+        RequestedMode::Advisor,
+    )?;
+    let mut action_request = user_action_request(
+        "req_task_wide_advisor_action",
+        "idem_task_wide_advisor_action",
+        false,
+        Some(2),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::ProductDecision,
+    );
+    action_request.required_for = vec![UserActionRequiredFor::FinalizeAdvice];
+    let requested = harness
+        .service
+        .request_user_action(action_request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        requested.response_value["state"]["workflow"]["kind"],
+        "shaping_required"
+    );
+    let request_id = response_record_id(&requested.response_value, "user_action_request_ref");
+    let shaped = harness.service.record_shaping(
+        ready_shaping_request(
+            "req_task_wide_advisor_shaping",
+            "idem_task_wide_advisor_shaping",
+            3,
+            &task_id,
+            ShapingCheckpointOperation::CreateInitial,
+            "Gap-free advisor checkpoint subject to Task-wide authority.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        shaped.response_value["workflow"]["kind"],
+        "awaiting_user_action"
+    );
+    assert_eq!(
+        shaped.response_value["workflow"]["blocking_reason"],
+        "inconsistent_authority_state"
+    );
+    assert!(shaped.response_value["workflow"]["required_refs"]
+        .as_array()
+        .expect("workflow refs")
+        .iter()
+        .any(|record| record["record_id"] == request_id));
+
+    let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+    let before = harness.counts()?;
+    let rejected = harness.service.record_shaping(
+        RecordShapingRequest {
+            envelope: envelope(
+                "req_task_wide_advisor_finalize",
+                Some("idem_task_wide_advisor_finalize"),
+                false,
+                Some(before.state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            operation: RecordShapingOperation::FinalizeAdvice {
+                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: Vec::new(),
+                result_summary: "Detached authority must prevent advisor finalization.".to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
+            },
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(rejected.response_value["base"]["effect_kind"], "no_effect");
+    assert_eq!(
+        rejected.response_value["errors"][0]["code"],
+        "USER_DECISION_UNRESOLVED"
+    );
+    assert_eq!(
+        rejected.response_value["errors"][0]["details"]["workflow"]["blocking_reason"],
+        "inconsistent_authority_state"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert!(task_revision(&harness, &task_id)?
+        .current_close_basis
+        .is_none());
+    Ok(())
+}
+
 fn shaping_task(harness: &MethodHarness, label: &str) -> Result<(String, String), Box<dyn Error>> {
     let intake = harness.service.intake(
         intake_request(

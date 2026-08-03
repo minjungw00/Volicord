@@ -552,7 +552,7 @@ Unit or `ready_for_implementation`. Advisor finalization-owned decisions
 proceed toward a non-write Change Unit and `ready_to_finalize_advice`; only a
 current checkpoint-backed close basis selects `close_review`.
 
-The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Task-wide effective UserActions required for `advance_task` also participate in this projection. A detached live decision uses `inconsistent_authority_state`, contributes its request ref to `required_refs`, and prevents `ready_for_implementation`.
+The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Task-wide effective UserActions required for `advance_task`, `finalize_advice`, or shaping-owned scope update also participate in this projection. A gap-free successor does not bypass them. A detached live decision uses `inconsistent_authority_state`, contributes its request ref to `required_refs`, and prevents `ready_for_implementation` or `ready_to_finalize_advice`.
 
 Workflow mutation rejection details embed this same complete tagged
 `WorkflowProjection`; they do not reconstruct progression from the received

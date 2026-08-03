@@ -708,8 +708,9 @@ documents:
   path_en: docs/en/architecture-guide/source-map.md
   path_ko: docs/ko/architecture-guide/source-map.md
   kind: explanation
-  summary: Source path responsibility map for current Rust workspace modules, including explicit
-    shaping progression, tagged workflow authority, storage aggregates, managed guidance, and MCP routing.
+  summary: Source path responsibility map for current Rust workspace modules, including checkpoint
+    succession, decision-owner application, advisor finalization, tagged workflow authority, storage
+    aggregates, managed-guidance revision identity, and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1666,8 +1667,9 @@ documents:
   path_en: docs/en/reference/core-model.md
   path_ko: docs/ko/reference/core-model.md
   kind: reference
-  summary: Reference contract for Core authority records, explicit shaping progression, tagged
-    workflow authority, implementation admission, and close-review state concepts.
+  summary: Reference contract for Core authority records, checkpoint lineage, owner-specific decision
+    application, advisor finalization, Task-wide tagged workflow authority, implementation admission,
+    and close-review state concepts.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
@@ -1685,7 +1687,9 @@ documents:
   - Core local authority record model for Volicord state
   - canonical Core UTC temporal-authority meaning and separation from state version
   - current scope and current Change Unit authority context
-  - current shaping checkpoint and gap authority, explicit Task advance, and tagged workflow progression
+  - current shaping checkpoint lineage, structural readiness, and live-decision replacement prohibition
+  - resolution/application separation and the mode-aware shaping decision application-owner matrix
+  - Task-wide decision gates, advisor finalization, explicit Task advance, and tagged workflow progression
   - current Change Unit effect contract authority boundary
   - lifecycle meaning
   - close-readiness authority concepts
@@ -2023,7 +2027,8 @@ documents:
   path_en: docs/en/reference/api/method-update-scope.md
   path_ko: docs/ko/reference/api/method-update-scope.md
   kind: reference
-  summary: Reference contract for `volicord.update_scope` behavior.
+  summary: Reference contract for exact scope-owned shaping-decision application and
+    `volicord.update_scope` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2043,12 +2048,14 @@ documents:
   canonical_for:
   - '`volicord.update_scope` behavior'
   - '`UpdateScopeResult` branch behavior'
+  - exact resolved scope-decision application without product, technical, or sensitive decision consumption
   - update-scope examples
 - doc_id: reference.api.method-record-shaping
   path_en: docs/en/reference/api/method-record-shaping.md
   path_ko: docs/ko/reference/api/method-record-shaping.md
   kind: reference
-  summary: Reference contract for `volicord.record_shaping` behavior.
+  summary: Reference contract for explicit shaping checkpoint succession, live-decision preservation,
+    and advisor result finalization through `volicord.record_shaping`.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2069,13 +2076,18 @@ documents:
   canonical_for:
   - '`volicord.record_shaping` behavior'
   - '`RecordShapingResult` branch behavior'
+  - explicit initial/replacement checkpoint operations and predecessor lineage
+  - live-decision checkpoint replacement prohibition
+  - structural readiness and mode-aware decision application ownership
+  - advisor-owned decision application, result finalization, and checkpoint-backed close-basis creation
   - atomic ShapingCheckpoint and shaping-gap recording behavior
   - shaping-owned UserAction request creation and linking
 - doc_id: reference.api.method-advance-task
   path_en: docs/en/reference/api/method-advance-task.md
   path_ko: docs/ko/reference/api/method-advance-task.md
   kind: reference
-  summary: Reference contract for `volicord.advance_task` behavior.
+  summary: Reference contract for exact Task-wide admission, atomic advance-owned decision application,
+    and explicit `volicord.advance_task` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2095,6 +2107,8 @@ documents:
   canonical_for:
   - '`volicord.advance_task` behavior'
   - '`AdvanceTaskResult` branch behavior'
+  - exact product, technical, and sensitive shaping-decision application for work Tasks
+  - Task-wide decision gate for explicit work progression
   - explicit `work/shaping` to `work/implementation` transition
 - doc_id: reference.api.method-status
   path_en: docs/en/reference/api/method-status.md
@@ -2475,7 +2489,8 @@ documents:
   path_en: docs/en/reference/api/schema-state.md
   path_ko: docs/ko/reference/api/schema-state.md
   kind: reference
-  summary: Reference contract for state API schema families.
+  summary: Reference contract for state API schema families, including checkpoint lineage, structural
+    readiness, decision application owners, and single tagged workflow authority.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2507,8 +2522,9 @@ documents:
   - operate
   canonical_for:
   - state schemas
-  - tagged `WorkflowProjection` authority and closed workflow value sets
-  - shaping checkpoint, gap, readiness, and shaping-owned UserAction link shapes
+  - tagged `WorkflowProjection.required_action` authority independent of top-level array ordering
+  - shaping checkpoint lineage, gap, structural readiness, application owner, and shaping-owned UserAction link shapes
+  - Task-wide shaping decision gates and `ready_to_finalize_advice` projection
   - normative public state display text and adapter-presentation boundary
   - '`WriteTicketValidityBasis.write_authority_fingerprint` shape and normalization scope'
   - non-authoritative `SourceRef` shape and field semantics
@@ -2648,7 +2664,8 @@ documents:
   - operate
   canonical_for:
   - public API closed value sets
-  - shaping checkpoint readiness, shaping gap kind and status, workflow kind, and workflow blocking reason sets
+  - structural shaping checkpoint readiness, shaping gap kind/status/application-owner, workflow kind,
+    and workflow blocking reason sets
   - '`FailureCategory` and `CloseReadinessBlocker.category` identifiers'
   - method-name and operation-category values
   - Codex Record profile and supported observation-source values
@@ -2977,7 +2994,8 @@ documents:
   - operate
   canonical_for:
   - method-to-storage effects
-  - atomic `volicord.record_shaping` effects and explicit `volicord.advance_task` phase-transition effects
+  - atomic checkpoint succession and advisor-finalization effects for `volicord.record_shaping`
+  - owner-specific scope/advance decision application and explicit `volicord.advance_task` phase-transition effects
   - read-only and dry-run storage effects
   - rejected and blocked branch storage effects
   - canonical-time-floor effects for Core commits and storage-owned temporal writers

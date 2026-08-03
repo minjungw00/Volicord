@@ -70,8 +70,10 @@ Task의 제품·기술·민감 결정은 `required_for=[finalize_advice]`를 사
 checkpoint, 현재 비쓰기 Change Unit, scope revision, baseline, 모든 사용자 소유 checkpoint
 gap에 대한 중복 없는 정확한 현재 resolution 집합을 요구합니다. `current` gap은 남아 있을
 수 없고, scope owner gap은 이미 `applied`여야 하며, advisor owner resolution은 모두 현재
-상태로 수락되어 있어야 합니다. 요청은 결과 요약, 지원되는 result와 evidence ref, 잔여
-위험, 복구 제약도 제공합니다. Core는 advisor 소유 resolved gap 적용, 자문 결과 기록,
+상태로 수락되어 있어야 합니다. `finalize_advice` 또는 shaping 소유 scope update에 필요한
+Task 전체 effective UserAction은 현재 checkpoint에 일관되게 표현되어야 하며, 분리된
+pending 또는 resolved 권한은 finalization을 거부합니다. 요청은 결과 요약, 지원되는 result와
+evidence ref, 잔여 위험, 복구 제약도 제공합니다. Core는 advisor 소유 resolved gap 적용, 자문 결과 기록,
 checkpoint 기반 `CurrentCloseBasis` 생성을 원자적으로 처리하며 checkpoint identity를
 유지하고 현재 workflow와 닫기 준비 상태 projection을 반환합니다. replacement checkpoint나
 새 UserAction 요청은 만들지 않습니다.
@@ -151,9 +153,12 @@ canonical Task 범위 inbox command를 반드시 surface합니다. Chat transcri
 resolution을 대신할 수 없습니다.
 
 해결 뒤에는 resolved scope gap이 있을 때만 `ready_to_apply_decisions`를 선택합니다.
-제품 전용·기술 전용 checkpoint는 advisor 호환 Change Unit이 없으면
-`ready_for_change_unit`을 선택합니다. 정확한 현재 advisor Change Unit과 모든 결정 적용이
-준비되면 advisor workflow는 `required_action=volicord.record_shaping`인
+제품 전용·기술 전용 checkpoint는 mode와 호환되는 현재 Change Unit이 없으면
+`ready_for_change_unit`을 선택하며 scope-decision ref를 요구하거나 합성하지 않습니다.
+`advance_task`, `finalize_advice`, shaping 소유 scope update에 필요한 Task 전체 effective
+UserAction은 현재 checkpoint에 gap이 없어도 workflow gate로 남습니다. 정확한 현재 advisor
+Change Unit과 모든 결정 적용이 준비되면 advisor workflow는
+`required_action=volicord.record_shaping`인
 `ready_to_finalize_advice`를 선택합니다. finalization이 현재 checkpoint 기반 닫기 근거를
 만든 뒤에만 `close_review`를 선택합니다. work Task는 계속
 `ready_for_implementation`과 `volicord.advance_task`를 선택합니다.

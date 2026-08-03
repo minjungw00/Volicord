@@ -394,7 +394,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Atomically record the current shaping checkpoint, typed gaps, and linked UserAction requests.",
+      "description": "Atomically record or replace the current shaping checkpoint and linked UserAction requests, or finalize the current advisor result and close basis.",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",
@@ -439,7 +439,7 @@
           "operation",
           "task_id"
         ],
-        "sha256": "sha256:cab712532887cef748add0d1f77de8bda7b9565f39048d44c74389d24084f94b"
+        "sha256": "sha256:e3e69b910aad1be866f1b7173ebe6db74c03974731a3644c44059a610d942945"
       },
       "name": "volicord.record_shaping",
       "output_schema": {

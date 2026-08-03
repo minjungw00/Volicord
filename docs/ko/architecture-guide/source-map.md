@@ -1,6 +1,9 @@
 # 소스 맵
 
-명시적 shaping 진행은 `volicord-core::methods::{record_shaping,advance_task}`, `volicord-core::workflow_projection`, `volicord-store::core_pipeline::shaping`, 정규 project schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
+명시적 checkpoint succession, 결정 owner별 적용, advisor finalization, Task 전체 shaping 진행은
+`volicord-core::methods::{record_shaping,update_scope,advance_task}`,
+`volicord-core::workflow_projection`, `volicord-store::core_pipeline::shaping`, 정규 project
+schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 
 이 맵은 유지관리자를 현재 구현 소유자로 안내합니다. 제품 계약이 아니므로 정확한 동작은
 집중된 Reference 문서를 사용합니다.
@@ -14,7 +17,7 @@
 | `crates/volicord-types/src/methods.rs` | 공개 메서드 요청 및 결과 schema, 메서드-연산 매핑, 메서드 소유 `ChangeUnitUpdate` object member의 정확한 typed accessor. |
 | `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계, 불변 `WriteTicketPathScope`의 고유성과 분리 조건. 파일시스템은 관찰하지 않습니다. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
-| `crates/volicord-types/src/managed_guidance.rs` | 생성된 managed host guidance가 보존해야 하는 명시적 shaping, UserAction, advance, implementation, rejection, close review 경계를 포함한 필수 의미 fact. |
+| `crates/volicord-types/src/managed_guidance.rs` | 생성된 managed host guidance를 위한 폐쇄형 semantic fact입니다. 현재 checkpoint/UserAction 보존, 결정 적용 담당, 명시적 advance, 비쓰기 advisor finalization, User Channel resolution, tagged rejection, close-review 경계를 포함하며 digest는 프로젝트 integration revision에 참여합니다. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
 | `crates/volicord-types/src/diagnostics.rs` | Lifecycle별 occurrence/current finding 타입, opaque `DiagnosticSubjectIdentity`, `CurrentDiagnosticKey` 정규 identity와 고정 digest ID 파생, lifecycle-aware `StoredDiagnosticFinding` 및 `StoredDiagnosticGraph`, 별도의 `DiagnosticLookupReport`, 공유 read-only `DiagnosticFinding` 및 선택한 Connection의 `DiagnosticReport` 타입, 안정적인 네임스페이스 code 검증, 담당 크레이트의 typed fact에 한도와 민감정보 제거를 적용하는 projection, cause graph 검증, 예기치 않은 실패 대체 표현. |
@@ -165,7 +168,7 @@
 | `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | 집중된 state-record 참조 변환과 typed Task 상태 해석을 담당합니다. |
 | `crates/volicord-core/src/task_policy.rs` | Typed lifecycle 해석과 lifecycle mutation 계획을 포함하는 재사용 가능한 Task policy를 담당합니다. |
 | `crates/volicord-core/src/write_ticket/` | 정규 Write Ticket 담당 경계입니다. `planning.rs`는 집중된 `PrepareWriteInput` fact를 평가하고 모든 active 재사용 후보를 stale mutation fact와 구분해 분류한 뒤 공통 fact, mutation fact, 발급·재사용·ticket 없음 가운데 하나인 폐쇄형 `PrepareWriteTicketPlan` 분기를 반환합니다. 발급 분기는 검증된 `PlannedWriteTicket`으로 구체화되고 `MaterializedPrepareWriteTicket`은 발급됨·재사용됨·없음의 identity와 효과를 폐쇄형으로 유지합니다. Planned ticket과 stored ticket은 불변 `WriteTicketPathScope` 하나를 노출하고, ticket 없음만 별도 판단 경로를 소유합니다. `semantic.rs`는 planned와 stored 형태가 공유하는 불변 의미만 제공합니다. `read_model.rs`는 typed stored ticket, Task, workflow policy, 관찰 시각, UserAction resolution, 증거 fact를 취득합니다. 원시 UserAction 권한 값은 `approval.rs`에 직접 전달하고 `WriteTicketCurrentFacts`에 보존하지 않습니다. `approval.rs`는 현재 민감 승인 집합을 비공개로 구성하고 typed 승인 근거 또는 `WriteTicketApprovalAssessment`를 반환합니다. `current_validity.rs`는 terminal stored 상태를 사전 평가하고 비승인 현재 fact와 이 평가를 사용해 active candidate를 reusable 또는 invalidated 상태로 평가하며 stored identity를 필수로 유지합니다. `selection.rs`는 과거/표시용 stored 평가 우선순위와 권한 효력이 있는 호환성 cardinality를 서로 다른 순수 policy로 담당합니다. 후자는 `None`, `One`, 또는 정렬된 진단 identity를 가진 불변 조건 보존 `Ambiguous`를 반환합니다. `summary.rs`는 planned projection과 stored projection을 구분합니다. `service.rs`는 현재 fact를 읽기 전에 terminal record와 active record를 나누고, 원시 승인 권한은 `approval.rs`에만 전달하며, 표시할 stored 평가를 선택한 뒤 그 선택의 증거를 읽습니다. `policy.rs`는 typed prepare-write 및 attempt-scope 판단을 담당합니다. `admission.rs`는 `ReusableStoredWriteTicket`과 일치하는 정확한 attempt 호환성 증명을 결합해 `AdmissibleStoredWriteTicket` 또는 admission 오류를 반환합니다. 공개 요청 metadata와 응답 구성은 호출 메서드에 남습니다. |
-| `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. `record_shaping.rs`는 현재 checkpoint aggregate와 shaping 소유 UserAction request를 원자적으로 계획하고, `advance_task.rs`는 명시적 phase 전환을 계획하기 전에 정확한 ready checkpoint, applied gap, 현재 Change Unit, resolution reference, recovery 상태를 검증합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하고, `methods/mod.rs`는 모듈 wiring만 제공하며 메서드별 plan wrapper는 해당 메서드 모듈에 둡니다. |
+| `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. `record_shaping.rs`는 명시적 checkpoint succession을 계획하고 live-decision 교체를 막으며 advisor 소유 결정과 결과를 finalization합니다. `update_scope.rs`는 정확한 scope 소유 shaping 결정만 적용하고, `advance_task.rs`는 Task 전체 권한을 검증한 뒤 advance 소유 결정 적용과 명시적 phase 전환을 원자적으로 처리합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하고, `methods/mod.rs`는 모듈 wiring만 제공하며 메서드별 plan wrapper는 해당 메서드 모듈에 둡니다. |
 | `crates/volicord-core/src/recording/mod.rs`, `context.rs`, `model.rs` | 좁은 의미 `RecordRunInput` 및 `RecordRunOperationPlan` 경계, 입력 정규화, Store 기반 typed fact 취득, 기록 패키지 내부에서만 공유하는 폐쇄형 fact, 권한, 관찰, artifact, mutation plan 모델. |
 | `crates/volicord-core/src/recording/authority.rs` | 공개 응답을 구성하지 않으면서 증거 fact, artifact, 관련성, UserAction 담당 모듈을 재사용해 Store의 캡처 intent와 receipt를 typed 캡처 권한으로 해석합니다. |
 | `crates/volicord-core/src/recording/evidence.rs`, `artifact.rs` | 공유 증거 및 artifact 정책 출력을 typed 관찰, producer, artifact 승격, link plan으로 바꾸는 Record Run별 조율. |

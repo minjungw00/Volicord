@@ -789,6 +789,30 @@ fn plan_finalize_advice(
             MethodName::UpdateScope,
         );
     }
+    let task_wide_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &request.envelope.project_id,
+        project_state.state_version,
+        &task,
+        Some(&change_unit),
+        Some(&checkpoint),
+        operation_now,
+    )?;
+    if !task_wide_authority.inconsistent.is_empty() {
+        return workflow_rejection_plan_error(
+            store,
+            project_state,
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::UserDecisionUnresolved,
+            "task-wide UserAction authority required for advisor finalization is inconsistent",
+            MethodName::RecordShaping,
+            None,
+            Vec::new(),
+            false,
+            MethodName::Status,
+        );
+    }
 
     let mut applications = Vec::new();
     let mut expected_resolution_ids = BTreeSet::new();

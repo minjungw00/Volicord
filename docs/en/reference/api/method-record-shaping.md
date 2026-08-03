@@ -78,7 +78,10 @@ recording never establishes a close basis. Exact gap kinds, statuses, and reques
 non-write Change Unit, scope revision, baseline, and the unique exact current
 resolution set for every user-owned checkpoint gap. No gap may remain
 `current`; scope-owned gaps must already be `applied`; and every advisor-owned
-resolution must remain current and accepted. The request also supplies the
+resolution must remain current and accepted. Task-wide effective UserActions
+required for `finalize_advice` or shaping-owned scope update must be represented
+consistently by the current checkpoint; detached pending or resolved authority
+rejects finalization. The request also supplies the
 result summary, supported result and evidence refs, residual risks, and
 recovery constraints. Core atomically applies advisor-owned resolved gaps,
 records the advice result, establishes a checkpoint-backed
@@ -167,7 +170,11 @@ The chat transcript cannot substitute for a User Channel resolution.
 
 After resolution, only a resolved scope gap selects
 `ready_to_apply_decisions`. Product-only and technical-only checkpoints select
-`ready_for_change_unit` when an advisor-compatible Change Unit is still absent.
+`ready_for_change_unit` when the mode-compatible current Change Unit is still
+absent; they do not require or synthesize a scope-decision ref. Task-wide
+effective UserActions required for `advance_task`, `finalize_advice`, or
+shaping-owned scope update remain workflow gates even when the current
+checkpoint has no gaps.
 Once the exact current advisor Change Unit and all decision applications are
 ready, advisor workflow selects `ready_to_finalize_advice` with
 `required_action=volicord.record_shaping`. It selects `close_review` only after

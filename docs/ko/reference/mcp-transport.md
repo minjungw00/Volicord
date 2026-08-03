@@ -823,6 +823,12 @@ ref와 함께 `implementation_blocked_until_user_action_authority_satisfied`를 
 사실, Product Repository write에는 여전히 `volicord.prepare_write`가 필요하다는 사실을
 추가합니다.
 
+태그가 있는 `workflow.required_action`만 진행을 선택합니다. 최상위 배열, blocker 배열,
+compact text, presentation 순서는 다음 메서드를 선택하지 않습니다. Shaping 결정의
+presentation은 현재 checkpoint와 request ref를 보존하고 정확한 application owner를
+표면화합니다. Resolution을 application으로 바꾸거나 제품 전용·기술 전용 진행을 위해
+scope-decision ref를 합성하지 않습니다.
+
 Rejected와 dry-run 분기는 정확한 raw Core 응답을 새 workflow authority 및 presentation과
 함께 보존합니다. Compact text는 committed Core authority, staging, dry run, rejection,
 read-only resume를 구분합니다. Rejection text는 Core state가 unchanged라고 말하며 completion,

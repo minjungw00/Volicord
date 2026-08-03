@@ -277,7 +277,8 @@ Shaping checkpoint succession은 명시적 권한입니다. `create_initial`은 
 successor의 predecessor로 기록합니다. 연결된 live 사용자 소유 결정은 의미 owner가
 적용하거나 scope 또는 Task 전환이 근거를 권위 있게 무효화할 때까지 교체를 차단합니다.
 Work 진행은 checkpoint-local gap뿐 아니라 `advance_task`에 필요한 Task 전체 effective
-UserAction도 평가합니다.
+UserAction도 평가하고, advisor 진행은 `finalize_advice`와 scope update에 대해 같은 검사를
+수행합니다. Gap이 없는 successor를 기록해도 어느 Task 전체 결정 gate도 우회하지 못합니다.
 
 Shaping resolution과 application은 구분됩니다. 연결된 gap은 User Channel 권한이 생기기
 전에는 `current`, 그 권한이 의미 owner의 적용을 기다리는 동안은 `resolved`, owner의 상태

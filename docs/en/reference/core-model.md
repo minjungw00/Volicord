@@ -281,7 +281,9 @@ checkpoint and records it as the successor's predecessor. A linked live
 user-owned decision prevents replacement until its semantic owner applies it
 or a scope or Task transition authoritatively invalidates its basis. Work
 progression evaluates Task-wide effective UserActions required for
-`advance_task` as well as checkpoint-local gaps.
+`advance_task` as well as checkpoint-local gaps; advisor progression does the
+same for `finalize_advice` and scope update. Recording a gap-free successor
+does not bypass either Task-wide decision gate.
 
 Shaping resolution and application are separate. A linked gap is `current`
 until User Channel authority exists, `resolved` while that authority awaits its

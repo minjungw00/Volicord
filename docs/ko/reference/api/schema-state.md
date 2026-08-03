@@ -546,7 +546,7 @@ advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으�
 Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
 진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`에 필요한 Task 전체 effective UserAction도 이 projection에 참여합니다. 분리된 live 결정은 `inconsistent_authority_state`를 사용하고 request ref를 `required_refs`에 추가하며 `ready_for_implementation`을 차단합니다.
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`, `finalize_advice`, shaping 소유 scope update에 필요한 Task 전체 effective UserAction도 이 projection에 참여하며 gap이 없는 successor로 우회할 수 없습니다. 분리된 live 결정은 `inconsistent_authority_state`를 사용하고 request ref를 `required_refs`에 추가하며 `ready_for_implementation` 또는 `ready_to_finalize_advice`를 차단합니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task

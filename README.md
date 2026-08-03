@@ -106,10 +106,11 @@ current safe progression. The agent should follow that authority instead of
 running a fixed status-then-intake-then-write-then-close ritual or probing
 workflow tools in case they might be needed. Work Tasks record shaping first;
 creating a Change Unit does not change phase, and only an explicit
-`volicord.advance_task` enters implementation. Advice and read-only
-investigation do not need write or close ceremony. Product-file changes still
-need a compatible current write authorization, and a blocked session may end
-without claiming that its Task is complete.
+`volicord.advance_task` enters implementation. An advisor Task uses a non-write
+Change Unit, finalizes its current result through `volicord.record_shaping`, and
+reaches close review only after that finalization establishes its close basis.
+Product-file changes still need a compatible current write authorization, and
+a blocked session may end without claiming that its Task is complete.
 
 When Volicord needs a recorded user action, use the resolution path it shows. The
 stable manual path is the CLI inbox:

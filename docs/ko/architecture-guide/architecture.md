@@ -1,6 +1,10 @@
 # 구현 아키텍처
 
-Core는 typed method planner, UserAction service, 순서가 있는 Store mutation으로 shaping 진행을 담당합니다. Store는 엄격한 aggregate decoding과 정규 DDL을 담당합니다. MCP는 생성된 wire argument를 Core request로 매핑하며 단계 전이 정책을 구현하지 않습니다.
+Core는 typed method planner, UserAction service, 순서가 있는 Store mutation을 통해 명시적
+checkpoint succession, 결정 owner별 적용, advisor finalization, Task 전체 태그 기반 진행을
+담당합니다. Store는 엄격한 aggregate decoding, live-decision 및 lineage 불변 조건,
+원자적 적용, 정규 DDL을 담당합니다. MCP는 생성된 wire argument를 Core request로
+매핑하며 진행 또는 단계 전이 정책을 구현하지 않습니다.
 
 이 문서는 로컬 Rust 워크스페이스를 위한 아키텍처 가이드의 상위 개요입니다.
 가이드 수준의 운영 경로, 워크스페이스 형태, 의존 방향, 오래 유지될 구현 경계,
@@ -108,20 +112,20 @@ Store, UserAction 서비스, CLI, presentation package는 `volicord-mcp-wire`를
 | `volicord-cli` | `cli-adapter` | 어댑터 | 프로덕션 | 어댑터 | 관리 CLI, typed User Channel resolution, Guard lifecycle 관찰과 terminalization, 관리형 태그 기반 workflow 지침, Codex 설정, rendering, MCP 감독을 담당합니다. |
 | `volicord-command-model` | `command-model` | 스키마 | 프로덕션 | 중립 | 실행과 분리된 관리 명령 선언, 문법 모델, 정규 호출 빌더를 담당합니다. |
 | `volicord-conformance-tests` | `conformance-validation` | 검증 | 비프로덕션 | 중립 | Core 지향 API를 통한 교차 메서드 적합성 시나리오를 담당합니다. |
-| `volicord-core` | `core` | 애플리케이션 | 프로덕션 | Core | 어댑터 독립 record_shaping 및 advance_task 조율, 태그 기반 workflow projection, typed recovery, 정책 평가, 메서드 계획, 원자적 커밋 조율을 담당합니다. |
+| `volicord-core` | `core` | 애플리케이션 | 프로덕션 | Core | 어댑터 독립 checkpoint succession, 결정 owner별 적용, advisor finalization, 명시적 advance, Task 전체 태그 기반 workflow projection, typed recovery, 정책 평가, 원자적 커밋 조율을 담당합니다. |
 | `volicord-host-contract` | `host-contract` | 스키마 | 프로덕션 | Core 지향 | 사용자 권한이나 Core 진행 권한을 만들지 않고 정확한 Guard hook 상관관계와 예상 효과 분류를 제공하는 의존 안전한 host contract를 담당합니다. |
 | `volicord-integration-tests` | `integration-validation` | 검증 | 비프로덕션 | 중립 | 계층 간 통합, Agent Connection, 공개 계약 스냅샷 테스트를 담당합니다. |
-| `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, 정규 AgentToolId registry, 간결한 태그 기반 workflow 및 rejection projection, 세션 결속, shaping/advance dispatch, Core 호출 adapter를 담당합니다. |
+| `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, 정규 AgentToolId registry, 간결한 태그 기반 workflow 및 rejection projection, 세션 결속, checkpoint/finalization/advance dispatch, Core 호출 adapter를 담당합니다. |
 | `volicord-mcp-protocol` | `mcp-protocol` | 스키마 | 프로덕션 | 중립 | 호스트 독립 MCP 리비전 프로필과 의미 기반 역량 레지스트리를 담당합니다. |
-| `volicord-mcp-wire` | `mcp-wire` | 스키마 | 프로덕션 | 어댑터 | MCP shaping 및 advance 인자와 결과, 태그 기반 workflow presentation 형태, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다. |
+| `volicord-mcp-wire` | `mcp-wire` | 스키마 | 프로덕션 | 어댑터 | MCP checkpoint/finalization 및 advance 인자와 결과, 태그 기반 workflow presentation 형태, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다. |
 | `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | 호출 범위 Product Repository 관찰, 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
 | `volicord-platform-process` | `platform-process` | 인프라 | 프로덕션 | 중립 | 플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다. |
 | `volicord-release-integrity-tests` | `release-integrity` | 검증 | 비프로덕션 | 중립 | 릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다. |
 | `volicord-release-smoke` | `release-smoke` | 검증 | 비프로덕션 | 중립 | 크로스 플랫폼 실제 바이너리 릴리스 스모크 조율과 transcript 검증을 담당합니다. |
-| `volicord-store` | `storage` | 인프라 | 프로덕션 | Core 지향 | 정규 Runtime Home 영속화, shaping aggregate와 영속 row의 엄격한 디코딩, 원자적 checkpoint/UserAction/단계 전이, 불변 조건을 보존하는 transaction 적용을 담당합니다. |
+| `volicord-store` | `storage` | 인프라 | 프로덕션 | Core 지향 | 정규 Runtime Home 영속화, shaping aggregate의 엄격한 디코딩, lineage와 live-decision 불변 조건, owner별 결정 적용·finalization·단계 전이의 원자성, 불변 조건을 보존하는 transaction을 담당합니다. |
 | `volicord-test-process` | `test-process` | 테스트 지원 | 비프로덕션 | 중립 | 테스트와 스모크 하네스를 위한 재사용 가능한 한도 프로세스 실행과 정리를 담당합니다. |
 | `volicord-test-support` | `test-support` | 테스트 지원 | 비프로덕션 | 중립 | 재사용 가능한 폐기형 Runtime Home, Store, Core 요청, Agent Connection 픽스처를 담당합니다. |
-| `volicord-types` | `shared-types` | 스키마 | 프로덕션 | Core 지향 | 일급 shaping checkpoint, 태그 기반 workflow 진행, typed workflow rejection, 정규 인코딩, 플랫폼 중립 fact를 포함하는 의존 안전한 공개 스키마와 폐쇄형 값을 담당합니다. |
+| `volicord-types` | `shared-types` | 스키마 | 프로덕션 | Core 지향 | checkpoint lineage, 결정 적용 담당, advisor finalization, 태그 기반 workflow 진행, typed rejection, 정규 인코딩, 플랫폼 중립 fact를 위한 의존 안전한 공개 스키마와 폐쇄형 값을 담당합니다. |
 | `volicord-user-action-presentation` | `user-action-presentation` | 표현 | 프로덕션 | 어댑터 | typed User Channel presentation, CLI JSON Schema, 대화 비권한 경계, 명령 모델 기반 resolution 안내를 담당합니다. |
 | `volicord-user-action-service` | `user-action-service` | 애플리케이션 | 프로덕션 | Core 지향 | 의미 기반 UserAction 구성, 검증, 권한, 생명주기, shaping link identity, 영속화 매핑, 해결, 연속성, Store가 검증한 record 기반 투영을 담당합니다. |
 | `xtask` | `repository-validation` | 검증 | 비프로덕션 | 중립 | 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터, Git 트리 소스 번들의 검증, 생성, 동기화를 담당합니다. |
