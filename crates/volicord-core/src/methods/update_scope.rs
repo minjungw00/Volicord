@@ -503,6 +503,12 @@ fn plan_update_scope_mutations(
                 close_basis: None,
             },
         )));
+        storage_mutations.push(CoreStorageMutation::UserAction(
+            UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
+                task_id: request.task_id.as_str().to_owned(),
+                action_kinds: Vec::new(),
+            }),
+        ));
         if let Some(checkpoint) = store
             .current_shaping_checkpoint(&request.task_id)
             .map_err(CorePipelineError::from)?
@@ -651,12 +657,6 @@ fn plan_update_scope_mutations(
         ));
     }
     if scope_changed {
-        storage_mutations.push(CoreStorageMutation::UserAction(
-            UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
-                task_id: request.task_id.as_str().to_owned(),
-                action_kinds: Vec::new(),
-            }),
-        ));
         if let Some(lifecycle_phase) = projected_user_action_lifecycle_phase(
             project_state,
             &task,
@@ -893,6 +893,7 @@ fn project_update_scope_response(
         task: &synthetic_task,
         current_change_unit: synthetic_change_unit.as_ref(),
         shaping_checkpoint: projected_shaping_checkpoint.as_ref(),
+        task_wide_shaping_authority: &Default::default(),
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: pending_refs,

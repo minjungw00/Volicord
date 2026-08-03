@@ -2809,7 +2809,8 @@ mod tests {
             "blockers": [{
                 "code": "SHAPING_CHECKPOINT_REQUIRED",
                 "owner_method": "volicord.record_shaping",
-                "required_refs": []
+                "required_refs": [],
+                "user_actions": []
             }],
             "workflow": {
                 "kind": "shaping_required",
@@ -3496,6 +3497,7 @@ mod tests {
             "volicord.record_shaping" => &[
                 "envelope",
                 "task_id",
+                "checkpoint_operation",
                 "scope_revision",
                 "baseline_ref",
                 "summary",
@@ -3695,6 +3697,7 @@ mod tests {
         json!({
             "envelope": envelope_json(),
             "task_id": "task_empty_001",
+            "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 2,
             "baseline_ref": "baseline_empty_001",
             "summary": "The saved-filter implementation boundary is ready.",

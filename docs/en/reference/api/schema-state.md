@@ -499,6 +499,7 @@ ShapingGapInput:
 
 ShapingCheckpoint:
   shaping_checkpoint_id: string
+  predecessor_checkpoint_id: string | null
   project_id: string
   task_id: string
   scope_revision: integer
@@ -513,6 +514,7 @@ ShapingCheckpoint:
 
 ShapingCheckpointSummary:
   checkpoint_ref: StateRecordRef
+  predecessor_checkpoint_ref: StateRecordRef | null
   readiness: string
   scope_revision: integer
   baseline_ref: string | null
@@ -532,12 +534,13 @@ ShapingCheckpointGap:
 
 `ShapingCheckpoint` is the first-class durable record returned by
 `volicord.record_shaping`; the workflow embeds its current compact summary and
-gap projections. `ShapingGapInput.user_action` is non-null exactly for a
+gap projections. A replacement carries the exact predecessor identity in the
+durable record and its compact state reference. `ShapingGapInput.user_action` is non-null exactly for a
 user-owned gap and carries the compatible typed draft that Core materializes
 and links atomically. Readiness, gap kinds, gap statuses, workflow kinds, and
 blocking reasons use the closed sets in [API Value Sets](schema-value-sets.md).
 
-The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it.
+The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Task-wide effective UserActions required for `advance_task` also participate in this projection. A detached live decision uses `inconsistent_authority_state`, contributes its request ref to `required_refs`, and prevents `ready_for_implementation`.
 
 Workflow mutation rejection details embed this same complete tagged
 `WorkflowProjection`; they do not reconstruct progression from the received

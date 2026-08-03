@@ -34,8 +34,8 @@ use volicord_types::tool_names::AgentToolId;
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 60);
-    assert_eq!(metadata.columns.len(), 635);
+    assert_eq!(metadata.tables.len(), 63);
+    assert_eq!(metadata.columns.len(), 636);
     assert_eq!(metadata.indexes.len(), 78);
     assert_eq!(metadata.constraints.len(), 49);
     let runtime_home_columns = metadata
@@ -376,11 +376,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:697f58bdf10f50e4ff2de4d81a3225bca4e3be21ff4865827ac1dae55d13a895"
+        "sha256:25fd20da58f874b1fc17b7239483e098d85d2a2eafc0c5ee8317ca26f781c312"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:4c6996b93bb3438c7089b8a9e265a197fa9b560666145f1ae091b8f1ba33de6f"
+        "sha256:61d6748c6365d5a58cecec9943e8c5e7f365ea44df7a9f030a3d1265b2162464"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,13 +414,14 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:697f58bdf10f50e4ff2de4d81a3225bca4e3be21ff4865827ac1dae55d13a895\",",
+            "{\"canonical_ddl_digest\":\"sha256:25fd20da58f874b1fc17b7239483e098d85d2a2eafc0c5ee8317ca26f781c312\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
-            "\"operational_mcp_sessions\",\"project_continuity\",\"shaping_progression\",",
+            "\"operational_mcp_sessions\",\"project_continuity\",\"shaping_checkpoint_lineage\",",
+            "\"shaping_progression\",",
             "\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:4c6996b93bb3438c7089b8a9e265a197fa9b560666145f1ae091b8f1ba33de6f\"}"
+            "\"integrity_constraints_digest\":\"sha256:61d6748c6365d5a58cecec9943e8c5e7f365ea44df7a9f030a3d1265b2162464\"}"
         )
     );
     Ok(())
@@ -657,6 +658,143 @@ fn canonical_constraints_remain_executable() -> Result<(), Box<dyn Error>> {
         [],
     );
     assert!(duplicate.is_err());
+    Ok(())
+}
+
+#[test]
+fn shaping_predecessor_and_live_authority_constraints_are_executable() -> Result<(), Box<dyn Error>>
+{
+    let lineage = canonical_project()?;
+    insert_project_owner(&lineage, current_storage_manifest_json()?)?;
+    insert_task(&lineage)?;
+    insert_shaping_checkpoint(
+        &lineage,
+        "checkpoint_initial",
+        None,
+        "task_a",
+        "ready",
+        "t0",
+        None,
+    )?;
+
+    let predecessor_not_superseded = insert_shaping_checkpoint(
+        &lineage,
+        "checkpoint_early_successor",
+        Some("checkpoint_initial"),
+        "task_a",
+        "ready",
+        "t1",
+        None,
+    );
+    assert!(predecessor_not_superseded.is_err());
+    lineage.execute(
+        "UPDATE shaping_checkpoints
+            SET readiness = 'superseded', superseded_at = 't1'
+          WHERE project_id = 'project_a' AND shaping_checkpoint_id = 'checkpoint_initial'",
+        [],
+    )?;
+    let mismatched_timestamp = insert_shaping_checkpoint(
+        &lineage,
+        "checkpoint_mismatched_timestamp",
+        Some("checkpoint_initial"),
+        "task_a",
+        "ready",
+        "t2",
+        None,
+    );
+    assert!(mismatched_timestamp.is_err());
+    insert_shaping_checkpoint(
+        &lineage,
+        "checkpoint_successor",
+        Some("checkpoint_initial"),
+        "task_a",
+        "ready",
+        "t1",
+        None,
+    )?;
+    assert!(lineage
+        .execute(
+            "UPDATE shaping_checkpoints
+                SET predecessor_shaping_checkpoint_id = NULL
+              WHERE project_id = 'project_a'
+                AND shaping_checkpoint_id = 'checkpoint_successor'",
+            [],
+        )
+        .is_err());
+
+    let mut detached = canonical_project()?;
+    insert_project_owner(&detached, current_storage_manifest_json()?)?;
+    insert_task(&detached)?;
+    let transaction = detached.transaction()?;
+    transaction.execute(
+        "INSERT INTO user_action_requests (
+            project_id, user_action_request_id, task_id, action_kind,
+            request_json, basis_json, basis_status, required_for_json,
+            requested_by_actor_source, source_method, source_idempotency_key,
+            requested_at, metadata_json
+         ) VALUES (
+            'project_a', 'request_live', 'task_a', 'product_decision',
+            '{}', '{}', 'current', '[\"advance_task\"]',
+            'agent_connection:conn_main', 'volicord.record_shaping', 'idem_live',
+            't0', '{}'
+         )",
+        [],
+    )?;
+    insert_shaping_checkpoint(
+        &transaction,
+        "checkpoint_live",
+        None,
+        "task_a",
+        "blocked",
+        "t0",
+        None,
+    )?;
+    transaction.execute(
+        "INSERT INTO shaping_checkpoint_gaps (
+            project_id, shaping_checkpoint_id, shaping_gap_id, task_id,
+            gap_kind, summary, affected_refs_json, status,
+            user_action_request_id, user_action_kind
+         ) VALUES (
+            'project_a', 'checkpoint_live', 'gap_live', 'task_a',
+            'user_product_decision_required', 'Decision required.', '[]', 'current',
+            'request_live', 'product_decision'
+         )",
+        [],
+    )?;
+    transaction.execute(
+        "INSERT INTO shaping_checkpoint_user_actions (
+            project_id, shaping_checkpoint_id, shaping_gap_id, task_id,
+            user_action_request_id, action_kind, linked_at
+         ) VALUES (
+            'project_a', 'checkpoint_live', 'gap_live', 'task_a',
+            'request_live', 'product_decision', 't0'
+         )",
+        [],
+    )?;
+    transaction.commit()?;
+    assert!(detached
+        .execute(
+            "UPDATE shaping_checkpoints
+                SET readiness = 'superseded', superseded_at = 't1'
+              WHERE project_id = 'project_a'
+                AND shaping_checkpoint_id = 'checkpoint_live'",
+            [],
+        )
+        .is_err());
+    detached.execute(
+        "UPDATE user_action_requests
+            SET basis_status = 'superseded'
+          WHERE project_id = 'project_a'
+            AND user_action_request_id = 'request_live'",
+        [],
+    )?;
+    detached.execute(
+        "UPDATE shaping_checkpoints
+            SET readiness = 'superseded', superseded_at = 't1'
+          WHERE project_id = 'project_a'
+            AND shaping_checkpoint_id = 'checkpoint_live'",
+        [],
+    )?;
     Ok(())
 }
 
@@ -1052,6 +1190,38 @@ fn insert_task(conn: &Connection) -> rusqlite::Result<()> {
             'shaping', 't0', 't0'
          )",
         params![],
+    )?;
+    Ok(())
+}
+
+fn insert_shaping_checkpoint(
+    conn: &Connection,
+    checkpoint_id: &str,
+    predecessor_id: Option<&str>,
+    task_id: &str,
+    readiness: &str,
+    created_at: &str,
+    superseded_at: Option<&str>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO shaping_checkpoints (
+            project_id, shaping_checkpoint_id, predecessor_shaping_checkpoint_id,
+            task_id, scope_revision, baseline_ref, summary,
+            implementation_boundary, readiness, source_refs_json,
+            evidence_refs_json, created_at, superseded_at
+         ) VALUES (
+            'project_a', ?1, ?2, ?3, 0, 'baseline_test',
+            'Current shaping authority.', 'Exact current boundary.', ?4,
+            '[]', '[]', ?5, ?6
+         )",
+        params![
+            checkpoint_id,
+            predecessor_id,
+            task_id,
+            readiness,
+            created_at,
+            superseded_at
+        ],
     )?;
     Ok(())
 }

@@ -75,6 +75,7 @@ enabled_capabilities:
   - managed_codex_connection
   - operational_mcp_sessions
   - project_continuity
+  - shaping_checkpoint_lineage
   - shaping_progression
   - user_action_cli_resolution
 ```
@@ -91,6 +92,10 @@ enabled_capabilities:
 `shaping_progression`은 checkpoint/gap/UserAction link aggregate와 명시적 work-phase 전환의
 단일 현재 저장 계약을 식별합니다. 의미 기반 capability 식별자이며 migration switch,
 대체 decoder, 숫자 compatibility branch가 아닙니다.
+
+`shaping_checkpoint_lineage`는 정확한 predecessor identity, 같은 Task 소유권, 불변
+lineage, 일치하는 predecessor supersession과 successor 생성 timestamp, 연결된 live
+UserAction 분리 방지를 식별합니다. 이 capability는 exact manifest 비교에 포함됩니다.
 
 필드 의미:
 

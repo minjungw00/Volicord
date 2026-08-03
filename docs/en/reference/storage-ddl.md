@@ -1267,6 +1267,7 @@ CREATE TABLE user_action_resolutions (
 CREATE TABLE shaping_checkpoints (
   project_id TEXT NOT NULL,
   shaping_checkpoint_id TEXT NOT NULL,
+  predecessor_shaping_checkpoint_id TEXT,
   task_id TEXT NOT NULL,
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   baseline_ref TEXT,
@@ -1279,9 +1280,17 @@ CREATE TABLE shaping_checkpoints (
   superseded_at TEXT,
   PRIMARY KEY (project_id, shaping_checkpoint_id),
   UNIQUE (project_id, task_id, shaping_checkpoint_id),
+  UNIQUE (project_id, predecessor_shaping_checkpoint_id),
   FOREIGN KEY (project_id, task_id, scope_revision)
     REFERENCES tasks (project_id, task_id, scope_revision)
     DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id, task_id, predecessor_shaping_checkpoint_id)
+    REFERENCES shaping_checkpoints (project_id, task_id, shaping_checkpoint_id)
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK (
+    predecessor_shaping_checkpoint_id IS NULL
+    OR predecessor_shaping_checkpoint_id <> shaping_checkpoint_id
+  ),
   CHECK (
     (readiness IN ('blocked', 'ready') AND superseded_at IS NULL)
     OR (readiness = 'superseded' AND superseded_at IS NOT NULL)
@@ -1305,6 +1314,28 @@ CREATE TABLE shaping_checkpoints (
 CREATE UNIQUE INDEX idx_shaping_checkpoints_one_current
   ON shaping_checkpoints (project_id, task_id)
   WHERE readiness <> 'superseded';
+
+CREATE TRIGGER trg_shaping_checkpoint_predecessor_immutable
+BEFORE UPDATE OF predecessor_shaping_checkpoint_id ON shaping_checkpoints
+WHEN NEW.predecessor_shaping_checkpoint_id IS NOT OLD.predecessor_shaping_checkpoint_id
+BEGIN
+  SELECT RAISE(ABORT, 'shaping checkpoint predecessor is immutable');
+END;
+
+CREATE TRIGGER trg_shaping_checkpoint_successor_requires_exact_predecessor
+BEFORE INSERT ON shaping_checkpoints
+WHEN NEW.predecessor_shaping_checkpoint_id IS NOT NULL
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+      FROM shaping_checkpoints AS predecessor
+     WHERE predecessor.project_id = NEW.project_id
+       AND predecessor.task_id = NEW.task_id
+       AND predecessor.shaping_checkpoint_id = NEW.predecessor_shaping_checkpoint_id
+       AND predecessor.readiness = 'superseded'
+       AND predecessor.superseded_at = NEW.created_at
+  ) THEN RAISE(ABORT, 'shaping checkpoint predecessor was not atomically superseded') END;
+END;
 
 CREATE TABLE shaping_checkpoint_gaps (
   project_id TEXT NOT NULL,
@@ -1452,6 +1483,22 @@ CREATE TABLE shaping_checkpoint_user_actions (
     OR (user_action_resolution_id IS NOT NULL AND resolved_at IS NOT NULL)
   )
 );
+
+CREATE TRIGGER trg_shaping_checkpoint_live_user_action_not_detached
+BEFORE UPDATE OF readiness ON shaping_checkpoints
+WHEN OLD.readiness <> 'superseded' AND NEW.readiness = 'superseded'
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    SELECT 1
+      FROM shaping_checkpoint_user_actions AS link
+      JOIN user_action_requests AS request
+        ON request.project_id = link.project_id
+       AND request.user_action_request_id = link.user_action_request_id
+     WHERE link.project_id = OLD.project_id
+       AND link.shaping_checkpoint_id = OLD.shaping_checkpoint_id
+       AND request.basis_status = 'current'
+  ) THEN RAISE(ABORT, 'live shaping UserAction authority cannot be detached') END;
+END;
 
 CREATE TRIGGER trg_shaping_gap_not_added_to_ready_checkpoint
 BEFORE INSERT ON shaping_checkpoint_gaps

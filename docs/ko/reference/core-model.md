@@ -270,6 +270,13 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 | `work` | `shaping` | `volicord.record_shaping` 후 정확한 현재 권한으로 `volicord.advance_task` |
 | `work` | `implementation` | `implementation` |
 
+Shaping checkpoint succession은 명시적 권한입니다. `create_initial`은 현재 checkpoint가
+없어야 하고, `replace_current`는 정확한 현재 checkpoint 하나를 compare-and-swap하여
+successor의 predecessor로 기록합니다. 연결된 live 사용자 소유 결정은 의미 owner가
+적용하거나 scope 또는 Task 전환이 근거를 권위 있게 무효화할 때까지 교체를 차단합니다.
+Work 진행은 checkpoint-local gap뿐 아니라 `advance_task`에 필요한 Task 전체 effective
+UserAction도 평가합니다.
+
 `advisor`는 Product Repository 파일 효과에 대해 읽기 전용이며 쓰기 가능한 Change Unit, 쓰기 티켓, `volicord.advance_task`를 사용하지 않습니다. Change Unit은 작업 경계이며 단계를 바꾸지 않습니다. work Task는 명시적 advance 성공으로만 구현에 진입합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 진행 권한 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
 
 ### 실행 기록

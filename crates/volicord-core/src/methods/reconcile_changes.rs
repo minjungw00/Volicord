@@ -453,6 +453,7 @@ fn plan_reconcile_changes(
         task: &task,
         current_change_unit: current_change_unit.as_ref(),
         shaping_checkpoint: shaping_checkpoint.as_ref(),
+        task_wide_shaping_authority: &Default::default(),
         project_policy,
         acceptance_criteria: active_acceptance_criteria(store, &request.task_id)?,
         pending_user_action_refs: projected_pending_refs.clone(),

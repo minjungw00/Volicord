@@ -814,6 +814,9 @@ McpWorkflowPresentation:
 
 `must_surface`는 free-form prompting이 아니라 tagged fact 집합입니다. 거부 fact는 거부된
 method, 변경되지 않은 Core state, 현재 Task phase, 정확한 recovery owner를 식별합니다.
+Blocker summary는 request ref, status, 필요한 owner method를 포함한 effective UserAction
+fact를 담습니다. 충족되지 않은 implementation-gating UserAction authority는 정확한 request
+ref와 함께 `implementation_blocked_until_user_action_authority_satisfied`를 추가합니다.
 `awaiting_user_action`은 현재 request ref, `next_actor=user`, chat이 resolution authority가
 아니라는 사실, Product Repository mutation 경계, 정규 Task 범위 inbox instruction을
 추가합니다. 성공한 `advance_task`는 implementation 진입, write ticket을 만들지 않았다는

@@ -129,12 +129,14 @@ Project-state records include:
 
 ### Shaping checkpoint aggregate
 
-`shaping_checkpoints` owns the Task, current scope revision, optional baseline,
-summary, optional implementation boundary, readiness, source/evidence refs,
-creation time, and optional supersession time. The partial unique index over a
-Task where `superseded_at IS NULL` permits at most one current checkpoint.
-Replacing current shaping marks the prior row `readiness=superseded` and sets
-its supersession time before the new aggregate becomes current.
+`shaping_checkpoints` owns the Task, exact nullable predecessor, current scope
+revision, optional baseline, summary, optional implementation boundary,
+readiness, source/evidence refs, creation time, and optional supersession time.
+The partial unique index permits at most one non-superseded checkpoint per
+Task. Replacement requires the exact current checkpoint, marks that predecessor
+`readiness=superseded`, and records its supersession time equal to successor
+creation time. The predecessor foreign key enforces same-project and same-Task
+lineage; predecessor identity is immutable and cannot self-reference.
 
 `shaping_checkpoint_gaps` owns each gap's closed kind, summary, affected refs,
 and `current|resolved|applied` status. A `ready` checkpoint cannot receive or
@@ -147,9 +149,11 @@ linked request changes the gap to `resolved` and may make a complete checkpoint
 gaps to `applied`.
 
 Every aggregate read strictly decodes identifiers, closed values, canonical
-JSON arrays, timestamps, task ownership, and link consistency. A malformed or
-inconsistent member is corrupt persisted owner data; Store does not omit it,
-invent a default, or choose a second current checkpoint.
+JSON arrays, timestamps, task ownership, predecessor ownership and timestamps,
+and link consistency. A malformed or inconsistent member is corrupt persisted
+owner data; Store does not omit it, invent a default, choose a checkpoint by
+row ordering, or detach a linked current-basis UserAction through checkpoint
+replacement.
 
 `project_workflow_policies` is the authoritative project workflow-policy
 record family. Its canonical aggregate contains the project identity, exact

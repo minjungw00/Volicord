@@ -1,6 +1,6 @@
 # Agent Guide
 
-Work Tasks begin in shaping. Record analysis with `volicord.record_shaping`; create a current `UserActionRequest` before presenting an actionable user-owned choice; accept a resolution only through the User Channel; apply decisions through their current resolution refs; and create or update the Change Unit without changing phase. Call `volicord.advance_task` only when the tagged workflow requires it. `volicord.record_run` is reserved for direct or implementation execution, Product Repository write preparation is available only in implementation, and close readiness is used only during close review.
+Work Tasks begin in shaping. Record analysis with `volicord.record_shaping`, explicitly creating the first checkpoint when none is current or replacing the exact current checkpoint only when no linked live decision remains. Create a current `UserActionRequest` before presenting an actionable user-owned choice; accept a resolution only through the User Channel; apply decisions through their current resolution refs; and create or update the Change Unit without changing phase. Call `volicord.advance_task` only when the tagged workflow requires it and Task-wide UserAction authority is satisfied. `volicord.record_run` is reserved for direct or implementation execution, Product Repository write preparation is available only in implementation, and close readiness is used only during close review.
 
 <a id="purpose"></a>
 

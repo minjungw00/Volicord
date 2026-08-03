@@ -1464,6 +1464,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         AgentToolId::RECORD_SHAPING.wire_name(),
         json!({
             "task_id": record_task_id,
+            "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_record_compact",
             "summary": "The compact record-run boundary is ready.",
@@ -1657,6 +1658,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         AgentToolId::RECORD_SHAPING.wire_name(),
         json!({
             "task_id": prepare_task_id,
+            "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_fixture",
             "summary": "The compact write-ticket boundary is ready.",

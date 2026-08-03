@@ -971,6 +971,7 @@ pub enum WorkflowBlockingReason {
     ChangeUnitRequired,
     ExplicitAdvanceRequired,
     RecoveryConstraint,
+    InconsistentAuthorityState,
 }
 
 /// Task-owned final-acceptance policy selected at intake.

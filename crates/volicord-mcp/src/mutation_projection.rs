@@ -386,6 +386,7 @@ fn workflow_presentation(
                     code: RequiredNullable::some(blocker.code),
                     owner_method: blocker.owner_method,
                     required_refs: blocker.required_refs,
+                    user_actions: blocker.user_actions,
                 }
             }));
         } else {
@@ -399,9 +400,25 @@ fn workflow_presentation(
                     code: RequiredNullable::some(error.code()),
                     owner_method,
                     required_refs: authority.workflow.required_refs().to_vec(),
+                    user_actions: Vec::new(),
                 }
             }));
         }
+    }
+
+    let mut authority_request_refs = blocker_summary
+        .iter()
+        .flat_map(|blocker| blocker.user_actions.iter())
+        .map(|user_action| user_action.user_action_request_ref.clone())
+        .collect::<Vec<_>>();
+    authority_request_refs.sort_by(|left, right| left.record_id.cmp(&right.record_id));
+    authority_request_refs.dedup();
+    if !authority_request_refs.is_empty() {
+        must_surface.push(
+            McpMustSurfaceFact::ImplementationBlockedUntilUserActionAuthoritySatisfied {
+                request_refs: authority_request_refs,
+            },
+        );
     }
 
     let required_user_action = if authority.workflow.next_actor()
@@ -431,6 +448,11 @@ fn workflow_presentation(
         must_surface.push(McpMustSurfaceFact::ChatReplyIsNotResolution);
         must_surface
             .push(McpMustSurfaceFact::ProductRepositoryMutationBlockedUntilUserChannelResolution);
+        must_surface.push(
+            McpMustSurfaceFact::ImplementationBlockedUntilUserActionAuthoritySatisfied {
+                request_refs: instruction.request_refs.clone(),
+            },
+        );
         Some(McpUserChannelInstructions {
             channel_kind: instruction.channel_kind,
             list_command: instruction.list_command,

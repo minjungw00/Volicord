@@ -318,6 +318,7 @@
         "RepositoryFileSource",
         "ResidualRiskInput",
         "SensitiveActionScope",
+        "ShapingCheckpointOperation",
         "ShapingGapInput",
         "ShapingGapKind",
         "ShapingUserActionDraft",
@@ -334,6 +335,7 @@
       ],
       "root_properties": [
         "baseline_ref",
+        "checkpoint_operation",
         "close_assessment",
         "envelope",
         "evidence_refs",
@@ -346,6 +348,7 @@
       ],
       "root_required": [
         "baseline_ref",
+        "checkpoint_operation",
         "close_assessment",
         "envelope",
         "evidence_refs",
@@ -356,7 +359,7 @@
         "summary",
         "task_id"
       ],
-      "sha256": "sha256:f7bddf2408dc1f841ba6727b05be1cf114a830b00a5cf5faf8afa06b94064839"
+      "sha256": "sha256:c2bb2ec29fb71b013b04b7dfaaf9084bac3ab11f2a39a131bdb0e157e7cb8484"
     },
     "volicord.request_user_action": {
       "definitions": [

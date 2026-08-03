@@ -577,7 +577,10 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 
 커밋되는 `dry_run=false` 호출은 다음을 수행합니다.
 
-- 이전 현재 checkpoint가 있으면 supersede합니다.
+- `create_initial`이면 현재 checkpoint 부재를 검증하고, `replace_current`이면 정확한 기대
+  checkpoint에 compare-and-swap을 수행합니다.
+- 허용된 교체이면 해당 exact predecessor를 supersede하고 predecessor identity가 있는
+  successor를 삽입합니다.
 - `shaping_checkpoints` row 하나와 그 모든 `shaping_checkpoint_gaps` row를 삽입합니다.
 - 사용자 소유 gap마다 대기 `UserActionRequest` 하나와 정확한
   `shaping_checkpoint_user_actions` link 하나를 원자적으로 만듭니다.
@@ -591,12 +594,18 @@ work-phase 전환은 만들지 않습니다. Checkpoint, gap, 요청, link, even
 하나라도 유효하지 않으면 transaction 전체를 rollback합니다. 유효한 dry-run 미리보기와
 모든 거절 시도에는 이 row와 효과가 없습니다.
 
+연결된 live UserAction이 있는 교체는 mutation 전에 거부됩니다. Request, checkpoint, gap,
+link, predecessor 갱신, event, replay row, state-version 증가는 하나의 rollback 경계를
+공유합니다.
+
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`
 
 커밋되는 `dry_run=false` 호출은 shaping인 정확한 현재 work Task, ready이며 superseded가
 아닌 checkpoint, applied gap 집합, scope revision, baseline, 활성 Change Unit, 정확한 현재
-resolution-ID 집합, recovery constraint 부재를 검증합니다. Transaction 하나에서 Task
+resolution-ID 집합, recovery constraint 부재를 검증합니다. 또한 `advance_task`에 필요한
+Task의 모든 effective UserAction이 exact checkpoint에 표현되고 각 resolution이 유효하게
+적용되었는지 검증합니다. Transaction 하나에서 Task
 단계만 `implementation`으로, lifecycle을 구현 진행 상태로 바꾸고 authority event 하나와
 정확한 replay row를 만들며 정규 Core UTC 하한을 진행시키고
 `project_state.state_version`을 정확히 한 번 증가시킵니다.

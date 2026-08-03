@@ -494,6 +494,7 @@ ShapingGapInput:
 
 ShapingCheckpoint:
   shaping_checkpoint_id: string
+  predecessor_checkpoint_id: string | null
   project_id: string
   task_id: string
   scope_revision: integer
@@ -508,6 +509,7 @@ ShapingCheckpoint:
 
 ShapingCheckpointSummary:
   checkpoint_ref: StateRecordRef
+  predecessor_checkpoint_ref: StateRecordRef | null
   readiness: string
   scope_revision: integer
   baseline_ref: string | null
@@ -526,13 +528,14 @@ ShapingCheckpointGap:
 ```
 
 `ShapingCheckpoint`는 `volicord.record_shaping`이 반환하는 일급 영속 기록입니다.
-workflow는 현재 checkpoint의 간결한 요약과 gap projection을 포함합니다.
+workflow는 현재 checkpoint의 간결한 요약과 gap projection을 포함합니다. 교체는 영속
+record에 정확한 predecessor identity를, compact state에는 해당 ref를 담습니다.
 `ShapingGapInput.user_action`은 사용자 소유 gap에만 null이 아니며, Core가 원자적으로
 materialize하고 연결하는 호환 typed draft를 담습니다. Readiness, gap kind, gap status,
 workflow kind, blocking reason은 [API 값 집합](schema-value-sets.md)의 폐쇄형 집합을
 사용합니다.
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다.
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`에 필요한 Task 전체 effective UserAction도 이 projection에 참여합니다. 분리된 live 결정은 `inconsistent_authority_state`를 사용하고 request ref를 `required_refs`에 추가하며 `ready_for_implementation`을 차단합니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task

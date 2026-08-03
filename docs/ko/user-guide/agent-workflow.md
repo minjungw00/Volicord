@@ -1,6 +1,6 @@
 # 에이전트 가이드
 
-work Task는 shaping에서 시작합니다. 분석은 `volicord.record_shaping`으로 기록하고, 실행 가능한 사용자 소유 선택지를 제시하기 전에 현재 `UserActionRequest`를 만들며, 해결은 User Channel에서만 받아들입니다. 결정은 현재 resolution 참조로 적용하고, Change Unit 생성이나 갱신은 단계를 바꾸지 않습니다. 태그 기반 workflow가 요구할 때만 `volicord.advance_task`를 호출합니다. `volicord.record_run`은 direct 또는 implementation 실행에만 사용하고, Product Repository 쓰기 준비는 implementation에서만 가능하며, 닫기 준비 상태는 close review에서만 사용합니다.
+work Task는 shaping에서 시작합니다. 현재 checkpoint가 없으면 첫 checkpoint 생성을 명시하고, 연결된 live 결정이 남아 있지 않을 때만 정확한 현재 checkpoint 교체를 명시하여 분석을 `volicord.record_shaping`으로 기록합니다. 실행 가능한 사용자 소유 선택지를 제시하기 전에 현재 `UserActionRequest`를 만들며, 해결은 User Channel에서만 받아들입니다. 결정은 현재 resolution 참조로 적용하고, Change Unit 생성이나 갱신은 단계를 바꾸지 않습니다. 태그 기반 workflow가 요구하고 Task 전체 UserAction 권한이 충족될 때만 `volicord.advance_task`를 호출합니다. `volicord.record_run`은 direct 또는 implementation 실행에만 사용하고, Product Repository 쓰기 준비는 implementation에서만 가능하며, 닫기 준비 상태는 close review에서만 사용합니다.
 
 <a id="purpose"></a>
 

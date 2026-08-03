@@ -19,9 +19,10 @@ use volicord_types::schema::{
     AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
     AuthorityReceipt, CloseAssessmentInput, ContinuityPageRequest, EvidenceCaptureIntent,
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceObservationInput, EvidenceTarget,
-    EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, ShapingGapInput,
-    SourceRef, StagedArtifactHandle, StateRecordRef, ToolDryRunResponse, ToolRejectedResponse,
-    UserActionDraft, WorkflowProjection, WriteDecisionReason, WriteTicket,
+    EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable,
+    ShapingCheckpointOperation, ShapingGapInput, SourceRef, StagedArtifactHandle, StateRecordRef,
+    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowProjection,
+    WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -365,6 +366,7 @@ pub struct McpWorkflowBlockerSummary {
     pub code: RequiredNullable<ErrorCode>,
     pub owner_method: MethodName,
     pub required_refs: Vec<StateRecordRef>,
+    pub user_actions: Vec<WorkflowRejectionUserAction>,
 }
 
 /// MCP wire projection of the canonical CLI User Channel instruction.
@@ -398,6 +400,9 @@ pub enum McpMustSurfaceFact {
     NextActorIsUser,
     ChatReplyIsNotResolution,
     ProductRepositoryMutationBlockedUntilUserChannelResolution,
+    ImplementationBlockedUntilUserActionAuthoritySatisfied {
+        request_refs: Vec<StateRecordRef>,
+    },
     EnteredImplementation,
     PhaseTransitionCreatedNoWriteTicket,
     ProductRepositoryWritesRequirePrepareWrite {
@@ -624,6 +629,7 @@ pub struct McpRecordShapingArguments {
     #[serde(default)]
     pub detail: MutationDetailLevel,
     pub task_id: TaskId,
+    pub checkpoint_operation: ShapingCheckpointOperation,
     pub scope_revision: u64,
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub summary: String,

@@ -138,6 +138,7 @@
           "ToolResultOrRejected_for_StatusResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -145,6 +146,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -154,7 +156,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:548e4e318f93e254ef0d32425eb84b5fc8cc60bd7d08ec1aac4307b078abc8bf"
+        "sha256": "sha256:a07ec69eeb222dc905d972e78df5fea3986d5dc44dd5c7cef6040027e337a54e"
       }
     },
     {
@@ -217,16 +219,18 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultOrRejected_for_GetOperationResultResult",
+          "UserActionStatus",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
-          "WorkflowRejectionDetails"
+          "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:efb9a2d3e858c464d9f9e7e11da0a73ab1878d0345101973299936f78be3b438"
+        "sha256": "sha256:4cc9891d8808d235808fc0b06e2a2da081a7a913dac5c57d0a1f3c28ff41ea03"
       }
     },
     {
@@ -338,6 +342,7 @@
           "ToolResultOrRejected_for_CheckCloseResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -345,6 +350,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -354,7 +360,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9923c18509d6ced44f5d673eb6ea487abfcd967c6c885876d20e9a9d1d4c722d"
+        "sha256": "sha256:6e08c7a7804c8b89f645a1eee2187714a1107c567fe716cd9fd26cc7343468fe"
       }
     },
     {

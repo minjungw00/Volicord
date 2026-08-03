@@ -2362,6 +2362,7 @@ fn record_ready_advisor_shaping_for_test(
                 Some(task_id),
             ),
             task_id: TaskId::new(task_id),
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
             baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
             summary: "Advisor analysis is ready for close review.".to_owned(),

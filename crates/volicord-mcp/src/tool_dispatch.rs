@@ -1308,6 +1308,8 @@ mod mutation_projection_and_recovery_tests {
                     Some(task_id.as_str()),
                 ),
                 task_id: task_id.clone(),
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
                 scope_revision: 1,
                 baseline_ref: RequiredNullable::some(BaselineRef::new(
                     volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,

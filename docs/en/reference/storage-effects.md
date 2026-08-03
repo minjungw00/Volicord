@@ -607,7 +607,10 @@ Owner links:
 
 A committed `dry_run=false` call:
 
-- supersedes the prior current checkpoint, when one exists;
+- validates `create_initial` against absence of a current checkpoint or
+  compare-and-swaps `replace_current` against its exact expected checkpoint;
+- for a permitted replacement, supersedes that exact predecessor and inserts
+  the successor with its predecessor identity;
 - inserts one `shaping_checkpoints` row and all of its
   `shaping_checkpoint_gaps` rows;
 - atomically creates one pending `UserActionRequest` and one exact
@@ -624,13 +627,19 @@ request, link, event, replay, or state update rolls back the whole transaction.
 A valid dry-run preview and every rejected attempt create none of these rows or
 effects.
 
+Replacement with a live linked UserAction is rejected before mutation. The
+request, checkpoint, gap, link, predecessor update, event, replay row, and
+state-version increment share one rollback boundary.
+
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`
 
 A committed `dry_run=false` call verifies the exact current work Task in
 shaping, ready non-superseded checkpoint, applied gap set, scope revision,
 baseline, active Change Unit, exact current resolution-ID set, and absence of a
-recovery constraint. In one transaction it changes only the Task phase to
+recovery constraint. It also verifies every effective Task UserAction required
+for `advance_task`, including representation by the exact checkpoint and valid
+application of every resolution. In one transaction it changes only the Task phase to
 `implementation` and lifecycle to the implementation progression state,
 appends one authority event, creates the exact replay row, advances the
 canonical Core UTC floor, and increments `project_state.state_version` exactly

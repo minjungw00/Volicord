@@ -910,7 +910,11 @@ McpWorkflowPresentation:
 
 `must_surface` is a tagged fact set, not free-form prompting. Rejection facts
 identify the rejected method, unchanged Core state, current Task phase, and
-exact recovery owner. `awaiting_user_action` adds the current request refs,
+exact recovery owner. A blocker summary carries its effective UserAction facts,
+including request ref, status, and required owner method. Unsatisfied
+implementation-gating UserAction authority adds
+`implementation_blocked_until_user_action_authority_satisfied` with the exact
+request refs. `awaiting_user_action` adds the current request refs,
 `next_actor=user`, the fact that chat is not resolution authority, the Product
 Repository mutation boundary, and canonical task-scoped inbox instructions.
 A successful `advance_task` adds that implementation was entered, no write

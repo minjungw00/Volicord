@@ -366,6 +366,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "task_id": task_id,
             "scope_revision": 0,
             "baseline_ref": null,
+            "checkpoint_operation": {"operation": "create_initial"},
             "summary": "The planning documents support one bounded implementation after three user-owned decisions.",
             "implementation_boundary": "Create only the release-preparation note at the bounded path.",
             "gaps": [

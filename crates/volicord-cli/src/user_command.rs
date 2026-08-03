@@ -1412,6 +1412,8 @@ mod tests {
                     Some(&task_id),
                 ),
                 task_id: TaskId::new(&task_id),
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
                 scope_revision: 1,
                 baseline_ref: RequiredNullable::some(BaselineRef::new(
                     volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,

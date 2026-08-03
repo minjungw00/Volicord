@@ -23,6 +23,7 @@
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
 | `baseline_ref` | 예 | 예 | `string` |
+| `checkpoint_operation` | 예 | 아니요 | `ShapingCheckpointOperation` |
 | `close_assessment` | 예 | 예 | `CloseAssessmentInput` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `evidence_refs` | 예 | 아니요 | `StateRecordRef[]` |
@@ -34,7 +35,12 @@
 | `task_id` | 예 | 아니요 | `string` |
 <!-- END GENERATED: contract-structures api.method.record_shaping.request[params] -->
 
-요청은 정확한 현재 Task와 현재 scope revision을 가리킵니다. 형성 요약, 구현 또는
+요청은 정확한 현재 Task와 현재 scope revision을 가리킵니다.
+`checkpoint_operation.operation=create_initial`은 현재 checkpoint가 없어야 합니다.
+`checkpoint_operation.operation=replace_current`는
+`expected_current_checkpoint_id`로 정확한 현재 checkpoint를 지정해야 합니다. 교체
+checkpoint는 이 identity를 `predecessor_checkpoint_id`로 기록하며 Core는 row 정렬로
+대상을 선택하지 않고 compare-and-swap을 한 번 수행합니다. 요청은 형성 요약, 구현 또는
 자문 경계, 알려진 경우의 현재 baseline 좌표, 타입이 정해진 gap, source ref, evidence
 ref를 제공하며 폐쇄형 `ShapingGapKind` 집합의 사용자 소유 gap마다
 `ShapingUserActionDraft`를 하나 제공합니다. 사용자 소유가 아닌 gap에는 user-action
@@ -44,9 +50,16 @@ Core는 선택지를 실행 가능한 것으로 제시하기 전에 같은 trans
 
 Core가 `readiness`를 계산합니다. 현재 필수 gap 집합이 비어 있고 경계, scope
 revision, baseline이 완전하고 현재일 때만 체크포인트는 `ready`입니다. 그 밖에는
-`blocked`입니다. 호환되는 대체 체크포인트를 기록하면 직전 현재 체크포인트를
-`superseded`로 표시합니다. Task 하나에는 superseded가 아닌 체크포인트가 최대 하나만
-있습니다.
+`blocked`입니다. 허용된 교체는 정확한 predecessor를 `superseded`로 표시하고 predecessor
+supersession과 successor 생성을 같은 timestamp로 기록합니다. Task 하나에는
+superseded가 아닌 checkpoint가 최대 하나만 있습니다.
+
+정확한 현재 checkpoint에 연결된 UserAction이 현재 의미 권한을 가지는 동안은 교체할 수
+없습니다. 여기에는 pending 결정, gap이 아직 `applied`가 아닌 resolved 결정, 현재
+workflow gate가 요구하는 결정이 포함됩니다. 타입이 지정된 거부는 checkpoint, request
+ref, effective status, 필요한 owner method를 식별하고
+`state_change_applied=false`를 보고합니다. Scope 또는 Task 전환과 타입이 지정된 결정 적용
+operation만 자신이 소유한 전환 안에서 권한을 무효화할 수 있습니다.
 
 `work` Task에서 제품, 기술, 범위, 민감한 사용자 소유 gap 때문에 함께 만든 결정
 요청은 `required_for`에 `advance_task`를 포함합니다. `advisor` Task에서는 준비된
@@ -57,8 +70,9 @@ revision, baseline이 완전하고 현재일 때만 체크포인트는 `ready`�
 
 ## 원자적 동작
 
-커밋 호출 하나는 현재 Task와 기대 state version을 검증하고, 정규 UserAction draft와
-근거 모델로 모든 사용자 소유 결정을 materialize하며, 체크포인트와 gap을 삽입하고,
+커밋 호출 하나는 현재 Task, 기대 state version, 정확한 checkpoint succession operation을
+검증하고, 정규 UserAction draft와 근거 모델로 모든 사용자 소유 결정을 materialize하며,
+해당하면 정확한 predecessor를 원자적으로 supersede하고 successor와 gap을 삽입하며,
 각 사용자 소유 gap을 정확한 요청에 연결하고, 권한 있는 workflow 상태를 갱신하며,
 메서드 event와 정확한 replay 결과를 기록하고 `state_version`을 정확히 한 번
 증가시킵니다.

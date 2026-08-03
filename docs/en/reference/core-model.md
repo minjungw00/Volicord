@@ -271,6 +271,14 @@ The concrete `Task.mode` and `work_phase` select the authority record and transi
 | `work` | `shaping` | `volicord.record_shaping`, then `volicord.advance_task` with exact current authority |
 | `work` | `implementation` | `implementation` |
 
+Shaping checkpoint succession is explicit authority. `create_initial` requires
+no current checkpoint; `replace_current` compare-and-swaps one exact current
+checkpoint and records it as the successor's predecessor. A linked live
+user-owned decision prevents replacement until its semantic owner applies it
+or a scope or Task transition authoritatively invalidates its basis. Work
+progression evaluates Task-wide effective UserActions required for
+`advance_task` as well as checkpoint-local gaps.
+
 `advisor` is read-only with respect to Product Repository file effects and never uses a write-capable Change Unit, a write ticket, or `volicord.advance_task`. A Change Unit is a work boundary and does not change phase. A work Task enters implementation only through a successful explicit advance. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Progression authority does not satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
 
 ### Run

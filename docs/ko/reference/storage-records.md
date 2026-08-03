@@ -114,12 +114,13 @@ operational-session 기록이 바뀌기 전에 거절합니다.
 
 ### Shaping checkpoint aggregate
 
-`shaping_checkpoints`는 Task, 현재 scope revision, 선택적 baseline, summary, 선택적
-implementation boundary, readiness, source/evidence ref, 생성 시각, 선택적 supersession
-시각을 소유합니다. `superseded_at IS NULL`인 Task를 대상으로 하는 partial unique index는
-현재 checkpoint를 최대 하나만 허용합니다. 현재 shaping을 교체할 때는 새 aggregate가
-현재 상태가 되기 전에 이전 row를 `readiness=superseded`로 바꾸고 supersession 시각을
-설정합니다.
+`shaping_checkpoints`는 Task, 정확한 nullable predecessor, 현재 scope revision, 선택적
+baseline, summary, 선택적 implementation boundary, readiness, source/evidence ref, 생성
+시각, 선택적 supersession 시각을 소유합니다. Partial unique index는 Task마다 superseded가
+아닌 checkpoint를 최대 하나만 허용합니다. 교체는 정확한 현재 checkpoint를 요구하고 해당
+predecessor를 `readiness=superseded`로 바꾸며 supersession 시각을 successor 생성 시각과
+같게 기록합니다. Predecessor foreign key는 같은 project와 Task lineage를 강제하며
+predecessor identity는 불변이고 self-reference할 수 없습니다.
 
 `shaping_checkpoint_gaps`는 각 gap의 폐쇄형 kind, summary, affected ref,
 `current|resolved|applied` 상태를 소유합니다. `ready` checkpoint에는 `current` gap을
@@ -130,10 +131,11 @@ checkpoint, gap의 정확한 UserAction request와 User Channel 해결 뒤의 �
 checkpoint는 `ready`가 될 수 있습니다. 범위 전이로 결정을 적용하면 resolved gap은
 `applied`가 됩니다.
 
-모든 aggregate read는 식별자, 폐쇄형 값, 정규 JSON 배열, timestamp, Task 소유권, link
-일관성을 엄격하게 decode합니다. 잘못되거나 모순되는 member는 손상된 영속 owner
-데이터입니다. Store는 이를 생략하거나 기본값을 만들거나 두 번째 현재 checkpoint를
-선택하지 않습니다.
+모든 aggregate read는 식별자, 폐쇄형 값, 정규 JSON 배열, timestamp, Task 소유권,
+predecessor 소유권과 timestamp, link 일관성을 엄격하게 decode합니다. 잘못되거나
+모순되는 member는 손상된 영속 owner 데이터입니다. Store는 이를 생략하거나 기본값을
+만들거나 row 정렬로 checkpoint를 선택하거나 checkpoint 교체로 연결된 current-basis
+UserAction을 분리하지 않습니다.
 
 `project_workflow_policies`는 권위 있는 프로젝트 workflow policy record
 family입니다. 정규 aggregate에는 프로젝트 identity, 정확한

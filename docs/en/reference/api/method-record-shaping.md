@@ -23,6 +23,7 @@ checkpoint-readiness semantics are `stable`.
 | Field | Required | Nullable | Type |
 |---|---|---|---|
 | `baseline_ref` | yes | yes | `string` |
+| `checkpoint_operation` | yes | no | `ShapingCheckpointOperation` |
 | `close_assessment` | yes | yes | `CloseAssessmentInput` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `evidence_refs` | yes | no | `StateRecordRef[]` |
@@ -34,8 +35,13 @@ checkpoint-readiness semantics are `stable`.
 | `task_id` | yes | no | `string` |
 <!-- END GENERATED: contract-structures api.method.record_shaping.request[params] -->
 
-The request addresses the exact current Task and current scope revision. It
-supplies a shaping summary, an implementation or advisory boundary, the
+The request addresses the exact current Task and current scope revision.
+`checkpoint_operation.operation=create_initial` requires no current checkpoint.
+`checkpoint_operation.operation=replace_current` requires
+`expected_current_checkpoint_id` to identify the exact current checkpoint.
+A replacement checkpoint records that identity as
+`predecessor_checkpoint_id`; Core performs one compare-and-swap rather than
+selecting a row by ordering. The request supplies a shaping summary, an implementation or advisory boundary, the
 current baseline coordinate when known, typed gaps from the closed
 `ShapingGapKind` set, source refs, evidence refs, and a
 `ShapingUserActionDraft` for every user-owned gap. A non-user-owned gap must
@@ -45,9 +51,19 @@ same transaction, before the choice can be presented as actionable.
 
 Core calculates `readiness`. A checkpoint is `ready` only when its current
 required-gap set is empty and its boundary, scope revision, and baseline are
-complete and current. Otherwise it is `blocked`. Recording a compatible
-replacement marks the prior current checkpoint `superseded`; one Task has at
-most one non-superseded checkpoint.
+complete and current. Otherwise it is `blocked`. A permitted replacement marks
+the exact predecessor `superseded`, gives predecessor supersession and
+successor creation the same timestamp, and leaves at most one non-superseded
+checkpoint for a Task.
+
+Replacement is prohibited while any UserAction linked from the exact current
+checkpoint has current semantic authority. This includes pending decisions,
+resolved decisions whose gaps are not `applied`, and decisions required by a
+current workflow gate. The typed rejection identifies the checkpoint, request
+refs, effective statuses, and required owner methods and reports
+`state_change_applied=false`. Scope or Task transitions and typed
+decision-application operations may invalidate authority only within their
+owned transition.
 
 For a `work` Task, decision requests created for product, technical, scope, or
 sensitive user-owned gaps include `advance_task` in `required_for`. For an
@@ -59,9 +75,11 @@ basis. Exact gap kinds, statuses, and request compatibility are owned by
 
 ## Atomic behavior
 
-One committed call validates the current Task and expected state version,
-materializes every supplied user-owned decision through the canonical
-UserAction draft and basis model, inserts the checkpoint and gaps, links each
+One committed call validates the current Task, expected state version, and
+exact checkpoint succession operation, materializes every supplied user-owned
+decision through the canonical UserAction draft and basis model, atomically
+supersedes the exact predecessor when applicable, inserts the successor and
+gaps, links each
 user-owned gap to its exact request, updates the authoritative workflow state,
 appends the method event, stores the exact replay result, and increments
 `state_version` exactly once.

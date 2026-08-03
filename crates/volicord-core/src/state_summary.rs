@@ -18,6 +18,8 @@ pub(crate) struct StateSummaryInput<'a> {
     pub(crate) task: &'a TaskRecord,
     pub(crate) current_change_unit: Option<&'a ChangeUnitRecord>,
     pub(crate) shaping_checkpoint: Option<&'a ShapingCheckpointRecord>,
+    pub(crate) task_wide_shaping_authority:
+        &'a crate::workflow_projection::TaskWideShapingAuthority,
     pub(crate) project_policy: Option<ProjectWorkflowPolicySummary>,
     pub(crate) acceptance_criteria: Vec<AcceptanceCriterion>,
     pub(crate) pending_user_action_refs: Vec<StateRecordRef>,
@@ -39,6 +41,7 @@ pub(crate) fn state_summary(
         task,
         current_change_unit,
         shaping_checkpoint,
+        task_wide_shaping_authority,
         project_policy,
         acceptance_criteria,
         pending_user_action_refs,
@@ -142,6 +145,7 @@ pub(crate) fn state_summary(
             task,
             current_change_unit,
             shaping_checkpoint,
+            task_wide_shaping_authority,
         ),
         pending_user_action_summaries:
             volicord_user_action_service::agent_safe_pending_user_action_summaries(

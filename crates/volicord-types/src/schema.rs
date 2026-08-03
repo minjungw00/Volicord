@@ -972,6 +972,16 @@ pub struct WorkflowRejectionBlocker {
     pub code: ErrorCode,
     pub owner_method: MethodName,
     pub required_refs: Vec<StateRecordRef>,
+    pub user_actions: Vec<WorkflowRejectionUserAction>,
+}
+
+/// One effective UserAction that blocks a workflow transition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRejectionUserAction {
+    pub user_action_request_ref: StateRecordRef,
+    pub effective_status: crate::values::UserActionStatus,
+    pub required_owner_method: MethodName,
 }
 
 /// Closed semantic context shared by the workflow-rejection error codes.
@@ -2016,6 +2026,16 @@ pub struct ShapingUserActionDraft {
     pub expires_at: RequiredNullable<UtcTimestamp>,
 }
 
+/// Exact succession operation for one shaping-checkpoint recording request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ShapingCheckpointOperation {
+    CreateInitial,
+    ReplaceCurrent {
+        expected_current_checkpoint_id: crate::ids::ShapingCheckpointId,
+    },
+}
+
 /// One typed shaping gap supplied to `volicord.record_shaping`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -2031,6 +2051,7 @@ pub struct ShapingGapInput {
 #[serde(deny_unknown_fields)]
 pub struct ShapingCheckpoint {
     pub shaping_checkpoint_id: crate::ids::ShapingCheckpointId,
+    pub predecessor_checkpoint_id: RequiredNullable<crate::ids::ShapingCheckpointId>,
     pub project_id: ProjectId,
     pub task_id: TaskId,
     pub scope_revision: u64,
@@ -2062,6 +2083,7 @@ pub struct ShapingCheckpointGap {
 #[serde(deny_unknown_fields)]
 pub struct ShapingCheckpointSummary {
     pub checkpoint_ref: StateRecordRef,
+    pub predecessor_checkpoint_ref: RequiredNullable<StateRecordRef>,
     pub readiness: crate::values::ShapingCheckpointReadiness,
     pub scope_revision: u64,
     pub baseline_ref: RequiredNullable<BaselineRef>,

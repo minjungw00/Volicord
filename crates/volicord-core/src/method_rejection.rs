@@ -6,6 +6,7 @@ use volicord_types::{
     schema::{
         DryRunSummary, FalseValue, NextActionSummary, PlannedEffect, RequiredNullable,
         ToolEnvelope, WorkflowRecovery, WorkflowRejectionBlocker, WorkflowRejectionDetails,
+        WorkflowRejectionUserAction,
     },
     values::{ErrorCode, MethodName, RunKind, UtcTimestamp},
 };
@@ -31,6 +32,37 @@ pub(crate) fn workflow_rejected_response(
     corrected_retry_allowed: bool,
     fallback_recovery: MethodName,
 ) -> CoreResult<PipelineResponse> {
+    workflow_rejected_response_with_user_actions(
+        store,
+        project_state,
+        envelope,
+        task_id,
+        code,
+        message,
+        received_action,
+        received_run_kind,
+        allowed_run_kinds,
+        corrected_retry_allowed,
+        fallback_recovery,
+        Vec::new(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn workflow_rejected_response_with_user_actions(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    code: ErrorCode,
+    message: &'static str,
+    received_action: MethodName,
+    received_run_kind: Option<RunKind>,
+    allowed_run_kinds: Vec<RunKind>,
+    corrected_retry_allowed: bool,
+    fallback_recovery: MethodName,
+    additional_user_actions: Vec<WorkflowRejectionUserAction>,
+) -> CoreResult<PipelineResponse> {
     if !WorkflowRejectionDetails::is_required_for(code) {
         return Err(crate::pipeline::CorePipelineError::InvalidDispatch {
             detail: format!("{} is not a workflow-rejection error code", code.as_str()),
@@ -43,13 +75,38 @@ pub(crate) fn workflow_rejected_response(
     })?;
     let current_change_unit = store.current_change_unit(task_id)?;
     let checkpoint = store.current_shaping_checkpoint(task_id)?;
+    let task_wide_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &envelope.project_id,
+        project_state.state_version,
+        &task,
+        current_change_unit.as_ref(),
+        checkpoint.as_ref(),
+        &project_state.updated_at,
+    )?;
     let workflow = crate::workflow_projection::workflow_projection(
         &envelope.project_id,
         project_state.state_version,
         &task,
         current_change_unit.as_ref(),
         checkpoint.as_ref(),
+        &task_wide_authority,
     );
+    let mut user_actions = task_wide_authority.blocking_user_actions();
+    for user_action in additional_user_actions {
+        if !user_actions
+            .iter()
+            .any(|current| current.user_action_request_ref == user_action.user_action_request_ref)
+        {
+            user_actions.push(user_action);
+        }
+    }
+    let mut required_refs = workflow.required_refs().to_vec();
+    for user_action in &user_actions {
+        if !required_refs.contains(&user_action.user_action_request_ref) {
+            required_refs.push(user_action.user_action_request_ref.clone());
+        }
+    }
     let recovery_owner = workflow.required_action().unwrap_or(fallback_recovery);
     let details = WorkflowRejectionDetails {
         state_change_applied: FalseValue,
@@ -62,7 +119,8 @@ pub(crate) fn workflow_rejected_response(
         blockers: vec![WorkflowRejectionBlocker {
             code,
             owner_method: recovery_owner,
-            required_refs: workflow.required_refs().to_vec(),
+            required_refs,
+            user_actions,
         }],
         workflow,
         corrected_retry_allowed,
@@ -110,6 +168,41 @@ pub(crate) fn workflow_rejection_plan_error<T>(
         allowed_run_kinds,
         corrected_retry_allowed,
         fallback_recovery,
+    )
+    .map_err(PlanError::Core)?;
+    Err(PlanError::Response(Box::new(response)))
+}
+
+/// Returns a typed workflow rejection with the exact UserAction authorities
+/// that prevent the requested transition.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn workflow_rejection_plan_error_with_user_actions<T>(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    code: ErrorCode,
+    message: &'static str,
+    received_action: MethodName,
+    received_run_kind: Option<RunKind>,
+    allowed_run_kinds: Vec<RunKind>,
+    corrected_retry_allowed: bool,
+    fallback_recovery: MethodName,
+    user_actions: Vec<WorkflowRejectionUserAction>,
+) -> Result<T, PlanError> {
+    let response = workflow_rejected_response_with_user_actions(
+        store,
+        project_state,
+        envelope,
+        task_id,
+        code,
+        message,
+        received_action,
+        received_run_kind,
+        allowed_run_kinds,
+        corrected_retry_allowed,
+        fallback_recovery,
+        user_actions,
     )
     .map_err(PlanError::Core)?;
     Err(PlanError::Response(Box::new(response)))

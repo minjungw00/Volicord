@@ -35,7 +35,11 @@ ref를 제공합니다. Envelope는 현재 기대 state version을 제공합니�
 Core는 `mode=work`, `work_phase=shaping`, 현재 `ready` 체크포인트, 일치하는
 Task/checkpoint scope revision, 호환되는 Task/checkpoint/Change Unit baseline 좌표,
 정확한 현재 활성 Change Unit, 모든 checkpoint gap의 `applied` 상태, 해당 gap에서 연결된
-현재 resolution ID의 정확한 집합, 현재 recovery constraint 부재를 요구합니다. stale
+현재 resolution ID의 정확한 집합, 현재 recovery constraint 부재를 요구합니다. Core는
+`required_for`에 `advance_task`가 포함된 Task의 모든 effective UserAction도 조회합니다. 각
+권한은 정확한 checkpoint와 전환 근거에 표현되어야 하고 resolved 결정은 모두 유효하게
+적용되어야 합니다. 제공한 resolution 집합은 checkpoint link 집합과 Task 전체 권한 집합
+모두와 같아야 합니다. stale
 또는 superseded checkpoint, `current`이거나 아직 `resolved`에 머문 gap, stale resolution,
 stale scope revision, 잘못된 Change Unit, 빠지거나 추가된 resolution, 호환되지 않는
 baseline은 효과 없이 거부됩니다.
@@ -102,7 +106,9 @@ Task를 닫지 않습니다. `implementation`에서 `shaping`으로 자동 전�
   `CHANGE_UNIT_STALE`
 
 모든 분기는 공통 typed workflow 거부 상세를 사용하고 `no_effect`를 유지합니다. Blocker는
-정확한 owner method와 required ref를 담습니다.
+정확한 owner method, checkpoint와 UserAction request ref, effective UserAction status를
+담습니다. 분리된 live 결정은 `inconsistent_authority_state`가 되며 Task 전체 advance
+authority가 충족되지 않은 동안 workflow는 `ready_for_implementation`을 보고할 수 없습니다.
 
 성공한 전환의 MCP presentation에는 Task가 `implementation`에 들어갔고, 전환이 write
 ticket을 만들지 않았고, Product Repository write에는 여전히 `volicord.prepare_write`가

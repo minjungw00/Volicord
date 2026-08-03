@@ -775,6 +775,7 @@ fn project_intake_response(
         task: &task_record,
         current_change_unit: current_change_unit.as_ref(),
         shaping_checkpoint: None,
+        task_wide_shaping_authority: &Default::default(),
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: pending_refs,

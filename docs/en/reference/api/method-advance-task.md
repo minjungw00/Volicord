@@ -38,7 +38,12 @@ Core requires `mode=work`, `work_phase=shaping`, a current `ready` checkpoint,
 matching Task/checkpoint scope revision, compatible Task/checkpoint/Change Unit
 baseline coordinates, the exact current active Change Unit, every checkpoint
 gap in `applied` status, the exact set of current resolution IDs linked from
-those gaps, and no current recovery constraint. A stale or superseded
+those gaps, and no current recovery constraint. Core also queries every
+effective Task UserAction whose `required_for` includes `advance_task`. Each
+such authority must be represented by the exact checkpoint and transition
+basis and every resolved decision must be validly applied. The supplied
+resolution set must equal both the checkpoint link set and this Task-wide
+authority set. A stale or superseded
 checkpoint, gap in `current` or `resolved` status, stale resolution, stale scope
 revision, wrong Change Unit, missing resolution, extra resolution, or
 incompatible baseline is rejected without an effect.
@@ -107,7 +112,10 @@ Transition rejection uses the most specific current workflow code:
   Change Unit authority.
 
 Every branch uses the common typed workflow-rejection details and remains
-`no_effect`. Blockers carry their exact owner methods and required refs.
+`no_effect`. Blockers carry their exact owner methods, checkpoint and
+UserAction request refs, and effective UserAction statuses. A detached live
+decision produces `inconsistent_authority_state`; workflow cannot report
+`ready_for_implementation` while Task-wide advance authority is unsatisfied.
 
 MCP presentation for a successful transition requires three structured facts:
 the Task entered `implementation`, the transition created no write ticket, and

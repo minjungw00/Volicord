@@ -755,6 +755,7 @@ fn project_prepare_write_response(
         task: &task,
         current_change_unit: Some(&change_unit),
         shaping_checkpoint: shaping_checkpoint.as_ref(),
+        task_wide_shaping_authority: &Default::default(),
         project_policy,
         acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs,

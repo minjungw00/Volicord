@@ -554,6 +554,7 @@ impl McpAdapter {
             RecordShapingRequest {
                 envelope,
                 task_id,
+                checkpoint_operation: args.checkpoint_operation,
                 scope_revision: args.scope_revision,
                 baseline_ref: args.baseline_ref,
                 summary: args.summary,

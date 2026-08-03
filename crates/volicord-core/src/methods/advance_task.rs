@@ -73,6 +73,7 @@ impl CoreService {
             &prepared.store,
             &prepared.context.project_state,
             request.clone(),
+            &prepared.operation_now,
         ) {
             Ok(plan) => plan,
             Err(error) => {
@@ -113,6 +114,7 @@ fn plan_advance_task(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: AdvanceTaskRequest,
+    operation_now: &volicord_types::values::UtcTimestamp,
 ) -> Result<AdvanceTaskPlan, PlanError> {
     let task = store
         .task_record(&request.task_id)
@@ -168,10 +170,37 @@ fn plan_advance_task(
             MethodName::Status,
         );
     }
-    let checkpoint = match store
+    let current_change_unit = store
+        .current_change_unit(&request.task_id)
+        .map_err(CorePipelineError::from)?;
+    let current_checkpoint = store
         .current_shaping_checkpoint(&request.task_id)
-        .map_err(CorePipelineError::from)?
-    {
+        .map_err(CorePipelineError::from)?;
+    let task_wide_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &request.envelope.project_id,
+        project_state.state_version,
+        &task,
+        current_change_unit.as_ref(),
+        current_checkpoint.as_ref(),
+        operation_now,
+    )?;
+    if task_wide_authority.has_blockers() {
+        return workflow_rejection_plan_error(
+            store,
+            project_state,
+            &request.envelope,
+            &request.task_id,
+            ErrorCode::UserDecisionUnresolved,
+            "task-wide UserAction authority required for advance_task is not fully applied",
+            MethodName::AdvanceTask,
+            None,
+            Vec::new(),
+            false,
+            MethodName::Status,
+        );
+    }
+    let checkpoint = match current_checkpoint {
         Some(checkpoint) => checkpoint,
         None => {
             return workflow_rejection_plan_error(
@@ -231,10 +260,7 @@ fn plan_advance_task(
             MethodName::Status,
         );
     }
-    let change_unit = match store
-        .current_change_unit(&request.task_id)
-        .map_err(CorePipelineError::from)?
-    {
+    let change_unit = match current_change_unit {
         Some(change_unit) => change_unit,
         None => {
             return workflow_rejection_plan_error(
@@ -281,7 +307,9 @@ fn plan_advance_task(
         .iter()
         .map(|id| id.as_str().to_owned())
         .collect::<BTreeSet<_>>();
-    if supplied_resolution_ids != expected_resolution_ids {
+    if task_wide_authority.applied_resolution_ids != expected_resolution_ids
+        || supplied_resolution_ids != expected_resolution_ids
+    {
         return workflow_rejection_plan_error(
             store,
             project_state,
@@ -319,6 +347,7 @@ fn plan_advance_task(
         &projected_task,
         Some(&change_unit),
         Some(&checkpoint),
+        &task_wide_authority,
     );
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
@@ -326,6 +355,7 @@ fn plan_advance_task(
         task: &projected_task,
         current_change_unit: Some(&change_unit),
         shaping_checkpoint: Some(&checkpoint),
+        task_wide_shaping_authority: &task_wide_authority,
         project_policy: project_workflow_policy(store)
             .map_err(CorePipelineError::from)?
             .summary,

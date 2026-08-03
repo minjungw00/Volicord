@@ -103,6 +103,7 @@ pub(super) fn acquire_record_run_state(
         task: &planned.projected_task,
         current_change_unit: Some(&planned.change_unit),
         shaping_checkpoint: shaping_checkpoint.as_ref(),
+        task_wide_shaping_authority: &Default::default(),
         project_policy,
         acceptance_criteria: planned.acceptance_criteria.clone(),
         pending_user_action_refs: planned.pending_user_action_refs.clone(),

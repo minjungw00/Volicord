@@ -1278,6 +1278,7 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
             json!({
                 "detail": "workflow",
                 "task_id": task_id,
+                "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 0,
                 "baseline_ref": null,
                 "summary": "A current user-owned technical decision is required.",
@@ -1471,6 +1472,7 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
         AgentToolId::RECORD_SHAPING.wire_name(),
         json!({
             "task_id": task_id,
+            "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_transition",
             "summary": "The current implementation boundary is ready.",

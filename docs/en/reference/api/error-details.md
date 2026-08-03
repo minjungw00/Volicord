@@ -78,6 +78,12 @@ WorkflowRejectionBlocker:
   code: ErrorCode
   owner_method: MethodName
   required_refs: StateRecordRef[]
+  user_actions: WorkflowRejectionUserAction[]
+
+WorkflowRejectionUserAction:
+  user_action_request_ref: StateRecordRef
+  effective_status: UserActionStatus
+  required_owner_method: MethodName
 
 WorkflowRecovery:
   owner_method: MethodName
@@ -92,6 +98,9 @@ contains exactly one current owner method, never a generic next-action array.
 a corrected request against current authority; neither permits replaying an
 applied mutation. The enclosing rejection remains `no_effect` even when a
 corrected retry is allowed.
+
+`user_actions` identifies each effective UserAction that contributes to the
+blocker. An empty array means the blocker is not UserAction-specific.
 
 <a id="platform-diagnostic-detail-field"></a>
 

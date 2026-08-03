@@ -259,6 +259,15 @@ fn status_result_fields(
         let current_shaping_checkpoint = store
             .current_shaping_checkpoint(&task_id)
             .map_err(CorePipelineError::from)?;
+        let task_wide_shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+            store,
+            project_id,
+            state_version,
+            task,
+            current_change_unit.as_ref(),
+            current_shaping_checkpoint.as_ref(),
+            &user_action_now,
+        )?;
         let task_ref = state_ref(
             StateRecordKind::Task,
             &task.task_id,
@@ -357,6 +366,7 @@ fn status_result_fields(
                 task,
                 current_change_unit: current_change_unit.as_ref(),
                 shaping_checkpoint: current_shaping_checkpoint.as_ref(),
+                task_wide_shaping_authority: &task_wide_shaping_authority,
                 project_policy: workflow_policy.summary.clone(),
                 acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
                 pending_user_action_refs: all_pending_user_actions,
@@ -415,6 +425,7 @@ fn status_result_fields(
                 task,
                 current_change_unit.as_ref(),
                 current_shaping_checkpoint.as_ref(),
+                &task_wide_shaping_authority,
             )
             .next_actor(),
         });

@@ -19,6 +19,7 @@ pub const STORAGE_ENABLED_CAPABILITIES: &[&str] = &[
     "managed_codex_connection",
     "operational_mcp_sessions",
     "project_continuity",
+    "shaping_checkpoint_lineage",
     "shaping_progression",
     "user_action_cli_resolution",
 ];

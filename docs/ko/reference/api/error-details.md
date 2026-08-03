@@ -77,6 +77,12 @@ WorkflowRejectionBlocker:
   code: ErrorCode
   owner_method: MethodName
   required_refs: StateRecordRef[]
+  user_actions: WorkflowRejectionUserAction[]
+
+WorkflowRejectionUserAction:
+  user_action_request_ref: StateRecordRef
+  effective_status: UserActionStatus
+  required_owner_method: MethodName
 
 WorkflowRecovery:
   owner_method: MethodName
@@ -90,6 +96,9 @@ method 하나만 들어갑니다. `corrected_retry_allowed`와 `ToolError.retrya
 authority에 대해 수정한 요청을 semantic하게 다시 시도할 수 있는지를 나타냅니다. 둘 다
 적용된 mutation의 replay를 허가하지 않습니다. 수정 재시도가 허용되어도 바깥 거부는 계속
 `no_effect`입니다.
+
+`user_actions`는 blocker에 기여하는 각 effective UserAction을 식별합니다. 빈 배열은 해당
+blocker가 UserAction 전용이 아님을 뜻합니다.
 
 <a id="platform-diagnostic-detail-field"></a>
 

@@ -191,6 +191,7 @@
           "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -198,6 +199,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -207,7 +209,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:620eea7191438325415fdc93ed0544a9a7a56a028cf75e9268254b8f03d378e8"
+        "sha256": "sha256:590b09c1c6eb9a83c335e1be3304f9dc6e68f42685316d770c92014a5e33f410"
       }
     },
     {
@@ -361,6 +363,7 @@
           "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -368,6 +371,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -377,7 +381,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4f5296be58d9201ba46a087ce4c0ea27630389f5fc48593f201de119d634e5b0"
+        "sha256": "sha256:3eec4a74e0e30c6150d1fc8c08d70b0f08c1f584ad516905ead9c58f31a4dab0"
       }
     },
     {
@@ -408,6 +412,7 @@
           "RepositoryFileSource",
           "ResidualRiskInput",
           "SensitiveActionScope",
+          "ShapingCheckpointOperation",
           "ShapingGapInput",
           "ShapingGapKind",
           "ShapingUserActionDraft",
@@ -423,6 +428,7 @@
         ],
         "root_properties": [
           "baseline_ref",
+          "checkpoint_operation",
           "close_assessment",
           "detail",
           "evidence_refs",
@@ -436,6 +442,7 @@
         ],
         "root_required": [
           "baseline_ref",
+          "checkpoint_operation",
           "close_assessment",
           "gaps",
           "implementation_boundary",
@@ -443,7 +450,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:5f10a0f71436591d3770d0d871c1c6ee3ceec00f2177fef86584651995012cca"
+        "sha256": "sha256:ee72e2fa2b225bff4d88723dd90f4fd8fb7f5e874ff9622fc325486472b2dda0"
       },
       "name": "volicord.record_shaping",
       "output_schema": {
@@ -563,6 +570,7 @@
           "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UserContextSource",
           "UtcTimestamp",
           "WorkPhase",
@@ -571,6 +579,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -580,7 +589,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:15e093e30a69bac730e2191535d16c21fd1eb50a1f20ba40b7c14600184af075"
+        "sha256": "sha256:684740da3fda97bd29e5725ee59a4d65f6f819a7cf8a203fe066ba91b5da964d"
       }
     },
     {
@@ -724,6 +733,7 @@
           "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -731,6 +741,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -740,7 +751,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fb98c9062ef548166322a96c6f10cf061299f3a6e50537ccbe268982f8e05274"
+        "sha256": "sha256:4bf87ecedd7c390fe854e7761a77e10cb4b1838d53993c0d273fbf133a4a8c6d"
       }
     },
     {
@@ -861,6 +872,7 @@
           "ToolResultOrRejected_for_StatusResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -868,6 +880,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -877,7 +890,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:548e4e318f93e254ef0d32425eb84b5fc8cc60bd7d08ec1aac4307b078abc8bf"
+        "sha256": "sha256:a07ec69eeb222dc905d972e78df5fea3986d5dc44dd5c7cef6040027e337a54e"
       }
     },
     {
@@ -940,16 +953,18 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultOrRejected_for_GetOperationResultResult",
+          "UserActionStatus",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
-          "WorkflowRejectionDetails"
+          "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:efb9a2d3e858c464d9f9e7e11da0a73ab1878d0345101973299936f78be3b438"
+        "sha256": "sha256:4cc9891d8808d235808fc0b06e2a2da081a7a913dac5c57d0a1f3c28ff41ea03"
       }
     },
     {
@@ -1062,17 +1077,19 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "UserActionChannelKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
-          "WorkflowRejectionDetails"
+          "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:00f01fc1f01adfef92befd765103164d1a640de4a98a7df4793c14df2aa42a52"
+        "sha256": "sha256:0354a0dcc3d9020edb8506b03d288f3e83460d62943f0c46d0845c14e95fad33"
       }
     },
     {
@@ -1225,6 +1242,7 @@
           "UserActionOptionInput",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -1232,6 +1250,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteDecisionCategory",
@@ -1248,7 +1267,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8d7ce4497748ab1449a281bfac3fa3ad3c2d47b0d36d4eaaf235a5ed9f914480"
+        "sha256": "sha256:749e041df46b9d32ade28cc759ce23ac85631fc0bbe32461799cdc49db4d08ed"
       }
     },
     {
@@ -1362,17 +1381,19 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "UserActionChannelKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
-          "WorkflowRejectionDetails"
+          "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:23816275c75d38dce8c5b8cec0c6578ad0a51fe222a29b66163c7e530cacfee9"
+        "sha256": "sha256:564348292856ad5d5ce384c5459ffb81892c327e9cc64a7cd87d7d8177c9ce90"
       }
     },
     {
@@ -1576,6 +1597,7 @@
           "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UserContextSource",
           "UtcTimestamp",
           "WorkPhase",
@@ -1584,6 +1606,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1593,7 +1616,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4ee5c74be20189c9fe9a8bfa5911fb2f2b2407a33d54ba6897e283be9ae8e3da"
+        "sha256": "sha256:312ecb288d3231b86daa0516715e85ef8395ce4cce62879aa3b969245ec255a3"
       }
     },
     {
@@ -1762,6 +1785,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1771,7 +1795,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c7c8b0403c03a328c66533d9aeba31a97dfcaf39067455f8c6bb277b3198334a"
+        "sha256": "sha256:c6fd0974ad78c2afd9307e43903fbbe3af9d6080250d3afc3b377199fe780ca3"
       }
     },
     {
@@ -1917,6 +1941,7 @@
           "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -1924,6 +1949,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1933,7 +1959,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7e0c975c53cdf53cf5e65b25a2a18be3ad7ad4f36e064b7870efbca1b7769ab8"
+        "sha256": "sha256:8fa77d8d6268c3754ec69851c6abaea3f6c77865c7cd4deee3bcf4feb21751ac"
       }
     },
     {
@@ -2045,6 +2071,7 @@
           "ToolResultOrRejected_for_CheckCloseResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -2052,6 +2079,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -2061,7 +2089,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9923c18509d6ced44f5d673eb6ea487abfcd967c6c885876d20e9a9d1d4c722d"
+        "sha256": "sha256:6e08c7a7804c8b89f645a1eee2187714a1107c567fe716cd9fd26cc7343468fe"
       }
     },
     {
@@ -2212,6 +2240,7 @@
           "UserActionChannelKind",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -2219,6 +2248,7 @@
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -2228,7 +2258,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fc0a184bd4b2fe0e5f13e4d088732e4062abab3a1178836e6b92fa42f355804a"
+        "sha256": "sha256:8e6391496f7223c8f19dcc34bfb929a8973d47f923890c0a81665f9294529df2"
       }
     },
     {

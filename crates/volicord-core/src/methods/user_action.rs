@@ -53,8 +53,8 @@ use volicord_types::schema::{
     StateSummary, ToolEnvelope,
 };
 use volicord_types::values::{
-    ActorSource, ErrorCode, MethodName, StateRecordKind, UserActionChannelKind, UserActionStatus,
-    UserActionVerificationBasis, UtcTimestamp,
+    ActorSource, ErrorCode, MethodName, StateRecordKind, UserActionChannelKind,
+    UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
 };
 use volicord_user_action_service::{
     construct_user_action,
@@ -395,19 +395,19 @@ fn projected_user_action_state(
     let mut resolved_authorities =
         resolved_user_action_authorities_for_all_kinds(store, &task_id, now)
             .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
-    if let Some(authority) = projected_authority {
+    if let Some(authority) = projected_authority.as_ref() {
         match authority.status {
             UserActionStatus::Pending => {
                 pending_authorities.retain(|existing| {
                     existing.user_action_request_id != authority.user_action_request_id
                 });
-                pending_authorities.push(authority);
+                pending_authorities.push(authority.clone());
             }
             UserActionStatus::Resolved => {
                 resolved_authorities.retain(|existing| {
                     existing.user_action_request_id != authority.user_action_request_id
                 });
-                resolved_authorities.push(authority);
+                resolved_authorities.push(authority.clone());
             }
             UserActionStatus::Stale | UserActionStatus::Superseded | UserActionStatus::Expired => {}
         }
@@ -452,12 +452,78 @@ fn projected_user_action_state(
     let shaping_checkpoint = store
         .current_shaping_checkpoint(&task_id)
         .map_err(CorePipelineError::from)?;
+    let mut task_wide_shaping_authority = crate::workflow_projection::task_wide_shaping_authority(
+        store,
+        &envelope.project_id,
+        planned_state_version,
+        task,
+        current_change_unit,
+        shaping_checkpoint.as_ref(),
+        now,
+    )?;
+    if let Some(authority) = projected_authority.as_ref().filter(|authority| {
+        authority
+            .required_for
+            .contains(&UserActionRequiredFor::AdvanceTask)
+    }) {
+        let request_id = authority.user_action_request_id.as_str();
+        for facts in [
+            &mut task_wide_shaping_authority.pending,
+            &mut task_wide_shaping_authority.resolved_unapplied,
+            &mut task_wide_shaping_authority.inconsistent,
+        ] {
+            facts.retain(|fact| fact.request_ref.record_id.as_str() != request_id);
+        }
+        let fact = crate::workflow_projection::WorkflowUserActionFact {
+            request_ref: state_ref(
+                StateRecordKind::UserActionRequest,
+                request_id,
+                &envelope.project_id,
+                Some(&task_id),
+                Some(planned_state_version),
+            ),
+            resolution_ref: authority
+                .user_action_resolution_id
+                .as_ref()
+                .map(|resolution_id| {
+                    state_ref(
+                        StateRecordKind::UserActionResolution,
+                        resolution_id.as_str(),
+                        &envelope.project_id,
+                        Some(&task_id),
+                        Some(planned_state_version),
+                    )
+                }),
+            status: authority.status,
+            required_owner_method: match authority.status {
+                UserActionStatus::Pending | UserActionStatus::Expired => {
+                    MethodName::ResolveUserAction
+                }
+                UserActionStatus::Resolved => MethodName::UpdateScope,
+                UserActionStatus::Stale | UserActionStatus::Superseded => MethodName::Status,
+            },
+        };
+        match authority.status {
+            UserActionStatus::Pending | UserActionStatus::Expired => {
+                task_wide_shaping_authority.pending.push(fact.clone());
+                task_wide_shaping_authority.inconsistent.push(fact);
+            }
+            UserActionStatus::Resolved => {
+                task_wide_shaping_authority
+                    .resolved_unapplied
+                    .push(fact.clone());
+                task_wide_shaping_authority.inconsistent.push(fact);
+            }
+            UserActionStatus::Stale | UserActionStatus::Superseded => {}
+        }
+    }
     let state = state_summary(StateSummaryInput {
         project_id: &envelope.project_id,
         state_version: planned_state_version,
         task,
         current_change_unit,
         shaping_checkpoint: shaping_checkpoint.as_ref(),
+        task_wide_shaping_authority: &task_wide_shaping_authority,
         project_policy,
         acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs: pending_refs,
@@ -876,13 +942,43 @@ fn plan_resolve_user_action(
         None,
         Some(&request.user_action_request_id),
     )?;
-    if let Some(checkpoint) = projected_checkpoint.as_ref() {
+    if shaping_linked {
+        let checkpoint = projected_checkpoint
+            .as_ref()
+            .expect("a shaping-linked resolution must retain its current checkpoint");
+        let mut task_wide_authority = crate::workflow_projection::task_wide_shaping_authority(
+            store,
+            &request.envelope.project_id,
+            planned_state_version,
+            &projected_task,
+            current_change_unit.as_ref(),
+            Some(checkpoint),
+            &now,
+        )?;
+        for facts in [
+            &mut task_wide_authority.pending,
+            &mut task_wide_authority.resolved_unapplied,
+            &mut task_wide_authority.inconsistent,
+        ] {
+            facts.retain(|fact| {
+                fact.request_ref.record_id.as_str() != request.user_action_request_id.as_str()
+            });
+        }
+        task_wide_authority.resolved_unapplied.push(
+            crate::workflow_projection::WorkflowUserActionFact {
+                request_ref: request_ref.clone(),
+                resolution_ref: Some(resolution_ref.clone()),
+                status: UserActionStatus::Resolved,
+                required_owner_method: MethodName::UpdateScope,
+            },
+        );
         state.workflow = crate::workflow_projection::workflow_projection(
             &request.envelope.project_id,
             planned_state_version,
             &projected_task,
             current_change_unit.as_ref(),
             Some(checkpoint),
+            &task_wide_authority,
         );
     }
     let result_fields = ResolveUserActionResultFields {

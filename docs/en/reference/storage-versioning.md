@@ -79,6 +79,7 @@ enabled_capabilities:
   - managed_codex_connection
   - operational_mcp_sessions
   - project_continuity
+  - shaping_checkpoint_lineage
   - shaping_progression
   - user_action_cli_resolution
 ```
@@ -98,6 +99,11 @@ capability identifier, not a numeric behavior switch or an upgrade instruction.
 link aggregate and explicit work-phase transition storage contract. It is a
 semantic capability identifier, not a migration switch, alternate decoder, or
 numeric compatibility branch.
+
+`shaping_checkpoint_lineage` identifies exact predecessor identity,
+same-Task ownership, immutable lineage, matching predecessor supersession and
+successor creation timestamps, and live-linked-UserAction detachment
+protection. It is part of exact manifest matching.
 
 Field meanings:
 

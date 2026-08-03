@@ -725,6 +725,7 @@ fn project_close_task_response(
         task: &synthetic_task,
         current_change_unit: context.current_change_unit.as_ref(),
         shaping_checkpoint: current_shaping_checkpoint.as_ref(),
+        task_wide_shaping_authority: &Default::default(),
         project_policy,
         acceptance_criteria,
         pending_user_action_refs: context.pending_user_action_refs.clone(),

@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use volicord_types::canonical::canonical_json_string;
 use volicord_types::ids::{BaselineRef, TaskId};
-use volicord_types::schema::{SourceRef, StateRecordRef};
+use volicord_types::schema::{ShapingCheckpointOperation, SourceRef, StateRecordRef};
 use volicord_types::values::{
     ShapingCheckpointReadiness, ShapingGapKind, ShapingGapStatus, UserActionKind, UtcTimestamp,
 };
@@ -10,7 +10,8 @@ use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*}
 use crate::{StoreError, StoreResult};
 
 const CHECKPOINT_COLUMNS: &str = "
-    project_id, shaping_checkpoint_id, task_id, scope_revision, baseline_ref,
+    project_id, shaping_checkpoint_id, predecessor_shaping_checkpoint_id,
+    task_id, scope_revision, baseline_ref,
     summary, implementation_boundary, readiness, source_refs_json,
     evidence_refs_json, created_at, superseded_at";
 
@@ -41,6 +42,7 @@ pub enum ShapingCheckpointMutation {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapingCheckpointInsert {
     pub shaping_checkpoint_id: String,
+    pub checkpoint_operation: ShapingCheckpointOperation,
     pub task_id: String,
     pub scope_revision: u64,
     pub baseline_ref: Option<BaselineRef>,
@@ -75,6 +77,7 @@ pub struct ShapingCheckpointUserActionInsert {
 pub struct ShapingCheckpointRecord {
     pub project_id: String,
     pub shaping_checkpoint_id: String,
+    pub predecessor_shaping_checkpoint_id: Option<String>,
     pub task_id: String,
     pub scope_revision: u64,
     pub baseline_ref: Option<BaselineRef>,
@@ -210,7 +213,7 @@ impl CoreProjectStore<'_> {
 impl MutationContext<'_> {
     fn record_shaping_checkpoint(&mut self, input: &ShapingCheckpointInsert) -> StoreResult<()> {
         validate_checkpoint_insert(input)?;
-        self.supersede_current_shaping_checkpoint(&input.task_id)?;
+        let predecessor_shaping_checkpoint_id = self.apply_checkpoint_succession(input)?;
         let scope_revision =
             i64::try_from(input.scope_revision).map_err(|_| StoreError::InvalidInput {
                 detail: "shaping checkpoint scope_revision is too large".to_owned(),
@@ -226,13 +229,15 @@ impl MutationContext<'_> {
         let readiness = encode_closed_value("readiness", &input.readiness)?;
         self.tx.execute(
             "INSERT INTO shaping_checkpoints (
-               project_id, shaping_checkpoint_id, task_id, scope_revision,
+               project_id, shaping_checkpoint_id, predecessor_shaping_checkpoint_id,
+               task_id, scope_revision,
                baseline_ref, summary, implementation_boundary, readiness,
                source_refs_json, evidence_refs_json, created_at, superseded_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL)",
             params![
                 self.project_id,
                 input.shaping_checkpoint_id,
+                predecessor_shaping_checkpoint_id,
                 input.task_id,
                 scope_revision,
                 input.baseline_ref.as_ref().map(BaselineRef::as_str),
@@ -246,6 +251,144 @@ impl MutationContext<'_> {
         )?;
         for gap in &input.gaps {
             self.insert_shaping_gap(input, gap)?;
+        }
+        self.reject_detached_live_shaping_authority(
+            &input.task_id,
+            Some(&input.shaping_checkpoint_id),
+        )?;
+        Ok(())
+    }
+
+    fn apply_checkpoint_succession(
+        &mut self,
+        input: &ShapingCheckpointInsert,
+    ) -> StoreResult<Option<String>> {
+        let current_ids = {
+            let mut statement = self.tx.prepare(
+                "SELECT shaping_checkpoint_id
+                   FROM shaping_checkpoints
+                  WHERE project_id = ?1
+                    AND task_id = ?2
+                    AND readiness <> 'superseded'",
+            )?;
+            let rows = statement
+                .query_map(params![self.project_id, input.task_id], |row| {
+                    row.get::<_, String>(0)
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        if current_ids.len() > 1 {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "a Task has more than one current shaping checkpoint".to_owned(),
+            });
+        }
+        match &input.checkpoint_operation {
+            ShapingCheckpointOperation::CreateInitial => {
+                if !current_ids.is_empty() {
+                    return Err(StoreError::InvalidInput {
+                        detail: "create_initial requires no current shaping checkpoint".to_owned(),
+                    });
+                }
+                Ok(None)
+            }
+            ShapingCheckpointOperation::ReplaceCurrent {
+                expected_current_checkpoint_id,
+            } => {
+                let expected = expected_current_checkpoint_id.as_str();
+                if current_ids.len() != 1 || current_ids[0] != expected {
+                    return Err(StoreError::InvalidInput {
+                        detail: "replace_current requires the exact current shaping checkpoint"
+                            .to_owned(),
+                    });
+                }
+                self.reject_live_checkpoint_user_actions(&input.task_id, expected)?;
+                let changed = self.tx.execute(
+                    "UPDATE shaping_checkpoints
+                        SET readiness = 'superseded', superseded_at = ?4
+                      WHERE project_id = ?1
+                        AND task_id = ?2
+                        AND shaping_checkpoint_id = ?3
+                        AND readiness <> 'superseded'",
+                    params![
+                        self.project_id,
+                        input.task_id,
+                        expected,
+                        input.created_at.to_string()
+                    ],
+                )?;
+                if changed != 1 {
+                    return Err(StoreError::SchemaInvariant {
+                        database_kind: "project_state",
+                        detail: "exact shaping-checkpoint compare-and-swap changed no row"
+                            .to_owned(),
+                    });
+                }
+                Ok(Some(expected.to_owned()))
+            }
+        }
+    }
+
+    fn reject_live_checkpoint_user_actions(
+        &self,
+        task_id: &str,
+        checkpoint_id: &str,
+    ) -> StoreResult<()> {
+        let live_count: i64 = self.tx.query_row(
+            "SELECT COUNT(*)
+               FROM shaping_checkpoint_user_actions AS l
+               JOIN shaping_checkpoint_gaps AS g
+                 ON g.project_id = l.project_id
+                AND g.shaping_checkpoint_id = l.shaping_checkpoint_id
+                AND g.shaping_gap_id = l.shaping_gap_id
+               JOIN user_action_requests AS r
+                 ON r.project_id = l.project_id
+                AND r.user_action_request_id = l.user_action_request_id
+              WHERE l.project_id = ?1
+                AND l.task_id = ?2
+                AND l.shaping_checkpoint_id = ?3
+                AND r.basis_status = 'current'",
+            params![self.project_id, task_id, checkpoint_id],
+            |row| row.get(0),
+        )?;
+        if live_count != 0 {
+            return Err(StoreError::InvalidInput {
+                detail: "current shaping checkpoint has live linked UserAction authority"
+                    .to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    fn reject_detached_live_shaping_authority(
+        &self,
+        task_id: &str,
+        current_checkpoint_id: Option<&str>,
+    ) -> StoreResult<()> {
+        let detached_count: i64 = self.tx.query_row(
+            "SELECT COUNT(*)
+               FROM user_action_requests AS r
+              WHERE r.project_id = ?1
+                AND r.task_id = ?2
+                AND r.source_method = 'volicord.record_shaping'
+                AND r.basis_status = 'current'
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM shaping_checkpoint_user_actions AS l
+                   WHERE l.project_id = r.project_id
+                     AND l.user_action_request_id = r.user_action_request_id
+                     AND (?3 IS NOT NULL AND l.shaping_checkpoint_id = ?3)
+                )",
+            params![self.project_id, task_id, current_checkpoint_id],
+            |row| row.get(0),
+        )?;
+        if detached_count != 0 {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "live shaping UserAction authority is detached from the current checkpoint"
+                    .to_owned(),
+            });
         }
         Ok(())
     }
@@ -492,8 +635,25 @@ fn shaping_checkpoint_where(
         )
     };
     let raw = if current_only {
-        conn.query_row(&sql, params![project_id, task_id], raw_checkpoint)
-            .optional()?
+        let mut statement = conn.prepare(&sql)?;
+        let rows = statement
+            .query_map(params![project_id, task_id], raw_checkpoint)?
+            .collect::<Result<Vec<_>, _>>()?;
+        if rows.len() > 1 {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "a Task has more than one current shaping checkpoint".to_owned(),
+            });
+        }
+        let raw = rows.into_iter().next();
+        validate_current_shaping_authority(
+            conn,
+            project_id,
+            task_id,
+            raw.as_ref()
+                .map(|value| value.shaping_checkpoint_id.as_str()),
+        )?;
+        raw
     } else {
         conn.query_row(
             &sql,
@@ -505,10 +665,44 @@ fn shaping_checkpoint_where(
     raw.map(|raw| decode_checkpoint(conn, raw)).transpose()
 }
 
+fn validate_current_shaping_authority(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+    current_checkpoint_id: Option<&str>,
+) -> StoreResult<()> {
+    let detached_count: i64 = conn.query_row(
+        "SELECT COUNT(*)
+           FROM user_action_requests AS r
+          WHERE r.project_id = ?1
+            AND r.task_id = ?2
+            AND r.source_method = 'volicord.record_shaping'
+            AND r.basis_status = 'current'
+            AND NOT EXISTS (
+              SELECT 1
+                FROM shaping_checkpoint_user_actions AS l
+               WHERE l.project_id = r.project_id
+                 AND l.user_action_request_id = r.user_action_request_id
+                 AND (?3 IS NOT NULL AND l.shaping_checkpoint_id = ?3)
+            )",
+        params![project_id, task_id, current_checkpoint_id],
+        |row| row.get(0),
+    )?;
+    if detached_count != 0 {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            task_id,
+            "metadata_json",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 struct RawCheckpoint {
     project_id: String,
     shaping_checkpoint_id: String,
+    predecessor_shaping_checkpoint_id: Option<String>,
     task_id: String,
     scope_revision: i64,
     baseline_ref: Option<String>,
@@ -525,16 +719,17 @@ fn raw_checkpoint(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawCheckpoint> {
     Ok(RawCheckpoint {
         project_id: row.get(0)?,
         shaping_checkpoint_id: row.get(1)?,
-        task_id: row.get(2)?,
-        scope_revision: row.get(3)?,
-        baseline_ref: row.get(4)?,
-        summary: row.get(5)?,
-        implementation_boundary: row.get(6)?,
-        readiness: row.get(7)?,
-        source_refs_json: row.get(8)?,
-        evidence_refs_json: row.get(9)?,
-        created_at: row.get(10)?,
-        superseded_at: row.get(11)?,
+        predecessor_shaping_checkpoint_id: row.get(2)?,
+        task_id: row.get(3)?,
+        scope_revision: row.get(4)?,
+        baseline_ref: row.get(5)?,
+        summary: row.get(6)?,
+        implementation_boundary: row.get(7)?,
+        readiness: row.get(8)?,
+        source_refs_json: row.get(9)?,
+        evidence_refs_json: row.get(10)?,
+        created_at: row.get(11)?,
+        superseded_at: row.get(12)?,
     })
 }
 
@@ -582,6 +777,7 @@ fn decode_checkpoint(
             "readiness",
         ));
     }
+    validate_predecessor_lineage(conn, &raw, &created_at)?;
     let task_scope_revision: i64 = conn.query_row(
         "SELECT scope_revision FROM tasks WHERE project_id = ?1 AND task_id = ?2",
         params![raw.project_id, raw.task_id],
@@ -613,6 +809,7 @@ fn decode_checkpoint(
     Ok(ShapingCheckpointRecord {
         project_id: raw.project_id,
         shaping_checkpoint_id: raw.shaping_checkpoint_id,
+        predecessor_shaping_checkpoint_id: raw.predecessor_shaping_checkpoint_id,
         task_id: raw.task_id,
         scope_revision,
         baseline_ref: raw.baseline_ref.map(BaselineRef::new),
@@ -635,6 +832,59 @@ fn decode_checkpoint(
         superseded_at,
         gaps,
     })
+}
+
+fn validate_predecessor_lineage(
+    conn: &Connection,
+    raw: &RawCheckpoint,
+    created_at: &UtcTimestamp,
+) -> StoreResult<()> {
+    let Some(predecessor_id) = raw.predecessor_shaping_checkpoint_id.as_deref() else {
+        return Ok(());
+    };
+    if predecessor_id == raw.shaping_checkpoint_id {
+        return Err(StoreError::corrupt_owner_state_value(
+            "shaping_checkpoints",
+            &raw.shaping_checkpoint_id,
+            "predecessor_shaping_checkpoint_id",
+        ));
+    }
+    let predecessor = conn
+        .query_row(
+            "SELECT task_id, readiness, superseded_at
+               FROM shaping_checkpoints
+              WHERE project_id = ?1
+                AND shaping_checkpoint_id = ?2",
+            params![raw.project_id, predecessor_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((predecessor_task_id, predecessor_readiness, predecessor_superseded_at)) = predecessor
+    else {
+        return Err(StoreError::corrupt_owner_state_value(
+            "shaping_checkpoints",
+            &raw.shaping_checkpoint_id,
+            "predecessor_shaping_checkpoint_id",
+        ));
+    };
+    let expected_superseded_at = created_at.to_canonical_string();
+    if predecessor_task_id != raw.task_id
+        || predecessor_readiness != "superseded"
+        || predecessor_superseded_at.as_deref() != Some(expected_superseded_at.as_str())
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "shaping_checkpoints",
+            &raw.shaping_checkpoint_id,
+            "predecessor_shaping_checkpoint_id",
+        ));
+    }
+    Ok(())
 }
 
 fn shaping_gaps(
