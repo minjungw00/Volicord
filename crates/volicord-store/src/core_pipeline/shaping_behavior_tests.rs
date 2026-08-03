@@ -463,3 +463,115 @@ fn policy_owner_names_remain_exact() {
         ShapingDecisionApplicationOwner::UpdateScope
     );
 }
+
+#[test]
+fn current_checkpoint_read_rejects_persisted_detached_user_action_authority(
+) -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let task_id = "task_shaping_detached_authority";
+    let checkpoint_id = "checkpoint_shaping_detached_authority";
+    let change_unit_id = "cu_shaping_detached_authority";
+    let gap_id = "gap_shaping_detached_authority";
+    let request_id = "request_shaping_detached_authority";
+    let baseline = BaselineRef::new("baseline_shaping_detached_authority");
+    let mut task = task_insert(task_id);
+    task.shaping.baseline_ref = Some(baseline.clone());
+
+    store.commit_mutation(
+        commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordShaping,
+            Some(&IdempotencyKey::new("idem_shaping_detached_authority")),
+            &RequestHash::new("sha256:shaping-detached-authority"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task(
+                "shaping_detached_authority",
+                task_id,
+            )],
+        ),
+        &[
+            CoreStorageMutation::Task(TaskMutation::insert(task)),
+            CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(ChangeUnitInsert {
+                change_unit_id: change_unit_id.to_owned(),
+                task_id: task_id.to_owned(),
+                scope_summary: StoredChangeUnitScopeSummary {
+                    scope_summary: Some("Detached authority corruption fixture.".to_owned()),
+                    affected_areas: Vec::new(),
+                    constraints: Vec::new(),
+                },
+                bounded_paths: vec!["src/lib.rs".to_owned()],
+                write_basis: StoredChangeUnitWriteBasis {
+                    baseline_ref: Some(baseline.clone()),
+                    git_workspace_context: None,
+                },
+                effect_contract: None,
+                lifecycle: StoredChangeUnitLifecycle {
+                    recovery_required: false,
+                },
+            })),
+            CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(shaping_request(
+                request_id,
+                task_id,
+                change_unit_id,
+                checkpoint_id,
+                gap_id,
+                baseline.clone(),
+                ShapingGapKind::UserProductDecisionRequired,
+            ))),
+            CoreStorageMutation::Shaping(ShapingCheckpointMutation::Record(
+                ShapingCheckpointInsert {
+                    shaping_checkpoint_id: checkpoint_id.to_owned(),
+                    checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
+                    task_id: task_id.to_owned(),
+                    scope_revision: 0,
+                    baseline_ref: Some(baseline),
+                    summary: "Current user authority is durably linked.".to_owned(),
+                    implementation_boundary: Some("The link cannot disappear silently.".to_owned()),
+                    readiness: ShapingCheckpointReadiness::Blocked,
+                    source_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    created_at: UtcTimestamp::parse("2026-01-01T00:00:01Z")?,
+                    gaps: vec![shaping_gap(
+                        gap_id,
+                        request_id,
+                        ShapingGapKind::UserProductDecisionRequired,
+                    )],
+                },
+            )),
+        ],
+        response_json,
+    )?;
+    drop(store);
+
+    let corruption = rusqlite::Connection::open(harness.state_database_path())?;
+    let trigger_sql: String = corruption.query_row(
+        "SELECT sql FROM sqlite_master
+          WHERE type = 'trigger' AND name = 'trg_shaping_checkpoint_live_user_action_not_detached'",
+        [],
+        |row| row.get(0),
+    )?;
+    corruption
+        .execute_batch("DROP TRIGGER trg_shaping_checkpoint_live_user_action_not_detached")?;
+    let detached = corruption.execute(
+        "UPDATE shaping_checkpoints
+            SET readiness = 'superseded', superseded_at = '2026-01-01T00:00:02Z'
+          WHERE project_id = ?1 AND shaping_checkpoint_id = ?2",
+        rusqlite::params![PROJECT_ID, checkpoint_id],
+    )?;
+    assert_eq!(detached, 1, "fixture must detach one current authority");
+    corruption.execute_batch(&trigger_sql)?;
+    drop(corruption);
+
+    let store = harness.store()?;
+    let error = store
+        .current_shaping_checkpoint(&TaskId::new(task_id))
+        .expect_err("a detached current UserAction must be rejected as corrupt owner state");
+    assert!(matches!(
+        error,
+        StoreError::CorruptOwnerStateValue { table, logical_column, .. }
+            if table == "user_action_requests" && logical_column == "metadata_json"
+    ));
+    Ok(())
+}

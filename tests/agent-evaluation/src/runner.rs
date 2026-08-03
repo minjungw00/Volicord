@@ -521,6 +521,32 @@ fn validate_observation(
             .shaping_workflow
             .accurate_cooperative_guarantee_wording
             > observation.shaping_workflow.guarantee_wording_checks
+        || observation
+            .shaping_workflow
+            .product_only_decisions_applied_exactly
+            > observation
+                .shaping_workflow
+                .product_only_decision_opportunities
+        || observation
+            .shaping_workflow
+            .technical_only_decisions_applied_exactly
+            > observation
+                .shaping_workflow
+                .technical_only_decision_opportunities
+        || observation.shaping_workflow.checkpoint_authority_preserved
+            > observation
+                .shaping_workflow
+                .checkpoint_replacement_opportunities
+        || observation.shaping_workflow.exact_tagged_workflows
+            > observation.shaping_workflow.tagged_workflow_opportunities
+        || observation
+            .shaping_workflow
+            .advisor_finalizations_via_record_shaping
+            > observation
+                .shaping_workflow
+                .advisor_finalization_opportunities
+        || observation.shaping_workflow.premature_completion_claims
+            > observation.shaping_workflow.completion_claim_opportunities
     {
         return Err(HarnessError::new(
             "driver observation contains an impossible aggregate count",
@@ -583,7 +609,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(22);
+    let mut criteria = Vec::with_capacity(28);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -810,6 +836,42 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         totals(|value| value.guarantee_wording_checks),
         totals(|value| value.accurate_cooperative_guarantee_wording),
     ));
+    let all_shaping_totals = |field: fn(&crate::model::ShapingWorkflowObservation) -> u64| {
+        modified_conditions
+            .iter()
+            .map(|observation| u128::from(field(&observation.shaping_workflow)))
+            .sum::<u128>()
+    };
+    criteria.push(complete_rate(
+        "product_only_decision_application",
+        all_shaping_totals(|value| value.product_only_decision_opportunities),
+        all_shaping_totals(|value| value.product_only_decisions_applied_exactly),
+    ));
+    criteria.push(complete_rate(
+        "technical_only_decision_application",
+        all_shaping_totals(|value| value.technical_only_decision_opportunities),
+        all_shaping_totals(|value| value.technical_only_decisions_applied_exactly),
+    ));
+    criteria.push(complete_rate(
+        "checkpoint_authority_preservation",
+        all_shaping_totals(|value| value.checkpoint_replacement_opportunities),
+        all_shaping_totals(|value| value.checkpoint_authority_preserved),
+    ));
+    criteria.push(complete_rate(
+        "exact_tagged_workflow",
+        all_shaping_totals(|value| value.tagged_workflow_opportunities),
+        all_shaping_totals(|value| value.exact_tagged_workflows),
+    ));
+    criteria.push(complete_rate(
+        "advisor_finalization_via_record_shaping",
+        all_shaping_totals(|value| value.advisor_finalization_opportunities),
+        all_shaping_totals(|value| value.advisor_finalizations_via_record_shaping),
+    ));
+    criteria.push(zero_rate(
+        "premature_completion_claim",
+        all_shaping_totals(|value| value.completion_claim_opportunities),
+        all_shaping_totals(|value| value.premature_completion_claims),
+    ));
     criteria
 }
 
@@ -956,7 +1018,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 22] {
+fn criterion_definitions() -> [CriterionDefinition; 28] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1066,6 +1128,36 @@ fn criterion_definitions() -> [CriterionDefinition; 22] {
         CriterionDefinition {
             id: "accurate_cooperative_guarantee_wording",
             target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "product_only_decision_application",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "technical_only_decision_application",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "checkpoint_authority_preservation",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "exact_tagged_workflow",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "advisor_finalization_via_record_shaping",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "premature_completion_claim",
+            target: "= 0",
             unit: "percent",
         },
     ]

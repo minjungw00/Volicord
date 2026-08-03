@@ -427,6 +427,67 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(fixture.repository_snapshot()?, before_analysis);
 
+    let pending_replacement = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "task_id": task_id,
+            "operation": {
+                "operation": "record_checkpoint",
+                "checkpoint_operation": {
+                    "operation": "replace_current",
+                    "expected_current_checkpoint_id": checkpoint_id
+                },
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "summary": "A replacement cannot detach pending user authority.",
+                "implementation_boundary": "Retain every live user-owned decision.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }
+        }),
+        SESSION,
+        "future.turn.planning-product.pending-replacement",
+    )?;
+    call_id += 1;
+    assert_eq!(
+        method_result(&pending_replacement)["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(
+        method_result(&pending_replacement)["base"]["effect_kind"],
+        "no_effect"
+    );
+
+    let early_write = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::PREPARE_WRITE,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "task_id": task_id,
+            "change_unit_id": null,
+            "intended_operation": "Create the bounded release-preparation note.",
+            "intended_paths": [IMPLEMENTATION_PATH],
+            "product_file_write_intended": true,
+            "sensitive_categories": [],
+            "baseline_ref": BASELINE
+        }),
+        SESSION,
+        "future.turn.planning-product.early-write",
+    )?;
+    call_id += 1;
+    assert_eq!(
+        method_result(&early_write)["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(fixture.repository_snapshot()?, before_analysis);
+
     let state_db = fixture.project_state_db_path();
     let state = rusqlite::Connection::open(&state_db)?;
     assert_eq!(table_count(&state, "change_units")?, 0);
@@ -505,6 +566,42 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         resolution_refs.push(resolved["user_action_resolution_ref"].clone());
     }
 
+    let resolved_replacement = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "task_id": task_id,
+            "operation": {
+                "operation": "record_checkpoint",
+                "checkpoint_operation": {
+                    "operation": "replace_current",
+                    "expected_current_checkpoint_id": checkpoint_id
+                },
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "summary": "A replacement cannot detach resolved unapplied user authority.",
+                "implementation_boundary": "Apply each decision through its semantic owner.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }
+        }),
+        SESSION,
+        "future.turn.planning-product.resolved-replacement",
+    )?;
+    call_id += 1;
+    assert_eq!(
+        method_result(&resolved_replacement)["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(
+        method_result(&resolved_replacement)["base"]["effect_kind"],
+        "no_effect"
+    );
+
     let scope = live_mcp_call(
         &mut child,
         call_id,
@@ -540,6 +637,27 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     let change_unit_id =
         required_string(&scope["authority_receipt"]["change_unit_ref"], "record_id")?;
+    let state = rusqlite::Connection::open(&state_db)?;
+    let gap_statuses = state
+        .prepare(
+            "SELECT gap_kind, status FROM shaping_checkpoint_gaps
+              WHERE shaping_checkpoint_id = ?1 ORDER BY gap_kind",
+        )?
+        .query_map([&checkpoint_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    assert!(gap_statuses
+        .iter()
+        .any(|(kind, status)| { kind == "user_scope_decision_required" && status == "applied" }));
+    assert!(gap_statuses.iter().all(|(kind, status)| {
+        if kind == "user_scope_decision_required" {
+            status == "applied"
+        } else {
+            status == "resolved"
+        }
+    }));
+    drop(state);
     assert_eq!(
         table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
         0
@@ -575,6 +693,15 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         Some("implementation"),
         "implementation",
     );
+    let state = rusqlite::Connection::open(&state_db)?;
+    let unapplied_gap_count: u64 = state.query_row(
+        "SELECT COUNT(*) FROM shaping_checkpoint_gaps
+          WHERE shaping_checkpoint_id = ?1 AND status <> 'applied'",
+        [&checkpoint_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(unapplied_gap_count, 0);
+    drop(state);
     assert_eq!(
         table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
         0

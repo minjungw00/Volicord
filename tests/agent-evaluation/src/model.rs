@@ -271,6 +271,18 @@ pub struct ShapingWorkflowObservation {
     pub raw_mcp_json_repetitions: u64,
     pub guarantee_wording_checks: u64,
     pub accurate_cooperative_guarantee_wording: u64,
+    pub product_only_decision_opportunities: u64,
+    pub product_only_decisions_applied_exactly: u64,
+    pub technical_only_decision_opportunities: u64,
+    pub technical_only_decisions_applied_exactly: u64,
+    pub checkpoint_replacement_opportunities: u64,
+    pub checkpoint_authority_preserved: u64,
+    pub tagged_workflow_opportunities: u64,
+    pub exact_tagged_workflows: u64,
+    pub advisor_finalization_opportunities: u64,
+    pub advisor_finalizations_via_record_shaping: u64,
+    pub completion_claim_opportunities: u64,
+    pub premature_completion_claims: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

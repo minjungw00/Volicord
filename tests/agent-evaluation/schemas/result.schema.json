@@ -66,8 +66,8 @@
     },
     "criteria": {
       "type": "array",
-      "minItems": 22,
-      "maxItems": 22,
+      "minItems": 28,
+      "maxItems": 28,
       "items": {"$ref": "#/$defs/criterion"}
     },
     "privacy": {
@@ -264,7 +264,19 @@
         "concise_user_readable_outputs",
         "raw_mcp_json_repetitions",
         "guarantee_wording_checks",
-        "accurate_cooperative_guarantee_wording"
+        "accurate_cooperative_guarantee_wording",
+        "product_only_decision_opportunities",
+        "product_only_decisions_applied_exactly",
+        "technical_only_decision_opportunities",
+        "technical_only_decisions_applied_exactly",
+        "checkpoint_replacement_opportunities",
+        "checkpoint_authority_preserved",
+        "tagged_workflow_opportunities",
+        "exact_tagged_workflows",
+        "advisor_finalization_opportunities",
+        "advisor_finalizations_via_record_shaping",
+        "completion_claim_opportunities",
+        "premature_completion_claims"
       ],
       "properties": {
         "long_lived_repository_requests": {"type": "integer", "minimum": 0},
@@ -289,7 +301,19 @@
         "concise_user_readable_outputs": {"type": "integer", "minimum": 0},
         "raw_mcp_json_repetitions": {"type": "integer", "minimum": 0},
         "guarantee_wording_checks": {"type": "integer", "minimum": 0},
-        "accurate_cooperative_guarantee_wording": {"type": "integer", "minimum": 0}
+        "accurate_cooperative_guarantee_wording": {"type": "integer", "minimum": 0},
+        "product_only_decision_opportunities": {"type": "integer", "minimum": 0},
+        "product_only_decisions_applied_exactly": {"type": "integer", "minimum": 0},
+        "technical_only_decision_opportunities": {"type": "integer", "minimum": 0},
+        "technical_only_decisions_applied_exactly": {"type": "integer", "minimum": 0},
+        "checkpoint_replacement_opportunities": {"type": "integer", "minimum": 0},
+        "checkpoint_authority_preserved": {"type": "integer", "minimum": 0},
+        "tagged_workflow_opportunities": {"type": "integer", "minimum": 0},
+        "exact_tagged_workflows": {"type": "integer", "minimum": 0},
+        "advisor_finalization_opportunities": {"type": "integer", "minimum": 0},
+        "advisor_finalizations_via_record_shaping": {"type": "integer", "minimum": 0},
+        "completion_claim_opportunities": {"type": "integer", "minimum": 0},
+        "premature_completion_claims": {"type": "integer", "minimum": 0}
       }
     },
     "trialFailure": {

@@ -92,6 +92,48 @@ fn known_tool_validation_aggregates_independent_issues_without_core_effects(
 }
 
 #[test]
+fn record_shaping_rejects_the_removed_flat_argument_shape_without_core_effects(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-record-shaping-flat-shape")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&adapter)?;
+    let before = fixture.counts()?;
+    let error = adapter
+        .call_tool(
+            AgentToolId::RECORD_SHAPING.wire_name(),
+            json!({
+                "task_id": task_id,
+                "checkpoint_operation": {"operation": "create_initial"},
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "summary": "Removed flat record_shaping shape.",
+                "implementation_boundary": "The canonical nested operation is required.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )
+        .expect_err("the removed flat record_shaping shape must fail before Core");
+    let response = structured_tool_error(AgentToolId::RECORD_SHAPING.wire_name(), &error);
+
+    tool_error_issue(&response, "/operation", "MCP_ARGUMENT_REQUIRED");
+    for field in [
+        "checkpoint_operation",
+        "scope_revision",
+        "baseline_ref",
+        "summary",
+        "implementation_boundary",
+        "gaps",
+        "source_refs",
+        "evidence_refs",
+    ] {
+        tool_error_issue(&response, &format!("/{field}"), "MCP_ARGUMENT_UNKNOWN");
+    }
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-nullable-object-validation")?;
@@ -1373,6 +1415,172 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
             .iter()
             .any(|fact| fact["fact_kind"] == fact_kind));
     }
+    Ok(())
+}
+
+#[test]
+fn product_and_technical_only_shaping_outputs_do_not_fabricate_scope_gaps(
+) -> Result<(), Box<dyn Error>> {
+    for (label, gap_kind, judgment_kind) in [
+        (
+            "product",
+            "user_product_decision_required",
+            "product_decision",
+        ),
+        (
+            "technical",
+            "user_technical_decision_required",
+            "technical_decision",
+        ),
+    ] {
+        let fixture = CoreFixture::new(&format!("mcp-{label}-only-shaping"))?;
+        let adapter = adapter(&fixture)?;
+        let (task_id, _) = create_task(&adapter)?;
+        let shaped = adapter.call_tool(
+            AgentToolId::RECORD_SHAPING.wire_name(),
+            json!({
+                "task_id": task_id,
+                "operation": {
+                    "operation": "record_checkpoint",
+                    "checkpoint_operation": {"operation": "create_initial"},
+                    "scope_revision": 0,
+                    "baseline_ref": null,
+                    "summary": format!("One {label}-owned decision is required."),
+                    "implementation_boundary": "Proceed only after the exact User Channel decision.",
+                    "gaps": [{
+                        "gap_kind": gap_kind,
+                        "summary": format!("Choose the current {label} direction."),
+                        "affected_refs": [],
+                        "user_action": {
+                            "action": {
+                                "action_type": "choice",
+                                "judgment_kind": judgment_kind,
+                                "presentation": "short",
+                                "question": format!("Which current {label} direction should be used?"),
+                                "options": [{
+                                    "option_id": "accept",
+                                    "label": "Accept current direction",
+                                    "description": "Accept the bounded current direction.",
+                                    "consequence": "Only this exact decision is resolved.",
+                                    "is_default": true
+                                }, {
+                                    "option_id": "revise",
+                                    "label": "Revise current direction",
+                                    "description": "Request a bounded revision.",
+                                    "consequence": "Only this exact decision is resolved with revision.",
+                                    "is_default": false
+                                }],
+                                "context": {
+                                    "summary": "The current shaping boundary needs one user-owned decision.",
+                                    "related_refs": [],
+                                    "artifact_refs": [],
+                                    "visible_risks": [],
+                                    "constraints": []
+                                },
+                                "affected_refs": [],
+                                "sensitive_action_scope": null
+                            },
+                            "expires_at": null
+                        }
+                    }],
+                    "source_refs": [],
+                    "evidence_refs": []
+                }
+            }),
+        )?;
+        let gaps = shaped.response_value["workflow"]["checkpoint"]["gaps"]
+            .as_array()
+            .expect("checkpoint gaps");
+        assert_eq!(gaps.len(), 1, "{label}");
+        assert_eq!(gaps[0]["gap_kind"], gap_kind, "{label}");
+        assert!(gaps
+            .iter()
+            .all(|gap| gap["gap_kind"] != "user_scope_decision_required"));
+        assert_eq!(
+            shaped.response_value["created_user_action_request_refs"]
+                .as_array()
+                .map(Vec::len),
+            Some(1),
+            "{label}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn advisor_close_guidance_names_record_shaping_and_never_record_run() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-advisor-close-guidance")?;
+    let adapter = adapter(&fixture)?;
+    let mut intake = intake_args(None);
+    intake["requested_mode"] = json!("advisor");
+    intake["initial_scope"]["acceptance_criteria"][0]["evidence_requirement"] =
+        json!("not_required");
+    let intake = adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake)?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .ok_or("advisor intake Task")?;
+    let scope = adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        json!({
+            "task_id": task_id,
+            "baseline_ref": "baseline_advisor_guidance",
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Read-only advisor guidance boundary.",
+                "affected_paths": [],
+                "effect_contract": {
+                    "allowed_effects": [
+                        "artifact_registration",
+                        "user_action_request",
+                        "evidence_update"
+                    ],
+                    "forbidden_effects": [
+                        "product_file_write",
+                        "run_recording",
+                        "sensitive_action",
+                        "external_network",
+                        "secret_access"
+                    ],
+                    "allowed_paths": [],
+                    "expected_outputs": ["Advice result"],
+                    "invariants": ["Observe only"],
+                    "evidence_expectations": [],
+                    "sensitive_action_expectations": []
+                }
+            }
+        }),
+    )?;
+    assert_eq!(scope.response_value["base"]["response_kind"], "result");
+    let shaped = adapter.call_tool(
+        AgentToolId::RECORD_SHAPING.wire_name(),
+        json!({
+            "task_id": task_id,
+            "operation": {
+                "operation": "record_checkpoint",
+                "checkpoint_operation": {"operation": "create_initial"},
+                "scope_revision": 1,
+                "baseline_ref": "baseline_advisor_guidance",
+                "summary": "The bounded advice is ready to finalize.",
+                "implementation_boundary": "Provide advice without repository mutation.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }
+        }),
+    )?;
+    assert_eq!(
+        shaped.response_value["workflow"]["kind"],
+        "ready_to_finalize_advice"
+    );
+
+    let close = adapter.call_tool(
+        AgentToolId::CHECK_CLOSE.wire_name(),
+        json!({"task_id": task_id}),
+    )?;
+    let guidance = serde_json::to_string(&close.response_value)?;
+    assert!(guidance.contains("volicord.record_shaping"));
+    assert!(!guidance.contains("volicord.record_run"));
     Ok(())
 }
 

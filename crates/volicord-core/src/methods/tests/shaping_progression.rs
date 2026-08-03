@@ -562,6 +562,24 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         "{}",
         scoped.response_value
     );
+    let before_write_capable_scope = harness.counts()?;
+    let write_capable_scope = harness.service.update_scope(
+        update_scope_request(
+            "req_advisor_write_capable_scope",
+            "idem_advisor_write_capable_scope",
+            false,
+            Some(before_write_capable_scope.state_version),
+            &task_id,
+            ChangeUnitOperation::ReplaceCurrent,
+            "Advisor mode cannot own a write-capable Change Unit.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        write_capable_scope.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(harness.counts()?, before_write_capable_scope);
     let shaped = harness.service.record_shaping(
         RecordShapingRequest {
             envelope: envelope(
@@ -612,6 +630,22 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
     assert!(!pre_finalize_json.contains("volicord.record_run"));
 
     enable_record_run_capabilities(&harness)?;
+    let before_forbidden_mutations = harness.counts()?;
+    let advisor_write = harness.service.prepare_write(
+        prepare_write_request(
+            "req_advisor_public_write",
+            "idem_advisor_public_write",
+            Some(3),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        advisor_write.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(harness.counts()?, before_forbidden_mutations);
     let advisor_run = harness.service.record_run(
         record_run_request(
             "req_advisor_public_run",
@@ -627,6 +661,8 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         advisor_run.response_value["base"]["response_kind"],
         "rejected"
     );
+    assert_eq!(harness.counts()?, before_forbidden_mutations);
+    assert!(!product_repo_root(&harness)?.join("src").exists());
     let finalize_request = RecordShapingRequest {
         envelope: envelope(
             "req_advisor_shaping_finalize",
@@ -917,6 +953,52 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             )],
         ),
         (
+            "advisor_sensitive",
+            vec![(
+                ShapingGapKind::SensitiveApprovalRequired,
+                JudgmentKind::SensitiveApproval,
+            )],
+        ),
+        (
+            "advisor_product_technical",
+            vec![
+                (
+                    ShapingGapKind::UserProductDecisionRequired,
+                    JudgmentKind::ProductDecision,
+                ),
+                (
+                    ShapingGapKind::UserTechnicalDecisionRequired,
+                    JudgmentKind::TechnicalDecision,
+                ),
+            ],
+        ),
+        (
+            "advisor_product_scope",
+            vec![
+                (
+                    ShapingGapKind::UserProductDecisionRequired,
+                    JudgmentKind::ProductDecision,
+                ),
+                (
+                    ShapingGapKind::UserScopeDecisionRequired,
+                    JudgmentKind::ScopeDecision,
+                ),
+            ],
+        ),
+        (
+            "advisor_technical_scope",
+            vec![
+                (
+                    ShapingGapKind::UserTechnicalDecisionRequired,
+                    JudgmentKind::TechnicalDecision,
+                ),
+                (
+                    ShapingGapKind::UserScopeDecisionRequired,
+                    JudgmentKind::ScopeDecision,
+                ),
+            ],
+        ),
+        (
             "advisor_multiple",
             vec![
                 (
@@ -930,6 +1012,27 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
                 (
                     ShapingGapKind::UserScopeDecisionRequired,
                     JudgmentKind::ScopeDecision,
+                ),
+            ],
+        ),
+        (
+            "advisor_all",
+            vec![
+                (
+                    ShapingGapKind::UserProductDecisionRequired,
+                    JudgmentKind::ProductDecision,
+                ),
+                (
+                    ShapingGapKind::UserTechnicalDecisionRequired,
+                    JudgmentKind::TechnicalDecision,
+                ),
+                (
+                    ShapingGapKind::UserScopeDecisionRequired,
+                    JudgmentKind::ScopeDecision,
+                ),
+                (
+                    ShapingGapKind::SensitiveApprovalRequired,
+                    JudgmentKind::SensitiveApproval,
                 ),
             ],
         ),
@@ -948,6 +1051,22 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             shaped.response_value["workflow"]["kind"],
             "awaiting_user_action"
         );
+        let before_forbidden_mutations = harness.counts()?;
+        let forbidden_write = harness.service.prepare_write(
+            prepare_write_request(
+                &format!("req_{label}_write"),
+                &format!("idem_{label}_write"),
+                Some(before_forbidden_mutations.state_version),
+                Some(&task_id),
+                Some(&initial_change_unit_id),
+            ),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            forbidden_write.response_value["base"]["response_kind"],
+            "rejected"
+        );
+        assert_eq!(harness.counts()?, before_forbidden_mutations);
         let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
         let request_refs = shaped.response_value["created_user_action_request_refs"]
             .as_array()
@@ -1106,6 +1225,13 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             closed.response_value["state"]["lifecycle"]["result"],
             "advice_only"
         );
+        let final_counts = harness.counts()?;
+        assert_eq!(final_counts.write_tickets, 0, "{label}");
+        assert_eq!(final_counts.runs, 0, "{label}");
+        assert!(
+            !product_repo_root(&harness)?.join("src").exists(),
+            "{label}"
+        );
     }
     Ok(())
 }
@@ -1114,26 +1240,59 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
 fn direct_mode_records_a_mutation_without_shaping() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
+    let repository = planning_only_repository_fixture(&harness, "direct_without_shaping")?;
     let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
         &harness,
         "direct_without_shaping",
         RequestedMode::Direct,
     )?;
+    assert_eq!(
+        harness
+            .store()?
+            .task_record(&TaskId::new(&task_id))?
+            .expect("direct Task")
+            .work_phase,
+        WorkPhase::Implementation
+    );
     assert!(harness
         .store()?
         .current_shaping_checkpoint(&TaskId::new(&task_id))?
         .is_none());
 
     let before = harness.counts()?;
-    let mut request = record_run_request(
+    let ticket = harness.service.prepare_write(
+        prepare_write_request(
+            "req_direct_without_shaping_write",
+            "idem_direct_without_shaping_write",
+            Some(before.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(ticket.response_value["decision"], "allowed");
+    assert!(repository.status_bytes()?.is_empty());
+    let write_ticket_id = response_record_id(&ticket.response_value, "write_ticket_ref");
+    repository.write(
+        "src/export.rs",
+        b"// authorized direct-mode implementation\n",
+    )?;
+
+    let mut request = product_write_record_run_request(
         "req_direct_without_shaping_run",
         "idem_direct_without_shaping_run",
-        false,
-        Some(before.state_version),
+        before.state_version + 1,
         &task_id,
         &change_unit_id,
+        &write_ticket_id,
+        "run_direct_without_shaping",
     );
     request.kind = RunKind::Direct;
+    request.close_assessment = Some(close_assessment_with_risks(
+        "The bounded direct operation is complete.",
+        Vec::new(),
+    ))
+    .into();
     let response = harness
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -1142,8 +1301,49 @@ fn direct_mode_records_a_mutation_without_shaping() -> Result<(), Box<dyn Error>
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(response.response_value["state"]["mode"], "direct");
     let after = harness.counts()?;
-    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.state_version, before.state_version + 2);
     assert_eq!(after.runs, before.runs + 1);
+    assert_eq!(after.write_tickets, before.write_tickets + 1);
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+
+    let after_final = record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after.state_version,
+        "direct_without_shaping",
+    )?;
+    let closed = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_direct_without_shaping_close",
+            idempotency_key: Some("idem_direct_without_shaping_close"),
+            dry_run: false,
+            expected_state_version: Some(after_final),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(closed.response_value["close_state"], "closed");
+
+    let tracked = MethodHarness::new()?;
+    let intake = tracked.service.intake(
+        intake_request(
+            "req_tracked_work_still_shapes",
+            "idem_tracked_work_still_shapes",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(intake.response_value["state"]["work_phase"], "shaping");
+    assert_eq!(
+        intake.response_value["state"]["workflow"]["kind"],
+        "shaping_required"
+    );
     Ok(())
 }
 
@@ -1251,6 +1451,26 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
     )?;
     assert_eq!(replay.response_value, replacement.response_value);
     let after_replacement = harness.counts()?;
+
+    let losing_competitor = harness.service.record_shaping(
+        ready_shaping_request(
+            "req_succession_competing_replace",
+            "idem_succession_competing_replace",
+            after_replacement.state_version,
+            &task_id,
+            ShapingCheckpointOperation::ReplaceCurrent {
+                expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
+            },
+            "A competing replacement cannot displace the committed successor.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        losing_competitor.response_value["errors"][0]["code"],
+        "SHAPING_CHECKPOINT_STALE"
+    );
+    assert_eq!(harness.counts()?, after_replacement);
+
     let mut conflict = replacement_request;
     if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint { summary, .. } =
         &mut conflict.operation
@@ -1262,6 +1482,94 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
         .record_shaping(conflict, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(conflict.response_value["base"]["response_kind"], "rejected");
     assert_eq!(harness.counts()?, after_replacement);
+    Ok(())
+}
+
+#[test]
+fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = shaping_task(&harness, "concurrent_succession")?;
+    let initial = harness.service.record_shaping(
+        ready_shaping_request(
+            "req_concurrent_succession_initial",
+            "idem_concurrent_succession_initial",
+            2,
+            &task_id,
+            ShapingCheckpointOperation::CreateInitial,
+            "Initial authority before concurrent succession.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let initial_id = shaping_checkpoint_id(&initial.response_value);
+    let before = harness.counts()?;
+    let first = ready_shaping_request(
+        "req_concurrent_succession_first",
+        "idem_concurrent_succession_first",
+        before.state_version,
+        &task_id,
+        ShapingCheckpointOperation::ReplaceCurrent {
+            expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
+        },
+        "First competing successor.",
+    );
+    let second = ready_shaping_request(
+        "req_concurrent_succession_second",
+        "idem_concurrent_succession_second",
+        before.state_version,
+        &task_id,
+        ShapingCheckpointOperation::ReplaceCurrent {
+            expected_current_checkpoint_id: ShapingCheckpointId::new(&initial_id),
+        },
+        "Second competing successor.",
+    );
+    let barrier = Arc::new(Barrier::new(3));
+    let (first, second) = std::thread::scope(|scope| {
+        let first_barrier = Arc::clone(&barrier);
+        let first_service = &harness.service;
+        let first = scope.spawn(move || {
+            first_barrier.wait();
+            first_service.record_shaping(first, invocation(OperationCategory::AgentWorkflow))
+        });
+        let second_barrier = Arc::clone(&barrier);
+        let second_service = &harness.service;
+        let second = scope.spawn(move || {
+            second_barrier.wait();
+            second_service.record_shaping(second, invocation(OperationCategory::AgentWorkflow))
+        });
+        barrier.wait();
+        (
+            first.join().expect("first replacement thread"),
+            second.join().expect("second replacement thread"),
+        )
+    });
+    let responses = [first?, second?];
+    let result_count = responses
+        .iter()
+        .filter(|response| response.response_value["base"]["response_kind"] == "result")
+        .count();
+    assert_eq!(
+        result_count, 1,
+        "concurrent responses: {} / {}",
+        responses[0].response_value, responses[1].response_value
+    );
+    let rejected = responses
+        .iter()
+        .find(|response| response.response_value["base"]["response_kind"] == "rejected")
+        .expect("one concurrent replacement must lose");
+    assert_eq!(
+        rejected.response_value["errors"][0]["code"],
+        "STATE_VERSION_CONFLICT"
+    );
+    let after = harness.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
+    let current = harness
+        .store()?
+        .current_shaping_checkpoint(&TaskId::new(&task_id))?
+        .expect("one current successor");
+    assert_eq!(
+        current.predecessor_shaping_checkpoint_id.as_deref(),
+        Some(initial_id.as_str())
+    );
     Ok(())
 }
 
@@ -1591,20 +1899,52 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
         ("product_scope", vec![product, scope]),
         ("technical_scope", vec![technical, scope]),
         ("product_technical_scope", vec![product, technical, scope]),
-        ("scope_sensitive", vec![scope, sensitive]),
         ("all", vec![product, technical, scope, sensitive]),
     ];
 
     for (label, decisions) in cases {
         let harness = MethodHarness::new()?;
+        let repository = planning_only_repository_fixture(&harness, label)?;
         let (task_id, change_unit_id) = shaping_task(&harness, label)?;
         let shaped =
             record_user_owned_gaps(&harness, label, &task_id, Some(&change_unit_id), &decisions)?;
         let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+        assert_eq!(
+            shaped.response_value["shaping_checkpoint"]["readiness"],
+            if decisions.is_empty() {
+                "ready"
+            } else {
+                "blocked"
+            },
+            "{label} checkpoint readiness follows exact unresolved gaps"
+        );
         let request_refs = shaped.response_value["created_user_action_request_refs"]
             .as_array()
             .expect("created request refs");
         assert_eq!(request_refs.len(), decisions.len(), "{label}");
+        let stored_checkpoint = harness
+            .store()?
+            .current_shaping_checkpoint(&TaskId::new(&task_id))?
+            .expect("current shaping checkpoint");
+        assert_eq!(stored_checkpoint.gaps.len(), decisions.len(), "{label}");
+        for (expected_kind, _) in &decisions {
+            assert_eq!(
+                stored_checkpoint
+                    .gaps
+                    .iter()
+                    .filter(|gap| gap.gap_kind == *expected_kind)
+                    .count(),
+                1,
+                "{label} exact gap kind"
+            );
+        }
+        assert!(
+            stored_checkpoint
+                .gaps
+                .iter()
+                .all(|gap| gap.status == ShapingGapStatus::Current),
+            "{label}"
+        );
         if decisions.is_empty() {
             assert_eq!(
                 shaped.response_value["workflow"]["kind"],
@@ -1617,11 +1957,79 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
             );
         }
 
+        assert!(
+            !product_repo_root(&harness)?.join("src").exists(),
+            "{label}"
+        );
+        assert!(repository.status_bytes()?.is_empty(), "{label}");
+        let before_early_write = harness.counts()?;
+        let early_write = harness.service.prepare_write(
+            prepare_write_request(
+                &format!("req_{label}_early_write"),
+                &format!("idem_{label}_early_write"),
+                Some(before_early_write.state_version),
+                Some(&task_id),
+                Some(&change_unit_id),
+            ),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            early_write.response_value["base"]["response_kind"], "rejected",
+            "{label} shaping cannot issue write authority"
+        );
+        assert_eq!(harness.counts()?, before_early_write, "{label}");
+        assert!(repository.status_bytes()?.is_empty(), "{label}");
+
+        if !decisions.is_empty() {
+            let before_pending_replace = harness.counts()?;
+            let pending_replace = harness.service.record_shaping(
+                ready_shaping_request(
+                    &format!("req_{label}_pending_replace"),
+                    &format!("idem_{label}_pending_replace"),
+                    before_pending_replace.state_version,
+                    &task_id,
+                    ShapingCheckpointOperation::ReplaceCurrent {
+                        expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    },
+                    "Pending user authority remains attached to the current checkpoint.",
+                ),
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(
+                pending_replace.response_value["base"]["response_kind"], "rejected",
+                "{label}"
+            );
+            assert_eq!(harness.counts()?, before_pending_replace, "{label}");
+        }
+
         let mut resolved = Vec::new();
         for (index, ((gap_kind, _), request_ref)) in
             decisions.iter().zip(request_refs.iter()).enumerate()
         {
             let request_id = request_ref["record_id"].as_str().expect("request id");
+            let before_chat = harness.counts()?;
+            let chat_attempt = harness.service.resolve_user_action(
+                resolve_user_action_request(
+                    &format!("req_{label}_chat_{index}"),
+                    &format!("chat_submission_{label}_{index}"),
+                    None,
+                    &task_id,
+                    request_id,
+                    "accept",
+                ),
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(
+                chat_attempt.response_value["base"]["response_kind"], "rejected",
+                "{label} chat/agent acceptance has no resolution authority"
+            );
+            assert_eq!(harness.counts()?, before_chat, "{label}");
+            assert_eq!(
+                user_action_status(&harness, request_id)?,
+                "pending",
+                "{label}"
+            );
+
             let response = harness.service.resolve_user_action(
                 resolve_user_action_request(
                     &format!("req_{label}_resolve_{index}"),
@@ -1633,6 +2041,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                 ),
                 invocation(OperationCategory::UserOnly),
             )?;
+            assert_verified_invocation(&response, OperationCategory::UserOnly);
             assert_eq!(
                 response.response_value["base"]["response_kind"], "result",
                 "{label}"
@@ -1690,15 +2099,100 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                 "ready",
                 "{label} structural readiness"
             );
+
+            let before_resolved_replace = harness.counts()?;
+            let resolved_replace = harness.service.record_shaping(
+                ready_shaping_request(
+                    &format!("req_{label}_resolved_replace"),
+                    &format!("idem_{label}_resolved_replace"),
+                    before_resolved_replace.state_version,
+                    &task_id,
+                    ShapingCheckpointOperation::ReplaceCurrent {
+                        expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    },
+                    "Resolved authority remains live until its semantic owner applies it.",
+                ),
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(
+                resolved_replace.response_value["base"]["response_kind"], "rejected",
+                "{label}"
+            );
+            assert_eq!(harness.counts()?, before_resolved_replace, "{label}");
         }
 
         let mut scope_revision = 1;
+        let scope_refs = resolved
+            .iter()
+            .filter(|(gap_kind, _)| *gap_kind == ShapingGapKind::UserScopeDecisionRequired)
+            .map(|(_, resolution_ref)| resolution_ref.clone())
+            .collect::<Vec<_>>();
+        let advance_owned_refs = resolved
+            .iter()
+            .filter(|(gap_kind, _)| {
+                gap_kind.decision_policy().is_some_and(|policy| {
+                    policy.application_owner == ShapingDecisionApplicationOwner::AdvanceTask
+                })
+            })
+            .map(|(_, resolution_ref)| resolution_ref.clone())
+            .collect::<Vec<_>>();
+
+        if !advance_owned_refs.is_empty() {
+            let before_wrong_scope_owner = harness.counts()?;
+            let mut wrong_scope_owner = update_scope_request(
+                &format!("req_{label}_wrong_scope_owner"),
+                &format!("idem_{label}_wrong_scope_owner"),
+                false,
+                Some(before_wrong_scope_owner.state_version),
+                &task_id,
+                ChangeUnitOperation::KeepCurrent,
+                "A non-scope decision cannot be consumed by update_scope.",
+            );
+            wrong_scope_owner.related_scope_decision_refs = advance_owned_refs.clone();
+            let rejected = harness.service.update_scope(
+                wrong_scope_owner,
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(
+                rejected.response_value["base"]["response_kind"], "rejected",
+                "{label}"
+            );
+            assert_eq!(harness.counts()?, before_wrong_scope_owner, "{label}");
+        }
+
         if has_scope {
-            let scope_refs = resolved
-                .iter()
-                .filter(|(gap_kind, _)| *gap_kind == ShapingGapKind::UserScopeDecisionRequired)
-                .map(|(_, resolution_ref)| resolution_ref.clone())
-                .collect::<Vec<_>>();
+            let before_wrong_advance_owner = harness.counts()?;
+            let wrong_advance_owner = harness.service.advance_task(
+                AdvanceTaskRequest {
+                    envelope: envelope(
+                        &format!("req_{label}_wrong_advance_owner"),
+                        Some(&format!("idem_{label}_wrong_advance_owner")),
+                        false,
+                        Some(before_wrong_advance_owner.state_version),
+                        Some(&task_id),
+                    ),
+                    task_id: TaskId::new(&task_id),
+                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    change_unit_id: ChangeUnitId::new(&change_unit_id),
+                    scope_revision,
+                    baseline_ref: BaselineRef::new("baseline_test"),
+                    user_action_resolution_ids: resolved
+                        .iter()
+                        .map(|(_, reference)| {
+                            UserActionResolutionId::new(reference.record_id.as_str())
+                        })
+                        .collect(),
+                },
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(
+                wrong_advance_owner.response_value["base"]["response_kind"], "rejected",
+                "{label}"
+            );
+            assert_eq!(harness.counts()?, before_wrong_advance_owner, "{label}");
+        }
+
+        if has_scope {
             let before = harness.counts()?;
             let mut update = update_scope_request(
                 &format!("req_{label}_apply_scope"),
@@ -1749,16 +2243,9 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
             }
         }
 
-        let advance_resolution_ids = resolved
+        let advance_resolution_ids = advance_owned_refs
             .iter()
-            .filter(|(gap_kind, _)| {
-                gap_kind.decision_policy().is_some_and(|policy| {
-                    policy.application_owner == ShapingDecisionApplicationOwner::AdvanceTask
-                })
-            })
-            .map(|(_, resolution_ref)| {
-                UserActionResolutionId::new(resolution_ref.record_id.as_str())
-            })
+            .map(|resolution_ref| UserActionResolutionId::new(resolution_ref.record_id.as_str()))
             .collect::<Vec<_>>();
         if !advance_resolution_ids.is_empty() {
             let before = harness.counts()?;
@@ -1840,8 +2327,154 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
             replay.response_value, advanced.response_value,
             "{label} replay"
         );
+
+        let before_second_advance = harness.counts()?;
+        let second_advance = harness.service.advance_task(
+            AdvanceTaskRequest {
+                envelope: envelope(
+                    &format!("req_{label}_second_advance"),
+                    Some(&format!("idem_{label}_second_advance")),
+                    false,
+                    Some(before_second_advance.state_version),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: advance_resolution_ids,
+            },
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            second_advance.response_value["base"]["response_kind"], "rejected",
+            "{label} cannot advance twice"
+        );
+        assert_eq!(harness.counts()?, before_second_advance, "{label}");
+
+        let applied_checkpoint = harness
+            .store()?
+            .current_shaping_checkpoint(&TaskId::new(&task_id))?
+            .expect("applied current checkpoint");
+        assert!(
+            applied_checkpoint
+                .gaps
+                .iter()
+                .all(|gap| gap.status == ShapingGapStatus::Applied),
+            "{label} no decision may remain detached or ignored"
+        );
+
+        enable_record_run_capabilities(&harness)?;
+        let before_ticket = harness.counts()?;
+        let mut prepare = prepare_write_request(
+            &format!("req_{label}_write"),
+            &format!("idem_{label}_write"),
+            Some(before_ticket.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        );
+        let has_sensitive = decisions
+            .iter()
+            .any(|(gap_kind, _)| *gap_kind == ShapingGapKind::SensitiveApprovalRequired);
+        if has_sensitive {
+            prepare.sensitive_categories = vec!["network".to_owned()];
+        }
+        let ticket = harness
+            .service
+            .prepare_write(prepare, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(ticket.response_value["decision"], "allowed", "{label}");
+        assert_eq!(
+            harness.counts()?.write_tickets,
+            before_ticket.write_tickets + 1,
+            "{label}"
+        );
+        assert!(repository.status_bytes()?.is_empty(), "{label}");
+        let write_ticket_id = response_record_id(&ticket.response_value, "write_ticket_ref");
+
+        repository.write(
+            "src/export.rs",
+            format!("// authorized planning implementation for {label}\n").as_bytes(),
+        )?;
+        assert!(!repository.status_bytes()?.is_empty(), "{label}");
+        let before_run = harness.counts()?;
+        let mut run = product_write_record_run_request(
+            &format!("req_{label}_run"),
+            &format!("idem_{label}_run"),
+            before_run.state_version,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            &format!("run_{label}"),
+        );
+        if has_sensitive {
+            run.observed_changes.sensitive_categories = vec!["network".to_owned()];
+        }
+        let mut close_assessment = close_assessment_with_risks(
+            "The authorized planning implementation is complete.",
+            Vec::new(),
+        );
+        if has_sensitive {
+            close_assessment.sensitive_categories = vec!["network".to_owned()];
+        }
+        run.close_assessment = Some(close_assessment).into();
+        let recorded = harness
+            .service
+            .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(
+            recorded.response_value["base"]["response_kind"], "result",
+            "{label}: {}",
+            recorded.response_value
+        );
+        assert_eq!(harness.counts()?.runs, before_run.runs + 1, "{label}");
+        assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+
+        let after_run = recorded.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("recorded state version");
+        let after_final =
+            record_final_acceptance(&harness, &task_id, &change_unit_id, after_run, label)?;
+        let closed = harness.service.close_task(
+            close_task_request(CloseTaskFixture {
+                request_id: &format!("req_{label}_close"),
+                idempotency_key: Some(&format!("idem_{label}_close")),
+                dry_run: false,
+                expected_state_version: Some(after_final),
+                task_id: &task_id,
+                intent: CloseIntent::Complete,
+                close_reason: Some(CloseReason::CompletedSelfChecked),
+                superseding_task_id: None,
+            }),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(closed.response_value["close_state"], "closed", "{label}");
+        assert_eq!(
+            closed.response_value["authority_receipt"]["completion_claim_allowed"], true,
+            "{label}"
+        );
     }
     Ok(())
+}
+
+fn planning_only_repository_fixture(
+    harness: &MethodHarness,
+    label: &str,
+) -> Result<IsolatedGitRepository, Box<dyn Error>> {
+    let repository = IsolatedGitRepository::initialize_at(product_repo_root(harness)?)?;
+    repository.write(
+        "plans/product.md",
+        b"# Product plan\n\nThe user owns product judgments.\n",
+    )?;
+    repository.write(
+        "plans/technical.md",
+        b"# Technical plan\n\nImplementation starts only after explicit authority.\n",
+    )?;
+    repository.commit_all("seed generic planning-only repository")?;
+    record_guard_installation(harness, &format!("shaping_matrix_{label}"))?;
+    assert!(repository.status_bytes()?.is_empty());
+    assert!(!repository.root().join("src").exists());
+    assert!(!repository.root().join("tests").exists());
+    Ok(repository)
 }
 
 #[test]
@@ -2065,6 +2698,11 @@ fn shaping_task(harness: &MethodHarness, label: &str) -> Result<(String, String)
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    assert_eq!(intake.response_value["state"]["work_phase"], "shaping");
+    assert_eq!(
+        intake.response_value["state"]["workflow"]["kind"],
+        "shaping_required"
+    );
     let task_id = response_record_id(&intake.response_value, "task_ref");
     let scoped = harness.service.update_scope(
         update_scope_request(
@@ -2078,6 +2716,11 @@ fn shaping_task(harness: &MethodHarness, label: &str) -> Result<(String, String)
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    assert_eq!(scoped.response_value["state"]["work_phase"], "shaping");
+    assert_eq!(
+        scoped.response_value["state"]["workflow"]["kind"],
+        "shaping_required"
+    );
     Ok((
         task_id,
         response_record_id(&scoped.response_value, "change_unit_ref"),

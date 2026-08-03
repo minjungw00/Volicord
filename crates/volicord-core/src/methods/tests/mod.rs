@@ -3,7 +3,7 @@ use std::{
     fs,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Barrier, Mutex},
 };
 
 use chrono::{DateTime, Duration, Utc};
@@ -30,8 +30,8 @@ use volicord_store::{
     RuntimeHomeMutationContext,
 };
 use volicord_test_support::{
-    open_project_fixture_database, with_test_runtime_home_setup, TempRuntimeHome,
-    TestRuntimeHomeMutation,
+    open_project_fixture_database, with_test_runtime_home_setup, IsolatedGitRepository,
+    TempRuntimeHome, TestRuntimeHomeMutation,
     TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use volicord_test_support::{

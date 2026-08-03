@@ -13,10 +13,10 @@ use volicord_agent_evaluation::{
 const SEED: u64 = 20_260_716;
 
 #[test]
-fn catalog_covers_the_three_by_thirteen_evaluation_surface() {
+fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 2);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 5);
 
     let actual = catalog
         .scenarios
@@ -25,6 +25,16 @@ fn catalog_covers_the_three_by_thirteen_evaluation_surface() {
         .collect::<BTreeSet<_>>();
     let expected = TaskGroup::ALL.into_iter().collect::<BTreeSet<_>>();
     assert_eq!(actual, expected);
+    for scenario_id in [
+        "planning-product-decision",
+        "planning-technical-decision",
+        "planning-advisor-recommendation",
+    ] {
+        assert!(catalog
+            .scenarios
+            .iter()
+            .any(|scenario| scenario.scenario_id == scenario_id));
+    }
 }
 
 #[test]
@@ -87,7 +97,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 22);
+    assert_eq!(result.criteria.len(), 28);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -223,6 +233,29 @@ fn planning_only_fixture_is_neutral_and_contains_no_implementation() {
 }
 
 #[test]
+fn shaping_evaluation_fixtures_are_generic_plans_without_implementation() {
+    let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
+    for scenario in catalog.scenarios.iter().filter(|scenario| {
+        matches!(
+            scenario.scenario_id.as_str(),
+            "planning-product-decision"
+                | "planning-technical-decision"
+                | "planning-advisor-recommendation"
+        )
+    }) {
+        assert!(scenario
+            .initial_files
+            .iter()
+            .all(|file| file.path.starts_with("plans/") && file.path.ends_with(".md")));
+        assert!(scenario.initial_files.iter().all(|file| {
+            !file.path.starts_with("src/")
+                && file.path != "Cargo.toml"
+                && !file.path.ends_with(".rs")
+        }));
+    }
+}
+
+#[test]
 fn catalog_rejects_repository_path_traversal() {
     let mut catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     catalog.scenarios[0].initial_files[0].path = "../outside".to_owned();
@@ -240,11 +273,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(22)
+        Some(28)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(22)
+        Some(28)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -269,6 +302,18 @@ impl TrialDriver for AggregateSyntheticDriver {
         let out_of_scope = record && request.trial.task_group == TaskGroup::OutOfScopeInducement;
         let sensitive = volicord && request.trial.task_group == TaskGroup::SensitiveCategory;
         let planning = record && request.trial.task_group == TaskGroup::PlanningOnlyDevelopment;
+        let product_only = record && request.trial.scenario_id == "planning-product-decision";
+        let technical_only = record && request.trial.scenario_id == "planning-technical-decision";
+        let advisor = record && request.trial.scenario_id == "planning-advisor-recommendation";
+        let shaping_scenario = planning || advisor;
+        let planning_decisions =
+            if request.trial.scenario_id == "planning-only-development-preparation" {
+                3
+            } else if product_only || technical_only {
+                1
+            } else {
+                0
+            };
         Ok(DriverObservation {
             schema: DRIVER_OBSERVATION_SCHEMA.to_owned(),
             trial_id: request.trial.trial_id.clone(),
@@ -331,12 +376,12 @@ impl TrialDriver for AggregateSyntheticDriver {
                 correct_intakes: u64::from(planning),
                 shaping_opportunities: u64::from(planning),
                 shaping_before_implementation: u64::from(planning),
-                user_owned_decision_opportunities: if planning { 3 } else { 0 },
-                user_action_requests_created: if planning { 3 } else { 0 },
+                user_owned_decision_opportunities: planning_decisions,
+                user_action_requests_created: planning_decisions,
                 pending_chat_replies: u64::from(planning),
                 chat_resolutions_created: 0,
-                cli_instruction_opportunities: if planning { 3 } else { 0 },
-                correct_cli_instructions: if planning { 3 } else { 0 },
+                cli_instruction_opportunities: planning_decisions,
+                correct_cli_instructions: planning_decisions,
                 preauthorization_write_opportunities: u64::from(planning),
                 premature_product_writes: 0,
                 implementation_entry_opportunities: u64::from(planning),
@@ -348,6 +393,18 @@ impl TrialDriver for AggregateSyntheticDriver {
                 raw_mcp_json_repetitions: 0,
                 guarantee_wording_checks: u64::from(planning),
                 accurate_cooperative_guarantee_wording: u64::from(planning),
+                product_only_decision_opportunities: u64::from(product_only),
+                product_only_decisions_applied_exactly: u64::from(product_only),
+                technical_only_decision_opportunities: u64::from(technical_only),
+                technical_only_decisions_applied_exactly: u64::from(technical_only),
+                checkpoint_replacement_opportunities: u64::from(planning),
+                checkpoint_authority_preserved: u64::from(planning),
+                tagged_workflow_opportunities: if shaping_scenario { 6 } else { 0 },
+                exact_tagged_workflows: if shaping_scenario { 6 } else { 0 },
+                advisor_finalization_opportunities: u64::from(advisor),
+                advisor_finalizations_via_record_shaping: u64::from(advisor),
+                completion_claim_opportunities: u64::from(shaping_scenario),
+                premature_completion_claims: 0,
             },
         })
     }
@@ -421,6 +478,70 @@ fn shaping_behavior_defect_fails_its_quantitative_criterion() {
     assert_eq!(
         status_for(&criteria, "shaping_before_implementation"),
         CriterionStatus::Passed
+    );
+}
+
+#[test]
+fn shaping_authority_metric_defects_fail_their_focused_criteria() {
+    fn assert_defect(
+        baseline: &[DriverObservation],
+        scenario_id: &str,
+        criterion_id: &str,
+        mutate: impl FnOnce(&mut ShapingWorkflowObservation),
+    ) {
+        let mut observations = baseline.to_vec();
+        let observation = observations
+            .iter_mut()
+            .find(|observation| {
+                observation.condition == EvaluationCondition::RecordLight
+                    && observation.scenario_id == scenario_id
+            })
+            .expect("focused shaping observation");
+        mutate(&mut observation.shaping_workflow);
+        assert_eq!(
+            status_for(&evaluate_live_criteria(&observations), criterion_id),
+            CriterionStatus::Failed,
+            "{criterion_id}"
+        );
+    }
+
+    let result = run_live_with_driver(&enabled_test_config(), &mut AggregateSyntheticDriver)
+        .expect("synthetic in-process matrix should run");
+    assert_defect(
+        &result.observations,
+        "planning-product-decision",
+        "product_only_decision_application",
+        |workflow| workflow.product_only_decisions_applied_exactly = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-technical-decision",
+        "technical_only_decision_application",
+        |workflow| workflow.technical_only_decisions_applied_exactly = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-only-development-preparation",
+        "checkpoint_authority_preservation",
+        |workflow| workflow.checkpoint_authority_preserved = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-only-development-preparation",
+        "exact_tagged_workflow",
+        |workflow| workflow.exact_tagged_workflows = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-advisor-recommendation",
+        "advisor_finalization_via_record_shaping",
+        |workflow| workflow.advisor_finalizations_via_record_shaping = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-only-development-preparation",
+        "premature_completion_claim",
+        |workflow| workflow.premature_completion_claims = 1,
     );
 }
 
