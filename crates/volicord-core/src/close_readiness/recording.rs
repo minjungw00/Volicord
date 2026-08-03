@@ -10,7 +10,8 @@ use crate::write_ticket::{normalized_string_set, AdmissibleStoredWriteTicket};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{ChangeUnitStatus, CoreProjectStore, RunRecord, TaskRecord};
 use volicord_types::schema::{
-    ArtifactRef, CurrentCloseBasis, ResidualRisk, SensitiveActionRequirement, StateRecordRef,
+    ArtifactRef, CurrentCloseBasis, RequiredNullable, ResidualRisk, SensitiveActionRequirement,
+    StateRecordRef,
 };
 use volicord_types::values::{StateRecordKind, UtcTimestamp};
 #[derive(Debug)]
@@ -187,12 +188,15 @@ pub(crate) fn build_record_run_close_basis(
         baseline_ref: Some(request.baseline_ref().clone()).into(),
         result_summary: normalize_display_text(&assessment.result_summary),
         result_refs,
+        evidence_refs: evidence_summary_ref.iter().cloned().collect(),
         evidence_summary_ref: evidence_summary_ref.into(),
         residual_risks,
         sensitive_categories: derived_sensitive_categories,
         sensitive_action_requirements,
         recovery_constraints: normalize_display_string_list(&assessment.recovery_constraints),
-        source_run_ref: run_ref.clone(),
+        source_run_ref: RequiredNullable::some(run_ref.clone()),
+        shaping_checkpoint_ref: RequiredNullable::null(),
+        applied_user_action_resolution_refs: Vec::new(),
         updated_at: now.clone(),
     }))
 }

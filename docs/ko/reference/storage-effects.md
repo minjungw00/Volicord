@@ -1,6 +1,10 @@
 # 저장 효과
 
-`volicord.record_shaping`은 checkpoint, gap, UserAction 요청과 링크, event, replay result, 단 한 번의 state-version 증가를 한 transaction에서 커밋합니다. `volicord.advance_task`는 선택한 정확한 shaping 결정을 명시적 Task 단계 전이 및 해당 event/replay result와 원자적으로 커밋합니다. 두 메서드 모두 Product Repository 파일을 쓰거나 쓰기 티켓을 발급하지 않습니다.
+`volicord.record_shaping`은 checkpoint aggregate 또는 정확한 advisor finalization을 event,
+replay result, 단 한 번의 state-version 증가와 함께 한 transaction에서 커밋합니다.
+`volicord.advance_task`는 선택한 정확한 work shaping 결정을 명시적 Task 단계 전이 및 해당
+event/replay result와 원자적으로 커밋합니다. 두 메서드 모두 Product Repository 파일을
+쓰거나 쓰기 티켓을 발급하지 않습니다.
 
 이 문서는 기준 범위에서 메서드와 응답 분기가 만들 수 있는 저장 효과를 정의합니다.
 
@@ -587,13 +591,16 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - `shaping_checkpoints` row 하나와 그 모든 `shaping_checkpoint_gaps` row를 삽입합니다.
 - 사용자 소유 gap마다 대기 `UserActionRequest` 하나와 정확한
   `shaping_checkpoint_user_actions` link 하나를 원자적으로 만듭니다.
-- 적격 advisor 닫기 평가라면 같은 transaction에서 현재 자문 결과, close basis, 담당
-  문서가 정의한 risk record를 갱신합니다.
+- `operation=finalize_advice`이면 정확한 현재 advisor Task, ready checkpoint, 호환되는
+  비쓰기 Change Unit, scope, baseline, resolution 집합을 검증하고 advisor owner gap을
+  적용하며 checkpoint를 보존하고 자문 결과, checkpoint 기반 close basis, 정확한 applied
+  resolution lineage, evidence ref, risk record를 같은 transaction에서 갱신합니다.
 - authority event 하나와 정확한 replay row를 만들고 정규 Core UTC 하한을 진행시키며
   `project_state.state_version`을 정확히 한 번 증가시킵니다.
 
-Run, Change Unit, write ticket, Product Repository 파일 효과, UserAction resolution,
-work-phase 전환은 만들지 않습니다. Checkpoint, gap, 요청, link, event, replay, 상태 갱신 중
+Finalization은 replacement checkpoint나 UserAction 요청을 만들지 않습니다. 어느
+operation도 Run, Change Unit, write ticket, Product Repository 파일 효과, UserAction
+resolution, work-phase 전환을 만들지 않습니다. Checkpoint, gap, 요청, link, event, replay, 상태 갱신 중
 하나라도 유효하지 않으면 transaction 전체를 rollback합니다. 유효한 dry-run 미리보기와
 모든 거절 시도에는 이 row와 효과가 없습니다.
 

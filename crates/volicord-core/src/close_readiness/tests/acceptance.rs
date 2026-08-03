@@ -130,6 +130,7 @@ fn close_basis() -> CurrentCloseBasis {
         baseline_ref: RequiredNullable::null(),
         result_summary: "current result".to_owned(),
         result_refs: vec![run_ref()],
+        evidence_refs: Vec::new(),
         evidence_summary_ref: RequiredNullable::null(),
         residual_risks: vec![ResidualRisk {
             risk_id: RiskId::new("risk-acceptance"),
@@ -141,13 +142,15 @@ fn close_basis() -> CurrentCloseBasis {
         sensitive_categories: Vec::new(),
         sensitive_action_requirements: Vec::new(),
         recovery_constraints: Vec::new(),
-        source_run_ref: StateRecordRef {
+        source_run_ref: RequiredNullable::some(StateRecordRef {
             record_kind: StateRecordKind::Run,
             record_id: RecordId::new("run-acceptance"),
             project_id: ProjectId::new("project-acceptance"),
             task_id: Some(TaskId::new("task-acceptance")).into(),
             produced_at_state_version: Some(7).into(),
-        },
+        }),
+        shaping_checkpoint_ref: RequiredNullable::null(),
+        applied_user_action_resolution_refs: Vec::new(),
         updated_at: UtcTimestamp::parse("2026-07-27T00:00:00Z").unwrap(),
     }
 }

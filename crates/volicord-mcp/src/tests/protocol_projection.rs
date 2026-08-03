@@ -1464,6 +1464,8 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         AgentToolId::RECORD_SHAPING.wire_name(),
         json!({
             "task_id": record_task_id,
+            "operation": {
+            "operation": "record_checkpoint",
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_record_compact",
@@ -1471,8 +1473,8 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "implementation_boundary": "Record only the scoped compact Run references.",
             "gaps": [],
             "source_refs": [],
-            "evidence_refs": [],
-            "close_assessment": null
+            "evidence_refs": []
+            }
         }),
     )?;
     let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
@@ -1658,6 +1660,8 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         AgentToolId::RECORD_SHAPING.wire_name(),
         json!({
             "task_id": prepare_task_id,
+            "operation": {
+            "operation": "record_checkpoint",
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_fixture",
@@ -1665,8 +1669,8 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "implementation_boundary": "Update only the scoped export flow.",
             "gaps": [],
             "source_refs": [],
-            "evidence_refs": [],
-            "close_assessment": null
+            "evidence_refs": []
+            }
         }),
     )?;
     let prepare_checkpoint_id = shaped.response_value["shaping_checkpoint"]

@@ -22,6 +22,9 @@ pub(crate) enum CloseGuidance {
     RecordFreshScopeBasis,
     RecordFreshRunBasis,
     RecordRequiredEvidence,
+    FinalizeAdvisorCloseBasis,
+    RefreshAdvisorCloseBasis,
+    RecordAdvisorEvidence,
     RequestFinalAcceptance,
 }
 
@@ -162,6 +165,27 @@ pub(crate) fn close_guidance(
                 Some(MethodName::RecordRun),
                 vec![OperationCategory::AgentWorkflow],
                 "Record evidence that supports the required close claims.",
+                None,
+            ),
+            CloseGuidance::FinalizeAdvisorCloseBasis => (
+                NextActionKind::RecordShaping,
+                Some(MethodName::RecordShaping),
+                vec![OperationCategory::AgentWorkflow],
+                "Finalize the current advice result and establish its close basis.",
+                None,
+            ),
+            CloseGuidance::RefreshAdvisorCloseBasis => (
+                NextActionKind::RecordShaping,
+                Some(MethodName::RecordShaping),
+                vec![OperationCategory::AgentWorkflow],
+                "Finalize the advice again against the current checkpoint and scope.",
+                None,
+            ),
+            CloseGuidance::RecordAdvisorEvidence => (
+                NextActionKind::RecordShaping,
+                Some(MethodName::RecordShaping),
+                vec![OperationCategory::AgentWorkflow],
+                "Finalize the advice with current supported advisor evidence refs.",
                 None,
             ),
             CloseGuidance::RequestFinalAcceptance => (

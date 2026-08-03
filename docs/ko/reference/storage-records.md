@@ -1,6 +1,10 @@
 # 저장소 기록
 
-`shaping_checkpoints`, `shaping_checkpoint_gaps`, `shaping_checkpoint_user_actions`는 하나의 Task 범위 aggregate를 이룹니다. Task마다 superseded가 아닌 checkpoint는 최대 하나이며, 사용자 소유 gap은 같은 Task의 요청 링크를 반드시 포함하고, ready checkpoint에는 current gap이 없습니다.
+`shaping_checkpoints`, `shaping_checkpoint_gaps`, `shaping_checkpoint_user_actions`는 하나의
+Task 범위 aggregate를 이룹니다. Task마다 superseded가 아닌 checkpoint는 최대 하나이며,
+사용자 소유 gap은 같은 Task의 요청 링크를 반드시 포함하고, ready checkpoint에는 current
+gap이 없습니다. Advisor finalization은 checkpoint를 교체하지 않고 이 aggregate의 gap을
+갱신합니다.
 
 이 문서는 지원되는 저장 계약의 의미와 기록 간 불변식을 담당합니다. 정확한
 테이블, column, constraint, index, 정규 SQL은 [저장소 DDL](storage-ddl.md)이
@@ -558,6 +562,12 @@ resolution 본문, 비공개 resolution form, credential을 담지 않습니다.
 현재 close basis는 Task 소유이며 terminal close history와 구분됩니다. 없음은 생성된 빈
 basis가 아니라 없음으로 표현합니다. Evidence와 acceptance ref는 담당 문서 아래에서
 정확하고 현재 상태여야 합니다.
+Direct/work basis는 정확히 호환되는 source Run을 식별합니다. Advisor basis에는 source
+Run이 없고 대신 정확한 현재 shaping checkpoint와 applied UserAction resolution의 정확한
+집합을 식별합니다. Store는 현재 Task, scope revision, close-basis revision, baseline,
+Change Unit, 모드 호환 lineage, result/evidence ref, 잔여 위험, 갱신 시각을 하나의
+aggregate로 검증합니다. 정규 비쓰기 조건을 위반하는 Change Unit이나 정확한 현재 상태가
+아닌 checkpoint에 연결된 advisor basis는 영속 데이터 손상입니다.
 
 Project continuity record는 오래 유지되는 맥락이며 면제가 아닙니다. Typed cursor와
 ordering은 status 메서드가 담당합니다. Carry-forward는 현재 scope, baseline, 쓰기

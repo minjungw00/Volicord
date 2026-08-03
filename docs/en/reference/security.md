@@ -3,11 +3,19 @@
 A user-owned shaping gap is not authority to infer a decision. Only a verified User Channel resolution can satisfy its exact request; chat content, agent claims, shaping summaries, and free-form Change Unit invariants cannot substitute for that resolution.
 
 Resolution is not application. Scope decisions are applied only by
-`volicord.update_scope`; product, technical, and sensitive shaping decisions
-are applied only by `volicord.advance_task`. Exact-ID Store validation and one
-transaction prevent unrelated gap application or phase transition after a
-failed application. Sensitive authority remains subject to downstream
-prepare-write and sensitive-effect checks after shaping application.
+`volicord.update_scope`. Product, technical, and sensitive shaping decisions
+are applied by `volicord.advance_task` for work and by
+`volicord.record_shaping(operation=finalize_advice)` for advisor. Exact-ID
+Store validation and one transaction prevent unrelated gap application or a
+phase transition after failed application. Work-sensitive authority remains
+subject to downstream prepare-write and sensitive-effect checks.
+
+Advisor Change Units are structurally non-write: they carry no Product
+Repository path authority, allow only the closed observation-supporting
+effects, and forbid product writes, Runs, sensitive actions, network access,
+and secret access. Core rejects incompatible advisor scope updates, Store
+rejects incompatible writes and persisted current state, and write-ticket
+preparation remains unavailable for advisor.
 
 This document owns supported security guarantees and explicit non-guarantees
 for the local Codex workflow. It does not define method schemas,

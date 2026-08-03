@@ -1,6 +1,10 @@
 # Storage Records
 
-`shaping_checkpoints`, `shaping_checkpoint_gaps`, and `shaping_checkpoint_user_actions` form one Task-scoped aggregate. Exactly one non-superseded checkpoint can be current. User-owned gaps require same-Task request links, and ready checkpoints have no current gap.
+`shaping_checkpoints`, `shaping_checkpoint_gaps`, and
+`shaping_checkpoint_user_actions` form one Task-scoped aggregate. Exactly one
+non-superseded checkpoint can be current. User-owned gaps require same-Task
+request links, and ready checkpoints have no current gap. Advisor finalization
+updates gaps in this aggregate without replacing the checkpoint.
 
 This document owns semantic meaning and cross-record invariants for the
 supported storage contract. Exact tables, columns, constraints, indexes,
@@ -638,6 +642,13 @@ credential.
 The current close basis belongs to the Task and is distinct from terminal close
 history. Absence is represented as absence, not a generated empty basis.
 Evidence and acceptance refs must remain exact and current under their owners.
+Direct/work bases identify an exact compatible source Run. Advisor bases have
+no source Run and instead identify the exact current shaping checkpoint and
+the exact set of applied UserAction resolutions. Store validates current Task,
+scope revision, close-basis revision, baseline, Change Unit, mode-compatible
+lineage, result/evidence refs, residual risks, and update time as one aggregate.
+An advisor basis whose Change Unit violates the canonical non-write predicate
+or whose checkpoint is not exact current state is corrupt persisted data.
 
 Project continuity records are durable context, not a waiver. Their typed cursor
 and ordering belong to the status method. Carry-forward never bypasses current

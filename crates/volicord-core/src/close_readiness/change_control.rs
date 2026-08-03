@@ -270,13 +270,22 @@ fn current_close_basis_blocker(
 ) -> Result<Option<CloseReadinessBlocker>, CloseReadinessError> {
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let Some(basis) = context.current_close_basis.as_ref() else {
+        let advisor = context.task.mode == volicord_types::values::TaskMode::Advisor;
         return Ok(Some(close_blocker(
             CloseReadinessBlockerCategory::Task,
             "missing_current_close_basis",
-            "Completion requires a current close basis recorded by volicord.record_run.",
+            if advisor {
+                "Completion requires the current advice to be finalized by volicord.record_shaping."
+            } else {
+                "Completion requires a current close basis recorded by volicord.record_run."
+            },
             vec![task_ref.clone()],
             vec![close_guidance(
-                CloseGuidance::RecordCurrentCloseBasis,
+                if advisor {
+                    CloseGuidance::FinalizeAdvisorCloseBasis
+                } else {
+                    CloseGuidance::RecordCurrentCloseBasis
+                },
                 vec![task_ref],
             )],
         )));
@@ -300,20 +309,27 @@ fn current_close_basis_blocker(
             "The current close basis is stale against current Task scope.",
             vec![task_ref.clone()],
             vec![close_guidance(
-                CloseGuidance::RecordFreshScopeBasis,
+                if context.task.mode == volicord_types::values::TaskMode::Advisor {
+                    CloseGuidance::RefreshAdvisorCloseBasis
+                } else {
+                    CloseGuidance::RecordFreshScopeBasis
+                },
                 vec![task_ref],
             )],
         )))
-    } else if let Some(blocker) = incompatible_close_basis_run_refs_blocker(
-        store,
-        request,
-        project_state,
-        context,
-        basis,
-        current_baseline.as_deref(),
-    )? {
-        Ok(Some(blocker))
     } else {
+        if context.task.mode != volicord_types::values::TaskMode::Advisor {
+            if let Some(blocker) = incompatible_close_basis_run_refs_blocker(
+                store,
+                request,
+                project_state,
+                context,
+                basis,
+                current_baseline.as_deref(),
+            )? {
+                return Ok(Some(blocker));
+            }
+        }
         Ok(None)
     }
 }

@@ -494,7 +494,7 @@ fn final_acceptance_blocker(
     let acceptance_policy = context.task.acceptance_policy;
     let control = context.task.effective_control_level;
     let acceptance_required = match control {
-        TaskControlLevel::Observe => false,
+        TaskControlLevel::Observe => context.task.mode == volicord_types::values::TaskMode::Advisor,
         TaskControlLevel::Tracked | TaskControlLevel::Sensitive => true,
         TaskControlLevel::Light => match acceptance_policy {
             AcceptancePolicy::Required => true,

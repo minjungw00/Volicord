@@ -96,9 +96,9 @@ Volicord는 Volicord 기록을 다룹니다.
 수락과 위험 수락은 구체적입니다.
 
 - 최종 수락은 보이는 닫기 근거에 대한 사용자의 판단입니다.
-- 최종 수락 필요 여부는 `Task`의 유효 통제 수준, 기록된 수락 정책, 권위 있는
-  프로젝트 작업 흐름 정책에서 파생합니다. 에이전트가 닫을 때 고르는 면제가
-  아닙니다.
+- Advisor는 항상 최종 수락을 요구합니다. Direct/work의 최종 수락 필요 여부는
+  `Task`의 유효 통제 수준, 기록된 수락 정책, 권위 있는 프로젝트 작업 흐름 정책에서
+  파생합니다. 에이전트가 닫을 때 고르는 면제가 아닙니다.
 - 잔여 위험 수락은 요청한 닫기에 대해 이름 붙은 보이는 잔여 위험을 사용자가 받아들이는 것입니다.
 - 둘 다 증거 공백을 채우거나, 범위를 바꾸거나, 쓰기 권한을 부여하거나, 검증을 증명하거나, 결과를 무위험으로 만들지 않습니다.
 
@@ -106,7 +106,9 @@ Volicord는 Volicord 기록을 다룹니다.
 
 - 모든 `Task`에는 `scope_revision`과 `close_basis_revision`이 있습니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경은 `scope_revision`을 증가시킵니다. 의미가 같은 정규화된 갱신은 증가시키지 않습니다.
-- 커밋된 실행 기록은 `close_basis_revision`을 증가시킵니다. 실질적 범위 변경도 현재 닫기 근거를 무효화하고 `close_basis_revision`을 증가시킵니다.
+- 커밋된 실행 기록이나 advisor finalization은 `close_basis_revision`을 증가시킵니다.
+  실질적 범위 변경이나 advisor checkpoint 변경도 현재 닫기 근거를 무효화하고
+  `close_basis_revision`을 증가시킵니다.
 - 사용자 소유 판단 기록은 어느 리비전도 증가시키지 않습니다.
 - 호출자는 이 리비전을 선택하지 않으며, 리비전 값 자체가 권한이 아닙니다.
 
@@ -265,7 +267,7 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 
 | `Task.mode` | `work_phase` | 권한 경로 |
 |---|---|---|
-| `advisor` | `shaping` | `volicord.record_shaping`; ready checkpoint가 자문 결과 근거가 됨 |
+| `advisor` | `shaping` | `volicord.record_shaping`: checkpoint 기록 뒤 정확한 자문 결과와 checkpoint 기반 닫기 근거 finalization |
 | `direct` | `implementation` | `direct` |
 | `work` | `shaping` | `volicord.record_shaping` 후 정확한 현재 권한으로 `volicord.advance_task` |
 | `work` | `implementation` | `implementation` |
@@ -282,21 +284,27 @@ Shaping resolution과 application은 구분됩니다. 연결된 gap은 User Chan
 mutation이 정확한 resolution을 소비한 뒤에만 `applied`입니다. 폐쇄형 owner 정책은 다음과
 같습니다.
 
-| Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | downstream 유지 |
-|---|---|---|---|---|---|
-| `user_product_decision_required` | `product_decision` | `advance_task` | `volicord.advance_task` | 유지 | 아니요 |
-| `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | 유지 | 아니요 |
-| `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | 증가 | 아니요 |
-| `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | 유지 | 예 |
+| 모드 | Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | downstream 유지 |
+|---|---|---|---|---|---|---|
+| `work` | `user_product_decision_required` | `product_decision` | `advance_task` | `volicord.advance_task` | 유지 | 아니요 |
+| `work` | `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | 유지 | 아니요 |
+| `advisor|work` | `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | 증가 | 아니요 |
+| `work` | `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | 유지 | 예 |
+| `advisor` | `user_product_decision_required` | `product_decision` | `finalize_advice` | `volicord.record_shaping` | 유지 | 닫기 근거에 유지 |
+| `advisor` | `user_technical_decision_required` | `technical_decision` | `finalize_advice` | `volicord.record_shaping` | 유지 | 닫기 근거에 유지 |
+| `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.record_shaping` | 유지 | 닫기 근거에 유지 |
 
 Checkpoint `readiness=ready`는 구조적 상태입니다. baseline과 implementation boundary가
 있고, 비사용자 gap이 닫혔으며, 각 사용자 gap에 현재 resolution이 있다는 뜻입니다. 모든
 결정이 적용되었다는 뜻은 아닙니다. 따라서 workflow summary는 readiness와 남은
 application owner를 따로 노출합니다. Resolved scope gap만
-`ready_to_apply_decisions`를 선택하며, resolved 제품·기술·민감 gap은
-`volicord.advance_task`의 원자적 적용을 기다립니다.
+`ready_to_apply_decisions`를 선택합니다. `work`의 resolved 제품·기술·민감 gap은
+`volicord.advance_task`의 원자적 적용을 기다리고, `advisor`의 해당 gap은 정확한
+`finalize_advice` operation이 적용할 때까지 보입니다. 구조적으로 ready인 advisor
+checkpoint와 현재 호환 Change Unit이 있으면 `ready_to_finalize_advice`를 선택하며,
+finalization이 현재 닫기 근거를 만든 뒤에만 `close_review`를 선택합니다.
 
-`advisor`는 Product Repository 파일 효과에 대해 읽기 전용이며 쓰기 가능한 Change Unit, 쓰기 티켓, `volicord.advance_task`를 사용하지 않습니다. Change Unit은 작업 경계이며 단계를 바꾸지 않습니다. work Task는 명시적 advance 성공으로만 구현에 진입합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 진행 권한 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
+`advisor`는 Product Repository 파일 효과에 대해 읽기 전용이며 쓰기 가능한 Change Unit, 쓰기 티켓, `volicord.advance_task`를 사용하지 않습니다. 정규 advisor Change Unit은 affected/allowed path가 없고 non-null effect contract를 가지며 `artifact_registration`, `user_action_request`, `evidence_update`만 허용하고 sensitive expectation은 없으며 `product_file_write`, `run_recording`, `sensitive_action`, `external_network`, `secret_access`를 금지합니다. Core와 Store는 scope update와 현재 상태 읽기에서 호환되지 않는 advisor Change Unit을 거부합니다. Change Unit은 작업 경계이며 단계를 바꾸지 않습니다. work Task는 명시적 advance 성공으로만 구현에 진입합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 진행 권한 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
 
 ### 실행 기록
 
@@ -369,9 +377,11 @@ Host는 이 receipt로 자연어에서 권한을 재구성하지 않고 기록�
 
 - 현재 `Task`, 현재 적용 Change Unit, `scope_revision`,
   `close_basis_revision`, 기준선
-- 결과 요약, 결과 참조, 증거 요약 참조
+- 결과 요약, 결과 참조, 증거 참조
 - 잔여 위험, 민감 범주, 민감 동작 요구사항, 복구 제약
-- 출처 실행 기록 참조와 갱신 시각
+- 모드와 호환되는 lineage 정확히 하나: direct/work의 출처 Run 또는 advisor의 현재
+  shaping checkpoint와 정확한 applied UserAction resolution
+- 갱신 시각과 현재 close-basis revision
 
 `CurrentCloseBasis`는 닫기 전 권한 입력입니다. 성공한 종료 닫기는 종료 닫기 요약을 만들 수 있지만, 그 종료 요약은 현재 닫기 전 근거가 아니며 열린 `Task`의 현재 닫기 근거를 재구성하는 데 쓰면 안 됩니다.
 
@@ -802,19 +812,27 @@ fact를 받거나 승인 policy 해석을 반복하지 않습니다.
 닫기 근거 권한:
 
 - 호출자가 제공한 닫기 근거 결과와 위험 참조는 담당 문서가 허용한 결과/증거 종류에서만 받아들일 수 있으며, 존재하고 같은 프로젝트와 `Task`에 속해야 하고 Core가 정규화해야 합니다.
-- 기준 범위에서 허용되는 호출자 제공 결과/증거 종류는 담당 문서가 명시적으로 다른 종류를 추가하지 않는 한 Run, Artifact, EvidenceSummary, ChangeUnit입니다.
+- Direct/work에서 허용되는 호출자 제공 결과/증거 종류는 담당 문서가 명시적으로 다른
+  종류를 추가하지 않는 한 Run, Artifact, EvidenceSummary, ChangeUnit입니다. Advisor
+  finalization은 현재 같은 Task의 ChangeUnit, Artifact, EvidenceSummary result ref와
+  Artifact 또는 EvidenceSummary evidence ref를 허용하며 Run은 절대 허용하지 않습니다.
 - ProjectState, 쓰기 티켓, UserActionRequest, UserActionResolution, Blocker, TaskEvent, AgentConnection, Task는 담당 문서가 명시적으로 추가하지 않는 한 호출자 제공 결과 참조가 아닙니다.
 - 닫기 증거에 쓰이는 아티팩트 참조는 `Task`에 연결되어 있고 사용 시점의 현재 바이트 무결성이 `verified`여야 합니다. 증거 참조는 현재 `Task` 증거 요약을 식별해야 합니다. 실행 기록 참조는 현재 `Task`, 현재 적용 Change Unit, 현재 범위 리비전, 호환되는 기준선에 맞는 기록된 현재 실행 기록을 식별해야 합니다. 이력 실행 기록은 현재 실행 기록이 그 `verified` 아티팩트나 증거를 명시적으로 재사용하고 그 재사용을 기록하지 않는 한 감사 기록입니다.
 - 닫기 증거에 쓰이는 증거 관찰 참조는 필요한 `AcceptanceCriterionId`와
   일치해야 하며 `Task`, Change Unit, 출처 실행 기록, 닫기 근거 증거 요약에
   대해 현재 상태여야 합니다. 오래되었거나, 출처가 없거나, 약한 출처만 있는
   범위 표시는 범위 라벨만으로 닫기 준비 상태를 만족하지 않습니다.
-- Core는 기준 참조를 저장하며 호출자가 제공한 상태 버전 메타데이터를 권한으로 취급하지 않습니다. Core는 현재 실행 기록, 현재 Change Unit, 현재 EvidenceSummary 참조를 추가할 수 있습니다.
+- Core는 기준 참조를 저장하며 호출자가 제공한 상태 버전 메타데이터를 권한으로 취급하지 않습니다. Core는 모드 호환 lineage를 추가합니다. direct/work에는 현재 Run을, advisor에는 정확한 현재 shaping checkpoint와 applied UserAction resolution 집합을 추가하고 현재 Change Unit과 지원되는 evidence ref도 추가합니다.
 - 현재 닫기 근거의 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓 호환성 기록에서 Core가 파생합니다. 범주만 담은 호출자 입력은 요구사항을 만들거나 지울 수 없습니다.
 
 현재 닫기 근거는 담당 문서가 정의한 전이를 통해 바뀝니다.
 
 - 커밋된 `record_run`은 `close_basis_revision`을 증가시키고, 그 닫기 평가에서 새 현재 닫기 근거를 만들거나 현재 닫기 근거가 없음을 기록합니다.
+- 커밋된 advisor `finalize_advice`는 `close_basis_revision`을 증가시키고 정확한 현재 ready
+  checkpoint, 비쓰기 Change Unit, scope, baseline, 결정 집합, 결과, evidence, risk, 복구
+  사실에서 현재 close basis를 만듭니다.
+- advisor checkpoint 기록이나 교체는 기존 advisor close basis를 무효화하고
+  `close_basis_revision`을 증가시킵니다. 해당 basis를 조용히 rebase하지 않습니다.
 - 실질적 범위 변경이나 현재 적용 Change Unit 변경은 `scope_revision`을 증가시키고, 현재 닫기 근거를 무효화하며, `close_basis_revision`을 증가시킵니다.
 - 사용자 소유 해결 기록은 요구사항을 만족, 오래됨, 거절 상태로 만들 수 있지만 `scope_revision`이나 `close_basis_revision`을 증가시키지 않습니다.
 

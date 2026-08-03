@@ -474,7 +474,7 @@ Owner links:
 
 ## `WorkflowProjection` and shaping checkpoints
 
-`StateSummary.workflow` is the single tagged progression authority. Its `kind` is one of `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_for_implementation`, `implementation`, `close_review`, or `terminal`.
+`StateSummary.workflow` is the single tagged progression authority. Its `kind` is one of `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, or `terminal`.
 
 ```schema
 WorkflowProjection:
@@ -547,8 +547,10 @@ application. `application_owner` is non-null exactly for a user-owned gap.
 `unresolved_application_owners` is the unique stable set of owners for resolved
 decisions not yet applied. It can be non-empty while `readiness=ready`.
 `ready_to_apply_decisions` is selected only when that set includes
-`volicord.update_scope`; advance-owned decisions proceed toward a Change Unit
-or `ready_for_implementation` instead.
+`volicord.update_scope`. Work advance-owned decisions proceed toward a Change
+Unit or `ready_for_implementation`. Advisor finalization-owned decisions
+proceed toward a non-write Change Unit and `ready_to_finalize_advice`; only a
+current checkpoint-backed close basis selects `close_review`.
 
 The workflow projection selects at most one required method from current progression state. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Task-wide effective UserActions required for `advance_task` also participate in this projection. A detached live decision uses `inconsistent_authority_state`, contributes its request ref to `required_refs`, and prevents `ready_for_implementation`.
 
@@ -1114,12 +1116,15 @@ CurrentCloseBasis:
   baseline_ref: string | null
   result_summary: string
   result_refs: StateRecordRef[]
+  evidence_refs: StateRecordRef[]
   evidence_summary_ref: StateRecordRef | null
   residual_risks: ResidualRisk[]
   sensitive_categories: string[]
   sensitive_action_requirements: SensitiveActionRequirement[]
   recovery_constraints: string[]
-  source_run_ref: StateRecordRef
+  source_run_ref: StateRecordRef | null
+  shaping_checkpoint_ref: StateRecordRef | null
+  applied_user_action_resolution_refs: StateRecordRef[]
   updated_at: string
 
 SensitiveActionRequirement:
@@ -1173,7 +1178,10 @@ Meaning:
 - `CurrentCloseBasis` is the current result and residual-risk state used by close-readiness responses. It is not a terminal close summary.
 - `close_basis_revision` and `scope_revision` are internal current-state coordinates surfaced for compatibility checks. They are not caller-selected authority.
 - `ResidualRisk.risk_id` is an opaque Core-generated identifier. `ResidualRisk.summary` and `ResidualRisk.consequence` are display strings and do not authorize text matching.
-- `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, and `accepted_by_user_action_resolution_refs` use `StateRecordRef`.
+- `result_refs`, `evidence_refs`, `source_run_ref`, `shaping_checkpoint_ref`,
+  `applied_user_action_resolution_refs`, `source_refs`,
+  `evidence_summary_ref`, and `accepted_by_user_action_resolution_refs` use
+  `StateRecordRef`.
 - `sensitive_categories` are opaque sensitive-category classification strings unless an affected method or profile owner publishes a narrower local list.
 - `sensitive_action_requirements` are Core-derived close requirements from committed Runs and consumed write tickets. Category-only caller input cannot establish or erase these requirements.
 - `recovery_constraints` and `RiskAcceptanceCoverage.missing_reason` are display strings. Current close-readiness results use `acceptance_required` when required acceptance is absent and may use `stale_acceptance` when a non-current residual-risk acceptance exists but does not cover the current residual-risk `risk_id` values.
@@ -1191,7 +1199,11 @@ Meaning:
 These shapes do not define close-readiness meaning, response routing, or persistence behavior.
 
 Close-basis reference rules:
-- Caller-supplied close-assessment refs accepted into `CurrentCloseBasis.result_refs` or `ResidualRisk.source_refs` are limited to result/evidence record kinds `run`, `artifact`, `evidence_summary`, and `change_unit` unless an owner document explicitly adds another kind.
+- Direct/work bases have a non-null exact compatible `source_run_ref`, a null
+  `shaping_checkpoint_ref`, and no applied shaping resolution refs. Advisor
+  bases have a null `source_run_ref`, the exact current shaping checkpoint,
+  and the exact set of applied checkpoint resolution refs.
+- Caller-supplied direct/work close-assessment refs accepted into `CurrentCloseBasis.result_refs` or `ResidualRisk.source_refs` are limited to result/evidence record kinds `run`, `artifact`, `evidence_summary`, and `change_unit` unless an owner document explicitly adds another kind. Advisor finalization accepts current same-Task `change_unit`, `artifact`, and `evidence_summary` result refs and `artifact` or `evidence_summary` evidence refs; it does not accept a Run.
 - `project_state`, `write_ticket`, `user_action_request`,
   `user_action_resolution`, `blocker`, `task_event`, and `task` are not
   caller-supplied result refs for a close basis unless an owner document
@@ -1211,6 +1223,8 @@ Guarantee display rules:
 Owner links:
 - Close-readiness meaning and non-substitution rules: [Core Model close readiness](../core-model.md#close_task)
 - Current close basis creation: [`volicord.record_run`](method-record-run.md)
+  for direct/work and [`volicord.record_shaping`](method-record-shaping.md) for
+  advisor
 - Judgment compatibility and accepted-risk input: [API Judgment Schemas](schema-judgment.md)
 - Response branch behavior, close-readiness evaluation order, and response-only blocked outcomes: [`volicord.check_close` and `volicord.close_task`](method-close-task.md)
 - Close-readiness blocker/API response routing semantics: [API blocker routing](blocker-routing.md)

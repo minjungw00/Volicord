@@ -1,6 +1,16 @@
 # Agent Guide
 
-Work Tasks begin in shaping. Record analysis with `volicord.record_shaping`, explicitly creating the first checkpoint when none is current or replacing the exact current checkpoint only when no linked live decision remains. Create a current `UserActionRequest` before presenting an actionable user-owned choice; accept a resolution only through the User Channel; apply decisions through their current resolution refs; and create or update the Change Unit without changing phase. Call `volicord.advance_task` only when the tagged workflow requires it and Task-wide UserAction authority is satisfied. `volicord.record_run` is reserved for direct or implementation execution, Product Repository write preparation is available only in implementation, and close readiness is used only during close review.
+Advisor and work Tasks begin in shaping. Record analysis with
+`volicord.record_shaping`, explicitly creating the
+first checkpoint when none is current or replacing the exact current checkpoint
+only when no linked live decision remains. Create a current `UserActionRequest`
+before presenting an actionable user-owned choice; accept a resolution only
+through the User Channel; apply decisions through their current resolution refs;
+and create or update the Change Unit without changing phase. For advisor, use
+only a non-write Change Unit and follow `ready_to_finalize_advice` with
+advisor finalization through `volicord.record_shaping` before close review. For
+work, call `volicord.advance_task` only when the tagged workflow requires it.
+`volicord.record_run` is reserved for direct or implementation execution.
 
 <a id="purpose"></a>
 
@@ -179,12 +189,13 @@ the returned current resolution ref when applying the decision. The stable CLI
 fallback is:
 
 Resolution does not apply a shaping decision. Route resolved scope gaps through
-`volicord.update_scope`, and supply resolved product, technical, and sensitive
-gaps to `volicord.advance_task`. A product-only or technical-only checkpoint
-needs no scope-decision ref: without a Change Unit the workflow requests
-`volicord.update_scope` to create one; with a current Change Unit it requests
-`volicord.advance_task`. When scope and another decision coexist, apply only
-the scope gap first and leave the other gap for advance.
+`volicord.update_scope`. For work, supply resolved product, technical, and
+sensitive gaps to `volicord.advance_task`. For advisor, preserve those exact
+resolutions until `ready_to_finalize_advice` requires advisor finalization
+through `volicord.record_shaping`; finalization applies them,
+records the result and evidence/risk lineage, preserves the checkpoint, and
+establishes the close basis. When scope and another decision coexist, apply
+only the scope gap first and leave the other gap for its mode-specific owner.
 
 ```sh cli-example
 volicord inbox --repo "<repo>"

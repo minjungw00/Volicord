@@ -131,7 +131,11 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
-    assert_eq!(scoped.response_value["state"]["work_phase"], "shaping");
+    assert_eq!(
+        scoped.response_value["state"]["work_phase"], "shaping",
+        "{}",
+        scoped.response_value
+    );
 
     let before_shortcuts = harness.counts()?;
     let premature_advance = harness.service.advance_task(
@@ -245,17 +249,19 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-            scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-            summary: "The implementation boundary is ready.".to_owned(),
-            implementation_boundary: RequiredNullable::some(
-                "Implement only the current export boundary.".to_owned(),
-            ),
-            gaps: Vec::new(),
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            close_assessment: RequiredNullable::null(),
+            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+                summary: "The implementation boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Implement only the current export boundary.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+            },
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -413,20 +419,22 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-            scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-            summary: "A technical decision is required.".to_owned(),
-            implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
-            gaps: vec![ShapingGapInput {
-                gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
-                summary: "Choose the current technical direction.".to_owned(),
-                affected_refs: Vec::new(),
-                user_action: RequiredNullable::null(),
-            }],
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            close_assessment: RequiredNullable::null(),
+            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+                summary: "A technical decision is required.".to_owned(),
+                implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
+                gaps: vec![ShapingGapInput {
+                    gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
+                    summary: "Choose the current technical direction.".to_owned(),
+                    affected_refs: Vec::new(),
+                    user_action: RequiredNullable::null(),
+                }],
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+            },
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -453,23 +461,25 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-            scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-            summary: "A technical decision is required.".to_owned(),
-            implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
-            gaps: vec![ShapingGapInput {
-                gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
-                summary: "Choose the current technical direction.".to_owned(),
-                affected_refs: Vec::new(),
-                user_action: RequiredNullable::some(ShapingUserActionDraft {
-                    action,
-                    expires_at: RequiredNullable::null(),
-                }),
-            }],
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            close_assessment: RequiredNullable::null(),
+            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+                summary: "A technical decision is required.".to_owned(),
+                implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
+                gaps: vec![ShapingGapInput {
+                    gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
+                    summary: "Choose the current technical direction.".to_owned(),
+                    affected_refs: Vec::new(),
+                    user_action: RequiredNullable::some(ShapingUserActionDraft {
+                        action,
+                        expires_at: RequiredNullable::null(),
+                    }),
+                }],
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+            },
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -536,7 +546,7 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
     )?;
     let task_id = response_record_id(&intake.response_value, "task_ref");
     let scoped = harness.service.update_scope(
-        update_scope_request(
+        advisor_update_scope_request(
             "req_advisor_shaping_scope",
             "idem_advisor_shaping_scope",
             false,
@@ -547,7 +557,11 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(scoped.response_value["state"]["work_phase"], "shaping");
+    assert_eq!(
+        scoped.response_value["state"]["work_phase"], "shaping",
+        "{}",
+        scoped.response_value
+    );
     let shaped = harness.service.record_shaping(
         RecordShapingRequest {
             envelope: envelope(
@@ -558,27 +572,124 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-            scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-            summary: "The advice is complete.".to_owned(),
-            implementation_boundary: RequiredNullable::some(
-                "Advice is limited to the current export boundary.".to_owned(),
-            ),
-            gaps: Vec::new(),
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            close_assessment: RequiredNullable::some(CloseAssessmentInput {
-                result_summary: "The requested advice is complete.".to_owned(),
-                result_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                sensitive_categories: Vec::new(),
-                recovery_constraints: Vec::new(),
-            }),
+            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+                summary: "The advice is complete.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Advice is limited to the current export boundary.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+            },
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(shaped.response_value["workflow"]["kind"], "close_review");
+    assert_eq!(
+        shaped.response_value["workflow"]["kind"],
+        "ready_to_finalize_advice"
+    );
+    let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+    let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
+    let pre_finalize_close = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_advisor_pre_finalize_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    let pre_finalize_json = serde_json::to_string(&pre_finalize_close.response_value)?;
+    assert!(pre_finalize_json.contains("volicord.record_shaping"));
+    assert!(!pre_finalize_json.contains("volicord.record_run"));
+
+    enable_record_run_capabilities(&harness)?;
+    let advisor_run = harness.service.record_run(
+        record_run_request(
+            "req_advisor_public_run",
+            "idem_advisor_public_run",
+            false,
+            Some(3),
+            &task_id,
+            &change_unit_id,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        advisor_run.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    let finalize_request = RecordShapingRequest {
+        envelope: envelope(
+            "req_advisor_shaping_finalize",
+            Some("idem_advisor_shaping_finalize"),
+            false,
+            Some(3),
+            Some(&task_id),
+        ),
+        task_id: TaskId::new(&task_id),
+        operation: volicord_types::methods::RecordShapingOperation::FinalizeAdvice {
+            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: Vec::new(),
+            result_summary: "The requested advice is complete.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
+        },
+    };
+    let finalized = harness.service.record_shaping(
+        finalize_request.clone(),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+    assert!(finalized.response_value["workflow"]["allowed_actions"]
+        .as_array()
+        .is_some_and(|actions| actions
+            .iter()
+            .any(|action| action == "volicord.record_shaping")));
+    let finalized_task = task_revision(&harness, &task_id)?;
+    let finalized_basis = finalized_task
+        .current_close_basis
+        .as_ref()
+        .expect("advisor finalization close basis");
+    assert_eq!(
+        finalized_basis
+            .shaping_checkpoint_ref
+            .as_ref()
+            .expect("advisor checkpoint ref")
+            .record_id
+            .as_str(),
+        checkpoint_id
+    );
+    assert!(finalized_basis.source_run_ref.as_ref().is_none());
+    let replay = harness.service.record_shaping(
+        finalize_request.clone(),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(replay.response_value, finalized.response_value);
+    let mut conflict_request = finalize_request;
+    if let RecordShapingOperation::FinalizeAdvice { result_summary, .. } =
+        &mut conflict_request.operation
+    {
+        *result_summary = "A conflicting advice result.".to_owned();
+    }
+    let conflict = harness.service.record_shaping(
+        conflict_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(conflict.response_value["base"]["response_kind"], "rejected");
     let close = harness.service.check_close(
         check_close_request(CloseTaskFixture {
             request_id: "req_advisor_shaping_check",
@@ -593,10 +704,409 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         invocation(OperationCategory::Read),
     )?;
     assert_eq!(
-        close.response_value["close_state"], "ready",
+        close.response_value["close_state"], "blocked",
         "{}",
         close.response_value
     );
+    harness.conn()?.execute(
+        "UPDATE tasks
+            SET close_basis_json = json_set(
+                close_basis_json,
+                '$.shaping_checkpoint_ref.record_id',
+                'checkpoint_wrong'
+            )
+          WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+    )?;
+    assert!(matches!(
+        harness.store()?.task_record(&TaskId::new(&task_id)),
+        Err(volicord_store::StoreError::SchemaInvariant { .. })
+    ));
+    Ok(())
+}
+
+#[test]
+fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+        &harness,
+        "advisor_checkpoint_invalidation",
+        RequestedMode::Advisor,
+    )?;
+    let shaped = harness.service.record_shaping(
+        ready_shaping_request(
+            "req_advisor_checkpoint_invalidation_record",
+            "idem_advisor_checkpoint_invalidation_record",
+            2,
+            &task_id,
+            ShapingCheckpointOperation::CreateInitial,
+            "Current bounded advice.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+    let finalized = harness.service.record_shaping(
+        RecordShapingRequest {
+            envelope: envelope(
+                "req_advisor_checkpoint_invalidation_finalize",
+                Some("idem_advisor_checkpoint_invalidation_finalize"),
+                false,
+                Some(3),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            operation: RecordShapingOperation::FinalizeAdvice {
+                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: Vec::new(),
+                result_summary: "Current bounded advice result.".to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
+            },
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+    let before = task_revision(&harness, &task_id)?;
+    assert!(before.current_close_basis.is_some());
+
+    let replaced = harness.service.record_shaping(
+        ready_shaping_request(
+            "req_advisor_checkpoint_invalidation_replace",
+            "idem_advisor_checkpoint_invalidation_replace",
+            4,
+            &task_id,
+            ShapingCheckpointOperation::ReplaceCurrent {
+                expected_current_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            },
+            "Replacement bounded advice.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        replaced.response_value["workflow"]["kind"],
+        "ready_to_finalize_advice"
+    );
+    assert_ne!(
+        shaping_checkpoint_id(&replaced.response_value),
+        checkpoint_id
+    );
+    let after = task_revision(&harness, &task_id)?;
+    assert!(after.current_close_basis.is_none());
+    assert_eq!(after.close_basis_revision, before.close_basis_revision + 1);
+    Ok(())
+}
+
+#[test]
+fn stale_advisor_resolution_blocks_finalization() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+        &harness,
+        "advisor_stale_resolution",
+        RequestedMode::Advisor,
+    )?;
+    let shaped = record_user_owned_gaps(
+        &harness,
+        "advisor_stale_resolution",
+        &task_id,
+        Some(&change_unit_id),
+        &[(
+            ShapingGapKind::UserProductDecisionRequired,
+            JudgmentKind::ProductDecision,
+        )],
+    )?;
+    let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+    let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
+        .as_str()
+        .expect("advisor request id");
+    let resolved = harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_advisor_stale_resolution_resolve",
+            "submission_advisor_stale_resolution",
+            None,
+            &task_id,
+            request_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    let resolution_id = resolved.response_value["user_action_resolution_ref"]["record_id"]
+        .as_str()
+        .expect("advisor resolution id")
+        .to_owned();
+
+    let scoped = harness.service.update_scope(
+        advisor_update_scope_request(
+            "req_advisor_stale_resolution_scope_change",
+            "idem_advisor_stale_resolution_scope_change",
+            false,
+            Some(4),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Materially changed advisor analysis scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        scoped.response_value["base"]["response_kind"], "result",
+        "{}",
+        scoped.response_value
+    );
+
+    let stale_finalize = harness.service.record_shaping(
+        RecordShapingRequest {
+            envelope: envelope(
+                "req_advisor_stale_resolution_finalize",
+                Some("idem_advisor_stale_resolution_finalize"),
+                false,
+                Some(5),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            operation: RecordShapingOperation::FinalizeAdvice {
+                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
+                result_summary: "Stale advice must not finalize.".to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
+            },
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        stale_finalize.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert!(task_revision(&harness, &task_id)?
+        .current_close_basis
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<(), Box<dyn Error>> {
+    for (label, decisions) in [
+        (
+            "advisor_product",
+            vec![(
+                ShapingGapKind::UserProductDecisionRequired,
+                JudgmentKind::ProductDecision,
+            )],
+        ),
+        (
+            "advisor_technical",
+            vec![(
+                ShapingGapKind::UserTechnicalDecisionRequired,
+                JudgmentKind::TechnicalDecision,
+            )],
+        ),
+        (
+            "advisor_scope",
+            vec![(
+                ShapingGapKind::UserScopeDecisionRequired,
+                JudgmentKind::ScopeDecision,
+            )],
+        ),
+        (
+            "advisor_multiple",
+            vec![
+                (
+                    ShapingGapKind::UserProductDecisionRequired,
+                    JudgmentKind::ProductDecision,
+                ),
+                (
+                    ShapingGapKind::UserTechnicalDecisionRequired,
+                    JudgmentKind::TechnicalDecision,
+                ),
+                (
+                    ShapingGapKind::UserScopeDecisionRequired,
+                    JudgmentKind::ScopeDecision,
+                ),
+            ],
+        ),
+    ] {
+        let harness = MethodHarness::new()?;
+        let (task_id, initial_change_unit_id) =
+            create_task_with_mode_and_change_unit(&harness, label, RequestedMode::Advisor)?;
+        let shaped = record_user_owned_gaps(
+            &harness,
+            label,
+            &task_id,
+            Some(&initial_change_unit_id),
+            &decisions,
+        )?;
+        assert_eq!(
+            shaped.response_value["workflow"]["kind"],
+            "awaiting_user_action"
+        );
+        let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
+        let request_refs = shaped.response_value["created_user_action_request_refs"]
+            .as_array()
+            .expect("advisor decision requests")
+            .clone();
+        let pending_finalize = harness.service.record_shaping(
+            RecordShapingRequest {
+                envelope: envelope(
+                    &format!("req_{label}_pending_finalize"),
+                    Some(&format!("idem_{label}_pending_finalize")),
+                    false,
+                    Some(harness.counts()?.state_version),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                operation: RecordShapingOperation::FinalizeAdvice {
+                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    change_unit_id: ChangeUnitId::new(&initial_change_unit_id),
+                    scope_revision: 1,
+                    baseline_ref: BaselineRef::new("baseline_test"),
+                    user_action_resolution_ids: Vec::new(),
+                    result_summary: "Advice result.".to_owned(),
+                    result_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    residual_risks: Vec::new(),
+                    recovery_constraints: Vec::new(),
+                },
+            },
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            pending_finalize.response_value["base"]["response_kind"],
+            "rejected"
+        );
+
+        let mut resolution_refs = Vec::new();
+        for (index, request_ref) in request_refs.iter().enumerate() {
+            let request_id = request_ref["record_id"].as_str().expect("request id");
+            let resolved = harness.service.resolve_user_action(
+                resolve_user_action_request(
+                    &format!("req_{label}_resolve_{index}"),
+                    &format!("submission_{label}_{index}"),
+                    None,
+                    &task_id,
+                    request_id,
+                    "accept",
+                ),
+                invocation(OperationCategory::UserOnly),
+            )?;
+            assert_eq!(
+                resolved.response_value["base"]["response_kind"], "result",
+                "{label}: {}",
+                resolved.response_value
+            );
+            resolution_refs.push(serde_json::from_value::<StateRecordRef>(
+                resolved.response_value["user_action_resolution_ref"].clone(),
+            )?);
+        }
+        let has_scope = decisions
+            .iter()
+            .any(|(kind, _)| *kind == ShapingGapKind::UserScopeDecisionRequired);
+        let (change_unit_id, scope_revision) = if has_scope {
+            let scope_resolution_refs = decisions
+                .iter()
+                .zip(&resolution_refs)
+                .filter(|((kind, _), _)| *kind == ShapingGapKind::UserScopeDecisionRequired)
+                .map(|(_, reference)| reference.clone())
+                .collect();
+            let mut scope_request = advisor_update_scope_request(
+                &format!("req_{label}_apply_scope"),
+                &format!("idem_{label}_apply_scope"),
+                false,
+                Some(harness.counts()?.state_version),
+                &task_id,
+                ChangeUnitOperation::ReplaceCurrent,
+                "Apply the exact advisor scope decision.",
+            );
+            scope_request.related_scope_decision_refs = scope_resolution_refs;
+            let scope = harness
+                .service
+                .update_scope(scope_request, invocation(OperationCategory::AgentWorkflow))?;
+            (
+                response_record_id(&scope.response_value, "change_unit_ref"),
+                2,
+            )
+        } else {
+            (initial_change_unit_id, 1)
+        };
+        let current_checkpoint = harness
+            .store()?
+            .current_shaping_checkpoint(&TaskId::new(&task_id))?
+            .expect("current advisor checkpoint");
+        assert_eq!(current_checkpoint.shaping_checkpoint_id, checkpoint_id);
+        let finalized = harness.service.record_shaping(
+            RecordShapingRequest {
+                envelope: envelope(
+                    &format!("req_{label}_finalize"),
+                    Some(&format!("idem_{label}_finalize")),
+                    false,
+                    Some(harness.counts()?.state_version),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                operation: RecordShapingOperation::FinalizeAdvice {
+                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    change_unit_id: ChangeUnitId::new(&change_unit_id),
+                    scope_revision,
+                    baseline_ref: BaselineRef::new("baseline_test"),
+                    user_action_resolution_ids: resolution_refs
+                        .iter()
+                        .map(|reference| UserActionResolutionId::new(reference.record_id.as_str()))
+                        .collect(),
+                    result_summary: "The bounded advisor decision is complete.".to_owned(),
+                    result_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    residual_risks: Vec::new(),
+                    recovery_constraints: Vec::new(),
+                },
+            },
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+        assert_eq!(
+            finalized.response_value["shaping_checkpoint"]["shaping_checkpoint_id"],
+            checkpoint_id
+        );
+        assert!(finalized.response_value["created_user_action_request_refs"]
+            .as_array()
+            .expect("created request refs")
+            .is_empty());
+        let basis = &finalized.response_value["state"];
+        assert_eq!(basis["close_state"], "blocked");
+        let after_acceptance = record_final_acceptance(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            finalized.response_value["base"]["state_version"]
+                .as_u64()
+                .expect("finalized state version"),
+            label,
+        )?;
+        let closed = harness.service.close_task(
+            close_task_request(CloseTaskFixture {
+                request_id: &format!("req_{label}_close"),
+                idempotency_key: Some(&format!("idem_{label}_close")),
+                dry_run: false,
+                expected_state_version: Some(after_acceptance),
+                task_id: &task_id,
+                intent: CloseIntent::Complete,
+                close_reason: Some(CloseReason::CompletedSelfChecked),
+                superseding_task_id: None,
+            }),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            closed.response_value["state"]["lifecycle"]["result"],
+            "advice_only"
+        );
+    }
     Ok(())
 }
 
@@ -742,7 +1252,11 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
     assert_eq!(replay.response_value, replacement.response_value);
     let after_replacement = harness.counts()?;
     let mut conflict = replacement_request;
-    conflict.summary = "Conflicting replay payload.".to_owned();
+    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint { summary, .. } =
+        &mut conflict.operation
+    {
+        *summary = "Conflicting replay payload.".to_owned();
+    }
     let conflict = harness
         .service
         .record_shaping(conflict, invocation(OperationCategory::AgentWorkflow))?;
@@ -995,7 +1509,13 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         },
         "Applied authority permits exact checkpoint succession.",
     );
-    later_request.scope_revision = 2;
+    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+        scope_revision,
+        ..
+    } = &mut later_request.operation
+    {
+        *scope_revision = 2;
+    }
     let later = harness
         .service
         .record_shaping(later_request, invocation(OperationCategory::AgentWorkflow))?;
@@ -1588,17 +2108,18 @@ fn ready_shaping_request(
             Some(task_id),
         ),
         task_id: TaskId::new(task_id),
-        checkpoint_operation,
-        scope_revision: 1,
-        baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-        summary: summary.to_owned(),
-        implementation_boundary: RequiredNullable::some(
-            "Keep implementation inside the exact current scope.".to_owned(),
-        ),
-        gaps: Vec::new(),
-        source_refs: Vec::new(),
-        evidence_refs: Vec::new(),
-        close_assessment: RequiredNullable::null(),
+        operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+            checkpoint_operation,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            summary: summary.to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Keep implementation inside the exact current scope.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+        },
     }
 }
 
@@ -1628,7 +2149,7 @@ fn record_user_owned_gap(
         ShapingCheckpointOperation::CreateInitial,
         "User-owned shaping authority is required.",
     );
-    request.gaps = vec![ShapingGapInput {
+    let gaps = vec![ShapingGapInput {
         gap_kind,
         summary: "The exact User Channel decision remains required.".to_owned(),
         affected_refs: Vec::new(),
@@ -1637,6 +2158,13 @@ fn record_user_owned_gap(
             expires_at: RequiredNullable::null(),
         }),
     }];
+    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+        gaps: request_gaps,
+        ..
+    } = &mut request.operation
+    {
+        *request_gaps = gaps;
+    }
     harness
         .service
         .record_shaping(request, invocation(OperationCategory::AgentWorkflow))
@@ -1657,7 +2185,7 @@ fn record_user_owned_gaps(
         ShapingCheckpointOperation::CreateInitial,
         "Each User Channel decision has one semantic application owner.",
     );
-    request.gaps = decisions
+    let gaps = decisions
         .iter()
         .map(|(gap_kind, judgment_kind)| {
             let action = user_action_request(
@@ -1681,6 +2209,13 @@ fn record_user_owned_gaps(
             }
         })
         .collect();
+    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+        gaps: request_gaps,
+        ..
+    } = &mut request.operation
+    {
+        *request_gaps = gaps;
+    }
     harness
         .service
         .record_shaping(request, invocation(OperationCategory::AgentWorkflow))

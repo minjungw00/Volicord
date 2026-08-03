@@ -3,7 +3,11 @@
 
 # `volicord.check_close`와 `volicord.close_task` 참조
 
-닫기 준비 상태와 workflow 진행은 별개입니다. 현재 ready advisor shaping checkpoint는 자문 결과 근거가 될 수 있지만 work shaping checkpoint는 implementation close basis가 될 수 없습니다. 차단 사유 자체의 해결 행동은 더 이른 workflow 필수 shaping 행동을 덮어쓰지 않습니다.
+닫기 준비 상태와 workflow 진행은 별개입니다. ready advisor shaping checkpoint는 advisor
+finalization을 선택할 뿐 그 자체가 자문 결과 근거는 아닙니다.
+`volicord.record_shaping`의 advisor finalization만 checkpoint 기반 advisor 닫기 근거를
+만들 수 있습니다. work shaping checkpoint는 implementation close basis가 될 수 없습니다. 차단
+사유 자체의 해결 행동은 더 이른 workflow 필수 shaping 행동을 덮어쓰지 않습니다.
 
 ## 담당하는 것
 
@@ -93,10 +97,10 @@ API 경계 블록:
 
 닫기 조건:
 
-- `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
+- `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 모드와 호환되는 아티팩트, 실행 기록 또는 shaping-checkpoint lineage 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
 - `intent=check`와 `intent=complete`의 닫기 준비 상태는 해당 `Task`의 쓰기 티켓이 활성이고 소비되지 않은 채 남아 있을 때 차단됩니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓 행은 오래된 권한 상태로 계속 표시되지만 그 자체로 닫기를 막지 않습니다. 범위 밖 Product Repository 경로를 포함한 미해결 Unrecorded Change는 별도 차단 사유로 유지됩니다. 고정 티켓 만료는 없습니다.
-- 유효한 `effective_control_level=observe` Task에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 닫기 준비 상태 결과는 `volicord.prepare_write`를 추천하지 않으며, 현재 결과나 닫기 근거가 없으면 호환되는 `volicord.record_run` 경로로 안내합니다.
-- 최종 수락은 유효 통제 수준과 권위 있는 프로젝트 정책을 따릅니다. `sensitive`와
+- 유효한 `effective_control_level=observe` Task에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 닫기 준비 상태 결과는 `volicord.prepare_write`를 추천하지 않습니다. `advisor`에서 현재 결과, evidence, 닫기 근거가 없으면 `volicord.record_shaping` finalization으로 안내하며 `volicord.record_run`을 절대 안내하지 않습니다. direct/work에서 호환되는 현재 결과나 닫기 근거 작업은 계속 Run owner가 담당합니다.
+- 최종 수락은 Task 모드, 유효 통제 수준, 권위 있는 프로젝트 정책을 따릅니다. `advisor`는 유효 통제가 `observe`여도 항상 호환되는 final-acceptance UserAction을 요구합니다. direct/work에서 `sensitive`와
   `tracked`는 호환되는 최종 수락을 요구하고 `observe`는 `not_required`를 사용합니다.
   `light`는 `policy_dependent`이며 현재 프로젝트 정책이 명시적으로 허용하고 민감 동작,
   미해결 사용자 요구사항, 잔여 위험 수락 요구사항, 필수 Evidence 공백, 미해결

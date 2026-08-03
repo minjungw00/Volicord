@@ -2,10 +2,10 @@
 
 # `volicord.record_shaping` 참조
 
-이 문서는 `work_phase=shaping`인 `advisor` 또는 `work` Task에 현재
-`ShapingCheckpoint` 하나를 기록하는 공개 메서드를 담당합니다. 체크포인트는 지속되는
-진행 권한입니다. Run, Product Repository 쓰기, Change Unit, 사용자 결정, 단계 전환이
-아닙니다.
+이 문서는 `advisor` 또는 `work` Task에 현재 `ShapingCheckpoint` 하나를 기록하고
+`advisor` Task의 현재 자문 결과를 최종화하는 공개 메서드를 담당합니다. 엄격한
+`operation` 태그는 `record_checkpoint` 또는 `finalize_advice`입니다. 어느 operation도
+공개 Run, Product Repository 쓰기, 쓰기 티켓 operation, 단계 전환이 아닙니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
@@ -22,20 +22,12 @@
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
-| `baseline_ref` | 예 | 예 | `string` |
-| `checkpoint_operation` | 예 | 아니요 | `ShapingCheckpointOperation` |
-| `close_assessment` | 예 | 예 | `CloseAssessmentInput` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
-| `evidence_refs` | 예 | 아니요 | `StateRecordRef[]` |
-| `gaps` | 예 | 아니요 | `ShapingGapInput[]` |
-| `implementation_boundary` | 예 | 예 | `string` |
-| `scope_revision` | 예 | 아니요 | `integer` |
-| `source_refs` | 예 | 아니요 | `SourceRef[]` |
-| `summary` | 예 | 아니요 | `string` |
+| `operation` | 예 | 아니요 | `RecordShapingOperation` |
 | `task_id` | 예 | 아니요 | `string` |
 <!-- END GENERATED: contract-structures api.method.record_shaping.request[params] -->
 
-요청은 정확한 현재 Task와 현재 scope revision을 가리킵니다.
+`operation=record_checkpoint`는 정확한 현재 Task와 현재 scope revision을 가리킵니다.
 `checkpoint_operation.operation=create_initial`은 현재 checkpoint가 없어야 합니다.
 `checkpoint_operation.operation=replace_current`는
 `expected_current_checkpoint_id`로 정확한 현재 checkpoint를 지정해야 합니다. 교체
@@ -67,20 +59,33 @@ operation만 자신이 소유한 전환 안에서 권한을 무효화할 수 있
 `volicord.advance_task`가 적용합니다. 범위 결정은 `required_for=[scope_update]`를 사용하고
 `volicord.update_scope`가 적용합니다. 민감 승인은 `volicord.advance_task`가 적용하며 이후
 `volicord.prepare_write`, `volicord.record_run`, close-completion 정책에서 사용할 권한을
-유지합니다. User Channel resolution 자체는 어떤 결정도 적용하지 않습니다. `advisor` Task에서는 준비된
-체크포인트가 `close_assessment`를 제공했을 때 현재 자문 결과와 advisor 닫기 근거를
-세울 수 있습니다. work checkpoint에서는 이 닫기 평가를 허용하지 않으며 구현 닫기
-근거도 세우지 않습니다. 정확한 gap 종류, 상태, 요청 호환성은
+유지합니다. User Channel resolution 자체는 어떤 결정도 적용하지 않습니다. `advisor`
+Task의 제품·기술·민감 결정은 `required_for=[finalize_advice]`를 사용하고
+`volicord.record_shaping(operation=finalize_advice)`가 적용합니다. advisor 범위 결정은
+정확한 `volicord.update_scope` 적용이 계속 담당합니다. 체크포인트 기록은 닫기 근거를
+만들지 않습니다. 정확한 gap 종류, 상태, 요청 호환성은
 [API 값 집합](schema-value-sets.md)이 담당합니다.
+
+`operation=finalize_advice`는 `Task.mode=advisor`, `work_phase=shaping`, 정확한 ready 현재
+checkpoint, 현재 비쓰기 Change Unit, scope revision, baseline, 모든 사용자 소유 checkpoint
+gap에 대한 중복 없는 정확한 현재 resolution 집합을 요구합니다. `current` gap은 남아 있을
+수 없고, scope owner gap은 이미 `applied`여야 하며, advisor owner resolution은 모두 현재
+상태로 수락되어 있어야 합니다. 요청은 결과 요약, 지원되는 result와 evidence ref, 잔여
+위험, 복구 제약도 제공합니다. Core는 advisor 소유 resolved gap 적용, 자문 결과 기록,
+checkpoint 기반 `CurrentCloseBasis` 생성을 원자적으로 처리하며 checkpoint identity를
+유지하고 현재 workflow와 닫기 준비 상태 projection을 반환합니다. replacement checkpoint나
+새 UserAction 요청은 만들지 않습니다.
 
 ## 원자적 동작
 
-커밋 호출 하나는 현재 Task, 기대 state version, 정확한 checkpoint succession operation을
-검증하고, 정규 UserAction draft와 근거 모델로 모든 사용자 소유 결정을 materialize하며,
-해당하면 정확한 predecessor를 원자적으로 supersede하고 successor와 gap을 삽입하며,
-각 사용자 소유 gap을 정확한 요청에 연결하고, 권한 있는 workflow 상태를 갱신하며,
-메서드 event와 정확한 replay 결과를 기록하고 `state_version`을 정확히 한 번
-증가시킵니다.
+커밋된 `record_checkpoint` 호출 하나는 현재 Task, 기대 state version, 정확한 checkpoint
+succession operation을 검증하고, 정규 UserAction draft와 근거 모델로 모든 사용자 소유
+결정을 materialize하며, 해당하면 정확한 predecessor를 원자적으로 supersede하고 successor와
+gap을 삽입하며, 각 사용자 소유 gap을 정확한 요청에 연결하고, 권한 있는 workflow 상태,
+메서드 event, 정확한 replay 결과를 기록하고 `state_version`을 정확히 한 번 증가시킵니다.
+커밋된 `finalize_advice` 호출 하나는 정확한 advisor 소유 결정 적용, 자문 결과, 잔여 위험,
+복구 제약, evidence lineage, checkpoint 기반 닫기 근거를 같은 aggregate transaction에
+기록합니다.
 
 요청, gap, 체크포인트, event, replay 행, state-version 효과 중 하나라도 실패하면
 transaction 전체를 rollback합니다. 정확한 replay는 원래 결과를 반환하고 충돌하는
@@ -146,8 +151,12 @@ canonical Task 범위 inbox command를 반드시 surface합니다. Chat transcri
 resolution을 대신할 수 없습니다.
 
 해결 뒤에는 resolved scope gap이 있을 때만 `ready_to_apply_decisions`를 선택합니다.
-제품 전용·기술 전용 checkpoint는 Change Unit이 없으면 `ready_for_change_unit`, 현재
-Change Unit이 있으면 `ready_for_implementation`을 선택합니다.
+제품 전용·기술 전용 checkpoint는 advisor 호환 Change Unit이 없으면
+`ready_for_change_unit`을 선택합니다. 정확한 현재 advisor Change Unit과 모든 결정 적용이
+준비되면 advisor workflow는 `required_action=volicord.record_shaping`인
+`ready_to_finalize_advice`를 선택합니다. finalization이 현재 checkpoint 기반 닫기 근거를
+만든 뒤에만 `close_review`를 선택합니다. work Task는 계속
+`ready_for_implementation`과 `volicord.advance_task`를 선택합니다.
 
 ## 관련 담당 문서
 

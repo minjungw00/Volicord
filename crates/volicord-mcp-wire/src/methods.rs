@@ -11,29 +11,29 @@ use volicord_types::methods::{
     AdvanceTaskResponse, ChangeUnitUpdate, CheckCloseResponse, CloseTaskResponse,
     GetOperationResultResponse, InitialScope, IntakeResponse, OperationResultRef,
     PrepareEvidenceCaptureResponse, PrepareWriteResponse, ReconcileChangesResponse,
-    RecordRunResponse, RecordShapingResponse, RequestUserActionResponse, ScopeUpdate,
-    StageArtifactResponse, StatusInclude, StatusResponse, UnrecordedChangeRejection,
+    RecordRunResponse, RecordShapingOperation, RecordShapingResponse, RequestUserActionResponse,
+    ScopeUpdate, StageArtifactResponse, StatusInclude, StatusResponse, UnrecordedChangeRejection,
     UnrecordedChangeResolutionRequest, UpdateScopeResponse,
 };
 use volicord_types::schema::{
     AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
     AuthorityReceipt, CloseAssessmentInput, ContinuityPageRequest, EvidenceCaptureIntent,
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceObservationInput, EvidenceTarget,
-    EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable,
-    ShapingCheckpointOperation, ShapingGapInput, SourceRef, StagedArtifactHandle, StateRecordRef,
-    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowProjection,
-    WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
+    EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, SourceRef,
+    StagedArtifactHandle, StateRecordRef, ToolDryRunResponse, ToolRejectedResponse,
+    UserActionDraft, WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason,
+    WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
-    AcceptancePolicy, ActorSource, CloseMutationIntent, CloseReason, EffectKind, ErrorCode,
-    EvidenceAssuranceLevel, EvidenceCoverageUpdateState, EvidenceDisplayState,
+    AcceptancePolicy, ActorSource, CloseMutationIntent, CloseReason, CloseState, EffectKind,
+    ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState, EvidenceDisplayState,
     EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentResolutionOutcome, MethodName,
     MutationDetailLevel, PrepareWriteDecision, RedactionState, RequestedControlLevel,
     RequestedMode, ResumePolicy, RunKind, ShapingCheckpointReadiness,
     ShapingDecisionApplicationOwner, StatusDetailLevel, TaskMode, UserActionChannelKind,
     UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
-    WorkPhase, WriteTicketEffect,
+    WorkPhase, WorkflowStateKind, WriteTicketEffect,
 };
 
 /// Compound MCP projection that keeps the agent-workflow transaction distinct
@@ -244,6 +244,9 @@ pub struct McpRecordShapingCompactResult {
     pub readiness: ShapingCheckpointReadiness,
     pub unresolved_application_owners: Vec<ShapingDecisionApplicationOwner>,
     pub created_user_action_request_refs: Vec<StateRecordRef>,
+    pub workflow_kind: WorkflowStateKind,
+    pub close_state: Option<CloseState>,
+    pub close_blocker_count: usize,
 }
 
 /// Compact `volicord.update_scope` exact decision-application outcome.
@@ -306,7 +309,7 @@ pub struct McpStageArtifactCompactResult {
 pub struct McpRecordRunCloseBasisAnchor {
     pub close_basis_revision: u64,
     pub scope_revision: u64,
-    pub source_run_ref: StateRecordRef,
+    pub source_run_ref: RequiredNullable<StateRecordRef>,
     pub evidence_summary_ref: RequiredNullable<StateRecordRef>,
 }
 
@@ -659,17 +662,7 @@ pub struct McpRecordShapingArguments {
     #[serde(default)]
     pub detail: MutationDetailLevel,
     pub task_id: TaskId,
-    pub checkpoint_operation: ShapingCheckpointOperation,
-    pub scope_revision: u64,
-    pub baseline_ref: RequiredNullable<BaselineRef>,
-    pub summary: String,
-    pub implementation_boundary: RequiredNullable<String>,
-    pub gaps: Vec<ShapingGapInput>,
-    #[serde(default)]
-    pub source_refs: Vec<SourceRef>,
-    #[serde(default)]
-    pub evidence_refs: Vec<StateRecordRef>,
-    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
+    pub operation: RecordShapingOperation,
 }
 
 /// MCP-visible `volicord.advance_task` arguments.

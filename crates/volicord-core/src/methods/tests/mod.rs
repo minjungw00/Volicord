@@ -1073,6 +1073,50 @@ fn update_scope_request(
     }
 }
 
+fn advisor_update_scope_request(
+    request_id: &str,
+    idempotency_key: &str,
+    dry_run: bool,
+    expected_state_version: Option<u64>,
+    task_id: &str,
+    operation: ChangeUnitOperation,
+    scope_summary: &str,
+) -> UpdateScopeRequest {
+    let mut request = update_scope_request(
+        request_id,
+        idempotency_key,
+        dry_run,
+        expected_state_version,
+        task_id,
+        operation,
+        scope_summary,
+    );
+    request
+        .change_unit
+        .fields
+        .insert("affected_paths".to_owned(), json!([]));
+    request.change_unit.effect_contract = Some(ChangeUnitEffectContract {
+        allowed_effects: vec![
+            ChangeUnitEffectKind::ArtifactRegistration,
+            ChangeUnitEffectKind::UserActionRequest,
+            ChangeUnitEffectKind::EvidenceUpdate,
+        ],
+        forbidden_effects: vec![
+            ChangeUnitEffectKind::ProductFileWrite,
+            ChangeUnitEffectKind::RunRecording,
+            ChangeUnitEffectKind::SensitiveAction,
+            ChangeUnitEffectKind::ExternalNetwork,
+            ChangeUnitEffectKind::SecretAccess,
+        ],
+        allowed_paths: Vec::new(),
+        expected_outputs: vec!["Advice result".to_owned()],
+        invariants: vec!["Observe only".to_owned()],
+        evidence_expectations: Vec::new(),
+        sensitive_action_expectations: Vec::new(),
+    });
+    request
+}
+
 fn prepare_write_request(
     request_id: &str,
     idempotency_key: &str,
@@ -2278,7 +2322,17 @@ fn create_task_with_policy_and_change_unit(
 
     let scope_request_id = format!("req_{prefix}_scope");
     let scope_idempotency_key = format!("idem_{prefix}_scope");
-    let scope = harness.service.update_scope(
+    let scope_request = if requested_mode == RequestedMode::Advisor {
+        advisor_update_scope_request(
+            &scope_request_id,
+            &scope_idempotency_key,
+            false,
+            Some(initial_state_version + 1),
+            &task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Initial current scope.",
+        )
+    } else {
         update_scope_request(
             &scope_request_id,
             &scope_idempotency_key,
@@ -2287,9 +2341,11 @@ fn create_task_with_policy_and_change_unit(
             &task_id,
             ChangeUnitOperation::CreateCurrent,
             "Initial current scope.",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
+        )
+    };
+    let scope = harness
+        .service
+        .update_scope(scope_request, invocation(OperationCategory::AgentWorkflow))?;
     let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
         .as_str()
         .expect("change unit ref should be present")
@@ -2362,27 +2418,71 @@ fn record_ready_advisor_shaping_for_test(
                 Some(task_id),
             ),
             task_id: TaskId::new(task_id),
-            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-            scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-            summary: "Advisor analysis is ready for close review.".to_owned(),
-            implementation_boundary: RequiredNullable::some(
-                "Deliver the bounded advisory result without Product Repository writes.".to_owned(),
-            ),
-            gaps: Vec::new(),
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            close_assessment: RequiredNullable::some(close_assessment_with_risks(
-                "Advisor analysis is complete.",
-                Vec::new(),
-            )),
+            operation: RecordShapingOperation::RecordCheckpoint {
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+                summary: "Advisor analysis is ready for close review.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Deliver the bounded advisory result without Product Repository writes."
+                        .to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+            },
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["base"]["response_kind"], "result");
-    Ok(response.response_value["base"]["state_version"]
+    let after_checkpoint = response.response_value["base"]["state_version"]
         .as_u64()
-        .expect("advisor shaping state version"))
+        .expect("advisor shaping state version");
+    let checkpoint_id = response.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+        .as_str()
+        .expect("advisor checkpoint id");
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let change_unit = store
+        .current_change_unit(&TaskId::new(task_id))?
+        .expect("advisor current Change Unit");
+    drop(store);
+    let finalized = harness.service.record_shaping(
+        RecordShapingRequest {
+            envelope: envelope(
+                &format!("req_{prefix}_finalize_advice"),
+                Some(&format!("idem_{prefix}_finalize_advice")),
+                false,
+                Some(after_checkpoint),
+                Some(task_id),
+            ),
+            task_id: TaskId::new(task_id),
+            operation: RecordShapingOperation::FinalizeAdvice {
+                shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: Vec::new(),
+                result_summary: "Advisor analysis is complete.".to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
+            },
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after_finalize = finalized.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("advisor finalization state version");
+    record_final_acceptance(
+        harness,
+        task_id,
+        &change_unit.change_unit_id,
+        after_finalize,
+        prefix,
+    )
 }
 
 fn create_task_with_effect_contract(

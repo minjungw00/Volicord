@@ -121,11 +121,17 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 
 대기 판단에 표시된 선택지만 고릅니다. 답변 하나는 그 판단 하나만 해결하며 그 자체로
 범위를 바꾸거나 implementation을 시작하지 않습니다. 범위 답변은 agent가 정확한 해당
-결정을 `volicord.update_scope`로 적용합니다. 제품·기술·민감 shaping 답변은
-`volicord.advance_task`가 implementation에 진입할 때 적용합니다. 민감 승인은 이후 쓰기나
-민감 효과에서도 계속 확인합니다. 정확한
-질문과 선택지는 `volicord inbox`에 나타납니다. 에이전트 대상 MCP 연결은 로컬 사용자
-채널로 동작하거나 사용자를 대신해 행동을 해결할 수 없습니다.
+결정을 `volicord.update_scope`로 적용합니다. work Task의 제품·기술·민감 shaping 답변은
+`volicord.advance_task`가 implementation에 진입할 때 적용합니다. work의 민감 승인은 이후
+쓰기나 민감 효과에서도 계속 확인합니다.
+
+advisor Task에서는 제품·기술·민감 shaping 답변이 agent가 정확한 자문 결과를
+`volicord.record_shaping`으로 finalization할 때까지 보입니다. advisor 범위 답변은 계속
+`volicord.update_scope`를 사용합니다. Finalization은 Product Repository 파일을 쓰거나
+Run을 기록하지 않으며 close review에는 별도의 최종 수락이 계속 필요합니다.
+
+정확한 질문과 선택지는 `volicord inbox`에 나타납니다. 에이전트 대상 MCP 연결은 로컬
+사용자 채널로 동작하거나 사용자를 대신해 행동을 해결할 수 없습니다.
 
 정확한 명령 동작은 [관리 CLI](../reference/admin-cli.md#user-channel-commands)에
 있습니다. 지원되는 CLI inbox 전달 경계는
@@ -218,6 +224,11 @@ volicord inbox resolve USER_ACTION_REQUEST_ID \
 최종 수락은 보이는 결과를 받아들이는 판단입니다. 잔여 위험 수락은 이름 붙은 남은
 위험 하나를 받아들이는 판단입니다. 어느 판단도 빠진 필수 증거를 채우거나 관련 없는
 위험을 수락하지 않습니다.
+
+advisor 작업에서는 기록된 checkpoint, 필요한 User Channel 결정, 명시적 자문
+finalization, close review, 최종 수락 순서를 확인합니다. 성공한 완료는 `advice_only`를
+기록하며 advisor workflow는 쓰기 티켓을 발급하거나 Product Repository 쓰기를 승인할 수
+없습니다.
 
 닫기 상태는 현재 Volicord 기록을 바탕으로 판단을 돕습니다. 정확성, 테스트 충분성,
 QA 완료, 배포 성공, 사람 검토 완료, 무위험 완료를 증명하지 않습니다. 정확한 닫기

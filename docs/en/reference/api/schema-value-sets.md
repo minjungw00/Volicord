@@ -327,17 +327,21 @@ exact User Channel authority exists but its semantic application owner has not
 applied it. `applied` means that owner consumed and bound the exact resolution
 to current state. Resolution alone never selects `applied`.
 
-User-owned gaps use this closed application-owner mapping:
+User-owned gaps use this mode-aware closed application-owner mapping:
 
 ```text
-user_product_decision_required -> volicord.advance_task
-user_technical_decision_required -> volicord.advance_task
-user_scope_decision_required -> volicord.update_scope
-sensitive_approval_required -> volicord.advance_task
+work + user_product_decision_required -> volicord.advance_task
+work + user_technical_decision_required -> volicord.advance_task
+advisor|work + user_scope_decision_required -> volicord.update_scope
+work + sensitive_approval_required -> volicord.advance_task
+advisor + user_product_decision_required -> volicord.record_shaping
+advisor + user_technical_decision_required -> volicord.record_shaping
+advisor + sensitive_approval_required -> volicord.record_shaping
 ```
 
 The only `ShapingDecisionApplicationOwner` values are
-`volicord.update_scope` and `volicord.advance_task`.
+`volicord.update_scope`, `volicord.record_shaping`, and
+`volicord.advance_task`.
 
 `WorkflowProjection.kind` uses exactly:
 
@@ -347,6 +351,7 @@ shaping_required
 awaiting_user_action
 ready_to_apply_decisions
 ready_for_change_unit
+ready_to_finalize_advice
 ready_for_implementation
 implementation
 close_review
@@ -361,8 +366,10 @@ shaping_gaps_current
 user_action_pending
 resolved_decisions_not_applied
 change_unit_required
+advisor_finalization_required
 explicit_advance_required
 recovery_constraint
+inconsistent_authority_state
 ```
 
 These values describe current progression only. Close-readiness blockers keep

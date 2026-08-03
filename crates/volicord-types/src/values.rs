@@ -339,6 +339,7 @@ impl Error for ActorSourceParseError {}
 #[serde(rename_all = "snake_case")]
 pub enum NextActionKind {
     UpdateScope,
+    RecordShaping,
     PrepareWrite,
     StageArtifact,
     RecordRun,
@@ -898,6 +899,8 @@ pub enum ShapingDecisionApplicationOwner {
     UpdateScope,
     #[serde(rename = "volicord.advance_task")]
     AdvanceTask,
+    #[serde(rename = "volicord.record_shaping")]
+    RecordShaping,
 }
 
 impl ShapingDecisionApplicationOwner {
@@ -906,6 +909,7 @@ impl ShapingDecisionApplicationOwner {
         match self {
             Self::UpdateScope => MethodName::UpdateScope,
             Self::AdvanceTask => MethodName::AdvanceTask,
+            Self::RecordShaping => MethodName::RecordShaping,
         }
     }
 }
@@ -942,18 +946,24 @@ impl ShapingGapKind {
 
     /// Returns the one canonical policy for a user-owned shaping decision.
     pub const fn decision_policy(self) -> Option<ShapingDecisionPolicy> {
+        self.decision_policy_for_mode(TaskMode::Work)
+    }
+
+    /// Returns the canonical policy for a user-owned shaping decision in the
+    /// Task mode whose method will apply it.
+    pub const fn decision_policy_for_mode(self, mode: TaskMode) -> Option<ShapingDecisionPolicy> {
         match self {
             Self::UserProductDecisionRequired => Some(ShapingDecisionPolicy {
                 user_action_kind: UserActionKind::ProductDecision,
-                required_for: &[UserActionRequiredFor::AdvanceTask],
-                application_owner: ShapingDecisionApplicationOwner::AdvanceTask,
+                required_for: advisor_or_work_required_for(mode),
+                application_owner: advisor_or_work_application_owner(mode),
                 changes_scope_revision: false,
                 retain_resolution_for_downstream: false,
             }),
             Self::UserTechnicalDecisionRequired => Some(ShapingDecisionPolicy {
                 user_action_kind: UserActionKind::TechnicalDecision,
-                required_for: &[UserActionRequiredFor::AdvanceTask],
-                application_owner: ShapingDecisionApplicationOwner::AdvanceTask,
+                required_for: advisor_or_work_required_for(mode),
+                application_owner: advisor_or_work_application_owner(mode),
                 changes_scope_revision: false,
                 retain_resolution_for_downstream: false,
             }),
@@ -966,13 +976,17 @@ impl ShapingGapKind {
             }),
             Self::SensitiveApprovalRequired => Some(ShapingDecisionPolicy {
                 user_action_kind: UserActionKind::SensitiveApproval,
-                required_for: &[
-                    UserActionRequiredFor::AdvanceTask,
-                    UserActionRequiredFor::PrepareWrite,
-                    UserActionRequiredFor::RecordRun,
-                    UserActionRequiredFor::CloseComplete,
-                ],
-                application_owner: ShapingDecisionApplicationOwner::AdvanceTask,
+                required_for: if matches!(mode, TaskMode::Advisor) {
+                    &[UserActionRequiredFor::FinalizeAdvice]
+                } else {
+                    &[
+                        UserActionRequiredFor::AdvanceTask,
+                        UserActionRequiredFor::PrepareWrite,
+                        UserActionRequiredFor::RecordRun,
+                        UserActionRequiredFor::CloseComplete,
+                    ]
+                },
+                application_owner: advisor_or_work_application_owner(mode),
                 changes_scope_revision: false,
                 retain_resolution_for_downstream: true,
             }),
@@ -1004,6 +1018,22 @@ impl ShapingGapKind {
     }
 }
 
+const fn advisor_or_work_required_for(mode: TaskMode) -> &'static [UserActionRequiredFor] {
+    if matches!(mode, TaskMode::Advisor) {
+        &[UserActionRequiredFor::FinalizeAdvice]
+    } else {
+        &[UserActionRequiredFor::AdvanceTask]
+    }
+}
+
+const fn advisor_or_work_application_owner(mode: TaskMode) -> ShapingDecisionApplicationOwner {
+    if matches!(mode, TaskMode::Advisor) {
+        ShapingDecisionApplicationOwner::RecordShaping
+    } else {
+        ShapingDecisionApplicationOwner::AdvanceTask
+    }
+}
+
 /// Durable resolution state of one shaping gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1022,6 +1052,7 @@ pub enum WorkflowStateKind {
     AwaitingUserAction,
     ReadyToApplyDecisions,
     ReadyForChangeUnit,
+    ReadyToFinalizeAdvice,
     ReadyForImplementation,
     Implementation,
     CloseReview,
@@ -1037,6 +1068,7 @@ pub enum WorkflowBlockingReason {
     UserActionPending,
     ResolvedDecisionsNotApplied,
     ChangeUnitRequired,
+    AdvisorFinalizationRequired,
     ExplicitAdvanceRequired,
     RecoveryConstraint,
     InconsistentAuthorityState,
@@ -1847,6 +1879,10 @@ impl UserActionKind {
                     | Self::ScopeDecision
                     | Self::SensitiveApproval
             ),
+            UserActionRequiredFor::FinalizeAdvice => matches!(
+                self,
+                Self::ProductDecision | Self::TechnicalDecision | Self::SensitiveApproval
+            ),
             UserActionRequiredFor::RecordRun => matches!(
                 self,
                 Self::ProductDecision
@@ -1891,6 +1927,7 @@ pub enum JudgmentPresentation {
 pub enum UserActionRequiredFor {
     ScopeUpdate,
     AdvanceTask,
+    FinalizeAdvice,
     PrepareWrite,
     RecordRun,
     CloseComplete,

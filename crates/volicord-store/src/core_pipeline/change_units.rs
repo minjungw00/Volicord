@@ -1,7 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use volicord_types::ids::{BaselineRef, TaskId};
-use volicord_types::schema::ChangeUnitEffectContract;
+use volicord_types::schema::{advisor_compatible_change_unit, ChangeUnitEffectContract};
+use volicord_types::values::TaskMode;
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
 use crate::{StoreError, StoreResult};
@@ -164,7 +165,7 @@ impl CoreProjectStore<'_> {
     }
 }
 
-fn current_change_unit(
+pub(super) fn current_change_unit(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
@@ -177,15 +178,17 @@ fn current_change_unit(
             AND status = 'active'
             AND is_current = 1"
     );
-    conn.query_row(
-        &sql,
-        params![project_id, task_id],
-        raw_change_unit_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)?
-    .map(validate_decoded_change_unit_record)
-    .transpose()
+    let record = conn
+        .query_row(
+            &sql,
+            params![project_id, task_id],
+            raw_change_unit_record_from_row,
+        )
+        .optional()
+        .map_err(StoreError::from)?
+        .map(validate_decoded_change_unit_record)
+        .transpose()?;
+    validate_advisor_current_change_unit(conn, project_id, task_id, record)
 }
 
 fn change_unit_record(
@@ -338,6 +341,20 @@ impl MutationContext<'_> {
     ) -> StoreResult<()> {
         validate_identifier("change_unit_id", &input.change_unit_id)?;
         validate_identifier("task_id", &input.task_id)?;
+        let mode_raw: String = self.tx.query_row(
+            "SELECT mode FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+            params![self.project_id, input.task_id],
+            |row| row.get(0),
+        )?;
+        let mode: TaskMode = decode_owner_closed_value("tasks", &input.task_id, "mode", &mode_raw)?;
+        if mode == TaskMode::Advisor
+            && !advisor_compatible_change_unit(&input.bounded_paths, input.effect_contract.as_ref())
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "an advisor Task cannot retain a write-capable current Change Unit"
+                    .to_owned(),
+            });
+        }
         let scope_summary_json =
             encode_json_column("change_units.scope_summary_json", &input.scope_summary)?;
         let bounded_paths_json =
@@ -423,6 +440,32 @@ impl MutationContext<'_> {
             })
         }
     }
+}
+
+fn validate_advisor_current_change_unit(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+    record: Option<ChangeUnitRecord>,
+) -> StoreResult<Option<ChangeUnitRecord>> {
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    let mode_raw: String = conn.query_row(
+        "SELECT mode FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        params![project_id, task_id],
+        |row| row.get(0),
+    )?;
+    let mode: TaskMode = decode_owner_closed_value("tasks", task_id, "mode", &mode_raw)?;
+    if mode == TaskMode::Advisor
+        && !advisor_compatible_change_unit(&record.bounded_paths, record.effect_contract.as_ref())
+    {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: "project_state",
+            detail: "advisor current Change Unit is write-capable".to_owned(),
+        });
+    }
+    Ok(Some(record))
 }
 
 #[cfg(test)]

@@ -210,7 +210,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:11342241d64ae222850118234bdac390987d6e7ea3f0a55d82564afa96ca5d38"
+        "sha256": "sha256:c52833e96cd9d5cae3b64379a3302a78038acbfd92665fe638ab09524307c88c"
       }
     },
     {
@@ -384,7 +384,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f24917519d42f6c3e418f8d1708dc8e9b3129c57591d174a1daa1f9cfcccad2d"
+        "sha256": "sha256:c98ebbc4765cce143b3a098555af858360bee42afdc0e36c2cecacf31c076f09"
       }
     },
     {
@@ -402,7 +402,6 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
-          "CloseAssessmentInput",
           "CommandSource",
           "EvidenceTarget",
           "ExternalUriSource",
@@ -411,6 +410,7 @@
           "JudgmentKind",
           "JudgmentPresentation",
           "MutationDetailLevel",
+          "RecordShapingOperation",
           "RedactionState",
           "RepositoryFileSource",
           "ResidualRiskInput",
@@ -430,30 +430,16 @@
           "UtcTimestamp"
         ],
         "root_properties": [
-          "baseline_ref",
-          "checkpoint_operation",
-          "close_assessment",
           "detail",
-          "evidence_refs",
-          "gaps",
-          "implementation_boundary",
+          "operation",
           "project_selector",
-          "scope_revision",
-          "source_refs",
-          "summary",
           "task_id"
         ],
         "root_required": [
-          "baseline_ref",
-          "checkpoint_operation",
-          "close_assessment",
-          "gaps",
-          "implementation_boundary",
-          "scope_revision",
-          "summary",
+          "operation",
           "task_id"
         ],
-        "sha256": "sha256:ee72e2fa2b225bff4d88723dd90f4fd8fb7f5e874ff9622fc325486472b2dda0"
+        "sha256": "sha256:cab712532887cef748add0d1f77de8bda7b9565f39048d44c74389d24084f94b"
       },
       "name": "volicord.record_shaping",
       "output_schema": {
@@ -585,6 +571,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -594,7 +581,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:825dc5cc9b6c5c02016b250bda994b68b9b5a8e9aad8b298df3098564ca22447"
+        "sha256": "sha256:d5da04af7d08030ef9f25b8331690a9a1220fbeedf32f7bb27467731b778fd6a"
       }
     },
     {
@@ -758,7 +745,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:416673967278e20b95135d626826fa9b33ed4a79a838f56954ba997bf55e38ea"
+        "sha256": "sha256:5548283c2dc5828ec02c2b748d256b1dcd19fa1d337e695f7023dfaac0a9313f"
       }
     },
     {
@@ -898,7 +885,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b31740bec5dab07aacbbd12cd3dcfdfcc2ee3a3cdd2032b58db8b3d7b84d724c"
+        "sha256": "sha256:daa3e709342b1a8dce460493079d238ac63d3c837f47b29a6ac0ff5494925dc5"
       }
     },
     {
@@ -973,7 +960,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:02902175471054addfd049dbc6eed96eb38dcfde5ab327b32205286dd92d0655"
+        "sha256": "sha256:b0bde348049ecf3b82660928674c7eb9f9dfc0e57f4e188504c4fd74b788d2a9"
       }
     },
     {
@@ -1099,7 +1086,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b7c34f419cce6f64324717ee177ba5ea564f3ca9d2b7d495c9ba64c4f2323fc4"
+        "sha256": "sha256:976141e2990502f6d355d25da07e0cc61c11c0bb6ba793bb6737910c627cfd22"
       }
     },
     {
@@ -1278,7 +1265,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f6444ce2eb0da3ac9d09101c79b3fddff8fc9e5b191fff1856da43e7c3c5e164"
+        "sha256": "sha256:43716dc9663e444046932a88963a4e0b860a8dc175ac1f73625061b7f7843ddf"
       }
     },
     {
@@ -1405,7 +1392,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fa02fca96363047ea5ad9755a2c70c0ddf16685af695de296610ca8d9802918c"
+        "sha256": "sha256:ece20079ed61a2292f3bb012743b45172764e8b90f58aee1201b0142d2239892"
       }
     },
     {
@@ -1629,7 +1616,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:aab982c022c1b482ffe8dea8ce28d95d278b41b5ce100b023fa9abbe8381032f"
+        "sha256": "sha256:845780828239ff32a2852dfbdd02619a25a8c269f2c497a63ec1db9b703d5d94"
       }
     },
     {
@@ -1670,7 +1657,7 @@
         "root_required": [
           "request"
         ],
-        "sha256": "sha256:4eac49b406a140a6422b9fc4d2f620d434d1c4bdbcb389ca0f31fb00d5453a17"
+        "sha256": "sha256:9ff4460102b0d29bf19bce7624447e313a45bba733352725b3fc8299d2238273"
       },
       "name": "volicord.request_user_action",
       "output_schema": {
@@ -1809,7 +1796,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d0594c170f92173a266869e1a516caba0f8d28a9f234869c23db2a94d68e099f"
+        "sha256": "sha256:803519928171b097ba964b76ef371722c10f54a28f1a2731015929967123f871"
       }
     },
     {
@@ -1974,7 +1961,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e67e8cfb9cf51adaeec01e9d52ea3ba2d37c41f03c1a7dfac94da0ab6259c12b"
+        "sha256": "sha256:a11795ceef4bf09b184a3fe3f1136755c6ad3d9626aa7e64f56b1e4aacf17dee"
       }
     },
     {
@@ -2105,7 +2092,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d470d70bd9245b33b3242af7e1b13c16ebd070f42b279f168fc1a29567221e8f"
+        "sha256": "sha256:c5d5f8323f05c67684c701b6465d7ffe616d3eac4c06b07df3b9976cbd2fe6b4"
       }
     },
     {
@@ -2275,7 +2262,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:09731c576d7bf66dfbb50ed5b88397cc4969e543c017d4f179da393267c263c3"
+        "sha256": "sha256:8909ef3dc4b3e3856cff82cf37ca62d0e2adc1f598e8783928c1a22a5f4373e2"
       }
     },
     {

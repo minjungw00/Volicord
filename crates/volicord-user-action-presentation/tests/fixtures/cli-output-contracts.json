@@ -453,6 +453,7 @@
               "description": "Controlled next-action category.",
               "enum": [
                 "update_scope",
+                "record_shaping",
                 "prepare_write",
                 "stage_artifact",
                 "record_run",
@@ -689,6 +690,7 @@
               "enum": [
                 "scope_update",
                 "advance_task",
+                "finalize_advice",
                 "prepare_write",
                 "record_run",
                 "close_complete",
@@ -1305,6 +1307,7 @@
               "description": "Controlled next-action category.",
               "enum": [
                 "update_scope",
+                "record_shaping",
                 "prepare_write",
                 "stage_artifact",
                 "record_run",
@@ -1541,6 +1544,7 @@
               "enum": [
                 "scope_update",
                 "advance_task",
+                "finalize_advice",
                 "prepare_write",
                 "record_run",
                 "close_complete",
@@ -1849,6 +1853,7 @@
         "evidence_summary",
         "expired",
         "final_acceptance",
+        "finalize_advice",
         "informational",
         "integrity_failed",
         "local_recovery",
@@ -1863,6 +1868,7 @@
         "read",
         "reconcile_changes",
         "record_run",
+        "record_shaping",
         "redacted",
         "request_user_action",
         "required",

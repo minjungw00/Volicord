@@ -2,11 +2,14 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use volicord_types::{
     ids::{BaselineRef, TaskId},
-    schema::{CarryForwardDisposition, CurrentCloseBasis, JsonObject, SourceRef, StateRecordRef},
+    schema::{
+        advisor_compatible_change_unit, CarryForwardDisposition, CurrentCloseBasis, JsonObject,
+        SourceRef, StateRecordRef,
+    },
     values::{
         AcceptancePolicy, ActorSource, EvidenceRequirement, PersistedCloseSummary,
-        RequestedControlLevel, TaskControlLevel, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
-        TaskResult, UtcTimestamp, WorkPhase,
+        RequestedControlLevel, StateRecordKind, TaskControlLevel, TaskLifecyclePhase,
+        TaskLineageRelation, TaskMode, TaskResult, UtcTimestamp, WorkPhase,
     },
 };
 
@@ -29,9 +32,6 @@ const ACCEPTANCE_CRITERION_COLUMNS: &str = "
 
 const EVIDENCE_CLAIM_COLUMNS: &str = "
     project_id, evidence_claim_id, task_id, statement";
-
-const TASK_REVISION_COLUMNS: &str = "
-    project_id, task_id, scope_revision, close_basis_revision, close_basis_json";
 
 /// Task and acceptance mutation applied inside one Core commit transaction.
 #[derive(Debug, Clone, PartialEq)]
@@ -352,7 +352,15 @@ impl CoreProjectStore<'_> {
         &self,
         task_id: &TaskId,
     ) -> StoreResult<Option<TaskRevisionRecord>> {
-        task_revision_record(&self.conn, &self.project.project_id, task_id.as_str())
+        self.task_record(task_id).map(|record| {
+            record.map(|task| TaskRevisionRecord {
+                project_id: task.project_id,
+                task_id: task.task_id,
+                scope_revision: task.scope_revision,
+                close_basis_revision: task.close_basis_revision,
+                current_close_basis: task.close_basis,
+            })
+        })
     }
 
     /// Reads the current active Task row, when `project_state.active_task_id` is set.
@@ -427,11 +435,125 @@ fn task_record(
           WHERE project_id = ?1
             AND task_id = ?2"
     );
-    conn.query_row(&sql, params![project_id, task_id], task_record_from_row)
+    let record = conn
+        .query_row(&sql, params![project_id, task_id], task_record_from_row)
         .optional()
         .map_err(StoreError::from)?
         .map(validate_decoded_task_record)
+        .transpose()?;
+    record
+        .map(|record| validate_task_aggregate(conn, record))
         .transpose()
+}
+
+fn validate_task_aggregate(conn: &Connection, task: TaskRecord) -> StoreResult<TaskRecord> {
+    let Some(basis) = task.close_basis.as_ref() else {
+        return Ok(task);
+    };
+    let common_matches = basis.task_id.as_str() == task.task_id
+        && basis.scope_revision == task.scope_revision
+        && basis.close_basis_revision == task.close_basis_revision
+        && basis.baseline_ref.as_ref() == task.shaping.baseline_ref.as_ref()
+        && task.current_change_unit_id.as_deref() == Some(basis.change_unit_id.as_str());
+    if !common_matches {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: "project_state",
+            detail: "current close basis does not match its Task aggregate coordinates".to_owned(),
+        });
+    }
+    if task.mode == TaskMode::Advisor {
+        if basis.source_run_ref.is_some()
+            || basis
+                .shaping_checkpoint_ref
+                .as_ref()
+                .is_none_or(|reference| {
+                    reference.record_kind != StateRecordKind::ShapingCheckpoint
+                        || reference.project_id.as_str() != task.project_id
+                        || reference.task_id.as_ref().map(TaskId::as_str)
+                            != Some(task.task_id.as_str())
+                })
+        {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "advisor close basis has invalid checkpoint-backed lineage".to_owned(),
+            });
+        }
+        let checkpoint_id = basis
+            .shaping_checkpoint_ref
+            .as_ref()
+            .expect("checked advisor checkpoint ref")
+            .record_id
+            .as_str();
+        let checkpoint_matches: bool = conn.query_row(
+            "SELECT EXISTS (
+               SELECT 1 FROM shaping_checkpoints
+                WHERE project_id = ?1 AND task_id = ?2
+                  AND shaping_checkpoint_id = ?3 AND readiness <> 'superseded'
+                  AND scope_revision = ?4 AND baseline_ref = ?5
+             )",
+            params![
+                task.project_id,
+                task.task_id,
+                checkpoint_id,
+                i64::try_from(task.scope_revision).map_err(|_| StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail: "Task scope revision is too large".to_owned(),
+                })?,
+                task.shaping.baseline_ref.as_ref().map(BaselineRef::as_str),
+            ],
+            |row| row.get(0),
+        )?;
+        let change_unit =
+            super::change_units::current_change_unit(conn, &task.project_id, &task.task_id)?;
+        let change_unit_matches = change_unit.as_ref().is_some_and(|change_unit| {
+            change_unit.change_unit_id == basis.change_unit_id.as_str()
+                && advisor_compatible_change_unit(
+                    &change_unit.bounded_paths,
+                    change_unit.effect_contract.as_ref(),
+                )
+        });
+        let applied_ids = {
+            let mut statement = conn.prepare(
+                "SELECT l.user_action_resolution_id
+                   FROM shaping_checkpoint_gaps AS g
+                   JOIN shaping_checkpoint_user_actions AS l
+                     ON l.project_id = g.project_id
+                    AND l.shaping_checkpoint_id = g.shaping_checkpoint_id
+                    AND l.shaping_gap_id = g.shaping_gap_id
+                  WHERE g.project_id = ?1 AND g.shaping_checkpoint_id = ?2
+                    AND g.status = 'applied' AND l.user_action_resolution_id IS NOT NULL
+                  ORDER BY l.user_action_resolution_id",
+            )?;
+            let rows = statement
+                .query_map(params![task.project_id, checkpoint_id], |row| {
+                    row.get::<_, String>(0)
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        let mut basis_ids = basis
+            .applied_user_action_resolution_refs
+            .iter()
+            .map(|reference| reference.record_id.as_str().to_owned())
+            .collect::<Vec<_>>();
+        basis_ids.sort();
+        if !checkpoint_matches || !change_unit_matches || applied_ids != basis_ids {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "advisor close basis does not match its current Change Unit, checkpoint, or applied resolutions"
+                    .to_owned(),
+            });
+        }
+    } else if basis.source_run_ref.is_none()
+        || basis.shaping_checkpoint_ref.is_some()
+        || !basis.applied_user_action_resolution_refs.is_empty()
+    {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: "project_state",
+            detail: "direct/work close basis must remain Run-backed".to_owned(),
+        });
+    }
+    Ok(task)
 }
 
 fn task_records(conn: &Connection, project_id: &str) -> StoreResult<Vec<TaskRecord>> {
@@ -721,50 +843,6 @@ fn evidence_claim_record(
     )
     .optional()
     .map_err(StoreError::from)
-}
-
-fn task_revision_record(
-    conn: &Connection,
-    project_id: &str,
-    task_id: &str,
-) -> StoreResult<Option<TaskRevisionRecord>> {
-    let sql = format!(
-        "SELECT {TASK_REVISION_COLUMNS}
-           FROM tasks
-          WHERE project_id = ?1
-            AND task_id = ?2"
-    );
-    let row = conn
-        .query_row(&sql, params![project_id, task_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, Option<String>>(4)?,
-            ))
-        })
-        .optional()?;
-
-    let Some((project_id, task_id, scope_revision, close_basis_revision, close_basis_json)) = row
-    else {
-        return Ok(None);
-    };
-    let current_close_basis =
-        decode_current_close_basis_column(&task_id, close_basis_json.as_deref())?;
-
-    Ok(Some(TaskRevisionRecord {
-        project_id,
-        task_id,
-        scope_revision: nonnegative_i64_to_u64("tasks.scope_revision", scope_revision)
-            .map_err(StoreError::from)?,
-        close_basis_revision: nonnegative_i64_to_u64(
-            "tasks.close_basis_revision",
-            close_basis_revision,
-        )
-        .map_err(StoreError::from)?,
-        current_close_basis,
-    }))
 }
 
 fn task_control_level_rank(value: TaskControlLevel) -> u8 {

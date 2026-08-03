@@ -86,9 +86,10 @@ Close must stay honest.
 Acceptance and risk acceptance are specific.
 
 - Final acceptance is the user's judgment of the visible close basis.
-- Whether final acceptance is required is derived from the Task's effective
-  control level, its recorded acceptance policy, and the authoritative project
-  workflow policy. It is never an agent-selected close waiver.
+- Advisor always requires final acceptance. For direct/work, whether final
+  acceptance is required is derived from the Task's effective control level,
+  its recorded acceptance policy, and the authoritative project workflow
+  policy. It is never an agent-selected close waiver.
 - Residual-risk acceptance is the user's acceptance of named visible residual risk for the requested close.
 - Neither fills evidence gaps, changes scope, grants write authority, proves verification, or makes the result risk-free.
 
@@ -96,7 +97,10 @@ Scope and close-basis revisions are internal current-state coordinates.
 
 - Every `Task` has a `scope_revision` and a `close_basis_revision`.
 - Material current-scope or current Change Unit changes increment `scope_revision`; semantically identical normalized updates do not.
-- A committed Run recording increments `close_basis_revision`. A material scope change also invalidates the current close basis and increments `close_basis_revision`.
+- A committed Run recording or advisor finalization increments
+  `close_basis_revision`. A material scope change or advisor checkpoint change
+  also invalidates the current close basis and increments
+  `close_basis_revision`.
 - Recording a user-owned judgment does not increment either revision.
 - Callers do not choose these revisions, and a revision value is not authority by itself.
 
@@ -266,7 +270,7 @@ The concrete `Task.mode` and `work_phase` select the authority record and transi
 
 | `Task.mode` | `work_phase` | Authority path |
 |---|---|---|
-| `advisor` | `shaping` | `volicord.record_shaping`; a ready checkpoint is the advice result basis |
+| `advisor` | `shaping` | `volicord.record_shaping`: record the checkpoint, then finalize the exact advice result and checkpoint-backed close basis |
 | `direct` | `implementation` | `direct` |
 | `work` | `shaping` | `volicord.record_shaping`, then `volicord.advance_task` with exact current authority |
 | `work` | `implementation` | `implementation` |
@@ -284,22 +288,29 @@ until User Channel authority exists, `resolved` while that authority awaits its
 semantic owner, and `applied` only after that owner's state mutation consumes
 the exact resolution. The closed owner policy is:
 
-| Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | Downstream retention |
-|---|---|---|---|---|---|
-| `user_product_decision_required` | `product_decision` | `advance_task` | `volicord.advance_task` | unchanged | no |
-| `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | unchanged | no |
-| `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | incremented | no |
-| `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | unchanged | yes |
+| Mode | Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | Downstream retention |
+|---|---|---|---|---|---|---|
+| `work` | `user_product_decision_required` | `product_decision` | `advance_task` | `volicord.advance_task` | unchanged | no |
+| `work` | `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | unchanged | no |
+| `advisor|work` | `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | incremented | no |
+| `work` | `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | unchanged | yes |
+| `advisor` | `user_product_decision_required` | `product_decision` | `finalize_advice` | `volicord.record_shaping` | unchanged | retained in close basis |
+| `advisor` | `user_technical_decision_required` | `technical_decision` | `finalize_advice` | `volicord.record_shaping` | unchanged | retained in close basis |
+| `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.record_shaping` | unchanged | retained in close basis |
 
 Checkpoint `readiness=ready` is structural: the baseline and implementation
 boundary exist, non-user gaps are closed, and each user gap has a current
 resolution. It does not mean all decisions are applied. The workflow summary
 therefore exposes readiness and the remaining application owners separately.
-Only a resolved scope gap selects `ready_to_apply_decisions`; resolved product,
-technical, and sensitive gaps wait for atomic application by
-`volicord.advance_task`.
+Only a resolved scope gap selects `ready_to_apply_decisions`. For `work`,
+resolved product, technical, and sensitive gaps wait for atomic application by
+`volicord.advance_task`. For `advisor`, they remain visible until the exact
+`finalize_advice` operation applies them. A structurally ready advisor
+checkpoint with a current compatible Change Unit selects
+`ready_to_finalize_advice`; it selects `close_review` only after finalization
+has established a current close basis.
 
-`advisor` is read-only with respect to Product Repository file effects and never uses a write-capable Change Unit, a write ticket, or `volicord.advance_task`. A Change Unit is a work boundary and does not change phase. A work Task enters implementation only through a successful explicit advance. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Progression authority does not satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
+`advisor` is read-only with respect to Product Repository file effects and never uses a write-capable Change Unit, a write ticket, or `volicord.advance_task`. Its canonical Change Unit has no affected or allowed paths, has a non-null effect contract, allows only `artifact_registration`, `user_action_request`, and `evidence_update`, records no sensitive expectation, and forbids `product_file_write`, `run_recording`, `sensitive_action`, `external_network`, and `secret_access`. Core and Store reject any incompatible advisor Change Unit on scope update and current-state read. A Change Unit is a work boundary and does not change phase. A work Task enters implementation only through a successful explicit advance. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Progression authority does not satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
 
 ### Run
 
@@ -373,10 +384,13 @@ decisions. It contains:
 
 - the current `Task`, current Change Unit, `scope_revision`,
   `close_basis_revision`, and baseline
-- the result summary, result references, and evidence-summary reference
+- the result summary, result references, and evidence references
 - residual risks, sensitive categories, sensitive-action requirements, and
   recovery constraints
-- the source Run reference and update time
+- exactly one mode-compatible lineage: a source Run for direct/work, or the
+  current shaping checkpoint plus exact applied UserAction resolutions for
+  advisor
+- the update time and current close-basis revision
 
 `CurrentCloseBasis` is pre-close authority input. A successful terminal close may produce a terminal close summary, but that terminal summary is not the current pre-close basis and must not be used to recreate one for an open `Task`.
 
@@ -813,7 +827,11 @@ interpretation.
 Close-basis authority:
 
 - Caller-supplied close-basis result and risk refs must be accepted only from owner-allowed result/evidence kinds and must exist, belong to the same project and `Task`, and be canonicalized by Core.
-- Baseline allowed caller-supplied result/evidence kinds are Run, Artifact, EvidenceSummary, and ChangeUnit unless an owner explicitly adds another kind.
+- Direct/work caller-supplied result/evidence kinds are Run, Artifact,
+  EvidenceSummary, and ChangeUnit unless an owner explicitly adds another kind.
+  Advisor finalization accepts current same-Task ChangeUnit, Artifact, and
+  EvidenceSummary result refs and Artifact or EvidenceSummary evidence refs;
+  it never accepts a Run.
 - ProjectState, write ticket, UserActionRequest, UserActionResolution, Blocker, TaskEvent, AgentConnection, and Task are not caller-supplied result refs unless an owner explicitly adds them.
 - Artifact refs used for close evidence must be linked to the `Task` and have current-byte verified integrity at use time. Evidence refs must identify the current `Task` evidence summary. Run refs must identify a recorded current Run compatible with the current `Task`, current Change Unit, current scope revision, and compatible baseline. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
 - Evidence observation refs used for close evidence must match the required
@@ -821,12 +839,19 @@ Close-basis authority:
   Run, and close-basis evidence summary. Stale, provenance-free, or
   weak-provenance coverage does not satisfy close readiness by coverage label
   alone.
-- Core stores canonical refs and never treats caller-supplied state-version metadata as authority. Core may add the current Run, current Change Unit, and current EvidenceSummary refs.
+- Core stores canonical refs and never treats caller-supplied state-version metadata as authority. Core adds mode-compatible lineage: the current Run for direct/work, or the exact current shaping checkpoint and applied UserAction resolution set for advisor, plus the current Change Unit and supported evidence refs.
 - Sensitive action requirements in the current close basis are derived by Core from committed Runs and consumed write-ticket compatibility records. Category-only caller input cannot establish or erase a requirement.
 
 The current close basis changes through owner-defined transitions:
 
 - A committed `record_run` increments `close_basis_revision` and either establishes a new current close basis from its close assessment or records that no current close basis is established.
+- A committed advisor `finalize_advice` increments `close_basis_revision` and
+  establishes the current close basis from the exact current ready checkpoint,
+  non-write Change Unit, scope, baseline, decision set, result, evidence, risk,
+  and recovery facts.
+- Recording or replacing an advisor checkpoint invalidates an existing advisor
+  close basis and increments `close_basis_revision`; it never silently rebases
+  that basis.
 - A material scope or current Change Unit change increments `scope_revision`, invalidates the current close basis, and increments `close_basis_revision`.
 - Recording a user-owned resolution may make a requirement satisfied, stale, or rejected, but it does not increment `scope_revision` or `close_basis_revision`.
 

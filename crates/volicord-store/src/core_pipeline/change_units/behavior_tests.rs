@@ -3,7 +3,7 @@ use std::error::Error;
 use rusqlite::params;
 use volicord_types::ids::{BaselineRef, IdempotencyKey, ProjectId, RequestHash, TaskId};
 use volicord_types::schema::ChangeUnitEffectContract;
-use volicord_types::values::{ChangeUnitEffectKind, MethodName};
+use volicord_types::values::{ChangeUnitEffectKind, MethodName, TaskMode};
 
 use super::{
     ChangeUnitInsert, ChangeUnitMutation, StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary,
@@ -113,6 +113,98 @@ fn malformed_effect_contract_json_fails_closed_on_read() -> Result<(), Box<dyn E
         }
     ));
     Ok(())
+}
+
+#[test]
+fn advisor_current_change_unit_is_observe_only_at_write_and_read_boundaries(
+) -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let task_id = "task_advisor_change_unit";
+    let input = commit_input(
+        &ProjectId::new(PROJECT_ID),
+        MethodName::UpdateScope,
+        Some(&IdempotencyKey::new("idem_store_advisor_change_unit")),
+        &RequestHash::new("sha256:advisor-change-unit"),
+        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+        Some(0),
+        vec![pending_event_for_task("advisor_change_unit", task_id)],
+    );
+    let invalid = store.commit_with(
+        input.clone(),
+        |mutation, facts| {
+            let mut task = task_insert(task_id);
+            task.mode = TaskMode::Advisor;
+            CoreStorageMutation::Task(TaskMutation::insert(task))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit_insert(
+                "cu_advisor_invalid",
+                task_id,
+                Some(advisor_effect_contract()),
+            )))
+            .apply(mutation, facts)
+            .map(|_| ())
+        },
+        response_json,
+    );
+    assert!(matches!(invalid, Err(StoreError::InvalidInput { .. })));
+
+    let valid_input = commit_input(
+        &ProjectId::new(PROJECT_ID),
+        MethodName::UpdateScope,
+        Some(&IdempotencyKey::new("idem_store_advisor_change_unit_valid")),
+        &RequestHash::new("sha256:advisor-change-unit-valid"),
+        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+        Some(0),
+        vec![pending_event_for_task("advisor_change_unit_valid", task_id)],
+    );
+    store.commit_with(
+        valid_input,
+        |mutation, facts| {
+            let mut task = task_insert(task_id);
+            task.mode = TaskMode::Advisor;
+            CoreStorageMutation::Task(TaskMutation::insert(task))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            let mut change_unit =
+                change_unit_insert("cu_advisor_valid", task_id, Some(advisor_effect_contract()));
+            change_unit.bounded_paths.clear();
+            CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit))
+                .apply(mutation, facts)
+                .map(|_| ())
+        },
+        response_json,
+    )?;
+    assert!(store.current_change_unit(&TaskId::new(task_id))?.is_some());
+    store.conn.execute(
+        "UPDATE change_units SET bounded_paths_json = '[\"src/write.rs\"]'
+          WHERE project_id = ?1 AND change_unit_id = ?2",
+        params![PROJECT_ID, "cu_advisor_valid"],
+    )?;
+    assert!(matches!(
+        store.current_change_unit(&TaskId::new(task_id)),
+        Err(StoreError::SchemaInvariant { .. })
+    ));
+    Ok(())
+}
+
+fn advisor_effect_contract() -> ChangeUnitEffectContract {
+    ChangeUnitEffectContract {
+        allowed_effects: vec![ChangeUnitEffectKind::ArtifactRegistration],
+        forbidden_effects: vec![
+            ChangeUnitEffectKind::ProductFileWrite,
+            ChangeUnitEffectKind::RunRecording,
+            ChangeUnitEffectKind::SensitiveAction,
+            ChangeUnitEffectKind::ExternalNetwork,
+            ChangeUnitEffectKind::SecretAccess,
+        ],
+        allowed_paths: Vec::new(),
+        expected_outputs: Vec::new(),
+        invariants: Vec::new(),
+        evidence_expectations: Vec::new(),
+        sensitive_action_expectations: Vec::new(),
+    }
 }
 
 fn change_unit_insert(

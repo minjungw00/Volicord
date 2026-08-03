@@ -650,6 +650,7 @@ mod tests {
             "result_refs": [
                 state_ref_json("run", "run_close_basis_001", "task_close_basis_001")
             ],
+            "evidence_refs": [],
             "evidence_summary_ref": null,
             "residual_risks": [
                 {
@@ -680,6 +681,8 @@ mod tests {
             ],
             "recovery_constraints": ["Rollback requires restoring the previous exporter."],
             "source_run_ref": state_ref_json("run", "run_close_basis_001", "task_close_basis_001"),
+            "shaping_checkpoint_ref": null,
+            "applied_user_action_resolution_refs": [],
             "updated_at": "2026-06-18T00:00:00.000Z"
         }))
         .expect("CurrentCloseBasis should deserialize");
@@ -3494,19 +3497,7 @@ mod tests {
                 "change_unit",
                 "related_scope_decision_refs",
             ],
-            "volicord.record_shaping" => &[
-                "envelope",
-                "task_id",
-                "checkpoint_operation",
-                "scope_revision",
-                "baseline_ref",
-                "summary",
-                "implementation_boundary",
-                "gaps",
-                "source_refs",
-                "evidence_refs",
-                "close_assessment",
-            ],
+            "volicord.record_shaping" => &["envelope", "task_id", "operation"],
             "volicord.advance_task" => &[
                 "envelope",
                 "task_id",
@@ -3697,15 +3688,17 @@ mod tests {
         json!({
             "envelope": envelope_json(),
             "task_id": "task_empty_001",
-            "checkpoint_operation": {"operation": "create_initial"},
-            "scope_revision": 2,
-            "baseline_ref": "baseline_empty_001",
-            "summary": "The saved-filter implementation boundary is ready.",
-            "implementation_boundary": "Limit edits to saved-filter validation.",
-            "gaps": [],
-            "source_refs": [],
-            "evidence_refs": [],
-            "close_assessment": null
+            "operation": {
+                "operation": "record_checkpoint",
+                "checkpoint_operation": {"operation": "create_initial"},
+                "scope_revision": 2,
+                "baseline_ref": "baseline_empty_001",
+                "summary": "The saved-filter implementation boundary is ready.",
+                "implementation_boundary": "Limit edits to saved-filter validation.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }
         })
     }
 

@@ -469,7 +469,7 @@ TaskLifecycleState:
 
 ## `WorkflowProjection`과 shaping checkpoint
 
-`StateSummary.workflow`는 단일 태그형 진행 권한입니다. `kind` 값은 `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_for_implementation`, `implementation`, `close_review`, `terminal` 중 하나입니다.
+`StateSummary.workflow`는 단일 태그형 진행 권한입니다. `kind` 값은 `no_active_task`, `shaping_required`, `awaiting_user_action`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, `terminal` 중 하나입니다.
 
 ```schema
 WorkflowProjection:
@@ -541,8 +541,10 @@ Checkpoint readiness는 구조적이며 decision application과 독립적입니�
 `application_owner`는 사용자 소유 gap일 때만 null이 아닙니다.
 `unresolved_application_owners`는 해결되었지만 아직 적용되지 않은 결정 owner의 고유하고
 안정적인 집합입니다. `readiness=ready`여도 비어 있지 않을 수 있습니다. 이 집합에
-`volicord.update_scope`가 있을 때만 `ready_to_apply_decisions`를 선택합니다. Advance owner
-결정은 대신 Change Unit 또는 `ready_for_implementation` 방향으로 진행합니다.
+`volicord.update_scope`가 있을 때만 `ready_to_apply_decisions`를 선택합니다. Work의
+advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으로 진행합니다.
+Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
+진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.
 
 workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. `advance_task`에 필요한 Task 전체 effective UserAction도 이 projection에 참여합니다. 분리된 live 결정은 `inconsistent_authority_state`를 사용하고 request ref를 `required_refs`에 추가하며 `ready_for_implementation`을 차단합니다.
 
@@ -1092,12 +1094,15 @@ CurrentCloseBasis:
   baseline_ref: string | null
   result_summary: string
   result_refs: StateRecordRef[]
+  evidence_refs: StateRecordRef[]
   evidence_summary_ref: StateRecordRef | null
   residual_risks: ResidualRisk[]
   sensitive_categories: string[]
   sensitive_action_requirements: SensitiveActionRequirement[]
   recovery_constraints: string[]
-  source_run_ref: StateRecordRef
+  source_run_ref: StateRecordRef | null
+  shaping_checkpoint_ref: StateRecordRef | null
+  applied_user_action_resolution_refs: StateRecordRef[]
   updated_at: string
 
 SensitiveActionRequirement:
@@ -1151,7 +1156,9 @@ GuaranteeDisclosure:
 - `CurrentCloseBasis`는 닫기 준비 상태 응답이 사용하는 현재 결과와 잔여 위험 상태입니다. 종료 닫기 요약이 아닙니다.
 - `close_basis_revision`과 `scope_revision`은 호환성 확인을 위해 드러나는 내부 현재 상태 좌표입니다. 호출자가 선택하는 권한이 아닙니다.
 - `ResidualRisk.risk_id`는 Core가 생성한 불투명 식별자입니다. `ResidualRisk.summary`와 `ResidualRisk.consequence`는 표시 문자열이며 텍스트 일치를 권한으로 만들지 않습니다.
-- `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, `accepted_by_user_action_resolution_refs`는 `StateRecordRef`를 사용합니다.
+- `result_refs`, `evidence_refs`, `source_run_ref`, `shaping_checkpoint_ref`,
+  `applied_user_action_resolution_refs`, `source_refs`, `evidence_summary_ref`,
+  `accepted_by_user_action_resolution_refs`는 `StateRecordRef`를 사용합니다.
 - `sensitive_categories`는 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 범주 분류 문자열입니다.
 - `sensitive_action_requirements`는 커밋된 실행 기록과 소비된 쓰기 티켓에서 Core가 파생한 닫기 요구사항입니다. 범주만 담은 호출자 입력은 이 요구사항을 만들거나 지울 수 없습니다.
 - `recovery_constraints`와 `RiskAcceptanceCoverage.missing_reason`은 표시 문자열입니다. 현재 닫기 준비 상태 결과는 필요한 수락이 없으면 `acceptance_required`를 사용하고, 현재 잔여 위험 `risk_id` 값을 덮지 못하는 오래된 잔여 위험 수락이 있으면 `stale_acceptance`를 사용할 수 있습니다.
@@ -1169,7 +1176,11 @@ GuaranteeDisclosure:
 이 형태들은 닫기 준비 상태 의미, 응답 처리 경로, 지속 동작을 정의하지 않습니다.
 
 닫기 근거 참조 규칙:
-- `CurrentCloseBasis.result_refs`나 `ResidualRisk.source_refs`로 받아들일 수 있는 호출자 제공 닫기 평가 참조는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 결과/증거 기록 종류인 `run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
+- Direct/work basis는 null이 아닌 정확한 호환 `source_run_ref`, null인
+  `shaping_checkpoint_ref`, 빈 applied shaping resolution ref를 가집니다. Advisor basis는
+  null인 `source_run_ref`, 정확한 현재 shaping checkpoint, applied checkpoint resolution
+  ref의 정확한 집합을 가집니다.
+- `CurrentCloseBasis.result_refs`나 `ResidualRisk.source_refs`로 받아들일 수 있는 direct/work 호출자 제공 닫기 평가 참조는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 결과/증거 기록 종류인 `run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다. Advisor finalization은 현재 같은 Task의 `change_unit`, `artifact`, `evidence_summary` result ref와 `artifact` 또는 `evidence_summary` evidence ref를 허용하며 Run은 허용하지 않습니다.
 - 담당 문서가 명시적으로 추가하지 않는 한 `project_state`, `write_ticket`, `user_action_request`, `user_action_resolution`, `blocker`, `task_event`, `task`는 호출자 제공 결과 참조가 아닙니다.
 - 받아들인 모든 참조는 존재해야 하고 같은 프로젝트와 `Task`에 속해야 하며 Core가 정규화해야 합니다. Core는 호출자가 보낸 `produced_at_state_version` 메타데이터를 권한이나 동시성 입력으로 취급하지 않습니다.
 - 닫기 증거에 쓰이는 아티팩트 참조는 `Task`에 연결되어 있고 `integrity_status=verified`여야 하며 [아티팩트 저장소](../storage-artifacts.md)에 따라 사용 시점의 현재 바이트 검증을 통과해야 합니다.
@@ -1184,7 +1195,8 @@ GuaranteeDisclosure:
 
 담당 문서 링크:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)
-- 현재 닫기 근거 생성: [`volicord.record_run`](method-record-run.md)
+- 현재 닫기 근거 생성: direct/work는 [`volicord.record_run`](method-record-run.md),
+  advisor는 [`volicord.record_shaping`](method-record-shaping.md)
 - 판단 호환성과 수락된 위험 입력: [API 판단 스키마](schema-judgment.md)
 - 응답 분기 동작, 닫기 준비 상태 평가 순서, 응답 전용 차단 결과: [`volicord.check_close`와 `volicord.close_task`](method-close-task.md)
 - 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md)

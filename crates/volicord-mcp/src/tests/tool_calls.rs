@@ -1278,6 +1278,8 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
             json!({
                 "detail": "workflow",
                 "task_id": task_id,
+                "operation": {
+                "operation": "record_checkpoint",
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 0,
                 "baseline_ref": null,
@@ -1326,8 +1328,8 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
                     }
                 }],
                 "source_refs": [],
-                "evidence_refs": [],
-                "close_assessment": null
+                "evidence_refs": []
+                }
             }),
         ),
     ])?);
@@ -1472,6 +1474,8 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
         AgentToolId::RECORD_SHAPING.wire_name(),
         json!({
             "task_id": task_id,
+            "operation": {
+            "operation": "record_checkpoint",
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_transition",
@@ -1479,8 +1483,8 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
             "implementation_boundary": "Change only the current scoped path.",
             "gaps": [],
             "source_refs": [],
-            "evidence_refs": [],
-            "close_assessment": null
+            "evidence_refs": []
+            }
         }),
     )?;
     let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]

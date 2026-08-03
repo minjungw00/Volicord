@@ -336,17 +336,20 @@ Channel 권한이 있지만 의미 application owner가 아직 적용하지 않�
 `applied`는 owner가 정확한 resolution을 소비해 현재 상태에 결속했다는 뜻입니다.
 Resolution만으로 `applied`가 되지 않습니다.
 
-사용자 소유 gap은 다음 폐쇄형 application-owner mapping을 사용합니다.
+사용자 소유 gap은 다음 모드 인식 폐쇄형 application-owner mapping을 사용합니다.
 
 ```text
-user_product_decision_required -> volicord.advance_task
-user_technical_decision_required -> volicord.advance_task
-user_scope_decision_required -> volicord.update_scope
-sensitive_approval_required -> volicord.advance_task
+work + user_product_decision_required -> volicord.advance_task
+work + user_technical_decision_required -> volicord.advance_task
+advisor|work + user_scope_decision_required -> volicord.update_scope
+work + sensitive_approval_required -> volicord.advance_task
+advisor + user_product_decision_required -> volicord.record_shaping
+advisor + user_technical_decision_required -> volicord.record_shaping
+advisor + sensitive_approval_required -> volicord.record_shaping
 ```
 
-`ShapingDecisionApplicationOwner` 값은 `volicord.update_scope`와
-`volicord.advance_task`뿐입니다.
+`ShapingDecisionApplicationOwner` 값은 `volicord.update_scope`,
+`volicord.record_shaping`, `volicord.advance_task`뿐입니다.
 
 `WorkflowProjection.kind`는 정확히 아래 값을 사용합니다.
 
@@ -356,6 +359,7 @@ shaping_required
 awaiting_user_action
 ready_to_apply_decisions
 ready_for_change_unit
+ready_to_finalize_advice
 ready_for_implementation
 implementation
 close_review
@@ -370,8 +374,10 @@ shaping_gaps_current
 user_action_pending
 resolved_decisions_not_applied
 change_unit_required
+advisor_finalization_required
 explicit_advance_required
 recovery_constraint
+inconsistent_authority_state
 ```
 
 이 값은 현재 진행만 설명합니다. 닫기 준비 차단 사유는 자체 로컬 범주와 해결 행동을

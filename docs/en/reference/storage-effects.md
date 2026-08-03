@@ -1,6 +1,11 @@
 # Storage Effects
 
-`volicord.record_shaping` commits checkpoint, gap, UserAction request/link, event, replay result, and one state-version increment in a single transaction. `volicord.advance_task` atomically applies its exact selected shaping decisions with the explicit Task phase transition and event/replay result. Neither method writes Product Repository files or issues a write ticket.
+`volicord.record_shaping` commits either a checkpoint aggregate or exact advisor
+finalization, with its event, replay result, and one state-version increment in
+a single transaction. `volicord.advance_task` atomically applies its exact
+selected work shaping decisions with the explicit Task phase transition and
+event/replay result. Neither method writes Product Repository files or issues a
+write ticket.
 
 This document defines baseline method-to-storage effect semantics.
 
@@ -619,15 +624,20 @@ A committed `dry_run=false` call:
   `shaping_checkpoint_gaps` rows;
 - atomically creates one pending `UserActionRequest` and one exact
   `shaping_checkpoint_user_actions` link for every user-owned gap;
-- for an eligible advisor close assessment, updates the current advice result,
-  close basis, and any owner-defined risk records in the same transaction;
+- for `operation=finalize_advice`, verifies the exact current advisor Task,
+  ready checkpoint, compatible non-write Change Unit, scope, baseline, and
+  resolution set; applies advisor-owned gaps; preserves the checkpoint; and
+  updates the advice result, checkpoint-backed close basis, exact applied
+  resolution lineage, evidence refs, and risk records in the same transaction;
 - appends one authority event, creates the exact replay row, advances the
   canonical Core UTC floor, and increments `project_state.state_version`
   exactly once.
 
-It creates no Run, Change Unit, write ticket, Product Repository file effect,
-UserAction resolution, or work-phase transition. Any invalid checkpoint, gap,
-request, link, event, replay, or state update rolls back the whole transaction.
+Finalization creates no replacement checkpoint or UserAction request. Neither
+operation creates a Run, Change Unit, write ticket, Product Repository file
+effect, UserAction resolution, or work-phase transition. Any invalid
+checkpoint, gap, request, link, event, replay, or state update rolls back the
+whole transaction.
 A valid dry-run preview and every rejected attempt create none of these rows or
 effects.
 

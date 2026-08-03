@@ -44,6 +44,15 @@ never silently retargets an existing Change Unit. When a current Change Unit
 exists, `keep_current` rejects a Task `baseline_ref` change; the caller must use
 `replace_current` so Task and Change Unit baselines change atomically.
 
+For an `advisor` Task, `keep_current`, `create_current`, and `replace_current`
+all require the canonical non-write Change Unit predicate. The Change Unit has
+no affected or allowed paths, its effect contract allows only
+`artifact_registration`, `user_action_request`, and `evidence_update`, has no
+sensitive expectation, and explicitly forbids `product_file_write`,
+`run_recording`, `sensitive_action`, `external_network`, and `secret_access`.
+Core rejects an update that would create or retain any write-capable or
+otherwise incompatible advisor Change Unit before committing scope effects.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
@@ -123,6 +132,8 @@ A committed `dry_run=false` request requires:
 - a verified current workspace context when the Product Repository is Git-backed
 - a compatible same-project `Task`
 - enough scope to make the next safe action honest when creating or replacing the currently applied Change Unit
+- for `Task.mode=advisor`, a current or proposed Change Unit satisfying the
+  canonical non-write advisor predicate
 
 ## State version behavior
 

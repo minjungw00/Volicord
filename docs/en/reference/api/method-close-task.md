@@ -3,7 +3,12 @@
 
 # `volicord.check_close` and `volicord.close_task` reference
 
-Close readiness and workflow progression are separate. A current ready advisor shaping checkpoint can supply the advice result basis, while a work shaping checkpoint cannot supply an implementation close basis. Blocker-local remediation actions do not override an earlier workflow-required shaping action.
+Close readiness and workflow progression are separate. A ready advisor shaping
+checkpoint selects advisor finalization; it is not itself the advice result
+basis. Only advisor finalization through `volicord.record_shaping` can establish
+the checkpoint-backed advisor close basis. A work shaping checkpoint cannot supply
+an implementation close basis. Blocker-local remediation actions do not
+override an earlier workflow-required shaping action.
 
 ## What this document owns
 
@@ -93,10 +98,10 @@ Mutation conditions:
 
 Close condition:
 
-- `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their artifact and Run compatibility rules, and no close blocker remains.
+- `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their mode-compatible artifact, Run, or shaping-checkpoint lineage rules, and no close blocker remains.
 - `intent=check` and `intent=complete` close readiness block when a write ticket for the Task remains active and unconsumed. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows remain visible as stale authority state but do not block close by themselves. An unresolved Unrecorded Change, including an out-of-scope Product Repository path, remains a separate blocker. There is no fixed ticket expiry.
-- A valid `effective_control_level=observe` Task has no write ticket or product-file write path. Its close-readiness result does not recommend `volicord.prepare_write`; missing current result or close-basis work routes to the compatible `volicord.record_run` path instead.
-- Final acceptance follows the effective control and authoritative project policy. `sensitive` and `tracked` require compatible final acceptance. `observe` uses `not_required`. `light` is `policy_dependent` and may use `not_required` only when the current project policy explicitly permits it and all policy conditions remain satisfied, including no sensitive action, no unresolved user requirement, no residual-risk acceptance requirement, no required evidence gap, and no unresolved Unrecorded Change. Policy strengthening raises the effective control before this decision and never lowers it. No policy waives evidence, sensitive approval, risk acceptance, or another blocker.
+- A valid `effective_control_level=observe` Task has no write ticket or product-file write path. Its close-readiness result does not recommend `volicord.prepare_write`. For `advisor`, missing result, evidence, or close-basis work points to `volicord.record_shaping` finalization and never to `volicord.record_run`; for direct/work, compatible missing result or close-basis work remains Run-owned.
+- Final acceptance follows Task mode, effective control, and authoritative project policy. `advisor` always requires a compatible final-acceptance UserAction even though its effective control is `observe`. For direct/work, `sensitive` and `tracked` require compatible final acceptance, `observe` uses `not_required`, and `light` is `policy_dependent` and may use `not_required` only when the current project policy explicitly permits it and all policy conditions remain satisfied, including no sensitive action, no unresolved user requirement, no residual-risk acceptance requirement, no required evidence gap, and no unresolved Unrecorded Change. Policy strengthening raises the effective control before this decision and never lowers it. No policy waives evidence, sensitive approval, risk acceptance, or another blocker.
 - Effective `sensitive` control also requires a ticket-backed exact sensitive-action
   basis and a current matching user-owned approval. Final acceptance does not
   replace either one. If the exact basis was never recorded, close reports

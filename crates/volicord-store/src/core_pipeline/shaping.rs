@@ -4,7 +4,7 @@ use volicord_types::ids::{BaselineRef, TaskId};
 use volicord_types::schema::{ShapingCheckpointOperation, SourceRef, StateRecordRef};
 use volicord_types::values::{
     ShapingCheckpointReadiness, ShapingDecisionApplicationOwner, ShapingGapKind, ShapingGapStatus,
-    UserActionKind, UserActionRequiredFor, UtcTimestamp,
+    TaskMode, UserActionKind, UserActionRequiredFor, UtcTimestamp,
 };
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
@@ -37,6 +37,7 @@ pub enum ShapingCheckpointMutation {
         applications: Vec<ShapingGapApplication>,
     },
     ApplyAdvanceAndTransition(ShapingAdvanceApplication),
+    ApplyAdvisorFinalization(ShapingAdvanceApplication),
     SupersedeCurrent {
         task_id: String,
     },
@@ -157,6 +158,9 @@ impl ShapingCheckpointMutation {
             ),
             Self::ApplyAdvanceAndTransition(input) => {
                 context.apply_advance_shaping_and_transition(input)
+            }
+            Self::ApplyAdvisorFinalization(input) => {
+                context.apply_advisor_shaping_finalization(input)
             }
             Self::SupersedeCurrent { task_id } => {
                 context.supersede_current_shaping_checkpoint(task_id)
@@ -592,6 +596,7 @@ impl MutationContext<'_> {
             applications,
         )?;
         self.require_owner_gaps_applied(
+            task_id,
             shaping_checkpoint_id,
             ShapingDecisionApplicationOwner::UpdateScope,
         )?;
@@ -748,6 +753,83 @@ impl MutationContext<'_> {
         Ok(())
     }
 
+    fn apply_advisor_shaping_finalization(
+        &mut self,
+        input: &ShapingAdvanceApplication,
+    ) -> StoreResult<()> {
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("shaping_checkpoint_id", &input.shaping_checkpoint_id)?;
+        validate_identifier("change_unit_id", &input.change_unit_id)?;
+        self.require_exact_current_checkpoint(&input.task_id, &input.shaping_checkpoint_id)?;
+        let expected_scope_revision =
+            i64::try_from(input.scope_revision).map_err(|_| StoreError::InvalidInput {
+                detail: "advisor finalization scope_revision is too large".to_owned(),
+            })?;
+        let basis_matches: bool = self.tx.query_row(
+            "SELECT EXISTS (
+               SELECT 1
+                 FROM tasks AS t
+                 JOIN shaping_checkpoints AS s
+                   ON s.project_id = t.project_id AND s.task_id = t.task_id
+                 JOIN change_units AS c
+                   ON c.project_id = t.project_id AND c.task_id = t.task_id
+                WHERE t.project_id = ?1
+                  AND t.task_id = ?2
+                  AND t.mode = 'advisor'
+                  AND t.work_phase = 'shaping'
+                  AND t.scope_revision = ?4
+                  AND t.current_change_unit_id = ?5
+                  AND json_extract(t.shaping_summary_json, '$.baseline_ref') = ?6
+                  AND s.shaping_checkpoint_id = ?3
+                  AND s.readiness = 'ready'
+                  AND s.scope_revision = ?4
+                  AND s.baseline_ref = ?6
+                  AND c.change_unit_id = ?5
+                  AND c.status = 'active'
+                  AND c.is_current = 1
+                  AND json_extract(c.write_basis_json, '$.baseline_ref') = ?6
+                  AND COALESCE(json_extract(c.lifecycle_json, '$.recovery_required'), 0) = 0
+             )",
+            params![
+                self.project_id,
+                input.task_id,
+                input.shaping_checkpoint_id,
+                expected_scope_revision,
+                input.change_unit_id,
+                input.baseline_ref.as_str(),
+            ],
+            |row| row.get(0),
+        )?;
+        if !basis_matches {
+            return Err(StoreError::InvalidInput {
+                detail: "advisor finalization basis is not exact, current, and ready".to_owned(),
+            });
+        }
+        self.apply_selected_gaps(
+            &input.task_id,
+            &input.shaping_checkpoint_id,
+            ShapingDecisionApplicationOwner::RecordShaping,
+            &input.applications,
+        )?;
+        self.require_owner_gaps_applied(
+            &input.task_id,
+            &input.shaping_checkpoint_id,
+            ShapingDecisionApplicationOwner::RecordShaping,
+        )?;
+        let current_count: i64 = self.tx.query_row(
+            "SELECT COUNT(*) FROM shaping_checkpoint_gaps
+              WHERE project_id = ?1 AND shaping_checkpoint_id = ?2 AND status = 'current'",
+            params![self.project_id, input.shaping_checkpoint_id],
+            |row| row.get(0),
+        )?;
+        if current_count != 0 {
+            return Err(StoreError::InvalidInput {
+                detail: "advisor finalization cannot retain an unresolved shaping gap".to_owned(),
+            });
+        }
+        Ok(())
+    }
+
     fn require_exact_current_checkpoint(
         &self,
         task_id: &str,
@@ -802,6 +884,7 @@ impl MutationContext<'_> {
         owner: ShapingDecisionApplicationOwner,
         applications: &[ShapingGapApplication],
     ) -> StoreResult<()> {
+        let task_mode = self.task_mode(task_id)?;
         let mut selected_gap_ids = std::collections::BTreeSet::new();
         let mut selected_resolution_ids = std::collections::BTreeSet::new();
         for application in applications {
@@ -865,7 +948,7 @@ impl MutationContext<'_> {
                 "gap_kind",
                 &gap_kind,
             )?;
-            let Some(policy) = gap_kind.decision_policy() else {
+            let Some(policy) = gap_kind.decision_policy_for_mode(task_mode) else {
                 return Err(StoreError::InvalidInput {
                     detail: "a non-user shaping gap cannot be applied by a decision owner"
                         .to_owned(),
@@ -914,9 +997,11 @@ impl MutationContext<'_> {
 
     fn require_owner_gaps_applied(
         &self,
+        task_id: &str,
         shaping_checkpoint_id: &str,
         owner: ShapingDecisionApplicationOwner,
     ) -> StoreResult<()> {
+        let task_mode = self.task_mode(task_id)?;
         let rows = {
             let mut statement = self.tx.prepare(
                 "SELECT shaping_gap_id, gap_kind, status
@@ -944,7 +1029,7 @@ impl MutationContext<'_> {
                 &gap_kind,
             )?;
             if gap_kind
-                .decision_policy()
+                .decision_policy_for_mode(task_mode)
                 .is_some_and(|policy| policy.application_owner == owner)
                 && status != "applied"
             {
@@ -955,6 +1040,15 @@ impl MutationContext<'_> {
             }
         }
         Ok(())
+    }
+
+    fn task_mode(&self, task_id: &str) -> StoreResult<TaskMode> {
+        let raw: String = self.tx.query_row(
+            "SELECT mode FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+            params![self.project_id, task_id],
+            |row| row.get(0),
+        )?;
+        decode_owner_closed_value("tasks", task_id, "mode", &raw)
     }
 
     fn supersede_current_shaping_checkpoint(&mut self, task_id: &str) -> StoreResult<()> {
@@ -1171,11 +1265,13 @@ fn decode_checkpoint(
         ));
     }
     validate_predecessor_lineage(conn, &raw, &created_at)?;
-    let task_scope_revision: i64 = conn.query_row(
-        "SELECT scope_revision FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+    let (task_scope_revision, task_mode_raw): (i64, String) = conn.query_row(
+        "SELECT scope_revision, mode FROM tasks WHERE project_id = ?1 AND task_id = ?2",
         params![raw.project_id, raw.task_id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
+    let task_mode: TaskMode =
+        decode_owner_closed_value("tasks", &raw.task_id, "mode", &task_mode_raw)?;
     if readiness != ShapingCheckpointReadiness::Superseded
         && task_scope_revision != raw.scope_revision
     {
@@ -1185,7 +1281,7 @@ fn decode_checkpoint(
             "scope_revision",
         ));
     }
-    let gaps = shaping_gaps(conn, &raw.project_id, &raw.task_id, &record_ref)?;
+    let gaps = shaping_gaps(conn, &raw.project_id, &raw.task_id, &record_ref, task_mode)?;
     if readiness == ShapingCheckpointReadiness::Ready
         && (gaps
             .iter()
@@ -1285,6 +1381,7 @@ fn shaping_gaps(
     project_id: &str,
     task_id: &str,
     checkpoint_id: &str,
+    task_mode: TaskMode,
 ) -> StoreResult<Vec<ShapingCheckpointGapRecord>> {
     let sql = format!(
         "SELECT {GAP_COLUMNS} FROM shaping_checkpoint_gaps
@@ -1340,6 +1437,7 @@ fn shaping_gaps(
                     checkpoint_id,
                     &request_id,
                     decoded_kind,
+                    task_mode,
                 )?)
             }
             (None, None) if !decoded_kind.is_user_owned() => None,
@@ -1386,6 +1484,7 @@ fn shaping_link(
     checkpoint_id: &str,
     request_id: &str,
     expected_gap_kind: ShapingGapKind,
+    task_mode: TaskMode,
 ) -> StoreResult<ShapingCheckpointUserActionRecord> {
     let raw = conn
         .query_row(
@@ -1432,7 +1531,7 @@ fn shaping_link(
         "action_kind",
         &action_kind,
     )?;
-    let Some(policy) = expected_gap_kind.decision_policy() else {
+    let Some(policy) = expected_gap_kind.decision_policy_for_mode(task_mode) else {
         return Err(StoreError::corrupt_owner_state_value(
             "shaping_checkpoint_gaps",
             request_id.to_owned(),

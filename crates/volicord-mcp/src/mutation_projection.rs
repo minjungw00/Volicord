@@ -703,6 +703,9 @@ pub(crate) fn compact_mutation_method_result(
                 readiness: result.shaping_checkpoint.readiness,
                 unresolved_application_owners,
                 created_user_action_request_refs: result.created_user_action_request_refs,
+                workflow_kind: workflow_state_kind(&result.workflow),
+                close_state: result.state.close_state,
+                close_blocker_count: result.state.close_blockers.len(),
             })
             .map_err(McpAdapterError::Json)
         }
@@ -738,10 +741,37 @@ fn workflow_checkpoint(
         | WorkflowProjection::AwaitingUserAction { checkpoint, .. }
         | WorkflowProjection::ReadyToApplyDecisions { checkpoint, .. }
         | WorkflowProjection::ReadyForChangeUnit { checkpoint, .. }
+        | WorkflowProjection::ReadyToFinalizeAdvice { checkpoint, .. }
         | WorkflowProjection::ReadyForImplementation { checkpoint, .. }
         | WorkflowProjection::Implementation { checkpoint, .. }
         | WorkflowProjection::CloseReview { checkpoint, .. }
         | WorkflowProjection::Terminal { checkpoint, .. } => checkpoint.as_ref(),
+    }
+}
+
+fn workflow_state_kind(
+    workflow: &volicord_types::schema::WorkflowProjection,
+) -> volicord_types::values::WorkflowStateKind {
+    use volicord_types::schema::WorkflowProjection;
+    use volicord_types::values::WorkflowStateKind;
+
+    match workflow {
+        WorkflowProjection::NoActiveTask { .. } => WorkflowStateKind::NoActiveTask,
+        WorkflowProjection::ShapingRequired { .. } => WorkflowStateKind::ShapingRequired,
+        WorkflowProjection::AwaitingUserAction { .. } => WorkflowStateKind::AwaitingUserAction,
+        WorkflowProjection::ReadyToApplyDecisions { .. } => {
+            WorkflowStateKind::ReadyToApplyDecisions
+        }
+        WorkflowProjection::ReadyForChangeUnit { .. } => WorkflowStateKind::ReadyForChangeUnit,
+        WorkflowProjection::ReadyToFinalizeAdvice { .. } => {
+            WorkflowStateKind::ReadyToFinalizeAdvice
+        }
+        WorkflowProjection::ReadyForImplementation { .. } => {
+            WorkflowStateKind::ReadyForImplementation
+        }
+        WorkflowProjection::Implementation { .. } => WorkflowStateKind::Implementation,
+        WorkflowProjection::CloseReview { .. } => WorkflowStateKind::CloseReview,
+        WorkflowProjection::Terminal { .. } => WorkflowStateKind::Terminal,
     }
 }
 

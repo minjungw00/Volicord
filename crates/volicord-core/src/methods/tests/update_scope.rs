@@ -17,7 +17,7 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
     let task_id = response_record_id(&intake.response_value, "task_ref");
 
     let response = harness.service.update_scope(
-        update_scope_request(
+        advisor_update_scope_request(
             "req_advisor_next_scope",
             "idem_advisor_next_scope",
             false,

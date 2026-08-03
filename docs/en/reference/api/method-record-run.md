@@ -78,7 +78,10 @@ this exhaustive matrix:
 | `direct` | `implementation` | `direct` |
 | `work` | `implementation` | `implementation` |
 
-Core rejects every other mode, phase, or kind before commit. Advisor results and work shaping results use durable shaping checkpoints rather than Runs.
+Core rejects every other mode, phase, or kind before commit. Advisor results
+are finalized only by `volicord.record_shaping(operation=finalize_advice)` from
+the exact durable shaping checkpoint; work shaping results remain checkpoint
+authority until `volicord.advance_task`. There is no advisor Run fallback.
 
 A work Task still in shaping receives `TASK_PHASE_TRANSITION_REQUIRED` with
 typed `WorkflowRejectionDetails` and recovery owner

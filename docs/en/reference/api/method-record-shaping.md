@@ -3,9 +3,10 @@
 # `volicord.record_shaping` reference
 
 This document owns the public method that records one current
-`ShapingCheckpoint` for an `advisor` or `work` Task in `work_phase=shaping`.
-The checkpoint is durable progression authority. It is not a Run, a Product
-Repository write, a Change Unit, a user decision, or a phase transition.
+`ShapingCheckpoint` for an `advisor` or `work` Task and finalizes the current
+result of an `advisor` Task. The strict `operation` tag is either
+`record_checkpoint` or `finalize_advice`. Neither operation is a public Run,
+Product Repository write, write-ticket operation, or phase transition.
 
 <a id="surface-stability"></a>
 ## Surface Stability
@@ -22,20 +23,12 @@ checkpoint-readiness semantics are `stable`.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
-| `baseline_ref` | yes | yes | `string` |
-| `checkpoint_operation` | yes | no | `ShapingCheckpointOperation` |
-| `close_assessment` | yes | yes | `CloseAssessmentInput` |
 | `envelope` | yes | no | `ToolEnvelope` |
-| `evidence_refs` | yes | no | `StateRecordRef[]` |
-| `gaps` | yes | no | `ShapingGapInput[]` |
-| `implementation_boundary` | yes | yes | `string` |
-| `scope_revision` | yes | no | `integer` |
-| `source_refs` | yes | no | `SourceRef[]` |
-| `summary` | yes | no | `string` |
+| `operation` | yes | no | `RecordShapingOperation` |
 | `task_id` | yes | no | `string` |
 <!-- END GENERATED: contract-structures api.method.record_shaping.request[params] -->
 
-The request addresses the exact current Task and current scope revision.
+`operation=record_checkpoint` addresses the exact current Task and scope.
 `checkpoint_operation.operation=create_initial` requires no current checkpoint.
 `checkpoint_operation.operation=replace_current` requires
 `expected_current_checkpoint_id` to identify the exact current checkpoint.
@@ -73,23 +66,38 @@ decisions use `required_for=[scope_update]` and are applied by
 `volicord.update_scope`; sensitive approval is applied by
 `volicord.advance_task` and remains available to `volicord.prepare_write`,
 `volicord.record_run`, and close-completion policy. User Channel resolution
-does not itself apply any decision. For an
-`advisor` Task, a ready checkpoint may establish the current advice result and
-advisor close basis when `close_assessment` is supplied. A work checkpoint
-forbids that close assessment and does not establish an implementation close
-basis. Exact gap kinds, statuses, and request compatibility are owned by
+does not itself apply any decision. For an `advisor` Task, product, technical,
+and sensitive decisions use `required_for=[finalize_advice]` and are applied by
+`volicord.record_shaping(operation=finalize_advice)`. An advisor scope decision
+remains owned by the exact `volicord.update_scope` application. Checkpoint
+recording never establishes a close basis. Exact gap kinds, statuses, and request compatibility are owned by
 [API Value Sets](schema-value-sets.md).
+
+`operation=finalize_advice` requires `Task.mode=advisor`,
+`work_phase=shaping`, the exact ready current checkpoint, exact current
+non-write Change Unit, scope revision, baseline, and the unique exact current
+resolution set for every user-owned checkpoint gap. No gap may remain
+`current`; scope-owned gaps must already be `applied`; and every advisor-owned
+resolution must remain current and accepted. The request also supplies the
+result summary, supported result and evidence refs, residual risks, and
+recovery constraints. Core atomically applies advisor-owned resolved gaps,
+records the advice result, establishes a checkpoint-backed
+`CurrentCloseBasis`, retains the checkpoint identity, and returns workflow and
+close-readiness projections. It creates no replacement checkpoint or new
+UserAction request.
 
 ## Atomic behavior
 
-One committed call validates the current Task, expected state version, and
-exact checkpoint succession operation, materializes every supplied user-owned
-decision through the canonical UserAction draft and basis model, atomically
-supersedes the exact predecessor when applicable, inserts the successor and
-gaps, links each
-user-owned gap to its exact request, updates the authoritative workflow state,
-appends the method event, stores the exact replay result, and increments
-`state_version` exactly once.
+One committed `record_checkpoint` call validates the current Task, expected
+state version, and exact checkpoint succession operation, materializes every
+supplied user-owned decision through the canonical UserAction draft and basis
+model, atomically supersedes the exact predecessor when applicable, inserts
+the successor and gaps, links each user-owned gap to its exact request, updates
+the authoritative workflow state, appends the method event, stores the exact
+replay result, and increments `state_version` exactly once. One committed
+`finalize_advice` call applies the exact advisor-owned decisions and records
+the advice result, residual risks, recovery constraints, evidence lineage, and
+checkpoint-backed close basis in the same aggregate transaction.
 
 Failure of any request, gap, checkpoint, event, replay row, or state-version
 effect rolls back the whole transaction. Exact replay returns the original
@@ -159,8 +167,12 @@ The chat transcript cannot substitute for a User Channel resolution.
 
 After resolution, only a resolved scope gap selects
 `ready_to_apply_decisions`. Product-only and technical-only checkpoints select
-`ready_for_change_unit` when no Change Unit exists and
-`ready_for_implementation` when one is current.
+`ready_for_change_unit` when an advisor-compatible Change Unit is still absent.
+Once the exact current advisor Change Unit and all decision applications are
+ready, advisor workflow selects `ready_to_finalize_advice` with
+`required_action=volicord.record_shaping`. It selects `close_review` only after
+finalization has established a current checkpoint-backed close basis. Work
+Tasks continue to select `ready_for_implementation` and `volicord.advance_task`.
 
 ## Related owners
 

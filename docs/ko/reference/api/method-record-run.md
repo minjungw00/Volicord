@@ -75,7 +75,10 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
 | `direct` | `implementation` | `direct` |
 | `work` | `implementation` | `implementation` |
 
-Core는 그 밖의 모드, 단계, 종류 조합을 커밋 전에 거절합니다. Advisor 결과와 work shaping 결과는 Run이 아니라 지속 shaping checkpoint를 사용합니다.
+Core는 그 밖의 모드, 단계, 종류 조합을 커밋 전에 거절합니다. Advisor 결과는 정확한
+지속 shaping checkpoint에서 `volicord.record_shaping(operation=finalize_advice)`로만
+최종화합니다. work shaping 결과는 `volicord.advance_task` 전까지 checkpoint 권한으로
+남습니다. advisor Run fallback은 없습니다.
 
 아직 shaping인 work Task에는 typed `WorkflowRejectionDetails`와 recovery owner
 `volicord.advance_task`를 포함한 `TASK_PHASE_TRANSITION_REQUIRED`를 반환합니다. 그 밖의

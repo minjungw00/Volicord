@@ -364,6 +364,8 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
+            "operation": {
+            "operation": "record_checkpoint",
             "scope_revision": 0,
             "baseline_ref": null,
             "checkpoint_operation": {"operation": "create_initial"},
@@ -390,8 +392,8 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 }
             ],
             "source_refs": [],
-            "evidence_refs": [],
-            "close_assessment": null
+            "evidence_refs": []
+            }
         }),
         SESSION,
         "future.turn.planning-product.shaping",

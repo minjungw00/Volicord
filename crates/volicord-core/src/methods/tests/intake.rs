@@ -165,7 +165,7 @@ fn intake_records_mode_default_phase_and_acceptance_policy() -> Result<(), Box<d
     );
     assert_eq!(
         advisor.response_value["state"]["acceptance_policy"],
-        "not_required"
+        "required"
     );
     assert!(advisor.response_value["state"]["acceptance_policy_reason"]
         .as_str()

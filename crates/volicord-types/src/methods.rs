@@ -15,13 +15,13 @@ use crate::schema::{
     EvidenceSummary, EvidenceTarget, GuaranteeDisclosure, GuaranteeDisplay, JsonObject,
     NoEffectResultBase, NonEmptyEventRefs, NotRequestedReadOnlyResultBase, ObservedChanges,
     PreviewableToolResponse, ProjectContinuityPage, ProjectContinuitySummary,
-    RequestedIntentReadOnlyResultBase, RequiredNullable, ResultMetadata, RiskAcceptanceCoverage,
-    RunSummary, ShapingCheckpoint, ShapingCheckpointOperation, ShapingGapInput, SourceRef,
-    StagedArtifactHandle, StagingCreatedResultBase, StateRecordRef, StateSummary, SummaryCard,
-    TaskFlowItem, TaskLineageInput, ToolEnvelope, ToolResultOrRejected, UnrecordedChangeFinding,
-    UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest, UserActionResolution,
-    UserActionResolutionInput, WorkflowProjection, WriteDecisionReason, WriteTicket,
-    WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
+    RequestedIntentReadOnlyResultBase, RequiredNullable, ResidualRiskInput, ResultMetadata,
+    RiskAcceptanceCoverage, RunSummary, ShapingCheckpoint, ShapingCheckpointOperation,
+    ShapingGapInput, SourceRef, StagedArtifactHandle, StagingCreatedResultBase, StateRecordRef,
+    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolEnvelope, ToolResultOrRejected,
+    UnrecordedChangeFinding, UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest,
+    UserActionResolution, UserActionResolutionInput, WorkflowProjection, WriteDecisionReason,
+    WriteTicket, WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
 use crate::values::{
     AcceptancePolicy, ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState,
@@ -583,15 +583,39 @@ declare_method_result! {
 pub struct RecordShapingRequest {
     pub envelope: ToolEnvelope,
     pub task_id: TaskId,
-    pub checkpoint_operation: ShapingCheckpointOperation,
-    pub scope_revision: u64,
-    pub baseline_ref: RequiredNullable<BaselineRef>,
-    pub summary: String,
-    pub implementation_boundary: RequiredNullable<String>,
-    pub gaps: Vec<ShapingGapInput>,
-    pub source_refs: Vec<SourceRef>,
-    pub evidence_refs: Vec<StateRecordRef>,
-    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
+    pub operation: RecordShapingOperation,
+}
+
+/// The explicit operation owned by `volicord.record_shaping`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RecordShapingOperation {
+    /// Records or replaces the current shaping checkpoint without establishing
+    /// a close basis.
+    RecordCheckpoint {
+        checkpoint_operation: ShapingCheckpointOperation,
+        scope_revision: u64,
+        baseline_ref: RequiredNullable<BaselineRef>,
+        summary: String,
+        implementation_boundary: RequiredNullable<String>,
+        gaps: Vec<ShapingGapInput>,
+        source_refs: Vec<SourceRef>,
+        evidence_refs: Vec<StateRecordRef>,
+    },
+    /// Applies exact current advisor decisions and establishes the advice result
+    /// as the current close basis without replacing its checkpoint.
+    FinalizeAdvice {
+        shaping_checkpoint_id: ShapingCheckpointId,
+        change_unit_id: ChangeUnitId,
+        scope_revision: u64,
+        baseline_ref: BaselineRef,
+        user_action_resolution_ids: Vec<UserActionResolutionId>,
+        result_summary: String,
+        result_refs: Vec<StateRecordRef>,
+        evidence_refs: Vec<StateRecordRef>,
+        residual_risks: Vec<ResidualRiskInput>,
+        recovery_constraints: Vec<String>,
+    },
 }
 
 impl MethodOperationCategory for RecordShapingRequest {

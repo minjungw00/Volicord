@@ -254,6 +254,7 @@ fn decide_intake_policy(
         let (effective_control_level, control_level_reason) =
             effective_control_level(mode, request.requested_control_level, &workflow_policy);
         let (acceptance_policy, acceptance_policy_reason) = resolve_acceptance_policy(
+            mode,
             effective_control_level,
             request.acceptance_policy.as_ref().copied(),
             &workflow_policy,
@@ -1175,7 +1176,8 @@ fn reference_only_carry_sources(
                             "reference-only risk carry-forward requires a current compatible predecessor close basis",
                         );
                     }
-                    source_refs.push(close_basis.source_run_ref.clone());
+                    source_refs.extend(close_basis.source_run_ref.as_ref().cloned());
+                    source_refs.extend(close_basis.shaping_checkpoint_ref.as_ref().cloned());
                     source_refs.extend(
                         relevant_risks
                             .into_iter()
@@ -1199,12 +1201,17 @@ fn reference_only_carry_sources(
 }
 
 fn resolve_acceptance_policy(
+    mode: TaskMode,
     control: TaskControlLevel,
     requested: Option<AcceptancePolicy>,
     workflow_policy: &ProjectWorkflowPolicy,
     request: &volicord_types::methods::IntakeRequest,
 ) -> Result<(AcceptancePolicy, String), PlanError> {
-    let authoritative = acceptance_policy_for_control(control, workflow_policy);
+    let authoritative = if mode == TaskMode::Advisor {
+        AcceptancePolicy::Required
+    } else {
+        acceptance_policy_for_control(control, workflow_policy)
+    };
     let selected = if control == TaskControlLevel::Light {
         requested
             .map(|requested| stronger_acceptance_policy(authoritative, requested))
@@ -1213,7 +1220,14 @@ fn resolve_acceptance_policy(
         requested.unwrap_or(authoritative)
     };
     let valid = match control {
-        TaskControlLevel::Observe => selected == AcceptancePolicy::NotRequired,
+        TaskControlLevel::Observe => {
+            selected
+                == if mode == TaskMode::Advisor {
+                    AcceptancePolicy::Required
+                } else {
+                    AcceptancePolicy::NotRequired
+                }
+        }
         TaskControlLevel::Light => match selected {
             AcceptancePolicy::Required | AcceptancePolicy::PolicyDependent => true,
             AcceptancePolicy::NotRequired => {

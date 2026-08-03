@@ -1,6 +1,15 @@
 # 에이전트 가이드
 
-work Task는 shaping에서 시작합니다. 현재 checkpoint가 없으면 첫 checkpoint 생성을 명시하고, 연결된 live 결정이 남아 있지 않을 때만 정확한 현재 checkpoint 교체를 명시하여 분석을 `volicord.record_shaping`으로 기록합니다. 실행 가능한 사용자 소유 선택지를 제시하기 전에 현재 `UserActionRequest`를 만들며, 해결은 User Channel에서만 받아들입니다. 결정은 현재 resolution 참조로 적용하고, Change Unit 생성이나 갱신은 단계를 바꾸지 않습니다. 태그 기반 workflow가 요구하고 Task 전체 UserAction 권한이 충족될 때만 `volicord.advance_task`를 호출합니다. `volicord.record_run`은 direct 또는 implementation 실행에만 사용하고, Product Repository 쓰기 준비는 implementation에서만 가능하며, 닫기 준비 상태는 close review에서만 사용합니다.
+advisor와 work Task는 shaping에서 시작합니다. 현재 checkpoint가 없으면 첫 checkpoint 생성을
+명시하고, 연결된 live 결정이 남아 있지 않을 때만 정확한 현재 checkpoint 교체를 명시하여
+분석을 `volicord.record_shaping`으로 기록합니다. 실행 가능한
+사용자 소유 선택지를 제시하기 전에 현재 `UserActionRequest`를 만들며, 해결은 User
+Channel에서만 받아들입니다. 결정은 현재 resolution 참조로 적용하고, Change Unit 생성이나
+갱신은 단계를 바꾸지 않습니다. advisor는 비쓰기 Change Unit만 사용하며
+`ready_to_finalize_advice` 뒤에 `volicord.record_shaping`의 advisor finalization을 호출한
+다음 close review로 갑니다.
+work는 태그 기반 workflow가 요구할 때만 `volicord.advance_task`를 호출합니다.
+`volicord.record_run`은 direct 또는 implementation 실행에만 사용합니다.
 
 <a id="purpose"></a>
 
@@ -165,12 +174,13 @@ DDL, 템플릿, 로그, 증거 첨부 본문, 관련 없는 계약, 두 언어 �
 안정적인 CLI 대체 경로는 다음과 같습니다.
 
 Resolution은 shaping 결정을 적용하지 않습니다. Resolved scope gap은
-`volicord.update_scope`로 보내고, resolved 제품·기술·민감 gap은
-`volicord.advance_task`에 제공합니다. 제품 전용·기술 전용 checkpoint에는 scope decision
-ref가 필요하지 않습니다. Change Unit이 없으면 workflow가 생성을 위해
-`volicord.update_scope`를 요구하고, 현재 Change Unit이 있으면 `volicord.advance_task`를
-요구합니다. Scope와 다른 결정이 함께 있으면 scope gap만 먼저 적용하고 다른 gap은
-advance에 남깁니다.
+`volicord.update_scope`로 보냅니다. work의 resolved 제품·기술·민감 gap은
+`volicord.advance_task`에 제공합니다. advisor에서는 정확한 resolution을 보존하다가
+`ready_to_finalize_advice`가 요구하는 `volicord.record_shaping` advisor finalization에
+제공합니다. Finalization은 해당
+결정을 적용하고 결과와 evidence/risk lineage를 기록하며 checkpoint를 보존하고 close
+basis를 만듭니다. Scope와 다른 결정이 함께 있으면 scope gap만 먼저 적용하고 다른 gap은
+모드별 owner에 남깁니다.
 
 ```sh cli-example
 volicord inbox --repo "<repo>"

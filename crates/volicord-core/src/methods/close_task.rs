@@ -893,7 +893,13 @@ fn plan_close_completion_continuity_records(
                 refs
             },
             source_refs: {
-                let mut refs = vec![close_basis.source_run_ref.clone()];
+                let mut refs = close_basis
+                    .source_run_ref
+                    .as_ref()
+                    .cloned()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                refs.extend(close_basis.shaping_checkpoint_ref.as_ref().cloned());
                 refs.extend(risk.source_refs.clone());
                 refs
             },

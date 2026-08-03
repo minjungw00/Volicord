@@ -602,19 +602,21 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-            scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new(
-                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-            )),
-            summary: "The UserAction adapter fixture boundary is ready.".to_owned(),
-            implementation_boundary: RequiredNullable::some(
-                "Exercise only the current UserAction adapter boundary.".to_owned(),
-            ),
-            gaps: Vec::new(),
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            close_assessment: RequiredNullable::null(),
+            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The UserAction adapter fixture boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Exercise only the current UserAction adapter boundary.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+            },
         },
         invocation(),
     )?;

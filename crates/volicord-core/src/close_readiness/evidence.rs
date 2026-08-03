@@ -31,7 +31,7 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     ArtifactAvailability, ArtifactIntegrityStatus, CloseReadinessBlockerCategory,
-    EvidenceCoverageState, EvidenceRelevanceStatus, StateRecordKind,
+    EvidenceCoverageState, EvidenceRelevanceStatus, StateRecordKind, TaskMode,
 };
 
 pub(super) fn completion_blockers(
@@ -60,7 +60,11 @@ pub(super) fn completion_blockers(
             "A required close artifact is missing, unavailable, or incompatible with storage.",
             unavailable_artifacts,
             vec![close_guidance(
-                CloseGuidance::RepairArtifact,
+                if context.task.mode == TaskMode::Advisor {
+                    CloseGuidance::RecordAdvisorEvidence
+                } else {
+                    CloseGuidance::RepairArtifact
+                },
                 vec![task_ref],
             )],
         ));
@@ -155,7 +159,11 @@ fn close_evidence_blockers(
             message,
             unique_state_record_refs(related_refs),
             vec![close_guidance(
-                CloseGuidance::RecordRequiredEvidence,
+                if context.task.mode == TaskMode::Advisor {
+                    CloseGuidance::RecordAdvisorEvidence
+                } else {
+                    CloseGuidance::RecordRequiredEvidence
+                },
                 required_refs.clone(),
             )],
         ));

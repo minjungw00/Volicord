@@ -42,6 +42,14 @@
 `baseline_ref` 변경을 거절합니다. Task와 Change Unit 기준선을 원자적으로 바꾸려면
 호출자가 `replace_current`를 사용해야 합니다.
 
+`advisor` Task에서는 `keep_current`, `create_current`, `replace_current`가 모두 정규
+비쓰기 Change Unit 조건을 만족해야 합니다. Change Unit에는 affected/allowed path가 없고,
+effect contract는 `artifact_registration`, `user_action_request`, `evidence_update`만 허용하며
+sensitive expectation은 없고 `product_file_write`, `run_recording`, `sensitive_action`,
+`external_network`, `secret_access`를 명시적으로 금지합니다. Core는 쓰기 가능하거나 그 밖에
+호환되지 않는 advisor Change Unit을 만들거나 유지하는 갱신을 scope 효과 커밋 전에
+거부합니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
@@ -116,6 +124,7 @@ Task, Change Unit, checkpoint, `scope_revision`, baseline, request, 영향받는
 - Product Repository가 Git 기반이면 확인된 현재 작업 공간 맥락
 - 같은 프로젝트의 호환되는 `Task`
 - 현재 적용 Change Unit을 만들거나 교체할 때 다음 안전한 행동을 정직하게 만들 만큼 충분한 범위
+- `Task.mode=advisor`에서는 정규 비쓰기 advisor 조건을 만족하는 현재 또는 제안 Change Unit
 
 ## 상태 버전 동작
 

@@ -2,10 +2,16 @@
 
 사용자 소유 shaping gap은 결정을 추론할 권한이 아닙니다. 확인된 User Channel resolution만 정확한 요청을 만족할 수 있으며, 채팅 내용, agent 주장, shaping 요약, 자유 형식 Change Unit invariant는 이를 대신할 수 없습니다.
 
-Resolution은 application이 아닙니다. 범위 결정은 `volicord.update_scope`만 적용하고,
-제품·기술·민감 shaping 결정은 `volicord.advance_task`만 적용합니다. Store의 exact-ID 검증과
-단일 transaction은 관련 없는 gap 적용이나 적용 실패 뒤의 단계 전이를 막습니다. 민감
-권한은 shaping 적용 뒤에도 prepare-write 및 민감 효과 검사의 대상입니다.
+Resolution은 application이 아닙니다. 범위 결정은 `volicord.update_scope`만 적용합니다.
+제품·기술·민감 shaping 결정은 work에서는 `volicord.advance_task`, advisor에서는
+`volicord.record_shaping(operation=finalize_advice)`가 적용합니다. Store의 exact-ID 검증과
+단일 transaction은 관련 없는 gap 적용이나 적용 실패 뒤의 단계 전이를 막습니다. work의
+민감 권한은 shaping 적용 뒤에도 prepare-write 및 민감 효과 검사의 대상입니다.
+
+Advisor Change Unit은 구조적으로 비쓰기입니다. Product Repository path 권한이 없고 폐쇄형
+관찰 지원 효과만 허용하며 제품 쓰기, Run, 민감 동작, 네트워크 접근, secret 접근을
+금지합니다. Core는 호환되지 않는 advisor scope update를 거부하고 Store는 호환되지 않는
+쓰기와 영속 현재 상태를 거부하며 advisor에는 write-ticket 준비가 계속 허용되지 않습니다.
 
 이 문서는 로컬 Codex workflow의 지원 보장과 명시적 비보장을 담당합니다.
 메서드 schema, 저장 효과, Codex 구성 문법, 운영체제 정책은 정의하지 않습니다.

@@ -125,9 +125,17 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 Choose only an option displayed for that pending judgment. One answer resolves
 that one judgment; it does not itself change scope or start implementation.
 After a scope answer, the agent applies that exact scope decision through
-`volicord.update_scope`. Product, technical, and sensitive shaping answers are
-applied when `volicord.advance_task` enters implementation. Sensitive approval
-continues to be checked for later write or sensitive effects.
+`volicord.update_scope`. For a work Task, product, technical, and sensitive
+shaping answers are applied when `volicord.advance_task` enters implementation.
+Work-sensitive approval continues to be checked for later write or sensitive
+effects.
+
+For an advisor Task, product, technical, and sensitive shaping answers remain
+visible until the agent finalizes the exact advice result through
+`volicord.record_shaping`; advisor scope answers still use
+`volicord.update_scope`. Finalization does not write Product Repository files or
+record a Run, and close review still requires your separate final acceptance.
+
 The exact question and options appear in `volicord inbox`;
 the agent-facing MCP connection cannot act as the local user channel or resolve
 the action on the user's behalf.
@@ -233,6 +241,11 @@ Review these facts separately:
 Final acceptance means you accept the visible result. Residual-risk acceptance
 means you accept one named remaining risk. Neither decision supplies missing
 required Evidence or accepts unrelated risks.
+
+For advisor work, expect a recorded checkpoint, any required User Channel
+decisions, explicit advice finalization, close review, and final acceptance.
+Successful completion records `advice_only`; the advisor workflow cannot issue
+a write ticket or authorize Product Repository writes.
 
 Close Status is decision support from current Volicord records. It is not proof
 of correctness, test sufficiency, QA completion, deployment success, human

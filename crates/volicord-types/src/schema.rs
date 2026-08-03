@@ -2009,6 +2009,38 @@ pub struct ChangeUnitEffectContract {
     pub sensitive_action_expectations: Vec<String>,
 }
 
+/// Returns whether a Change Unit is a bounded observe-only authority boundary
+/// that an advisor Task may retain as current.
+pub fn advisor_compatible_change_unit(
+    affected_paths: &[String],
+    effect_contract: Option<&ChangeUnitEffectContract>,
+) -> bool {
+    let Some(contract) = effect_contract else {
+        return false;
+    };
+    const FORBIDDEN: [ChangeUnitEffectKind; 5] = [
+        ChangeUnitEffectKind::ProductFileWrite,
+        ChangeUnitEffectKind::RunRecording,
+        ChangeUnitEffectKind::SensitiveAction,
+        ChangeUnitEffectKind::ExternalNetwork,
+        ChangeUnitEffectKind::SecretAccess,
+    ];
+    affected_paths.is_empty()
+        && contract.allowed_paths.is_empty()
+        && contract.sensitive_action_expectations.is_empty()
+        && contract.allowed_effects.iter().all(|effect| {
+            matches!(
+                effect,
+                ChangeUnitEffectKind::ArtifactRegistration
+                    | ChangeUnitEffectKind::UserActionRequest
+                    | ChangeUnitEffectKind::EvidenceUpdate
+            )
+        })
+        && FORBIDDEN
+            .iter()
+            .all(|effect| contract.forbidden_effects.contains(effect))
+}
+
 /// Task lifecycle state shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TaskLifecycleState {
@@ -2121,6 +2153,7 @@ workflow_projection_variants!(
     AwaitingUserAction,
     ReadyToApplyDecisions,
     ReadyForChangeUnit,
+    ReadyToFinalizeAdvice,
     ReadyForImplementation,
     Implementation,
     CloseReview,
@@ -2136,6 +2169,7 @@ impl WorkflowProjection {
             | Self::AwaitingUserAction { next_actor, .. }
             | Self::ReadyToApplyDecisions { next_actor, .. }
             | Self::ReadyForChangeUnit { next_actor, .. }
+            | Self::ReadyToFinalizeAdvice { next_actor, .. }
             | Self::ReadyForImplementation { next_actor, .. }
             | Self::Implementation { next_actor, .. }
             | Self::CloseReview { next_actor, .. }
@@ -2159,6 +2193,9 @@ impl WorkflowProjection {
                 required_action, ..
             }
             | Self::ReadyForChangeUnit {
+                required_action, ..
+            }
+            | Self::ReadyToFinalizeAdvice {
                 required_action, ..
             }
             | Self::ReadyForImplementation {
@@ -2194,6 +2231,9 @@ impl WorkflowProjection {
             | Self::ReadyForChangeUnit {
                 allowed_actions, ..
             }
+            | Self::ReadyToFinalizeAdvice {
+                allowed_actions, ..
+            }
             | Self::ReadyForImplementation {
                 allowed_actions, ..
             }
@@ -2217,6 +2257,7 @@ impl WorkflowProjection {
             | Self::AwaitingUserAction { required_refs, .. }
             | Self::ReadyToApplyDecisions { required_refs, .. }
             | Self::ReadyForChangeUnit { required_refs, .. }
+            | Self::ReadyToFinalizeAdvice { required_refs, .. }
             | Self::ReadyForImplementation { required_refs, .. }
             | Self::Implementation { required_refs, .. }
             | Self::CloseReview { required_refs, .. }
@@ -2893,12 +2934,15 @@ pub struct CurrentCloseBasis {
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub result_summary: String,
     pub result_refs: Vec<StateRecordRef>,
+    pub evidence_refs: Vec<StateRecordRef>,
     pub evidence_summary_ref: RequiredNullable<StateRecordRef>,
     pub residual_risks: Vec<ResidualRisk>,
     pub sensitive_categories: Vec<String>,
     pub sensitive_action_requirements: Vec<SensitiveActionRequirement>,
     pub recovery_constraints: Vec<String>,
-    pub source_run_ref: StateRecordRef,
+    pub source_run_ref: RequiredNullable<StateRecordRef>,
+    pub shaping_checkpoint_ref: RequiredNullable<StateRecordRef>,
+    pub applied_user_action_resolution_refs: Vec<StateRecordRef>,
     pub updated_at: UtcTimestamp,
 }
 

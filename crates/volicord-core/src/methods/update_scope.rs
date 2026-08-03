@@ -59,12 +59,12 @@ use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
 };
 use volicord_types::schema::{
-    AcceptanceCriterion, JsonObject, PersistedUserActionRequestMetadata, StateRecordRef,
-    UserActionBasis,
+    advisor_compatible_change_unit, AcceptanceCriterion, JsonObject,
+    PersistedUserActionRequestMetadata, StateRecordRef, UserActionBasis,
 };
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
-    ShapingDecisionApplicationOwner, ShapingGapStatus, StateRecordKind, TaskControlLevel,
+    ShapingDecisionApplicationOwner, ShapingGapStatus, StateRecordKind, TaskControlLevel, TaskMode,
     UserActionBasisStatus, UtcTimestamp, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
@@ -207,7 +207,13 @@ fn resolve_update_scope_context(
     let current_change_unit = store
         .current_change_unit(&request.task_id)
         .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
-    validate_requested_effect_contract(store, project_state, &request)?;
+    validate_requested_effect_contract(
+        store,
+        project_state,
+        &request,
+        &task,
+        current_change_unit.as_ref(),
+    )?;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
 
     Ok(ResolvedUpdateScopeContext {
@@ -1202,7 +1208,34 @@ fn validate_requested_effect_contract(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &UpdateScopeRequest,
+    task: &TaskRecord,
+    current_change_unit: Option<&ChangeUnitRecord>,
 ) -> Result<(), PlanError> {
+    if task.mode == TaskMode::Advisor {
+        let compatible = match request.change_unit.operation {
+            ChangeUnitOperation::KeepCurrent => current_change_unit.is_some_and(|change_unit| {
+                advisor_compatible_change_unit(
+                    &change_unit.bounded_paths,
+                    change_unit.effect_contract.as_ref(),
+                )
+            }),
+            ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent => {
+                let affected_paths = request.change_unit.affected_paths();
+                advisor_compatible_change_unit(
+                    &affected_paths,
+                    request.change_unit.effect_contract.as_ref(),
+                )
+            }
+        };
+        if !compatible {
+            return scope_validation_rejection(
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                "change_unit",
+                "advisor Change Units must be observe-only and authorize no Product Repository path, Run, sensitive action, external network, or secret access",
+            );
+        }
+    }
     let Some(contract) = request.change_unit.effect_contract.as_ref() else {
         return Ok(());
     };

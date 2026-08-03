@@ -88,10 +88,19 @@ pub(crate) fn task_wide_shaping_authority(
     let mut assessment = TaskWideShapingAuthority::default();
     for record in records {
         let request = record.request();
-        if !request
-            .required_for()
-            .contains(&UserActionRequiredFor::AdvanceTask)
-        {
+        let participates_in_progression = if task.mode == TaskMode::Advisor {
+            request
+                .required_for()
+                .contains(&UserActionRequiredFor::FinalizeAdvice)
+                || request
+                    .required_for()
+                    .contains(&UserActionRequiredFor::ScopeUpdate)
+        } else {
+            request
+                .required_for()
+                .contains(&UserActionRequiredFor::AdvanceTask)
+        };
+        if !participates_in_progression {
             continue;
         }
         let request_ref = state_ref(
@@ -163,7 +172,7 @@ pub(crate) fn task_wide_shaping_authority(
                     MethodName::ResolveUserAction
                 }
                 UserActionStatus::Resolved if origin_matches => represented_gap
-                    .and_then(|gap| gap.gap_kind.decision_policy())
+                    .and_then(|gap| gap.gap_kind.decision_policy_for_mode(task.mode))
                     .map_or(MethodName::Status, |policy| {
                         policy.application_owner.method()
                     }),
@@ -213,6 +222,7 @@ fn checkpoint_summary(
     task_id: &TaskId,
     state_version: u64,
     checkpoint: &ShapingCheckpointRecord,
+    task_mode: TaskMode,
 ) -> ShapingCheckpointSummary {
     let gaps = checkpoint
         .gaps
@@ -222,7 +232,7 @@ fn checkpoint_summary(
             gap_kind: gap.gap_kind,
             application_owner: RequiredNullable::new(
                 gap.gap_kind
-                    .decision_policy()
+                    .decision_policy_for_mode(task_mode)
                     .map(|policy| policy.application_owner),
             ),
             summary: gap.summary.clone(),
@@ -314,14 +324,21 @@ pub(crate) fn workflow_projection(
         Some(&task_id),
         Some(state_version),
     );
-    let summary =
-        checkpoint.map(|value| checkpoint_summary(project_id, &task_id, state_version, value));
+    let summary = checkpoint
+        .map(|value| checkpoint_summary(project_id, &task_id, state_version, value, task.mode));
     let mut refs = vec![task_ref];
     if let Some(summary) = summary.as_ref() {
         refs.push(summary.checkpoint_ref.clone());
         for request_ref in &summary.pending_decision_refs {
             if !refs.contains(request_ref) {
                 refs.push(request_ref.clone());
+            }
+        }
+        for gap in &summary.gaps {
+            if let Some(resolution_ref) = gap.user_action_resolution_ref.as_ref() {
+                if !refs.contains(resolution_ref) {
+                    refs.push(resolution_ref.clone());
+                }
             }
         }
     }
@@ -447,9 +464,12 @@ pub(crate) fn workflow_projection(
     }
     let has_scope_decisions_to_apply = checkpoint.gaps.iter().any(|gap| {
         gap.status == ShapingGapStatus::Resolved
-            && gap.gap_kind.decision_policy().is_some_and(|policy| {
-                policy.application_owner == ShapingDecisionApplicationOwner::UpdateScope
-            })
+            && gap
+                .gap_kind
+                .decision_policy_for_mode(task.mode)
+                .is_some_and(|policy| {
+                    policy.application_owner == ShapingDecisionApplicationOwner::UpdateScope
+                })
     });
     if has_scope_decisions_to_apply {
         return WorkflowProjection::ReadyToApplyDecisions {
@@ -480,17 +500,58 @@ pub(crate) fn workflow_projection(
         };
     }
     if task.mode == TaskMode::Advisor && checkpoint.readiness == ShapingCheckpointReadiness::Ready {
-        return WorkflowProjection::CloseReview {
+        let current_basis = task.close_basis.as_ref().is_some_and(|basis| {
+            basis.task_id.as_str() == task.task_id
+                && basis.scope_revision == task.scope_revision
+                && basis.close_basis_revision == task.close_basis_revision
+                && basis.baseline_ref.as_ref() == task.shaping.baseline_ref.as_ref()
+                && basis
+                    .shaping_checkpoint_ref
+                    .as_ref()
+                    .is_some_and(|reference| {
+                        reference.record_kind == StateRecordKind::ShapingCheckpoint
+                            && reference.record_id.as_str() == checkpoint.shaping_checkpoint_id
+                    })
+                && current_change_unit.is_some_and(|change_unit| {
+                    change_unit.change_unit_id == basis.change_unit_id.as_str()
+                })
+        });
+        if current_basis {
+            return WorkflowProjection::CloseReview {
+                next_actor: AuthorityNextActor::Agent,
+                required_action: RequiredNullable::some(MethodName::CheckClose),
+                allowed_actions: vec![
+                    MethodName::CheckClose,
+                    MethodName::CloseTask,
+                    MethodName::RecordShaping,
+                    MethodName::Status,
+                ],
+                required_refs: refs,
+                expected_state_version: state_version,
+                blocking_reason: RequiredNullable::null(),
+                checkpoint: RequiredNullable::new(summary),
+            };
+        }
+        if current_change_unit.is_none() {
+            return WorkflowProjection::ReadyForChangeUnit {
+                next_actor: AuthorityNextActor::Agent,
+                required_action: RequiredNullable::some(MethodName::UpdateScope),
+                allowed_actions: vec![MethodName::UpdateScope, MethodName::Status],
+                required_refs: refs,
+                expected_state_version: state_version,
+                blocking_reason: RequiredNullable::some(WorkflowBlockingReason::ChangeUnitRequired),
+                checkpoint: RequiredNullable::new(summary),
+            };
+        }
+        return WorkflowProjection::ReadyToFinalizeAdvice {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::CheckClose),
-            allowed_actions: vec![
-                MethodName::CheckClose,
-                MethodName::CloseTask,
-                MethodName::Status,
-            ],
+            required_action: RequiredNullable::some(MethodName::RecordShaping),
+            allowed_actions: vec![MethodName::RecordShaping, MethodName::Status],
             required_refs: refs,
             expected_state_version: state_version,
-            blocking_reason: RequiredNullable::null(),
+            blocking_reason: RequiredNullable::some(
+                WorkflowBlockingReason::AdvisorFinalizationRequired,
+            ),
             checkpoint: RequiredNullable::new(summary),
         };
     }

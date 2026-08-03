@@ -306,7 +306,6 @@
         "ArtifactAvailability",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
-        "CloseAssessmentInput",
         "CommandSource",
         "EvidenceTarget",
         "ExternalUriSource",
@@ -314,6 +313,7 @@
         "GitDiffSource",
         "JudgmentKind",
         "JudgmentPresentation",
+        "RecordShapingOperation",
         "RedactionState",
         "RepositoryFileSource",
         "ResidualRiskInput",
@@ -334,32 +334,16 @@
         "UtcTimestamp"
       ],
       "root_properties": [
-        "baseline_ref",
-        "checkpoint_operation",
-        "close_assessment",
         "envelope",
-        "evidence_refs",
-        "gaps",
-        "implementation_boundary",
-        "scope_revision",
-        "source_refs",
-        "summary",
+        "operation",
         "task_id"
       ],
       "root_required": [
-        "baseline_ref",
-        "checkpoint_operation",
-        "close_assessment",
         "envelope",
-        "evidence_refs",
-        "gaps",
-        "implementation_boundary",
-        "scope_revision",
-        "source_refs",
-        "summary",
+        "operation",
         "task_id"
       ],
-      "sha256": "sha256:c2bb2ec29fb71b013b04b7dfaaf9084bac3ab11f2a39a131bdb0e157e7cb8484"
+      "sha256": "sha256:d23be5ba7889939c3b8449677ce7d3c6a4ee86b9fa8bd82100b779c5bc4ef939"
     },
     "volicord.request_user_action": {
       "definitions": [
@@ -398,7 +382,7 @@
         "required_for",
         "task_id"
       ],
-      "sha256": "sha256:00c23bacb7281461dc4ec152a6bbc2717747f5c2fac38fb9dcea972c11b5a962"
+      "sha256": "sha256:f5e30c234fa1acf9ca6ccc28f0a2b3f35ce46c14d9634dc310d3bc2f3d8fb3e0"
     },
     "volicord.resolve_user_action": {
       "definitions": [

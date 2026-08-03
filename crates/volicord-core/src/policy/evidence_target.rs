@@ -96,10 +96,12 @@ pub(crate) fn projected_observation_matches_close_basis(
     target: &EvidenceTarget,
 ) -> bool {
     observation.change_unit_id.as_ref() == Some(&basis.change_unit_id)
-        && observation
-            .run_ref
-            .as_ref()
-            .is_some_and(|run_ref| run_ref.record_id == basis.source_run_ref.record_id)
+        && observation.run_ref.as_ref().is_some_and(|run_ref| {
+            basis
+                .source_run_ref
+                .as_ref()
+                .is_some_and(|source| run_ref.record_id == source.record_id)
+        })
         && observation.target == *target
 }
 
@@ -109,7 +111,10 @@ pub(crate) fn stored_observation_matches_close_basis(
     target: &EvidenceTarget,
 ) -> bool {
     record.change_unit_id.as_deref() == Some(basis.change_unit_id.as_str())
-        && record.run_id.as_deref() == Some(basis.source_run_ref.record_id.as_str())
+        && basis
+            .source_run_ref
+            .as_ref()
+            .is_some_and(|source| record.run_id.as_deref() == Some(source.record_id.as_str()))
         && stored_observation_target_matches(record, target)
 }
 
@@ -130,8 +135,10 @@ pub(crate) fn close_basis_is_current(
 
 pub(crate) fn close_basis_run_refs(basis: &CurrentCloseBasis) -> Vec<&StateRecordRef> {
     let mut refs = Vec::new();
-    if basis.source_run_ref.record_kind == StateRecordKind::Run {
-        refs.push(&basis.source_run_ref);
+    if let Some(source_run_ref) = basis.source_run_ref.as_ref() {
+        if source_run_ref.record_kind == StateRecordKind::Run {
+            refs.push(source_run_ref);
+        }
     }
     refs.extend(
         basis
@@ -319,12 +326,15 @@ mod tests {
             baseline_ref: Some(BaselineRef::new("baseline_target")).into(),
             result_summary: "result".to_owned(),
             result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
             evidence_summary_ref: RequiredNullable::null(),
             residual_risks: Vec::new(),
             sensitive_categories: Vec::new(),
             sensitive_action_requirements: Vec::new(),
             recovery_constraints: Vec::new(),
-            source_run_ref: observation.run_ref.as_ref().unwrap().clone(),
+            source_run_ref: RequiredNullable::some(observation.run_ref.as_ref().unwrap().clone()),
+            shaping_checkpoint_ref: RequiredNullable::null(),
+            applied_user_action_resolution_refs: Vec::new(),
             updated_at: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
         };
         assert!(projected_observation_matches_close_basis(
