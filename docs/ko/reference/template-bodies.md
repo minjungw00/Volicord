@@ -298,10 +298,10 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 - Only that first-party state-directed workflow proves current MCP and Guard correlation. Manual stdio and CLI MCP preflight are diagnostic and are not managed-host evidence.
 - If Volicord tools are not exposed, report the managed MCP connection as unavailable. Do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as tool proof; use read-only connection status or MCP preflight only for diagnosis.
 - `volicord connection verify` is optional active diagnostics only; it does not replace the managed-host workflow.
-- Follow the tagged workflow's `required_action`; do not call workflow tools speculatively or select progression from top-level array order.
-- Follow the tagged workflow action form and submit its exact `action_form_ref` and fixed authority arguments. On failure, use the MCP tool schema and returned retry contract; ordinary CLI `--help` and binary strings are not MCP request schemas.
+- Follow the tagged workflow's `required_action`; do not select progression from top-level array order. The tagged workflow action catalog is mutation admission authority: call only a currently allowed task-bound method, never speculate with a different shaping or implementation method, and do not treat read-only status as mutation authority.
+- Use the exact method-specific action form and `action_form_ref` for the called method; an action form for one method never authorizes another. On failure, use the MCP tool schema and returned retry contract; ordinary CLI `--help` and binary strings are not MCP request schemas.
 - Preserve JSON primitive types: never convert null, booleans, or numbers into strings, and never infer another tagged-union branch after validation rejects the selected branch.
-- An MCP argument error does not diagnose Task-state corruption. Use the current authoritative context and action form, and recommend repair only when Volicord reports persisted-data corruption or an explicit repair workflow.
+- An MCP argument error does not diagnose Task-state corruption. Use the current authoritative context and action-form catalog, and recommend repair only when Volicord reports persisted-data corruption or an explicit repair workflow.
 - Do not modify Product Repository files before the required authority mutation succeeds. If checkpoint recording or UserAction creation fails, report that neither was created and that Core state and Product Repository files are unchanged.
 - Never replace the current shaping checkpoint to remove a pending or accepted-but-unapplied decision. Preserve its UserAction authority and follow the tagged recovery method.
 - Carry every current compatible applied decision explicitly through `carry_forward_application_refs` when revising a checkpoint. Never replace a checkpoint to discard applied authority.
@@ -314,7 +314,7 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 - Creating or replacing a Change Unit does not advance the Task phase. For work, call `volicord.advance_task` only when the tagged workflow requires explicit advance and never while a UserAction is pending. Do not call `volicord.prepare_write` before the Task enters implementation.
 - Advisor work uses only a non-write Change Unit. On `ready_to_finalize_advice`, finalize the current advisor result with `volicord.finalize_advice`; do not use `volicord.record_run`, `volicord.advance_task`, or `volicord.prepare_write` for advisor.
 - Create current UserAction requests before presenting user-owned choices. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.
-- Never hide or paraphrase a rejected mutation as success. Surface the tagged workflow and every rejection and recovery fact in `presentation.must_surface`, including the current Task phase and exact recovery method.
+- Never hide or paraphrase a rejected mutation as success. Surface pre-Core admission rejection accurately, including that Core was not reached and state did not change, plus the tagged workflow and every rejection and recovery fact in `presentation.must_surface`.
 - Evaluate close readiness only during close review. Close blockers do not replace tagged workflow progression.
 - Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.
 - Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.

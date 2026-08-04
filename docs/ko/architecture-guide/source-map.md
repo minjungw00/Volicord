@@ -165,7 +165,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-core/src/change_unit_planning.rs` | Schema 소유의 정확한 typed field accessor를 사용하는 Change Unit record projection과 Store mutation 계획을 담당합니다. |
 | `crates/volicord-core/src/state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs` | Store와 독립적으로 typed fact를 공개 상태 summary와 증거 또는 보장 표시 값으로 투영합니다. |
 | `crates/volicord-core/src/guidance.rs` | Adapter-neutral typed blocker remediation, 표시 action 정규화, primary 표시 선택, 연산 범주 projection을 담당하며 workflow 권한은 담당하지 않습니다. |
-| `crates/volicord-core/src/workflow_projection.rs` | 현재 유효 graph에서 만드는 폐쇄형 tagged workflow 권한 projection. 정확한 stale recovery owner, 필수 및 허용 action, blocking reason, 현재 recovery reference, state version binding, 중립 고정 좌표 `WorkflowActionIntent`를 포함합니다. |
+| `crates/volicord-core/src/workflow_projection.rs` | 현재 유효 graph에서 만드는 폐쇄형 tagged workflow 권한 projection. 정확한 stale recovery owner, 필수 및 허용 action, blocking reason, 현재 recovery reference, state version binding, 완전한 중립 고정 좌표 `WorkflowActionCatalog`를 포함합니다. |
 | `crates/volicord-core/src/summary_text.rs` | CLI 문법, transport framing, Markdown, terminal rendering이 없는 adapter-neutral 공개 `SummaryCard` text projection을 담당합니다. |
 | `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | 집중된 state-record 참조 변환과 typed Task 상태 해석을 담당합니다. |
 | `crates/volicord-core/src/task_policy.rs` | Typed lifecycle 해석과 lifecycle mutation 계획을 포함하는 재사용 가능한 Task policy를 담당합니다. |
@@ -296,7 +296,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list`와 `tools/call` parameter 디코딩, 정규 도구 선택, adapter/Core 호출, 공유 정규 tool-result carrier 조립. Transport message framing이나 mutation, recovery, UserAction, metric projection은 담당하지 않습니다. |
 | `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail 선택, effect anchor 구성, 간결한 method-result projection, 새 authority 구성, capability 기반 정상 결과 예산 집행. |
 | `crates/volicord-mcp/src/authority_refresh.rs` | Mutation 뒤 Agent Session binding, 현재 authority 다시 읽기, 좌표 검증, 새 compact authority receipt와 tagged workflow 권한 추출. |
-| `crates/volicord-mcp/src/action_form.rs` | 중립 Core workflow intent에서 결정적 MCP action form과 권한 전용 retry contract를 만드는 generic descriptor 결속 projection. |
+| `crates/volicord-mcp/src/action_form.rs` | 중립 Core workflow action catalog에서 결정적 메서드별 MCP form catalog와 권한 전용 retry contract를 만드는 generic descriptor 결속 projection. |
 | `crates/volicord-mcp/src/committed_result_recovery.rs` | Mutation을 다시 시도하지 않으면서 committed mutation projection, refresh, post-effect failure 뒤 capability가 선택하는 authority 우선 bounded recovery. |
 | `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction 좌표 추출, neutral current fact 다시 읽기, adapter 소유 safe MCP 결과 구성, neutral failure mapping, 공유 CLI inbox fallback 부착. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding과 diagnostic event 영속화, 계약이 허용하는 diagnostic carrier failure의 한정된 best-effort 처리. |

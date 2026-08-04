@@ -392,6 +392,16 @@ pub enum DryRunRequestRoute {
     Preview,
 }
 
+/// Canonical workflow-admission relationship for one public method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowActionAdmissionClass {
+    ReadOnly,
+    NotTaskStateBound,
+    UserChannelAuthority,
+    TaskStateBound,
+}
+
 impl DryRunRequestPolicy {
     /// Selects the current response route for a normalized request intent.
     pub const fn route(self, intent: DryRunIntent) -> DryRunRequestRoute {
@@ -421,6 +431,7 @@ pub trait MethodResponseContract: Sized {
 #[derive(Clone, Copy)]
 pub struct PublicMethodContract {
     method: MethodName,
+    workflow_action_admission: WorkflowActionAdmissionClass,
     request_contract_id: &'static str,
     response_contract_id: &'static str,
     dry_run_policy: DryRunRequestPolicy,
@@ -439,6 +450,10 @@ pub struct PublicMethodContract {
 impl PublicMethodContract {
     pub const fn method(self) -> MethodName {
         self.method
+    }
+
+    pub const fn workflow_action_admission(self) -> WorkflowActionAdmissionClass {
+        self.workflow_action_admission
     }
 
     pub const fn request_contract_id(self) -> &'static str {
@@ -1493,6 +1508,7 @@ macro_rules! declare_public_method_contracts {
                 result: $result:ty,
                 response: $response:ident,
                 dry_run_policy: $dry_run_policy:ident,
+                workflow_action_admission: $workflow_action_admission:ident,
                 result_effects: [$($result_effect:ident),+ $(,)?],
                 request_contract: $request_contract:literal,
                 response_contract: $response_contract:literal,
@@ -1548,6 +1564,8 @@ macro_rules! declare_public_method_contracts {
             $(
                 PublicMethodContract {
                     method: MethodName::$variant,
+                    workflow_action_admission:
+                        WorkflowActionAdmissionClass::$workflow_action_admission,
                     request_contract_id: $request_contract,
                     response_contract_id: $response_contract,
                     dry_run_policy: DryRunRequestPolicy::$dry_run_policy,
@@ -1575,6 +1593,7 @@ declare_public_method_contracts! {
         result: IntakeResult,
         response: IntakeResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: NotTaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.intake.request",
         response_contract: "api.method.intake.response",
@@ -1587,6 +1606,7 @@ declare_public_method_contracts! {
         result: UpdateScopeResult,
         response: UpdateScopeResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.update_scope.request",
         response_contract: "api.method.update_scope.response",
@@ -1599,6 +1619,7 @@ declare_public_method_contracts! {
         result: RecordShapingCheckpointResult,
         response: RecordShapingCheckpointResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.record_shaping_checkpoint.request",
         response_contract: "api.method.record_shaping_checkpoint.response",
@@ -1611,6 +1632,7 @@ declare_public_method_contracts! {
         result: FinalizeAdviceResult,
         response: FinalizeAdviceResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.finalize_advice.request",
         response_contract: "api.method.finalize_advice.response",
@@ -1623,6 +1645,7 @@ declare_public_method_contracts! {
         result: AdvanceTaskResult,
         response: AdvanceTaskResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.advance_task.request",
         response_contract: "api.method.advance_task.response",
@@ -1635,6 +1658,7 @@ declare_public_method_contracts! {
         result: StatusResult,
         response: StatusResponse,
         dry_run_policy: RegularResult,
+        workflow_action_admission: ReadOnly,
         result_effects: [ReadOnly],
         request_contract: "api.method.status.request",
         response_contract: "api.method.status.response",
@@ -1647,6 +1671,7 @@ declare_public_method_contracts! {
         result: GetOperationResultResult,
         response: GetOperationResultResponse,
         dry_run_policy: Forbidden,
+        workflow_action_admission: ReadOnly,
         result_effects: [ReadOnly],
         request_contract: "api.method.get_operation_result.request",
         response_contract: "api.method.get_operation_result.response",
@@ -1659,6 +1684,7 @@ declare_public_method_contracts! {
         result: CheckCloseResult,
         response: CheckCloseResponse,
         dry_run_policy: RegularResult,
+        workflow_action_admission: TaskStateBound,
         result_effects: [ReadOnly],
         request_contract: "api.method.check_close.request",
         response_contract: "api.method.check_close.response",
@@ -1671,6 +1697,7 @@ declare_public_method_contracts! {
         result: PrepareEvidenceCaptureResult,
         response: PrepareEvidenceCaptureResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.prepare_evidence_capture.request",
         response_contract: "api.method.prepare_evidence_capture.response",
@@ -1683,6 +1710,7 @@ declare_public_method_contracts! {
         result: PrepareWriteResult,
         response: PrepareWriteResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.prepare_write.request",
         response_contract: "api.method.prepare_write.response",
@@ -1695,6 +1723,7 @@ declare_public_method_contracts! {
         result: StageArtifactResult,
         response: StageArtifactResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [StagingCreated],
         request_contract: "api.method.stage_artifact.request",
         response_contract: "api.method.stage_artifact.response",
@@ -1707,6 +1736,7 @@ declare_public_method_contracts! {
         result: RecordRunResult,
         response: RecordRunResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.record_run.request",
         response_contract: "api.method.record_run.response",
@@ -1719,6 +1749,7 @@ declare_public_method_contracts! {
         result: RequestUserActionResult,
         response: RequestUserActionResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted],
         request_contract: "api.method.request_user_action.request",
         response_contract: "api.method.request_user_action.response",
@@ -1731,6 +1762,7 @@ declare_public_method_contracts! {
         result: ResolveUserActionResult,
         response: ResolveUserActionResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: UserChannelAuthority,
         result_effects: [CoreCommitted],
         request_contract: "api.method.resolve_user_action.request",
         response_contract: "api.method.resolve_user_action.response",
@@ -1743,6 +1775,7 @@ declare_public_method_contracts! {
         result: ReconcileChangesResult,
         response: ReconcileChangesResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [ReadOnly, CoreCommitted],
         request_contract: "api.method.reconcile_changes.request",
         response_contract: "api.method.reconcile_changes.response",
@@ -1755,6 +1788,7 @@ declare_public_method_contracts! {
         result: CloseTaskResult,
         response: CloseTaskResponse,
         dry_run_policy: Preview,
+        workflow_action_admission: TaskStateBound,
         result_effects: [CoreCommitted, NoEffect],
         request_contract: "api.method.close_task.request",
         response_contract: "api.method.close_task.response",
@@ -1894,6 +1928,80 @@ mod tests {
         assert!(PUBLIC_METHOD_CONTRACTS
             .iter()
             .all(|contract| !contract.result_effects().is_empty()));
+    }
+
+    #[test]
+    fn canonical_registry_owns_every_workflow_admission_classification() {
+        let expected = [
+            (
+                MethodName::Intake,
+                WorkflowActionAdmissionClass::NotTaskStateBound,
+            ),
+            (
+                MethodName::UpdateScope,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::RecordShapingCheckpoint,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::FinalizeAdvice,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::AdvanceTask,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (MethodName::Status, WorkflowActionAdmissionClass::ReadOnly),
+            (
+                MethodName::GetOperationResult,
+                WorkflowActionAdmissionClass::ReadOnly,
+            ),
+            (
+                MethodName::CheckClose,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::PrepareEvidenceCapture,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::PrepareWrite,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::StageArtifact,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::RecordRun,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::RequestUserAction,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::ResolveUserAction,
+                WorkflowActionAdmissionClass::UserChannelAuthority,
+            ),
+            (
+                MethodName::ReconcileChanges,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+            (
+                MethodName::CloseTask,
+                WorkflowActionAdmissionClass::TaskStateBound,
+            ),
+        ];
+        assert_eq!(expected.map(|(method, _)| method), MethodName::ALL);
+        for (method, admission) in expected {
+            assert_eq!(
+                public_method_contract(method).workflow_action_admission(),
+                admission
+            );
+        }
     }
 
     #[test]

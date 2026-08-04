@@ -791,6 +791,7 @@ fn request_user_action_arguments(fixture: &McpFixture, task_id: &str, state_vers
     json!({
         "detail": "full",
         "project_selector": fixture.project_id(),
+        "action_form_ref": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "request": {
             "operation": "create",
             "task_id": task_id,

@@ -433,11 +433,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         (
             AgentToolId::PREPARE_WRITE.wire_name(),
             PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-            vec![
-                ("task_id", Value::Null),
-                ("change_unit_id", Value::Null),
-                ("sensitive_categories", json!([])),
-            ],
+            vec![("sensitive_categories", json!([]))],
         ),
         (
             AgentToolId::STAGE_ARTIFACT.wire_name(),
@@ -572,6 +568,7 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
     let cases = [
         (
             json!({
+                "action_form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "task_id": "task_capture_command",
                 "change_unit_id": "cu_capture_command",
                 "baseline_ref": "baseline_capture_command",
@@ -595,6 +592,7 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
         ),
         (
             json!({
+                "action_form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "task_id": "task_capture_tool",
                 "change_unit_id": "cu_capture_tool",
                 "baseline_ref": "baseline_capture_tool",
@@ -892,7 +890,7 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     assert!(response["selected_variant"].is_null());
     assert_eq!(response["authoritative_context"]["context_loaded"], true);
     assert_eq!(
-        response["authoritative_context"]["current_action_form"]["method"],
+        response["authoritative_context"]["action_form_catalog"]["forms"][0]["method"],
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name()
     );
     assert!(response["retry_contract"]["invalid_paths"]
@@ -957,7 +955,7 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     assert_eq!(fixture.counts()?, before);
 
     let retry = &response["retry_contract"];
-    let current_form = &response["authoritative_context"]["current_action_form"];
+    let current_form = &response["authoritative_context"]["action_form_catalog"]["forms"][0];
     assert_eq!(retry["action_form_ref"], current_form["form_ref"]);
     assert_eq!(
         retry["fixed_arguments"]["checkpoint_operation"]["operation"],
@@ -1646,11 +1644,15 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     }
 
     let stage_fixture = CoreFixture::new("mcp-default-compact-stage")?;
-    let (stage_task_id, _) = create_task(&adapter(&stage_fixture)?)?;
+    let stage_adapter = adapter(&stage_fixture)?;
+    let (stage_task_id, _, _) = create_implementation_task(&stage_fixture)?;
+    let stage_action_form_ref =
+        action_form_ref_for_method(&stage_adapter, &stage_task_id, MethodName::StageArtifact)?;
     let staged = call_default(
         &stage_fixture,
         AgentToolId::STAGE_ARTIFACT.wire_name(),
         json!({
+            "action_form_ref": stage_action_form_ref,
             "task_id": stage_task_id,
             "display_name": "default-stage.log",
             "content_type": "text/plain",
@@ -1670,41 +1672,40 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     fs::create_dir_all(&capture_git_dir)?;
     fs::write(capture_git_dir.join("HEAD"), "ref: refs/heads/main\n")?;
     let capture_adapter = adapter(&capture_fixture)?;
-    let (capture_task_id, _) = create_task(&capture_adapter)?;
-    let capture_scope = capture_adapter.call_tool(
+    let (capture_task_id, capture_change_unit_id, _) =
+        create_implementation_task(&capture_fixture)?;
+    let capture_scope_action_form_ref =
+        action_form_ref_for_method(&capture_adapter, &capture_task_id, MethodName::UpdateScope)?;
+    capture_adapter.call_tool(
         AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
+            "action_form_ref": capture_scope_action_form_ref,
             "task_id": capture_task_id,
-            "goal_summary": null,
-            "scope_update": null,
-            "scope_boundary": null,
-            "non_goals": null,
-            "acceptance_criteria": null,
-            "autonomy_boundary": null,
-            "baseline_ref": "baseline_capture_compact",
-            "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Prepare a registered evidence capture.",
-                "affected_paths": []
-            },
-            "related_scope_decision_refs": []
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "change_unit": {"operation": "keep_current"}
         }),
     )?;
-    let capture_change_unit_id = capture_scope.response_value["state"]["active_change_unit_ref"]
-        ["record_id"]
+    let capture_status = capture_adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": capture_task_id, "detail": "full"}),
+    )?;
+    let capture_criterion_id = capture_status.response_value["active_task"]["acceptance_criteria"]
+        [0]["acceptance_criterion_id"]
         .as_str()
-        .ok_or("scope response should expose the current Change Unit")?;
-    let capture_criterion_id = capture_scope.response_value["state"]["acceptance_criteria"][0]
-        ["acceptance_criterion_id"]
-        .as_str()
-        .ok_or("scope response should expose the acceptance criterion")?;
+        .ok_or("status should expose the acceptance criterion")?;
+    let capture_action_form_ref = action_form_ref_for_method(
+        &capture_adapter,
+        &capture_task_id,
+        MethodName::PrepareEvidenceCapture,
+    )?;
     let capture = call_default(
         &capture_fixture,
         AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
         json!({
+            "action_form_ref": capture_action_form_ref,
             "task_id": capture_task_id,
             "change_unit_id": capture_change_unit_id,
-            "baseline_ref": "baseline_capture_compact",
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
             "target": {
                 "target_kind": "acceptance_criterion",
                 "acceptance_criterion_id": capture_criterion_id
@@ -1737,68 +1738,21 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
 
     let record_fixture = CoreFixture::new("mcp-default-compact-record-run")?;
     let record_adapter = adapter(&record_fixture)?;
-    let (record_task_id, _) = create_task(&record_adapter)?;
-    let scope = record_adapter.call_tool(
-        AgentToolId::UPDATE_SCOPE.wire_name(),
-        json!({
-            "task_id": record_task_id,
-            "goal_summary": null,
-            "scope_update": null,
-            "scope_boundary": null,
-            "non_goals": null,
-            "acceptance_criteria": null,
-            "autonomy_boundary": null,
-            "baseline_ref": "baseline_record_compact",
-            "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Record compact Run references.",
-                "affected_paths": []
-            },
-            "related_scope_decision_refs": []
-        }),
+    let (record_task_id, change_unit_id, _) = create_implementation_task(&record_fixture)?;
+    let record_status = record_adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": record_task_id, "detail": "full"}),
     )?;
-    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
-        .as_str()
-        .ok_or("scope response should expose the current Change Unit")?;
-    let criterion_id = scope.response_value["state"]["acceptance_criteria"][0]
+    let criterion_id = record_status.response_value["active_task"]["acceptance_criteria"][0]
         ["acceptance_criterion_id"]
         .as_str()
-        .ok_or("scope response should expose the acceptance criterion")?;
-    let checkpoint_action_form_ref = current_action_form_ref(&record_adapter, &record_task_id)?;
-    let shaped = record_adapter.call_tool(
-        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
-        json!({
-            "action_form_ref": checkpoint_action_form_ref,
-            "task_id": record_task_id,
-            "checkpoint_operation": {"operation": "create_initial"},
-            "scope_revision": 1,
-            "baseline_ref": "baseline_record_compact",
-            "summary": "The compact record-run boundary is ready.",
-            "implementation_boundary": "Record only the scoped compact Run references.",
-            "gaps": [],
-            "source_refs": [],
-            "evidence_refs": []
-        }),
-    )?;
-    let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
-        .as_str()
-        .ok_or("record_shaping_checkpoint should expose its checkpoint")?;
-    let advance_action_form_ref = current_action_form_ref(&record_adapter, &record_task_id)?;
-    record_adapter.call_tool(
-        AgentToolId::ADVANCE_TASK.wire_name(),
-        json!({
-            "action_form_ref": advance_action_form_ref,
-            "task_id": record_task_id,
-            "shaping_checkpoint_id": checkpoint_id,
-            "change_unit_id": change_unit_id,
-            "scope_revision": 1,
-            "baseline_ref": "baseline_record_compact",
-            "user_action_resolution_ids": []
-        }),
-    )?;
+        .ok_or("status should expose the acceptance criterion")?;
+    let stage_for_run_action_form_ref =
+        action_form_ref_for_method(&record_adapter, &record_task_id, MethodName::StageArtifact)?;
     let staged_for_run = record_adapter.call_tool(
         AgentToolId::STAGE_ARTIFACT.wire_name(),
         json!({
+            "action_form_ref": stage_for_run_action_form_ref,
             "task_id": record_task_id,
             "display_name": "record-compact.log",
             "content_type": "text/plain",
@@ -1811,20 +1765,23 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         "target_kind": "acceptance_criterion",
         "acceptance_criterion_id": criterion_id,
     });
+    let record_run_action_form_ref =
+        action_form_ref_for_method(&record_adapter, &record_task_id, MethodName::RecordRun)?;
     let recorded = call_default(
         &record_fixture,
         AgentToolId::RECORD_RUN.wire_name(),
         json!({
+            "action_form_ref": record_run_action_form_ref,
             "task_id": record_task_id,
             "change_unit_id": change_unit_id,
             "kind": "implementation",
-            "baseline_ref": "baseline_record_compact",
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
             "summary": "Recorded compact follow-up references.",
             "observed_changes": {
                 "changed_paths": [],
                 "product_file_write_observed": false,
                 "sensitive_categories": [],
-                "baseline_ref": "baseline_record_compact"
+                "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF
             },
             "artifact_inputs": [{
                 "artifact_input_id": "artifact_input_record_compact",
@@ -1936,77 +1893,22 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
 
     let prepare_fixture = CoreFixture::new("mcp-default-compact-prepare")?;
     let prepare_adapter = adapter(&prepare_fixture)?;
-    let (prepare_task_id, _) = create_task(&prepare_adapter)?;
-    let scope = prepare_adapter.call_tool(
-        AgentToolId::UPDATE_SCOPE.wire_name(),
-        json!({
-            "task_id": prepare_task_id,
-            "goal_summary": null,
-            "scope_update": null,
-            "scope_boundary": null,
-            "non_goals": null,
-            "acceptance_criteria": null,
-            "autonomy_boundary": null,
-            "baseline_ref": "baseline_fixture",
-            "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Default compact write ticket.",
-                "affected_paths": ["src/export.rs"]
-            },
-            "related_scope_decision_refs": []
-        }),
-    )?;
-    assert_eq!(scope.response_value["base"]["response_kind"], "result");
-    let prepare_change_unit_id = scope.response_value["state"]["active_change_unit_ref"]
-        ["record_id"]
-        .as_str()
-        .ok_or("prepare scope should expose its current Change Unit")?;
-    let prepare_checkpoint_action_form_ref =
-        current_action_form_ref(&prepare_adapter, &prepare_task_id)?;
-    let shaped = prepare_adapter.call_tool(
-        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
-        json!({
-            "action_form_ref": prepare_checkpoint_action_form_ref,
-            "task_id": prepare_task_id,
-            "checkpoint_operation": {"operation": "create_initial"},
-            "scope_revision": 1,
-            "baseline_ref": "baseline_fixture",
-            "summary": "The compact write-ticket boundary is ready.",
-            "implementation_boundary": "Update only the scoped export flow.",
-            "gaps": [],
-            "source_refs": [],
-            "evidence_refs": []
-        }),
-    )?;
-    let prepare_checkpoint_id = shaped.response_value["shaping_checkpoint"]
-        ["shaping_checkpoint_id"]
-        .as_str()
-        .ok_or("prepare record_shaping_checkpoint should expose its checkpoint")?;
-    let prepare_advance_action_form_ref =
-        current_action_form_ref(&prepare_adapter, &prepare_task_id)?;
-    prepare_adapter.call_tool(
-        AgentToolId::ADVANCE_TASK.wire_name(),
-        json!({
-            "action_form_ref": prepare_advance_action_form_ref,
-            "task_id": prepare_task_id,
-            "shaping_checkpoint_id": prepare_checkpoint_id,
-            "change_unit_id": prepare_change_unit_id,
-            "scope_revision": 1,
-            "baseline_ref": "baseline_fixture",
-            "user_action_resolution_ids": []
-        }),
-    )?;
+    let (prepare_task_id, prepare_change_unit_id, _) =
+        create_implementation_task(&prepare_fixture)?;
+    let prepare_write_action_form_ref =
+        action_form_ref_for_method(&prepare_adapter, &prepare_task_id, MethodName::PrepareWrite)?;
     let prepared = call_default(
         &prepare_fixture,
         AgentToolId::PREPARE_WRITE.wire_name(),
         json!({
+            "action_form_ref": prepare_write_action_form_ref,
             "task_id": prepare_task_id,
-            "change_unit_id": null,
+            "change_unit_id": prepare_change_unit_id,
             "intended_operation": "Update the export flow.",
             "intended_paths": ["src/export.rs"],
             "product_file_write_intended": true,
             "sensitive_categories": [],
-            "baseline_ref": "baseline_fixture"
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF
         }),
     )?;
     assert_eq!(
@@ -2021,11 +1923,20 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     );
 
     let reconcile_fixture = CoreFixture::new("mcp-default-compact-reconcile")?;
-    let (reconcile_task_id, _) = create_task(&adapter(&reconcile_fixture)?)?;
+    let reconcile_adapter = adapter(&reconcile_fixture)?;
+    let (reconcile_task_id, _, _) = create_implementation_task(&reconcile_fixture)?;
+    let reconcile_action_form_ref = action_form_ref_for_method(
+        &reconcile_adapter,
+        &reconcile_task_id,
+        MethodName::ReconcileChanges,
+    )?;
     let reconciled = call_default(
         &reconcile_fixture,
         AgentToolId::RECONCILE_CHANGES.wire_name(),
-        json!({"task_id": reconcile_task_id}),
+        json!({
+            "action_form_ref": reconcile_action_form_ref,
+            "task_id": reconcile_task_id
+        }),
     )?;
     assert!(reconciled["method_result"]["unresolved_changes"].is_array());
     assert!(reconciled["method_result"]["resolved_changes"].is_array());
@@ -2038,7 +1949,9 @@ fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Resul
 {
     let fixture = CoreFixture::new("mcp-compact-terminal-close")?;
     let setup_adapter = adapter(&fixture)?;
-    let (task_id, _) = create_task(&setup_adapter)?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
+    let close_task_action_form_ref =
+        action_form_ref_for_method(&setup_adapter, &task_id, MethodName::CloseTask)?;
     let adapter = adapter(&fixture)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
@@ -2047,6 +1960,7 @@ fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Resul
             2,
             AgentToolId::CLOSE_TASK.wire_name(),
             json!({
+                "action_form_ref": close_task_action_form_ref,
                 "task_id": task_id,
                 "intent": "cancel",
                 "close_reason": "cancelled",

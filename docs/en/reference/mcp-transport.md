@@ -635,28 +635,68 @@ metadata, idempotency fields, actor source, operation category, and verification
 basis. Hidden fields are rejected before Core. Compact discovery schemas never
 relax the complete owner-defined request validation.
 
-For a current Agent-owned workflow action, the adapter combines Core's neutral
-`WorkflowActionIntent` with that tool's canonical semantic descriptor:
+For every currently allowed Agent-owned Task-state-bound action, the adapter
+combines the corresponding neutral Core `WorkflowActionIntent` with that
+tool's canonical semantic descriptor:
 
 ```schema
 WorkflowActionForm:
   form_ref: string
   method: string
+  role: required | allowed
   expected_state_version: integer
   fixed_arguments: object
   suggested_arguments: object
   required_inputs: WorkflowActionInput[]
   optional_inputs: WorkflowActionInput[]
+
+WorkflowActionFormCatalog:
+  required_method: string | null
+  forms: WorkflowActionForm[]
 ```
 
 `form_ref` is the opaque canonical digest of project, Task, method, selected
 semantic variant, expected state version, exact fixed authority coordinates,
 and current semantic-schema digest. It is not a numeric workflow version.
-State-bound mutation calls that consume the current form require
-`action_form_ref`; the adapter compares it with the current form before
-mutation Core entry. A mismatch returns
-`MCP_ACTION_FORM_STALE`, `reached_core=false`, `committed=false`, the latest
-form, and no state change. There is no omission fallback.
+The form catalog preserves Core catalog ordering, required method, and role.
+It appears in normal Task status, mutation success and rejection presentation,
+authoritative argument context, and retry contracts. Status with no active Task
+has a null catalog. A singular form is not independently authoritative.
+
+The canonical public method/tool registries classify every callable as
+`read_only`, `not_task_state_bound`, `user_channel_authority`, or
+`task_state_bound`; `volicord.list_projects` is `read_only`, and integration
+verification utilities are `not_task_state_bound`. Before
+decoding and Core routing, the adapter loads the current Task workflow and form
+catalog for a Task-state-bound call. If the called method has no catalog form,
+the adapter returns `WORKFLOW_ACTION_NOT_ALLOWED` with
+`reached_core=false`, `committed=false`, and no state change. If the method is
+present, the call must carry its exact method-specific `action_form_ref`.
+Missing, malformed, stale, foreign-Task, foreign-project, or cross-method refs
+return `MCP_ACTION_FORM_STALE` before Core with the current called-method form.
+An allowed form for one method never authorizes another, and there is no
+omission or required-form fallback. Read-only `volicord.status` observes the
+catalog but creates no mutation authority.
+
+```schema
+McpWorkflowAdmissionRejection:
+  called_method: string
+  current_workflow_kind: string
+  required_method: string | null
+  allowed_methods: string[]
+  called_method_form: WorkflowActionForm | null
+  required_method_form: WorkflowActionForm | null
+  state_change_applied: false
+  reached_core: false
+```
+
+`allowed_methods` contains the currently admitted Task-state-bound methods,
+not read-only observations. A disallowed-method rejection returns the current
+required form when the required method is Task-state-bound; a User
+Channel-owned required method can therefore have no required MCP action form.
+The compact presentation states that the attempted method was not current,
+Core was not reached, state did not change, and identifies the exact current
+required method and available required form.
 
 Initial checkpoint forms fix Task, `create_initial`, scope revision, and the
 actual nullable baseline while leaving summary, implementation boundary, and

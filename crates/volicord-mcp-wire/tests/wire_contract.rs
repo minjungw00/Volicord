@@ -179,7 +179,22 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
         "expected_state_version": 7,
         "blocking_reason": "no_current_checkpoint",
         "checkpoint": null,
-        "action_intent": null
+        "action_catalog": {
+            "required_method": "volicord.record_shaping_checkpoint",
+            "actions": [{
+                "method": "volicord.record_shaping_checkpoint",
+                "role": "required",
+                "expected_state_version": 7,
+                "fixed_authority_coordinates": {
+                    "coordinate_kind": "record_shaping_checkpoint",
+                    "task_id": "task_current",
+                    "checkpoint_operation": {"operation": "create_initial"},
+                    "scope_revision": 0,
+                    "baseline_ref": null
+                },
+                "required_refs": [task_ref]
+            }]
+        }
     });
     let presentation = |state_change: &str| {
         json!({
@@ -190,7 +205,19 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "blocker_summary": [],
             "required_user_action": null,
             "must_surface": [],
-            "current_action_form": null
+            "action_form_catalog": {
+                "required_method": "volicord.record_shaping_checkpoint",
+                "forms": [{
+                    "form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "method": "volicord.record_shaping_checkpoint",
+                    "role": "required",
+                    "expected_state_version": 7,
+                    "fixed_arguments": {"task_id": "task_current"},
+                    "suggested_arguments": {},
+                    "required_inputs": [],
+                    "optional_inputs": []
+                }]
+            }
         })
     };
     let rejection = json!({

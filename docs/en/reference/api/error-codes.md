@@ -154,9 +154,13 @@ workspace basis required by the mutation.
 <a id="errorcode-workflow-action-not-allowed"></a>
 ### `WORKFLOW_ACTION_NOT_ALLOWED`
 
-The semantic action is not admitted by the current Task mode and work phase.
-This code has category `not_allowed`; its typed recovery reports the one
-current owner method when recovery exists.
+The called Task-state-bound method is absent from the current tagged workflow
+action catalog. At the MCP adapter boundary this is a typed pre-Core rejection:
+`reached_core=false`, `committed=false`, and no state change. Its structured
+facts report the called method, workflow kind, current required method, allowed
+Task-state-bound methods, and the available called-method and required-method
+forms. This code has category `not_allowed` when represented by the Core public
+error family.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`

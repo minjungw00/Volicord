@@ -189,7 +189,7 @@ pub(super) fn create_pending_product_action(
     fixture: &CoreFixture,
 ) -> Result<(String, PipelineResponse), Box<dyn Error>> {
     let setup_adapter = adapter(fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let (task_id, _, state_version) = create_implementation_task(fixture)?;
     let response = setup_adapter.call_tool(
         "volicord.request_user_action",
         product_action_args(fixture, &task_id, state_version),
@@ -236,6 +236,153 @@ pub(super) fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn
         .as_u64()
         .expect("state version");
     Ok((task_id, state_version))
+}
+
+pub(super) fn create_implementation_task(
+    fixture: &CoreFixture,
+) -> Result<(String, String, u64), Box<dyn Error>> {
+    let (task_id, change_unit_id, shaping_checkpoint_id, state_version) =
+        create_ready_for_implementation_task(fixture)?;
+    let core = CoreService::for_mutation(&fixture.mutation_context()?);
+    let workspace = volicord_platform_fs::capture_git_workspace_snapshot(
+        &fixture.product_repo_path(),
+    )?
+    .map(|snapshot| volicord_core::GitWorkspaceContext {
+        git_common_dir: snapshot.layout.common_dir.display().to_string(),
+        worktree_id: snapshot.worktree_id,
+        branch_ref: snapshot.branch_ref,
+        head_sha: snapshot.head_sha,
+        workspace_fingerprint: snapshot.workspace_fingerprint,
+    });
+    let invocation = || {
+        let invocation = test_agent_invocation(fixture, OperationCategory::AgentWorkflow);
+        match workspace.clone() {
+            Some(workspace) => invocation.with_git_workspace_context(workspace),
+            None => invocation,
+        }
+    };
+    let advanced = core.advance_task(
+        &fixture.mutation_context()?,
+        AdvanceTaskRequest {
+            envelope: fixture.envelope(
+                "req_mcp_implementation_advance",
+                Some("idem_mcp_implementation_advance"),
+                false,
+                Some(state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            shaping_checkpoint_id: ShapingCheckpointId::new(&shaping_checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new(
+                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            ),
+            user_action_resolution_ids: Vec::new(),
+        },
+        invocation(),
+    )?;
+    let state_version = advanced.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("advance_task response should expose state_version")?;
+    Ok((task_id, change_unit_id, state_version))
+}
+
+pub(super) fn create_ready_for_implementation_task(
+    fixture: &CoreFixture,
+) -> Result<(String, String, String, u64), Box<dyn Error>> {
+    let core = CoreService::for_mutation(&fixture.mutation_context()?);
+    let workspace = volicord_platform_fs::capture_git_workspace_snapshot(
+        &fixture.product_repo_path(),
+    )?
+    .map(|snapshot| volicord_core::GitWorkspaceContext {
+        git_common_dir: snapshot.layout.common_dir.display().to_string(),
+        worktree_id: snapshot.worktree_id,
+        branch_ref: snapshot.branch_ref,
+        head_sha: snapshot.head_sha,
+        workspace_fingerprint: snapshot.workspace_fingerprint,
+    });
+    let invocation = || {
+        let invocation = test_agent_invocation(fixture, OperationCategory::AgentWorkflow);
+        match workspace.clone() {
+            Some(workspace) => invocation.with_git_workspace_context(workspace),
+            None => invocation,
+        }
+    };
+    let intake = core.intake(
+        &fixture.mutation_context()?,
+        fixture.intake_request(
+            "req_mcp_ready_implementation_task",
+            "idem_mcp_ready_implementation_task",
+            false,
+            Some(0),
+        ),
+        invocation(),
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .ok_or("intake response should expose the Task")?
+        .to_owned();
+    let scope = core.update_scope(
+        &fixture.mutation_context()?,
+        fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_mcp_ready_implementation_scope",
+            idempotency_key: "idem_mcp_ready_implementation_scope",
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Exercise workflow action admission.",
+        }),
+        invocation(),
+    )?;
+    let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("scope response should expose the current Change Unit")?
+        .to_owned();
+    let state_version = scope.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("scope response should expose state_version")?;
+    let shaped = core.record_shaping_checkpoint(
+        &fixture.mutation_context()?,
+        RecordShapingCheckpointRequest {
+            envelope: fixture.envelope(
+                "req_mcp_ready_implementation_shaping",
+                Some("idem_mcp_ready_implementation_shaping"),
+                false,
+                Some(state_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new(
+                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            )),
+            summary: "The workflow admission fixture is structurally ready.".to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Exercise only current catalog actions.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+        },
+        invocation(),
+    )?;
+    let state_version = shaped.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("record_shaping_checkpoint response should expose state_version")?;
+    let shaping_checkpoint_id = shaped.response_value["shaping_checkpoint"]
+        ["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("record_shaping_checkpoint response should expose its checkpoint")?
+        .to_owned();
+    Ok((
+        task_id,
+        change_unit_id,
+        shaping_checkpoint_id,
+        state_version,
+    ))
 }
 
 #[cfg(unix)]
@@ -800,6 +947,11 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
             arguments
         }
     };
+    arguments["action_form_ref"] = json!(action_form_ref_for_method(
+        &adapter(fixture)?,
+        &task_id,
+        MethodName::RequestUserAction,
+    )?);
     arguments["project_selector"] = json!(fixture.project_id());
 
     Ok(PreparedMcpUserActionLeakageCase {
@@ -817,7 +969,14 @@ pub(super) fn action_args(
     options: Value,
     required_for: Value,
 ) -> Value {
+    let action_form_ref = action_form_ref_for_method(
+        &adapter(fixture).expect("request-user-action form adapter"),
+        task_id,
+        MethodName::RequestUserAction,
+    )
+    .expect("request-user-action form");
     json!({
+        "action_form_ref": action_form_ref,
         "detail": "full",
         "request": {
             "operation": "create",
@@ -1025,6 +1184,22 @@ pub(super) fn current_action_form_ref(
     adapter: &McpAdapter,
     task_id: &str,
 ) -> Result<String, Box<dyn Error>> {
+    current_action_form_ref_for_method(adapter, task_id, None)
+}
+
+pub(super) fn action_form_ref_for_method(
+    adapter: &McpAdapter,
+    task_id: &str,
+    method: MethodName,
+) -> Result<String, Box<dyn Error>> {
+    current_action_form_ref_for_method(adapter, task_id, Some(method))
+}
+
+fn current_action_form_ref_for_method(
+    adapter: &McpAdapter,
+    task_id: &str,
+    method: Option<MethodName>,
+) -> Result<String, Box<dyn Error>> {
     let status = adapter.call_tool(
         AgentToolId::STATUS.wire_name(),
         json!({"task_id": task_id, "detail": "workflow"}),
@@ -1041,12 +1216,12 @@ pub(super) fn current_action_form_ref(
         .as_ref()
         .ok_or("status should retain verified invocation")?
         .project_id;
-    Ok(
-        crate::action_form::current_workflow_action_form(project_id, &workflow)
-            .ok_or("workflow should expose a current action form")?
-            .form_ref
-            .into_inner(),
-    )
+    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow);
+    let form = method
+        .and_then(|method| catalog.form(method))
+        .or_else(|| catalog.required_form())
+        .ok_or("workflow should expose the requested current action form")?;
+    Ok(form.form_ref.as_str().to_owned())
 }
 
 pub(super) fn decode_mcp_arguments_to_value(
@@ -1065,8 +1240,11 @@ pub(super) fn structured_tool_error(tool_name: &str, error: &McpAdapterError) ->
     let parsed = structured_error_result(&result);
     assert_eq!(parsed["tool_name"], tool_name);
     match error {
-        McpAdapterError::InvalidParams { .. } => {
-            assert_eq!(parsed["code"], "MCP_INVALID_ARGUMENTS");
+        McpAdapterError::InvalidParams { code, .. } => {
+            assert_eq!(
+                parsed["code"],
+                serde_json::to_value(code).expect("error code")
+            );
             assert_eq!(parsed["retryable"], true);
         }
         McpAdapterError::ToolExecution { .. } => {

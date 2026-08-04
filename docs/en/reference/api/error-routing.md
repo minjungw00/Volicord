@@ -71,6 +71,13 @@ MCP invalid-arguments response. A descriptor-valid value that the exact Rust
 request type cannot decode is instead an internal schema-contract failure. It
 is not reassigned to a user field or another union branch. Neither path creates
 a `ToolRejectedResponse` or reaches Core.
+For a Task-state-bound MCP call, method admission and exact method-specific
+action-form matching are also adapter failures before Core execution. A method
+absent from the current catalog uses the typed
+`WORKFLOW_ACTION_NOT_ALLOWED` MCP response; an absent or mismatched form for an
+allowed method uses `MCP_ACTION_FORM_STALE`. Both preserve
+`reached_core=false`, `committed=false`, and no state change and carry current
+workflow and form recovery facts owned by [MCP Transport](../mcp-transport.md#public-argument-projection).
 Typed Core operational unavailability that prevents any method result is also
 outside this branch and is mapped by the calling adapter.
 

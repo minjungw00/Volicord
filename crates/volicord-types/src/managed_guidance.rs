@@ -8,7 +8,13 @@ use crate::ids::RequestHash;
 /// Closed semantic facts that every managed agent-guidance rendering preserves.
 pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "follow_tagged_required_action",
-    "follow_tagged_workflow_action_form",
+    "tagged_workflow_action_catalog_is_mutation_admission_authority",
+    "call_only_currently_allowed_task_bound_method",
+    "use_exact_method_specific_action_form",
+    "action_form_never_authorizes_different_method",
+    "read_only_status_grants_no_mutation_authority",
+    "do_not_speculate_different_shaping_or_implementation_method",
+    "surface_pre_core_admission_rejection_exactly",
     "use_mcp_tool_schema_and_retry_contract",
     "ordinary_cli_help_is_not_mcp_request_schema",
     "binary_strings_are_not_tool_schema",
@@ -56,10 +62,15 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
 
 /// Closed semantics whose change invalidates state-bound workflow action forms.
 pub const WORKFLOW_ACTION_FORM_FACTS: &[&str] = &[
-    "core_owns_workflow_action_intent",
-    "mcp_projects_descriptor_bound_action_form",
+    "core_owns_workflow_action_catalog",
+    "catalog_contains_every_allowed_task_bound_method_exactly_once",
+    "catalog_contains_no_disallowed_task_bound_method",
+    "mcp_projects_each_descriptor_bound_action_form",
     "form_ref_binds_project_task_method_variant_state_coordinates_and_schema",
-    "state_bound_mutation_requires_exact_current_form_ref",
+    "task_bound_method_is_admitted_before_core",
+    "allowed_task_bound_mutation_requires_exact_method_specific_form_ref",
+    "action_form_never_authorizes_different_method",
+    "read_only_status_grants_no_mutation_authority",
     "invalid_arguments_load_only_independently_valid_authority_context",
     "retry_contract_supplies_only_authority_owned_coordinates",
     "authority_basis_mismatch_reports_typed_expected_and_received_values",

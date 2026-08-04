@@ -26,10 +26,12 @@ and close contracts stay in the [Reference Index](../reference/README.md).
 Do not memorize one universal method sequence. Start from the latest
 authoritative tagged `workflow`. Call its non-null `required_action` with the
 exact `required_refs` and `expected_state_version`, and treat `allowed_actions`
-as a closed boundary rather than probing other workflow tools. If there is no
-current Volicord result, the Task is unknown, or an authoritative refresh is
-required, obtain current state first. Do not poll status between steps merely
-for reassurance.
+and its action catalog as the closed mutation-admission boundary rather than
+probing other workflow tools. Call only a Task-state-bound method that has a
+current catalog entry. Read-only status can refresh authority but does not make
+another mutation allowable. If there is no current Volicord result, the Task is
+unknown, or an authoritative refresh is required, obtain current state first.
+Do not poll status between steps merely for reassurance.
 
 For each tagged workflow state:
 
@@ -53,12 +55,15 @@ close review. A later response can choose a different route when the recorded
 facts change. Close blockers remain blocker-local remediation data and never
 replace current workflow progression.
 
-When an Agent-owned `required_action` is current, use its tagged
-`current_action_form`. Copy `fixed_arguments` exactly, supply only the listed
-Agent-authored inputs, and send the exact `form_ref` as `action_form_ref`.
-Never reconstruct checkpoint lineage, scope revision, baseline, Change Unit,
-or resolution coordinates. If validation fails, use the MCP schema,
-authoritative argument context, and retry contract. Preserve JSON primitive
+For the selected Task-state-bound method, use its entry in the tagged action
+form catalog. Copy `fixed_arguments` exactly, supply only the listed
+Agent-authored inputs, and send that method's exact `form_ref` as
+`action_form_ref`. A form for one method never authorizes another method; do
+not speculate with a different shaping or implementation method. Never
+reconstruct checkpoint lineage, scope revision, baseline, Change Unit, or
+resolution coordinates. If validation or pre-Core admission fails, use the MCP
+schema, authoritative argument context, and retry contract. Report accurately
+that Core was not reached and state did not change. Preserve JSON primitive
 types and the selected union branch; an argument error does not imply Task
 corruption. Do not edit Product Repository files before the required authority
 mutation succeeds, and report failed checkpoint or UserAction creation as no

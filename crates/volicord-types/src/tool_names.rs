@@ -7,7 +7,10 @@ use schemars::{
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::values::{AgentConnectionMode, MethodName, OperationCategory};
+use crate::{
+    methods::{public_method_contract, WorkflowActionAdmissionClass},
+    values::{AgentConnectionMode, MethodName, OperationCategory},
+};
 
 /// Prospective effect of one tool invocation on Product Repository files.
 #[derive(
@@ -275,6 +278,21 @@ impl AgentToolId {
         }
     }
 
+    /// Returns the canonical Task-workflow admission relationship for this tool.
+    pub fn workflow_action_admission(self) -> WorkflowActionAdmissionClass {
+        match self.0 {
+            AgentToolKind::Method(method) => {
+                public_method_contract(method).workflow_action_admission()
+            }
+            AgentToolKind::ListProjects => WorkflowActionAdmissionClass::ReadOnly,
+            AgentToolKind::BeginIntegrationVerification
+            | AgentToolKind::GuardProbe
+            | AgentToolKind::GetIntegrationVerification => {
+                WorkflowActionAdmissionClass::NotTaskStateBound
+            }
+        }
+    }
+
     /// Returns whether this tool is exposed in the supplied Connection mode.
     pub const fn available_in(self, mode: AgentConnectionMode) -> bool {
         match mode {
@@ -443,12 +461,34 @@ mod tests {
             if let AgentToolOwner::CoreMethod(method) = tool.owner() {
                 assert_eq!(AgentToolId::from_method(method), Some(tool));
                 assert_eq!(tool.wire_name(), method.as_str());
+                assert_eq!(
+                    tool.workflow_action_admission(),
+                    public_method_contract(method).workflow_action_admission()
+                );
             }
         }
         assert_eq!(
             AgentToolId::from_method(MethodName::ResolveUserAction),
             None
         );
+    }
+
+    #[test]
+    fn adapter_owned_tools_have_one_canonical_non_task_admission_class() {
+        assert_eq!(
+            AgentToolId::LIST_PROJECTS.workflow_action_admission(),
+            WorkflowActionAdmissionClass::ReadOnly
+        );
+        for tool in [
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+            AgentToolId::GUARD_PROBE,
+            AgentToolId::GET_INTEGRATION_VERIFICATION,
+        ] {
+            assert_eq!(
+                tool.workflow_action_admission(),
+                WorkflowActionAdmissionClass::NotTaskStateBound
+            );
+        }
     }
 
     #[test]

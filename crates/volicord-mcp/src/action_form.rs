@@ -3,7 +3,8 @@
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use volicord_mcp_wire::{
-    mcp_tool_contract, RetryContract, WorkflowActionForm, WorkflowActionInput,
+    mcp_tool_contract, RetryContract, WorkflowActionForm, WorkflowActionFormCatalog,
+    WorkflowActionInput,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
@@ -46,6 +47,14 @@ fn selected_variant(coordinates: &WorkflowActionAuthorityCoordinates) -> &'stati
         WorkflowActionAuthorityCoordinates::UpdateScope { .. } => "update_scope",
         WorkflowActionAuthorityCoordinates::FinalizeAdvice { .. } => "finalize_advice",
         WorkflowActionAuthorityCoordinates::AdvanceTask { .. } => "advance_task",
+        WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture { .. } => {
+            "prepare_evidence_capture"
+        }
+        WorkflowActionAuthorityCoordinates::PrepareWrite { .. } => "prepare_write",
+        WorkflowActionAuthorityCoordinates::StageArtifact { .. } => "stage_artifact",
+        WorkflowActionAuthorityCoordinates::RecordRun { .. } => "record_run",
+        WorkflowActionAuthorityCoordinates::RequestUserAction { .. } => "request_user_action",
+        WorkflowActionAuthorityCoordinates::ReconcileChanges { .. } => "reconcile_changes",
         WorkflowActionAuthorityCoordinates::CheckClose { .. } => "check_close",
         WorkflowActionAuthorityCoordinates::CloseTask { .. } => "close_task",
     }
@@ -278,6 +287,138 @@ fn project_fixed_arguments(
             ]);
             (task_id.clone(), fixed, suggested, Vec::new(), Vec::new())
         }
+        WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture {
+            task_id,
+            change_unit_id,
+            baseline_ref,
+        } => {
+            fixed.extend([
+                ("task_id".to_owned(), json!(task_id)),
+                ("change_unit_id".to_owned(), json!(change_unit_id)),
+                ("baseline_ref".to_owned(), json!(baseline_ref)),
+            ]);
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                vec![
+                    input("/target", "EvidenceTarget"),
+                    input("/capture", "McpEvidenceCaptureSpec"),
+                ],
+                Vec::new(),
+            )
+        }
+        WorkflowActionAuthorityCoordinates::PrepareWrite {
+            task_id,
+            change_unit_id,
+            baseline_ref,
+        } => {
+            fixed.extend([
+                ("task_id".to_owned(), json!(task_id)),
+                ("change_unit_id".to_owned(), json!(change_unit_id)),
+                ("baseline_ref".to_owned(), json!(baseline_ref)),
+            ]);
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                vec![
+                    input("/intended_operation", "string"),
+                    input("/intended_paths", "array<string>"),
+                    input("/product_file_write_intended", "boolean"),
+                ],
+                vec![input("/sensitive_categories", "array<string>")],
+            )
+        }
+        WorkflowActionAuthorityCoordinates::StageArtifact { task_id } => {
+            fixed.insert("task_id".to_owned(), json!(task_id));
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                vec![
+                    input("/display_name", "string"),
+                    input("/content_type", "string"),
+                    input("/redaction_state", "RedactionState"),
+                    input("/safe_bytes_or_notice", "string"),
+                ],
+                vec![
+                    input("/expected_sha256", "string | null"),
+                    input("/expected_size_bytes", "integer | null"),
+                    input("/relation_hint", "string | null"),
+                ],
+            )
+        }
+        WorkflowActionAuthorityCoordinates::RecordRun {
+            task_id,
+            change_unit_id,
+            baseline_ref,
+            run_kind,
+        } => {
+            fixed.extend([
+                ("task_id".to_owned(), json!(task_id)),
+                ("change_unit_id".to_owned(), json!(change_unit_id)),
+                ("baseline_ref".to_owned(), json!(baseline_ref)),
+                ("kind".to_owned(), json!(run_kind)),
+            ]);
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                vec![
+                    input("/summary", "string"),
+                    input("/observed_changes", "ObservedChanges"),
+                ],
+                vec![
+                    input("/run_id", "RunId | null"),
+                    input("/write_ticket_id", "WriteTicketId | null"),
+                    input("/performed_operation", "string | null"),
+                    input("/artifact_inputs", "array<ArtifactInput>"),
+                    input("/evidence_updates", "array<McpEvidenceCoverageUpdate>"),
+                    input(
+                        "/evidence_observations",
+                        "array<McpEvidenceObservationInput>",
+                    ),
+                    input("/close_assessment", "CloseAssessmentInput | null"),
+                ],
+            )
+        }
+        WorkflowActionAuthorityCoordinates::RequestUserAction {
+            task_id,
+            change_unit_id,
+        } => {
+            fixed.insert(
+                "request".to_owned(),
+                json!({
+                    "operation": "create",
+                    "task_id": task_id,
+                    "change_unit_id": change_unit_id,
+                }),
+            );
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                vec![
+                    input("/request/action", "UserActionDraft"),
+                    input("/request/required_for", "array<UserActionRequiredFor>"),
+                ],
+                vec![input("/request/expires_at", "UtcTimestamp | null")],
+            )
+        }
+        WorkflowActionAuthorityCoordinates::ReconcileChanges { task_id } => {
+            fixed.insert("task_id".to_owned(), json!(task_id));
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                Vec::new(),
+                vec![input(
+                    "/resolution_requests",
+                    "array<UnrecordedChangeResolutionRequest>",
+                )],
+            )
+        }
         WorkflowActionAuthorityCoordinates::CheckClose { task_id } => {
             fixed.insert("task_id".to_owned(), json!(task_id));
             (task_id.clone(), fixed, suggested, Vec::new(), Vec::new())
@@ -323,6 +464,7 @@ pub(crate) fn workflow_action_form(
     Some(WorkflowActionForm {
         form_ref,
         method: intent.method,
+        role: intent.role,
         expected_state_version: intent.expected_state_version,
         fixed_arguments,
         suggested_arguments,
@@ -331,17 +473,31 @@ pub(crate) fn workflow_action_form(
     })
 }
 
-pub(crate) fn current_workflow_action_form(
+pub(crate) fn workflow_action_form_catalog(
     project_id: &ProjectId,
     workflow: &WorkflowProjection,
-) -> Option<WorkflowActionForm> {
-    workflow
-        .action_intent()
-        .and_then(|intent| workflow_action_form(project_id, intent))
+) -> WorkflowActionFormCatalog {
+    WorkflowActionFormCatalog {
+        required_method: workflow.action_catalog().required_method.clone(),
+        forms: workflow
+            .action_catalog()
+            .actions
+            .iter()
+            .map(|intent| {
+                workflow_action_form(project_id, intent).unwrap_or_else(|| {
+                    panic!(
+                        "workflow action {} has no canonical MCP form",
+                        intent.method.as_str()
+                    )
+                })
+            })
+            .collect(),
+    }
 }
 
 pub(crate) fn retry_contract(
     form: &WorkflowActionForm,
+    catalog: &WorkflowActionFormCatalog,
     invalid_paths: Vec<String>,
 ) -> RetryContract {
     RetryContract {
@@ -350,6 +506,7 @@ pub(crate) fn retry_contract(
         fixed_arguments: form.fixed_arguments.clone(),
         invalid_paths,
         required_inputs: form.required_inputs.clone(),
+        action_form_catalog: catalog.clone(),
         corrected_retry_allowed: true,
     }
 }
@@ -361,7 +518,7 @@ mod tests {
     use volicord_types::ids::{
         BaselineRef, ChangeUnitId, RecordId, ShapingCheckpointId, UserActionResolutionId,
     };
-    use volicord_types::schema::StateRecordRef;
+    use volicord_types::schema::{StateRecordRef, WorkflowActionRole};
     use volicord_types::values::StateRecordKind;
 
     fn reference(
@@ -386,6 +543,7 @@ mod tests {
         let task_id = TaskId::new("task_action_form");
         let intent = WorkflowActionIntent {
             method: MethodName::RecordShapingCheckpoint,
+            role: WorkflowActionRole::Required,
             expected_state_version: 2,
             fixed_authority_coordinates:
                 WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
@@ -472,6 +630,7 @@ mod tests {
         );
         let intent = WorkflowActionIntent {
             method: MethodName::RecordShapingCheckpoint,
+            role: WorkflowActionRole::Required,
             expected_state_version: 9,
             fixed_authority_coordinates:
                 WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
@@ -513,6 +672,7 @@ mod tests {
         let task_id = TaskId::new("task_advisor");
         let intent = WorkflowActionIntent {
             method: MethodName::FinalizeAdvice,
+            role: WorkflowActionRole::Required,
             expected_state_version: 12,
             fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::FinalizeAdvice {
                 task_id,

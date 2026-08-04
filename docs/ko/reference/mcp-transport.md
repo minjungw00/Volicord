@@ -556,26 +556,63 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 전에 거부합니다. 간결한 검색 schema는 담당 문서의 완전한 요청 검증을 느슨하게 하지
 않습니다.
 
-현재 에이전트 소유 workflow 행동에 대해 adapter는 Core의 중립
-`WorkflowActionIntent`와 해당 도구의 정규 semantic descriptor를 결합합니다.
+현재 허용된 에이전트 소유 Task 상태 결속 행동마다 adapter는 해당하는 Core의 중립
+`WorkflowActionIntent`와 그 도구의 정규 semantic descriptor를 결합합니다.
 
 ```schema
 WorkflowActionForm:
   form_ref: string
   method: string
+  role: required | allowed
   expected_state_version: integer
   fixed_arguments: object
   suggested_arguments: object
   required_inputs: WorkflowActionInput[]
   optional_inputs: WorkflowActionInput[]
+
+WorkflowActionFormCatalog:
+  required_method: string | null
+  forms: WorkflowActionForm[]
 ```
 
 `form_ref`는 프로젝트, Task, 메서드, 선택된 semantic variant, 예상 상태 버전, 정확한
 고정 권한 좌표, 현재 semantic-schema digest의 불투명 canonical digest입니다. 숫자
-workflow 버전이 아닙니다. 현재 form을 소비하는 상태 결속 mutation 호출은
-`action_form_ref`를 요구하며, adapter는 mutation Core 진입 전에 현재 form과 비교합니다. 다르면
-`MCP_ACTION_FORM_STALE`, `reached_core=false`, `committed=false`, 최신 form을 반환하고
-상태를 바꾸지 않습니다. 생략 fallback은 없습니다.
+workflow 버전이 아닙니다. Form catalog는 Core catalog의 순서, 필수 메서드, 역할을
+보존합니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
+인자 context, retry contract에 나타납니다. 활성 Task가 없는 status의 catalog는
+null입니다. 단일 form은 독립된 권한 계약이 아닙니다.
+
+정규 공개 메서드·도구 registry는 모든 호출 대상을 `read_only`,
+`not_task_state_bound`, `user_channel_authority`, `task_state_bound` 중 하나로 분류합니다.
+`volicord.list_projects`는 `read_only`이고 통합 검증 utility는
+`not_task_state_bound`입니다. Task 상태 결속 호출은 decode와 Core routing 전에 adapter가
+현재 Task workflow와 form catalog를 불러옵니다.
+호출한 메서드의 catalog form이 없으면 adapter는 `WORKFLOW_ACTION_NOT_ALLOWED`,
+`reached_core=false`, `committed=false`를 반환하며 상태를 바꾸지 않습니다. 메서드가
+있으면 정확한 메서드별 `action_form_ref`를 보내야 합니다. 빠졌거나, 형식이 잘못됐거나,
+stale이거나, 다른 Task·프로젝트·메서드에 속한 ref는 Core 전에
+`MCP_ACTION_FORM_STALE`과 현재 호출 메서드 form을 반환합니다. 한 메서드에 허용된 form은
+다른 메서드에 권한을 주지 않으며 생략 fallback이나 필수 form fallback은 없습니다.
+읽기 전용 `volicord.status`는 catalog를 관찰할 뿐 mutation 권한을 만들지 않습니다.
+
+```schema
+McpWorkflowAdmissionRejection:
+  called_method: string
+  current_workflow_kind: string
+  required_method: string | null
+  allowed_methods: string[]
+  called_method_form: WorkflowActionForm | null
+  required_method_form: WorkflowActionForm | null
+  state_change_applied: false
+  reached_core: false
+```
+
+`allowed_methods`에는 읽기 전용 관찰 메서드가 아니라 현재 허용된 Task 상태 결속 메서드가
+들어갑니다. 비허용 메서드 거부는 필수 메서드가 Task 상태 결속일 때 현재 필수 form을
+반환합니다. 따라서 User Channel 소유 필수 메서드에는 필수 MCP action form이 없을 수
+있습니다. 간결한 presentation은 시도한 메서드가 현재 행동이 아니고, Core에 도달하지
+않았으며, 상태가 바뀌지 않았음을 알리고 정확한 현재 필수 메서드와 사용할 수 있는 필수
+form을 식별합니다.
 
 첫 checkpoint form은 Task, `create_initial`, 범위 리비전, 실제 nullable 기준선을
 고정하고 summary, implementation boundary, gap만 typed 에이전트 입력으로 남깁니다.

@@ -24,10 +24,12 @@ Volicord에 연결된 세션에서 에이전트를 운영하거나 검토할 때
 
 모든 작업에 적용할 메서드 순서를 외우지 않습니다. 최신 권한 상태인 태그 기반
 `workflow`에서 시작합니다. null이 아닌 `required_action`을 정확한 `required_refs`와
-`expected_state_version`으로 호출하고, `allowed_actions`를 닫힌 경계로 취급해 다른
-workflow 도구를 시험하지 않습니다. 현재 Volicord 결과가 없거나 Task를 알 수 없거나
-권한 상태를 새로고쳐야 할 때 먼저 현재 상태를 확인합니다. 안심하기 위해 단계 사이마다
-status를 반복 조회하지 않습니다.
+`expected_state_version`으로 호출하고, `allowed_actions`와 action catalog를 닫힌 mutation
+admission 경계로 취급해 다른 workflow 도구를 시험하지 않습니다. 현재 catalog entry가
+있는 Task 상태 결속 메서드만 호출합니다. 읽기 전용 status는 권한 상태를 새로고칠 수
+있지만 다른 mutation을 허용하지 않습니다. 현재 Volicord 결과가 없거나 Task를 알 수
+없거나 권한 상태를 새로고쳐야 할 때 먼저 현재 상태를 확인합니다. 안심하기 위해 단계
+사이마다 status를 반복 조회하지 않습니다.
 
 반환된 태그 기반 workflow 상태마다 다음을 수행합니다.
 
@@ -48,12 +50,14 @@ implementation 작업, close review 중 하나를 요구할 수 있습니다. �
 다음 응답이 다른 경로를 선택할 수 있습니다. 닫기 차단 사유의 해결 행동은 해당 차단
 사유에만 속하며 현재 workflow 진행을 대신하지 않습니다.
 
-에이전트 소유 `required_action`이 현재 행동이면 태그가 있는
-`current_action_form`을 사용합니다. `fixed_arguments`를 정확히 복사하고 표시된
-에이전트 작성 입력만 채운 뒤 정확한 `form_ref`를 `action_form_ref`로 보냅니다.
-checkpoint 계보, 범위 리비전, 기준선, Change Unit, resolution 좌표를 다시 조립하지
-않습니다. 검증에 실패하면 MCP schema, 현재 권한 인자 맥락, retry contract를
-사용합니다. JSON 원시 타입과 선택된 union branch를 보존하며, 인자 오류를 Task 손상으로
+선택한 Task 상태 결속 메서드에 대해서는 태그가 있는 action form catalog의 해당 entry를
+사용합니다. `fixed_arguments`를 정확히 복사하고 표시된 에이전트 작성 입력만 채운 뒤 그
+메서드의 정확한 `form_ref`를 `action_form_ref`로 보냅니다. 한 메서드의 form은 다른
+메서드에 권한을 주지 않으므로 다른 shaping 또는 implementation 메서드를 추측해 호출하지
+않습니다. Checkpoint 계보, 범위 리비전, 기준선, Change Unit, resolution 좌표를 다시
+조립하지 않습니다. 검증이나 Core 전 admission에 실패하면 MCP schema, 현재 권한 인자
+맥락, retry contract를 사용하고 Core에 도달하지 않았으며 상태가 바뀌지 않았다고 정확히
+보고합니다. JSON 원시 타입과 선택된 union branch를 보존하며, 인자 오류를 Task 손상으로
 해석하지 않습니다. 필요한 권한 mutation이 성공하기 전에 Product Repository 파일을
 수정하지 않고, checkpoint 또는 UserAction 생성 실패는 생성되지 않았고 Core 상태도
 바뀌지 않았다고 보고합니다.

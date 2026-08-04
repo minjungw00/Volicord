@@ -78,6 +78,48 @@ mod tests {
     }
 
     #[test]
+    fn workflow_action_catalog_rejects_duplicate_or_incoherent_methods() {
+        let action = |method: &str, role: &str| {
+            json!({
+                "method": method,
+                "role": role,
+                "expected_state_version": 7,
+                "fixed_authority_coordinates": {
+                    "coordinate_kind": "check_close",
+                    "task_id": "task_catalog"
+                },
+                "required_refs": []
+            })
+        };
+        let valid = json!({
+            "required_method": "volicord.check_close",
+            "actions": [action("volicord.check_close", "required")]
+        });
+        assert!(serde_json::from_value::<WorkflowActionCatalog>(valid).is_ok());
+
+        let duplicate = json!({
+            "required_method": "volicord.check_close",
+            "actions": [
+                action("volicord.check_close", "required"),
+                action("volicord.check_close", "required")
+            ]
+        });
+        assert!(serde_json::from_value::<WorkflowActionCatalog>(duplicate).is_err());
+
+        let missing_required = json!({
+            "required_method": "volicord.check_close",
+            "actions": []
+        });
+        assert!(serde_json::from_value::<WorkflowActionCatalog>(missing_required).is_err());
+
+        let read_only = json!({
+            "required_method": null,
+            "actions": [action("volicord.status", "allowed")]
+        });
+        assert!(serde_json::from_value::<WorkflowActionCatalog>(read_only).is_err());
+    }
+
+    #[test]
     fn source_ref_tagged_variants_round_trip_strictly() {
         let values = [
             json!({
@@ -2828,7 +2870,22 @@ mod tests {
                 "expected_state_version": 4,
                 "blocking_reason": "no_current_checkpoint",
                 "checkpoint": null,
-                "action_intent": null
+                "action_catalog": {
+                    "required_method": "volicord.record_shaping_checkpoint",
+                    "actions": [{
+                        "method": "volicord.record_shaping_checkpoint",
+                        "role": "required",
+                        "expected_state_version": 4,
+                        "fixed_authority_coordinates": {
+                            "coordinate_kind": "record_shaping_checkpoint",
+                            "task_id": "task_fixture",
+                            "checkpoint_operation": {"operation": "create_initial"},
+                            "scope_revision": 1,
+                            "baseline_ref": null
+                        },
+                        "required_refs": []
+                    }]
+                }
             },
             "corrected_retry_allowed": true,
             "recovery": {"owner_method": "volicord.record_shaping_checkpoint"}

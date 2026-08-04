@@ -1056,7 +1056,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(fixture.repository_snapshot()?, before_analysis);
 
-    let pending_replacement = live_mcp_call(
+    let pending_replacement = live_mcp_error(
         &mut child,
         call_id,
         AgentToolId::RECORD_SHAPING_CHECKPOINT,
@@ -1084,16 +1084,15 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "future.turn.planning-product.pending-replacement",
     )?;
     call_id += 1;
+    assert_eq!(pending_replacement["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
     assert_eq!(
-        method_result(&pending_replacement)["base"]["response_kind"],
-        "rejected"
+        pending_replacement["workflow_admission"]["called_method"],
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name()
     );
-    assert_eq!(
-        method_result(&pending_replacement)["base"]["effect_kind"],
-        "no_effect"
-    );
+    assert_eq!(pending_replacement["reached_core"], false);
+    assert_eq!(pending_replacement["committed"], false);
 
-    let early_write = live_mcp_call(
+    let early_write = live_mcp_error(
         &mut child,
         call_id,
         AgentToolId::PREPARE_WRITE,
@@ -1112,10 +1111,13 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "future.turn.planning-product.early-write",
     )?;
     call_id += 1;
+    assert_eq!(early_write["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
     assert_eq!(
-        method_result(&early_write)["base"]["response_kind"],
-        "rejected"
+        early_write["workflow_admission"]["called_method"],
+        AgentToolId::PREPARE_WRITE.wire_name()
     );
+    assert_eq!(early_write["reached_core"], false);
+    assert_eq!(early_write["committed"], false);
     assert_eq!(fixture.repository_snapshot()?, before_analysis);
 
     let state_db = fixture.project_state_db_path();
@@ -1386,7 +1388,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     call_id += 1;
     let update_scope_action_form_ref = required_action_form_ref(&decision_application_status)?;
 
-    let resolved_replacement = live_mcp_call(
+    let resolved_replacement = live_mcp_error(
         &mut child,
         call_id,
         AgentToolId::RECORD_SHAPING_CHECKPOINT,
@@ -1414,14 +1416,13 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "future.turn.planning-product.resolved-replacement",
     )?;
     call_id += 1;
+    assert_eq!(resolved_replacement["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
     assert_eq!(
-        method_result(&resolved_replacement)["base"]["response_kind"],
-        "rejected"
+        resolved_replacement["workflow_admission"]["required_method"],
+        AgentToolId::UPDATE_SCOPE.wire_name()
     );
-    assert_eq!(
-        method_result(&resolved_replacement)["base"]["effect_kind"],
-        "no_effect"
-    );
+    assert_eq!(resolved_replacement["reached_core"], false);
+    assert_eq!(resolved_replacement["committed"], false);
 
     let scope = live_mcp_call(
         &mut child,
@@ -1517,6 +1518,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         Some("implementation"),
         "implementation",
     );
+    let prepare_write_action_form_ref = action_form_ref(&advanced, AgentToolId::PREPARE_WRITE)?;
     let state = rusqlite::Connection::open(&state_db)?;
     let unapplied_gap_count: u64 = state.query_row(
         "SELECT COUNT(*) FROM shaping_checkpoint_gaps
@@ -1548,6 +1550,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "workflow",
             "task_id": task_id,
+            "action_form_ref": prepare_write_action_form_ref,
             "change_unit_id": change_unit_id,
             "intended_operation": "Create the bounded release-preparation note.",
             "intended_paths": [IMPLEMENTATION_PATH],
@@ -1569,6 +1572,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(prepared_result["decision"], "allowed");
     let write_ticket_id = required_string(prepared_result, "write_ticket_id")?;
+    let record_run_action_form_ref = action_form_ref(&prepared, AgentToolId::RECORD_RUN)?;
     assert_eq!(
         fixture.repository_snapshot()?,
         before_analysis,
@@ -1645,6 +1649,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "workflow",
             "task_id": task_id,
+            "action_form_ref": record_run_action_form_ref,
             "change_unit_id": change_unit_id,
             "kind": "implementation",
             "run_id": null,
@@ -1710,23 +1715,39 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(run_kind, "implementation");
     drop(state);
+    let check_close_action_form_ref = action_form_ref(&recorded, AgentToolId::CHECK_CLOSE)?;
 
     let close_review = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::CHECK_CLOSE,
-        json!({"project_selector": project_id, "task_id": task_id}),
+        json!({
+            "project_selector": project_id,
+            "task_id": task_id,
+            "action_form_ref": check_close_action_form_ref
+        }),
         SESSION,
         "future.turn.planning-product.close-review",
     )?;
     call_id += 1;
-    let close_review = method_result(&close_review);
-    assert_eq!(close_review["close_state"], "blocked");
-    assert!(close_review["blockers"]
+    let close_review_result = method_result(&close_review);
+    assert_eq!(close_review_result["close_state"], "blocked");
+    assert!(close_review_result["blockers"]
         .as_array()
         .is_some_and(|blockers| blockers
             .iter()
             .any(|blocker| blocker["code"] == "missing_final_acceptance")));
+    let close_review_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        SESSION,
+        "future.turn.planning-product.close-review-status",
+    )?;
+    call_id += 1;
+    let request_user_action_form_ref =
+        action_form_ref(&close_review_status, AgentToolId::REQUEST_USER_ACTION)?;
 
     let final_action = live_mcp_call(
         &mut child,
@@ -1735,6 +1756,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         json!({
             "project_selector": project_id,
             "detail": "workflow",
+            "action_form_ref": request_user_action_form_ref,
             "request": {
                 "operation": "create",
                 "task_id": task_id,
@@ -1779,11 +1801,28 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "implementation",
     );
 
+    let final_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        SESSION,
+        "future.turn.planning-product.final-status",
+    )?;
+    call_id += 1;
+    let final_check_close_action_form_ref =
+        action_form_ref(&final_status, AgentToolId::CHECK_CLOSE)?;
+    let close_task_action_form_ref = action_form_ref(&final_status, AgentToolId::CLOSE_TASK)?;
+
     let ready = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::CHECK_CLOSE,
-        json!({"project_selector": project_id, "task_id": task_id}),
+        json!({
+            "project_selector": project_id,
+            "task_id": task_id,
+            "action_form_ref": final_check_close_action_form_ref
+        }),
         SESSION,
         "future.turn.planning-product.close",
     )?;
@@ -1797,6 +1836,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "workflow",
             "task_id": task_id,
+            "action_form_ref": close_task_action_form_ref,
             "intent": "complete",
             "close_reason": "completed_self_checked",
             "superseding_task_id": null,
@@ -6129,6 +6169,34 @@ fn live_mcp_call(
         })
 }
 
+fn live_mcp_error(
+    child: &mut LiveMcpChild,
+    id: u64,
+    tool: AgentToolId,
+    arguments: Value,
+    session_id: &str,
+    turn_id: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let response = live_mcp_raw_call(child, id, tool, arguments, session_id, turn_id)?;
+    if response["result"]["isError"] != true {
+        return Err(format!(
+            "{} unexpectedly returned MCP success: {response}",
+            tool.wire_name()
+        )
+        .into());
+    }
+    response["result"]["structuredContent"]
+        .as_object()
+        .map(|_| response["result"]["structuredContent"].clone())
+        .ok_or_else(|| {
+            format!(
+                "{} error response omitted structured content: {response}",
+                tool.wire_name()
+            )
+            .into()
+        })
+}
+
 fn live_mcp_raw_call(
     child: &mut LiveMcpChild,
     id: u64,
@@ -6152,14 +6220,49 @@ fn method_result(structured: &Value) -> &Value {
 }
 
 fn required_action_form_ref(structured: &Value) -> Result<String, Box<dyn Error>> {
-    [
-        "/current_action_form/form_ref",
-        "/presentation/current_action_form/form_ref",
-    ]
-    .into_iter()
-    .find_map(|pointer| structured.pointer(pointer).and_then(Value::as_str))
-    .map(str::to_owned)
-    .ok_or_else(|| format!("current action form should include a form_ref in {structured}").into())
+    ["/action_form_catalog", "/presentation/action_form_catalog"]
+        .into_iter()
+        .find_map(|pointer| {
+            let catalog = structured.pointer(pointer)?;
+            let required_method = catalog["required_method"].as_str()?;
+            catalog["forms"].as_array()?.iter().find_map(|form| {
+                if form["method"].as_str() == Some(required_method) {
+                    form["form_ref"].as_str().map(str::to_owned)
+                } else {
+                    None
+                }
+            })
+        })
+        .ok_or_else(|| {
+            format!("required action-form catalog entry should include a form_ref in {structured}")
+                .into()
+        })
+}
+
+fn action_form_ref(structured: &Value, tool: AgentToolId) -> Result<String, Box<dyn Error>> {
+    ["/action_form_catalog", "/presentation/action_form_catalog"]
+        .into_iter()
+        .find_map(|pointer| {
+            structured
+                .pointer(pointer)?
+                .get("forms")?
+                .as_array()?
+                .iter()
+                .find_map(|form| {
+                    if form["method"].as_str() == Some(tool.wire_name()) {
+                        form["form_ref"].as_str().map(str::to_owned)
+                    } else {
+                        None
+                    }
+                })
+        })
+        .ok_or_else(|| {
+            format!(
+                "action-form catalog should include {} in {structured}",
+                tool.wire_name()
+            )
+            .into()
+        })
 }
 
 fn required_string(value: &Value, key: &str) -> Result<String, Box<dyn Error>> {

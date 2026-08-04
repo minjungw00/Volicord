@@ -476,7 +476,7 @@ documents:
   path_en: docs/en/user-guide/agent-workflow.md
   path_ko: docs/ko/user-guide/agent-workflow.md
   kind: how_to
-  summary: How-to guidance for tagged-workflow-driven agent work, explicit shaping and Task advance,
+  summary: How-to guidance for catalog-admitted tagged-workflow agent work, explicit shaping and Task advance,
     user-owned judgment, write boundaries, close review, invocation-scoped repository observations,
     and honest session handoff.
   normative_level: guide
@@ -489,8 +489,8 @@ documents:
   - api.schema.user_action
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - agents
   - agent operators
@@ -717,13 +717,13 @@ documents:
   summary: Source path responsibility map for current Rust workspace modules, including the current
     effective shaping authority graph, immutable history, stale reauthorization, checkpoint
     succession, application carry-forward and ownership, advisor finalization, tagged workflow
-    authority, managed-guidance revision identity, and MCP routing.
+    action catalogs, managed-guidance revision identity, and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1679,13 +1679,13 @@ documents:
   kind: reference
   summary: Reference contract for current effective shaping authority, immutable history, checkpoint
     and application lineage, stale reauthorization, owner-specific decision application, advisor
-    finalization, Task-wide tagged workflow authority, implementation admission, and close review.
+    finalization, Task-wide tagged workflow action catalogs, implementation admission, and close review.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - agents
   - implementers
@@ -1838,7 +1838,7 @@ documents:
   kind: reference
   summary: Reference contract for managed stdio startup, revision-profiled JSON-RPC framing,
     canonical tool projection including current shaping, stale recovery, and advance, tagged workflow
-    authority, response wrapping, UserAction request boundaries, and shutdown.
+    catalog admission and method-specific forms, response wrapping, UserAction request boundaries, and shutdown.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -1896,8 +1896,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -2087,8 +2087,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-08-02'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2119,8 +2119,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-08-04'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2543,8 +2543,8 @@ documents:
   path_ko: docs/ko/reference/api/schema-state.md
   kind: reference
   summary: Reference contract for state API schema families, including checkpoint and reauthorization
-    lineage, stale-authority actions, structural readiness, decision application owners, and single
-    tagged workflow authority.
+    lineage, stale-authority actions, structural readiness, decision application owners, and the
+    tagged workflow action catalog.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2567,8 +2567,8 @@ documents:
   - cli.command.connection.mode
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2579,6 +2579,7 @@ documents:
   canonical_for:
   - state schemas
   - tagged `WorkflowProjection.required_action` authority independent of top-level array ordering
+  - complete current Task-state-bound workflow action catalog and required-versus-allowed roles
   - shaping checkpoint lineage, gap, structural readiness, application owner, and shaping-owned UserAction link shapes
   - exact replacement operation, stale-authority action, application timestamp, and immutable reauthorization shapes
   - Task-wide shaping decision gates and `ready_to_finalize_advice` projection
@@ -2780,8 +2781,8 @@ documents:
   - api.schema.state
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2854,8 +2855,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - API implementers
   - agent integrators
@@ -3126,7 +3127,7 @@ documents:
   path_ko: docs/ko/reference/agent-connection.md
   kind: reference
   summary: Reference contract for the Codex record Agent Connection, canonical verification report,
-    integration revisions, managed runtime/project sessions, `ValidatedAgentSession`, and adapter/Core boundary.
+    integration revisions, managed runtime/project sessions, `ValidatedAgentSession`, workflow admission, and adapter/Core boundary.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -3141,8 +3142,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -3210,15 +3211,15 @@ documents:
   path_en: docs/en/reference/template-bodies.md
   path_ko: docs/ko/reference/template-bodies.md
   kind: reference
-  summary: Reference contract for exact template body ownership, including current shaping authority,
-    immutable history, stale retirement or reauthorization, implementation-preserving rejection,
-    UserAction, Task advance, rejection/recovery surfacing, and close-review guidance.
+  summary: Reference contract for exact template body ownership, including workflow catalog admission,
+    method-specific forms, current shaping authority, immutable history, stale retirement or
+    reauthorization, UserAction, rejection/recovery surfacing, and close-review guidance.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - implementers
   - maintainers

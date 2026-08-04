@@ -8,14 +8,16 @@ use volicord_types::ids::{
     shaping_decision_application_id, BaselineRef, ChangeUnitId, ProjectId, ShapingCheckpointId,
     TaskId, UserActionResolutionId,
 };
+use volicord_types::methods::{public_method_contract, WorkflowActionAdmissionClass};
 use volicord_types::schema::{
     PersistedUserActionRequestMetadata, RequiredNullable, ShapingCheckpointGap,
     ShapingCheckpointSummary, ShapingDecisionRecoveryRequirement, StateRecordRef,
-    UserActionResolutionBody, WorkflowActionAuthorityCoordinates, WorkflowActionIntent,
-    WorkflowCheckpointActionCoordinates, WorkflowProjection, WorkflowRejectionUserAction,
+    UserActionResolutionBody, WorkflowActionAuthorityCoordinates, WorkflowActionCatalog,
+    WorkflowActionIntent, WorkflowActionRole, WorkflowCheckpointActionCoordinates,
+    WorkflowProjection, WorkflowRejectionUserAction,
 };
 use volicord_types::values::{
-    evaluate_shaping_decision_authority, ActorSource, AuthorityNextActor, MethodName,
+    evaluate_shaping_decision_authority, ActorSource, AuthorityNextActor, MethodName, RunKind,
     ShapingCheckpointReadiness, ShapingDecisionApplicationAuthorityStatus,
     ShapingDecisionApplicationOwner, ShapingDecisionAuthorityFacts, ShapingDecisionAuthorityState,
     ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionRequiredFor,
@@ -762,15 +764,26 @@ fn checkpoint_summary(
     }
 }
 
+struct WorkflowActionIntentContext<'a> {
+    state_version: u64,
+    task: &'a TaskRecord,
+    current_change_unit: Option<&'a ChangeUnitRecord>,
+    checkpoint: Option<&'a ShapingCheckpointSummary>,
+    task_wide_authority: &'a TaskWideShapingAuthority,
+    required_refs: &'a [StateRecordRef],
+}
+
 fn workflow_action_intent(
     method: MethodName,
-    state_version: u64,
-    task: &TaskRecord,
-    current_change_unit: Option<&ChangeUnitRecord>,
-    checkpoint: Option<&ShapingCheckpointSummary>,
-    task_wide_authority: &TaskWideShapingAuthority,
-    required_refs: &[StateRecordRef],
+    role: WorkflowActionRole,
+    context: &WorkflowActionIntentContext<'_>,
 ) -> Option<WorkflowActionIntent> {
+    let state_version = context.state_version;
+    let task = context.task;
+    let current_change_unit = context.current_change_unit;
+    let checkpoint = context.checkpoint;
+    let task_wide_authority = context.task_wide_authority;
+    let required_refs = context.required_refs;
     let task_id = TaskId::new(&task.task_id);
     let baseline_ref = RequiredNullable::new(task.shaping.baseline_ref.clone());
     let user_action_resolution_ids = task_wide_authority
@@ -843,16 +856,116 @@ fn workflow_action_intent(
                 user_action_resolution_ids,
             }
         }
+        MethodName::PrepareEvidenceCapture => {
+            let change_unit = current_change_unit?;
+            WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture {
+                task_id,
+                change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
+                baseline_ref: task.shaping.baseline_ref.clone()?,
+            }
+        }
+        MethodName::PrepareWrite => {
+            let change_unit = current_change_unit?;
+            WorkflowActionAuthorityCoordinates::PrepareWrite {
+                task_id,
+                change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
+                baseline_ref: task.shaping.baseline_ref.clone()?,
+            }
+        }
+        MethodName::StageArtifact => WorkflowActionAuthorityCoordinates::StageArtifact { task_id },
+        MethodName::RecordRun => {
+            let change_unit = current_change_unit?;
+            let run_kind = match task.mode {
+                TaskMode::Direct => RunKind::Direct,
+                TaskMode::Work => RunKind::Implementation,
+                TaskMode::Advisor => return None,
+            };
+            WorkflowActionAuthorityCoordinates::RecordRun {
+                task_id,
+                change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
+                baseline_ref: task.shaping.baseline_ref.clone()?,
+                run_kind,
+            }
+        }
+        MethodName::RequestUserAction => WorkflowActionAuthorityCoordinates::RequestUserAction {
+            task_id,
+            change_unit_id: RequiredNullable::new(
+                current_change_unit
+                    .map(|change_unit| ChangeUnitId::new(&change_unit.change_unit_id)),
+            ),
+        },
+        MethodName::ReconcileChanges => {
+            WorkflowActionAuthorityCoordinates::ReconcileChanges { task_id }
+        }
         MethodName::CheckClose => WorkflowActionAuthorityCoordinates::CheckClose { task_id },
         MethodName::CloseTask => WorkflowActionAuthorityCoordinates::CloseTask { task_id },
         _ => return None,
     };
     Some(WorkflowActionIntent {
         method,
+        role,
         expected_state_version: state_version,
         fixed_authority_coordinates,
         required_refs: required_refs.to_vec(),
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn workflow_action_catalog(
+    required_action: Option<MethodName>,
+    allowed_actions: &[MethodName],
+    state_version: u64,
+    task: &TaskRecord,
+    current_change_unit: Option<&ChangeUnitRecord>,
+    checkpoint: Option<&ShapingCheckpointSummary>,
+    task_wide_authority: &TaskWideShapingAuthority,
+    required_refs: &[StateRecordRef],
+) -> WorkflowActionCatalog {
+    let required_method = required_action.filter(|method| {
+        public_method_contract(*method).workflow_action_admission()
+            == WorkflowActionAdmissionClass::TaskStateBound
+    });
+    let mut methods = allowed_actions
+        .iter()
+        .copied()
+        .filter(|method| {
+            public_method_contract(*method).workflow_action_admission()
+                == WorkflowActionAdmissionClass::TaskStateBound
+        })
+        .collect::<Vec<_>>();
+    methods.sort_by_key(|method| method.as_str());
+    let intent_context = WorkflowActionIntentContext {
+        state_version,
+        task,
+        current_change_unit,
+        checkpoint,
+        task_wide_authority,
+        required_refs,
+    };
+    let actions = methods
+        .into_iter()
+        .map(|method| {
+            workflow_action_intent(
+                method,
+                if Some(method) == required_method {
+                    WorkflowActionRole::Required
+                } else {
+                    WorkflowActionRole::Allowed
+                },
+                &intent_context,
+            )
+            .unwrap_or_else(|| {
+                panic!(
+                    "task-state-bound allowed action {} has no compatible authority coordinates",
+                    method.as_str()
+                )
+            })
+        })
+        .collect();
+    WorkflowActionCatalog {
+        required_method: RequiredNullable::new(required_method),
+        actions,
+    }
 }
 
 pub(crate) fn workflow_projection(
@@ -916,16 +1029,17 @@ pub(crate) fn workflow_projection(
             refs.push(request_ref);
         }
     }
-    let action_intent = |method| {
-        RequiredNullable::new(workflow_action_intent(
-            method,
+    let action_catalog = |required_action, allowed_actions: &[MethodName]| {
+        workflow_action_catalog(
+            required_action,
+            allowed_actions,
             state_version,
             task,
             current_change_unit,
             summary.as_ref(),
             task_wide_authority,
             &refs,
-        ))
+        )
     };
 
     let terminal = matches!(
@@ -935,29 +1049,32 @@ pub(crate) fn workflow_projection(
             | TaskLifecyclePhase::Superseded
     );
     if terminal {
+        let allowed_actions = vec![MethodName::Status];
         return WorkflowProjection::Terminal {
             next_actor: AuthorityNextActor::None,
             required_action: RequiredNullable::null(),
-            allowed_actions: vec![MethodName::Status],
+            action_catalog: action_catalog(None, &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::null(),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: RequiredNullable::null(),
         };
     }
     if !task_wide_authority.recovery_required.is_empty() {
+        let required_action = MethodName::RecordShapingCheckpoint;
+        let allowed_actions = vec![required_action, MethodName::Status];
         return WorkflowProjection::DecisionRecoveryRequired {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::RecordShapingCheckpoint),
-            allowed_actions: vec![MethodName::RecordShapingCheckpoint, MethodName::Status],
+            required_action: RequiredNullable::some(required_action),
+            action_catalog: action_catalog(Some(required_action), &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
                 WorkflowBlockingReason::DecisionRecoveryRequired,
             ),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: action_intent(MethodName::RecordShapingCheckpoint),
         };
     }
     if !task_wide_authority.stale.is_empty() {
@@ -966,78 +1083,95 @@ pub(crate) fn workflow_projection(
         } else {
             MethodName::CloseTask
         };
+        let allowed_actions = if task.work_phase == WorkPhase::Shaping {
+            vec![MethodName::RecordShapingCheckpoint, MethodName::Status]
+        } else {
+            vec![MethodName::CloseTask, MethodName::Status]
+        };
         return WorkflowProjection::ShapingRequired {
             next_actor: AuthorityNextActor::Agent,
             required_action: RequiredNullable::some(recovery_method),
-            allowed_actions: if task.work_phase == WorkPhase::Shaping {
-                vec![MethodName::RecordShapingCheckpoint, MethodName::Status]
-            } else {
-                vec![MethodName::CloseTask, MethodName::Status]
-            },
+            action_catalog: action_catalog(Some(recovery_method), &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
                 WorkflowBlockingReason::ApplicationAuthorityStale,
             ),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: action_intent(recovery_method),
         };
     }
     if task.work_phase == WorkPhase::Implementation {
+        let execution_coordinates_available =
+            current_change_unit.is_some() && task.shaping.baseline_ref.is_some();
+        let mut allowed_actions = vec![MethodName::UpdateScope];
+        if execution_coordinates_available {
+            allowed_actions.extend([MethodName::PrepareEvidenceCapture, MethodName::PrepareWrite]);
+        }
+        allowed_actions.push(MethodName::StageArtifact);
+        if execution_coordinates_available && task.mode != TaskMode::Advisor {
+            allowed_actions.push(MethodName::RecordRun);
+        }
+        allowed_actions.extend([
+            MethodName::RequestUserAction,
+            MethodName::ReconcileChanges,
+            MethodName::CheckClose,
+            MethodName::CloseTask,
+            MethodName::Status,
+        ]);
         return WorkflowProjection::Implementation {
             next_actor: AuthorityNextActor::Agent,
             required_action: RequiredNullable::null(),
-            allowed_actions: vec![
-                MethodName::UpdateScope,
-                MethodName::PrepareWrite,
-                MethodName::RecordRun,
-                MethodName::CheckClose,
-            ],
+            action_catalog: action_catalog(None, &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::null(),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: RequiredNullable::null(),
         };
     }
     let Some(checkpoint) = checkpoint else {
         if !task_wide_authority.awaiting_user.is_empty() {
+            let allowed_actions = vec![MethodName::ResolveUserAction, MethodName::Status];
             return WorkflowProjection::AwaitingUserAction {
                 next_actor: AuthorityNextActor::User,
                 required_action: RequiredNullable::some(MethodName::ResolveUserAction),
-                allowed_actions: vec![MethodName::ResolveUserAction, MethodName::Status],
+                action_catalog: action_catalog(None, &allowed_actions),
+                allowed_actions,
                 required_refs: refs.clone(),
                 expected_state_version: state_version,
                 blocking_reason: RequiredNullable::some(
                     WorkflowBlockingReason::InconsistentAuthorityState,
                 ),
                 checkpoint: RequiredNullable::null(),
-                action_intent: RequiredNullable::null(),
             };
         }
         if task_wide_authority.has_blockers() {
+            let allowed_actions = vec![MethodName::Status];
             return WorkflowProjection::ShapingRequired {
                 next_actor: AuthorityNextActor::Agent,
                 required_action: RequiredNullable::some(MethodName::Status),
-                allowed_actions: vec![MethodName::Status],
+                action_catalog: action_catalog(None, &allowed_actions),
+                allowed_actions,
                 required_refs: refs.clone(),
                 expected_state_version: state_version,
                 blocking_reason: RequiredNullable::some(
                     WorkflowBlockingReason::InconsistentAuthorityState,
                 ),
                 checkpoint: RequiredNullable::null(),
-                action_intent: RequiredNullable::null(),
             };
         }
+        let required_action = MethodName::RecordShapingCheckpoint;
+        let allowed_actions = vec![required_action, MethodName::Status];
         return WorkflowProjection::ShapingRequired {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::RecordShapingCheckpoint),
-            allowed_actions: vec![MethodName::RecordShapingCheckpoint, MethodName::Status],
+            required_action: RequiredNullable::some(required_action),
+            action_catalog: action_catalog(Some(required_action), &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(WorkflowBlockingReason::NoCurrentCheckpoint),
             checkpoint: RequiredNullable::null(),
-            action_intent: action_intent(MethodName::RecordShapingCheckpoint),
         };
     };
     let has_pending_user = !task_wide_authority.awaiting_user.is_empty()
@@ -1046,10 +1180,12 @@ pub(crate) fn workflow_projection(
             .iter()
             .any(|gap| gap.status == ShapingGapStatus::Current && gap.user_action.is_some());
     if has_pending_user {
+        let allowed_actions = vec![MethodName::ResolveUserAction, MethodName::Status];
         return WorkflowProjection::AwaitingUserAction {
             next_actor: AuthorityNextActor::User,
             required_action: RequiredNullable::some(MethodName::ResolveUserAction),
-            allowed_actions: vec![MethodName::ResolveUserAction, MethodName::Status],
+            action_catalog: action_catalog(None, &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
@@ -1060,21 +1196,21 @@ pub(crate) fn workflow_projection(
                 },
             ),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: RequiredNullable::null(),
         };
     }
     if !task_wide_authority.inconsistent.is_empty() {
+        let allowed_actions = vec![MethodName::Status];
         return WorkflowProjection::ShapingRequired {
             next_actor: AuthorityNextActor::Agent,
             required_action: RequiredNullable::some(MethodName::Status),
-            allowed_actions: vec![MethodName::Status],
+            action_catalog: action_catalog(None, &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
                 WorkflowBlockingReason::InconsistentAuthorityState,
             ),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: RequiredNullable::null(),
         };
     }
     let has_scope_decisions_to_apply = checkpoint.gaps.iter().any(|gap| {
@@ -1087,17 +1223,19 @@ pub(crate) fn workflow_projection(
                 })
     });
     if has_scope_decisions_to_apply {
+        let required_action = MethodName::UpdateScope;
+        let allowed_actions = vec![required_action, MethodName::Status];
         return WorkflowProjection::ReadyToApplyDecisions {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::UpdateScope),
-            allowed_actions: vec![MethodName::UpdateScope, MethodName::Status],
+            required_action: RequiredNullable::some(required_action),
+            action_catalog: action_catalog(Some(required_action), &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
                 WorkflowBlockingReason::AcceptedDecisionsNotApplied,
             ),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: action_intent(MethodName::UpdateScope),
         };
     }
     if checkpoint
@@ -1105,15 +1243,17 @@ pub(crate) fn workflow_projection(
         .iter()
         .any(|gap| gap.status == ShapingGapStatus::Current)
     {
+        let required_action = MethodName::RecordShapingCheckpoint;
+        let allowed_actions = vec![required_action, MethodName::Status];
         return WorkflowProjection::ShapingRequired {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::RecordShapingCheckpoint),
-            allowed_actions: vec![MethodName::RecordShapingCheckpoint, MethodName::Status],
+            required_action: RequiredNullable::some(required_action),
+            action_catalog: action_catalog(Some(required_action), &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(WorkflowBlockingReason::ShapingGapsCurrent),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: action_intent(MethodName::RecordShapingCheckpoint),
         };
     }
     if task.mode == TaskMode::Advisor && checkpoint.readiness == ShapingCheckpointReadiness::Ready {
@@ -1134,67 +1274,77 @@ pub(crate) fn workflow_projection(
                 })
         });
         if current_basis {
+            let required_action = MethodName::CheckClose;
+            let allowed_actions = vec![
+                MethodName::CheckClose,
+                MethodName::CloseTask,
+                MethodName::FinalizeAdvice,
+                MethodName::Status,
+            ];
             return WorkflowProjection::CloseReview {
                 next_actor: AuthorityNextActor::Agent,
-                required_action: RequiredNullable::some(MethodName::CheckClose),
-                allowed_actions: vec![
-                    MethodName::CheckClose,
-                    MethodName::CloseTask,
-                    MethodName::FinalizeAdvice,
-                    MethodName::Status,
-                ],
+                required_action: RequiredNullable::some(required_action),
+                action_catalog: action_catalog(Some(required_action), &allowed_actions),
+                allowed_actions,
                 required_refs: refs.clone(),
                 expected_state_version: state_version,
                 blocking_reason: RequiredNullable::null(),
                 checkpoint: RequiredNullable::new(summary.clone()),
-                action_intent: action_intent(MethodName::CheckClose),
             };
         }
         if current_change_unit.is_none() {
+            let required_action = MethodName::UpdateScope;
+            let allowed_actions = vec![required_action, MethodName::Status];
             return WorkflowProjection::ReadyForChangeUnit {
                 next_actor: AuthorityNextActor::Agent,
-                required_action: RequiredNullable::some(MethodName::UpdateScope),
-                allowed_actions: vec![MethodName::UpdateScope, MethodName::Status],
+                required_action: RequiredNullable::some(required_action),
+                action_catalog: action_catalog(Some(required_action), &allowed_actions),
+                allowed_actions,
                 required_refs: refs.clone(),
                 expected_state_version: state_version,
                 blocking_reason: RequiredNullable::some(WorkflowBlockingReason::ChangeUnitRequired),
                 checkpoint: RequiredNullable::new(summary.clone()),
-                action_intent: action_intent(MethodName::UpdateScope),
             };
         }
+        let required_action = MethodName::FinalizeAdvice;
+        let allowed_actions = vec![required_action, MethodName::Status];
         return WorkflowProjection::ReadyToFinalizeAdvice {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::FinalizeAdvice),
-            allowed_actions: vec![MethodName::FinalizeAdvice, MethodName::Status],
+            required_action: RequiredNullable::some(required_action),
+            action_catalog: action_catalog(Some(required_action), &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
                 WorkflowBlockingReason::AdvisorFinalizationRequired,
             ),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: action_intent(MethodName::FinalizeAdvice),
         };
     }
     if current_change_unit.is_none() {
+        let required_action = MethodName::UpdateScope;
+        let allowed_actions = vec![required_action, MethodName::Status];
         return WorkflowProjection::ReadyForChangeUnit {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::UpdateScope),
-            allowed_actions: vec![MethodName::UpdateScope, MethodName::Status],
+            required_action: RequiredNullable::some(required_action),
+            action_catalog: action_catalog(Some(required_action), &allowed_actions),
+            allowed_actions,
             required_refs: refs.clone(),
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(WorkflowBlockingReason::ChangeUnitRequired),
             checkpoint: RequiredNullable::new(summary.clone()),
-            action_intent: action_intent(MethodName::UpdateScope),
         };
     }
+    let required_action = MethodName::AdvanceTask;
+    let allowed_actions = vec![required_action, MethodName::Status];
     WorkflowProjection::ReadyForImplementation {
         next_actor: AuthorityNextActor::Agent,
-        required_action: RequiredNullable::some(MethodName::AdvanceTask),
-        allowed_actions: vec![MethodName::AdvanceTask, MethodName::Status],
+        required_action: RequiredNullable::some(required_action),
+        action_catalog: action_catalog(Some(required_action), &allowed_actions),
+        allowed_actions,
         required_refs: refs.clone(),
         expected_state_version: state_version,
         blocking_reason: RequiredNullable::some(WorkflowBlockingReason::ExplicitAdvanceRequired),
         checkpoint: RequiredNullable::new(summary.clone()),
-        action_intent: action_intent(MethodName::AdvanceTask),
     }
 }

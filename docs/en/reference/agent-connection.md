@@ -1,6 +1,10 @@
 # Agent Connection Reference
 
-Workflow-mode connections may dispatch the shaping and advance methods. Agents follow the returned tagged `workflow`; `required_action` is selected by progression state, while close blockers remain a separate close-readiness projection.
+Workflow-mode connections may dispatch the supported Agent-owned methods. The
+returned tagged workflow action catalog admits Task-state-bound mutations, and
+each admitted method requires its exact current method-specific form before
+Core. `required_action` is selected by progression state, while close blockers
+remain a separate close-readiness projection.
 
 This document defines the current `host_kind=codex` Agent Connection contract. It owns the
 exact `host_kind=codex` Record connection surface, the canonical connection

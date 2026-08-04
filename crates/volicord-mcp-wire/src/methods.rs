@@ -17,8 +17,8 @@ use volicord_types::schema::{
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceObservationInput, EvidenceTarget,
     EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, ResidualRiskInput,
     ShapingCheckpointOperation, ShapingGapInput, SourceRef, StagedArtifactHandle, StateRecordRef,
-    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowProjection,
-    WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
+    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowActionRole,
+    WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -71,6 +71,8 @@ pub enum McpToolErrorCode {
     AdapterPreconditionFailed,
     #[serde(rename = "MCP_ACTION_FORM_STALE")]
     ActionFormStale,
+    #[serde(rename = "WORKFLOW_ACTION_NOT_ALLOWED")]
+    WorkflowActionNotAllowed,
 }
 
 /// MCP wire-owned identity for operational unavailability.
@@ -133,6 +135,8 @@ pub enum McpToolIssueCode {
     AdapterPreconditionFailed,
     #[serde(rename = "MCP_ACTION_FORM_MISMATCH")]
     ActionFormMismatch,
+    #[serde(rename = "WORKFLOW_ACTION_NOT_ALLOWED")]
+    WorkflowActionNotAllowed,
 }
 
 /// One independently discoverable MCP tool error issue.
@@ -180,11 +184,32 @@ pub struct WorkflowActionInput {
 pub struct WorkflowActionForm {
     pub form_ref: RequestHash,
     pub method: MethodName,
+    pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_arguments: JsonObject,
     pub suggested_arguments: JsonObject,
     pub required_inputs: Vec<WorkflowActionInput>,
     pub optional_inputs: Vec<WorkflowActionInput>,
+}
+
+/// Complete MCP form catalog derived from one neutral Core action catalog.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowActionFormCatalog {
+    pub required_method: RequiredNullable<MethodName>,
+    pub forms: Vec<WorkflowActionForm>,
+}
+
+impl WorkflowActionFormCatalog {
+    pub fn form(&self, method: MethodName) -> Option<&WorkflowActionForm> {
+        self.forms.iter().find(|form| form.method == method)
+    }
+
+    pub fn required_form(&self) -> Option<&WorkflowActionForm> {
+        self.required_method
+            .as_ref()
+            .and_then(|method| self.form(*method))
+    }
 }
 
 /// Bounded current authority loaded after independently valid routing coordinates.
@@ -200,7 +225,7 @@ pub struct AuthoritativeArgumentContext {
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub current_checkpoint_ref: RequiredNullable<StateRecordRef>,
     pub workflow: RequiredNullable<WorkflowProjection>,
-    pub current_action_form: RequiredNullable<WorkflowActionForm>,
+    pub action_form_catalog: RequiredNullable<WorkflowActionFormCatalog>,
 }
 
 /// Exact retry values and remaining Agent-authored input slots.
@@ -212,6 +237,7 @@ pub struct RetryContract {
     pub fixed_arguments: JsonObject,
     pub invalid_paths: Vec<String>,
     pub required_inputs: Vec<WorkflowActionInput>,
+    pub action_form_catalog: WorkflowActionFormCatalog,
     pub corrected_retry_allowed: bool,
 }
 
@@ -240,7 +266,21 @@ pub struct McpAuthorityBasisMismatch {
     pub expected: volicord_types::schema::AuthorityBasisValue,
     pub received: volicord_types::schema::AuthorityBasisValue,
     pub state_change_applied: bool,
-    pub current_action_form: RequiredNullable<WorkflowActionForm>,
+    pub called_method_form: RequiredNullable<WorkflowActionForm>,
+}
+
+/// Exact pre-Core workflow admission facts for a task-state-bound call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpWorkflowAdmissionRejection {
+    pub called_method: MethodName,
+    pub current_workflow_kind: WorkflowStateKind,
+    pub required_method: RequiredNullable<MethodName>,
+    pub allowed_methods: Vec<MethodName>,
+    pub called_method_form: RequiredNullable<WorkflowActionForm>,
+    pub required_method_form: RequiredNullable<WorkflowActionForm>,
+    pub state_change_applied: bool,
+    pub reached_core: bool,
 }
 
 /// Structured known-tool failure returned before Core method entry.
@@ -262,6 +302,7 @@ pub struct McpToolErrorResponse {
     pub authoritative_context: RequiredNullable<AuthoritativeArgumentContext>,
     pub retry_contract: RequiredNullable<RetryContract>,
     pub failure: RequiredNullable<McpArgumentFailurePresentation>,
+    pub workflow_admission: RequiredNullable<McpWorkflowAdmissionRejection>,
 }
 
 /// Structured MCP failure when an operational dependency cannot produce a tool result.
@@ -560,7 +601,7 @@ pub struct McpWorkflowPresentation {
     pub blocker_summary: Vec<McpWorkflowBlockerSummary>,
     pub required_user_action: RequiredNullable<McpUserChannelInstructions>,
     pub must_surface: Vec<McpMustSurfaceFact>,
-    pub current_action_form: RequiredNullable<WorkflowActionForm>,
+    pub action_form_catalog: WorkflowActionFormCatalog,
 }
 
 /// Rejected mutation plus current authoritative workflow and presentation.
@@ -581,7 +622,7 @@ pub struct McpWorkflowRejectedResponse {
 #[serde(deny_unknown_fields)]
 pub struct McpStatusResponse {
     pub method_result: volicord_types::methods::StatusResponse,
-    pub current_action_form: RequiredNullable<WorkflowActionForm>,
+    pub action_form_catalog: RequiredNullable<WorkflowActionFormCatalog>,
 }
 
 /// Dry-run mutation preview plus current authoritative workflow and presentation.
@@ -751,8 +792,7 @@ pub struct McpUpdateScopeArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action_form_ref: Option<RequestHash>,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     #[serde(default)]
     pub goal_summary: RequiredNullable<String>,
@@ -955,6 +995,7 @@ pub struct McpPrepareEvidenceCaptureArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub baseline_ref: BaselineRef,
@@ -970,10 +1011,9 @@ pub struct McpPrepareWriteArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
-    #[serde(default)]
-    pub task_id: RequiredNullable<TaskId>,
-    #[serde(default)]
-    pub change_unit_id: RequiredNullable<ChangeUnitId>,
+    pub action_form_ref: RequestHash,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
     pub intended_operation: String,
     pub intended_paths: Vec<String>,
     pub product_file_write_intended: bool,
@@ -990,6 +1030,7 @@ pub struct McpStageArtifactArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     pub display_name: String,
     pub content_type: String,
@@ -1011,6 +1052,7 @@ pub struct McpRecordRunArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub kind: RunKind,
@@ -1120,6 +1162,8 @@ pub struct McpRequestUserActionArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_form_ref: Option<RequestHash>,
     pub request: McpRequestUserActionOperation,
 }
 
@@ -1149,6 +1193,7 @@ pub struct McpReconcileChangesArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     #[serde(default)]
     pub resolution_requests: Vec<UnrecordedChangeResolutionRequest>,
@@ -1160,8 +1205,7 @@ pub struct McpReconcileChangesArguments {
 pub struct McpCheckCloseArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action_form_ref: Option<RequestHash>,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
 }
 
@@ -1173,8 +1217,7 @@ pub struct McpCloseTaskArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action_form_ref: Option<RequestHash>,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     pub intent: CloseMutationIntent,
     #[serde(default)]

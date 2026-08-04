@@ -2266,6 +2266,32 @@ pub enum WorkflowActionAuthorityCoordinates {
         baseline_ref: RequiredNullable<BaselineRef>,
         user_action_resolution_ids: Vec<UserActionResolutionId>,
     },
+    PrepareEvidenceCapture {
+        task_id: TaskId,
+        change_unit_id: ChangeUnitId,
+        baseline_ref: BaselineRef,
+    },
+    PrepareWrite {
+        task_id: TaskId,
+        change_unit_id: ChangeUnitId,
+        baseline_ref: BaselineRef,
+    },
+    StageArtifact {
+        task_id: TaskId,
+    },
+    RecordRun {
+        task_id: TaskId,
+        change_unit_id: ChangeUnitId,
+        baseline_ref: BaselineRef,
+        run_kind: RunKind,
+    },
+    RequestUserAction {
+        task_id: TaskId,
+        change_unit_id: RequiredNullable<ChangeUnitId>,
+    },
+    ReconcileChanges {
+        task_id: TaskId,
+    },
     CheckClose {
         task_id: TaskId,
     },
@@ -2274,14 +2300,114 @@ pub enum WorkflowActionAuthorityCoordinates {
     },
 }
 
+impl WorkflowActionAuthorityCoordinates {
+    pub const fn method(&self) -> MethodName {
+        match self {
+            Self::RecordShapingCheckpoint { .. } => MethodName::RecordShapingCheckpoint,
+            Self::UpdateScope { .. } => MethodName::UpdateScope,
+            Self::FinalizeAdvice { .. } => MethodName::FinalizeAdvice,
+            Self::AdvanceTask { .. } => MethodName::AdvanceTask,
+            Self::PrepareEvidenceCapture { .. } => MethodName::PrepareEvidenceCapture,
+            Self::PrepareWrite { .. } => MethodName::PrepareWrite,
+            Self::StageArtifact { .. } => MethodName::StageArtifact,
+            Self::RecordRun { .. } => MethodName::RecordRun,
+            Self::RequestUserAction { .. } => MethodName::RequestUserAction,
+            Self::ReconcileChanges { .. } => MethodName::ReconcileChanges,
+            Self::CheckClose { .. } => MethodName::CheckClose,
+            Self::CloseTask { .. } => MethodName::CloseTask,
+        }
+    }
+}
+
+/// Relationship between one catalog action and the current required method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowActionRole {
+    Required,
+    Allowed,
+}
+
 /// Core-owned current action plus the authority coordinates an adapter may project.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowActionIntent {
     pub method: MethodName,
+    pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_authority_coordinates: WorkflowActionAuthorityCoordinates,
     pub required_refs: Vec<StateRecordRef>,
+}
+
+/// Complete neutral action catalog for the current tagged Task workflow.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowActionCatalog {
+    pub required_method: RequiredNullable<MethodName>,
+    pub actions: Vec<WorkflowActionIntent>,
+}
+
+impl<'de> Deserialize<'de> for WorkflowActionCatalog {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            required_method: RequiredNullable<MethodName>,
+            actions: Vec<WorkflowActionIntent>,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let mut seen = Vec::new();
+        let mut previous = None;
+        let mut required_count = 0usize;
+        for action in &wire.actions {
+            if seen.contains(&action.method) {
+                return Err(serde::de::Error::custom(
+                    "workflow action catalog contains a duplicate method",
+                ));
+            }
+            if previous.is_some_and(|method: MethodName| method.as_str() >= action.method.as_str())
+            {
+                return Err(serde::de::Error::custom(
+                    "workflow action catalog methods are not in canonical order",
+                ));
+            }
+            if crate::methods::public_method_contract(action.method).workflow_action_admission()
+                != crate::methods::WorkflowActionAdmissionClass::TaskStateBound
+            {
+                return Err(serde::de::Error::custom(
+                    "workflow action catalog contains a method that is not task-state-bound",
+                ));
+            }
+            if action.fixed_authority_coordinates.method() != action.method {
+                return Err(serde::de::Error::custom(
+                    "workflow action catalog method does not match its authority coordinates",
+                ));
+            }
+            let is_required = wire.required_method.as_ref() == Some(&action.method);
+            if (action.role == WorkflowActionRole::Required) != is_required {
+                return Err(serde::de::Error::custom(
+                    "workflow action catalog role does not match required_method",
+                ));
+            }
+            if is_required {
+                required_count += 1;
+            }
+            previous = Some(action.method);
+            seen.push(action.method);
+        }
+        if wire.required_method.as_ref().is_some() && required_count != 1 {
+            return Err(serde::de::Error::custom(
+                "workflow action catalog required_method must occur exactly once",
+            ));
+        }
+        Ok(Self {
+            required_method: wire.required_method,
+            actions: wire.actions,
+        })
+    }
 }
 
 macro_rules! workflow_projection_variants {
@@ -2299,7 +2425,7 @@ macro_rules! workflow_projection_variants {
                     expected_state_version: u64,
                     blocking_reason: RequiredNullable<crate::values::WorkflowBlockingReason>,
                     checkpoint: RequiredNullable<ShapingCheckpointSummary>,
-                    action_intent: RequiredNullable<WorkflowActionIntent>,
+                    action_catalog: WorkflowActionCatalog,
                 },
             )+
         }
@@ -2321,6 +2447,24 @@ workflow_projection_variants!(
 );
 
 impl WorkflowProjection {
+    /// Returns the closed discriminator value for this workflow projection.
+    pub fn kind(&self) -> crate::values::WorkflowStateKind {
+        use crate::values::WorkflowStateKind;
+        match self {
+            Self::NoActiveTask { .. } => WorkflowStateKind::NoActiveTask,
+            Self::ShapingRequired { .. } => WorkflowStateKind::ShapingRequired,
+            Self::AwaitingUserAction { .. } => WorkflowStateKind::AwaitingUserAction,
+            Self::DecisionRecoveryRequired { .. } => WorkflowStateKind::DecisionRecoveryRequired,
+            Self::ReadyToApplyDecisions { .. } => WorkflowStateKind::ReadyToApplyDecisions,
+            Self::ReadyForChangeUnit { .. } => WorkflowStateKind::ReadyForChangeUnit,
+            Self::ReadyToFinalizeAdvice { .. } => WorkflowStateKind::ReadyToFinalizeAdvice,
+            Self::ReadyForImplementation { .. } => WorkflowStateKind::ReadyForImplementation,
+            Self::Implementation { .. } => WorkflowStateKind::Implementation,
+            Self::CloseReview { .. } => WorkflowStateKind::CloseReview,
+            Self::Terminal { .. } => WorkflowStateKind::Terminal,
+        }
+    }
+
     /// Returns the actor that owns the next workflow transition.
     pub fn next_actor(&self) -> AuthorityNextActor {
         match self {
@@ -2433,20 +2577,20 @@ impl WorkflowProjection {
         }
     }
 
-    /// Returns the neutral current action intent when an Agent-owned action is selected.
-    pub fn action_intent(&self) -> Option<&WorkflowActionIntent> {
+    /// Returns the complete neutral current task-state-bound action catalog.
+    pub fn action_catalog(&self) -> &WorkflowActionCatalog {
         match self {
-            Self::NoActiveTask { action_intent, .. }
-            | Self::ShapingRequired { action_intent, .. }
-            | Self::AwaitingUserAction { action_intent, .. }
-            | Self::DecisionRecoveryRequired { action_intent, .. }
-            | Self::ReadyToApplyDecisions { action_intent, .. }
-            | Self::ReadyForChangeUnit { action_intent, .. }
-            | Self::ReadyToFinalizeAdvice { action_intent, .. }
-            | Self::ReadyForImplementation { action_intent, .. }
-            | Self::Implementation { action_intent, .. }
-            | Self::CloseReview { action_intent, .. }
-            | Self::Terminal { action_intent, .. } => action_intent.as_ref(),
+            Self::NoActiveTask { action_catalog, .. }
+            | Self::ShapingRequired { action_catalog, .. }
+            | Self::AwaitingUserAction { action_catalog, .. }
+            | Self::DecisionRecoveryRequired { action_catalog, .. }
+            | Self::ReadyToApplyDecisions { action_catalog, .. }
+            | Self::ReadyForChangeUnit { action_catalog, .. }
+            | Self::ReadyToFinalizeAdvice { action_catalog, .. }
+            | Self::ReadyForImplementation { action_catalog, .. }
+            | Self::Implementation { action_catalog, .. }
+            | Self::CloseReview { action_catalog, .. }
+            | Self::Terminal { action_catalog, .. } => action_catalog,
         }
     }
 

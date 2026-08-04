@@ -481,10 +481,15 @@ WorkflowProjection:
   expected_state_version: integer
   blocking_reason: string | null
   checkpoint: ShapingCheckpointSummary | null
-  action_intent: WorkflowActionIntent | null
+  action_catalog: WorkflowActionCatalog
+
+WorkflowActionCatalog:
+  required_method: string | null
+  actions: WorkflowActionIntent[]
 
 WorkflowActionIntent:
   method: string
+  role: required | allowed
   expected_state_version: integer
   fixed_authority_coordinates: WorkflowActionAuthorityCoordinates
   required_refs: StateRecordRef[]
@@ -633,13 +638,19 @@ Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize
 
 workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. 진행은 `advance_task`, `finalize_advice`, shaping 소유 scope update, write preparation, Run 기록, 닫기 준비 상태, mutation 거부에 Store 소유 현재 유효 shaping 권한 graph를 사용합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. Stale application은 권한을 부여하지 않고 현재 복구 의무로만 나타납니다. `advisor|work` shaping에서는 `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, `blocking_reason=application_authority_stale`, 정확한 복구 ref를 선택합니다. 이 상태를 만들 implementation 단계 update는 mutation 전에 거부되고 Task를 shaping으로 돌리는 대신 close/supersede 복구로 `volicord.close_task`를 지정합니다. 현재 graph 내부의 모순은 `inconsistent_authority_state`를 사용합니다. Superseded 요청, resolution, application, checkpoint ref는 변경 불가능한 감사 이력으로 남으며 존재한다는 이유만으로 현재 `required_refs`나 진행에 들어가지 않습니다.
 
-에이전트 소유의 null이 아닌 `required_action`에는 같은 메서드와 상태 버전, Core 소유
-고정 권한 좌표를 담은 `action_intent`가 있습니다. 첫 checkpoint 좌표는 실제 null
-기준선을 보존합니다. 교체 좌표는 정확한 현재·선행 checkpoint 참조, retirement 참조,
-호환 application 참조, stale application 참조를 담습니다. Advisor finalization과 work
-advance 좌표는 정확한 현재 checkpoint, Change Unit, 범위 리비전, 기준선, resolution
-ID를 담습니다. MCP는 이 중립 intent를 실행 가능한 action form으로 투영할 수 있지만,
-MCP form과 입력 slot은 Core 상태가 아닙니다.
+`action_catalog`에는 `allowed_actions`의 Task 상태 결속 메서드마다 중립 action intent가
+정확히 하나씩 들어가며 그 밖의 메서드 intent는 들어가지 않습니다. Entry는 정규 메서드
+이름 순으로 정렬됩니다. `required_method`는 Task 상태 결속 `required_action`이며, 필수
+행동이 읽기 전용이거나 User Channel 소유이면 null입니다. 필수 entry는
+`role=required`, 나머지는 `role=allowed`입니다. 메서드 중복, 필수 entry 누락, 메서드와
+좌표 종류 불일치, 비정규 순서는 유효하지 않습니다. 모든 entry는 동일한 현재 Task
+snapshot에서 나온 workflow 상태 버전과 Core 소유 고정 권한 좌표를 사용합니다. 첫
+checkpoint 좌표는 실제 null 기준선을 보존하고, 교체 좌표는 정확한 현재·선행 checkpoint
+참조, retirement 참조, 호환 application 참조, stale application 참조를 담습니다. 다른
+좌표는 해당 메서드에 적용되는 정확한 현재 Task, checkpoint, Change Unit, 범위 리비전,
+기준선, resolution, 메서드 내부 권한 사실에 결속됩니다. MCP는 각 중립 intent를 실행
+가능한 메서드별 action form으로 투영할 수 있지만 MCP form과 입력 slot은 Core 상태가
+아닙니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task

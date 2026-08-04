@@ -143,6 +143,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -194,9 +195,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -204,6 +208,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -213,7 +218,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4e8e982617154df5187dd257e63225f46e46c58fa28634bb7f132b090055885d"
+        "sha256": "sha256:43218012423f69369f62a626a1db1adb344df5ad2c59c3a71ae461c2a8ce404b"
       }
     },
     {
@@ -253,10 +258,11 @@
           "task_id"
         ],
         "root_required": [
+          "action_form_ref",
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:fa297fe11fc54b8edd55fcf9c656301062cb3fdc3cd58bc31415445e846ed4cf"
+        "sha256": "sha256:669b0faae324c693f1bd77c26a2361f04601ccaffb06666d299561be2d631329"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -319,6 +325,7 @@
           "McpToolIssueCode",
           "McpUpdateScopeCompactResult",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -372,9 +379,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -382,6 +392,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -391,7 +402,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:616c4f6e6ceda68e2832b3475adcfc1ed94fcc9519f59f0a718fd168728acf9f"
+        "sha256": "sha256:434359917a75f764c657747346012e25c018393c6861137960bf07d5dcefd936"
       }
     },
     {
@@ -527,6 +538,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -585,9 +597,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -605,7 +620,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:48a7305904058ac8db69e7ff02e98769b256156dc7294e5f515b70b77277047a"
+        "sha256": "sha256:55533ec8f666af3ec3e473bead58c58b9b6ddfa8a928e85b4c139ef83d4a1981"
       }
     },
     {
@@ -717,6 +732,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -773,9 +789,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -793,7 +812,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9594f858c0fccffe7ce08cb407a33b806a711cee02907fd84b2d320b73e35772"
+        "sha256": "sha256:a89f7112bd81b0e14aaef6d2e258fc94fdbc163b6b5c930b6ff9c8f3a9662862"
       }
     },
     {
@@ -892,6 +911,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -943,9 +963,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -953,6 +976,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -962,7 +986,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9ef56ac117ba0eed9c84d7224b4257120ad63461b4c515e2be2b4daf38e12c0c"
+        "sha256": "sha256:8809716ff6dd2cd7deaa0d380e523dd486479921e6437c3da8b73cc1d5cf337f"
       }
     },
     {
@@ -1040,6 +1064,7 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
+          "McpWorkflowAdmissionRejection",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -1092,9 +1117,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -1102,6 +1130,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1111,7 +1140,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4f133daefdee893852aa690fd4f00fdbff17c14258fa77218a4a68d6b426af71"
+        "sha256": "sha256:e1aa2c9f4bd7c352c9e5baff068a97fc88e0e5cac2048eb333943e9c26230494"
       }
     },
     {
@@ -1157,6 +1186,7 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
+          "McpWorkflowAdmissionRejection",
           "MethodName",
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
@@ -1181,20 +1211,24 @@
           "UserActionStatus",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
-          "WorkflowRejectionUserAction"
+          "WorkflowRejectionUserAction",
+          "WorkflowStateKind"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:42132c1a9217a6db73d184eaaba98c25dab9865432579c8ef94abcb822230db8"
+        "sha256": "sha256:ef594c8b26d1c345a798fc77b027f1452368126015106e6ad87a1b5f87057306"
       }
     },
     {
@@ -1212,6 +1246,7 @@
           "MutationDetailLevel"
         ],
         "root_properties": [
+          "action_form_ref",
           "baseline_ref",
           "capture",
           "change_unit_id",
@@ -1221,13 +1256,14 @@
           "task_id"
         ],
         "root_required": [
+          "action_form_ref",
           "baseline_ref",
           "capture",
           "change_unit_id",
           "target",
           "task_id"
         ],
-        "sha256": "sha256:234e33748884316000a76d8489008409eca6e3c0344608c47db895aa99a008ef"
+        "sha256": "sha256:3e2c0ff4de101e436d7cf9eb6e07189c347cc6cae681b15f77b2f4919cd3a25c"
       },
       "name": "volicord.prepare_evidence_capture",
       "output_schema": {
@@ -1269,6 +1305,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -1310,20 +1347,24 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
-          "WorkflowRejectionUserAction"
+          "WorkflowRejectionUserAction",
+          "WorkflowStateKind"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2c68514ab94e6e81d741a0ede4fd97215f29b8f8b68f5170b28e538cd2bd9ed9"
+        "sha256": "sha256:bb99f1a318b29631eaa0a1675a99f0a263c96271f5fe1f9a49e88877649d5490"
       }
     },
     {
@@ -1339,6 +1380,7 @@
           "MutationDetailLevel"
         ],
         "root_properties": [
+          "action_form_ref",
           "baseline_ref",
           "change_unit_id",
           "detail",
@@ -1350,12 +1392,15 @@
           "task_id"
         ],
         "root_required": [
+          "action_form_ref",
           "baseline_ref",
+          "change_unit_id",
           "intended_operation",
           "intended_paths",
-          "product_file_write_intended"
+          "product_file_write_intended",
+          "task_id"
         ],
-        "sha256": "sha256:a1ded185177a8342868798c9112b1a8b82164981856f2572788e6ad77013f666"
+        "sha256": "sha256:30259090227b1a0c1f8a007077dbe6986acabe89e18e9493923707f52e5b642b"
       },
       "name": "volicord.prepare_write",
       "output_schema": {
@@ -1421,6 +1466,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -1479,9 +1525,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -1489,6 +1538,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteDecisionCategory",
@@ -1505,7 +1555,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fe561009367e651672b1b18ca55a7584b85fd017c6f2abcc47c792e6feb6d305"
+        "sha256": "sha256:d1fe4ab3f7a216d2ec7b859bb9a580a49b59359404ad724fc28504b6a8c0f2e7"
       }
     },
     {
@@ -1522,6 +1572,7 @@
           "RedactionState"
         ],
         "root_properties": [
+          "action_form_ref",
           "content_type",
           "detail",
           "display_name",
@@ -1534,13 +1585,14 @@
           "task_id"
         ],
         "root_required": [
+          "action_form_ref",
           "content_type",
           "display_name",
           "redaction_state",
           "safe_bytes_or_notice",
           "task_id"
         ],
-        "sha256": "sha256:2950225d2b15d37ad5d76421ff5571d9c2b25e59b4b90ea33193f65d3d4ab60d"
+        "sha256": "sha256:6a6679b00f0b70738ae790dbb0a3b024832ae29639950418c255b147909df3e8"
       },
       "name": "volicord.stage_artifact",
       "output_schema": {
@@ -1579,6 +1631,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -1622,20 +1675,24 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
-          "WorkflowRejectionUserAction"
+          "WorkflowRejectionUserAction",
+          "WorkflowStateKind"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f171a3e4e2a87564810cb3d30238511d801fa00cf237bb1497389063c7bc985a"
+        "sha256": "sha256:6aa66f0bb165be07568175f323da44cabe3bab227e5dc494cee516b100561c33"
       }
     },
     {
@@ -1681,6 +1738,7 @@
           "UtcTimestamp"
         ],
         "root_properties": [
+          "action_form_ref",
           "artifact_inputs",
           "baseline_ref",
           "change_unit_id",
@@ -1698,6 +1756,7 @@
           "write_ticket_id"
         ],
         "root_required": [
+          "action_form_ref",
           "baseline_ref",
           "change_unit_id",
           "kind",
@@ -1705,7 +1764,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:e86b4638ef2b8b2702770e8c14a40b4dfb9b937da3afd166c23753a522e285fb"
+        "sha256": "sha256:342d6caeef6097583b79dfe462a1a7c763b5b2dc80ca65ee57edc923a4aac6a7"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -1782,6 +1841,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -1843,9 +1903,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -1853,6 +1916,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -1862,7 +1926,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1811a08c360e1152c66fccc1032131c311927ccdff190f5d2ea9cfa114f7ef34"
+        "sha256": "sha256:32f7f5aff4716b196587674e4765bd8564d87d8e002f96706ba1eb3be02bb7cb"
       }
     },
     {
@@ -1896,6 +1960,7 @@
           "UtcTimestamp"
         ],
         "root_properties": [
+          "action_form_ref",
           "detail",
           "project_selector",
           "request"
@@ -1903,7 +1968,7 @@
         "root_required": [
           "request"
         ],
-        "sha256": "sha256:bab4bb55a599bdfd2602adea408461d9d010b59b7d63839157380d641759930a"
+        "sha256": "sha256:7852b84cb4630c8add06f57decfa524df053b85deb38b8e63c129347c3818775"
       },
       "name": "volicord.request_user_action",
       "output_schema": {
@@ -1971,6 +2036,7 @@
           "McpUserActionResolution",
           "McpUserActionResolutionSummary",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -2026,9 +2092,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -2036,6 +2105,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -2045,7 +2115,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:608d41cb5fcffc1eff8d7e4cb6802514564471349273126d8773e3cf14ed7b8c"
+        "sha256": "sha256:02fce6520c4dac95c0e7e236853c7238dbd459ee2bb746c7393efbceb1855aed"
       }
     },
     {
@@ -2063,15 +2133,17 @@
           "UnrecordedChangeResolutionRequest"
         ],
         "root_properties": [
+          "action_form_ref",
           "detail",
           "project_selector",
           "resolution_requests",
           "task_id"
         ],
         "root_required": [
+          "action_form_ref",
           "task_id"
         ],
-        "sha256": "sha256:6bb4f720094e009cda425c54d296ec29dce56e406768a4a0584f4f98e8a5b0bc"
+        "sha256": "sha256:1016b04928245a798962cda32fcf6fe9e192863a442d51b55a9a9e3a21e7e71a"
       },
       "name": "volicord.reconcile_changes",
       "output_schema": {
@@ -2134,6 +2206,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -2194,9 +2267,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -2204,6 +2280,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -2213,7 +2290,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5f4d716bd8053980f9e2523210224a66a87b01f817e89ca25a0384ce70c54ab5"
+        "sha256": "sha256:e42da1be02a0b1a69ffda12a15cbe4dae438ba7cfdf603b1359a11e9f599d001"
       }
     },
     {
@@ -2232,9 +2309,10 @@
           "task_id"
         ],
         "root_required": [
+          "action_form_ref",
           "task_id"
         ],
-        "sha256": "sha256:ba988381c9c654615a93055f228e95b2f1cca97d4a633e4a3f1db2471712bb69"
+        "sha256": "sha256:e9c25ac1fd903bc9f2a743839555b419a1d9750da35b406c571fe1ba8e79b227"
       },
       "name": "volicord.check_close",
       "output_schema": {
@@ -2287,6 +2365,7 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
+          "McpWorkflowAdmissionRejection",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -2334,9 +2413,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -2344,6 +2426,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -2353,7 +2436,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2380384f2da5e2cc7b10e50818731442219f37fd39b5e6c2a52389f5238a951e"
+        "sha256": "sha256:159b1e560ae05174c78da1c884589e36e555c4ddb92f7c9872c0dc0628f812d3"
       }
     },
     {
@@ -2381,10 +2464,11 @@
           "user_note"
         ],
         "root_required": [
+          "action_form_ref",
           "intent",
           "task_id"
         ],
-        "sha256": "sha256:108285a126cdf4907eea7c6566eca72d843bf49db8574321044fa83cfeae3c05"
+        "sha256": "sha256:20e394fd6bb91b40c01fb9da4d3e18d513c2060405d480c386615efa56f8e05c"
       },
       "name": "volicord.close_task",
       "output_schema": {
@@ -2449,6 +2533,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
+          "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
           "McpWorkflowPresentation",
           "MethodName",
@@ -2508,9 +2593,12 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -2518,6 +2606,7 @@
           "WorkflowRejectionBlocker",
           "WorkflowRejectionDetails",
           "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketInvalidationReason",
@@ -2527,7 +2616,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:601b13b76059e87dcb529e432c5e64aee0b639c153210be3be0402e291c3eb4e"
+        "sha256": "sha256:fb4fa6fbe4bf47ec25da26f25be2fa147e7b8e0c91a838005143dcc2d934fabb"
       }
     },
     {
@@ -2555,8 +2644,10 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
+          "McpWorkflowAdmissionRejection",
           "MethodName",
           "RetryContract",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -2571,16 +2662,20 @@
           "TaskMode",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
-          "WorkflowProjection"
+          "WorkflowProjection",
+          "WorkflowStateKind"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:de117f930765d289f1cf29fae19371457de09a84d153db686791cc0d07375b96"
+        "sha256": "sha256:f9772ce84cbe547a249a57e86e12dbc8c3c224ac41b69512addedcec78a6dcff"
       }
     },
     {
@@ -2614,8 +2709,10 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
+          "McpWorkflowAdmissionRejection",
           "MethodName",
           "RetryContract",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -2631,16 +2728,20 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
-          "WorkflowProjection"
+          "WorkflowProjection",
+          "WorkflowStateKind"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e39160d15aa97a1c45e708399278ecf7a58cf0dcef52cc5bb63b447956e11a72"
+        "sha256": "sha256:097c256883632388959796255f09bc29cfcc27fac7c4bdcf4ee142e518a1c631"
       }
     },
     {
@@ -2676,8 +2777,10 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
+          "McpWorkflowAdmissionRejection",
           "MethodName",
           "RetryContract",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -2693,16 +2796,20 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
-          "WorkflowProjection"
+          "WorkflowProjection",
+          "WorkflowStateKind"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:71d03dbd73df264b5b35b4dfad56965fff244c271abcb06ff647dff58ee3ebae"
+        "sha256": "sha256:f28c6f81534d81d0ef2e565d485e7f94790b8786ef30d2efa10dd71c36484423"
       }
     },
     {
@@ -2740,8 +2847,10 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
+          "McpWorkflowAdmissionRejection",
           "MethodName",
           "RetryContract",
+          "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
@@ -2757,16 +2866,20 @@
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionCatalog",
           "WorkflowActionForm",
+          "WorkflowActionFormCatalog",
           "WorkflowActionInput",
           "WorkflowActionIntent",
+          "WorkflowActionRole",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
-          "WorkflowProjection"
+          "WorkflowProjection",
+          "WorkflowStateKind"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a0af7aad2cf6f876ba6caa3e3d4941f1a711567b21c59aab3ca944b015392e42"
+        "sha256": "sha256:c37fb1fafb2e2c14ee70d211f51f1675ec07c356e8e4a153114c28d414bbbe6e"
       }
     }
   ]

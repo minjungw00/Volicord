@@ -1,6 +1,6 @@
 //! Public tool-call decoding, adapter dispatch, and shared tool-result carrier.
 
-use crate::action_form::current_workflow_action_form;
+use crate::action_form::workflow_action_form_catalog;
 use crate::adapter::{McpAdapter, OwnedAgentSessionCoordinates};
 use crate::authority_refresh::MutationRefreshContext;
 use crate::binding::{
@@ -680,7 +680,7 @@ impl ToolCallOutput {
     fn from_status_pipeline_response(response: &PipelineResponse) -> Result<Self, McpAdapterError> {
         let method_result = serde_json::from_value(response.response_value.clone())
             .map_err(McpAdapterError::Json)?;
-        let current_action_form = response
+        let action_form_catalog = response
             .verified_invocation
             .as_ref()
             .and_then(|invocation| {
@@ -688,14 +688,12 @@ impl ToolCallOutput {
                     .response_value
                     .pointer("/active_task/workflow")
                     .and_then(|value| serde_json::from_value(value.clone()).ok())
-                    .and_then(|workflow| {
-                        current_workflow_action_form(&invocation.project_id, &workflow)
-                    })
+                    .map(|workflow| workflow_action_form_catalog(&invocation.project_id, &workflow))
             });
         let mut output = Self::success(
             serde_json::to_string(&McpStatusResponse {
                 method_result,
-                current_action_form: RequiredNullable::new(current_action_form),
+                action_form_catalog: RequiredNullable::new(action_form_catalog),
             })
             .map_err(McpAdapterError::Json)?,
         )?;
@@ -1008,6 +1006,7 @@ fn tool_execution_error_result_for_capabilities(
             authoritative_context,
             retry_contract,
             failure,
+            workflow_admission,
             ..
         } => McpToolErrorResponse {
             code: *code,
@@ -1023,6 +1022,7 @@ fn tool_execution_error_result_for_capabilities(
             authoritative_context: RequiredNullable::new(authoritative_context.as_deref().cloned()),
             retry_contract: RequiredNullable::new(retry_contract.as_deref().cloned()),
             failure: RequiredNullable::new(failure.as_deref().cloned()),
+            workflow_admission: RequiredNullable::new(workflow_admission.as_deref().cloned()),
         },
         McpAdapterError::ToolExecution { tool_name, message } => {
             let (path, message) = if tool_name == "project routing" {
@@ -1057,6 +1057,7 @@ fn tool_execution_error_result_for_capabilities(
                 authoritative_context: RequiredNullable::null(),
                 retry_contract: RequiredNullable::null(),
                 failure: RequiredNullable::null(),
+                workflow_admission: RequiredNullable::null(),
             }
         }
         McpAdapterError::MutationAdmission(condition) => McpToolErrorResponse {
@@ -1077,6 +1078,7 @@ fn tool_execution_error_result_for_capabilities(
             authoritative_context: RequiredNullable::null(),
             retry_contract: RequiredNullable::null(),
             failure: RequiredNullable::null(),
+            workflow_admission: RequiredNullable::null(),
         },
         _ => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
@@ -1096,6 +1098,7 @@ fn tool_execution_error_result_for_capabilities(
             authoritative_context: RequiredNullable::null(),
             retry_contract: RequiredNullable::null(),
             failure: RequiredNullable::null(),
+            workflow_admission: RequiredNullable::null(),
         },
     };
     bounded_tool_error_result(structured, capabilities)

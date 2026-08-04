@@ -273,14 +273,13 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-nondesignated-read-only-round-trip")?;
     let setup_adapter = adapter(&fixture)?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
     let committed = setup_adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))?;
-    let task_id = committed.response_value["task_ref"]["record_id"]
-        .as_str()
-        .ok_or("intake task id")?
-        .to_owned();
     let operation_result_ref = committed
         .operation_result_ref
         .ok_or("intake operation result ref")?;
+    let check_close_action_form_ref =
+        action_form_ref_for_method(&setup_adapter, &task_id, MethodName::CheckClose)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -304,7 +303,10 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         tools_call_with_codex_metadata(
             5,
             AgentToolId::CHECK_CLOSE.wire_name(),
-            json!({ "task_id": task_id }),
+            json!({
+                "action_form_ref": check_close_action_form_ref,
+                "task_id": task_id
+            }),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
             "fixture_codex_turn_close",

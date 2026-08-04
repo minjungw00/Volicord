@@ -1,4 +1,4 @@
-use crate::action_form::{current_workflow_action_form, retry_contract};
+use crate::action_form::{retry_contract, workflow_action_form_catalog};
 use crate::authority_refresh::{validated_authority_refresh, MutationRefreshContext};
 use crate::constants::DEFAULT_LOCALE;
 use crate::errors::McpAdapterError;
@@ -30,7 +30,7 @@ use volicord_mcp_wire::{
     McpPrepareEvidenceCaptureArguments, McpPrepareWriteArguments, McpReconcileChangesArguments,
     McpRecordRunArguments, McpRecordShapingCheckpointArguments, McpRequestUserActionArguments,
     McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments, McpToolErrorCode,
-    McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments,
+    McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments, McpWorkflowAdmissionRejection,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
@@ -57,11 +57,12 @@ use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, IntegrationVerificationIdArguments,
 };
 use volicord_types::methods::{
-    AdvanceTaskRequest, CheckCloseRequest, CloseTaskRequest, FinalizeAdviceRequest,
-    GetOperationResultRequest, IntakeRequest, MethodOperationCategory, MethodResponseContract,
-    PrepareEvidenceCaptureRequest, PrepareWriteRequest, ReconcileChangesRequest, RecordRunRequest,
-    RecordShapingCheckpointRequest, RequestUserActionRequest, RequestUserActionResponse,
-    StageArtifactRequest, StatusRequest, UpdateScopeRequest,
+    public_method_contract, AdvanceTaskRequest, CheckCloseRequest, CloseTaskRequest,
+    FinalizeAdviceRequest, GetOperationResultRequest, IntakeRequest, MethodOperationCategory,
+    MethodResponseContract, PrepareEvidenceCaptureRequest, PrepareWriteRequest,
+    ReconcileChangesRequest, RecordRunRequest, RecordShapingCheckpointRequest,
+    RequestUserActionRequest, RequestUserActionResponse, StageArtifactRequest, StatusRequest,
+    UpdateScopeRequest, WorkflowActionAdmissionClass,
 };
 use volicord_types::schema::{RequiredNullable, ToolEnvelope, WorkflowProjection};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
@@ -382,6 +383,54 @@ impl McpAdapter {
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let tool_name = tool.wire_name();
+        if tool.method().is_some() {
+            self.ensure_mode_allows(context, tool_name, tool.category().operation_category())?;
+        }
+        if tool.method().is_some()
+            && session.is_none()
+            && self.default_agent_session_binding.is_none()
+        {
+            if let Err(validation_error) = validate_mcp_tool_arguments(tool_name, &params) {
+                return Err(self.enrich_invalid_arguments(
+                    context,
+                    tool,
+                    &params,
+                    session,
+                    validation_error,
+                ));
+            }
+            let object = params
+                .as_object()
+                .ok_or_else(|| McpAdapterError::ToolExecution {
+                    tool_name: tool_name.to_owned(),
+                    message: "tool arguments must be an object".to_owned(),
+                })?;
+            let requested_project_selector =
+                optional_string_field(object, "project_selector", tool_name)?;
+            self.select_project(context, requested_project_selector.as_deref())?;
+            return Err(McpAdapterError::Environment(
+                "agent_session_missing: project tools require a current managed runtime and project session"
+                    .to_owned(),
+            ));
+        }
+        if let Some(method) = tool.method() {
+            if let Err(admission_error) =
+                self.admit_workflow_action(context, method, &params, session)
+            {
+                if matches!(admission_error, McpAdapterError::ToolExecution { .. }) {
+                    if let Err(validation_error) = validate_mcp_tool_arguments(tool_name, &params) {
+                        return Err(self.enrich_invalid_arguments(
+                            context,
+                            tool,
+                            &params,
+                            session,
+                            validation_error,
+                        ));
+                    }
+                }
+                return Err(admission_error);
+            }
+        }
         if let Err(error) = validate_mcp_tool_arguments(tool_name, &params) {
             return Err(self.enrich_invalid_arguments(context, tool, &params, session, error));
         }
@@ -449,6 +498,7 @@ impl McpAdapter {
             authoritative_context: error_context,
             retry_contract: error_retry_contract,
             failure,
+            workflow_admission,
             ..
         } = &mut error
         {
@@ -456,18 +506,139 @@ impl McpAdapter {
                 .iter()
                 .map(|issue| issue.path.clone())
                 .collect::<Vec<_>>();
-            *error_retry_contract = authoritative_context
-                .current_action_form
-                .as_ref()
-                .filter(|form| form.method == tool.method().unwrap_or(form.method))
-                .map(|form| Box::new(retry_contract(form, invalid_paths)));
+            let catalog = authoritative_context.action_form_catalog.as_ref();
+            *error_retry_contract = catalog.and_then(|catalog| {
+                tool.method()
+                    .and_then(|method| catalog.form(method))
+                    .or_else(|| catalog.required_form())
+                    .map(|form| Box::new(retry_contract(form, catalog, invalid_paths)))
+            });
             *failure = Some(Box::new(argument_failure_presentation(
                 &authoritative_context,
                 false,
             )));
             *error_context = Some(Box::new(authoritative_context));
+            *workflow_admission = None;
         }
         error
+    }
+
+    fn admit_workflow_action(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        method: MethodName,
+        params: &Value,
+        session: Option<AgentSessionCoordinates<'_>>,
+    ) -> Result<(), McpAdapterError> {
+        if public_method_contract(method).workflow_action_admission()
+            != WorkflowActionAdmissionClass::TaskStateBound
+        {
+            return Ok(());
+        }
+        let Some(task_id) = admission_task_id(params) else {
+            return Ok(());
+        };
+        let authoritative_context = self
+            .load_authoritative_argument_context(context, params, session)
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: method.as_str().to_owned(),
+                message: format!(
+                    "current authoritative workflow could not be loaded for Task {}",
+                    task_id.as_str()
+                ),
+            })?;
+        let catalog = authoritative_context
+            .action_form_catalog
+            .as_ref()
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: method.as_str().to_owned(),
+                message: "current authoritative workflow action-form catalog is unavailable"
+                    .to_owned(),
+            })?;
+        let workflow = authoritative_context.workflow.as_ref().ok_or_else(|| {
+            McpAdapterError::ToolExecution {
+                tool_name: method.as_str().to_owned(),
+                message: "current authoritative workflow is unavailable".to_owned(),
+            }
+        })?;
+        let called_method_form = catalog.form(method).cloned();
+        let required_method_form = catalog.required_form().cloned();
+        let required_method = workflow.required_action();
+        let admission = McpWorkflowAdmissionRejection {
+            called_method: method,
+            current_workflow_kind: workflow.kind(),
+            required_method: RequiredNullable::new(required_method),
+            allowed_methods: catalog.forms.iter().map(|form| form.method).collect(),
+            called_method_form: RequiredNullable::new(called_method_form.clone()),
+            required_method_form: RequiredNullable::new(required_method_form.clone()),
+            state_change_applied: false,
+            reached_core: false,
+        };
+        let Some(called_method_form) = called_method_form else {
+            let retry = required_method_form.as_ref().map(|form| {
+                Box::new(retry_contract(
+                    form,
+                    catalog,
+                    vec!["/action_form_ref".to_owned()],
+                ))
+            });
+            return Err(McpAdapterError::InvalidParams {
+                code: McpToolErrorCode::WorkflowActionNotAllowed,
+                tool_name: method.as_str().to_owned(),
+                issues: vec![McpToolErrorIssue::new(
+                    String::new(),
+                    McpToolIssueCode::WorkflowActionNotAllowed,
+                    format!(
+                        "{} is not current; Core was not reached and state did not change; required method is {}",
+                        method.as_str(),
+                        required_method
+                            .as_ref()
+                            .map(|required| required.as_str())
+                            .unwrap_or("none")
+                    ),
+                )],
+                truncated: false,
+                selected_variant: None,
+                canonical_example: None,
+                authoritative_context: Some(Box::new(authoritative_context.clone())),
+                retry_contract: retry,
+                failure: Some(Box::new(argument_failure_presentation(
+                    &authoritative_context,
+                    false,
+                ))),
+                workflow_admission: Some(Box::new(admission)),
+            });
+        };
+        let supplied = params
+            .get("action_form_ref")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<RequestHash>(value).ok());
+        if supplied.as_ref() == Some(&called_method_form.form_ref) {
+            return Ok(());
+        }
+        Err(McpAdapterError::InvalidParams {
+            code: McpToolErrorCode::ActionFormStale,
+            tool_name: method.as_str().to_owned(),
+            issues: vec![McpToolErrorIssue::new(
+                "/action_form_ref",
+                McpToolIssueCode::ActionFormMismatch,
+                "action_form_ref is missing, malformed, stale, foreign, or belongs to another method",
+            )],
+            truncated: false,
+            selected_variant: None,
+            canonical_example: None,
+            authoritative_context: Some(Box::new(authoritative_context.clone())),
+            retry_contract: Some(Box::new(retry_contract(
+                &called_method_form,
+                catalog,
+                vec!["/action_form_ref".to_owned()],
+            ))),
+            failure: Some(Box::new(argument_failure_presentation(
+                &authoritative_context,
+                false,
+            ))),
+            workflow_admission: Some(Box::new(admission)),
+        })
     }
 
     fn load_authoritative_argument_context(
@@ -482,10 +653,7 @@ impl McpAdapter {
             Some(Value::String(value)) => Some(value.as_str()),
             Some(_) => return None,
         };
-        let task_id = object
-            .get("task_id")
-            .and_then(Value::as_str)
-            .map(TaskId::new)?;
+        let task_id = admission_task_id(params)?;
         let project_id = self.select_project(context, project_selector).ok()?;
         let refresh_context = MutationRefreshContext {
             project_id: project_id.clone(),
@@ -508,7 +676,7 @@ impl McpAdapter {
             .workflow
             .checkpoint()
             .map(|checkpoint| checkpoint.checkpoint_ref.clone());
-        let current_action_form = current_workflow_action_form(&project_id, &authority.workflow);
+        let action_form_catalog = workflow_action_form_catalog(&project_id, &authority.workflow);
         Some(AuthoritativeArgumentContext {
             context_loaded: true,
             project_id: RequiredNullable::some(project_id),
@@ -519,54 +687,7 @@ impl McpAdapter {
             baseline_ref: RequiredNullable::new(baseline_ref),
             current_checkpoint_ref: RequiredNullable::new(current_checkpoint_ref),
             workflow: RequiredNullable::some(authority.workflow),
-            current_action_form: RequiredNullable::new(current_action_form),
-        })
-    }
-
-    fn require_current_action_form(
-        &self,
-        context: &RuntimeHomeMutationContext<'_>,
-        method: MethodName,
-        project_id: &ProjectId,
-        task_id: &TaskId,
-        supplied: Option<&RequestHash>,
-        session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<(), McpAdapterError> {
-        let params = serde_json::json!({
-            "project_selector": project_id,
-            "task_id": task_id,
-        });
-        let authoritative_context = self
-            .load_authoritative_argument_context(context, &params, session)
-            .unwrap_or_else(unloaded_authoritative_argument_context);
-        let current = authoritative_context.current_action_form.as_ref();
-        let Some(current) = current.filter(|form| form.method == method) else {
-            return Ok(());
-        };
-        if supplied.is_some_and(|supplied| &current.form_ref == supplied) {
-            return Ok(());
-        }
-        let retry = Some(Box::new(retry_contract(
-            current,
-            vec!["/action_form_ref".to_owned()],
-        )));
-        Err(McpAdapterError::InvalidParams {
-            code: McpToolErrorCode::ActionFormStale,
-            tool_name: method.as_str().to_owned(),
-            issues: vec![McpToolErrorIssue::new(
-                "/action_form_ref",
-                McpToolIssueCode::ActionFormMismatch,
-                "action_form_ref does not match the current state-bound workflow action form",
-            )],
-            truncated: false,
-            selected_variant: None,
-            canonical_example: None,
-            retry_contract: retry,
-            failure: Some(Box::new(argument_failure_presentation(
-                &authoritative_context,
-                false,
-            ))),
-            authoritative_context: Some(Box::new(authoritative_context)),
+            action_form_catalog: RequiredNullable::some(action_form_catalog),
         })
     }
 
@@ -617,14 +738,6 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
-        self.require_current_action_form(
-            context,
-            MethodName::UpdateScope,
-            &prepared.project_id,
-            &task_id,
-            prepared.arguments.action_form_ref.as_ref(),
-            session,
-        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -695,14 +808,6 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpRecordShapingCheckpointArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
-        self.require_current_action_form(
-            context,
-            MethodName::RecordShapingCheckpoint,
-            &prepared.project_id,
-            &task_id,
-            Some(&prepared.arguments.action_form_ref),
-            session,
-        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -741,14 +846,6 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpFinalizeAdviceArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
-        self.require_current_action_form(
-            context,
-            MethodName::FinalizeAdvice,
-            &prepared.project_id,
-            &task_id,
-            Some(&prepared.arguments.action_form_ref),
-            session,
-        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -789,14 +886,6 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpAdvanceTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
-        self.require_current_action_form(
-            context,
-            MethodName::AdvanceTask,
-            &prepared.project_id,
-            &task_id,
-            Some(&prepared.arguments.action_form_ref),
-            session,
-        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -952,7 +1041,7 @@ impl McpAdapter {
             context,
             tool_name,
             &prepared.project_id,
-            task_id.as_ref(),
+            Some(&task_id),
             OperationCategory::AgentWorkflow,
         )?;
         let args = prepared.arguments;
@@ -961,8 +1050,8 @@ impl McpAdapter {
             tool_name,
             PrepareWriteRequest {
                 envelope,
-                task_id,
-                change_unit_id: args.change_unit_id,
+                task_id: RequiredNullable::some(task_id),
+                change_unit_id: RequiredNullable::some(args.change_unit_id),
                 intended_operation: args.intended_operation,
                 intended_paths: args.intended_paths,
                 product_file_write_intended: args.product_file_write_intended,
@@ -1196,14 +1285,6 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
-        self.require_current_action_form(
-            context,
-            MethodName::CheckClose,
-            &prepared.project_id,
-            &task_id,
-            prepared.arguments.action_form_ref.as_ref(),
-            session,
-        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -1230,14 +1311,6 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
-        self.require_current_action_form(
-            context,
-            MethodName::CloseTask,
-            &prepared.project_id,
-            &task_id,
-            prepared.arguments.action_form_ref.as_ref(),
-            session,
-        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -1876,6 +1949,14 @@ fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> 
         .then(|| tool.category().operation_category())
 }
 
+fn admission_task_id(params: &Value) -> Option<TaskId> {
+    params
+        .get("task_id")
+        .or_else(|| params.pointer("/request/task_id"))
+        .and_then(Value::as_str)
+        .map(TaskId::new)
+}
+
 fn unloaded_authoritative_argument_context() -> AuthoritativeArgumentContext {
     AuthoritativeArgumentContext {
         context_loaded: false,
@@ -1887,7 +1968,7 @@ fn unloaded_authoritative_argument_context() -> AuthoritativeArgumentContext {
         baseline_ref: RequiredNullable::null(),
         current_checkpoint_ref: RequiredNullable::null(),
         workflow: RequiredNullable::<WorkflowProjection>::null(),
-        current_action_form: RequiredNullable::null(),
+        action_form_catalog: RequiredNullable::null(),
     }
 }
 
@@ -1905,14 +1986,18 @@ fn argument_failure_presentation(
         product_repository_changed: false,
         core_state_unchanged: true,
         current_baseline_valid: RequiredNullable::new(context.context_loaded.then_some(true)),
-        exact_retry_action: RequiredNullable::new(context.current_action_form.as_ref().map(
-            |form| {
-                format!(
-                    "retry {} with the current action form",
-                    form.method.as_str()
-                )
-            },
-        )),
+        exact_retry_action: RequiredNullable::new(
+            context
+                .action_form_catalog
+                .as_ref()
+                .and_then(|catalog| catalog.required_form())
+                .map(|form| {
+                    format!(
+                        "retry {} with the current action form",
+                        form.method.as_str()
+                    )
+                }),
+        ),
         repair_required: false,
     }
 }

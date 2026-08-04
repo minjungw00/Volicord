@@ -52,6 +52,7 @@ pub(crate) fn validate_mcp_tool_arguments(
         authoritative_context: None,
         retry_contract: None,
         failure: None,
+        workflow_admission: None,
     })
 }
 

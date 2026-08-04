@@ -148,9 +148,11 @@
 <a id="errorcode-workflow-action-not-allowed"></a>
 ### `WORKFLOW_ACTION_NOT_ALLOWED`
 
-semantic action이 현재 Task mode와 work phase에서 허용되지 않습니다. 이 코드는
-`not_allowed` category이며, recovery가 가능하면 typed recovery가 현재 owner method 하나를
-보고합니다.
+호출한 Task 상태 결속 메서드가 현재 태그형 workflow action catalog에 없습니다. MCP
+adapter 경계에서는 `reached_core=false`, `committed=false`이며 상태 변경이 없는 typed
+Core 전 거부입니다. 구조화된 사실은 호출 메서드, workflow kind, 현재 필수 메서드, 허용된
+Task 상태 결속 메서드, 사용할 수 있는 호출 메서드 form과 필수 메서드 form을 보고합니다.
+Core 공개 오류 계열로 표현할 때 이 코드는 `not_allowed` category입니다.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`

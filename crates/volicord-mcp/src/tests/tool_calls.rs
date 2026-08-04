@@ -1,4 +1,54 @@
 use super::*;
+use volicord_types::methods::{public_method_contract, WorkflowActionAdmissionClass};
+
+fn assert_workflow_catalog_matches_allowed_actions(workflow: &Value) {
+    let allowed_task_bound = workflow["allowed_actions"]
+        .as_array()
+        .expect("allowed_actions")
+        .iter()
+        .filter_map(|method| {
+            let method = serde_json::from_value::<MethodName>(method.clone()).expect("method");
+            (public_method_contract(method).workflow_action_admission()
+                == WorkflowActionAdmissionClass::TaskStateBound)
+                .then(|| method.as_str().to_owned())
+        })
+        .collect::<BTreeSet<_>>();
+    let actions = workflow["action_catalog"]["actions"]
+        .as_array()
+        .expect("action catalog actions");
+    let catalog_methods = actions
+        .iter()
+        .map(|action| {
+            action["method"]
+                .as_str()
+                .expect("catalog method")
+                .to_owned()
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(catalog_methods, allowed_task_bound, "{workflow:#}");
+    assert_eq!(catalog_methods.len(), actions.len(), "{workflow:#}");
+
+    let required_method = workflow["action_catalog"]["required_method"].as_str();
+    assert_eq!(
+        actions
+            .iter()
+            .filter(|action| action["role"] == "required")
+            .count(),
+        usize::from(required_method.is_some()),
+        "{workflow:#}"
+    );
+    for action in actions {
+        assert_eq!(
+            action["role"] == "required",
+            action["method"].as_str() == required_method,
+            "{workflow:#}"
+        );
+        assert_eq!(
+            action["expected_state_version"], workflow["expected_state_version"],
+            "{workflow:#}"
+        );
+    }
+}
 use volicord_test_support::TestRuntimeHomeSetup;
 
 #[test]
@@ -123,12 +173,8 @@ fn checkpoint_action_form_rejects_omission_and_stale_refs_before_core() -> Resul
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         &omitted,
     ));
-    assert_eq!(omitted["code"], "MCP_INVALID_ARGUMENTS");
-    assert!(omitted["issues"]
-        .as_array()
-        .is_some_and(|issues| issues.iter().any(|issue| {
-            issue["path"] == "/action_form_ref" && issue["code"] == "MCP_ARGUMENT_REQUIRED"
-        })));
+    assert_eq!(omitted["code"], "MCP_ACTION_FORM_STALE");
+    assert_eq!(omitted["issues"][0]["path"], "/action_form_ref");
     assert_eq!(omitted["reached_core"], false);
     assert_eq!(omitted["committed"], false);
     assert_eq!(omitted["authoritative_context"]["context_loaded"], true);
@@ -142,7 +188,7 @@ fn checkpoint_action_form_rejects_omission_and_stale_refs_before_core() -> Resul
     assert_eq!(omitted["failure"]["repair_required"], false);
     assert_eq!(fixture.counts()?, before);
 
-    let current_ref = omitted["authoritative_context"]["current_action_form"]["form_ref"]
+    let current_ref = omitted["workflow_admission"]["called_method_form"]["form_ref"]
         .as_str()
         .ok_or("stale-form response should expose the current form")?
         .to_owned();
@@ -200,10 +246,229 @@ fn checkpoint_action_form_rejects_omission_and_stale_refs_before_core() -> Resul
     ));
     assert_eq!(stale["code"], "MCP_ACTION_FORM_STALE");
     assert_ne!(
-        stale["authoritative_context"]["current_action_form"]["form_ref"],
+        stale["workflow_admission"]["called_method_form"]["form_ref"],
         current_ref
     );
     assert_eq!(fixture.counts()?, before_stale);
+    Ok(())
+}
+
+#[test]
+fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-workflow-catalog-admission")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, change_unit_id, checkpoint_id, ready_state_version) =
+        create_ready_for_implementation_task(&fixture)?;
+    let advance_form_ref = action_form_ref_for_method(&adapter, &task_id, MethodName::AdvanceTask)?;
+    let before_checkpoint_attempt = fixture.counts()?;
+    let before_checkpoint_count = read_only_table_count(&fixture, "shaping_checkpoints")?;
+    let before_unrecorded_change_count = read_only_table_count(&fixture, "unrecorded_changes")?;
+    let before_product_repository_entries = fs::read_dir(fixture.product_repo_path())?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    let rejected_checkpoint = adapter
+        .call_tool(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            json!({
+                "action_form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "task_id": task_id,
+                "checkpoint_operation": {
+                    "operation": "replace_current",
+                    "expected_current_checkpoint_id": checkpoint_id,
+                    "retired_non_authorizing_request_refs": [],
+                    "carry_forward_application_refs": [],
+                    "stale_authority_actions": []
+                },
+                "scope_revision": 1,
+                "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                "summary": "This otherwise valid replacement is not current.",
+                "implementation_boundary": "Keep the current bounded implementation.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )
+        .expect_err("ready_for_implementation must reject checkpoint replacement before Core");
+    let rejected_checkpoint = structured_tool_error(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        &rejected_checkpoint,
+    );
+    assert_eq!(rejected_checkpoint["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(rejected_checkpoint["reached_core"], false);
+    assert_eq!(rejected_checkpoint["committed"], false);
+    assert_eq!(
+        rejected_checkpoint["workflow_admission"]["current_workflow_kind"],
+        "ready_for_implementation"
+    );
+    assert_eq!(
+        rejected_checkpoint["workflow_admission"]["called_method"],
+        "volicord.record_shaping_checkpoint"
+    );
+    assert_eq!(
+        rejected_checkpoint["workflow_admission"]["required_method"],
+        "volicord.advance_task"
+    );
+    assert_eq!(
+        rejected_checkpoint["workflow_admission"]["allowed_methods"],
+        json!(["volicord.advance_task"])
+    );
+    assert_eq!(
+        rejected_checkpoint["workflow_admission"]["required_method_form"]["form_ref"],
+        advance_form_ref
+    );
+    assert_eq!(fixture.counts()?, before_checkpoint_attempt);
+    assert_eq!(
+        read_only_table_count(&fixture, "shaping_checkpoints")?,
+        before_checkpoint_count
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "unrecorded_changes")?,
+        before_unrecorded_change_count
+    );
+    assert_eq!(
+        fs::read_dir(fixture.product_repo_path())?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<Result<BTreeSet<_>, _>>()?,
+        before_product_repository_entries
+    );
+    let status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "workflow"}),
+    )?;
+    assert_eq!(
+        status.response_value["base"]["state_version"],
+        ready_state_version
+    );
+    assert_eq!(
+        status.response_value["active_task"]["workflow"]["kind"],
+        "ready_for_implementation"
+    );
+    assert_workflow_catalog_matches_allowed_actions(
+        &status.response_value["active_task"]["workflow"],
+    );
+
+    adapter.call_tool(
+        AgentToolId::ADVANCE_TASK.wire_name(),
+        json!({
+            "action_form_ref": advance_form_ref,
+            "task_id": task_id,
+            "shaping_checkpoint_id": checkpoint_id,
+            "change_unit_id": change_unit_id,
+            "scope_revision": 1,
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "user_action_resolution_ids": []
+        }),
+    )?;
+    let implementation_status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "workflow"}),
+    )?;
+    assert_workflow_catalog_matches_allowed_actions(
+        &implementation_status.response_value["active_task"]["workflow"],
+    );
+    let update_form_ref = action_form_ref_for_method(&adapter, &task_id, MethodName::UpdateScope)?;
+    let prepare_evidence_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::PrepareEvidenceCapture)?;
+    let prepare_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::PrepareWrite)?;
+    let stage_artifact_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::StageArtifact)?;
+    let record_form_ref = action_form_ref_for_method(&adapter, &task_id, MethodName::RecordRun)?;
+    let request_user_action_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::RequestUserAction)?;
+    let reconcile_changes_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::ReconcileChanges)?;
+    let check_close_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::CheckClose)?;
+    let close_task_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::CloseTask)?;
+    assert_eq!(
+        [
+            update_form_ref.as_str(),
+            prepare_evidence_form_ref.as_str(),
+            prepare_form_ref.as_str(),
+            stage_artifact_form_ref.as_str(),
+            record_form_ref.as_str(),
+            request_user_action_form_ref.as_str(),
+            reconcile_changes_form_ref.as_str(),
+            check_close_form_ref.as_str(),
+            close_task_form_ref.as_str(),
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len(),
+        9
+    );
+
+    let assert_stale_without_effect = |arguments: Value| -> Result<(), Box<dyn Error>> {
+        let before = fixture.counts()?;
+        let error = adapter
+            .call_tool(AgentToolId::UPDATE_SCOPE.wire_name(), arguments)
+            .expect_err("non-current update_scope form must reject before Core");
+        let error = structured_tool_error(AgentToolId::UPDATE_SCOPE.wire_name(), &error);
+        assert_eq!(error["code"], "MCP_ACTION_FORM_STALE");
+        assert_eq!(error["reached_core"], false);
+        assert_eq!(error["committed"], false);
+        assert_eq!(
+            error["workflow_admission"]["called_method_form"]["form_ref"],
+            update_form_ref
+        );
+        assert_eq!(fixture.counts()?, before);
+        Ok(())
+    };
+    assert_stale_without_effect(json!({
+        "task_id": task_id,
+        "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+        "change_unit": {"operation": "keep_current"}
+    }))?;
+    assert_stale_without_effect(json!({
+        "action_form_ref": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "task_id": task_id,
+        "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+        "change_unit": {"operation": "keep_current"}
+    }))?;
+    assert_stale_without_effect(json!({
+        "action_form_ref": advance_form_ref,
+        "task_id": task_id,
+        "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+        "change_unit": {"operation": "keep_current"}
+    }))?;
+
+    let before_cross_method = fixture.counts()?;
+    let cross_method = adapter
+        .call_tool(
+            AgentToolId::PREPARE_WRITE.wire_name(),
+            json!({
+                "action_form_ref": update_form_ref,
+                "task_id": task_id,
+                "change_unit_id": change_unit_id,
+                "intended_operation": "cross-method admission test",
+                "intended_paths": [volicord_test_support::core_fixtures::DEFAULT_PRODUCT_PATH],
+                "product_file_write_intended": true,
+                "sensitive_categories": [],
+                "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF
+            }),
+        )
+        .expect_err("an update_scope form must not authorize prepare_write");
+    let cross_method = structured_tool_error(AgentToolId::PREPARE_WRITE.wire_name(), &cross_method);
+    assert_eq!(cross_method["code"], "MCP_ACTION_FORM_STALE");
+    assert_eq!(
+        cross_method["workflow_admission"]["called_method_form"]["form_ref"],
+        prepare_form_ref
+    );
+    assert_eq!(fixture.counts()?, before_cross_method);
+
+    let foreign_fixture = CoreFixture::new("mcp-workflow-catalog-foreign-form")?;
+    let foreign_adapter = super::support::adapter(&foreign_fixture)?;
+    let (foreign_task_id, _, _) = create_implementation_task(&foreign_fixture)?;
+    let foreign_form_ref =
+        action_form_ref_for_method(&foreign_adapter, &foreign_task_id, MethodName::UpdateScope)?;
+    assert_stale_without_effect(json!({
+        "action_form_ref": foreign_form_ref,
+        "task_id": task_id,
+        "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+        "change_unit": {"operation": "keep_current"}
+    }))?;
     Ok(())
 }
 
@@ -263,7 +528,7 @@ fn checkpoint_basis_mismatch_reports_typed_null_without_repair() -> Result<(), B
     assert_eq!(structured["failure"]["current_baseline_valid"], true);
     assert_eq!(structured["failure"]["repair_required"], false);
     assert_eq!(
-        structured["authority_basis_mismatch"]["current_action_form"]["form_ref"],
+        structured["authority_basis_mismatch"]["called_method_form"]["form_ref"],
         action_form_ref
     );
     assert_eq!(
@@ -627,7 +892,9 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-operation-result-budget-chain")?;
     let setup_adapter = adapter(&fixture)?;
-    let (task_id, _) = create_task(&setup_adapter)?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
+    let update_scope_action_form_ref =
+        action_form_ref_for_method(&setup_adapter, &task_id, MethodName::UpdateScope)?;
     let mut next_request_id = 10_u64;
     let mut call_stdio = |tool_name: &str, arguments: Value| -> Result<Value, Box<dyn Error>> {
         let initialize_id = next_request_id;
@@ -663,11 +930,10 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
         })
         .collect::<Vec<_>>();
     let autonomy_boundary = bounded_unicode_text("autonomy", 0);
-    let change_unit_summary = bounded_unicode_text("change-unit", 0);
-
     let omitted = call_stdio(
         AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
+            "action_form_ref": update_scope_action_form_ref,
             "detail": "full",
             "task_id": task_id,
             "goal_summary": goal_summary,
@@ -676,9 +942,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
             "acceptance_criteria": acceptance_criteria,
             "autonomy_boundary": autonomy_boundary,
             "change_unit": {
-                "operation": "create_current",
-                "scope_summary": change_unit_summary,
-                "affected_paths": ["src/operation-result.rs"]
+                "operation": "keep_current"
             }
         }),
     )?;
@@ -719,9 +983,12 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     assert!(stored.response_json.len() > MAX_MCP_FULL_MUTATION_RESULT_BYTES);
     assert!(stored.response_json.contains(omitted_exact_marker));
 
+    let advanced_action_form_ref =
+        action_form_ref_for_method(&setup_adapter, &task_id, MethodName::UpdateScope)?;
     let advanced = call_stdio(
         AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
+            "action_form_ref": advanced_action_form_ref,
             "task_id": task_id,
             "change_unit": { "operation": "keep_current" }
         }),
@@ -897,7 +1164,9 @@ fn mcp_mutation_is_typed_no_effect_while_setup_is_exclusive_and_succeeds_after_r
 fn artifact_staging_is_no_effect_while_setup_is_exclusive() -> Result<(), Box<dyn Error>> {
     let mut fixture = CoreFixture::new("mcp-artifact-staging-setup-busy")?;
     let adapter = adapter(&fixture)?;
-    let (task_id, _) = create_task(&adapter)?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
+    let action_form_ref =
+        action_form_ref_for_method(&adapter, &task_id, MethodName::StageArtifact)?;
     let before_rows = read_only_table_count(&fixture, "artifact_staging")?;
     let tmp_dir = fixture
         .runtime_home_path()
@@ -908,6 +1177,7 @@ fn artifact_staging_is_no_effect_while_setup_is_exclusive() -> Result<(), Box<dy
     fixture.release_mutation_admission();
     let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
     let arguments = json!({
+        "action_form_ref": action_form_ref,
         "task_id": task_id,
         "display_name": "setup-busy.txt",
         "content_type": "text/plain",
@@ -1129,7 +1399,7 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-readonly-user-action-resume")?;
     let adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&adapter)?;
+    let (task_id, _, state_version) = create_implementation_task(&fixture)?;
     let created = adapter.call_tool(
         AgentToolId::REQUEST_USER_ACTION.wire_name(),
         product_action_args(&fixture, &task_id, state_version),
@@ -1417,8 +1687,7 @@ fn project_bound_stdio_rejects_a_guessed_repository_name_as_project_selector(
 #[test]
 fn stdio_pending_user_action_returns_cli_inbox_recovery() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-cli-inbox-recovery")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let (task_id, _, state_version) = create_implementation_task(&fixture)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -1551,6 +1820,7 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
         structured["workflow"]["kind"], "awaiting_user_action",
         "unexpected shaping projection: {structured:#}"
     );
+    assert_workflow_catalog_matches_allowed_actions(&structured["workflow"]);
     let presentation = &structured["presentation"];
     assert_eq!(presentation["state_change"], "core_committed");
     assert_eq!(presentation["next_actor"], "user");
@@ -1580,6 +1850,35 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
             .iter()
             .any(|fact| fact["fact_kind"] == fact_kind));
     }
+    let before_blocked_mutation = fixture.counts()?;
+    let blocked = setup_adapter
+        .call_tool(
+            AgentToolId::STAGE_ARTIFACT.wire_name(),
+            json!({
+                "action_form_ref": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "task_id": task_id,
+                "display_name": "must-not-stage.txt",
+                "content_type": "text/plain",
+                "redaction_state": "none",
+                "safe_bytes_or_notice": "No staging is allowed while the user owns the next action."
+            }),
+        )
+        .expect_err("awaiting_user_action must reject Agent-owned Task mutations");
+    let blocked = structured_tool_error(AgentToolId::STAGE_ARTIFACT.wire_name(), &blocked);
+    assert_eq!(blocked["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(blocked["reached_core"], false);
+    assert_eq!(blocked["committed"], false);
+    assert_eq!(
+        blocked["workflow_admission"]["current_workflow_kind"],
+        "awaiting_user_action"
+    );
+    assert_eq!(
+        blocked["workflow_admission"]["required_method"],
+        "volicord.resolve_user_action"
+    );
+    assert_eq!(blocked["workflow_admission"]["allowed_methods"], json!([]));
+    assert!(blocked["workflow_admission"]["required_method_form"].is_null());
+    assert_eq!(fixture.counts()?, before_blocked_mutation);
     Ok(())
 }
 
@@ -1684,29 +1983,32 @@ fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
     let mut output = Vec::new();
     run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
     let responses = stdio_responses(&output)?;
-    let structured = &responses[1]["result"]["structuredContent"];
+    let result = &responses[1]["result"];
+    assert_eq!(result["isError"], true);
+    let structured = &result["structuredContent"];
+    assert_eq!(structured["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(structured["reached_core"], false);
+    assert_eq!(structured["committed"], false);
     assert_eq!(
-        structured["method_result"]["base"]["response_kind"],
-        "rejected"
+        structured["workflow_admission"]["current_workflow_kind"],
+        "decision_recovery_required"
     );
-    assert_eq!(structured["workflow"]["kind"], "decision_recovery_required");
-    assert_eq!(structured["presentation"]["next_actor"], "agent");
-    let facts = structured["presentation"]["must_surface"]
-        .as_array()
-        .ok_or("decision recovery presentation facts")?;
-    assert!(facts.iter().any(|fact| {
-        fact["fact_kind"] == "shaping_decision_outcome"
-            && fact["disposition"] == "rejected"
-            && fact["authority_granted"] == false
-    }));
-    assert!(facts.iter().any(|fact| {
-        fact["fact_kind"] == "non_authorizing_shaping_decision"
-            && fact["recovery_owner"] == "volicord.record_shaping_checkpoint"
-            && fact["terminal_request_cannot_be_retried"] == true
-            && fact["successor_request_required_if_still_needed"] == true
-            && fact["chat_text_cannot_replace_successor"] == true
-            && fact["product_repository_mutation_available"] == false
-    }));
+    assert_eq!(
+        structured["workflow_admission"]["called_method"],
+        "volicord.update_scope"
+    );
+    assert_eq!(
+        structured["workflow_admission"]["required_method"],
+        "volicord.record_shaping_checkpoint"
+    );
+    assert_eq!(
+        structured["workflow_admission"]["called_method_form"],
+        Value::Null
+    );
+    assert_eq!(
+        structured["workflow_admission"]["required_method_form"]["method"],
+        "volicord.record_shaping_checkpoint"
+    );
     assert_eq!(fixture.counts()?, before_rejected_application);
     Ok(())
 }
@@ -1812,36 +2114,44 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
     let task_id = intake.response_value["task_ref"]["record_id"]
         .as_str()
         .ok_or("advisor intake Task")?;
-    let scope = adapter.call_tool(
-        AgentToolId::UPDATE_SCOPE.wire_name(),
-        json!({
-            "task_id": task_id,
-            "baseline_ref": "baseline_advisor_guidance",
-            "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Read-only advisor guidance boundary.",
-                "affected_paths": [],
-                "effect_contract": {
-                    "allowed_effects": [
-                        "artifact_registration",
-                        "user_action_request",
-                        "evidence_update"
-                    ],
-                    "forbidden_effects": [
-                        "product_file_write",
-                        "run_recording",
-                        "sensitive_action",
-                        "external_network",
-                        "secret_access"
-                    ],
-                    "allowed_paths": [],
-                    "expected_outputs": ["Advice result"],
-                    "invariants": ["Observe only"],
-                    "evidence_expectations": [],
-                    "sensitive_action_expectations": []
-                }
-            }
-        }),
+    let context = fixture.mutation_context()?;
+    let mut scope_request = fixture.update_scope_request(UpdateScopeFixture {
+        request_id: "req_mcp_advisor_guidance_scope",
+        idempotency_key: "idem_mcp_advisor_guidance_scope",
+        dry_run: false,
+        expected_state_version: Some(1),
+        task_id,
+        operation: ChangeUnitOperation::CreateCurrent,
+        scope_summary: "Read-only advisor guidance boundary.",
+    });
+    scope_request
+        .change_unit
+        .fields
+        .insert("affected_paths".to_owned(), json!([]));
+    scope_request.change_unit.effect_contract =
+        Some(volicord_types::schema::ChangeUnitEffectContract {
+            allowed_effects: vec![
+                volicord_types::values::ChangeUnitEffectKind::ArtifactRegistration,
+                volicord_types::values::ChangeUnitEffectKind::UserActionRequest,
+                volicord_types::values::ChangeUnitEffectKind::EvidenceUpdate,
+            ],
+            forbidden_effects: vec![
+                volicord_types::values::ChangeUnitEffectKind::ProductFileWrite,
+                volicord_types::values::ChangeUnitEffectKind::RunRecording,
+                volicord_types::values::ChangeUnitEffectKind::SensitiveAction,
+                volicord_types::values::ChangeUnitEffectKind::ExternalNetwork,
+                volicord_types::values::ChangeUnitEffectKind::SecretAccess,
+            ],
+            allowed_paths: Vec::new(),
+            expected_outputs: vec!["Advice result".to_owned()],
+            invariants: vec!["Observe only".to_owned()],
+            evidence_expectations: Vec::new(),
+            sensitive_action_expectations: Vec::new(),
+        });
+    let scope = CoreService::for_mutation(&context).update_scope(
+        &context,
+        scope_request,
+        test_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(scope.response_value["base"]["response_kind"], "result");
     let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
@@ -1855,7 +2165,7 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
             "task_id": task_id,
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 1,
-                "baseline_ref": "baseline_advisor_guidance",
+                "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
                 "summary": "The bounded advice is ready to finalize.",
                 "implementation_boundary": "Provide advice without repository mutation.",
                 "gaps": [],
@@ -1871,11 +2181,7 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         .as_str()
         .ok_or("advisor shaping should expose its checkpoint")?;
 
-    let close = adapter.call_tool(
-        AgentToolId::CHECK_CLOSE.wire_name(),
-        json!({"task_id": task_id}),
-    )?;
-    let guidance = serde_json::to_string(&close.response_value)?;
+    let guidance = serde_json::to_string(&shaped.response_value["workflow"])?;
     assert!(guidance.contains("volicord.finalize_advice"));
     assert!(!guidance.contains("volicord.record_run"));
 
@@ -1888,7 +2194,7 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
             "shaping_checkpoint_id": checkpoint_id,
             "change_unit_id": change_unit_id,
             "scope_revision": 1,
-            "baseline_ref": "baseline_advisor_guidance",
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
             "user_action_resolution_ids": [],
             "result_summary": "The bounded advisory result is complete.",
             "result_refs": [],
@@ -1898,6 +2204,31 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         }),
     )?;
     assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+    assert_workflow_catalog_matches_allowed_actions(&finalized.response_value["workflow"]);
+
+    let before_disallowed = fixture.counts()?;
+    let disallowed = adapter
+        .call_tool(
+            AgentToolId::STAGE_ARTIFACT.wire_name(),
+            json!({
+                "action_form_ref": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "task_id": task_id,
+                "display_name": "must-not-stage.txt",
+                "content_type": "text/plain",
+                "redaction_state": "none",
+                "safe_bytes_or_notice": "Close review does not admit artifact staging."
+            }),
+        )
+        .expect_err("close_review must reject a method absent from its action catalog");
+    let disallowed = structured_tool_error(AgentToolId::STAGE_ARTIFACT.wire_name(), &disallowed);
+    assert_eq!(disallowed["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(disallowed["reached_core"], false);
+    assert_eq!(disallowed["committed"], false);
+    assert_eq!(
+        disallowed["workflow_admission"]["current_workflow_kind"],
+        "close_review"
+    );
+    assert_eq!(fixture.counts()?, before_disallowed);
 
     let before_omission = fixture.counts()?;
     let omitted = adapter
@@ -1955,47 +2286,33 @@ fn rejected_mutation_compact_output_reports_no_effect_and_exact_recovery(
 
     let responses = stdio_responses(&output)?;
     let result = &responses[1]["result"];
-    assert_eq!(result["isError"], false);
+    assert_eq!(result["isError"], true);
     let structured = &result["structuredContent"];
+    assert_eq!(structured["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(structured["reached_core"], false);
+    assert_eq!(structured["committed"], false);
     assert_eq!(
-        structured["method_result"]["base"]["response_kind"],
-        "rejected"
+        structured["workflow_admission"]["called_method"],
+        "volicord.prepare_write"
     );
     assert_eq!(
-        structured["method_result"]["base"]["effect_kind"],
-        "no_effect"
+        structured["workflow_admission"]["current_workflow_kind"],
+        "shaping_required"
     );
     assert_eq!(
-        structured["method_result"]["base"]["state_version"],
+        structured["workflow_admission"]["required_method"],
+        "volicord.record_shaping_checkpoint"
+    );
+    assert_eq!(
+        structured["authoritative_context"]["state_version"],
         state_version
     );
-    assert_eq!(
-        structured["method_result"]["errors"][0]["code"],
-        "CHANGE_UNIT_REQUIRED"
-    );
-    assert_eq!(structured["presentation"]["state_change"], "rejected");
-    assert_eq!(
-        structured["presentation"]["task_phase"],
-        json!({"mode": "work", "work_phase": "shaping"})
-    );
-    let recovery = structured["method_result"]["errors"][0]["details"]["recovery"]["owner_method"]
-        .as_str()
-        .expect("workflow rejection must expose one recovery owner");
-    assert!(structured["presentation"]["must_surface"]
-        .as_array()
-        .expect("rejection must carry mandatory presentation facts")
-        .iter()
-        .any(|fact| {
-            fact["fact_kind"] == "recovery_method" && fact["owner_method"] == recovery
-        }));
     let text = result["content"][0]["text"]
         .as_str()
         .expect("rejection compatibility text");
-    assert!(text.contains("rejected"));
-    assert!(text.contains("Core state is unchanged"));
-    for success_word in ["refreshed", "completed", "committed"] {
-        assert!(!text.to_ascii_lowercase().contains(success_word));
-    }
+    assert!(text.contains("not current"));
+    assert!(text.contains("Core was not reached"));
+    assert!(text.contains("state did not change"));
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -2005,17 +2322,19 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
     let fixture = CoreFixture::new("mcp-phase-transition-presentation")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, _) = create_task(&setup_adapter)?;
-    let scope = setup_adapter.call_tool(
-        AgentToolId::UPDATE_SCOPE.wire_name(),
-        json!({
-            "task_id": task_id,
-            "baseline_ref": "baseline_transition",
-            "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Current phase-transition boundary.",
-                "affected_paths": ["src/current.rs"]
-            }
+    let context = fixture.mutation_context()?;
+    let scope = CoreService::for_mutation(&context).update_scope(
+        &context,
+        fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_mcp_phase_transition_scope",
+            idempotency_key: "idem_mcp_phase_transition_scope",
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Current phase-transition boundary.",
         }),
+        test_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
         .as_str()
@@ -2028,7 +2347,7 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
             "task_id": task_id,
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
-            "baseline_ref": "baseline_transition",
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
             "summary": "The current implementation boundary is ready.",
             "implementation_boundary": "Change only the current scoped path.",
             "gaps": [],
@@ -2052,7 +2371,7 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
                 "shaping_checkpoint_id": checkpoint_id,
                 "change_unit_id": change_unit_id,
                 "scope_revision": 1,
-                "baseline_ref": "baseline_transition",
+                "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
                 "user_action_resolution_ids": []
             }),
         ),
@@ -2089,8 +2408,7 @@ fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-record-guard-cli-inbox")?;
     install_record_guard(&fixture)?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let (task_id, _, state_version) = create_implementation_task(&fixture)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -2159,8 +2477,7 @@ fn request_user_action_agent_projection_is_only_the_exact_pending_user_summary(
     const CONTEXT_MARKER: &str = "MODEL_VISIBLE_USER_ACTION_CONTEXT_MUST_NOT_ESCAPE";
 
     let fixture = CoreFixture::new("mcp-agent-user-action-summary")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let (task_id, _, state_version) = create_implementation_task(&fixture)?;
     let mut arguments = product_action_args(&fixture, &task_id, state_version);
     arguments["request"]["action"]["question"] = json!(QUESTION_MARKER);
     arguments["request"]["action"]["context"]["summary"] = json!(CONTEXT_MARKER);
@@ -2475,8 +2792,7 @@ fn stdio_rejects_tampered_summaries_and_noncanonical_full_form_before_delivery(
 #[test]
 fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-user-action-cli-inbox-resume")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let (task_id, _, state_version) = create_implementation_task(&fixture)?;
 
     let create_input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),

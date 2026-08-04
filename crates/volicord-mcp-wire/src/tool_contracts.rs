@@ -403,6 +403,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
                 &McpReconcileChangesArguments {
                     project_selector: None,
                     detail: MutationDetailLevel::Full,
+                    action_form_ref: example_action_form_ref(),
                     task_id: TaskId::new("task_reconcile_001"),
                     resolution_requests: Vec::new(),
                 },
@@ -421,7 +422,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
                 "Read current close readiness for one Task.",
                 &McpCheckCloseArguments {
                     project_selector: None,
-                    action_form_ref: Some(example_action_form_ref()),
+                    action_form_ref: example_action_form_ref(),
                     task_id: TaskId::new("task_close_001"),
                 },
                 Vec::new(),
@@ -570,7 +571,7 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
     let keep = McpUpdateScopeArguments {
         project_selector: None,
         detail: MutationDetailLevel::Summary,
-        action_form_ref: Some(example_action_form_ref()),
+        action_form_ref: example_action_form_ref(),
         task_id: TaskId::new("task_filter_001"),
         goal_summary: RequiredNullable::null(),
         scope_update: RequiredNullable::null(),
@@ -597,7 +598,7 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
             Value::Array(vec![Value::String(path.to_owned())]),
         );
         McpUpdateScopeArguments {
-            action_form_ref: Some(example_action_form_ref()),
+            action_form_ref: example_action_form_ref(),
             project_selector: None,
             detail: MutationDetailLevel::Summary,
             task_id: TaskId::new(task),
@@ -1033,6 +1034,7 @@ fn prepare_evidence_capture_examples() -> Vec<CanonicalSchemaExample> {
     let common = |capture| McpPrepareEvidenceCaptureArguments {
         project_selector: None,
         detail: MutationDetailLevel::Summary,
+        action_form_ref: example_action_form_ref(),
         task_id: TaskId::new("task_capture_001"),
         change_unit_id: ChangeUnitId::new("cu_capture_001"),
         baseline_ref: BaselineRef::new("baseline_capture_001"),
@@ -1100,8 +1102,9 @@ fn prepare_write_examples() -> Vec<CanonicalSchemaExample> {
         &McpPrepareWriteArguments {
             project_selector: None,
             detail: MutationDetailLevel::Full,
-            task_id: RequiredNullable::null(),
-            change_unit_id: RequiredNullable::null(),
+            action_form_ref: example_action_form_ref(),
+            task_id: TaskId::new("task_pref_001"),
+            change_unit_id: ChangeUnitId::new("cu_pref_001"),
             intended_operation: "Update the profile preference save flow.".to_owned(),
             intended_paths: vec!["src/preferences/profile-save.ts".to_owned()],
             product_file_write_intended: true,
@@ -1119,6 +1122,7 @@ fn stage_artifact_examples() -> Vec<CanonicalSchemaExample> {
         &McpStageArtifactArguments {
             project_selector: None,
             detail: MutationDetailLevel::Full,
+            action_form_ref: example_action_form_ref(),
             task_id: TaskId::new("task_trace_001"),
             display_name: "diagnostic_trace.log".to_owned(),
             content_type: "text/plain".to_owned(),
@@ -1139,6 +1143,7 @@ fn record_run_examples() -> Vec<CanonicalSchemaExample> {
         &McpRecordRunArguments {
             project_selector: None,
             detail: MutationDetailLevel::Summary,
+            action_form_ref: example_action_form_ref(),
             task_id: TaskId::new("task_run_002"),
             change_unit_id: ChangeUnitId::new("cu_run_002"),
             kind: RunKind::Implementation,
@@ -1219,6 +1224,7 @@ fn request_user_action_examples() -> Vec<CanonicalSchemaExample> {
             &McpRequestUserActionArguments {
                 project_selector: None,
                 detail: MutationDetailLevel::Summary,
+                action_form_ref: Some(example_action_form_ref()),
                 request: McpRequestUserActionOperation::Create {
                     task_id: TaskId::new("task_close_001"),
                     change_unit_id: RequiredNullable::null(),
@@ -1251,6 +1257,7 @@ fn request_user_action_examples() -> Vec<CanonicalSchemaExample> {
             &McpRequestUserActionArguments {
                 project_selector: None,
                 detail: MutationDetailLevel::Summary,
+                action_form_ref: None,
                 request: McpRequestUserActionOperation::Resume {
                     user_action_request_id: UserActionRequestId::new("uact_existing_001"),
                 },
@@ -1301,7 +1308,7 @@ fn close_task_examples() -> Vec<CanonicalSchemaExample> {
                 &McpCloseTaskArguments {
                     project_selector: None,
                     detail: MutationDetailLevel::Summary,
-                    action_form_ref: Some(example_action_form_ref()),
+                    action_form_ref: example_action_form_ref(),
                     task_id: TaskId::new(task_id),
                     intent,
                     close_reason: RequiredNullable::some(close_reason),

@@ -1,6 +1,6 @@
 //! Normal mutation result projection after authoritative refresh.
 
-use crate::action_form::{current_workflow_action_form, retry_contract};
+use crate::action_form::{retry_contract, workflow_action_form_catalog};
 use crate::adapter::McpAdapter;
 use crate::authority_refresh::{
     refresh_authority_status, validated_authority_refresh, MutationRefreshContext,
@@ -222,49 +222,53 @@ where
                     .ok()
             })
         });
+        let called_method = AgentToolId::from_wire_name(tool_name)
+            .ok()
+            .and_then(AgentToolId::method);
+        let retry_form = called_method
+            .and_then(|method| presentation.action_form_catalog.form(method))
+            .or_else(|| presentation.action_form_catalog.required_form());
         output.primary_text = rejected_compatibility_text(tool_name, &presentation);
-        output.structured_content = serde_json::to_value(McpWorkflowRejectedResponse {
-            method_result,
-            authority_receipt: authority.receipt.clone(),
-            workflow: authority.workflow.clone(),
-            authority_basis_mismatch: RequiredNullable::new(authority_basis_mismatch.map(
-                |mismatch| McpAuthorityBasisMismatch {
-                    field: mismatch.field,
-                    expected: mismatch.expected,
-                    received: mismatch.received,
-                    state_change_applied: false,
-                    current_action_form: presentation.current_action_form.clone(),
-                },
-            )),
-            retry_contract: RequiredNullable::new(
-                presentation
-                    .current_action_form
-                    .as_ref()
-                    .map(|form| retry_contract(form, Vec::new())),
-            ),
-            failure: McpArgumentFailurePresentation {
-                method_committed: false,
-                reached_core: true,
-                current_task_phase: RequiredNullable::some(authority.work_phase),
-                current_state_version: RequiredNullable::some(authority.receipt.state_version),
-                checkpoint_recorded: false,
-                user_action_created: false,
-                product_repository_changed: false,
-                core_state_unchanged: true,
-                current_baseline_valid: RequiredNullable::some(true),
-                exact_retry_action: RequiredNullable::new(
-                    presentation.current_action_form.as_ref().map(|form| {
+        output.structured_content =
+            serde_json::to_value(McpWorkflowRejectedResponse {
+                method_result,
+                authority_receipt: authority.receipt.clone(),
+                workflow: authority.workflow.clone(),
+                authority_basis_mismatch: RequiredNullable::new(authority_basis_mismatch.map(
+                    |mismatch| McpAuthorityBasisMismatch {
+                        field: mismatch.field,
+                        expected: mismatch.expected,
+                        received: mismatch.received,
+                        state_change_applied: false,
+                        called_method_form: RequiredNullable::new(called_method.and_then(
+                            |method| presentation.action_form_catalog.form(method).cloned(),
+                        )),
+                    },
+                )),
+                retry_contract: RequiredNullable::new(retry_form.map(|form| {
+                    retry_contract(form, &presentation.action_form_catalog, Vec::new())
+                })),
+                failure: McpArgumentFailurePresentation {
+                    method_committed: false,
+                    reached_core: true,
+                    current_task_phase: RequiredNullable::some(authority.work_phase),
+                    current_state_version: RequiredNullable::some(authority.receipt.state_version),
+                    checkpoint_recorded: false,
+                    user_action_created: false,
+                    product_repository_changed: false,
+                    core_state_unchanged: true,
+                    current_baseline_valid: RequiredNullable::some(true),
+                    exact_retry_action: RequiredNullable::new(retry_form.map(|form| {
                         format!(
                             "retry {} with the current action form",
                             form.method.as_str()
                         )
-                    }),
-                ),
-                repair_required: false,
-            },
-            presentation,
-        })
-        .map_err(McpAdapterError::Json)?;
+                    })),
+                    repair_required: false,
+                },
+                presentation,
+            })
+            .map_err(McpAdapterError::Json)?;
         output.mutation_refresh_context = None;
         return Ok(output);
     }
@@ -574,10 +578,10 @@ fn workflow_presentation(
         blocker_summary,
         required_user_action: required_user_action.into(),
         must_surface,
-        current_action_form: RequiredNullable::new(current_workflow_action_form(
+        action_form_catalog: workflow_action_form_catalog(
             &authority.receipt.project_id,
             &authority.workflow,
-        )),
+        ),
     })
 }
 

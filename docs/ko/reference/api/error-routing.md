@@ -65,6 +65,13 @@ Known MCP tool의 descriptor 유래 인자 issue는 구조화된 MCP invalid-arg
 남습니다. Descriptor에는 유효하지만 정확한 Rust request type으로 decode할 수 없는 값은
 내부 schema contract 실패입니다. 이를 사용자 field나 다른 union branch로 다시 분류하지
 않습니다. 두 경로 모두 `ToolRejectedResponse`를 만들거나 Core에 도달하지 않습니다.
+Task 상태 결속 MCP 호출의 메서드 admission과 정확한 메서드별 action form 일치 검사도
+Core 실행 전 adapter 실패입니다. 현재 catalog에 없는 메서드는 typed
+`WORKFLOW_ACTION_NOT_ALLOWED` MCP 응답을 사용하고, 허용된 메서드에서 form이 없거나
+일치하지 않으면 `MCP_ACTION_FORM_STALE`을 사용합니다. 두 응답 모두
+`reached_core=false`, `committed=false`, 상태 변경 없음 상태를 보존하고 [MCP
+전송](../mcp-transport.md#public-argument-projection)이 담당하는 현재 workflow와 form 복구
+사실을 담습니다.
 어떤 메서드 결과도 만들 수 없게 하는 typed Core 운영 불가도 이 분기 밖에 있으며 호출
 어댑터가 변환합니다.
 
