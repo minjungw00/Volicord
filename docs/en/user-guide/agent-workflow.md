@@ -53,6 +53,17 @@ close review. A later response can choose a different route when the recorded
 facts change. Close blockers remain blocker-local remediation data and never
 replace current workflow progression.
 
+When an Agent-owned `required_action` is current, use its tagged
+`current_action_form`. Copy `fixed_arguments` exactly, supply only the listed
+Agent-authored inputs, and send the exact `form_ref` as `action_form_ref`.
+Never reconstruct checkpoint lineage, scope revision, baseline, Change Unit,
+or resolution coordinates. If validation fails, use the MCP schema,
+authoritative argument context, and retry contract. Preserve JSON primitive
+types and the selected union branch; an argument error does not imply Task
+corruption. Do not edit Product Repository files before the required authority
+mutation succeeds, and report failed checkpoint or UserAction creation as no
+creation and no Core state change.
+
 ## Keep Agent Work And User Judgment Separate
 
 | Moment | Agent responsibility | User responsibility |

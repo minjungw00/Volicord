@@ -43,6 +43,15 @@ The request directly supplies `checkpoint_operation`, `scope_revision`,
 nullable `baseline_ref`, `summary`, nullable `implementation_boundary`, typed
 `gaps`, `source_refs`, and `evidence_refs`. There is no outer operation union.
 
+The current MCP action form is state-bound. For `create_initial` it fixes the
+project selector, Task, exact `create_initial` operation, scope revision, actual
+nullable baseline, and expected state version. It suggests empty source and
+evidence refs and leaves only summary, required-nullable implementation
+boundary, and typed gaps as required Agent input. For `replace_current` it also
+fixes the exact current and predecessor checkpoint refs, retirement refs,
+carry-forward refs, and stale-application refs. MCP requires the form's exact
+`action_form_ref` before Core invocation.
+
 `checkpoint_operation.operation=create_initial` requires no current checkpoint.
 `checkpoint_operation.operation=replace_current` compare-and-swaps the exact
 `expected_current_checkpoint_id`. The replacement must provide the complete

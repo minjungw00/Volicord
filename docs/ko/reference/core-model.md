@@ -658,6 +658,14 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 
 별도 QA와 외부 검증 작업 흐름은 [범위](scope.md)와 영향을 받는 담당 문서가 지원한다고 정의하지 않는 한 별도의 기준 권한 기록이 아닙니다.
 
+Core는 에이전트 소유 필수 행동을 중립적인 `WorkflowActionIntent`로 선택합니다. 이
+구조에는 메서드, 예상 상태 버전, 정확한 고정 권한 좌표, 필수 참조가 들어갑니다. 좌표는
+현재 권한에서만 나오며 checkpoint 기록에는 정확한 계승 관계와 복구 집합을, advisor
+finalization에는 정확한 checkpoint, 비쓰기 Change Unit, 범위, 기준선, 현재 resolution
+ID를 포함합니다. Core는 MCP JSON 입력 slot이나 action-form digest를 소유하지 않습니다.
+schema 검증 뒤 권한 좌표가 다르면 typed `expected`와 `received`를 가진 효과 없는
+`AuthorityBasisMismatch`이며, 그 사실만으로 유효한 Task가 손상된 것은 아닙니다.
+
 ## 8. 쓰기 티켓
 
 쓰기 티켓은 제안된 제품 파일 변경 하나 또는 유효 `sensitive` 통제 아래의 정확한

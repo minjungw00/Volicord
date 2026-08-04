@@ -45,6 +45,11 @@ non-null `baseline_ref`, 완전한 `user_action_resolution_ids`, `result_summary
 `result_refs`와 `evidence_refs`, `residual_risks`, `recovery_constraints`를 직접 받습니다.
 바깥쪽 operation union은 없습니다.
 
+현재 MCP action form은 프로젝트, Task, checkpoint, 비쓰기 Change Unit, 범위 리비전,
+기준선, 완전한 현재 resolution ID, 예상 상태 버전을 고정합니다. Core 호출 전에 정확한
+`action_form_ref`가 필요합니다. 결과 summary, 결과 ref, evidence ref, residual risk,
+recovery constraint만 에이전트가 작성하며 권한 좌표를 다시 조립하지 않습니다.
+
 Task는 `mode=advisor`, `work_phase=shaping`이어야 합니다. Checkpoint는 current gap이 없는
 정확한 현재 structurally ready checkpoint여야 합니다. Change Unit, scope revision,
 baseline도 정확한 현재 값이어야 합니다. 모든 advisor 소유 gap에는 정확한 현재 accepted

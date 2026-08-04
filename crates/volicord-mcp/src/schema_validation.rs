@@ -43,11 +43,15 @@ pub(crate) fn validate_mcp_tool_arguments(
         issues.push(issue);
     }
     Err(McpAdapterError::InvalidParams {
+        code: volicord_mcp_wire::McpToolErrorCode::InvalidArguments,
         tool_name: tool_name.to_owned(),
         issues,
         truncated,
         selected_variant,
-        canonical_example,
+        canonical_example: canonical_example.map(Box::new),
+        authoritative_context: None,
+        retry_contract: None,
+        failure: None,
     })
 }
 

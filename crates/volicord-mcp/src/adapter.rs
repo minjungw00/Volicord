@@ -1,3 +1,5 @@
+use crate::action_form::{current_workflow_action_form, retry_contract};
+use crate::authority_refresh::{validated_authority_refresh, MutationRefreshContext};
 use crate::constants::DEFAULT_LOCALE;
 use crate::errors::McpAdapterError;
 use crate::mutation_admission::with_mcp_runtime_home_mutation;
@@ -22,12 +24,13 @@ use volicord_core::pipeline::{
 };
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_mcp_wire::{
-    status_include, McpAdvanceTaskArguments, McpCheckCloseArguments, McpCloseTaskArguments,
+    status_include, AuthoritativeArgumentContext, McpAdvanceTaskArguments,
+    McpArgumentFailurePresentation, McpCheckCloseArguments, McpCloseTaskArguments,
     McpFinalizeAdviceArguments, McpGetOperationResultArguments, McpIntakeArguments,
     McpPrepareEvidenceCaptureArguments, McpPrepareWriteArguments, McpReconcileChangesArguments,
     McpRecordRunArguments, McpRecordShapingCheckpointArguments, McpRequestUserActionArguments,
-    McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments,
-    McpUpdateScopeArguments,
+    McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments, McpToolErrorCode,
+    McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
@@ -47,7 +50,8 @@ use volicord_store::integration_verification::{
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{
-    AgentRuntimeSessionId, AgentSessionId, IdempotencyKey, ProjectId, RequestId, TaskId,
+    AgentRuntimeSessionId, AgentSessionId, BaselineRef, IdempotencyKey, ProjectId, RequestHash,
+    RequestId, TaskId,
 };
 use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, IntegrationVerificationIdArguments,
@@ -59,7 +63,7 @@ use volicord_types::methods::{
     RecordShapingCheckpointRequest, RequestUserActionRequest, RequestUserActionResponse,
     StageArtifactRequest, StatusRequest, UpdateScopeRequest,
 };
-use volicord_types::schema::{RequiredNullable, ToolEnvelope};
+use volicord_types::schema::{RequiredNullable, ToolEnvelope, WorkflowProjection};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
     IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
@@ -378,7 +382,9 @@ impl McpAdapter {
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let tool_name = tool.wire_name();
-        validate_mcp_tool_arguments(tool_name, &params)?;
+        if let Err(error) = validate_mcp_tool_arguments(tool_name, &params) {
+            return Err(self.enrich_invalid_arguments(context, tool, &params, session, error));
+        }
         match tool.method() {
             Some(MethodName::Intake) => self.call_intake(context, tool_name, params, session),
             Some(MethodName::UpdateScope) => {
@@ -425,6 +431,143 @@ impl McpAdapter {
                 Err(McpAdapterError::UnknownTool(tool_name.to_owned()))
             }
         }
+    }
+
+    fn enrich_invalid_arguments(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        tool: AgentToolId,
+        params: &Value,
+        session: Option<AgentSessionCoordinates<'_>>,
+        mut error: McpAdapterError,
+    ) -> McpAdapterError {
+        let authoritative_context = self
+            .load_authoritative_argument_context(context, params, session)
+            .unwrap_or_else(unloaded_authoritative_argument_context);
+        if let McpAdapterError::InvalidParams {
+            issues,
+            authoritative_context: error_context,
+            retry_contract: error_retry_contract,
+            failure,
+            ..
+        } = &mut error
+        {
+            let invalid_paths = issues
+                .iter()
+                .map(|issue| issue.path.clone())
+                .collect::<Vec<_>>();
+            *error_retry_contract = authoritative_context
+                .current_action_form
+                .as_ref()
+                .filter(|form| form.method == tool.method().unwrap_or(form.method))
+                .map(|form| Box::new(retry_contract(form, invalid_paths)));
+            *failure = Some(Box::new(argument_failure_presentation(
+                &authoritative_context,
+                false,
+            )));
+            *error_context = Some(Box::new(authoritative_context));
+        }
+        error
+    }
+
+    fn load_authoritative_argument_context(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        params: &Value,
+        session: Option<AgentSessionCoordinates<'_>>,
+    ) -> Option<AuthoritativeArgumentContext> {
+        let object = params.as_object()?;
+        let project_selector = match object.get("project_selector") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(value)) => Some(value.as_str()),
+            Some(_) => return None,
+        };
+        let task_id = object
+            .get("task_id")
+            .and_then(Value::as_str)
+            .map(TaskId::new)?;
+        let project_id = self.select_project(context, project_selector).ok()?;
+        let refresh_context = MutationRefreshContext {
+            project_id: project_id.clone(),
+            task_id: task_id.clone(),
+        };
+        let response = self
+            .refresh_authority_status(context, &project_id, &task_id, session)
+            .ok()?;
+        let authority = validated_authority_refresh(&refresh_context, &response).ok()?;
+        let scope_revision = response
+            .response_value
+            .pointer("/active_task/scope_revision")
+            .and_then(Value::as_u64);
+        let baseline_ref = response
+            .response_value
+            .pointer("/active_task/baseline_ref")
+            .and_then(|value| serde_json::from_value::<Option<BaselineRef>>(value.clone()).ok())
+            .flatten();
+        let current_checkpoint_ref = authority
+            .workflow
+            .checkpoint()
+            .map(|checkpoint| checkpoint.checkpoint_ref.clone());
+        let current_action_form = current_workflow_action_form(&project_id, &authority.workflow);
+        Some(AuthoritativeArgumentContext {
+            context_loaded: true,
+            project_id: RequiredNullable::some(project_id),
+            state_version: RequiredNullable::some(authority.receipt.state_version),
+            task_mode: RequiredNullable::some(authority.task_mode),
+            work_phase: RequiredNullable::some(authority.work_phase),
+            scope_revision: RequiredNullable::new(scope_revision),
+            baseline_ref: RequiredNullable::new(baseline_ref),
+            current_checkpoint_ref: RequiredNullable::new(current_checkpoint_ref),
+            workflow: RequiredNullable::some(authority.workflow),
+            current_action_form: RequiredNullable::new(current_action_form),
+        })
+    }
+
+    fn require_current_action_form(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        method: MethodName,
+        project_id: &ProjectId,
+        task_id: &TaskId,
+        supplied: Option<&RequestHash>,
+        session: Option<AgentSessionCoordinates<'_>>,
+    ) -> Result<(), McpAdapterError> {
+        let params = serde_json::json!({
+            "project_selector": project_id,
+            "task_id": task_id,
+        });
+        let authoritative_context = self
+            .load_authoritative_argument_context(context, &params, session)
+            .unwrap_or_else(unloaded_authoritative_argument_context);
+        let current = authoritative_context.current_action_form.as_ref();
+        let Some(current) = current.filter(|form| form.method == method) else {
+            return Ok(());
+        };
+        if supplied.is_some_and(|supplied| &current.form_ref == supplied) {
+            return Ok(());
+        }
+        let retry = Some(Box::new(retry_contract(
+            current,
+            vec!["/action_form_ref".to_owned()],
+        )));
+        Err(McpAdapterError::InvalidParams {
+            code: McpToolErrorCode::ActionFormStale,
+            tool_name: method.as_str().to_owned(),
+            issues: vec![McpToolErrorIssue::new(
+                "/action_form_ref",
+                McpToolIssueCode::ActionFormMismatch,
+                "action_form_ref does not match the current state-bound workflow action form",
+            )],
+            truncated: false,
+            selected_variant: None,
+            canonical_example: None,
+            retry_contract: retry,
+            failure: Some(Box::new(argument_failure_presentation(
+                &authoritative_context,
+                false,
+            ))),
+            authoritative_context: Some(Box::new(authoritative_context)),
+        })
     }
 
     fn call_intake(
@@ -474,6 +617,14 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
+        self.require_current_action_form(
+            context,
+            MethodName::UpdateScope,
+            &prepared.project_id,
+            &task_id,
+            prepared.arguments.action_form_ref.as_ref(),
+            session,
+        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -544,6 +695,14 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpRecordShapingCheckpointArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
+        self.require_current_action_form(
+            context,
+            MethodName::RecordShapingCheckpoint,
+            &prepared.project_id,
+            &task_id,
+            Some(&prepared.arguments.action_form_ref),
+            session,
+        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -582,6 +741,14 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpFinalizeAdviceArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
+        self.require_current_action_form(
+            context,
+            MethodName::FinalizeAdvice,
+            &prepared.project_id,
+            &task_id,
+            Some(&prepared.arguments.action_form_ref),
+            session,
+        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -622,6 +789,14 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpAdvanceTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
+        self.require_current_action_form(
+            context,
+            MethodName::AdvanceTask,
+            &prepared.project_id,
+            &task_id,
+            Some(&prepared.arguments.action_form_ref),
+            session,
+        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -1021,6 +1196,14 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
+        self.require_current_action_form(
+            context,
+            MethodName::CheckClose,
+            &prepared.project_id,
+            &task_id,
+            prepared.arguments.action_form_ref.as_ref(),
+            session,
+        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -1047,6 +1230,14 @@ impl McpAdapter {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
+        self.require_current_action_form(
+            context,
+            MethodName::CloseTask,
+            &prepared.project_id,
+            &task_id,
+            prepared.arguments.action_form_ref.as_ref(),
+            session,
+        )?;
         let envelope = self.generated_envelope(
             context,
             tool_name,
@@ -1683,6 +1874,47 @@ fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> 
     let tool = AgentToolId::from_wire_name(tool_name).ok()?;
     matches!(tool.owner(), AgentToolOwner::CoreMethod(_))
         .then(|| tool.category().operation_category())
+}
+
+fn unloaded_authoritative_argument_context() -> AuthoritativeArgumentContext {
+    AuthoritativeArgumentContext {
+        context_loaded: false,
+        project_id: RequiredNullable::null(),
+        state_version: RequiredNullable::null(),
+        task_mode: RequiredNullable::null(),
+        work_phase: RequiredNullable::null(),
+        scope_revision: RequiredNullable::null(),
+        baseline_ref: RequiredNullable::null(),
+        current_checkpoint_ref: RequiredNullable::null(),
+        workflow: RequiredNullable::<WorkflowProjection>::null(),
+        current_action_form: RequiredNullable::null(),
+    }
+}
+
+fn argument_failure_presentation(
+    context: &AuthoritativeArgumentContext,
+    reached_core: bool,
+) -> McpArgumentFailurePresentation {
+    McpArgumentFailurePresentation {
+        method_committed: false,
+        reached_core,
+        current_task_phase: context.work_phase.clone(),
+        current_state_version: context.state_version.clone(),
+        checkpoint_recorded: false,
+        user_action_created: false,
+        product_repository_changed: false,
+        core_state_unchanged: true,
+        current_baseline_valid: RequiredNullable::new(context.context_loaded.then_some(true)),
+        exact_retry_action: RequiredNullable::new(context.current_action_form.as_ref().map(
+            |form| {
+                format!(
+                    "retry {} with the current action form",
+                    form.method.as_str()
+                )
+            },
+        )),
+        repair_required: false,
+    }
 }
 
 struct PreparedMcpArguments<T> {

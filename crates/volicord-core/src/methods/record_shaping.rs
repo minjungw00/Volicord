@@ -650,11 +650,34 @@ fn plan_record_shaping_checkpoint(
     }
     let task_baseline = task.shaping.baseline_ref.as_ref();
     if baseline_ref.as_ref() != task_baseline {
-        return shaping_validation(
-            &request,
-            project_state,
+        let message = if task_baseline.is_none() && baseline_ref.is_some() {
+            "Expected baseline_ref=null. Received a non-null BaselineRef. The Task state is valid; retry against the current action form."
+                .to_owned()
+        } else {
+            "baseline_ref must match the current Task baseline; retry against the current action form"
+                .to_owned()
+        };
+        return crate::method_rejection::authority_basis_mismatch_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
             "baseline_ref",
-            "baseline_ref must match the current Task baseline",
+            task_baseline.map_or(
+                volicord_types::schema::AuthorityBasisValue::Null(()),
+                |baseline| {
+                    volicord_types::schema::AuthorityBasisValue::String(
+                        baseline.as_str().to_owned(),
+                    )
+                },
+            ),
+            baseline_ref.as_ref().map_or(
+                volicord_types::schema::AuthorityBasisValue::Null(()),
+                |baseline| {
+                    volicord_types::schema::AuthorityBasisValue::String(
+                        baseline.as_str().to_owned(),
+                    )
+                },
+            ),
+            message,
         );
     }
     let current_change_unit = store

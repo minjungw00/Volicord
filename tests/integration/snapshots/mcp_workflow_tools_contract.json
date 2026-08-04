@@ -93,6 +93,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -127,6 +129,8 @@
           "IntakeResult",
           "IntakeResultBase",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -156,6 +160,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -188,7 +193,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -203,7 +213,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d81b35a2d292bee90c7ff4e859fd18a310d09f3f67235cd393ca682c1362659d"
+        "sha256": "sha256:4e8e982617154df5187dd257e63225f46e46c58fa28634bb7f132b090055885d"
       }
     },
     {
@@ -229,6 +239,7 @@
         ],
         "root_properties": [
           "acceptance_criteria",
+          "action_form_ref",
           "autonomy_boundary",
           "baseline_ref",
           "change_unit",
@@ -245,7 +256,7 @@
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:027641c84a92f562c8a97016b4fd9f5468dfadc9ec55b9a5c06bdd63fdcbbdc9"
+        "sha256": "sha256:fa297fe11fc54b8edd55fcf9c656301062cb3fdc3cd58bc31415445e846ed4cf"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -259,6 +270,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -291,6 +304,8 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -321,6 +336,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -355,7 +371,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -370,7 +391,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3e0d6b3dcb3f1ef7140cccfbcf07c91a0de7fc787a1bbb4bc2af4836a3ad0026"
+        "sha256": "sha256:616c4f6e6ceda68e2832b3475adcfc1ed94fcc9519f59f0a718fd168728acf9f"
       }
     },
     {
@@ -415,12 +436,15 @@
           "UtcTimestamp"
         ],
         "root_properties": [
+          "action_form_ref",
           "baseline_ref",
           "checkpoint_operation",
+          "current_checkpoint_ref",
           "detail",
           "evidence_refs",
           "gaps",
           "implementation_boundary",
+          "predecessor_checkpoint_ref",
           "project_selector",
           "scope_revision",
           "source_refs",
@@ -428,6 +452,7 @@
           "task_id"
         ],
         "root_required": [
+          "action_form_ref",
           "baseline_ref",
           "checkpoint_operation",
           "implementation_boundary",
@@ -435,7 +460,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:222596f1fc16bde58757b0cd4c1800d5cc51c7d1a2fcd4e9e99bf2df96a04ddc"
+        "sha256": "sha256:e08e8de386317734088116e155759a4bfb20e452ad43a67809fd814625ec0af5"
       },
       "name": "volicord.record_shaping_checkpoint",
       "output_schema": {
@@ -449,6 +474,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -485,6 +512,8 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -518,6 +547,7 @@
           "RedactionState",
           "RepositoryFileSource",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpoint",
           "ShapingCheckpointGap",
@@ -554,7 +584,12 @@
           "UserContextSource",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -570,7 +605,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e0fe60015b5293c55f25cae3612ea0ad3ef32bc435708a52866efb2e740f7ebb"
+        "sha256": "sha256:48a7305904058ac8db69e7ff02e98769b256156dc7294e5f515b70b77277047a"
       }
     },
     {
@@ -589,6 +624,7 @@
           "StateRecordRef"
         ],
         "root_properties": [
+          "action_form_ref",
           "baseline_ref",
           "change_unit_id",
           "detail",
@@ -604,6 +640,7 @@
           "user_action_resolution_ids"
         ],
         "root_required": [
+          "action_form_ref",
           "baseline_ref",
           "change_unit_id",
           "result_summary",
@@ -611,7 +648,7 @@
           "shaping_checkpoint_id",
           "task_id"
         ],
-        "sha256": "sha256:62cf06a2e066674627a8833e609c188a27a8ef8611250781a195a01c99e50744"
+        "sha256": "sha256:131d6f02ae35f06bfe0692bca88394fdfe5d727d2838f49fa121ae16d0a3d3fd"
       },
       "name": "volicord.finalize_advice",
       "output_schema": {
@@ -625,6 +662,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -663,6 +702,8 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpFinalizeAdviceCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
@@ -694,6 +735,7 @@
           "RedactionState",
           "RepositoryFileSource",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpoint",
           "ShapingCheckpointGap",
@@ -730,7 +772,12 @@
           "UserContextSource",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -746,7 +793,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:19d03b0219676eaea918ca62a174d03d32443e56674f8eaf8f3cccf1f9a6dcb3"
+        "sha256": "sha256:9594f858c0fccffe7ce08cb407a33b806a711cee02907fd84b2d320b73e35772"
       }
     },
     {
@@ -762,6 +809,7 @@
           "MutationDetailLevel"
         ],
         "root_properties": [
+          "action_form_ref",
           "baseline_ref",
           "change_unit_id",
           "detail",
@@ -772,13 +820,14 @@
           "user_action_resolution_ids"
         ],
         "root_required": [
+          "action_form_ref",
           "baseline_ref",
           "change_unit_id",
           "scope_revision",
           "shaping_checkpoint_id",
           "task_id"
         ],
-        "sha256": "sha256:1a0cc84ebf58e0da85035ce151b6985459d97d3b48feb27c19084db017f349cf"
+        "sha256": "sha256:821e6dd48186d4d636054527ae4cb5ee57ee09f6f64fd7dc1a4b90792f8b410d"
       },
       "name": "volicord.advance_task",
       "output_schema": {
@@ -794,6 +843,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -827,6 +878,8 @@
           "GuaranteeLevel",
           "McpAdvanceTaskCompactResult",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -856,6 +909,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -888,7 +942,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -903,7 +962,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:66ca4d622f9beb9f8d886b53e9331687c56770a9897f0c51ca8cc5722dcb4dd8"
+        "sha256": "sha256:9ef56ac117ba0eed9c84d7224b4257120ad63461b4c515e2be2b4daf38e12c0c"
       }
     },
     {
@@ -942,6 +1001,7 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -973,6 +1033,7 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -993,6 +1054,7 @@
           "RequestedControlLevel",
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
+          "RetryContract",
           "RiskAcceptanceCoverage",
           "RunKind",
           "SensitiveActionRequirement",
@@ -1023,12 +1085,18 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "ToolResultOrRejected_for_StatusResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -1043,7 +1111,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4e1d6a6b2320c175107968f5cbde0e35e333d67ebf548ac634446350ea90e1ad"
+        "sha256": "sha256:4f133daefdee893852aa690fd4f00fdbff17c14258fa77218a4a68d6b426af71"
       }
     },
     {
@@ -1072,6 +1140,7 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "EmptyEventRefs",
           "ErrorCode",
@@ -1081,6 +1150,7 @@
           "GetOperationResultResultBase",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -1091,6 +1161,7 @@
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
           "OperationResultRef",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -1109,7 +1180,12 @@
           "ToolRejectedResponse",
           "UserActionStatus",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -1118,7 +1194,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ce024f851ed3d9e92fbb6fa41bb1a45fda50967829b732ac8baed1b00778b9e2"
+        "sha256": "sha256:42132c1a9217a6db73d184eaaba98c25dab9865432579c8ef94abcb822230db8"
       }
     },
     {
@@ -1157,6 +1233,8 @@
       "output_schema": {
         "definitions": [
           "ActorSource",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CloseReadinessBlocker",
@@ -1176,6 +1254,8 @@
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -1205,6 +1285,7 @@
           "PrepareEvidenceCaptureResult",
           "PrepareEvidenceCaptureResultBase",
           "PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -1228,7 +1309,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -1237,7 +1323,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9be844e7b521d3c05cf3cdebf2faef623aa42c503bf684ee72a8bdb9e589f8f9"
+        "sha256": "sha256:2c68514ab94e6e81d741a0ede4fd97215f29b8f8b68f5170b28e538cd2bd9ed9"
       }
     },
     {
@@ -1284,6 +1370,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -1318,6 +1406,8 @@
           "JudgmentKind",
           "JudgmentPresentation",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -1351,6 +1441,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "SensitiveActionScope",
           "ShapingCheckpointGap",
@@ -1387,7 +1478,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -1409,7 +1505,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:932204346511837b2a2de11c5dbaea83bdf144e886091c6dd90dcaac77aab27e"
+        "sha256": "sha256:fe561009367e651672b1b18ca55a7584b85fd017c6f2abcc47c792e6feb6d305"
       }
     },
     {
@@ -1450,6 +1546,8 @@
       "output_schema": {
         "definitions": [
           "ActorSource",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CloseReadinessBlocker",
@@ -1466,6 +1564,8 @@
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -1493,6 +1593,7 @@
           "PlannedEffect",
           "PreviewableToolResponse_for_StageArtifactResult",
           "RedactionState",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -1520,7 +1621,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -1529,7 +1635,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b0c69541d0f66e01aaeafd5afed3ba30d01568f5ae6a3d6254ad6733eb97b1a2"
+        "sha256": "sha256:f171a3e4e2a87564810cb3d30238511d801fa00cf237bb1497389063c7bc985a"
       }
     },
     {
@@ -1613,6 +1719,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -1658,6 +1766,8 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -1694,6 +1804,7 @@
           "RepositoryFileSource",
           "RequestedControlLevel",
           "ResidualRisk",
+          "RetryContract",
           "RunKind",
           "RunSummary",
           "SensitiveActionRequirement",
@@ -1731,7 +1842,12 @@
           "UserContextSource",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -1746,7 +1862,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f9915adfbe940efd8ae66e334777865b8046dfda65a015499642eb28e6311510"
+        "sha256": "sha256:1811a08c360e1152c66fccc1032131c311927ccdff190f5d2ea9cfa114f7ef34"
       }
     },
     {
@@ -1801,6 +1917,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -1835,6 +1953,8 @@
           "GuaranteeLevel",
           "JudgmentResolutionOutcome",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -1870,6 +1990,7 @@
           "RequestUserActionResult",
           "RequestUserActionResultBase",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -1904,7 +2025,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -1919,7 +2045,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fe481ac584bed9b9e75ae59c226148ad11c52455aa6c96d3e60830071fdbc010"
+        "sha256": "sha256:608d41cb5fcffc1eff8d7e4cb6802514564471349273126d8773e3cf14ed7b8c"
       }
     },
     {
@@ -1959,6 +2085,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -1991,6 +2119,8 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -2024,6 +2154,7 @@
           "ReconcileChangesResultBase",
           "RedactionState",
           "RequestedControlLevel",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -2062,7 +2193,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -2077,7 +2213,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:105d1ba07916972f7f63c13cecb54c7ea9fea01edfaaefab383e50ddbadfb72b"
+        "sha256": "sha256:5f4d716bd8053980f9e2523210224a66a87b01f817e89ca25a0384ce70c54ab5"
       }
     },
     {
@@ -2091,13 +2227,14 @@
       "input_schema": {
         "definitions": [],
         "root_properties": [
+          "action_form_ref",
           "project_selector",
           "task_id"
         ],
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:6b577d38f3ea05790d7a7484d0bb6ac8aad24722598651dda87d119b97ae41f0"
+        "sha256": "sha256:ba988381c9c654615a93055f228e95b2f1cca97d4a633e4a3f1db2471712bb69"
       },
       "name": "volicord.check_close",
       "output_schema": {
@@ -2111,6 +2248,7 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -2142,6 +2280,7 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -2161,6 +2300,7 @@
           "RequestedControlLevel",
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
+          "RetryContract",
           "RiskAcceptanceCoverage",
           "RunKind",
           "SensitiveActionRequirement",
@@ -2193,7 +2333,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -2208,7 +2353,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:46993e2fb73cce81d64bb0bb90af235e74af18bafb5c6f843a2b98c87b655df4"
+        "sha256": "sha256:2380384f2da5e2cc7b10e50818731442219f37fd39b5e6c2a52389f5238a951e"
       }
     },
     {
@@ -2226,6 +2371,7 @@
           "MutationDetailLevel"
         ],
         "root_properties": [
+          "action_form_ref",
           "close_reason",
           "detail",
           "intent",
@@ -2238,7 +2384,7 @@
           "intent",
           "task_id"
         ],
-        "sha256": "sha256:a4cc93fa07337aed59bd847ccb7271f12b964e61a4e5dac380ff9944c8fb5dae"
+        "sha256": "sha256:108285a126cdf4907eea7c6566eca72d843bf49db8574321044fa83cfeae3c05"
       },
       "name": "volicord.close_task",
       "output_schema": {
@@ -2252,6 +2398,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
+          "AuthorityBasisValue",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -2287,6 +2435,8 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
+          "McpArgumentFailurePresentation",
+          "McpAuthorityBasisMismatch",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
           "McpMutationProjectionErrorCode",
@@ -2321,6 +2471,7 @@
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
+          "RetryContract",
           "RiskAcceptanceCoverage",
           "RunKind",
           "SensitiveActionRequirement",
@@ -2356,7 +2507,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -2371,7 +2527,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1a2c8c99bf45661736cceb29b4d8e98efddd64205357cf5bfd4c4c19b2574303"
+        "sha256": "sha256:601b13b76059e87dcb529e432c5e64aee0b639c153210be3be0402e291c3eb4e"
       }
     },
     {
@@ -2392,14 +2548,39 @@
       "output_schema": {
         "definitions": [
           "AgentConnectionMode",
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
+          "McpArgumentFailurePresentation",
           "McpListProjectItem",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolIssueCode"
+          "McpToolIssueCode",
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:75f8bd67e2617e1d1c24e9416edd25b2ce6e4d9b84fd5adceba8e280e466c2c7"
+        "sha256": "sha256:de117f930765d289f1cf29fae19371457de09a84d153db686791cc0d07375b96"
       }
     },
     {
@@ -2421,20 +2602,45 @@
       "name": "volicord.begin_integration_verification",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
           "GuardIntegrationVerificationFinding",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
-          "UtcTimestamp"
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "UtcTimestamp",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6b347d07b8e66cf8c534fadcca119785be42b945c37ee836929111250c27079e"
+        "sha256": "sha256:e39160d15aa97a1c45e708399278ecf7a58cf0dcef52cc5bb63b447956e11a72"
       }
     },
     {
@@ -2458,20 +2664,45 @@
       "name": "volicord.guard_probe",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
           "GuardIntegrationVerificationFinding",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
-          "UtcTimestamp"
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "UtcTimestamp",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6caad8937c8a47d01ae0d73b336bd741a7c10825ea2d29f1d03065fc24346c43"
+        "sha256": "sha256:71d03dbd73df264b5b35b4dfad56965fff244c271abcb06ff647dff58ee3ebae"
       }
     },
     {
@@ -2495,6 +2726,8 @@
       "name": "volicord.get_integration_verification",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationPhaseStatus",
           "GuardIntegrationVerificationPhases",
@@ -2503,14 +2736,37 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
-          "UtcTimestamp"
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "UtcTimestamp",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a1091b2ecbf4beeee915e6e6c00e26e682cced6bd850f1edd8840f5074035b8b"
+        "sha256": "sha256:a0af7aad2cf6f876ba6caa3e3d4941f1a711567b21c59aab3ca944b015392e42"
       }
     }
   ]

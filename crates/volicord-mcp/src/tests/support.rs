@@ -1021,6 +1021,34 @@ pub(super) fn canonical_example_value(
     Ok(canonical_example(tool_name, example_id).value().clone())
 }
 
+pub(super) fn current_action_form_ref(
+    adapter: &McpAdapter,
+    task_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    let status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "workflow"}),
+    )?;
+    let workflow: volicord_types::schema::WorkflowProjection = serde_json::from_value(
+        status
+            .response_value
+            .pointer("/active_task/workflow")
+            .cloned()
+            .ok_or("status should expose the current workflow")?,
+    )?;
+    let project_id = &status
+        .verified_invocation
+        .as_ref()
+        .ok_or("status should retain verified invocation")?
+        .project_id;
+    Ok(
+        crate::action_form::current_workflow_action_form(project_id, &workflow)
+            .ok_or("workflow should expose a current action form")?
+            .form_ref
+            .into_inner(),
+    )
+}
+
 pub(super) fn decode_mcp_arguments_to_value(
     tool_name: &str,
     value: Value,

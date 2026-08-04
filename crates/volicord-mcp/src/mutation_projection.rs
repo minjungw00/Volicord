@@ -1,5 +1,6 @@
 //! Normal mutation result projection after authoritative refresh.
 
+use crate::action_form::{current_workflow_action_form, retry_contract};
 use crate::adapter::McpAdapter;
 use crate::authority_refresh::{
     refresh_authority_status, validated_authority_refresh, MutationRefreshContext,
@@ -19,15 +20,16 @@ use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
-    McpAdvanceTaskCompactResult, McpAgentStateChange, McpFinalizeAdviceCompactResult,
-    McpMustSurfaceFact, McpMutationEffectSummary, McpMutationFullResponse,
-    McpMutationSummaryResponse, McpMutationWorkflowResponse, McpPostEffectFailureCode,
-    McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
-    McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
-    McpRecordShapingCheckpointCompactResult, McpRequestUserActionCompactResult,
-    McpRequestUserActionResponse, McpStageArtifactCompactResult, McpTaskPhasePresentation,
-    McpUpdateScopeCompactResult, McpUserChannelInstructions, McpWorkflowBlockerSummary,
-    McpWorkflowDryRunResponse, McpWorkflowPresentation, McpWorkflowRejectedResponse,
+    McpAdvanceTaskCompactResult, McpAgentStateChange, McpArgumentFailurePresentation,
+    McpAuthorityBasisMismatch, McpFinalizeAdviceCompactResult, McpMustSurfaceFact,
+    McpMutationEffectSummary, McpMutationFullResponse, McpMutationSummaryResponse,
+    McpMutationWorkflowResponse, McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult,
+    McpPrepareWriteCompactResult, McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor,
+    McpRecordRunCompactResult, McpRecordShapingCheckpointCompactResult,
+    McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
+    McpTaskPhasePresentation, McpUpdateScopeCompactResult, McpUserChannelInstructions,
+    McpWorkflowBlockerSummary, McpWorkflowDryRunResponse, McpWorkflowPresentation,
+    McpWorkflowRejectedResponse,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::RecordId;
@@ -37,8 +39,8 @@ use volicord_types::methods::{
     RecordRunResult, RecordShapingCheckpointResult, StageArtifactResult, UpdateScopeResult,
 };
 use volicord_types::schema::{
-    AuthorityReceipt, PreviewableToolResponse, RequiredNullable, StateRecordRef,
-    ToolDryRunResponse, ToolRejectedResponse, WorkflowRejectionDetails,
+    AuthorityBasisMismatch, AuthorityReceipt, PreviewableToolResponse, RequiredNullable,
+    StateRecordRef, ToolDryRunResponse, ToolRejectedResponse, WorkflowRejectionDetails,
 };
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{EffectKind, MethodName, MutationDetailLevel, StateRecordKind};
@@ -214,11 +216,52 @@ where
                 .expect("rejected mutation requires an exact result"),
         )
         .map_err(McpAdapterError::Json)?;
+        let authority_basis_mismatch = method_result.errors().iter().find_map(|error| {
+            error.details().and_then(|details| {
+                serde_json::from_value::<AuthorityBasisMismatch>(Value::Object(details.clone()))
+                    .ok()
+            })
+        });
         output.primary_text = rejected_compatibility_text(tool_name, &presentation);
         output.structured_content = serde_json::to_value(McpWorkflowRejectedResponse {
             method_result,
-            authority_receipt: authority.receipt,
-            workflow: authority.workflow,
+            authority_receipt: authority.receipt.clone(),
+            workflow: authority.workflow.clone(),
+            authority_basis_mismatch: RequiredNullable::new(authority_basis_mismatch.map(
+                |mismatch| McpAuthorityBasisMismatch {
+                    field: mismatch.field,
+                    expected: mismatch.expected,
+                    received: mismatch.received,
+                    state_change_applied: false,
+                    current_action_form: presentation.current_action_form.clone(),
+                },
+            )),
+            retry_contract: RequiredNullable::new(
+                presentation
+                    .current_action_form
+                    .as_ref()
+                    .map(|form| retry_contract(form, Vec::new())),
+            ),
+            failure: McpArgumentFailurePresentation {
+                method_committed: false,
+                reached_core: true,
+                current_task_phase: RequiredNullable::some(authority.work_phase),
+                current_state_version: RequiredNullable::some(authority.receipt.state_version),
+                checkpoint_recorded: false,
+                user_action_created: false,
+                product_repository_changed: false,
+                core_state_unchanged: true,
+                current_baseline_valid: RequiredNullable::some(true),
+                exact_retry_action: RequiredNullable::new(
+                    presentation.current_action_form.as_ref().map(|form| {
+                        format!(
+                            "retry {} with the current action form",
+                            form.method.as_str()
+                        )
+                    }),
+                ),
+                repair_required: false,
+            },
             presentation,
         })
         .map_err(McpAdapterError::Json)?;
@@ -531,6 +574,10 @@ fn workflow_presentation(
         blocker_summary,
         required_user_action: required_user_action.into(),
         must_surface,
+        current_action_form: RequiredNullable::new(current_workflow_action_form(
+            &authority.receipt.project_id,
+            &authority.workflow,
+        )),
     })
 }
 

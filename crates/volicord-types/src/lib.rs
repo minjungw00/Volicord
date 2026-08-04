@@ -2827,7 +2827,8 @@ mod tests {
                 "required_refs": [],
                 "expected_state_version": 4,
                 "blocking_reason": "no_current_checkpoint",
-                "checkpoint": null
+                "checkpoint": null,
+                "action_intent": null
             },
             "corrected_retry_allowed": true,
             "recovery": {"owner_method": "volicord.record_shaping_checkpoint"}

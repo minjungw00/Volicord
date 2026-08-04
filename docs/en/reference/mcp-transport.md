@@ -59,7 +59,7 @@ This table is generated from the canonical MCP semantic descriptors. Required-nu
 | `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | none | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.advance_task` | `McpAdvanceTaskArguments` | none | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.status` | `McpStatusArguments` | none | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_StatusResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
+| `volicord.status` | `McpStatusArguments` | none | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_McpStatusResponse` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
 | `volicord.get_operation_result` | `McpGetOperationResultArguments` | none | `first_operation_result_page` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_GetOperationResultResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
 | `volicord.prepare_evidence_capture` | `McpPrepareEvidenceCaptureArguments` | none | `verified_command_capture`<br>`verified_tool_capture` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult_and_McpPrepareEvidenceCaptureCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.prepare_write` | `McpPrepareWriteArguments` | none | `simple_prepare_write` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareWriteResult_and_McpPrepareWriteCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
@@ -635,6 +635,38 @@ metadata, idempotency fields, actor source, operation category, and verification
 basis. Hidden fields are rejected before Core. Compact discovery schemas never
 relax the complete owner-defined request validation.
 
+For a current Agent-owned workflow action, the adapter combines Core's neutral
+`WorkflowActionIntent` with that tool's canonical semantic descriptor:
+
+```schema
+WorkflowActionForm:
+  form_ref: string
+  method: string
+  expected_state_version: integer
+  fixed_arguments: object
+  suggested_arguments: object
+  required_inputs: WorkflowActionInput[]
+  optional_inputs: WorkflowActionInput[]
+```
+
+`form_ref` is the opaque canonical digest of project, Task, method, selected
+semantic variant, expected state version, exact fixed authority coordinates,
+and current semantic-schema digest. It is not a numeric workflow version.
+State-bound mutation calls that consume the current form require
+`action_form_ref`; the adapter compares it with the current form before
+mutation Core entry. A mismatch returns
+`MCP_ACTION_FORM_STALE`, `reached_core=false`, `committed=false`, the latest
+form, and no state change. There is no omission fallback.
+
+Initial checkpoint forms fix Task, `create_initial`, scope revision, and the
+actual nullable baseline while leaving summary, implementation boundary, and
+gaps as typed Agent inputs. Replacement forms additionally fix current and
+predecessor checkpoint refs and every retirement, carry-forward, and stale
+authority ref. Advisor-finalization forms fix the current checkpoint,
+non-write Change Unit, scope revision, baseline, resolution IDs, and state
+version; only result content, evidence, risks, and recovery constraints remain
+Agent-authored.
+
 Known-tool invalid arguments are checked against the descriptor's semantic
 validator tree rather than scanning generated JSON or using method-specific
 string matching. A required-nullable member must be present and carries either
@@ -678,7 +710,7 @@ McpToolErrorIssue:
   owner_hint: string | null
 
 McpToolErrorResponse:
-  code: MCP_INVALID_ARGUMENTS | MCP_ADAPTER_PRECONDITION_FAILED
+  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | MCP_ADAPTER_PRECONDITION_FAILED
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -688,7 +720,21 @@ McpToolErrorResponse:
   reported_issue_count: integer
   truncated: boolean
   issues: McpToolErrorIssue[]
+  authoritative_context: AuthoritativeArgumentContext | null
+  retry_contract: RetryContract | null
+  failure: McpArgumentFailurePresentation | null
 ```
+
+Invalid arguments bootstrap only independently valid `project_selector`,
+`task_id`, and present action-form identity. When they identify a current Task,
+the adapter performs one bounded read-only authority lookup and returns state
+version, mode, phase, scope revision, actual nullable baseline, current
+checkpoint, workflow, and current form. The lookup creates no Core event,
+state mutation, write authority, UserAction, or Product Repository change;
+`context_loaded=false` discloses that it could not be completed. The retry
+contract repeats only Volicord-owned fixed coordinates and invalid paths. It
+never invents decisions, summaries, gap content, resolution outcomes, or
+evidence, and it never coerces and commits invalid input.
 
 The JSON Pointer, semantic type, allowed values, and owner hint come from the
 selected canonical descriptor node. Required members, enum values, and unknown
@@ -947,6 +993,14 @@ closed response object in the selected authoritative carrier. Every nested
 `details` field: the value is `null` when no details object is available and
 otherwise remains the Core-produced object. Protocol capabilities select only
 the carrier and do not map the category or remove or rewrite those fields.
+
+When schema validation succeeds and Core returns a typed
+`AuthorityBasisMismatch`, MCP preserves the exact `field`, `expected`,
+`received`, and `state_change_applied=false`, then enriches it with the current
+action form and retry contract. A null expected baseline and non-null received
+`BaselineRef` explicitly says the Task is valid and should be retried against
+the current form. Repair is false unless Core reports persisted-data corruption
+or an explicit repair workflow.
 
 When Core returns typed operational unavailability without a method result,
 MCP emits the MCP-owned `MCP_UNAVAILABLE` structured failure through that same

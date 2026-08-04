@@ -4,8 +4,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use volicord_types::ids::{
-    BaselineRef, ChangeUnitId, RunId, ShapingCheckpointId, TaskId, UserActionRequestId,
-    UserActionResolutionId, WriteTicketId,
+    BaselineRef, ChangeUnitId, ProjectId, RequestHash, RunId, ShapingCheckpointId, TaskId,
+    UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
     ChangeUnitUpdate, InitialScope, OperationResultRef, RequestUserActionResponse, ScopeUpdate,
@@ -69,6 +69,8 @@ pub enum McpToolErrorCode {
     InvalidArguments,
     #[serde(rename = "MCP_ADAPTER_PRECONDITION_FAILED")]
     AdapterPreconditionFailed,
+    #[serde(rename = "MCP_ACTION_FORM_STALE")]
+    ActionFormStale,
 }
 
 /// MCP wire-owned identity for operational unavailability.
@@ -129,6 +131,8 @@ pub enum McpToolIssueCode {
     ArgumentEnumValue,
     #[serde(rename = "MCP_ADAPTER_PRECONDITION_FAILED")]
     AdapterPreconditionFailed,
+    #[serde(rename = "MCP_ACTION_FORM_MISMATCH")]
+    ActionFormMismatch,
 }
 
 /// One independently discoverable MCP tool error issue.
@@ -162,8 +166,85 @@ impl McpToolErrorIssue {
     }
 }
 
-/// Structured known-tool failure returned before Core method entry.
+/// One Agent-authored input slot retained by a workflow action form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowActionInput {
+    pub path: String,
+    pub semantic_type: String,
+}
+
+/// MCP executable projection of one Core-owned current workflow action intent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowActionForm {
+    pub form_ref: RequestHash,
+    pub method: MethodName,
+    pub expected_state_version: u64,
+    pub fixed_arguments: JsonObject,
+    pub suggested_arguments: JsonObject,
+    pub required_inputs: Vec<WorkflowActionInput>,
+    pub optional_inputs: Vec<WorkflowActionInput>,
+}
+
+/// Bounded current authority loaded after independently valid routing coordinates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AuthoritativeArgumentContext {
+    pub context_loaded: bool,
+    pub project_id: RequiredNullable<ProjectId>,
+    pub state_version: RequiredNullable<u64>,
+    pub task_mode: RequiredNullable<TaskMode>,
+    pub work_phase: RequiredNullable<WorkPhase>,
+    pub scope_revision: RequiredNullable<u64>,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub current_checkpoint_ref: RequiredNullable<StateRecordRef>,
+    pub workflow: RequiredNullable<WorkflowProjection>,
+    pub current_action_form: RequiredNullable<WorkflowActionForm>,
+}
+
+/// Exact retry values and remaining Agent-authored input slots.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RetryContract {
+    pub method: MethodName,
+    pub action_form_ref: RequiredNullable<RequestHash>,
+    pub fixed_arguments: JsonObject,
+    pub invalid_paths: Vec<String>,
+    pub required_inputs: Vec<WorkflowActionInput>,
+    pub corrected_retry_allowed: bool,
+}
+
+/// Compact truth about a failed workflow-action attempt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpArgumentFailurePresentation {
+    pub method_committed: bool,
+    pub reached_core: bool,
+    pub current_task_phase: RequiredNullable<WorkPhase>,
+    pub current_state_version: RequiredNullable<u64>,
+    pub checkpoint_recorded: bool,
+    pub user_action_created: bool,
+    pub product_repository_changed: bool,
+    pub core_state_unchanged: bool,
+    pub current_baseline_valid: RequiredNullable<bool>,
+    pub exact_retry_action: RequiredNullable<String>,
+    pub repair_required: bool,
+}
+
+/// Typed Core authority-coordinate mismatch enriched with the current MCP form.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpAuthorityBasisMismatch {
+    pub field: String,
+    pub expected: volicord_types::schema::AuthorityBasisValue,
+    pub received: volicord_types::schema::AuthorityBasisValue,
+    pub state_change_applied: bool,
+    pub current_action_form: RequiredNullable<WorkflowActionForm>,
+}
+
+/// Structured known-tool failure returned before Core method entry.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpToolErrorResponse {
     pub code: McpToolErrorCode,
@@ -178,6 +259,9 @@ pub struct McpToolErrorResponse {
     pub truncated: bool,
     #[schemars(length(min = 1, max = "MAX_VALIDATION_ISSUES"))]
     pub issues: Vec<McpToolErrorIssue>,
+    pub authoritative_context: RequiredNullable<AuthoritativeArgumentContext>,
+    pub retry_contract: RequiredNullable<RetryContract>,
+    pub failure: RequiredNullable<McpArgumentFailurePresentation>,
 }
 
 /// Structured MCP failure when an operational dependency cannot produce a tool result.
@@ -198,7 +282,7 @@ pub struct McpOperationalFailure {
 #[serde(tag = "result_type", rename_all = "snake_case")]
 pub enum McpToolStructuredContent<T> {
     Response(Box<T>),
-    AdapterError(McpToolErrorResponse),
+    AdapterError(Box<McpToolErrorResponse>),
 }
 
 /// Structured MCP result advertised by a read-only Core-owned tool.
@@ -207,7 +291,7 @@ pub enum McpToolStructuredContent<T> {
 pub enum McpReadOnlyToolStructuredContent<T> {
     Response(Box<T>),
     OperationalFailure(McpOperationalFailure),
-    AdapterError(McpToolErrorResponse),
+    AdapterError(Box<McpToolErrorResponse>),
 }
 
 /// Compact method-effect facts preserved by mutation projections and recoveries.
@@ -476,6 +560,7 @@ pub struct McpWorkflowPresentation {
     pub blocker_summary: Vec<McpWorkflowBlockerSummary>,
     pub required_user_action: RequiredNullable<McpUserChannelInstructions>,
     pub must_surface: Vec<McpMustSurfaceFact>,
+    pub current_action_form: RequiredNullable<WorkflowActionForm>,
 }
 
 /// Rejected mutation plus current authoritative workflow and presentation.
@@ -486,6 +571,17 @@ pub struct McpWorkflowRejectedResponse {
     pub authority_receipt: AuthorityReceipt,
     pub workflow: WorkflowProjection,
     pub presentation: McpWorkflowPresentation,
+    pub authority_basis_mismatch: RequiredNullable<McpAuthorityBasisMismatch>,
+    pub retry_contract: RequiredNullable<RetryContract>,
+    pub failure: McpArgumentFailurePresentation,
+}
+
+/// MCP status projection with the executable current action form.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpStatusResponse {
+    pub method_result: volicord_types::methods::StatusResponse,
+    pub current_action_form: RequiredNullable<WorkflowActionForm>,
 }
 
 /// Dry-run mutation preview plus current authoritative workflow and presentation.
@@ -611,16 +707,16 @@ pub struct McpMutationResponseBudgetExceeded<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "result_type", rename_all = "snake_case")]
 pub enum McpMutationStructuredContent<T, C> {
-    Rejected(McpWorkflowRejectedResponse),
-    DryRun(McpWorkflowDryRunResponse),
+    Rejected(Box<McpWorkflowRejectedResponse>),
+    DryRun(Box<McpWorkflowDryRunResponse>),
     Full(McpMutationFullResponse<Box<T>>),
     Summary(McpMutationSummaryResponse<C>),
-    Workflow(McpMutationWorkflowResponse<C>),
+    Workflow(Box<McpMutationWorkflowResponse<C>>),
     OperationalFailure(McpOperationalFailure),
     RefreshFailure(McpAuthoritativeRefreshFailure<C>),
     ResponseBudgetExceeded(McpMutationResponseBudgetExceeded<C>),
     PostEffectFailure(McpMutationPostEffectFailure),
-    AdapterError(McpToolErrorResponse),
+    AdapterError(Box<McpToolErrorResponse>),
 }
 
 /// MCP-visible `volicord.intake` arguments.
@@ -655,6 +751,8 @@ pub struct McpUpdateScopeArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_form_ref: Option<RequestHash>,
     pub task_id: TaskId,
     #[serde(default)]
     pub goal_summary: RequiredNullable<String>,
@@ -683,7 +781,12 @@ pub struct McpRecordShapingCheckpointArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_checkpoint_ref: Option<StateRecordRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predecessor_checkpoint_ref: Option<RequiredNullable<StateRecordRef>>,
     pub checkpoint_operation: ShapingCheckpointOperation,
     pub scope_revision: u64,
     pub baseline_ref: RequiredNullable<BaselineRef>,
@@ -705,6 +808,7 @@ pub struct McpFinalizeAdviceArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     pub shaping_checkpoint_id: ShapingCheckpointId,
     pub change_unit_id: ChangeUnitId,
@@ -731,6 +835,7 @@ pub struct McpAdvanceTaskArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     pub shaping_checkpoint_id: ShapingCheckpointId,
     pub change_unit_id: ChangeUnitId,
@@ -1055,6 +1160,8 @@ pub struct McpReconcileChangesArguments {
 pub struct McpCheckCloseArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_form_ref: Option<RequestHash>,
     pub task_id: TaskId,
 }
 
@@ -1066,6 +1173,8 @@ pub struct McpCloseTaskArguments {
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_form_ref: Option<RequestHash>,
     pub task_id: TaskId,
     pub intent: CloseMutationIntent,
     #[serde(default)]

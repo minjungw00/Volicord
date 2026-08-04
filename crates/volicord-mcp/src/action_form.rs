@@ -1,0 +1,542 @@
+//! MCP workflow action forms derived from neutral Core-owned intent.
+
+use serde::Serialize;
+use serde_json::{json, Map, Value};
+use volicord_mcp_wire::{
+    mcp_tool_contract, RetryContract, WorkflowActionForm, WorkflowActionInput,
+};
+use volicord_types::canonical::canonical_json_sha256;
+use volicord_types::ids::{ProjectId, RequestHash, TaskId};
+use volicord_types::schema::{
+    JsonObject, RequiredNullable, WorkflowActionAuthorityCoordinates, WorkflowActionIntent,
+    WorkflowCheckpointActionCoordinates, WorkflowProjection,
+};
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::MethodName;
+
+#[derive(Serialize)]
+struct WorkflowActionFormDigestBasis<'a> {
+    domain: &'static str,
+    project_id: &'a ProjectId,
+    task_id: &'a TaskId,
+    method: MethodName,
+    selected_semantic_variant: &'a str,
+    expected_state_version: u64,
+    fixed_authority_coordinates: &'a WorkflowActionAuthorityCoordinates,
+    semantic_schema_digest: &'a RequestHash,
+}
+
+fn input(path: &str, semantic_type: &str) -> WorkflowActionInput {
+    WorkflowActionInput {
+        path: path.to_owned(),
+        semantic_type: semantic_type.to_owned(),
+    }
+}
+
+fn selected_variant(coordinates: &WorkflowActionAuthorityCoordinates) -> &'static str {
+    match coordinates {
+        WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+            checkpoint_operation: WorkflowCheckpointActionCoordinates::CreateInitial,
+            ..
+        } => "create_initial",
+        WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+            checkpoint_operation: WorkflowCheckpointActionCoordinates::ReplaceCurrent { .. },
+            ..
+        } => "replace_current",
+        WorkflowActionAuthorityCoordinates::UpdateScope { .. } => "update_scope",
+        WorkflowActionAuthorityCoordinates::FinalizeAdvice { .. } => "finalize_advice",
+        WorkflowActionAuthorityCoordinates::AdvanceTask { .. } => "advance_task",
+        WorkflowActionAuthorityCoordinates::CheckClose { .. } => "check_close",
+        WorkflowActionAuthorityCoordinates::CloseTask { .. } => "close_task",
+    }
+}
+
+fn checkpoint_operation(
+    operation: &WorkflowCheckpointActionCoordinates,
+) -> (Value, Vec<WorkflowActionInput>) {
+    match operation {
+        WorkflowCheckpointActionCoordinates::CreateInitial => {
+            (json!({ "operation": "create_initial" }), Vec::new())
+        }
+        WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+            current_checkpoint_ref,
+            predecessor_checkpoint_ref: _,
+            retired_non_authorizing_request_refs,
+            carry_forward_application_refs,
+            stale_application_refs,
+            ..
+        } => {
+            let stale_authority_actions = stale_application_refs
+                .iter()
+                .map(|stale_application_ref| {
+                    json!({
+                        "stale_application_ref": stale_application_ref,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut required = stale_application_refs
+                .iter()
+                .enumerate()
+                .map(|(index, _)| {
+                    input(
+                        &format!("/checkpoint_operation/stale_authority_actions/{index}/action"),
+                        "retire | reauthorize",
+                    )
+                })
+                .collect::<Vec<_>>();
+            if !stale_application_refs.is_empty() {
+                required.push(input(
+                    "/checkpoint_operation/stale_authority_actions/*/successor_gap",
+                    "ShapingGapInput when action=reauthorize",
+                ));
+            }
+            (
+                json!({
+                    "operation": "replace_current",
+                    "expected_current_checkpoint_id": current_checkpoint_ref.record_id.as_str(),
+                    "retired_non_authorizing_request_refs": retired_non_authorizing_request_refs,
+                    "carry_forward_application_refs": carry_forward_application_refs,
+                    "stale_authority_actions": stale_authority_actions,
+                }),
+                required,
+            )
+        }
+    }
+}
+
+fn project_fixed_arguments(
+    project_id: &ProjectId,
+    coordinates: &WorkflowActionAuthorityCoordinates,
+) -> (
+    TaskId,
+    JsonObject,
+    JsonObject,
+    Vec<WorkflowActionInput>,
+    Vec<WorkflowActionInput>,
+) {
+    let mut fixed = Map::new();
+    fixed.insert(
+        "project_selector".to_owned(),
+        Value::String(project_id.as_str().to_owned()),
+    );
+    let mut suggested = Map::new();
+    match coordinates {
+        WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+            task_id,
+            checkpoint_operation: operation,
+            scope_revision,
+            baseline_ref,
+        } => {
+            let (operation_value, mut conditional_inputs) = checkpoint_operation(operation);
+            fixed.insert("task_id".to_owned(), json!(task_id));
+            if let WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                current_checkpoint_ref,
+                predecessor_checkpoint_ref,
+                ..
+            } = operation
+            {
+                fixed.insert(
+                    "current_checkpoint_ref".to_owned(),
+                    json!(current_checkpoint_ref),
+                );
+                fixed.insert(
+                    "predecessor_checkpoint_ref".to_owned(),
+                    json!(predecessor_checkpoint_ref),
+                );
+            }
+            fixed.insert("checkpoint_operation".to_owned(), operation_value);
+            fixed.insert("scope_revision".to_owned(), json!(scope_revision));
+            fixed.insert("baseline_ref".to_owned(), json!(baseline_ref));
+            suggested.insert("source_refs".to_owned(), json!([]));
+            suggested.insert("evidence_refs".to_owned(), json!([]));
+            let mut required = vec![
+                input("/summary", "string"),
+                input("/implementation_boundary", "string | null"),
+                input("/gaps", "array<ShapingGapInput>"),
+            ];
+            required.append(&mut conditional_inputs);
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                required,
+                vec![
+                    input("/source_refs", "array<SourceRef>"),
+                    input("/evidence_refs", "array<StateRecordRef>"),
+                ],
+            )
+        }
+        WorkflowActionAuthorityCoordinates::UpdateScope {
+            task_id,
+            baseline_ref,
+            current_change_unit_id,
+            related_scope_decision_refs,
+            ..
+        } => {
+            fixed.insert("task_id".to_owned(), json!(task_id));
+            fixed.insert("baseline_ref".to_owned(), json!(baseline_ref));
+            fixed.insert(
+                "related_scope_decision_refs".to_owned(),
+                Value::Array(
+                    related_scope_decision_refs
+                        .iter()
+                        .map(|reference| json!(reference))
+                        .collect(),
+                ),
+            );
+            let change_unit_inputs = if current_change_unit_id.as_ref().is_some() {
+                fixed.insert(
+                    "change_unit".to_owned(),
+                    json!({ "operation": "keep_current" }),
+                );
+                Vec::new()
+            } else {
+                fixed.insert(
+                    "change_unit".to_owned(),
+                    json!({ "operation": "create_current" }),
+                );
+                vec![
+                    input("/change_unit/scope_summary", "string"),
+                    input("/change_unit/affected_paths", "array<string>"),
+                ]
+            };
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                change_unit_inputs,
+                vec![
+                    input("/change_unit/effect_contract", "ChangeUnitEffectContract"),
+                    input("/goal_summary", "string | null"),
+                    input("/scope_update", "ScopeUpdate | null"),
+                    input("/scope_boundary", "string | null"),
+                    input("/non_goals", "array<string> | null"),
+                    input(
+                        "/acceptance_criteria",
+                        "array<AcceptanceCriterionReplacement> | null",
+                    ),
+                    input("/autonomy_boundary", "string | null"),
+                ],
+            )
+        }
+        WorkflowActionAuthorityCoordinates::FinalizeAdvice {
+            task_id,
+            shaping_checkpoint_id,
+            change_unit_id,
+            scope_revision,
+            baseline_ref,
+            user_action_resolution_ids,
+        } => {
+            fixed.extend([
+                ("task_id".to_owned(), json!(task_id)),
+                (
+                    "shaping_checkpoint_id".to_owned(),
+                    json!(shaping_checkpoint_id),
+                ),
+                ("change_unit_id".to_owned(), json!(change_unit_id)),
+                ("scope_revision".to_owned(), json!(scope_revision)),
+                ("baseline_ref".to_owned(), json!(baseline_ref)),
+                (
+                    "user_action_resolution_ids".to_owned(),
+                    json!(user_action_resolution_ids),
+                ),
+            ]);
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                vec![input("/result_summary", "string")],
+                vec![
+                    input("/result_refs", "array<StateRecordRef>"),
+                    input("/evidence_refs", "array<StateRecordRef>"),
+                    input("/residual_risks", "array<ResidualRiskInput>"),
+                    input("/recovery_constraints", "array<string>"),
+                ],
+            )
+        }
+        WorkflowActionAuthorityCoordinates::AdvanceTask {
+            task_id,
+            shaping_checkpoint_id,
+            change_unit_id,
+            scope_revision,
+            baseline_ref,
+            user_action_resolution_ids,
+        } => {
+            fixed.extend([
+                ("task_id".to_owned(), json!(task_id)),
+                (
+                    "shaping_checkpoint_id".to_owned(),
+                    json!(shaping_checkpoint_id),
+                ),
+                ("change_unit_id".to_owned(), json!(change_unit_id)),
+                ("scope_revision".to_owned(), json!(scope_revision)),
+                ("baseline_ref".to_owned(), json!(baseline_ref)),
+                (
+                    "user_action_resolution_ids".to_owned(),
+                    json!(user_action_resolution_ids),
+                ),
+            ]);
+            (task_id.clone(), fixed, suggested, Vec::new(), Vec::new())
+        }
+        WorkflowActionAuthorityCoordinates::CheckClose { task_id } => {
+            fixed.insert("task_id".to_owned(), json!(task_id));
+            (task_id.clone(), fixed, suggested, Vec::new(), Vec::new())
+        }
+        WorkflowActionAuthorityCoordinates::CloseTask { task_id } => {
+            fixed.insert("task_id".to_owned(), json!(task_id));
+            (
+                task_id.clone(),
+                fixed,
+                suggested,
+                vec![input("/intent", "CloseMutationIntent")],
+                vec![
+                    input("/close_reason", "CloseReason | null"),
+                    input("/superseding_task_id", "TaskId | null"),
+                    input("/user_note", "string | null"),
+                ],
+            )
+        }
+    }
+}
+
+/// Projects one current neutral intent through the canonical MCP descriptor.
+pub(crate) fn workflow_action_form(
+    project_id: &ProjectId,
+    intent: &WorkflowActionIntent,
+) -> Option<WorkflowActionForm> {
+    let tool = AgentToolId::from_method(intent.method)?;
+    let descriptor = mcp_tool_contract(tool)?;
+    let semantic_schema_digest = canonical_json_sha256(&descriptor.input_schema()).ok()?;
+    let (task_id, fixed_arguments, suggested_arguments, required_inputs, optional_inputs) =
+        project_fixed_arguments(project_id, &intent.fixed_authority_coordinates);
+    let form_ref = canonical_json_sha256(&WorkflowActionFormDigestBasis {
+        domain: "volicord.mcp-workflow-action-form",
+        project_id,
+        task_id: &task_id,
+        method: intent.method,
+        selected_semantic_variant: selected_variant(&intent.fixed_authority_coordinates),
+        expected_state_version: intent.expected_state_version,
+        fixed_authority_coordinates: &intent.fixed_authority_coordinates,
+        semantic_schema_digest: &semantic_schema_digest,
+    })
+    .ok()?;
+    Some(WorkflowActionForm {
+        form_ref,
+        method: intent.method,
+        expected_state_version: intent.expected_state_version,
+        fixed_arguments,
+        suggested_arguments,
+        required_inputs,
+        optional_inputs,
+    })
+}
+
+pub(crate) fn current_workflow_action_form(
+    project_id: &ProjectId,
+    workflow: &WorkflowProjection,
+) -> Option<WorkflowActionForm> {
+    workflow
+        .action_intent()
+        .and_then(|intent| workflow_action_form(project_id, intent))
+}
+
+pub(crate) fn retry_contract(
+    form: &WorkflowActionForm,
+    invalid_paths: Vec<String>,
+) -> RetryContract {
+    RetryContract {
+        method: form.method,
+        action_form_ref: RequiredNullable::some(form.form_ref.clone()),
+        fixed_arguments: form.fixed_arguments.clone(),
+        invalid_paths,
+        required_inputs: form.required_inputs.clone(),
+        corrected_retry_allowed: true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use volicord_types::canonical::is_canonical_sha256_digest;
+    use volicord_types::ids::{
+        BaselineRef, ChangeUnitId, RecordId, ShapingCheckpointId, UserActionResolutionId,
+    };
+    use volicord_types::schema::StateRecordRef;
+    use volicord_types::values::StateRecordKind;
+
+    fn reference(
+        kind: StateRecordKind,
+        record_id: &str,
+        project_id: &ProjectId,
+        task_id: &TaskId,
+        state_version: u64,
+    ) -> StateRecordRef {
+        StateRecordRef {
+            record_kind: kind,
+            record_id: RecordId::new(record_id),
+            project_id: project_id.clone(),
+            task_id: RequiredNullable::some(task_id.clone()),
+            produced_at_state_version: RequiredNullable::some(state_version),
+        }
+    }
+
+    #[test]
+    fn first_checkpoint_form_fixes_null_baseline_and_exact_input_slots() {
+        let project_id = ProjectId::new("prj_action_form");
+        let task_id = TaskId::new("task_action_form");
+        let intent = WorkflowActionIntent {
+            method: MethodName::RecordShapingCheckpoint,
+            expected_state_version: 2,
+            fixed_authority_coordinates:
+                WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                    task_id: task_id.clone(),
+                    checkpoint_operation: WorkflowCheckpointActionCoordinates::CreateInitial,
+                    scope_revision: 0,
+                    baseline_ref: RequiredNullable::null(),
+                },
+            required_refs: vec![reference(
+                StateRecordKind::Task,
+                task_id.as_str(),
+                &project_id,
+                &task_id,
+                2,
+            )],
+        };
+
+        let form = workflow_action_form(&project_id, &intent).expect("current form");
+        assert!(is_canonical_sha256_digest(form.form_ref.as_str()));
+        assert_eq!(form.method, MethodName::RecordShapingCheckpoint);
+        assert_eq!(form.expected_state_version, 2);
+        assert_eq!(
+            Value::Object(form.fixed_arguments),
+            json!({
+                "project_selector": "prj_action_form",
+                "task_id": "task_action_form",
+                "checkpoint_operation": { "operation": "create_initial" },
+                "scope_revision": 0,
+                "baseline_ref": null,
+            })
+        );
+        assert_eq!(
+            Value::Object(form.suggested_arguments),
+            json!({"source_refs": [], "evidence_refs": []})
+        );
+        assert_eq!(
+            form.required_inputs,
+            vec![
+                input("/summary", "string"),
+                input("/implementation_boundary", "string | null"),
+                input("/gaps", "array<ShapingGapInput>"),
+            ]
+        );
+    }
+
+    #[test]
+    fn replacement_form_preserves_exact_checkpoint_lineage_and_authority_refs() {
+        let project_id = ProjectId::new("prj_replace");
+        let task_id = TaskId::new("task_replace");
+        let current = reference(
+            StateRecordKind::ShapingCheckpoint,
+            "checkpoint_current",
+            &project_id,
+            &task_id,
+            9,
+        );
+        let predecessor = reference(
+            StateRecordKind::ShapingCheckpoint,
+            "checkpoint_predecessor",
+            &project_id,
+            &task_id,
+            6,
+        );
+        let retired = reference(
+            StateRecordKind::UserActionRequest,
+            "request_retired",
+            &project_id,
+            &task_id,
+            7,
+        );
+        let carried = reference(
+            StateRecordKind::ShapingDecisionApplication,
+            "application_carried",
+            &project_id,
+            &task_id,
+            8,
+        );
+        let stale = reference(
+            StateRecordKind::ShapingDecisionApplication,
+            "application_stale",
+            &project_id,
+            &task_id,
+            8,
+        );
+        let intent = WorkflowActionIntent {
+            method: MethodName::RecordShapingCheckpoint,
+            expected_state_version: 9,
+            fixed_authority_coordinates:
+                WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                    task_id,
+                    checkpoint_operation: WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                        current_checkpoint_ref: current.clone(),
+                        predecessor_checkpoint_ref: RequiredNullable::some(predecessor.clone()),
+                        retired_non_authorizing_request_refs: vec![retired.clone()],
+                        carry_forward_application_refs: vec![carried.clone()],
+                        stale_application_refs: vec![stale.clone()],
+                    },
+                    scope_revision: 3,
+                    baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_current")),
+                },
+            required_refs: Vec::new(),
+        };
+
+        let form = workflow_action_form(&project_id, &intent).expect("replacement form");
+        let fixed = Value::Object(form.fixed_arguments);
+        assert_eq!(fixed["current_checkpoint_ref"], json!(current));
+        assert_eq!(fixed["predecessor_checkpoint_ref"], json!(predecessor));
+        assert_eq!(
+            fixed["checkpoint_operation"]["retired_non_authorizing_request_refs"],
+            json!([retired])
+        );
+        assert_eq!(
+            fixed["checkpoint_operation"]["carry_forward_application_refs"],
+            json!([carried])
+        );
+        assert_eq!(
+            fixed["checkpoint_operation"]["stale_authority_actions"][0]["stale_application_ref"],
+            json!(stale)
+        );
+    }
+
+    #[test]
+    fn advisor_finalization_form_fixes_current_authority_and_changes_with_state() {
+        let project_id = ProjectId::new("prj_advisor");
+        let task_id = TaskId::new("task_advisor");
+        let intent = WorkflowActionIntent {
+            method: MethodName::FinalizeAdvice,
+            expected_state_version: 12,
+            fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::FinalizeAdvice {
+                task_id,
+                shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_advisor"),
+                change_unit_id: ChangeUnitId::new("change_unit_advisor"),
+                scope_revision: 4,
+                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_advisor")),
+                user_action_resolution_ids: vec![UserActionResolutionId::new("resolution_advisor")],
+            },
+            required_refs: Vec::new(),
+        };
+        let form = workflow_action_form(&project_id, &intent).expect("advisor form");
+        assert_eq!(
+            form.fixed_arguments["user_action_resolution_ids"],
+            json!(["resolution_advisor"])
+        );
+        assert_eq!(
+            form.required_inputs,
+            vec![input("/result_summary", "string")]
+        );
+
+        let mut next = intent;
+        next.expected_state_version += 1;
+        let next_form = workflow_action_form(&project_id, &next).expect("next form");
+        assert_ne!(form.form_ref, next_form.form_ref);
+    }
+}

@@ -56,7 +56,7 @@ profile의 semantic capability로만 결정합니다.
 | `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | 없음 | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.advance_task` | `McpAdvanceTaskArguments` | 없음 | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.status` | `McpStatusArguments` | 없음 | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_StatusResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
+| `volicord.status` | `McpStatusArguments` | 없음 | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_McpStatusResponse` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
 | `volicord.get_operation_result` | `McpGetOperationResultArguments` | 없음 | `first_operation_result_page` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_GetOperationResultResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
 | `volicord.prepare_evidence_capture` | `McpPrepareEvidenceCaptureArguments` | 없음 | `verified_command_capture`<br>`verified_tool_capture` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult_and_McpPrepareEvidenceCaptureCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.prepare_write` | `McpPrepareWriteArguments` | 없음 | `simple_prepare_write` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareWriteResult_and_McpPrepareWriteCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
@@ -556,6 +556,34 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 전에 거부합니다. 간결한 검색 schema는 담당 문서의 완전한 요청 검증을 느슨하게 하지
 않습니다.
 
+현재 에이전트 소유 workflow 행동에 대해 adapter는 Core의 중립
+`WorkflowActionIntent`와 해당 도구의 정규 semantic descriptor를 결합합니다.
+
+```schema
+WorkflowActionForm:
+  form_ref: string
+  method: string
+  expected_state_version: integer
+  fixed_arguments: object
+  suggested_arguments: object
+  required_inputs: WorkflowActionInput[]
+  optional_inputs: WorkflowActionInput[]
+```
+
+`form_ref`는 프로젝트, Task, 메서드, 선택된 semantic variant, 예상 상태 버전, 정확한
+고정 권한 좌표, 현재 semantic-schema digest의 불투명 canonical digest입니다. 숫자
+workflow 버전이 아닙니다. 현재 form을 소비하는 상태 결속 mutation 호출은
+`action_form_ref`를 요구하며, adapter는 mutation Core 진입 전에 현재 form과 비교합니다. 다르면
+`MCP_ACTION_FORM_STALE`, `reached_core=false`, `committed=false`, 최신 form을 반환하고
+상태를 바꾸지 않습니다. 생략 fallback은 없습니다.
+
+첫 checkpoint form은 Task, `create_initial`, 범위 리비전, 실제 nullable 기준선을
+고정하고 summary, implementation boundary, gap만 typed 에이전트 입력으로 남깁니다.
+교체 form은 현재·선행 checkpoint 참조와 모든 retirement, carry-forward, stale authority
+참조도 고정합니다. Advisor-finalization form은 현재 checkpoint, 비쓰기 Change Unit,
+범위 리비전, 기준선, resolution ID, 상태 버전을 고정하며 결과 내용, 증거, 위험, 복구
+제약만 에이전트가 작성합니다.
+
 Known-tool의 유효하지 않은 인자는 생성 JSON을 다시 훑거나 method별 문자열 matching을
 사용하지 않고 descriptor의 semantic validator tree로 검증합니다. 필수 nullable member는
 반드시 존재해야 하며 JSON `null` 또는 정확한 non-null semantic type을 담습니다. 문자열
@@ -594,7 +622,7 @@ McpToolErrorIssue:
   owner_hint: string | null
 
 McpToolErrorResponse:
-  code: MCP_INVALID_ARGUMENTS | MCP_ADAPTER_PRECONDITION_FAILED
+  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | MCP_ADAPTER_PRECONDITION_FAILED
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -604,7 +632,19 @@ McpToolErrorResponse:
   reported_issue_count: integer
   truncated: boolean
   issues: McpToolErrorIssue[]
+  authoritative_context: AuthoritativeArgumentContext | null
+  retry_contract: RetryContract | null
+  failure: McpArgumentFailurePresentation | null
 ```
+
+유효하지 않은 인자에서는 독립적으로 유효한 `project_selector`, `task_id`, 제공된
+action-form identity만 먼저 해석합니다. 이 값이 현재 Task를 식별하면 adapter는 한도가
+있는 읽기 전용 권한 조회를 한 번 수행해 상태 버전, mode, 단계, 범위 리비전, 실제
+nullable 기준선, 현재 checkpoint, workflow, 현재 form을 반환합니다. 이 조회는 Core
+event, 상태 mutation, 쓰기 권한, UserAction, Product Repository 변경을 만들지 않으며,
+완료할 수 없으면 `context_loaded=false`로 알립니다. Retry contract는 Volicord 소유 고정
+좌표와 잘못된 경로만 반복합니다. 결정, summary, gap 내용, resolution 결과, 증거를
+만들거나 유효하지 않은 입력을 자동 변환해 커밋하지 않습니다.
 
 JSON Pointer, semantic type, 허용 값, owner hint는 선택한 정규 descriptor node에서 나옵니다.
 필수 member, enum 값, 알 수 없는 member는 alias 없이 현재 schema identifier를 보존합니다.
@@ -845,6 +885,12 @@ Core가 공개 `ToolRejectedResponse`를 반환하면 MCP는 그 정확한 닫�
 값은 `null`이고, 있으면 Core가 만든 객체를 그대로 유지합니다. Protocol
 capability는 carrier만 선택하며 범주를 따로 변환하거나 이 필드들을 제거하거나
 다시 쓰지 않습니다.
+
+Schema 검증이 성공한 뒤 Core가 typed `AuthorityBasisMismatch`를 반환하면 MCP는 정확한
+`field`, `expected`, `received`, `state_change_applied=false`를 보존하고 현재 action
+form과 retry contract를 덧붙입니다. 예상 기준선이 null이고 받은 `BaselineRef`가
+non-null이면 Task는 유효하며 현재 form으로 재시도해야 한다고 명시합니다. Core가 영속
+데이터 손상이나 명시적 복구 workflow를 보고하지 않는 한 repair는 false입니다.
 
 Core가 메서드 결과 없이 typed 운영 불가를 반환하면 MCP는 같은 선택 carrier를 통해 MCP
 소유 `MCP_UNAVAILABLE` 구조화 실패를 내보냅니다. 이 객체는 tool name, typed

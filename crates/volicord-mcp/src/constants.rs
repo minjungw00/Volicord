@@ -18,6 +18,7 @@ pub(crate) fn server_instructions() -> String {
             "Only that first-party state-directed workflow proves current managed MCP and Guard correlation. If Volicord tools are not exposed, report the managed MCP connection as unavailable; do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as proof of tool availability. `volicord connection verify` is optional active diagnostics only and does not replace the managed-host workflow. Read-only connection status and CLI MCP preflight are diagnostic only and are not managed-host evidence. Hook trust remains user/host owned. ",
             "Use the Store-derived tagged current effective shaping authority graph. Superseded checkpoint, request, resolution, and application history is immutable audit history only and never actionable authority. ",
             "Follow the tagged workflow's required_action; do not call workflow tools speculatively or select progression from top-level array order. Never replace the current checkpoint to remove a pending or accepted-but-unapplied decision. When revising a checkpoint, carry every current compatible applied decision explicitly through carry_forward_application_refs; never replace a checkpoint to discard applied authority. ",
+            "Follow the tagged workflow action form with its exact action_form_ref and fixed authority arguments. On failure, use the MCP tool schema and retry contract; ordinary CLI --help and binary strings are not MCP request schemas. Preserve JSON null, boolean, and number primitives, and do not infer another union branch. An argument error does not diagnose state corruption. Do not modify Product Repository files before the required authority mutation succeeds, and report failed checkpoint and UserAction creation without claiming either was created. ",
             "Stale shaping authority grants no permission. Never carry a stale application forward or reuse its accepted resolution. For application_authority_stale, follow the exact stale_authority_actions: retire it or reauthorize it through a fresh successor gap and fresh UserActionRequest, preserving immutable ShapingAuthorityReauthorization lineage. ",
             "Inspect the exact User Channel resolution outcome. Resolution does not apply a shaping decision: apply only accepted, current, compatible authority through its application_owner with the exact current resolution refs. After rejection, deferral, or expiration, follow decision_recovery_required and revise shaping. Never retry resolution of a terminal or expired request. If the revised plan still needs that judgment, create a successor UserActionRequest with an independent identity; chat text cannot replace it. A rejected, deferred, or expired decision grants no authority and keeps Product Repository mutation unavailable; surface that outcome and do not hide it as success. ",
             "During work/implementation, an authority-invalidating scope, baseline, or Change Unit update is rejected before mutation. Follow the tagged volicord.close_task recovery to leave implementation; implementation work never returns silently to shaping. ",
@@ -60,6 +61,15 @@ mod tests {
         assert!(instructions.contains("never retry an applied mutation"));
         for required in [
             "tagged workflow's required_action",
+            "tagged workflow action form",
+            "exact action_form_ref",
+            "MCP tool schema and retry contract",
+            "CLI --help and binary strings are not MCP request schemas",
+            "Preserve JSON null, boolean, and number primitives",
+            "do not infer another union branch",
+            "argument error does not diagnose state corruption",
+            "before the required authority mutation succeeds",
+            "failed checkpoint and UserAction creation",
             "Store-derived tagged current effective shaping authority graph",
             "immutable audit history only and never actionable authority",
             "accepted-but-unapplied decision",

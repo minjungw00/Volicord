@@ -48,6 +48,13 @@ non-write `change_unit_id`, `scope_revision`, non-null `baseline_ref`, complete
 `evidence_refs`, `residual_risks`, and `recovery_constraints`. There is no
 outer operation union.
 
+The current MCP action form fixes project, Task, checkpoint, non-write Change
+Unit, scope revision, baseline, complete current resolution IDs, and expected
+state version. It requires the exact `action_form_ref` before Core invocation.
+Only result summary, result refs, evidence refs, residual risks, and recovery
+constraints remain Agent-authored; the Agent does not reconstruct authority
+coordinates.
+
 The Task must have `mode=advisor` and `work_phase=shaping`. The checkpoint must
 be the exact current structurally ready checkpoint with no current gap. The
 Change Unit, scope revision, and baseline must be exact and current. Every

@@ -48,6 +48,16 @@ implementation 작업, close review 중 하나를 요구할 수 있습니다. �
 다음 응답이 다른 경로를 선택할 수 있습니다. 닫기 차단 사유의 해결 행동은 해당 차단
 사유에만 속하며 현재 workflow 진행을 대신하지 않습니다.
 
+에이전트 소유 `required_action`이 현재 행동이면 태그가 있는
+`current_action_form`을 사용합니다. `fixed_arguments`를 정확히 복사하고 표시된
+에이전트 작성 입력만 채운 뒤 정확한 `form_ref`를 `action_form_ref`로 보냅니다.
+checkpoint 계보, 범위 리비전, 기준선, Change Unit, resolution 좌표를 다시 조립하지
+않습니다. 검증에 실패하면 MCP schema, 현재 권한 인자 맥락, retry contract를
+사용합니다. JSON 원시 타입과 선택된 union branch를 보존하며, 인자 오류를 Task 손상으로
+해석하지 않습니다. 필요한 권한 mutation이 성공하기 전에 Product Repository 파일을
+수정하지 않고, checkpoint 또는 UserAction 생성 실패는 생성되지 않았고 Core 상태도
+바뀌지 않았다고 보고합니다.
+
 ## 에이전트 작업과 사용자 판단 분리
 
 | 시점 | 에이전트 책임 | 사용자 책임 |

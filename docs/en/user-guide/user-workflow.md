@@ -92,6 +92,12 @@ The agent should not mix inspected facts with your judgment, ask you to restate
 facts it can inspect, present stale status as current, or treat a passing test
 as final acceptance.
 
+When a workflow call is rejected before it reaches Core, a useful report also
+states that the method was not committed, whether a checkpoint or UserAction
+was created, whether Product Repository files changed, the current Task phase
+and state version when available, and the exact retry action. An argument error
+alone is not evidence that the Task needs repair.
+
 ## Know Which Decisions Are Yours
 
 User-owned decisions include:

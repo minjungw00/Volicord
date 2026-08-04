@@ -8,7 +8,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
 use volicord_types::ids::{
     AcceptanceCriterionId, BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RecordId,
-    ShapingCheckpointId, TaskId, UserActionOptionId, UserActionRequestId, UserActionResolutionId,
+    RequestHash, ShapingCheckpointId, TaskId, UserActionOptionId, UserActionRequestId,
+    UserActionResolutionId,
 };
 use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, BeginIntegrationVerificationResult,
@@ -19,7 +20,7 @@ use volicord_types::methods::{
     FinalizeAdviceResponse, GetOperationResultResponse, InitialScope, IntakeResponse,
     OperationResultRef, PrepareEvidenceCaptureResponse, PrepareWriteResponse,
     ReconcileChangesResponse, RecordRunResponse, RecordShapingCheckpointResponse, ScopeUpdate,
-    StageArtifactResponse, StatusResponse, UpdateScopeResponse,
+    StageArtifactResponse, UpdateScopeResponse,
 };
 use volicord_types::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, CloseAssessmentInput, EvidenceTarget,
@@ -55,6 +56,10 @@ pub const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "check_close_missing_final_acceptance";
 
 type DecodeInput = fn(&Value) -> Result<Value, String>;
+
+fn example_action_form_ref() -> RequestHash {
+    RequestHash::new("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+}
 
 /// Closed result of descriptor validation followed by exact Rust input decoding.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,6 +307,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
                 &McpAdvanceTaskArguments {
                     project_selector: None,
                     detail: MutationDetailLevel::Summary,
+                    action_form_ref: example_action_form_ref(),
                     task_id: TaskId::new("task_shape_001"),
                     shaping_checkpoint_id: ShapingCheckpointId::new("shaping_checkpoint_001"),
                     change_unit_id: ChangeUnitId::new("change_unit_001"),
@@ -314,7 +320,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
         ),
         AgentToolId::STATUS => contract::<
             McpStatusArguments,
-            McpReadOnlyToolStructuredContent<StatusResponse>,
+            McpReadOnlyToolStructuredContent<McpStatusResponse>,
         >(
             tool,
             "Read the current Core status view without creating Core authority state.",
@@ -415,6 +421,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
                 "Read current close readiness for one Task.",
                 &McpCheckCloseArguments {
                     project_selector: None,
+                    action_form_ref: Some(example_action_form_ref()),
                     task_id: TaskId::new("task_close_001"),
                 },
                 Vec::new(),
@@ -563,6 +570,7 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
     let keep = McpUpdateScopeArguments {
         project_selector: None,
         detail: MutationDetailLevel::Summary,
+        action_form_ref: Some(example_action_form_ref()),
         task_id: TaskId::new("task_filter_001"),
         goal_summary: RequiredNullable::null(),
         scope_update: RequiredNullable::null(),
@@ -589,6 +597,7 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
             Value::Array(vec![Value::String(path.to_owned())]),
         );
         McpUpdateScopeArguments {
+            action_form_ref: Some(example_action_form_ref()),
             project_selector: None,
             detail: MutationDetailLevel::Summary,
             task_id: TaskId::new(task),
@@ -651,7 +660,10 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
         McpRecordShapingCheckpointArguments {
             project_selector: None,
             detail: MutationDetailLevel::Summary,
+            action_form_ref: example_action_form_ref(),
             task_id: TaskId::new(id),
+            current_checkpoint_ref: None,
+            predecessor_checkpoint_ref: None,
             checkpoint_operation,
             scope_revision: 4,
             baseline_ref,
@@ -900,6 +912,7 @@ fn finalize_advice_examples() -> Vec<CanonicalSchemaExample> {
     let base = |id: &str| McpFinalizeAdviceArguments {
         project_selector: None,
         detail: MutationDetailLevel::Summary,
+        action_form_ref: example_action_form_ref(),
         task_id: TaskId::new(format!("task_{id}")),
         shaping_checkpoint_id: ShapingCheckpointId::new(format!("shaping_checkpoint_{id}")),
         change_unit_id: ChangeUnitId::new(format!("change_unit_{id}")),
@@ -1288,6 +1301,7 @@ fn close_task_examples() -> Vec<CanonicalSchemaExample> {
                 &McpCloseTaskArguments {
                     project_selector: None,
                     detail: MutationDetailLevel::Summary,
+                    action_form_ref: Some(example_action_form_ref()),
                     task_id: TaskId::new(task_id),
                     intent,
                     close_reason: RequiredNullable::some(close_reason),

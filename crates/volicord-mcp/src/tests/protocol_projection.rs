@@ -872,11 +872,15 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-checkpoint-discriminator")?;
     let adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&adapter)?;
+    let action_form_ref = current_action_form_ref(&adapter, &task_id)?;
     let before = fixture.counts()?;
     let error = adapter
         .call_tool(
             AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
             json!({
+                "action_form_ref": action_form_ref,
+                "task_id": task_id,
                 "checkpoint_operation": {"operation": "create"},
                 "baseline_ref": null
             }),
@@ -886,6 +890,16 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
         structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
 
     assert!(response["selected_variant"].is_null());
+    assert_eq!(response["authoritative_context"]["context_loaded"], true);
+    assert_eq!(
+        response["authoritative_context"]["current_action_form"]["method"],
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name()
+    );
+    assert!(response["retry_contract"]["invalid_paths"]
+        .as_array()
+        .is_some_and(|paths| paths.contains(&json!("/checkpoint_operation/operation"))));
+    assert_eq!(response["failure"]["reached_core"], false);
+    assert_eq!(response["failure"]["core_state_unchanged"], true);
     assert_eq!(
         response["canonical_example"]["discriminator_path"],
         "/checkpoint_operation/operation"
@@ -1582,9 +1596,11 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         ["acceptance_criterion_id"]
         .as_str()
         .ok_or("scope response should expose the acceptance criterion")?;
+    let checkpoint_action_form_ref = current_action_form_ref(&record_adapter, &record_task_id)?;
     let shaped = record_adapter.call_tool(
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
+            "action_form_ref": checkpoint_action_form_ref,
             "task_id": record_task_id,
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
@@ -1599,9 +1615,11 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
         .as_str()
         .ok_or("record_shaping_checkpoint should expose its checkpoint")?;
+    let advance_action_form_ref = current_action_form_ref(&record_adapter, &record_task_id)?;
     record_adapter.call_tool(
         AgentToolId::ADVANCE_TASK.wire_name(),
         json!({
+            "action_form_ref": advance_action_form_ref,
             "task_id": record_task_id,
             "shaping_checkpoint_id": checkpoint_id,
             "change_unit_id": change_unit_id,
@@ -1775,9 +1793,12 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         ["record_id"]
         .as_str()
         .ok_or("prepare scope should expose its current Change Unit")?;
+    let prepare_checkpoint_action_form_ref =
+        current_action_form_ref(&prepare_adapter, &prepare_task_id)?;
     let shaped = prepare_adapter.call_tool(
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
+            "action_form_ref": prepare_checkpoint_action_form_ref,
             "task_id": prepare_task_id,
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
@@ -1793,9 +1814,12 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         ["shaping_checkpoint_id"]
         .as_str()
         .ok_or("prepare record_shaping_checkpoint should expose its checkpoint")?;
+    let prepare_advance_action_form_ref =
+        current_action_form_ref(&prepare_adapter, &prepare_task_id)?;
     prepare_adapter.call_tool(
         AgentToolId::ADVANCE_TASK.wire_name(),
         json!({
+            "action_form_ref": prepare_advance_action_form_ref,
             "task_id": prepare_task_id,
             "shaping_checkpoint_id": prepare_checkpoint_id,
             "change_unit_id": prepare_change_unit_id,

@@ -178,7 +178,8 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
         "required_refs": [task_ref],
         "expected_state_version": 7,
         "blocking_reason": "no_current_checkpoint",
-        "checkpoint": null
+        "checkpoint": null,
+        "action_intent": null
     });
     let presentation = |state_change: &str| {
         json!({
@@ -188,7 +189,8 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "next_actor": "agent",
             "blocker_summary": [],
             "required_user_action": null,
-            "must_surface": []
+            "must_surface": [],
+            "current_action_form": null
         })
     };
     let rejection = json!({
@@ -196,7 +198,22 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
         "method_result": rejection_method,
         "authority_receipt": authority_receipt,
         "workflow": workflow,
-        "presentation": presentation("rejected")
+        "presentation": presentation("rejected"),
+        "authority_basis_mismatch": null,
+        "retry_contract": null,
+        "failure": {
+            "method_committed": false,
+            "reached_core": true,
+            "current_task_phase": "shaping",
+            "current_state_version": 7,
+            "checkpoint_recorded": false,
+            "user_action_created": false,
+            "product_repository_changed": false,
+            "core_state_unchanged": true,
+            "current_baseline_valid": true,
+            "exact_retry_action": null,
+            "repair_required": false
+        }
     });
     let preview = json!({
         "result_type": "dry_run",

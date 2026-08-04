@@ -1,5 +1,6 @@
 //! Public tool-call decoding, adapter dispatch, and shared tool-result carrier.
 
+use crate::action_form::current_workflow_action_form;
 use crate::adapter::{McpAdapter, OwnedAgentSessionCoordinates};
 use crate::authority_refresh::MutationRefreshContext;
 use crate::binding::{
@@ -52,8 +53,9 @@ use volicord_mcp_protocol::McpProtocolCapabilities;
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
     McpOperationalErrorCode, McpOperationalFailure, McpOperationalOperation,
-    McpOperationalResource, McpPostEffectFailureCode, McpToolErrorCode, McpToolErrorIssue,
-    McpToolErrorResponse, McpToolIssueCode, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
+    McpOperationalResource, McpPostEffectFailureCode, McpStatusResponse, McpToolErrorCode,
+    McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    MAX_VALIDATION_ISSUES,
 };
 use volicord_store::agent_connections::{
     agent_connection_record_read_only, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
@@ -376,6 +378,9 @@ pub(crate) fn call_tool_result(
             Ok(response) if tool == AgentToolId::GET_OPERATION_RESULT => {
                 ToolCallOutput::from_operation_result_response(&response, capabilities)?
             }
+            Ok(response) if tool == AgentToolId::STATUS => {
+                ToolCallOutput::from_status_pipeline_response(&response)?
+            }
             Ok(response) => ToolCallOutput::from_pipeline_response(&response)?,
             Err(McpAdapterError::Core(CorePipelineError::OperationalUnavailable(failure))) => {
                 ToolCallOutput::from_core_operational_unavailable(
@@ -668,6 +673,32 @@ impl ToolCallOutput {
     ) -> Result<Self, McpAdapterError> {
         let mut output = Self::success(response.response_json.clone())?;
         output.operation_result_ref = response.operation_result_ref.clone();
+        output.apply_pipeline_diagnostics(response);
+        Ok(output)
+    }
+
+    fn from_status_pipeline_response(response: &PipelineResponse) -> Result<Self, McpAdapterError> {
+        let method_result = serde_json::from_value(response.response_value.clone())
+            .map_err(McpAdapterError::Json)?;
+        let current_action_form = response
+            .verified_invocation
+            .as_ref()
+            .and_then(|invocation| {
+                response
+                    .response_value
+                    .pointer("/active_task/workflow")
+                    .and_then(|value| serde_json::from_value(value.clone()).ok())
+                    .and_then(|workflow| {
+                        current_workflow_action_form(&invocation.project_id, &workflow)
+                    })
+            });
+        let mut output = Self::success(
+            serde_json::to_string(&McpStatusResponse {
+                method_result,
+                current_action_form: RequiredNullable::new(current_action_form),
+            })
+            .map_err(McpAdapterError::Json)?,
+        )?;
         output.apply_pipeline_diagnostics(response);
         Ok(output)
     }
@@ -969,22 +1000,29 @@ fn tool_execution_error_result_for_capabilities(
 ) -> Value {
     let structured = match error {
         McpAdapterError::InvalidParams {
+            code,
             issues,
             truncated,
             selected_variant,
             canonical_example,
+            authoritative_context,
+            retry_contract,
+            failure,
             ..
         } => McpToolErrorResponse {
-            code: McpToolErrorCode::InvalidArguments,
+            code: *code,
             tool_name: requested_tool_name.to_owned(),
             selected_variant: RequiredNullable::new(selected_variant.clone()),
-            canonical_example: RequiredNullable::new(canonical_example.clone()),
+            canonical_example: RequiredNullable::new(canonical_example.as_deref().cloned()),
             retryable: true,
             reached_core: false,
             committed: false,
             reported_issue_count: issues.len(),
             truncated: *truncated,
             issues: issues.clone(),
+            authoritative_context: RequiredNullable::new(authoritative_context.as_deref().cloned()),
+            retry_contract: RequiredNullable::new(retry_contract.as_deref().cloned()),
+            failure: RequiredNullable::new(failure.as_deref().cloned()),
         },
         McpAdapterError::ToolExecution { tool_name, message } => {
             let (path, message) = if tool_name == "project routing" {
@@ -1016,6 +1054,9 @@ fn tool_execution_error_result_for_capabilities(
                     McpToolIssueCode::AdapterPreconditionFailed,
                     message,
                 )],
+                authoritative_context: RequiredNullable::null(),
+                retry_contract: RequiredNullable::null(),
+                failure: RequiredNullable::null(),
             }
         }
         McpAdapterError::MutationAdmission(condition) => McpToolErrorResponse {
@@ -1033,6 +1074,9 @@ fn tool_execution_error_result_for_capabilities(
                 McpToolIssueCode::AdapterPreconditionFailed,
                 condition.to_string(),
             )],
+            authoritative_context: RequiredNullable::null(),
+            retry_contract: RequiredNullable::null(),
+            failure: RequiredNullable::null(),
         },
         _ => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
@@ -1049,6 +1093,9 @@ fn tool_execution_error_result_for_capabilities(
                 McpToolIssueCode::AdapterPreconditionFailed,
                 "Tool execution failed before reaching Core.",
             )],
+            authoritative_context: RequiredNullable::null(),
+            retry_contract: RequiredNullable::null(),
+            failure: RequiredNullable::null(),
         },
     };
     bounded_tool_error_result(structured, capabilities)

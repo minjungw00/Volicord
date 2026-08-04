@@ -4,9 +4,9 @@ use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::{
     ids::{BaselineRef, TaskId},
     schema::{
-        DryRunSummary, FalseValue, NextActionSummary, PlannedEffect, RequiredNullable,
-        ToolEnvelope, WorkflowRecovery, WorkflowRejectionBlocker, WorkflowRejectionDetails,
-        WorkflowRejectionUserAction,
+        AuthorityBasisMismatch, AuthorityBasisValue, DryRunSummary, FalseValue, NextActionSummary,
+        PlannedEffect, RequiredNullable, ToolEnvelope, WorkflowRecovery, WorkflowRejectionBlocker,
+        WorkflowRejectionDetails, WorkflowRejectionUserAction,
     },
     values::{ErrorCode, MethodName, RunKind, UtcTimestamp},
 };
@@ -216,6 +216,34 @@ pub(crate) fn validation_plan_error<T>(
 ) -> Result<T, PlanError> {
     let response =
         validation_rejected(dry_run, state_version, field, message).map_err(PlanError::Core)?;
+    Err(PlanError::Response(Box::new(response)))
+}
+
+pub(crate) fn authority_basis_mismatch_plan_error<T>(
+    dry_run: volicord_types::schema::DryRunIntent,
+    state_version: Option<u64>,
+    field: &'static str,
+    expected: AuthorityBasisValue,
+    received: AuthorityBasisValue,
+    message: impl Into<String>,
+) -> Result<T, PlanError> {
+    let details = object_from_value(serde_json::to_value(AuthorityBasisMismatch {
+        field: field.to_owned(),
+        expected,
+        received,
+        state_change_applied: FalseValue,
+    })?)?;
+    let response = rejected_pipeline_response(
+        dry_run,
+        state_version,
+        vec![tool_error(
+            ErrorCode::ValidationFailed,
+            message,
+            true,
+            Some(details),
+        )],
+    )
+    .map_err(PlanError::Core)?;
     Err(PlanError::Response(Box::new(response)))
 }
 

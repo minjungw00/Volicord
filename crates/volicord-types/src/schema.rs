@@ -1082,6 +1082,25 @@ pub struct PlatformDiagnosticDetail {
     pub diagnostic_code: String,
 }
 
+/// Exact expected and received values for a schema-valid authority-coordinate mismatch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum AuthorityBasisValue {
+    Null(()),
+    String(String),
+    UnsignedInteger(u64),
+}
+
+/// Exact expected and received values for a schema-valid authority-coordinate mismatch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorityBasisMismatch {
+    pub field: String,
+    pub expected: AuthorityBasisValue,
+    pub received: AuthorityBasisValue,
+    pub state_change_applied: FalseValue,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ToolErrorWire {
@@ -2195,6 +2214,76 @@ pub struct ShapingCheckpointSummary {
     pub decision_recovery_requirements: Vec<ShapingDecisionRecoveryRequirement>,
 }
 
+/// Exact checkpoint authority coordinates selected by the current workflow.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WorkflowCheckpointActionCoordinates {
+    CreateInitial,
+    ReplaceCurrent {
+        current_checkpoint_ref: StateRecordRef,
+        predecessor_checkpoint_ref: RequiredNullable<StateRecordRef>,
+        retired_non_authorizing_request_refs: Vec<StateRecordRef>,
+        carry_forward_application_refs: Vec<StateRecordRef>,
+        stale_application_refs: Vec<StateRecordRef>,
+    },
+}
+
+/// Adapter-neutral fixed coordinates for one currently selected workflow action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "coordinate_kind",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum WorkflowActionAuthorityCoordinates {
+    RecordShapingCheckpoint {
+        task_id: TaskId,
+        checkpoint_operation: WorkflowCheckpointActionCoordinates,
+        scope_revision: u64,
+        baseline_ref: RequiredNullable<BaselineRef>,
+    },
+    UpdateScope {
+        task_id: TaskId,
+        scope_revision: u64,
+        baseline_ref: RequiredNullable<BaselineRef>,
+        current_change_unit_id: RequiredNullable<ChangeUnitId>,
+        related_scope_decision_refs: Vec<StateRecordRef>,
+    },
+    FinalizeAdvice {
+        task_id: TaskId,
+        shaping_checkpoint_id: ShapingCheckpointId,
+        change_unit_id: ChangeUnitId,
+        scope_revision: u64,
+        baseline_ref: RequiredNullable<BaselineRef>,
+        user_action_resolution_ids: Vec<UserActionResolutionId>,
+    },
+    AdvanceTask {
+        task_id: TaskId,
+        shaping_checkpoint_id: ShapingCheckpointId,
+        change_unit_id: ChangeUnitId,
+        scope_revision: u64,
+        baseline_ref: RequiredNullable<BaselineRef>,
+        user_action_resolution_ids: Vec<UserActionResolutionId>,
+    },
+    CheckClose {
+        task_id: TaskId,
+    },
+    CloseTask {
+        task_id: TaskId,
+    },
+}
+
+/// Core-owned current action plus the authority coordinates an adapter may project.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowActionIntent {
+    pub method: MethodName,
+    pub expected_state_version: u64,
+    pub fixed_authority_coordinates: WorkflowActionAuthorityCoordinates,
+    pub required_refs: Vec<StateRecordRef>,
+}
+
 macro_rules! workflow_projection_variants {
     ($($variant:ident),+ $(,)?) => {
         /// One authoritative tagged workflow-progression projection.
@@ -2210,6 +2299,7 @@ macro_rules! workflow_projection_variants {
                     expected_state_version: u64,
                     blocking_reason: RequiredNullable<crate::values::WorkflowBlockingReason>,
                     checkpoint: RequiredNullable<ShapingCheckpointSummary>,
+                    action_intent: RequiredNullable<WorkflowActionIntent>,
                 },
             )+
         }
@@ -2340,6 +2430,40 @@ impl WorkflowProjection {
             | Self::Implementation { required_refs, .. }
             | Self::CloseReview { required_refs, .. }
             | Self::Terminal { required_refs, .. } => required_refs,
+        }
+    }
+
+    /// Returns the neutral current action intent when an Agent-owned action is selected.
+    pub fn action_intent(&self) -> Option<&WorkflowActionIntent> {
+        match self {
+            Self::NoActiveTask { action_intent, .. }
+            | Self::ShapingRequired { action_intent, .. }
+            | Self::AwaitingUserAction { action_intent, .. }
+            | Self::DecisionRecoveryRequired { action_intent, .. }
+            | Self::ReadyToApplyDecisions { action_intent, .. }
+            | Self::ReadyForChangeUnit { action_intent, .. }
+            | Self::ReadyToFinalizeAdvice { action_intent, .. }
+            | Self::ReadyForImplementation { action_intent, .. }
+            | Self::Implementation { action_intent, .. }
+            | Self::CloseReview { action_intent, .. }
+            | Self::Terminal { action_intent, .. } => action_intent.as_ref(),
+        }
+    }
+
+    /// Returns the current compact checkpoint carried by this projection.
+    pub fn checkpoint(&self) -> Option<&ShapingCheckpointSummary> {
+        match self {
+            Self::NoActiveTask { checkpoint, .. }
+            | Self::ShapingRequired { checkpoint, .. }
+            | Self::AwaitingUserAction { checkpoint, .. }
+            | Self::DecisionRecoveryRequired { checkpoint, .. }
+            | Self::ReadyToApplyDecisions { checkpoint, .. }
+            | Self::ReadyForChangeUnit { checkpoint, .. }
+            | Self::ReadyToFinalizeAdvice { checkpoint, .. }
+            | Self::ReadyForImplementation { checkpoint, .. }
+            | Self::Implementation { checkpoint, .. }
+            | Self::CloseReview { checkpoint, .. }
+            | Self::Terminal { checkpoint, .. } => checkpoint.as_ref(),
         }
     }
 }

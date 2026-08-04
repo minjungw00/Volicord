@@ -131,6 +131,14 @@ Known MCP tool의 descriptor 유래 인자 issue는 구조화된 MCP invalid-arg
 결과 경계:
 - 메서드별 결과 전용 필드는 이 거부 응답에 포함하지 않습니다.
 
+Descriptor 검증이 Core 전에 실패하면 이 공개 API branch가 아니라 MCP가
+`committed=false`, `reached_core=false`, 독립적으로 유효한 routing 좌표로 읽을 수 있는
+한도 있는 현재 권한 맥락, 정확한 retry contract를 반환합니다. Checkpoint, UserAction,
+Core event, 쓰기 권한, Product Repository 변경은 만들어지지 않습니다. Schema 검증은
+성공했지만 Core가 권한 좌표 불일치를 찾으면 이 거부 branch가 typed
+`AuthorityBasisMismatch`의 expected/received 값과 효과 없음 사실을 사용합니다. 두 조건
+모두 영속 데이터 손상으로 routing하지 않습니다.
+
 <a id="rejected-precondition-failure"></a>
 ### 선행조건 실패
 

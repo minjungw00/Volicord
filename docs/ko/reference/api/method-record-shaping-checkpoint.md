@@ -42,6 +42,14 @@ catalog로 표시된 단일 의미 descriptor에서 나옵니다.
 `implementation_boundary`, typed `gaps`, `source_refs`, `evidence_refs`를 직접 받습니다.
 바깥쪽 operation union은 없습니다.
 
+현재 MCP action form은 상태에 결속됩니다. `create_initial`에서는 프로젝트 selector,
+Task, 정확한 `create_initial` operation, 범위 리비전, 실제 nullable 기준선, 예상 상태
+버전을 고정합니다. 빈 source·evidence ref를 제안하며 summary, 필수 nullable
+implementation boundary, typed gap만 필수 에이전트 입력으로 남깁니다.
+`replace_current`에서는 정확한 현재·선행 checkpoint 참조, retirement 참조,
+carry-forward 참조, stale application 참조도 고정합니다. MCP는 Core 호출 전에 form의
+정확한 `action_form_ref`를 요구합니다.
+
 `checkpoint_operation.operation=create_initial`은 현재 checkpoint가 없어야 합니다.
 `checkpoint_operation.operation=replace_current`는 정확한
 `expected_current_checkpoint_id`에 compare-and-swap을 수행합니다. 교체 요청은 현재 권한이

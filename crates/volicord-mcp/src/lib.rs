@@ -8,6 +8,7 @@
 //! arguments into `volicord-types` request structs, and hands execution to
 //! `volicord-core`.
 
+mod action_form;
 mod adapter;
 mod authority_refresh;
 mod binding;

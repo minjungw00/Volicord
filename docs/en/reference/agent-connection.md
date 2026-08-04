@@ -773,7 +773,9 @@ observer semantic contract digest, and the canonical Product Repository
 effect-catalog digest, plus the managed agent-guidance semantic digest. The
 guidance digest covers the closed current workflow facts rendered into the
 managed `AGENTS.md` block and MCP server instructions; it is not a hash of
-project-specific prose. A change to any of these semantic digests changes the managed
+project-specific prose. The project revision also binds the workflow-action-form
+semantic digest, so changes to form identity, fixed-coordinate, retry-context,
+or typed basis-mismatch semantics invalidate earlier project sessions. A change to any of these semantic digests changes the managed
 integration revision even when the hook command text is unchanged. Historical
 Guard events remain evidence for their recorded revision and cannot satisfy
 current-definition coverage. `host_sessions`

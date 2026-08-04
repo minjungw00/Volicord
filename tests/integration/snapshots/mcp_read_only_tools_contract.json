@@ -56,6 +56,7 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -87,6 +88,7 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -107,6 +109,7 @@
           "RequestedControlLevel",
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
+          "RetryContract",
           "RiskAcceptanceCoverage",
           "RunKind",
           "SensitiveActionRequirement",
@@ -137,12 +140,18 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "ToolResultOrRejected_for_StatusResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -157,7 +166,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4e1d6a6b2320c175107968f5cbde0e35e333d67ebf548ac634446350ea90e1ad"
+        "sha256": "sha256:4f133daefdee893852aa690fd4f00fdbff17c14258fa77218a4a68d6b426af71"
       }
     },
     {
@@ -186,6 +195,7 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "EmptyEventRefs",
           "ErrorCode",
@@ -195,6 +205,7 @@
           "GetOperationResultResultBase",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -205,6 +216,7 @@
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
           "OperationResultRef",
+          "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
           "ShapingCheckpointReadiness",
@@ -223,7 +235,12 @@
           "ToolRejectedResponse",
           "UserActionStatus",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -232,7 +249,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ce024f851ed3d9e92fbb6fa41bb1a45fda50967829b732ac8baed1b00778b9e2"
+        "sha256": "sha256:42132c1a9217a6db73d184eaaba98c25dab9865432579c8ef94abcb822230db8"
       }
     },
     {
@@ -246,13 +263,14 @@
       "input_schema": {
         "definitions": [],
         "root_properties": [
+          "action_form_ref",
           "project_selector",
           "task_id"
         ],
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:6b577d38f3ea05790d7a7484d0bb6ac8aad24722598651dda87d119b97ae41f0"
+        "sha256": "sha256:ba988381c9c654615a93055f228e95b2f1cca97d4a633e4a3f1db2471712bb69"
       },
       "name": "volicord.check_close",
       "output_schema": {
@@ -266,6 +284,7 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "AuthorityReceipt",
           "CarryForwardDisposition",
@@ -297,6 +316,7 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -316,6 +336,7 @@
           "RequestedControlLevel",
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
+          "RetryContract",
           "RiskAcceptanceCoverage",
           "RunKind",
           "SensitiveActionRequirement",
@@ -348,7 +369,12 @@
           "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
           "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
           "WorkflowRecovery",
           "WorkflowRejectionBlocker",
@@ -363,7 +389,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:46993e2fb73cce81d64bb0bb90af235e74af18bafb5c6f843a2b98c87b655df4"
+        "sha256": "sha256:2380384f2da5e2cc7b10e50818731442219f37fd39b5e6c2a52389f5238a951e"
       }
     },
     {
@@ -384,14 +410,39 @@
       "output_schema": {
         "definitions": [
           "AgentConnectionMode",
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
+          "McpArgumentFailurePresentation",
           "McpListProjectItem",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolIssueCode"
+          "McpToolIssueCode",
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:75f8bd67e2617e1d1c24e9416edd25b2ce6e4d9b84fd5adceba8e280e466c2c7"
+        "sha256": "sha256:de117f930765d289f1cf29fae19371457de09a84d153db686791cc0d07375b96"
       }
     },
     {
@@ -413,20 +464,45 @@
       "name": "volicord.begin_integration_verification",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
           "GuardIntegrationVerificationFinding",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
-          "UtcTimestamp"
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "UtcTimestamp",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6b347d07b8e66cf8c534fadcca119785be42b945c37ee836929111250c27079e"
+        "sha256": "sha256:e39160d15aa97a1c45e708399278ecf7a58cf0dcef52cc5bb63b447956e11a72"
       }
     },
     {
@@ -450,20 +526,45 @@
       "name": "volicord.guard_probe",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
           "GuardIntegrationVerificationFinding",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
-          "UtcTimestamp"
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "UtcTimestamp",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6caad8937c8a47d01ae0d73b336bd741a7c10825ea2d29f1d03065fc24346c43"
+        "sha256": "sha256:71d03dbd73df264b5b35b4dfad56965fff244c271abcb06ff647dff58ee3ebae"
       }
     },
     {
@@ -487,6 +588,8 @@
       "name": "volicord.get_integration_verification",
       "output_schema": {
         "definitions": [
+          "AuthoritativeArgumentContext",
+          "AuthorityNextActor",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationPhaseStatus",
           "GuardIntegrationVerificationPhases",
@@ -495,14 +598,37 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolIssueCode",
-          "UtcTimestamp"
+          "MethodName",
+          "RetryContract",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "StateRecordKind",
+          "StateRecordRef",
+          "TaskMode",
+          "UtcTimestamp",
+          "WorkPhase",
+          "WorkflowActionAuthorityCoordinates",
+          "WorkflowActionForm",
+          "WorkflowActionInput",
+          "WorkflowActionIntent",
+          "WorkflowBlockingReason",
+          "WorkflowCheckpointActionCoordinates",
+          "WorkflowProjection"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a1091b2ecbf4beeee915e6e6c00e26e682cced6bd850f1edd8840f5074035b8b"
+        "sha256": "sha256:a0af7aad2cf6f876ba6caa3e3d4941f1a711567b21c59aab3ca944b015392e42"
       }
     }
   ]

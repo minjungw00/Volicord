@@ -127,6 +127,184 @@ fn record_shaping_checkpoint_rejects_the_removed_combined_request_shape_without_
 }
 
 #[test]
+fn checkpoint_action_form_rejects_omission_and_stale_refs_before_core() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-checkpoint-action-form-admission")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&adapter)?;
+    let before = fixture.counts()?;
+    let omitted = adapter
+        .call_tool(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            json!({
+                "task_id": task_id,
+                "checkpoint_operation": {"operation": "create_initial"},
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "summary": "A structural boundary remains current.",
+                "implementation_boundary": null,
+                "gaps": [{
+                    "gap_kind": "implementation_boundary_missing",
+                    "summary": "Define the implementation boundary.",
+                    "affected_refs": [],
+                    "user_action": null
+                }],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )
+        .expect_err("current state-bound progression must reject an omitted form ref");
+    let omitted = structured_error_result(&tool_execution_error_result(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        &omitted,
+    ));
+    assert_eq!(omitted["code"], "MCP_INVALID_ARGUMENTS");
+    assert!(omitted["issues"]
+        .as_array()
+        .is_some_and(|issues| issues.iter().any(|issue| {
+            issue["path"] == "/action_form_ref" && issue["code"] == "MCP_ARGUMENT_REQUIRED"
+        })));
+    assert_eq!(omitted["reached_core"], false);
+    assert_eq!(omitted["committed"], false);
+    assert_eq!(omitted["authoritative_context"]["context_loaded"], true);
+    assert_eq!(
+        omitted["authoritative_context"]["baseline_ref"],
+        Value::Null
+    );
+    assert_eq!(omitted["failure"]["checkpoint_recorded"], false);
+    assert_eq!(omitted["failure"]["user_action_created"], false);
+    assert_eq!(omitted["failure"]["product_repository_changed"], false);
+    assert_eq!(omitted["failure"]["repair_required"], false);
+    assert_eq!(fixture.counts()?, before);
+
+    let current_ref = omitted["authoritative_context"]["current_action_form"]["form_ref"]
+        .as_str()
+        .ok_or("stale-form response should expose the current form")?
+        .to_owned();
+    assert_eq!(current_action_form_ref(&adapter, &task_id)?, current_ref);
+    let committed = adapter.call_tool(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        json!({
+            "action_form_ref": current_ref,
+            "task_id": task_id,
+            "checkpoint_operation": {"operation": "create_initial"},
+            "scope_revision": 0,
+            "baseline_ref": null,
+            "summary": "A structural boundary remains current.",
+            "implementation_boundary": null,
+            "gaps": [{
+                "gap_kind": "implementation_boundary_missing",
+                "summary": "Define the implementation boundary.",
+                "affected_refs": [],
+                "user_action": null
+            }],
+            "source_refs": [],
+            "evidence_refs": []
+        }),
+    )?;
+    let checkpoint_id = committed.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("checkpoint should be recorded")?;
+    let before_stale = fixture.counts()?;
+    let stale = adapter
+        .call_tool(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            json!({
+                "action_form_ref": current_ref,
+                "task_id": task_id,
+                "checkpoint_operation": {
+                    "operation": "replace_current",
+                    "expected_current_checkpoint_id": checkpoint_id,
+                    "retired_non_authorizing_request_refs": [],
+                    "carry_forward_application_refs": [],
+                    "stale_authority_actions": []
+                },
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "summary": "The replacement closes the structural gap.",
+                "implementation_boundary": "Only the current bounded path.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )
+        .expect_err("the former form must be stale after checkpoint creation");
+    let stale = structured_error_result(&tool_execution_error_result(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        &stale,
+    ));
+    assert_eq!(stale["code"], "MCP_ACTION_FORM_STALE");
+    assert_ne!(
+        stale["authoritative_context"]["current_action_form"]["form_ref"],
+        current_ref
+    );
+    assert_eq!(fixture.counts()?, before_stale);
+    Ok(())
+}
+
+#[test]
+fn checkpoint_basis_mismatch_reports_typed_null_without_repair() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-checkpoint-null-basis-mismatch")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&adapter)?;
+    let action_form_ref = current_action_form_ref(&adapter, &task_id)?;
+    let before = fixture.counts()?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            json!({
+                "detail": "workflow",
+                "action_form_ref": action_form_ref,
+                "task_id": task_id,
+                "checkpoint_operation": {"operation": "create_initial"},
+                "scope_revision": 0,
+                "baseline_ref": "0123456789012345678901234567890123456789",
+                "summary": "This request has a mismatched authority basis.",
+                "implementation_boundary": "No mutation should occur.",
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+    let responses = stdio_responses(&output)?;
+    let structured = &responses[1]["result"]["structuredContent"];
+    assert_eq!(
+        structured["method_result"]["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(
+        structured["authority_basis_mismatch"]["field"],
+        "baseline_ref"
+    );
+    assert_eq!(
+        structured["authority_basis_mismatch"]["expected"],
+        Value::Null
+    );
+    assert!(structured["authority_basis_mismatch"]["received"].is_string());
+    assert_eq!(
+        structured["authority_basis_mismatch"]["state_change_applied"],
+        false
+    );
+    assert_eq!(structured["failure"]["reached_core"], true);
+    assert_eq!(structured["failure"]["checkpoint_recorded"], false);
+    assert_eq!(structured["failure"]["user_action_created"], false);
+    assert_eq!(structured["failure"]["core_state_unchanged"], true);
+    assert_eq!(structured["failure"]["current_baseline_valid"], true);
+    assert_eq!(structured["failure"]["repair_required"], false);
+    assert!(structured["method_result"]["errors"][0]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("Expected baseline_ref=null")));
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn nullable_object_validates_its_non_null_schema_and_keeps_nested_issues(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-nullable-object-validation")?;
@@ -633,7 +811,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     let status_structured = &status["result"]["structuredContent"];
     assert_eq!(status["result"]["isError"], false);
     assert_eq!(
-        status_structured["authority_receipt"]["state_version"],
+        status_structured["method_result"]["authority_receipt"]["state_version"],
         advanced_state_version
     );
     assert_eq!(fixture.counts()?, after_advance);
@@ -1322,6 +1500,7 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
     let fixture = CoreFixture::new("mcp-awaiting-user-action-presentation")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
+    let action_form_ref = current_action_form_ref(&setup_adapter, &task_id)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -1330,6 +1509,7 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
             AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
             json!({
                 "detail": "workflow",
+                "action_form_ref": action_form_ref,
                 "task_id": task_id,
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 0,
@@ -1432,9 +1612,11 @@ fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
     let fixture = CoreFixture::new("mcp-rejected-shaping-decision-presentation")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
+    let action_form_ref = current_action_form_ref(&setup_adapter, &task_id)?;
     let shaped = setup_adapter.call_tool(
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
+            "action_form_ref": action_form_ref,
             "task_id": task_id,
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 0,
@@ -1570,9 +1752,11 @@ fn product_and_technical_only_shaping_outputs_do_not_fabricate_scope_gaps(
         let fixture = CoreFixture::new(&format!("mcp-{label}-only-shaping"))?;
         let adapter = adapter(&fixture)?;
         let (task_id, _) = create_task(&adapter)?;
+        let action_form_ref = current_action_form_ref(&adapter, &task_id)?;
         let shaped = adapter.call_tool(
             AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
             json!({
+                "action_form_ref": action_form_ref,
                 "task_id": task_id,
                     "checkpoint_operation": {"operation": "create_initial"},
                     "scope_revision": 0,
@@ -1683,9 +1867,14 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         }),
     )?;
     assert_eq!(scope.response_value["base"]["response_kind"], "result");
+    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("advisor scope should expose its Change Unit")?;
+    let action_form_ref = current_action_form_ref(&adapter, task_id)?;
     let shaped = adapter.call_tool(
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
+            "action_form_ref": action_form_ref,
             "task_id": task_id,
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 1,
@@ -1701,6 +1890,9 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         shaped.response_value["workflow"]["kind"],
         "ready_to_finalize_advice"
     );
+    let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("advisor shaping should expose its checkpoint")?;
 
     let close = adapter.call_tool(
         AgentToolId::CHECK_CLOSE.wire_name(),
@@ -1709,6 +1901,51 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
     let guidance = serde_json::to_string(&close.response_value)?;
     assert!(guidance.contains("volicord.finalize_advice"));
     assert!(!guidance.contains("volicord.record_run"));
+
+    let finalize_action_form_ref = current_action_form_ref(&adapter, task_id)?;
+    let finalized = adapter.call_tool(
+        AgentToolId::FINALIZE_ADVICE.wire_name(),
+        json!({
+            "action_form_ref": finalize_action_form_ref,
+            "task_id": task_id,
+            "shaping_checkpoint_id": checkpoint_id,
+            "change_unit_id": change_unit_id,
+            "scope_revision": 1,
+            "baseline_ref": "baseline_advisor_guidance",
+            "user_action_resolution_ids": [],
+            "result_summary": "The bounded advisory result is complete.",
+            "result_refs": [],
+            "evidence_refs": [],
+            "residual_risks": [],
+            "recovery_constraints": []
+        }),
+    )?;
+    assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+
+    let before_omission = fixture.counts()?;
+    let omitted = adapter
+        .call_tool(
+            AgentToolId::CHECK_CLOSE.wire_name(),
+            json!({"task_id": task_id}),
+        )
+        .expect_err("current close review must require its exact action form");
+    let omitted = structured_error_result(&tool_execution_error_result(
+        AgentToolId::CHECK_CLOSE.wire_name(),
+        &omitted,
+    ));
+    assert_eq!(omitted["code"], "MCP_ACTION_FORM_STALE");
+    assert_eq!(omitted["reached_core"], false);
+    assert_eq!(fixture.counts()?, before_omission);
+
+    let check_close_action_form_ref = current_action_form_ref(&adapter, task_id)?;
+    let close = adapter.call_tool(
+        AgentToolId::CHECK_CLOSE.wire_name(),
+        json!({
+            "action_form_ref": check_close_action_form_ref,
+            "task_id": task_id
+        }),
+    )?;
+    assert_eq!(close.response_value["base"]["effect_kind"], "read_only");
     Ok(())
 }
 
@@ -1806,9 +2043,11 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
     let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
         .as_str()
         .ok_or("scope should expose the current Change Unit")?;
+    let checkpoint_action_form_ref = current_action_form_ref(&setup_adapter, &task_id)?;
     let shaped = setup_adapter.call_tool(
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
+            "action_form_ref": checkpoint_action_form_ref,
             "task_id": task_id,
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
@@ -1823,6 +2062,7 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
     let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
         .as_str()
         .ok_or("record_shaping_checkpoint should expose the current checkpoint")?;
+    let advance_action_form_ref = current_action_form_ref(&setup_adapter, &task_id)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -1830,6 +2070,7 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
             2,
             AgentToolId::ADVANCE_TASK.wire_name(),
             json!({
+                "action_form_ref": advance_action_form_ref,
                 "task_id": task_id,
                 "shaping_checkpoint_id": checkpoint_id,
                 "change_unit_id": change_unit_id,

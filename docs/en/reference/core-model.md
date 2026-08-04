@@ -670,6 +670,17 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 
 Separate QA and external verification workflows are not separate baseline authority records unless [Scope](scope.md) and the affected owners define them as supported.
 
+Core selects an Agent-owned required action as a neutral
+`WorkflowActionIntent`: method, expected state version, exact fixed authority
+coordinates, and required refs. Those coordinates come only from current
+authority. They include exact checkpoint succession and recovery sets for
+checkpoint recording, and exact checkpoint, non-write Change Unit, scope,
+baseline, and current resolution IDs for advisor finalization. Core does not
+own MCP JSON input slots or action-form digests. An authority-coordinate
+mismatch after schema validation is a no-effect `AuthorityBasisMismatch` with
+typed `expected` and `received` values; it does not make an otherwise valid
+Task corrupt.
+
 ## 8. Write ticket
 
 A write ticket is a durable Core authority record for authorized write intent for one proposed product-file change or one exact approval-bound non-product action under effective `sensitive` control.

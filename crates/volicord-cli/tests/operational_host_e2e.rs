@@ -321,6 +321,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         intake["presentation"]["task_phase"]["work_phase"],
         "shaping"
     );
+    let initial_checkpoint_action_form_ref = required_action_form_ref(&intake)?;
 
     let action = |kind: &str, question: &str, options: Value, produced_at_state_version: u64| {
         json!({
@@ -370,6 +371,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
+            "action_form_ref": initial_checkpoint_action_form_ref,
             "scope_revision": 0,
             "baseline_ref": null,
             "checkpoint_operation": {"operation": "create_initial"},
@@ -425,6 +427,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
+                "action_form_ref": initial_checkpoint_action_form_ref,
                 "checkpoint_operation": {
                     "operation": "replace_current",
                     "expected_current_checkpoint_id": retired_checkpoint_id,
@@ -562,6 +565,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "rejected result and subsequent status disagree on {field}"
         );
     }
+    let recovery_checkpoint_action_form_ref = required_action_form_ref(&recovery_status)?;
 
     let recovered_shaping = live_mcp_call(
         &mut child,
@@ -571,6 +575,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
+                "action_form_ref": recovery_checkpoint_action_form_ref,
                 "scope_revision": 0,
                 "baseline_ref": null,
                 "checkpoint_operation": {
@@ -733,6 +738,17 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         resolution_refs.push(resolved["user_action_resolution_ref"].clone());
     }
 
+    let decision_application_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        SESSION,
+        "future.turn.planning-product.decision-application-status",
+    )?;
+    call_id += 1;
+    let update_scope_action_form_ref = required_action_form_ref(&decision_application_status)?;
+
     let resolved_replacement = live_mcp_call(
         &mut child,
         call_id,
@@ -741,6 +757,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
+                "action_form_ref": recovery_checkpoint_action_form_ref,
                 "checkpoint_operation": {
                     "operation": "replace_current",
                     "expected_current_checkpoint_id": checkpoint_id,
@@ -777,6 +794,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "workflow",
             "task_id": task_id,
+            "action_form_ref": update_scope_action_form_ref,
             "goal_summary": null,
             "scope_update": null,
             "scope_boundary": "Create only the bounded release-preparation note.",
@@ -804,6 +822,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     let change_unit_id =
         required_string(&scope["authority_receipt"]["change_unit_ref"], "record_id")?;
+    let advance_action_form_ref = required_action_form_ref(&scope)?;
     let state = rusqlite::Connection::open(&state_db)?;
     let gap_statuses = state
         .prepare(
@@ -843,6 +862,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "project_selector": project_id,
             "detail": "workflow",
             "task_id": task_id,
+            "action_form_ref": advance_action_form_ref,
             "shaping_checkpoint_id": checkpoint_id,
             "change_unit_id": change_unit_id,
             "scope_revision": 1,
@@ -5473,6 +5493,17 @@ fn live_mcp_call(
 
 fn method_result(structured: &Value) -> &Value {
     structured.get("method_result").unwrap_or(structured)
+}
+
+fn required_action_form_ref(structured: &Value) -> Result<String, Box<dyn Error>> {
+    [
+        "/current_action_form/form_ref",
+        "/presentation/current_action_form/form_ref",
+    ]
+    .into_iter()
+    .find_map(|pointer| structured.pointer(pointer).and_then(Value::as_str))
+    .map(str::to_owned)
+    .ok_or_else(|| format!("current action form should include a form_ref in {structured}").into())
 }
 
 fn required_string(value: &Value, key: &str) -> Result<String, Box<dyn Error>> {

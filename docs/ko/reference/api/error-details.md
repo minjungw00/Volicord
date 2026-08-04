@@ -123,8 +123,27 @@ routing합니다. 플랫폼을 관찰할 수 없는 경우는 `ToolError` 밖의
 실패이므로 `ToolError.details`가 없습니다. 그 밖의 Store failure는 Store 소유 분류가
 공개 메서드 거부를 선택한 경우에만 `store_failure_category`를 사용합니다.
 
-<a id="state-conflict-detail-fields"></a>
+<a id="authority-basis-mismatch-detail-fields"></a>
 
+## 권한 근거 불일치 세부 필드
+
+Schema에는 유효하지만 권한 좌표가 현재 Task 권한과 다른 요청은 다음 형태를
+사용합니다.
+
+```schema
+AuthorityBasisMismatch:
+  field: string
+  expected: null | string | unsigned integer
+  received: null | string | unsigned integer
+  state_change_applied: false
+```
+
+`expected`와 `received`는 실제 null을 포함해 권한 좌표의 JSON 원시 타입을 보존합니다.
+`baseline_ref`의 예상 값이 null이고 받은 값이 non-null `BaselineRef`이면
+`Expected baseline_ref=null. Received a non-null BaselineRef. The Task state is valid; retry against the current action form.`이라고 알립니다. 이 세부 정보는 요청 복구이며 담당
+상태 손상이 아니므로 그 자체로 Task repair를 권하지 않습니다.
+
+<a id="state-conflict-detail-fields"></a>
 ## 상태 충돌 세부 필드
 
 오래된 `expected_state_version` 세부사항:

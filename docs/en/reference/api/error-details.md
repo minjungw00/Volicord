@@ -127,8 +127,29 @@ operational failure outside `ToolError` and therefore has no
 `ToolError.details`. Other Store failures use `store_failure_category` only
 when their Store-owned classification selects a public method rejection.
 
-<a id="state-conflict-detail-fields"></a>
+<a id="authority-basis-mismatch-detail-fields"></a>
 
+## Authority basis mismatch detail fields
+
+A schema-valid request whose authority coordinate differs from current Task
+authority uses:
+
+```schema
+AuthorityBasisMismatch:
+  field: string
+  expected: null | string | unsigned integer
+  received: null | string | unsigned integer
+  state_change_applied: false
+```
+
+`expected` and `received` preserve the authority coordinate's JSON primitive
+type, including actual null. For `baseline_ref`, expected null plus a non-null received
+`BaselineRef` says: `Expected baseline_ref=null. Received a non-null
+BaselineRef. The Task state is valid; retry against the current action form.`
+This detail is request recovery, not owner-state corruption, and never by
+itself recommends Task repair.
+
+<a id="state-conflict-detail-fields"></a>
 ## State conflict detail fields
 
 Stale `expected_state_version` details:

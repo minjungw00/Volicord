@@ -167,7 +167,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/change_unit_planning.rs` | Change Unit record projection and Store mutation planning over exact schema-owned typed field accessors. |
 | `crates/volicord-core/src/state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs` | Store-independent typed-fact projection into public state summaries and evidence or guarantee display values. |
 | `crates/volicord-core/src/guidance.rs` | Adapter-neutral typed blocker remediation, display-action normalization, primary display selection, and operation-category projection; it does not own workflow authority. |
-| `crates/volicord-core/src/workflow_projection.rs` | Closed tagged workflow authority projection from the current effective graph, including exact stale recovery owner, required and allowed actions, blocking reasons, current recovery references, and state-version binding. |
+| `crates/volicord-core/src/workflow_projection.rs` | Closed tagged workflow authority projection from the current effective graph, including exact stale recovery owner, required and allowed actions, blocking reasons, current recovery references, state-version binding, and neutral fixed-coordinate `WorkflowActionIntent`. |
 | `crates/volicord-core/src/summary_text.rs` | Adapter-neutral public `SummaryCard` text projection without CLI syntax, transport framing, Markdown, or terminal rendering. |
 | `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | Focused state-record reference conversion and typed Task-state interpretation. |
 | `crates/volicord-core/src/task_policy.rs` | Reusable Task policy, including typed lifecycle interpretation and lifecycle mutation planning. |
@@ -274,7 +274,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-mcp-wire/src/methods.rs` | Exact MCP argument, structured result, operational error, compact mutation, UserAction projection, serialization, and generated request/result schema ownership. |
+| `crates/volicord-mcp-wire/src/methods.rs` | Exact MCP argument, structured result, workflow action form, authoritative argument context, retry contract, operational error, compact mutation, UserAction projection, serialization, and generated request/result schema ownership. |
 | `crates/volicord-mcp-wire/src/semantic_schema.rs` | Closed semantic schema nodes, explicit discriminators and nullability, deterministic JSON Schema projection, semantic validation metadata, and descriptor integrity checks. |
 | `crates/volicord-mcp-wire/src/tool_contracts.rs` | The single `AgentToolId`-keyed MCP contract entries for input/output descriptors, descriptions, typed canonical examples, exact request decoding, and catalog integrity. |
 | `crates/volicord-mcp-wire/src/tools.rs` | Exact capability-field names, tool annotations, and capability-selected tool-definition and tool-result envelopes. |
@@ -298,12 +298,13 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list` and `tools/call` parameter decoding, canonical tool selection, adapter/Core invocation, and shared canonical tool-result carrier assembly. It does not frame transport messages or own mutation, recovery, UserAction, or metric projection. |
 | `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail selection, effect anchoring, compact method-result projection, fresh-authority composition, and capability-driven normal result-budget enforcement. |
 | `crates/volicord-mcp/src/authority_refresh.rs` | Post-mutation Agent Session binding, current authority reread, coordinate validation, and extraction of the fresh compact authority receipt plus tagged workflow authority. |
+| `crates/volicord-mcp/src/action_form.rs` | Generic descriptor-bound projection from neutral Core workflow intent to deterministic MCP action forms and authority-only retry contracts. |
 | `crates/volicord-mcp/src/committed_result_recovery.rs` | Capability-selected, authority-first bounded recovery after committed mutation projection, refresh, or post-effect failures without mutation retry. |
 | `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction coordinate extraction, neutral current-fact reread, adapter-owned safe MCP result construction, neutral failure mapping, and shared CLI inbox fallback attachment. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime-session finding and diagnostic-event persistence plus bounded best-effort handling for diagnostic-carrier failures where the contract permits it. |
 | `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic-session establishment and session-scoped tools-list, method-call, and status-reread workflow metrics. |
 | `crates/volicord-mcp/src/diagnostics.rs` | Closed MCP diagnostic mapping, shared finding construction, and preservation of platform-owned diagnostic codes and action classes in bootstrap and persisted terminal projections. |
-| `crates/volicord-mcp/src/adapter.rs` | Retained pre-operation routing identity, live mutation-context correlation, context-bound Core invocation APIs, plus managed in-chat begin/probe/get integration-verification orchestration outside Core that serializes the Store-owned workflow projection without adapter-local state derivation. |
+| `crates/volicord-mcp/src/adapter.rs` | Retained pre-operation routing identity, bounded read-only invalid-argument authority bootstrap, exact action-form admission before mutation Core entry, live mutation-context correlation, context-bound Core invocation APIs, plus managed in-chat begin/probe/get integration-verification orchestration outside Core. |
 | `crates/volicord-mcp/src/constants.rs` | MCP initialize instructions for the user-level verification request and current managed workflow: Store-derived current authority, immutable-history exclusion, exact stale recovery, fresh UserAction identity, explicit shaping and advance, implementation-preserving rejection, rejection/recovery surfacing, close review, stop rules, unavailable boundary, and optional active diagnostics. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Descriptor-consuming assembly of `AgentToolId` definitions, protocol-profile schema compaction, annotations, visibility, and the explicit-server collision-checked Codex callable catalog. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Known-tool argument and output validation through wire-owned semantic validator trees and metadata. |

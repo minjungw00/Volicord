@@ -1,7 +1,9 @@
 use std::{error::Error, fmt, io};
 use volicord_core::pipeline::CorePipelineError;
 use volicord_mcp_wire::{
-    McpToolErrorIssue, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES,
+    AuthoritativeArgumentContext, McpArgumentFailurePresentation, McpToolErrorCode,
+    McpToolErrorIssue, RetryContract, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
+    MAX_MCP_TOOL_ISSUE_PATH_BYTES,
 };
 use volicord_platform_fs::RuntimeHomeMutationLeaseError;
 use volicord_store::error::StoreError;
@@ -40,11 +42,15 @@ impl fmt::Display for McpHostError {
 pub enum McpAdapterError {
     UnknownTool(String),
     InvalidParams {
+        code: McpToolErrorCode,
         tool_name: String,
         issues: Vec<McpToolErrorIssue>,
         truncated: bool,
         selected_variant: Option<String>,
-        canonical_example: Option<volicord_types::schema::JsonObject>,
+        canonical_example: Option<Box<volicord_types::schema::JsonObject>>,
+        authoritative_context: Option<Box<AuthoritativeArgumentContext>>,
+        retry_contract: Option<Box<RetryContract>>,
+        failure: Option<Box<McpArgumentFailurePresentation>>,
     },
     SchemaContractFailure {
         tool_name: String,

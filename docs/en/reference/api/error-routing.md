@@ -137,6 +137,15 @@ State effect:
 Result boundary:
 - Method-specific result-only fields are not part of this rejected response.
 
+When descriptor validation fails before Core, MCP—not this public API
+branch—returns `committed=false`, `reached_core=false`, bounded current
+authority context when independently valid routing coordinates permit it, and
+an exact retry contract. No checkpoint, UserAction, Core event, write
+authority, or Product Repository change is created. When schema validation
+succeeds but Core finds an authority-coordinate mismatch, this rejected branch
+uses typed `AuthorityBasisMismatch` expected/received values and no state
+effect. Neither condition is routed as persisted-data corruption.
+
 <a id="rejected-precondition-failure"></a>
 ### Precondition failure
 

@@ -8,6 +8,15 @@ use crate::ids::RequestHash;
 /// Closed semantic facts that every managed agent-guidance rendering preserves.
 pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "follow_tagged_required_action",
+    "follow_tagged_workflow_action_form",
+    "use_mcp_tool_schema_and_retry_contract",
+    "ordinary_cli_help_is_not_mcp_request_schema",
+    "binary_strings_are_not_tool_schema",
+    "preserve_json_null_boolean_and_number_primitive_types",
+    "do_not_infer_another_union_branch",
+    "argument_error_does_not_imply_state_corruption",
+    "product_repository_edit_requires_successful_authority_mutation",
+    "failed_checkpoint_and_user_action_creation_surface_exactly",
     "use_store_derived_current_effective_shaping_authority_graph",
     "superseded_shaping_history_is_immutable_and_non_actionable",
     "preserve_current_checkpoint_and_user_action_authority",
@@ -45,6 +54,17 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "close_readiness_only_during_close_review",
 ];
 
+/// Closed semantics whose change invalidates state-bound workflow action forms.
+pub const WORKFLOW_ACTION_FORM_FACTS: &[&str] = &[
+    "core_owns_workflow_action_intent",
+    "mcp_projects_descriptor_bound_action_form",
+    "form_ref_binds_project_task_method_variant_state_coordinates_and_schema",
+    "state_bound_mutation_requires_exact_current_form_ref",
+    "invalid_arguments_load_only_independently_valid_authority_context",
+    "retry_contract_supplies_only_authority_owned_coordinates",
+    "authority_basis_mismatch_reports_typed_expected_and_received_values",
+];
+
 #[derive(Serialize)]
 struct ManagedGuidanceSemanticBasis<'a> {
     domain: &'static str,
@@ -60,6 +80,15 @@ pub fn managed_guidance_semantic_digest() -> RequestHash {
     .expect("static managed guidance semantics always serialize")
 }
 
+/// Returns the canonical semantic digest for current action-form behavior.
+pub fn workflow_action_form_semantic_digest() -> RequestHash {
+    canonical_json_sha256(&ManagedGuidanceSemanticBasis {
+        domain: "volicord.workflow-action-form",
+        facts: WORKFLOW_ACTION_FORM_FACTS,
+    })
+    .expect("static workflow action form semantics always serialize")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,6 +102,20 @@ mod tests {
         let changed = canonical_json_sha256(&ManagedGuidanceSemanticBasis {
             domain: "volicord.managed-agent-guidance",
             facts: &MANAGED_GUIDANCE_FACTS[..MANAGED_GUIDANCE_FACTS.len() - 1],
+        })
+        .expect("test semantics serialize");
+        assert_ne!(digest, changed);
+    }
+
+    #[test]
+    fn action_form_semantic_digest_is_canonical_and_fact_bound() {
+        let digest = workflow_action_form_semantic_digest();
+        assert!(crate::canonical::is_canonical_sha256_digest(
+            digest.as_str()
+        ));
+        let changed = canonical_json_sha256(&ManagedGuidanceSemanticBasis {
+            domain: "volicord.workflow-action-form",
+            facts: &WORKFLOW_ACTION_FORM_FACTS[..WORKFLOW_ACTION_FORM_FACTS.len() - 1],
         })
         .expect("test semantics serialize");
         assert_ne!(digest, changed);
