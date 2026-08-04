@@ -2404,6 +2404,38 @@ pub mod core_fixtures {
         }
     }
 
+    /// Exact ordered JSON-RPC `tools/call` requests captured by a fixture.
+    #[derive(Debug, Default, Clone, PartialEq)]
+    pub struct ExactToolCallTranscript {
+        calls: Vec<Value>,
+    }
+
+    impl ExactToolCallTranscript {
+        /// Captures every exact `tools/call` request from newline-delimited JSON-RPC input.
+        pub fn capture_json_lines(&mut self, input: &str) -> Result<(), serde_json::Error> {
+            for line in input.lines().filter(|line| !line.trim().is_empty()) {
+                let request: Value = serde_json::from_str(line)?;
+                if request.get("method").and_then(Value::as_str) == Some("tools/call") {
+                    self.calls.push(request);
+                }
+            }
+            Ok(())
+        }
+
+        /// Returns the exact ordered captured requests.
+        pub fn calls(&self) -> &[Value] {
+            &self.calls
+        }
+
+        /// Returns the ordered public tool names from the captured requests.
+        pub fn tool_names(&self) -> Vec<&str> {
+            self.calls
+                .iter()
+                .filter_map(|call| call.pointer("/params/name").and_then(Value::as_str))
+                .collect()
+        }
+    }
+
     /// Complete reusable planning fixture with current managed host and Guard state.
     #[derive(Debug)]
     pub struct ManagedPlanningFixture {
@@ -2412,6 +2444,7 @@ pub mod core_fixtures {
         session: TestAgentSessionFixture,
         clock: DeterministicClock,
         guard_installation_id: String,
+        transcript: ExactToolCallTranscript,
     }
 
     impl ManagedPlanningFixture {
@@ -2443,6 +2476,7 @@ pub mod core_fixtures {
                 session,
                 clock,
                 guard_installation_id,
+                transcript: ExactToolCallTranscript::default(),
             })
         }
 
@@ -2469,6 +2503,16 @@ pub mod core_fixtures {
         /// Returns the current Guard installation identity.
         pub fn guard_installation_id(&self) -> &str {
             &self.guard_installation_id
+        }
+
+        /// Returns the fixture's exact ordered public tool-call transcript.
+        pub fn transcript(&self) -> &ExactToolCallTranscript {
+            &self.transcript
+        }
+
+        /// Mutably borrows the fixture's exact ordered public tool-call transcript.
+        pub fn transcript_mut(&mut self) -> &mut ExactToolCallTranscript {
+            &mut self.transcript
         }
     }
 
@@ -2840,7 +2884,7 @@ mod tests {
 
     #[test]
     fn managed_planning_fixture_is_clean_current_and_time_controlled() {
-        let fixture =
+        let mut fixture =
             ManagedPlanningFixture::new("managed-planning-fixture", "2026-06-18T00:00:00Z")
                 .expect("managed planning fixture");
 
@@ -2891,6 +2935,18 @@ mod tests {
         )
         .expect("current managed integration"));
         assert_eq!(fixture.core().counts().expect("empty Core state").tasks, 0);
+        fixture
+            .transcript_mut()
+            .capture_json_lines(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n\
+                 {\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"volicord.list_projects\",\"arguments\":{}}}\n",
+            )
+            .expect("exact tool-call transcript");
+        assert_eq!(
+            fixture.transcript().tool_names(),
+            vec!["volicord.list_projects"]
+        );
+        assert_eq!(fixture.transcript().calls()[0]["id"], 2);
         fixture.clock().advance(Duration::minutes(2));
         assert_eq!(
             fixture.clock().now().to_rfc3339(),

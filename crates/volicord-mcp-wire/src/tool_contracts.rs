@@ -1387,6 +1387,7 @@ mod tests {
     use super::*;
     use crate::semantic_schema::{SemanticSchemaNode, SemanticValidationIssueCode};
     use serde::{Deserialize, Deserializer};
+    use serde_json::json;
 
     #[derive(Debug, Serialize, Deserialize, JsonSchema)]
     struct DecodeNarrowerThanSchema {
@@ -1688,6 +1689,23 @@ mod tests {
             .validate(&mixed_stale)
             .issues
             .is_empty());
+    }
+
+    #[test]
+    fn invalid_shaping_discriminator_takes_precedence_over_unselected_root_inputs() {
+        let contract = mcp_tool_contract(AgentToolId::RECORD_SHAPING_CHECKPOINT)
+            .expect("record-shaping semantic contract");
+        let validation = contract.input_descriptor().validate(&json!({
+            "checkpoint_operation": {"operation": "create"},
+            "baseline_ref": null
+        }));
+
+        assert_eq!(validation.issues.len(), 1, "{:#?}", validation.issues);
+        assert_eq!(validation.issues[0].path, "/checkpoint_operation/operation");
+        assert_eq!(
+            validation.issues[0].code,
+            SemanticValidationIssueCode::EnumValue
+        );
     }
 
     #[test]

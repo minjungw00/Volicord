@@ -47,7 +47,9 @@ use volicord_store::operational_sessions::{
     latest_current_managed_runtime_session, mcp_runtime_session_for_process,
     McpRuntimeSessionStart,
 };
-use volicord_test_support::{IsolatedGitRepository, TempRuntimeHome};
+use volicord_test_support::{
+    core_fixtures::ExactToolCallTranscript, IsolatedGitRepository, TempRuntimeHome,
+};
 use volicord_types::diagnostics::DiagnosticFindingId;
 use volicord_types::guard_manifest::{
     guard_manifest_from_json, GuardManagedArtifact, GuardManagedOwnership, GuardManifest,
@@ -136,6 +138,8 @@ fn main() {
 }
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
+    planning_schema_recovery_reaches_implementation()
+        .map_err(|error| format!("planning schema-recovery regression: {error}"))?;
     planning_product_explicit_shaping_journey()
         .map_err(|error| format!("planning-product shaping regression: {error}"))?;
     codex_2025_06_18_compatibility_records_managed_runtime_facts()
@@ -165,6 +169,639 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
         .map_err(|error| format!("local failure regression: {error}"))?;
     guard_failures_are_current_and_structured()
         .map_err(|error| format!("Guard failure regression: {error}"))?;
+    Ok(())
+}
+
+fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error>> {
+    const SESSION: &str = "future.session.planning-recovery";
+    const INVALID_TURN: &str = "future.turn.planning-recovery.invalid";
+    const INVALID_TOOL_USE: &str = "future.tool-use.planning-recovery.invalid";
+    const BASELINE: &str = "planning_recovery_baseline";
+    const IMPLEMENTATION_PATH: &str = "implementation/bounded-preparation.md";
+
+    let fixture = OperationalFixture::planning_product("planning-recovery")?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&init, 0, "init", "action_required")?;
+    let connection_id = fixture.connection_id();
+    let project_id = fixture.project_id();
+    let snapshot = fixture.registry_snapshot();
+    let manifest = snapshot
+        .guard_installations
+        .iter()
+        .find(|installation| installation.project_id == project_id)
+        .map(|installation| guard_manifest_from_json(&installation.manifest_json))
+        .transpose()?
+        .ok_or("planning recovery Guard Installation")?;
+    fixture.run_successful_managed_mcp_with_guard(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        "future.session.planning-recovery-observation",
+        &manifest,
+    )?;
+
+    let prompt = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-recovery.intake",
+        "prompt": "Prepare development from the planning documents and stop after the bounded work is ready to implement."
+    });
+    assert!(!prompt["prompt"]
+        .as_str()
+        .expect("planning recovery prompt")
+        .to_ascii_lowercase()
+        .contains("volicord"));
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &prompt,
+        )?
+        .status
+        .success());
+    let repository_before = fixture.repository_snapshot()?;
+
+    let mut command = fixture.managed_mcp_command(&connection_id)?;
+    let mut child = LiveMcpChild::spawn(&mut command)?;
+    child.write(&json_lines(&[
+        initialize_request(FUTURE_VERSION),
+        initialized_notification(),
+        tools_list_request(),
+    ])?)?;
+    let startup = child.read_responses(2)?;
+    let checkpoint_tool = startup[1]["result"]["tools"]
+        .as_array()
+        .and_then(|tools| {
+            tools
+                .iter()
+                .find(|tool| tool["name"] == AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
+        })
+        .ok_or("record-shaping tool schema")?;
+    assert!(checkpoint_tool["inputSchema"]["properties"]["checkpoint_operation"].is_object());
+    assert!(checkpoint_tool["inputSchema"]["required"]
+        .as_array()
+        .is_some_and(|required| required.iter().any(|field| field == "checkpoint_operation")));
+    let mut call_id = 100;
+
+    let projects = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::LIST_PROJECTS,
+        json!({}),
+        SESSION,
+        "future.turn.planning-recovery.intake",
+    )?;
+    call_id += 1;
+    assert!(projects["projects"]
+        .as_array()
+        .is_some_and(|projects| projects
+            .iter()
+            .any(|project| project["project_selector"] == project_id)));
+
+    let empty_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": null, "detail": "full"}),
+        SESSION,
+        "future.turn.planning-recovery.intake",
+    )?;
+    call_id += 1;
+    assert_eq!(method_result(&empty_status)["active_task"], Value::Null);
+    let initial_state_version = method_result(&empty_status)["base"]["state_version"]
+        .as_u64()
+        .ok_or("empty planning state version")?;
+
+    let intake = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::INTAKE,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "plain_language_request": "Prepare the first bounded development step from the planning documents.",
+            "requested_mode": "work",
+            "requested_control_level": "auto",
+            "resume_policy": "create_new",
+            "acceptance_policy": "required",
+            "lineage": null,
+            "initial_scope": {
+                "boundary": "Prepare one bounded implementation note from the current plans.",
+                "non_goals": ["Implement unrelated capabilities."],
+                "acceptance_criteria": [{
+                    "statement": "The bounded preparation is ready for implementation.",
+                    "evidence_requirement": "not_required"
+                }]
+            },
+            "initial_context_refs": [],
+            "initial_source_refs": []
+        }),
+        SESSION,
+        "future.turn.planning-recovery.intake",
+    )?;
+    call_id += 1;
+    let intake_result = method_result(&intake);
+    assert_typed_mutation_state(
+        intake_result,
+        initial_state_version + 1,
+        "work",
+        Some("shaping"),
+        "shaping_required",
+    );
+    let task_id = required_string(&intake_result["task_ref"], "record_id")?;
+    let action_form_ref = required_action_form_ref(&intake)?;
+    let state_db = fixture.project_state_db_path();
+    let before_invalid = rusqlite::Connection::open(&state_db)?;
+    let invalid_counts = (
+        before_invalid.query_row("SELECT state_version FROM project_state", [], |row| {
+            row.get::<_, u64>(0)
+        })?,
+        table_count(&before_invalid, "shaping_checkpoints")?,
+        table_count(&before_invalid, "user_action_requests")?,
+        table_count(&before_invalid, "unrecorded_changes")?,
+    );
+    drop(before_invalid);
+
+    let invalid_arguments = json!({
+        "project_selector": project_id,
+        "detail": "full",
+        "task_id": task_id,
+        "action_form_ref": action_form_ref,
+        "checkpoint_operation": {"operation": "create"},
+        "baseline_ref": null
+    });
+    let connection = agent_connection_record(&fixture.runtime_home, &connection_id)?
+        .ok_or("planning recovery Agent Connection")?;
+    let server = McpServerKey::parse(&connection.server_name)?;
+    let checkpoint_callable = project_mcp_tool(&server, AgentToolId::RECORD_SHAPING_CHECKPOINT)?;
+    let invalid_pre = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": SESSION,
+        "turn_id": INVALID_TURN,
+        "tool_use_id": INVALID_TOOL_USE,
+        "tool_name": checkpoint_callable.callable_name().as_str(),
+        "tool_input": invalid_arguments
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PreTool),
+            &invalid_pre,
+        )?
+        .status
+        .success());
+    let invalid_response = live_mcp_raw_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
+        invalid_arguments,
+        SESSION,
+        INVALID_TURN,
+    )?;
+    call_id += 1;
+    assert_eq!(invalid_response["result"]["isError"], true);
+    let invalid = &invalid_response["result"]["structuredContent"];
+    assert_eq!(invalid["reported_issue_count"], 1);
+    assert_eq!(
+        invalid["issues"][0]["path"],
+        "/checkpoint_operation/operation"
+    );
+    assert_eq!(invalid["failure"]["reached_core"], false);
+    assert_eq!(invalid["failure"]["checkpoint_recorded"], false);
+    assert_eq!(invalid["failure"]["user_action_created"], false);
+    assert_eq!(invalid["failure"]["product_repository_changed"], false);
+    assert_eq!(invalid["failure"]["repair_required"], false);
+    assert_eq!(
+        invalid["retry_contract"]["fixed_arguments"]["checkpoint_operation"]["operation"],
+        "create_initial"
+    );
+    assert_eq!(
+        invalid["retry_contract"]["fixed_arguments"]["scope_revision"],
+        0
+    );
+    assert_eq!(
+        invalid["retry_contract"]["fixed_arguments"]["baseline_ref"],
+        Value::Null
+    );
+    assert_eq!(
+        invalid["retry_contract"]["action_form_ref"],
+        action_form_ref
+    );
+    let after_invalid = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(
+        (
+            after_invalid.query_row("SELECT state_version FROM project_state", [], |row| {
+                row.get::<_, u64>(0)
+            })?,
+            table_count(&after_invalid, "shaping_checkpoints")?,
+            table_count(&after_invalid, "user_action_requests")?,
+            table_count(&after_invalid, "unrecorded_changes")?,
+        ),
+        invalid_counts
+    );
+    let observation_id: String = after_invalid.query_row(
+        "SELECT repository_observation_id FROM repository_observations WHERE host_tool_use_id = ?1",
+        [INVALID_TOOL_USE],
+        |row| row.get(0),
+    )?;
+    drop(after_invalid);
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+    let continuation_prompt = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-recovery.corrected",
+        "prompt": "Continue with the current retry contract."
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &continuation_prompt,
+        )?
+        .status
+        .success());
+    let terminal = repository_observation(&fixture.runtime_home, &project_id, &observation_id)?
+        .ok_or("terminal malformed-call observation")?;
+    assert_eq!(terminal.state, RepositoryObservationState::Unavailable);
+    assert_eq!(
+        terminal.unavailable_reason,
+        Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
+    );
+    assert!(terminal.delta.is_none());
+    let after_terminalization = fixture.diagnostic_registry_snapshot()?;
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &continuation_prompt,
+        )?
+        .status
+        .success());
+    let replayed_diagnostics = fixture.diagnostic_registry_snapshot()?;
+    assert_eq!(
+        replayed_diagnostics.current_count, after_terminalization.current_count,
+        "prompt replay must not duplicate a current finding"
+    );
+    assert_eq!(
+        replayed_diagnostics.current_timestamps, after_terminalization.current_timestamps,
+        "prompt replay must preserve current finding identity"
+    );
+    let replayed_terminal =
+        repository_observation(&fixture.runtime_home, &project_id, &observation_id)?
+            .ok_or("replayed malformed-call observation")?;
+    assert_eq!(replayed_terminal, terminal);
+    assert_eq!(
+        table_count(
+            &rusqlite::Connection::open(&state_db)?,
+            "unrecorded_changes"
+        )?,
+        invalid_counts.3
+    );
+
+    let mismatch = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "task_id": task_id,
+            "action_form_ref": action_form_ref,
+            "checkpoint_operation": {"operation": "create_initial"},
+            "scope_revision": 0,
+            "baseline_ref": "0123456789012345678901234567890123456789",
+            "summary": "This schema-valid attempt carries the wrong authority basis.",
+            "implementation_boundary": "No Product Repository write is authorized.",
+            "gaps": [],
+            "source_refs": [],
+            "evidence_refs": []
+        }),
+        SESSION,
+        "future.turn.planning-recovery.corrected",
+    )?;
+    call_id += 1;
+    assert_eq!(
+        method_result(&mismatch)["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(
+        mismatch["authority_basis_mismatch"]["field"],
+        "baseline_ref"
+    );
+    assert_eq!(
+        mismatch["authority_basis_mismatch"]["expected"],
+        Value::Null
+    );
+    assert!(mismatch["authority_basis_mismatch"]["received"].is_string());
+    assert_eq!(mismatch["failure"]["reached_core"], true);
+    assert_eq!(mismatch["failure"]["current_baseline_valid"], true);
+    assert_eq!(mismatch["failure"]["repair_required"], false);
+    assert_eq!(
+        mismatch["retry_contract"]["action_form_ref"],
+        action_form_ref
+    );
+    let after_mismatch = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(
+        after_mismatch.query_row("SELECT state_version FROM project_state", [], |row| {
+            row.get::<_, u64>(0)
+        })?,
+        invalid_counts.0
+    );
+    drop(after_mismatch);
+
+    let action = |judgment_kind: &str, question: &str, options: Value| {
+        json!({
+            "action_type": "choice",
+            "judgment_kind": judgment_kind,
+            "presentation": "short",
+            "question": question,
+            "options": options,
+            "context": {
+                "summary": "The planning-only repository needs one bounded user-owned decision.",
+                "related_refs": [],
+                "artifact_refs": [],
+                "visible_risks": [],
+                "constraints": ["This decision authorizes no Product Repository write."]
+            },
+            "affected_refs": [],
+            "sensitive_action_scope": null
+        })
+    };
+    let options = json!([{
+        "option_id": "recommended",
+        "label": "Use recommendation",
+        "description": "Use the smallest bounded recommendation.",
+        "consequence": "Only this exact decision is accepted.",
+        "is_default": true
+    }, {
+        "option_id": "alternative",
+        "label": "Use alternative",
+        "description": "Use the documented alternative.",
+        "consequence": "Only this exact alternative is accepted.",
+        "is_default": false
+    }]);
+    let successful_response = live_mcp_raw_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "task_id": task_id,
+            "action_form_ref": action_form_ref,
+            "checkpoint_operation": {"operation": "create_initial"},
+            "scope_revision": 0,
+            "baseline_ref": null,
+            "summary": "The initial bounded proposal requires product, technical, and scope decisions.",
+            "implementation_boundary": "Create only the bounded preparation note.",
+            "gaps": [{
+                "gap_kind": "user_product_decision_required",
+                "summary": "Confirm the bounded product recommendation.",
+                "affected_refs": [],
+                "user_action": {"action": action("product_decision", "Use the bounded product recommendation?", options.clone()), "expires_at": null}
+            }, {
+                "gap_kind": "user_technical_decision_required",
+                "summary": "Confirm the bounded technical recommendation.",
+                "affected_refs": [],
+                "user_action": {"action": action("technical_decision", "Use the bounded technical recommendation?", options), "expires_at": null}
+            }, {
+                "gap_kind": "user_scope_decision_required",
+                "summary": "Confirm the exact scope boundary.",
+                "affected_refs": [],
+                "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null), "expires_at": null}
+            }],
+            "source_refs": [{
+                "source_kind": "repository_file",
+                "source": {
+                    "repository_path": "plans/product.md",
+                    "baseline_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "line_range": null
+                }
+            }],
+            "evidence_refs": []
+        }),
+        SESSION,
+        "future.turn.planning-recovery.corrected",
+    )?;
+    call_id += 1;
+    assert_eq!(successful_response["result"]["isError"], false);
+    let successful = &successful_response["result"]["structuredContent"];
+    let successful_result = method_result(successful);
+    assert_typed_mutation_state(
+        successful_result,
+        invalid_counts.0 + 1,
+        "work",
+        Some("shaping"),
+        "awaiting_user_action",
+    );
+    assert_eq!(
+        successful_result["shaping_checkpoint"]["readiness"],
+        "blocked"
+    );
+    let checkpoint_id = required_string(
+        &successful_result["shaping_checkpoint"],
+        "shaping_checkpoint_id",
+    )?;
+    let request_refs = successful_result["created_user_action_request_refs"]
+        .as_array()
+        .ok_or("atomic shaping UserAction refs")?;
+    assert_eq!(request_refs.len(), 3);
+    assert!(successful_response["result"]["content"][0]["text"]
+        .as_str()
+        .is_some_and(|text| text.contains("committed Core authority")));
+    assert!(successful["presentation"]["must_surface"]
+        .as_array()
+        .is_some_and(|facts| facts
+            .iter()
+            .any(|fact| { fact["fact_kind"] == "user_action_request_exists" })));
+    let state = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(
+        state.query_row("SELECT COUNT(*) FROM shaping_checkpoints", [], |row| {
+            row.get::<_, i64>(0)
+        })?,
+        1
+    );
+    assert_eq!(table_count(&state, "user_action_requests")?, 3);
+    assert_eq!(table_count(&state, "change_units")?, 0);
+    assert_eq!(table_count(&state, "write_tickets")?, 0);
+    assert_eq!(table_count(&state, "unrecorded_changes")?, 0);
+    drop(state);
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+    let chat = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-recovery.chat",
+        "prompt": "I accept all three recommendations."
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &chat,
+        )?
+        .status
+        .success());
+    assert_eq!(
+        table_count(
+            &rusqlite::Connection::open(&state_db)?,
+            "user_action_resolutions"
+        )?,
+        0
+    );
+
+    let request_ids = request_refs
+        .iter()
+        .map(|reference| required_string(reference, "record_id"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut resolution_refs = Vec::new();
+    for (index, request_id) in request_ids.iter().enumerate() {
+        let choice = if index == 2 { "accept" } else { "recommended" };
+        let resolved = fixture.run_inbox(&[
+            "resolve",
+            request_id,
+            "--choice",
+            choice,
+            "--repo",
+            fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+            "--json",
+        ])?;
+        assert_eq!(resolved.status.code(), Some(0));
+        let resolved: Value = serde_json::from_slice(&resolved.stdout)?;
+        resolution_refs.push(resolved["user_action_resolution_ref"].clone());
+    }
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+    let decisions_ready = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        SESSION,
+        "future.turn.planning-recovery.apply",
+    )?;
+    call_id += 1;
+    assert_eq!(
+        method_result(&decisions_ready)["active_task"]["workflow"]["kind"],
+        "ready_to_apply_decisions"
+    );
+    let update_scope_form_ref = required_action_form_ref(&decisions_ready)?;
+    assert_ne!(update_scope_form_ref, action_form_ref);
+    let scope = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::UPDATE_SCOPE,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "task_id": task_id,
+            "action_form_ref": update_scope_form_ref,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": "Create only the bounded preparation note.",
+            "non_goals": ["Add unrelated product behavior."],
+            "acceptance_criteria": null,
+            "autonomy_boundary": "No other Product Repository path may change.",
+            "baseline_ref": BASELINE,
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Create the bounded preparation note.",
+                "affected_paths": [IMPLEMENTATION_PATH]
+            },
+            "related_scope_decision_refs": [resolution_refs[2].clone()]
+        }),
+        SESSION,
+        "future.turn.planning-recovery.apply",
+    )?;
+    call_id += 1;
+    assert_eq!(scope["workflow"]["kind"], "ready_for_implementation");
+    let change_unit_id =
+        required_string(&scope["authority_receipt"]["change_unit_ref"], "record_id")?;
+    let advance_form_ref = required_action_form_ref(&scope)?;
+    assert_ne!(advance_form_ref, update_scope_form_ref);
+    let resolution_ids = resolution_refs
+        .iter()
+        .take(2)
+        .map(|reference| required_string(reference, "record_id"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let advanced = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::ADVANCE_TASK,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "task_id": task_id,
+            "action_form_ref": advance_form_ref,
+            "shaping_checkpoint_id": checkpoint_id,
+            "change_unit_id": change_unit_id,
+            "scope_revision": 1,
+            "baseline_ref": BASELINE,
+            "user_action_resolution_ids": resolution_ids
+        }),
+        SESSION,
+        "future.turn.planning-recovery.advance",
+    )?;
+    call_id += 1;
+    assert_eq!(advanced["workflow"]["kind"], "implementation");
+    assert_eq!(
+        advanced["presentation"]["task_phase"]["work_phase"],
+        "implementation"
+    );
+    let current = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        SESSION,
+        "future.turn.planning-recovery.advance",
+    )?;
+    assert_eq!(
+        method_result(&current)["active_task"]["workflow"]["kind"],
+        advanced["workflow"]["kind"]
+    );
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+    assert_eq!(
+        table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
+        0
+    );
+
+    let expected_tools = vec![
+        AgentToolId::LIST_PROJECTS.wire_name(),
+        AgentToolId::STATUS.wire_name(),
+        AgentToolId::INTAKE.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        AgentToolId::STATUS.wire_name(),
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        AgentToolId::ADVANCE_TASK.wire_name(),
+        AgentToolId::STATUS.wire_name(),
+    ];
+    assert_eq!(child.transcript().tool_names(), expected_tools);
+    let checkpoint_calls = child
+        .transcript()
+        .calls()
+        .iter()
+        .filter(|call| {
+            call.pointer("/params/name").and_then(Value::as_str)
+                == Some(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(checkpoint_calls.len(), 3);
+    assert_eq!(
+        checkpoint_calls[2].pointer("/params/arguments/baseline_ref"),
+        Some(&Value::Null)
+    );
+    for call in child.transcript().calls() {
+        let encoded = serde_json::to_string(call)?;
+        for forbidden in ["--help", "strings", "finalize_advice", "\"null\""] {
+            assert!(
+                !encoded.contains(forbidden),
+                "forbidden recovery behavior: {encoded}"
+            );
+        }
+    }
+    let output = child.finish()?;
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
     Ok(())
 }
 
@@ -5000,6 +5637,7 @@ struct LiveMcpChild {
     stdout_lines: Receiver<io::Result<Vec<u8>>>,
     stdout: JoinHandle<io::Result<Vec<u8>>>,
     stderr: JoinHandle<io::Result<Vec<u8>>>,
+    transcript: ExactToolCallTranscript,
 }
 
 impl LiveMcpChild {
@@ -5048,16 +5686,24 @@ impl LiveMcpChild {
                 }
             }),
             stderr: thread::spawn(move || read_to_end(stderr)),
+            transcript: ExactToolCallTranscript::default(),
         })
     }
 
     fn write(&mut self, input: &str) -> io::Result<()> {
+        self.transcript
+            .capture_json_lines(input)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         let stdin = self
             .stdin
             .as_mut()
             .ok_or_else(|| io::Error::other("managed MCP stdin is closed"))?;
         stdin.write_all(input.as_bytes())?;
         stdin.flush()
+    }
+
+    fn transcript(&self) -> &ExactToolCallTranscript {
+        &self.transcript
     }
 
     fn read_responses(&mut self, expected: usize) -> io::Result<Vec<Value>> {
@@ -5467,15 +6113,7 @@ fn live_mcp_call(
     session_id: &str,
     turn_id: &str,
 ) -> Result<Value, Box<dyn Error>> {
-    child.write(&json_lines(&[managed_tool_call_in_turn(
-        id,
-        tool.wire_name(),
-        arguments,
-        session_id,
-        turn_id,
-    )])?)?;
-    let responses = child.read_responses(1)?;
-    let response = &responses[0];
+    let response = live_mcp_raw_call(child, id, tool, arguments, session_id, turn_id)?;
     if response["result"]["isError"] != false {
         return Err(format!("{} returned an MCP error: {response}", tool.wire_name()).into());
     }
@@ -5489,6 +6127,24 @@ fn live_mcp_call(
             )
             .into()
         })
+}
+
+fn live_mcp_raw_call(
+    child: &mut LiveMcpChild,
+    id: u64,
+    tool: AgentToolId,
+    arguments: Value,
+    session_id: &str,
+    turn_id: &str,
+) -> Result<Value, Box<dyn Error>> {
+    child.write(&json_lines(&[managed_tool_call_in_turn(
+        id,
+        tool.wire_name(),
+        arguments,
+        session_id,
+        turn_id,
+    )])?)?;
+    Ok(child.read_responses(1)?.remove(0))
 }
 
 fn method_result(structured: &Value) -> &Value {
@@ -5566,7 +6222,9 @@ fn table_count(connection: &rusqlite::Connection, table: &str) -> Result<i64, Bo
     assert!(matches!(
         table,
         "change_units"
+            | "shaping_checkpoints"
             | "write_tickets"
+            | "user_action_requests"
             | "user_action_resolutions"
             | "repository_observations"
             | "unrecorded_changes"

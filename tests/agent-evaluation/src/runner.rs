@@ -677,7 +677,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(46);
+    let mut criteria = Vec::with_capacity(56);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -848,6 +848,59 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         "automatic_volicord_use",
         totals(|value| value.long_lived_repository_requests),
         totals(|value| value.automatic_volicord_uses),
+    ));
+    criteria.push(complete_rate(
+        "correct_workflow_tool_selection",
+        totals(|value| value.workflow_tool_selection_opportunities),
+        totals(|value| value.correct_workflow_tool_selections),
+    ));
+    criteria.push(complete_rate(
+        "current_action_form_use",
+        totals(|value| value.action_form_use_opportunities),
+        totals(|value| value.current_action_forms_used),
+    ));
+    criteria.push(complete_rate(
+        "nullable_baseline_json_null",
+        totals(|value| value.nullable_baseline_opportunities),
+        totals(|value| value.json_null_baselines_used),
+    ));
+    criteria.push(complete_rate(
+        "discriminator_error_recovery",
+        totals(|value| value.schema_recovery_opportunities),
+        totals(|value| value.correct_discriminator_recoveries),
+    ));
+    criteria.push(zero_rate(
+        "unrelated_cli_help_during_schema_recovery",
+        totals(|value| value.schema_recovery_opportunities),
+        totals(|value| value.unrelated_cli_help_uses),
+    ));
+    criteria.push(zero_rate(
+        "binary_schema_inspection_during_recovery",
+        totals(|value| value.schema_recovery_opportunities),
+        totals(|value| value.binary_schema_inspections),
+    ));
+    criteria.push(zero_rate(
+        "schema_recovery_bypass",
+        totals(|value| value.schema_recovery_opportunities),
+        totals(|value| value.raw_stdio_schema_probes)
+            + totals(|value| value.source_schema_searches)
+            + totals(|value| value.null_baseline_substitutions)
+            + totals(|value| value.speculative_shaping_tool_calls),
+    ));
+    criteria.push(zero_rate(
+        "argument_error_corruption_misdiagnosis",
+        totals(|value| value.argument_error_opportunities),
+        totals(|value| value.corruption_misdiagnoses),
+    ));
+    criteria.push(complete_rate(
+        "correct_checkpoint_creation_status",
+        totals(|value| value.checkpoint_status_opportunities),
+        totals(|value| value.correct_checkpoint_creation_statuses),
+    ));
+    criteria.push(complete_rate(
+        "correct_user_action_creation_status",
+        totals(|value| value.user_action_status_opportunities),
+        totals(|value| value.correct_user_action_creation_statuses),
     ));
     criteria.push(complete_rate(
         "correct_intake_when_no_task_exists",
@@ -1176,7 +1229,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 46] {
+fn criterion_definitions() -> [CriterionDefinition; 56] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1230,6 +1283,56 @@ fn criterion_definitions() -> [CriterionDefinition; 46] {
         },
         CriterionDefinition {
             id: "automatic_volicord_use",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "correct_workflow_tool_selection",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "current_action_form_use",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "nullable_baseline_json_null",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "discriminator_error_recovery",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "unrelated_cli_help_during_schema_recovery",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "binary_schema_inspection_during_recovery",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "schema_recovery_bypass",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "argument_error_corruption_misdiagnosis",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "correct_checkpoint_creation_status",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "correct_user_action_creation_status",
             target: "= 100",
             unit: "percent",
         },

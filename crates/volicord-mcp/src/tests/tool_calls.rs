@@ -297,6 +297,23 @@ fn checkpoint_basis_mismatch_reports_typed_null_without_repair() -> Result<(), B
     assert_eq!(structured["failure"]["core_state_unchanged"], true);
     assert_eq!(structured["failure"]["current_baseline_valid"], true);
     assert_eq!(structured["failure"]["repair_required"], false);
+    assert_eq!(
+        structured["authority_basis_mismatch"]["current_action_form"]["form_ref"],
+        action_form_ref
+    );
+    assert_eq!(
+        structured["retry_contract"]["action_form_ref"],
+        action_form_ref
+    );
+    assert_eq!(
+        structured["retry_contract"]["fixed_arguments"]["baseline_ref"],
+        Value::Null
+    );
+    assert_eq!(
+        structured["retry_contract"]["fixed_arguments"]["checkpoint_operation"]["operation"],
+        "create_initial"
+    );
+    assert_eq!(structured["failure"]["current_task_phase"], "shaping");
     assert!(structured["method_result"]["errors"][0]["message"]
         .as_str()
         .is_some_and(|message| message.contains("Expected baseline_ref=null")));

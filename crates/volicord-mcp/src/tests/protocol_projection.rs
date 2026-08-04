@@ -912,6 +912,12 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
         response["issues"][0]["path"],
         "/checkpoint_operation/operation"
     );
+    assert_eq!(
+        response["issues"].as_array().map(Vec::len),
+        Some(1),
+        "an invalid checkpoint discriminator must suppress every unselected or advisor field: {}",
+        response["issues"]
+    );
     let issue = tool_error_issue(
         &response,
         "/checkpoint_operation/operation",
@@ -949,6 +955,40 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
         .iter()
         .all(|issue| issue["path"] != "/baseline_ref"));
     assert_eq!(fixture.counts()?, before);
+
+    let retry = &response["retry_contract"];
+    let current_form = &response["authoritative_context"]["current_action_form"];
+    assert_eq!(retry["action_form_ref"], current_form["form_ref"]);
+    assert_eq!(
+        retry["fixed_arguments"]["checkpoint_operation"]["operation"],
+        "create_initial"
+    );
+    assert_eq!(retry["fixed_arguments"]["scope_revision"], 0);
+    assert_eq!(retry["fixed_arguments"]["baseline_ref"], Value::Null);
+    assert_eq!(retry["corrected_retry_allowed"], true);
+
+    let corrected = adapter.call_tool(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        json!({
+            "action_form_ref": retry["action_form_ref"],
+            "task_id": task_id,
+            "checkpoint_operation": {"operation": "create_initial"},
+            "scope_revision": 0,
+            "baseline_ref": null,
+            "summary": "The corrected retry records one bounded structural checkpoint.",
+            "implementation_boundary": "Only the current bounded preparation is in scope.",
+            "gaps": [{
+                "gap_kind": "baseline_missing",
+                "summary": "The planning-only repository has no baseline yet.",
+                "affected_refs": [],
+                "user_action": null
+            }],
+            "source_refs": [],
+            "evidence_refs": []
+        }),
+    )?;
+    assert_eq!(corrected.response_value["base"]["response_kind"], "result");
+    assert_eq!(fixture.counts()?.state_version, before.state_version + 1);
     Ok(())
 }
 
@@ -992,6 +1032,134 @@ fn selected_checkpoint_branch_owns_required_fields_and_canonical_example(
         .all(|issue| !issue["path"]
             .as_str()
             .is_some_and(|path| { path.contains("create_initial") })));
+    Ok(())
+}
+
+#[test]
+fn nested_shaping_call_errors_stay_inside_the_selected_local_branch() -> Result<(), Box<dyn Error>>
+{
+    for (label, example_id, parent_path, removed_field, expected_path) in [
+        (
+            "source-ref",
+            "repository_file_source_ref",
+            "/source_refs/0/source",
+            "repository_path",
+            "/source_refs/0/source/repository_path",
+        ),
+        (
+            "shaping-gap",
+            "product_decision_gap",
+            "/gaps/0",
+            "summary",
+            "/gaps/0/summary",
+        ),
+        (
+            "user-action",
+            "product_decision_gap",
+            "/gaps/0/user_action/action",
+            "judgment_kind",
+            "/gaps/0/user_action/action/judgment_kind",
+        ),
+        (
+            "stale-authority",
+            "exact_stale_authority_recovery",
+            "/checkpoint_operation/stale_authority_actions/0",
+            "stale_application_ref",
+            "/checkpoint_operation/stale_authority_actions/0/stale_application_ref",
+        ),
+    ] {
+        let fixture = CoreFixture::new(&format!("mcp-nested-{label}"))?;
+        let adapter = adapter(&fixture)?;
+        let (task_id, _) = create_task(&adapter)?;
+        let action_form_ref = current_action_form_ref(&adapter, &task_id)?;
+        let mut arguments = canonical_example_value(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            example_id,
+        )?;
+        arguments["task_id"] = json!(task_id);
+        arguments["action_form_ref"] = json!(action_form_ref);
+        arguments["scope_revision"] = json!(0);
+        arguments["baseline_ref"] = Value::Null;
+        arguments
+            .pointer_mut(parent_path)
+            .and_then(Value::as_object_mut)
+            .unwrap_or_else(|| panic!("{label} selected branch object"))
+            .remove(removed_field);
+        let before = fixture.counts()?;
+
+        let error = adapter
+            .call_tool(
+                AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+                arguments,
+            )
+            .expect_err("malformed nested branch must fail before Core");
+        let response =
+            structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
+
+        assert_eq!(
+            response["issues"].as_array().map(Vec::len),
+            Some(1),
+            "{label}: {}",
+            response["issues"]
+        );
+        tool_error_issue(&response, expected_path, "MCP_ARGUMENT_REQUIRED");
+        assert_eq!(response["failure"]["reached_core"], false, "{label}");
+        assert_eq!(fixture.counts()?, before, "{label}");
+    }
+    Ok(())
+}
+
+#[test]
+fn valid_nested_shaping_calls_cover_repository_source_and_decision_gaps(
+) -> Result<(), Box<dyn Error>> {
+    for example_id in [
+        "repository_file_source_ref",
+        "product_decision_gap",
+        "technical_decision_gap",
+        "scope_decision_gap",
+    ] {
+        let fixture = CoreFixture::new(&format!("mcp-valid-{example_id}"))?;
+        let adapter = adapter(&fixture)?;
+        let (task_id, _) = create_task(&adapter)?;
+        let action_form_ref = current_action_form_ref(&adapter, &task_id)?;
+        let mut arguments = canonical_example_value(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            example_id,
+        )?;
+        arguments["task_id"] = json!(task_id);
+        arguments["action_form_ref"] = json!(action_form_ref);
+        arguments["scope_revision"] = json!(0);
+        arguments["baseline_ref"] = Value::Null;
+        if example_id == "repository_file_source_ref" {
+            arguments["gaps"] = json!([{
+                "gap_kind": "baseline_missing",
+                "summary": "The planning-only repository has no current baseline.",
+                "affected_refs": [],
+                "user_action": null
+            }]);
+        }
+
+        let response = adapter.call_tool(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            arguments,
+        )?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+        assert_eq!(
+            response.response_value["shaping_checkpoint"]["source_refs"]
+                .as_array()
+                .map(Vec::len),
+            Some(usize::from(example_id == "repository_file_source_ref")),
+            "{example_id}"
+        );
+        assert_eq!(
+            response.response_value["created_user_action_request_refs"]
+                .as_array()
+                .map(Vec::len),
+            Some(usize::from(example_id != "repository_file_source_ref")),
+            "{example_id}"
+        );
+    }
     Ok(())
 }
 

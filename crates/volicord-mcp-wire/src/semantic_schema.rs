@@ -698,6 +698,9 @@ impl SemanticValidationResult {
 
     fn finish(&mut self, descriptor: &SemanticSchemaDescriptor) {
         self.issues.sort_by(issue_order);
+        if self.issues.iter().any(|issue| issue.discriminator) {
+            self.issues.retain(|issue| issue.discriminator);
+        }
         let primary = self.issues.first();
         let selected = primary
             .and_then(|issue| {

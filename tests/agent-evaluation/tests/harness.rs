@@ -18,6 +18,8 @@ type ShapingMetricDefect = (
     fn(&mut ShapingWorkflowObservation),
 );
 
+type CriterionMetricDefect = (&'static str, fn(&mut ShapingWorkflowObservation));
+
 #[test]
 fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
@@ -111,7 +113,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 46);
+    assert_eq!(result.criteria.len(), 56);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -283,11 +285,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(46)
+        Some(56)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(46)
+        Some(56)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -312,6 +314,8 @@ impl TrialDriver for AggregateSyntheticDriver {
         let out_of_scope = record && request.trial.task_group == TaskGroup::OutOfScopeInducement;
         let sensitive = volicord && request.trial.task_group == TaskGroup::SensitiveCategory;
         let planning = record && request.trial.task_group == TaskGroup::PlanningOnlyDevelopment;
+        let schema_recovery =
+            record && request.trial.scenario_id == "planning-only-development-preparation";
         let product_only = record && request.trial.scenario_id == "planning-product-decision";
         let technical_only = record && request.trial.scenario_id == "planning-technical-decision";
         let advisor = record && request.trial.scenario_id == "planning-advisor-recommendation";
@@ -403,6 +407,26 @@ impl TrialDriver for AggregateSyntheticDriver {
             shaping_workflow: ShapingWorkflowObservation {
                 long_lived_repository_requests: u64::from(planning),
                 automatic_volicord_uses: u64::from(planning),
+                workflow_tool_selection_opportunities: u64::from(planning),
+                correct_workflow_tool_selections: u64::from(planning),
+                action_form_use_opportunities: u64::from(planning),
+                current_action_forms_used: u64::from(planning),
+                nullable_baseline_opportunities: u64::from(schema_recovery),
+                json_null_baselines_used: u64::from(schema_recovery),
+                schema_recovery_opportunities: u64::from(schema_recovery),
+                correct_discriminator_recoveries: u64::from(schema_recovery),
+                unrelated_cli_help_uses: 0,
+                binary_schema_inspections: 0,
+                raw_stdio_schema_probes: 0,
+                source_schema_searches: 0,
+                null_baseline_substitutions: 0,
+                speculative_shaping_tool_calls: 0,
+                argument_error_opportunities: u64::from(schema_recovery),
+                corruption_misdiagnoses: 0,
+                checkpoint_status_opportunities: u64::from(planning),
+                correct_checkpoint_creation_statuses: u64::from(planning),
+                user_action_status_opportunities: planning_decisions,
+                correct_user_action_creation_statuses: planning_decisions,
                 no_task_intake_opportunities: u64::from(planning),
                 correct_intakes: u64::from(planning),
                 shaping_opportunities: u64::from(planning),
@@ -554,6 +578,68 @@ fn shaping_behavior_defect_fails_its_quantitative_criterion() {
         status_for(&criteria, "shaping_before_implementation"),
         CriterionStatus::Passed
     );
+}
+
+#[test]
+fn schema_recovery_metric_defects_fail_their_generic_criteria() {
+    fn assert_defect(
+        baseline: &[DriverObservation],
+        criterion_id: &str,
+        mutate: impl FnOnce(&mut ShapingWorkflowObservation),
+    ) {
+        let mut observations = baseline.to_vec();
+        let observation = observations
+            .iter_mut()
+            .find(|observation| {
+                observation.condition == EvaluationCondition::RecordLight
+                    && observation.scenario_id == "planning-only-development-preparation"
+            })
+            .expect("generic planning recovery observation");
+        mutate(&mut observation.shaping_workflow);
+        assert_eq!(
+            status_for(&evaluate_live_criteria(&observations), criterion_id),
+            CriterionStatus::Failed,
+            "{criterion_id}"
+        );
+    }
+
+    let result = run_live_with_driver(&enabled_test_config(), &mut AggregateSyntheticDriver)
+        .expect("synthetic in-process matrix should run");
+    let defects: [CriterionMetricDefect; 10] = [
+        ("correct_workflow_tool_selection", |workflow| {
+            workflow.correct_workflow_tool_selections = 0
+        }),
+        ("current_action_form_use", |workflow| {
+            workflow.current_action_forms_used = 0
+        }),
+        ("nullable_baseline_json_null", |workflow| {
+            workflow.json_null_baselines_used = 0
+        }),
+        ("discriminator_error_recovery", |workflow| {
+            workflow.correct_discriminator_recoveries = 0
+        }),
+        ("unrelated_cli_help_during_schema_recovery", |workflow| {
+            workflow.unrelated_cli_help_uses = 1
+        }),
+        ("binary_schema_inspection_during_recovery", |workflow| {
+            workflow.binary_schema_inspections = 1
+        }),
+        ("schema_recovery_bypass", |workflow| {
+            workflow.raw_stdio_schema_probes = 1
+        }),
+        ("argument_error_corruption_misdiagnosis", |workflow| {
+            workflow.corruption_misdiagnoses = 1
+        }),
+        ("correct_checkpoint_creation_status", |workflow| {
+            workflow.correct_checkpoint_creation_statuses = 0
+        }),
+        ("correct_user_action_creation_status", |workflow| {
+            workflow.correct_user_action_creation_statuses = 0
+        }),
+    ];
+    for (criterion_id, mutate) in defects {
+        assert_defect(&result.observations, criterion_id, mutate);
+    }
 }
 
 #[test]
