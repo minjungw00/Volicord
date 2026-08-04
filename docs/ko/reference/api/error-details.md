@@ -22,6 +22,9 @@
 - 표시 문구만: [템플릿 본문](../template-bodies.md).
 - 저장 효과: [저장 효과](../storage-effects.md).
 - 제품 전체 실패 범주 의미: [실패 모델](../failure-model.md).
+- Descriptor 유래 MCP 인자 issue와 branch local 세부 field:
+  [MCP 전송](../mcp-transport.md#public-argument-projection). 이 field는
+  `ToolError.details`가 아닙니다.
 
 <a id="machine-readable-error-details"></a>
 
@@ -49,6 +52,10 @@ null 허용 여부, 필드 형식은 [API 코어 스키마](schema-core.md#commo
 - 담당 메서드나 스키마의 지원 없이 차단 사유 코드로 재사용하면 안 됩니다.
 
 세부 데이터는 안정적인 진단 사실로 제한해야 합니다. 민감한 요청 본문을 노출하거나, 메서드 요청 본문을 중복하거나, 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하거나, 저장 효과를 정의하면 안 됩니다.
+
+`McpToolErrorIssue`와 `McpToolErrorResponse`의 field는 MCP transport carrier에 속합니다.
+이 field는 `ToolError.details`를 채우거나 API 응답 branch를 선택하거나 Core 전 schema
+contract 실패를 공개 API 오류로 바꾸지 않습니다.
 
 <a id="workflow-rejection-detail-fields"></a>
 ## Workflow 거부 상세 필드

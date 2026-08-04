@@ -127,7 +127,7 @@ fn record_shaping_checkpoint_rejects_the_removed_combined_request_shape_without_
 }
 
 #[test]
-fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
+fn nullable_object_validates_its_non_null_schema_and_keeps_nested_issues(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-nullable-object-validation")?;
     let adapter = adapter(&fixture)?;
@@ -165,8 +165,8 @@ fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
 }
 
 #[test]
-fn decoder_only_failure_is_one_structured_issue_without_core_effects() -> Result<(), Box<dyn Error>>
-{
+fn date_time_format_failure_is_one_structured_issue_without_core_effects(
+) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-decoder-only-validation")?;
     let adapter = adapter(&fixture)?;
     let before = fixture.counts()?;
@@ -178,20 +178,28 @@ fn decoder_only_failure_is_one_structured_issue_without_core_effects() -> Result
 
     let error = adapter
         .call_tool(AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments)
-        .expect_err("invalid timestamp format should fail typed decoding");
+        .expect_err("invalid timestamp format should fail descriptor validation");
     let response = structured_tool_error(AgentToolId::REQUEST_USER_ACTION.wire_name(), &error);
 
     assert_eq!(response["issues"].as_array().map(Vec::len), Some(1));
     assert_eq!(response["reported_issue_count"], 1);
     assert_eq!(response["truncated"], false);
-    tool_error_issue(&response, "", "MCP_ARGUMENT_DECODE_FAILED");
+    let issue = tool_error_issue(
+        &response,
+        "/request/expires_at",
+        "MCP_ARGUMENT_TYPE_MISMATCH",
+    );
+    assert_eq!(issue["expected_semantic_type"], "UtcTimestamp | null");
+    assert!(issue["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("date-time")));
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
 #[cfg(unix)]
 #[test]
-fn decoder_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn Error>> {
+fn descriptor_format_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-decoder-before-readonly-precondition")?;
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
@@ -204,11 +212,15 @@ fn decoder_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn E
 
     let error = adapter
         .call_tool(AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments)
-        .expect_err("typed argument decoding should precede storage preconditions");
+        .expect_err("descriptor argument validation should precede storage preconditions");
     let response = structured_tool_error(AgentToolId::REQUEST_USER_ACTION.wire_name(), &error);
 
     assert_eq!(response["code"], "MCP_INVALID_ARGUMENTS");
-    tool_error_issue(&response, "", "MCP_ARGUMENT_DECODE_FAILED");
+    tool_error_issue(
+        &response,
+        "/request/expires_at",
+        "MCP_ARGUMENT_TYPE_MISMATCH",
+    );
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }

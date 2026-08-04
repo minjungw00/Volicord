@@ -355,7 +355,11 @@ fn failed_designated_tool_call_does_not_record_round_trip_evidence() -> Result<(
 
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 3);
-    assert_eq!(responses[2]["result"]["isError"], true);
+    assert_eq!(
+        responses[2]["result"]["isError"], true,
+        "unexpected failed designated-tool response: {}",
+        responses[2]
+    );
     let runtime =
         latest_managed_runtime_session(fixture.runtime_home_path(), fixture.connection_id())?
             .ok_or("managed runtime")?;

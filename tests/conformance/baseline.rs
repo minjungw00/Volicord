@@ -7,7 +7,10 @@ use volicord_core::{
     CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,
     PipelineResponse,
 };
-use volicord_mcp_wire::{mcp_tool_contract_integrity_errors, mcp_tool_contracts};
+use volicord_mcp_wire::{
+    mcp_tool_contract_integrity_errors, mcp_tool_contracts, McpInputContractValidation,
+    SemanticValidationIssueCode,
+};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, choice_user_action_resolution, observation_user_action_resolution,
     supported_evidence_update, unsupported_evidence_update, ArtifactOwnerJsonColumn,
@@ -56,12 +59,9 @@ fn canonical_mcp_semantic_cases_are_the_conformance_fixtures() -> Result<(), Box
         assert_eq!(advertised.len(), contract.canonical_examples().len());
         for (advertised, example) in advertised.iter().zip(contract.canonical_examples()) {
             assert_eq!(advertised, example.value());
-            assert!(
-                contract
-                    .input_descriptor()
-                    .validate(example.value())
-                    .issues
-                    .is_empty(),
+            assert_eq!(
+                contract.validate_and_decode_input(example.value()),
+                McpInputContractValidation::Valid,
                 "{} example `{}` must satisfy the canonical validator",
                 contract.tool().wire_name(),
                 example.id()
@@ -76,6 +76,60 @@ fn canonical_mcp_semantic_cases_are_the_conformance_fixtures() -> Result<(), Box
                     )
                 });
             assert_eq!(round_trip, *example.value());
+
+            for expected in example.expected_variants() {
+                let mut invalid = example.value().clone();
+                let path = format!("{}{}", expected.instance_path, expected.discriminator_path);
+                *invalid
+                    .pointer_mut(&path)
+                    .expect("canonical discriminator path") =
+                    Value::String("__invalid_discriminator__".to_owned());
+                let McpInputContractValidation::Invalid(validation) =
+                    contract.validate_and_decode_input(&invalid)
+                else {
+                    panic!(
+                        "{} example `{}` invalid discriminator must stop before decoding",
+                        contract.tool().wire_name(),
+                        example.id()
+                    );
+                };
+                let local = validation
+                    .issues
+                    .iter()
+                    .filter(|issue| issue.path.starts_with(expected.instance_path))
+                    .collect::<Vec<_>>();
+                assert_eq!(local.len(), 1);
+                assert_eq!(local[0].path, path);
+                assert_eq!(local[0].code, SemanticValidationIssueCode::EnumValue);
+
+                let mut missing = example.value().clone();
+                let (parent_path, field) = path
+                    .rsplit_once('/')
+                    .expect("discriminator path has a field");
+                let field = field.replace("~1", "/").replace("~0", "~");
+                missing
+                    .pointer_mut(parent_path)
+                    .and_then(Value::as_object_mut)
+                    .expect("discriminator parent object")
+                    .remove(&field);
+                let McpInputContractValidation::Invalid(validation) =
+                    contract.validate_and_decode_input(&missing)
+                else {
+                    panic!(
+                        "{} example `{}` missing discriminator must stop before decoding",
+                        contract.tool().wire_name(),
+                        example.id()
+                    );
+                };
+                let local = validation
+                    .issues
+                    .iter()
+                    .filter(|issue| issue.path.starts_with(expected.instance_path))
+                    .collect::<Vec<_>>();
+                assert_eq!(local.len(), 1);
+                assert_eq!(local[0].path, path);
+                assert_eq!(local[0].code, SemanticValidationIssueCode::Required);
+            }
         }
     }
     Ok(())

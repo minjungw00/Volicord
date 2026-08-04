@@ -157,7 +157,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:daf964b5e20c55a2a14993e92f0fa791d452fd8c832aa02d7dfef8304a36770d"
+        "sha256": "sha256:4e1d6a6b2320c175107968f5cbde0e35e333d67ebf548ac634446350ea90e1ad"
       }
     },
     {
@@ -232,7 +232,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bc0f2fb9e830014074a8c979c9ebb044d6f6d4852e7ace907d5e69fd2b4e5ad9"
+        "sha256": "sha256:ce024f851ed3d9e92fbb6fa41bb1a45fda50967829b732ac8baed1b00778b9e2"
       }
     },
     {
@@ -363,7 +363,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a1aa0ff5f9c2eada95760bacacfdc708655db42a5d1a207480c06149c0cbe52d"
+        "sha256": "sha256:46993e2fb73cce81d64bb0bb90af235e74af18bafb5c6f843a2b98c87b655df4"
       }
     },
     {
@@ -378,7 +378,7 @@
         "definitions": [],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9961d2693da9254197dc67dcd4874148a2a0fe3dc8f95c2035850c6041781607"
+        "sha256": "sha256:97958d74387ce4b9224568f05913bd91e46d4cc711964e6ba1012202d76553aa"
       },
       "name": "volicord.list_projects",
       "output_schema": {
@@ -391,7 +391,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c3d9263f9d47bdbd68ef93acc6500daf2640c1ab87a2e75579d224f7768939a7"
+        "sha256": "sha256:75f8bd67e2617e1d1c24e9416edd25b2ce6e4d9b84fd5adceba8e280e466c2c7"
       }
     },
     {
@@ -426,7 +426,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:cbb1b68bf87e77a5ecd99fe4cc941127a6285d1f132f432ed5d602fa4667d0f3"
+        "sha256": "sha256:6b347d07b8e66cf8c534fadcca119785be42b945c37ee836929111250c27079e"
       }
     },
     {
@@ -463,7 +463,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3df7d6deb49f997f6b9b25359593b525b9b7477b8c959c5d0b5e536ca6cd8761"
+        "sha256": "sha256:6caad8937c8a47d01ae0d73b336bd741a7c10825ea2d29f1d03065fc24346c43"
       }
     },
     {
@@ -502,7 +502,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ead21c7ac7b59db1dcd921c0fb180fd7ae7d28f8f6e7d5b73363727bd2cb224a"
+        "sha256": "sha256:a1091b2ecbf4beeee915e6e6c00e26e682cced6bd850f1edd8840f5074035b8b"
       }
     }
   ]

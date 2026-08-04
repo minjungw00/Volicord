@@ -64,6 +64,7 @@ use volicord_store::operational_sessions::{
     record_mcp_tools_list, record_mcp_verification_tool_observation,
 };
 use volicord_types::methods::OperationResultRef;
+use volicord_types::schema::RequiredNullable;
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner, ToolVerificationRole};
 use volicord_types::values::MethodName;
 use volicord_types::values::{AgentConnectionMode, EffectKind};
@@ -968,10 +969,16 @@ fn tool_execution_error_result_for_capabilities(
 ) -> Value {
     let structured = match error {
         McpAdapterError::InvalidParams {
-            issues, truncated, ..
+            issues,
+            truncated,
+            selected_variant,
+            canonical_example,
+            ..
         } => McpToolErrorResponse {
             code: McpToolErrorCode::InvalidArguments,
             tool_name: requested_tool_name.to_owned(),
+            selected_variant: RequiredNullable::new(selected_variant.clone()),
+            canonical_example: RequiredNullable::new(canonical_example.clone()),
             retryable: true,
             reached_core: false,
             committed: false,
@@ -997,6 +1004,8 @@ fn tool_execution_error_result_for_capabilities(
             McpToolErrorResponse {
                 code: McpToolErrorCode::AdapterPreconditionFailed,
                 tool_name: requested_tool_name.to_owned(),
+                selected_variant: RequiredNullable::null(),
+                canonical_example: RequiredNullable::null(),
                 retryable: false,
                 reached_core: false,
                 committed: false,
@@ -1012,6 +1021,8 @@ fn tool_execution_error_result_for_capabilities(
         McpAdapterError::MutationAdmission(condition) => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
             tool_name: requested_tool_name.to_owned(),
+            selected_variant: RequiredNullable::null(),
+            canonical_example: RequiredNullable::null(),
             retryable: condition.retryable(),
             reached_core: false,
             committed: false,
@@ -1026,6 +1037,8 @@ fn tool_execution_error_result_for_capabilities(
         _ => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
             tool_name: requested_tool_name.to_owned(),
+            selected_variant: RequiredNullable::null(),
+            canonical_example: RequiredNullable::null(),
             retryable: false,
             reached_core: false,
             committed: false,

@@ -43,7 +43,11 @@ pub enum McpAdapterError {
         tool_name: String,
         issues: Vec<McpToolErrorIssue>,
         truncated: bool,
-        source: Option<serde_json::Error>,
+        selected_variant: Option<String>,
+        canonical_example: Option<volicord_types::schema::JsonObject>,
+    },
+    SchemaContractFailure {
+        tool_name: String,
     },
     ToolExecution {
         tool_name: String,
@@ -78,7 +82,7 @@ impl fmt::Display for McpAdapterError {
                 tool_name,
                 issues,
                 truncated,
-                source,
+                ..
             } => {
                 write!(formatter, "invalid params for {tool_name}")?;
                 for issue in issues {
@@ -91,11 +95,12 @@ impl fmt::Display for McpAdapterError {
                 if *truncated {
                     formatter.write_str("; additional validation detail was truncated")?;
                 }
-                if let Some(source) = source {
-                    write!(formatter, "; decoder source: {source}")?;
-                }
                 Ok(())
             }
+            Self::SchemaContractFailure { tool_name } => write!(
+                formatter,
+                "MCP semantic descriptor and exact Rust decoder disagree for {tool_name}"
+            ),
             Self::ToolExecution { tool_name, message } => {
                 write!(formatter, "{tool_name}: {message}")
             }
@@ -129,10 +134,6 @@ impl fmt::Display for McpAdapterError {
 impl Error for McpAdapterError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidParams {
-                source: Some(source),
-                ..
-            } => Some(source),
             Self::Core(error) => Some(error),
             Self::MutationAdmission(condition) => Some(condition),
             Self::MutationAdmissionAcquisition { source, .. } => Some(source),
@@ -140,7 +141,8 @@ impl Error for McpAdapterError {
             Self::Io(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::UnknownTool(_)
-            | Self::InvalidParams { source: None, .. }
+            | Self::InvalidParams { .. }
+            | Self::SchemaContractFailure { .. }
             | Self::ToolExecution { .. }
             | Self::ToolOutputSchema { .. }
             | Self::OperationalUnavailable { .. }

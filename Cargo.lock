@@ -1671,6 +1671,7 @@ dependencies = [
 name = "volicord-mcp-wire"
 version = "0.9.1"
 dependencies = [
+ "regex",
  "schemars",
  "serde",
  "serde_json",

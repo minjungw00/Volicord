@@ -6,7 +6,7 @@ use crate::routing::{
     selected_project_from_availability, storage_capability_for_projects, ListProjectItem,
     ListProjectsResult, McpConnectionContext, McpProjectAvailability, McpStorageCapability,
 };
-use crate::schema_validation::{decode_failure_issue, validate_mcp_tool_arguments};
+use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::{
     mcp_tools_for_mode_and_storage_with_detail, CanonicalToolDefinition, ToolSchemaDetail,
 };
@@ -1608,11 +1608,8 @@ impl McpAdapter {
     where
         T: serde::de::DeserializeOwned,
     {
-        serde_json::from_value(params).map_err(|source| McpAdapterError::InvalidParams {
+        serde_json::from_value(params).map_err(|_| McpAdapterError::SchemaContractFailure {
             tool_name: tool_name.to_owned(),
-            issues: vec![decode_failure_issue(tool_name, &source)],
-            truncated: false,
-            source: Some(source),
         })
     }
 }

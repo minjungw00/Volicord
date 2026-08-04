@@ -203,7 +203,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8a928cdb57f053560011b473272fd7a1c2ef93468dffc9bb5ebc045b54d3e3b9"
+        "sha256": "sha256:d81b35a2d292bee90c7ff4e859fd18a310d09f3f67235cd393ca682c1362659d"
       }
     },
     {
@@ -370,7 +370,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ab5833e3476ab4685663f8a435d83650e15d8bdc8fd5254ffb96d77e8222887b"
+        "sha256": "sha256:3e0d6b3dcb3f1ef7140cccfbcf07c91a0de7fc787a1bbb4bc2af4836a3ad0026"
       }
     },
     {
@@ -570,7 +570,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:dc5d5b98d3f2fe213dca7c3d54fbc16353f5e7d64b8a5c5a07d6b3a76eecec17"
+        "sha256": "sha256:e0fe60015b5293c55f25cae3612ea0ad3ef32bc435708a52866efb2e740f7ebb"
       }
     },
     {
@@ -746,7 +746,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8e87358644f2c8b0900427ea2ab99766a4d639cb3ed8b3c0aca324c65a057386"
+        "sha256": "sha256:19d03b0219676eaea918ca62a174d03d32443e56674f8eaf8f3cccf1f9a6dcb3"
       }
     },
     {
@@ -903,7 +903,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:935e9486bc8c4ad748651f8871b4ca3e52be684fe7c246fc24b115d0d476d529"
+        "sha256": "sha256:66ca4d622f9beb9f8d886b53e9331687c56770a9897f0c51ca8cc5722dcb4dd8"
       }
     },
     {
@@ -1043,7 +1043,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:daf964b5e20c55a2a14993e92f0fa791d452fd8c832aa02d7dfef8304a36770d"
+        "sha256": "sha256:4e1d6a6b2320c175107968f5cbde0e35e333d67ebf548ac634446350ea90e1ad"
       }
     },
     {
@@ -1118,7 +1118,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bc0f2fb9e830014074a8c979c9ebb044d6f6d4852e7ace907d5e69fd2b4e5ad9"
+        "sha256": "sha256:ce024f851ed3d9e92fbb6fa41bb1a45fda50967829b732ac8baed1b00778b9e2"
       }
     },
     {
@@ -1237,7 +1237,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8d7dae4f4a844f3e6e5f5141f8817ee91b10460a8eb027d31c82f34b0b208b70"
+        "sha256": "sha256:9be844e7b521d3c05cf3cdebf2faef623aa42c503bf684ee72a8bdb9e589f8f9"
       }
     },
     {
@@ -1409,7 +1409,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5c4bcc3e6948f3fba6168bdc895451fec1b9c26294568a19128eff43fbdc02fb"
+        "sha256": "sha256:932204346511837b2a2de11c5dbaea83bdf144e886091c6dd90dcaac77aab27e"
       }
     },
     {
@@ -1529,7 +1529,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0cc1eab01a9317ebb9b41532e81bd4d140843ea559e0f6c2b546471e0095fd95"
+        "sha256": "sha256:b0c69541d0f66e01aaeafd5afed3ba30d01568f5ae6a3d6254ad6733eb97b1a2"
       }
     },
     {
@@ -1746,7 +1746,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:10c17a218bb9365ed3c7534b94f3ed4a0f5776dd0dc7bf5ef7ad60d0753f8fc2"
+        "sha256": "sha256:f9915adfbe940efd8ae66e334777865b8046dfda65a015499642eb28e6311510"
       }
     },
     {
@@ -1919,7 +1919,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f60466dd5541cc46ed4ff216bfe9e4da4415d2c3fafcb971e2282c1aa35a7c04"
+        "sha256": "sha256:fe481ac584bed9b9e75ae59c226148ad11c52455aa6c96d3e60830071fdbc010"
       }
     },
     {
@@ -2077,7 +2077,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6d0afb5607be576ff09c0995a42179fe41d9d89be0da0b88a7001d049b2daa37"
+        "sha256": "sha256:105d1ba07916972f7f63c13cecb54c7ea9fea01edfaaefab383e50ddbadfb72b"
       }
     },
     {
@@ -2208,7 +2208,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a1aa0ff5f9c2eada95760bacacfdc708655db42a5d1a207480c06149c0cbe52d"
+        "sha256": "sha256:46993e2fb73cce81d64bb0bb90af235e74af18bafb5c6f843a2b98c87b655df4"
       }
     },
     {
@@ -2371,7 +2371,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a0b5c793a2c6973e04e52b1d13992f1e76b12d587d8553b421880db930537215"
+        "sha256": "sha256:1a2c8c99bf45661736cceb29b4d8e98efddd64205357cf5bfd4c4c19b2574303"
       }
     },
     {
@@ -2386,7 +2386,7 @@
         "definitions": [],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9961d2693da9254197dc67dcd4874148a2a0fe3dc8f95c2035850c6041781607"
+        "sha256": "sha256:97958d74387ce4b9224568f05913bd91e46d4cc711964e6ba1012202d76553aa"
       },
       "name": "volicord.list_projects",
       "output_schema": {
@@ -2399,7 +2399,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c3d9263f9d47bdbd68ef93acc6500daf2640c1ab87a2e75579d224f7768939a7"
+        "sha256": "sha256:75f8bd67e2617e1d1c24e9416edd25b2ce6e4d9b84fd5adceba8e280e466c2c7"
       }
     },
     {
@@ -2434,7 +2434,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:cbb1b68bf87e77a5ecd99fe4cc941127a6285d1f132f432ed5d602fa4667d0f3"
+        "sha256": "sha256:6b347d07b8e66cf8c534fadcca119785be42b945c37ee836929111250c27079e"
       }
     },
     {
@@ -2471,7 +2471,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3df7d6deb49f997f6b9b25359593b525b9b7477b8c959c5d0b5e536ca6cd8761"
+        "sha256": "sha256:6caad8937c8a47d01ae0d73b336bd741a7c10825ea2d29f1d03065fc24346c43"
       }
     },
     {
@@ -2510,7 +2510,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ead21c7ac7b59db1dcd921c0fb180fd7ae7d28f8f6e7d5b73363727bd2cb224a"
+        "sha256": "sha256:a1091b2ecbf4beeee915e6e6c00e26e682cced6bd850f1edd8840f5074035b8b"
       }
     }
   ]

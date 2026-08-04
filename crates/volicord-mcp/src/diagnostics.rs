@@ -150,6 +150,9 @@ impl From<&McpAdapterError> for McpDiagnostic {
             McpAdapterError::InvalidParams { .. } => {
                 Self::ToolCall(McpToolCallDiagnostic::InvalidArguments)
             }
+            McpAdapterError::SchemaContractFailure { .. } => {
+                Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
+            }
             McpAdapterError::ToolExecution { .. } => {
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
             }

@@ -868,6 +868,120 @@ fn record_run_invalid_observed_changes_reports_expected_shape() -> Result<(), Bo
 }
 
 #[test]
+fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-checkpoint-discriminator")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+    let error = adapter
+        .call_tool(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            json!({
+                "checkpoint_operation": {"operation": "create"},
+                "baseline_ref": null
+            }),
+        )
+        .expect_err("invalid discriminator must fail before Core");
+    let response =
+        structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
+
+    assert!(response["selected_variant"].is_null());
+    assert_eq!(
+        response["canonical_example"]["discriminator_path"],
+        "/checkpoint_operation/operation"
+    );
+    assert_eq!(
+        response["canonical_example"]["variants"][0]["value"],
+        "create_initial"
+    );
+    assert_eq!(
+        response["issues"][0]["path"],
+        "/checkpoint_operation/operation"
+    );
+    let issue = tool_error_issue(
+        &response,
+        "/checkpoint_operation/operation",
+        "MCP_ARGUMENT_ENUM_VALUE",
+    );
+    assert_eq!(
+        issue["allowed_values"],
+        json!(["create_initial", "replace_current"])
+    );
+    assert_eq!(
+        issue["expected_semantic_type"],
+        "ShapingCheckpointOperation"
+    );
+    assert!(response["issues"]
+        .as_array()
+        .expect("issues")
+        .iter()
+        .all(|issue| {
+            ![
+                "expected_current_checkpoint_id",
+                "retired_non_authorizing_request_refs",
+                "carry_forward_application_refs",
+                "stale_authority_actions",
+            ]
+            .iter()
+            .any(|field| {
+                issue["path"]
+                    .as_str()
+                    .is_some_and(|path| path.contains(field))
+            })
+        }));
+    assert!(response["issues"]
+        .as_array()
+        .expect("issues")
+        .iter()
+        .all(|issue| issue["path"] != "/baseline_ref"));
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn selected_checkpoint_branch_owns_required_fields_and_canonical_example(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-checkpoint-selected-branch")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        "replace_current",
+    )?;
+    arguments["checkpoint_operation"]
+        .as_object_mut()
+        .expect("checkpoint operation")
+        .remove("expected_current_checkpoint_id");
+
+    let error = adapter
+        .call_tool(
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            arguments,
+        )
+        .expect_err("selected branch missing field must fail before Core");
+    let response =
+        structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
+
+    assert_eq!(response["selected_variant"], "replace_current");
+    assert_eq!(
+        response["canonical_example"]["checkpoint_operation"]["operation"],
+        "replace_current"
+    );
+    tool_error_issue(
+        &response,
+        "/checkpoint_operation/expected_current_checkpoint_id",
+        "MCP_ARGUMENT_REQUIRED",
+    );
+    assert!(response["issues"]
+        .as_array()
+        .expect("issues")
+        .iter()
+        .all(|issue| !issue["path"]
+            .as_str()
+            .is_some_and(|path| { path.contains("create_initial") })));
+    Ok(())
+}
+
+#[test]
 fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-invalid-record-run-kind")?;
     let adapter = adapter(&fixture)?;
@@ -886,14 +1000,11 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
     assert!(message.contains("implementation"));
     assert!(message.contains("direct"));
     assert_eq!(issue["expected_semantic_type"], "RunKind");
-    assert_eq!(
-        issue["allowed_enum_values"],
-        json!(["implementation", "direct"])
-    );
-    assert!(issue["minimal_example"].is_object());
-    assert_eq!(issue["retryable"], true);
-    assert_eq!(issue["reached_core"], false);
-    assert_eq!(issue["committed"], false);
+    assert_eq!(issue["allowed_values"], json!(["implementation", "direct"]));
+    assert!(response["canonical_example"].is_object());
+    assert_eq!(response["retryable"], true);
+    assert_eq!(response["reached_core"], false);
+    assert_eq!(response["committed"], false);
     Ok(())
 }
 
@@ -917,10 +1028,7 @@ fn intake_malformed_state_record_ref_reports_semantic_owner() -> Result<(), Box<
     let hint = issue["owner_hint"].as_str().expect("field owner hint");
     assert!(hint.contains("StateRecordRef"));
     assert!(hint.contains("plain_language_request"));
-    assert!(issue["minimal_example"].is_object());
-    assert_eq!(issue["retryable"], true);
-    assert_eq!(issue["reached_core"], false);
-    assert_eq!(issue["committed"], false);
+    assert!(response["canonical_example"].is_object());
     Ok(())
 }
 
@@ -1082,14 +1190,25 @@ fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<
         .expect_err("unknown root field should fail before Core");
     let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
     let issue = tool_error_issue(&response, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
-    assert_eq!(issue["unknown_fields"], json!(["unexpected"]));
-    assert!(issue["required_fields"]
-        .as_array()
-        .is_some_and(|fields| !fields.is_empty()));
-    assert!(issue["minimal_example"].is_object());
-    assert_eq!(issue["retryable"], true);
-    assert_eq!(issue["reached_core"], false);
-    assert_eq!(issue["committed"], false);
+    assert_eq!(issue["allowed_values"], json!([]));
+    assert!(issue["owner_hint"].is_string());
+    assert_eq!(
+        issue
+            .as_object()
+            .expect("issue object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "path",
+            "code",
+            "message",
+            "expected_semantic_type",
+            "allowed_values",
+            "owner_hint",
+        ])
+    );
+    assert!(response["canonical_example"].is_object());
     Ok(())
 }
 

@@ -40,6 +40,7 @@ use volicord_types::values::{
 use crate::methods::*;
 use crate::semantic_schema::{
     CanonicalSchemaExample, ExpectedTaggedVariant, SemanticSchemaDescriptor,
+    SemanticValidationResult,
 };
 
 pub const UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID: &str = "keep_current_change_unit";
@@ -54,6 +55,14 @@ pub const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "check_close_missing_final_acceptance";
 
 type DecodeInput = fn(&Value) -> Result<Value, String>;
+
+/// Closed result of descriptor validation followed by exact Rust input decoding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpInputContractValidation {
+    Valid,
+    Invalid(SemanticValidationResult),
+    SchemaContractFailure,
+}
 
 /// One production MCP tool's canonical semantic contract entry.
 #[derive(Debug, Clone)]
@@ -106,6 +115,18 @@ impl McpToolContractDescriptor {
     /// Decodes and reserializes a value as this entry's exact Rust input type.
     pub fn decode_input(&self, value: &Value) -> Result<Value, String> {
         (self.decode_input)(value)
+    }
+
+    /// Validates one input and, only when valid, requires exact Rust decoding to agree.
+    pub fn validate_and_decode_input(&self, value: &Value) -> McpInputContractValidation {
+        let validation = self.input.validate(value);
+        if !validation.issues.is_empty() {
+            return McpInputContractValidation::Invalid(validation);
+        }
+        match self.decode_input(value) {
+            Ok(_) => McpInputContractValidation::Valid,
+            Err(_) => McpInputContractValidation::SchemaContractFailure,
+        }
     }
 
     /// Validates schema, example, decode, and deterministic-generation integrity.
@@ -1017,7 +1038,20 @@ fn prepare_evidence_capture_examples() -> Vec<CanonicalSchemaExample> {
                 command_label: "Focused validation".to_owned(),
                 expected_exit_code: RequiredNullable::null(),
             }),
-            Vec::new(),
+            vec![
+                ExpectedTaggedVariant {
+                    instance_path: "/target",
+                    discriminator_path: "/target_kind",
+                    discriminator_value: "acceptance_criterion",
+                    semantic_type: "EvidenceTarget::acceptance_criterion",
+                },
+                ExpectedTaggedVariant {
+                    instance_path: "/capture",
+                    discriminator_path: "/capture_kind",
+                    discriminator_value: "verified_command_execution",
+                    semantic_type: "McpEvidenceCaptureSpec::verified_command_execution",
+                },
+            ],
         ),
         typed_example(
             PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID,
@@ -1028,7 +1062,20 @@ fn prepare_evidence_capture_examples() -> Vec<CanonicalSchemaExample> {
                     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned(),
                 expected_success: RequiredNullable::null(),
             }),
-            Vec::new(),
+            vec![
+                ExpectedTaggedVariant {
+                    instance_path: "/target",
+                    discriminator_path: "/target_kind",
+                    discriminator_value: "acceptance_criterion",
+                    semantic_type: "EvidenceTarget::acceptance_criterion",
+                },
+                ExpectedTaggedVariant {
+                    instance_path: "/capture",
+                    discriminator_path: "/capture_kind",
+                    discriminator_value: "verified_tool_invocation",
+                    semantic_type: "McpEvidenceCaptureSpec::verified_tool_invocation",
+                },
+            ],
         ),
     ]
 }
@@ -1134,7 +1181,20 @@ fn record_run_examples() -> Vec<CanonicalSchemaExample> {
                 recovery_constraints: Vec::new(),
             }),
         },
-        Vec::new(),
+        vec![
+            ExpectedTaggedVariant {
+                instance_path: "/evidence_updates/0/target",
+                discriminator_path: "/target_kind",
+                discriminator_value: "acceptance_criterion",
+                semantic_type: "EvidenceTarget::acceptance_criterion",
+            },
+            ExpectedTaggedVariant {
+                instance_path: "/evidence_observations/0/target",
+                discriminator_path: "/target_kind",
+                discriminator_value: "acceptance_criterion",
+                semantic_type: "EvidenceTarget::acceptance_criterion",
+            },
+        ],
     )]
 }
 
@@ -1311,7 +1371,27 @@ fn state_ref(kind: StateRecordKind, id: &str, task_id: &str) -> StateRecordRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic_schema::SemanticSchemaNode;
+    use crate::semantic_schema::{SemanticSchemaNode, SemanticValidationIssueCode};
+    use serde::{Deserialize, Deserializer};
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    struct DecodeNarrowerThanSchema {
+        #[serde(deserialize_with = "reject_schema_valid_literal")]
+        value: String,
+    }
+
+    fn reject_schema_valid_literal<'de, D>(deserializer: D) -> Result<String, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        if value == "schema-valid" {
+            return Err(serde::de::Error::custom(
+                "test decoder rejects a schema-valid literal",
+            ));
+        }
+        Ok(value)
+    }
 
     fn shaping_example<'a>(
         contract: &'a McpToolContractDescriptor,
@@ -1355,6 +1435,101 @@ mod tests {
         assert_eq!(contracts.len(), AgentToolId::ALL.len());
         let errors = mcp_tool_contract_integrity_errors();
         assert!(errors.is_empty(), "{}", errors.join("\n"));
+    }
+
+    #[test]
+    fn descriptor_decode_disagreement_is_a_schema_contract_failure() {
+        let descriptor = contract::<DecodeNarrowerThanSchema, DecodeNarrowerThanSchema>(
+            AgentToolId::STATUS,
+            "test",
+            "test",
+            Vec::new(),
+        );
+        let value = serde_json::json!({"value": "schema-valid"});
+
+        assert!(descriptor
+            .input_descriptor()
+            .validate(&value)
+            .issues
+            .is_empty());
+        assert_eq!(
+            descriptor.validate_and_decode_input(&value),
+            McpInputContractValidation::SchemaContractFailure
+        );
+    }
+
+    #[test]
+    fn every_canonical_tagged_union_rejects_invalid_discriminator_without_branch_guessing() {
+        for contract in mcp_tool_contracts() {
+            for example in contract.canonical_examples() {
+                for expected in example.expected_variants() {
+                    let mut value = example.value().clone();
+                    let discriminator_pointer =
+                        format!("{}{}", expected.instance_path, expected.discriminator_path);
+                    *value
+                        .pointer_mut(&discriminator_pointer)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "{} example {} must contain {}",
+                                contract.tool().wire_name(),
+                                example.id(),
+                                discriminator_pointer
+                            )
+                        }) = Value::String("__invalid_discriminator__".to_owned());
+
+                    let validation = contract.input_descriptor().validate(&value);
+                    let local_issues = validation
+                        .issues
+                        .iter()
+                        .filter(|issue| issue.path.starts_with(expected.instance_path))
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        local_issues.len(),
+                        1,
+                        "{} example {} guessed fields for {}: {:#?}",
+                        contract.tool().wire_name(),
+                        example.id(),
+                        discriminator_pointer,
+                        validation.issues
+                    );
+                    assert_eq!(local_issues[0].path, discriminator_pointer);
+                    assert_eq!(local_issues[0].code, SemanticValidationIssueCode::EnumValue);
+                    assert!(local_issues[0]
+                        .allowed_values
+                        .iter()
+                        .any(|value| value == expected.discriminator_value));
+                    assert!(validation
+                        .canonical_example
+                        .as_ref()
+                        .is_some_and(|summary| summary.contains_key("variants")));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_production_result_union_rejects_invalid_discriminator_before_branch_fields() {
+        for contract in mcp_tool_contracts() {
+            let validation = contract
+                .output_descriptor()
+                .validate(&serde_json::json!({"result_type": "__invalid_discriminator__"}));
+            assert_eq!(
+                validation.issues.len(),
+                1,
+                "{} output guessed a result branch: {:#?}",
+                contract.tool().wire_name(),
+                validation.issues
+            );
+            assert_eq!(validation.issues[0].path, "/result_type");
+            assert_eq!(
+                validation.issues[0].code,
+                SemanticValidationIssueCode::EnumValue
+            );
+            assert!(validation
+                .canonical_example
+                .as_ref()
+                .is_some_and(|summary| summary.contains_key("variants")));
+        }
     }
 
     #[test]
@@ -1439,14 +1614,15 @@ mod tests {
                 panic!("`{definition}` must be tagged");
             };
             assert!(
-                !union
-                    .variants
+                contract
+                    .canonical_examples()
                     .iter()
-                    .find(|candidate| candidate.discriminator_value == variant)
-                    .expect("expected nested variant")
-                    .canonical_examples
-                    .is_empty(),
-                "`{definition}` variant `{variant}` must own a typed example"
+                    .flat_map(CanonicalSchemaExample::expected_variants)
+                    .any(
+                        |expected| expected.discriminator_path == union.discriminator_path
+                            && expected.discriminator_value == variant
+                    ),
+                "`{definition}` variant `{variant}` must have a typed canonical example"
             );
         }
 

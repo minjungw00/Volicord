@@ -639,33 +639,68 @@ Known-tool invalid arguments are checked against the descriptor's semantic
 validator tree rather than scanning generated JSON or using method-specific
 string matching. A required-nullable member must be present and carries either
 JSON `null` or its exact non-null semantic type; the string `"null"` is not
-JSON null. Typed canonical examples serialize from request values, validate,
-and decode through that same entry.
+JSON null, and a mismatch reports the expected type as `T | null`.
+
+Every object union has an explicit discriminator. Validation reads that
+discriminator before validating branch fields. A supported value selects
+exactly one branch and recursion applies the same rule to nested checkpoint,
+`SourceRef`, UserAction, shaping-gap, stale-authority, artifact, Evidence, and
+result unions. An unsupported value produces one `MCP_ARGUMENT_ENUM_VALUE` at
+the discriminator path with the received value, allowed values, semantic type,
+and short variant meanings, then stops that union. A missing discriminator
+likewise produces one issue at that path with the allowed variants and meanings.
+Volicord does not score branch errors, choose a closest branch, or validate
+fields from an unselected branch.
+
+Each issue receives its schema-node identity, selected branch, semantic type,
+and field description while the validator is traversing that exact branch.
+Issue projection does not walk the root schema afterward, so a same-named field
+in another union or sibling cannot supply its metadata. Issues are ordered by
+discriminator, type, required, unknown, enum, and nested-item failures, with
+stable path ordering inside each class. Parent type or discriminator failures
+suppress dependent child expansion. Issue count, field length, and total
+response size are bounded deterministically.
+
+Typed canonical examples serialize from request values, validate, and decode
+through that same entry. After descriptor validation succeeds, the exact Rust
+request decoder must also succeed. Disagreement is an internal schema-contract
+failure (`-32603`), records an adapter diagnostic, and reaches neither Core nor
+the user-field issue path. Conformance runs this validation/decode parity check
+against the canonical registry.
 
 ```schema
 McpToolErrorIssue:
   path: string
   code: McpToolIssueCode
+  message: string
   expected_semantic_type: string | null
-  required_fields: string[]
-  allowed_enum_values: string[]
-  unknown_fields: string[]
-  minimal_example: object | null
+  allowed_values: string[]
   owner_hint: string | null
+
+McpToolErrorResponse:
+  code: MCP_INVALID_ARGUMENTS | MCP_ADAPTER_PRECONDITION_FAILED
+  tool_name: string
+  selected_variant: string | null
+  canonical_example: object | null
   retryable: boolean
   reached_core: boolean
   committed: boolean
-  message: string
+  reported_issue_count: integer
+  truncated: boolean
+  issues: McpToolErrorIssue[]
 ```
 
-The JSON Pointer and semantic type come from the canonical input schema.
-Required members, enum values, and unknown members preserve current schema
-identifiers without aliases. `minimal_example` comes from the method's
-canonical registry descriptor. A field description is the owner hint: for
-`initial_context_refs`, it identifies complete existing `StateRecordRef`
-values and directs prose to `plain_language_request`. These failures are
-correctable, so each issue reports `retryable=true`, `reached_core=false`, and
-`committed=false`.
+The JSON Pointer, semantic type, allowed values, and owner hint come from the
+selected canonical descriptor node. Required members, enum values, and unknown
+members preserve current schema identifiers without aliases. A field
+description is the owner hint: for `initial_context_refs`, it identifies
+complete existing `StateRecordRef` values and directs prose to
+`plain_language_request`. `selected_variant` identifies the selected branch
+when one exists. `canonical_example` is the descriptor example for that branch;
+an invalid or missing discriminator instead receives a compact variant summary,
+never an arbitrary branch example. Correctable invalid arguments report
+`retryable=true`, `reached_core=false`, and `committed=false` once at response
+level.
 
 <a id="user-action-wire-projection"></a>
 ### UserAction wire projection

@@ -23,6 +23,9 @@ Adjacent owners:
 - Storage effects; see [Storage Effects](../storage-effects.md).
 - Product-wide failure-category meanings; see the
   [Failure Model](../failure-model.md).
+- Descriptor-derived MCP argument issues and their branch-local detail fields;
+  see [MCP Transport](../mcp-transport.md#public-argument-projection). They are
+  not `ToolError.details`.
 
 <a id="machine-readable-error-details"></a>
 
@@ -50,6 +53,11 @@ Not allowed:
 - Do not reuse them as blocker codes without owning method or schema support.
 
 Detail data must stay limited to stable diagnostic facts. It must not expose sensitive request bodies, duplicate method payloads, raw stored JSON, secrets, SQL text, sensitive absolute paths, or define storage effects.
+
+The fields of `McpToolErrorIssue` and `McpToolErrorResponse` belong to the MCP
+transport carrier. They do not populate `ToolError.details`, select an API
+response branch, or turn a pre-Core schema-contract failure into a public API
+error.
 
 <a id="workflow-rejection-detail-fields"></a>
 ## Workflow rejection detail fields

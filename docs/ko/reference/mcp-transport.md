@@ -559,30 +559,60 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 Known-tool의 유효하지 않은 인자는 생성 JSON을 다시 훑거나 method별 문자열 matching을
 사용하지 않고 descriptor의 semantic validator tree로 검증합니다. 필수 nullable member는
 반드시 존재해야 하며 JSON `null` 또는 정확한 non-null semantic type을 담습니다. 문자열
-`"null"`은 JSON null이 아닙니다. Typed canonical example은 request 값에서 직렬화되고 같은
-entry를 통해 검증 및 decode됩니다.
+`"null"`은 JSON null이 아니며 type 불일치는 기대 type을 `T | null`로 보고합니다.
+
+모든 object union에는 명시적인 discriminator가 있습니다. 검증은 branch field보다 먼저
+discriminator를 읽습니다. 지원하는 값은 정확히 한 branch만 선택하며, 중첩 checkpoint,
+`SourceRef`, UserAction, shaping gap, stale authority, artifact, Evidence, result union에도 같은
+규칙으로 재귀합니다. 지원하지 않는 값은 discriminator 경로에 받은 값, 허용 값, semantic
+type, 짧은 variant 의미를 담은 `MCP_ARGUMENT_ENUM_VALUE` 하나를 만들고 해당 union 검증을
+끝냅니다. discriminator가 없을 때도 같은 경로에 허용 variant와 의미를 담은 issue 하나만
+만듭니다. Volicord는 branch 오류 개수를 점수화하거나 가장 가까운 branch를 고르거나
+선택되지 않은 branch의 field를 검증하지 않습니다.
+
+Validator는 정확한 branch를 순회하는 시점에 각 issue의 schema node identity, 선택한 branch,
+semantic type, field description을 정합니다. Issue projection은 나중에 root schema를 다시
+걷지 않으므로 다른 union이나 sibling의 같은 이름 field가 metadata를 제공할 수 없습니다.
+Issue는 discriminator, type, required, unknown, enum, nested item 실패 순으로 정렬하고 각
+분류 안에서는 안정적인 경로 순서를 사용합니다. 상위 type 또는 discriminator 실패는
+종속 child issue 확장을 막습니다. Issue 수, field 길이, 전체 응답 크기는 결정적으로
+제한합니다.
+
+Typed canonical example은 request 값에서 직렬화되고 같은 entry를 통해 검증 및 decode됩니다.
+Descriptor 검증이 성공하면 정확한 Rust request decoder도 성공해야 합니다. 둘의 불일치는
+내부 schema contract 실패(`-32603`)이며 adapter diagnostic을 기록하고 Core나 사용자 field
+issue 경로에 도달하지 않습니다. Conformance는 정규 registry에 이 검증/decode parity를
+적용합니다.
 
 ```schema
 McpToolErrorIssue:
   path: string
   code: McpToolIssueCode
+  message: string
   expected_semantic_type: string | null
-  required_fields: string[]
-  allowed_enum_values: string[]
-  unknown_fields: string[]
-  minimal_example: object | null
+  allowed_values: string[]
   owner_hint: string | null
+
+McpToolErrorResponse:
+  code: MCP_INVALID_ARGUMENTS | MCP_ADAPTER_PRECONDITION_FAILED
+  tool_name: string
+  selected_variant: string | null
+  canonical_example: object | null
   retryable: boolean
   reached_core: boolean
   committed: boolean
-  message: string
+  reported_issue_count: integer
+  truncated: boolean
+  issues: McpToolErrorIssue[]
 ```
 
-JSON Pointer와 semantic type은 정규 input schema에서 나옵니다. 필수 member, enum 값,
-알 수 없는 member는 alias 없이 현재 schema identifier를 보존합니다. `minimal_example`은
-method의 canonical registry descriptor가 소유합니다. 필드 description이 owner hint이며,
-`initial_context_refs`는 완전한 기존 `StateRecordRef` 값만 받고 prose는
-`plain_language_request`에 둔다고 안내합니다. 이 실패는 수정 가능하므로 각 issue는
+JSON Pointer, semantic type, 허용 값, owner hint는 선택한 정규 descriptor node에서 나옵니다.
+필수 member, enum 값, 알 수 없는 member는 alias 없이 현재 schema identifier를 보존합니다.
+Field description이 owner hint이며, `initial_context_refs`는 완전한 기존 `StateRecordRef` 값만
+받고 prose는 `plain_language_request`에 둔다고 안내합니다. `selected_variant`는 선택된
+branch가 있으면 그 branch를 식별합니다. `canonical_example`은 그 branch의 descriptor
+example이며, discriminator가 잘못됐거나 없으면 임의의 branch example 대신 작은 variant
+summary를 담습니다. 수정 가능한 유효하지 않은 인자는 response 수준에서 한 번만
 `retryable=true`, `reached_core=false`, `committed=false`를 보고합니다.
 
 <a id="user-action-wire-projection"></a>

@@ -1075,6 +1075,8 @@ pub(super) fn structured_error_result(result: &Value) -> Value {
         .expect("structured tool error should match its advertised response type");
     assert_eq!(parsed["reached_core"], false);
     assert_eq!(parsed["committed"], false);
+    assert!(parsed["selected_variant"].is_null() || parsed["selected_variant"].is_string());
+    assert!(parsed["canonical_example"].is_null() || parsed["canonical_example"].is_object());
     assert_eq!(
         parsed["reported_issue_count"].as_u64(),
         parsed["issues"]

@@ -29,7 +29,8 @@ pub(crate) fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> V
         | McpAdapterError::ToolExecution { .. }
         | McpAdapterError::ToolOutputSchema { .. } => (-32602, "Invalid params"),
         McpAdapterError::MutationAdmission(_) => (-32000, "Runtime Home setup in progress"),
-        McpAdapterError::MutationAdmissionAcquisition { .. } => (-32603, "Internal error"),
+        McpAdapterError::SchemaContractFailure { .. }
+        | McpAdapterError::MutationAdmissionAcquisition { .. } => (-32603, "Internal error"),
         McpAdapterError::OperationalUnavailable { .. }
         | McpAdapterError::Core(_)
         | McpAdapterError::Json(_)
@@ -37,4 +38,25 @@ pub(crate) fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> V
         | McpAdapterError::Store(_) => (-32603, "Internal error"),
     };
     json_rpc_error(id, code, message, Some(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::{McpDiagnostic, McpToolCallDiagnostic};
+
+    #[test]
+    fn schema_contract_failure_is_internal_and_records_adapter_diagnostic() {
+        let error = McpAdapterError::SchemaContractFailure {
+            tool_name: "volicord.status".to_owned(),
+        };
+        assert!(matches!(
+            McpDiagnostic::from(&error),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
+        ));
+
+        let response = json_rpc_error_for_adapter(Value::from(7), error);
+        assert_eq!(response["error"]["code"], -32603);
+        assert_eq!(response["error"]["message"], "Internal error");
+    }
 }

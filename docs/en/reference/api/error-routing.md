@@ -66,6 +66,11 @@ Rejected response:
 - State effect: No committed operation and no state change.
 
 Transport and adapter failures that happen before Core execution are outside this branch. Route them through [MCP transport](../mcp-transport.md) or the owning transport or adapter.
+For a known MCP tool, descriptor-derived argument issues remain a structured
+MCP invalid-arguments response. A descriptor-valid value that the exact Rust
+request type cannot decode is instead an internal schema-contract failure. It
+is not reassigned to a user field or another union branch. Neither path creates
+a `ToolRejectedResponse` or reaches Core.
 Typed Core operational unavailability that prevents any method result is also
 outside this branch and is mapped by the calling adapter.
 

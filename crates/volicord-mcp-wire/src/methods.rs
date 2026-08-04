@@ -127,8 +127,6 @@ pub enum McpToolIssueCode {
     ArgumentTypeMismatch,
     #[serde(rename = "MCP_ARGUMENT_ENUM_VALUE")]
     ArgumentEnumValue,
-    #[serde(rename = "MCP_ARGUMENT_DECODE_FAILED")]
-    ArgumentDecodeFailed,
     #[serde(rename = "MCP_ADAPTER_PRECONDITION_FAILED")]
     AdapterPreconditionFailed,
 }
@@ -140,17 +138,11 @@ pub struct McpToolErrorIssue {
     #[schemars(length(max = "MAX_MCP_TOOL_ISSUE_PATH_BYTES"))]
     pub path: String,
     pub code: McpToolIssueCode,
-    pub expected_semantic_type: RequiredNullable<String>,
-    pub required_fields: Vec<String>,
-    pub allowed_enum_values: Vec<String>,
-    pub unknown_fields: Vec<String>,
-    pub minimal_example: RequiredNullable<JsonObject>,
-    pub owner_hint: RequiredNullable<String>,
-    pub retryable: bool,
-    pub reached_core: bool,
-    pub committed: bool,
     #[schemars(length(min = 1, max = "MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES"))]
     pub message: String,
+    pub expected_semantic_type: RequiredNullable<String>,
+    pub allowed_values: Vec<String>,
+    pub owner_hint: RequiredNullable<String>,
 }
 
 impl McpToolErrorIssue {
@@ -162,16 +154,10 @@ impl McpToolErrorIssue {
         Self {
             path: path.into(),
             code,
-            expected_semantic_type: RequiredNullable::null(),
-            required_fields: Vec::new(),
-            allowed_enum_values: Vec::new(),
-            unknown_fields: Vec::new(),
-            minimal_example: RequiredNullable::null(),
-            owner_hint: RequiredNullable::null(),
-            retryable: true,
-            reached_core: false,
-            committed: false,
             message: message.into(),
+            expected_semantic_type: RequiredNullable::null(),
+            allowed_values: Vec::new(),
+            owner_hint: RequiredNullable::null(),
         }
     }
 }
@@ -182,6 +168,8 @@ impl McpToolErrorIssue {
 pub struct McpToolErrorResponse {
     pub code: McpToolErrorCode,
     pub tool_name: String,
+    pub selected_variant: RequiredNullable<String>,
+    pub canonical_example: RequiredNullable<JsonObject>,
     pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,

@@ -2,9 +2,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use regex::Regex;
 use schemars::{schema_for, JsonSchema};
 use serde::Serialize;
 use serde_json::{Map, Value};
+use volicord_types::values::UtcTimestamp;
 
 /// One typed canonical input example owned by a semantic descriptor.
 #[derive(Debug, Clone, PartialEq)]
@@ -129,33 +131,13 @@ impl SemanticSchemaDescriptor {
             })
             .collect();
         let node = parse_schema_node(&schema, &semantic_type, &raw_definitions);
-        let mut descriptor = Self {
+        Self {
             semantic_type,
             node,
             definitions,
             canonical_examples,
             dialect,
-        };
-        let variant_examples = descriptor
-            .canonical_examples
-            .iter()
-            .flat_map(|example| {
-                example.expected_variants.iter().filter_map(|expected| {
-                    example
-                        .value
-                        .pointer(expected.instance_path)
-                        .cloned()
-                        .map(|value| (expected.clone(), value))
-                })
-            })
-            .collect::<Vec<_>>();
-        for (expected, value) in variant_examples {
-            attach_tagged_variant_example(&mut descriptor.node, &expected, &value);
-            for node in descriptor.definitions.values_mut() {
-                attach_tagged_variant_example(node, &expected, &value);
-            }
         }
-        descriptor
     }
 
     pub fn semantic_type(&self) -> &str {
@@ -218,21 +200,25 @@ impl SemanticSchemaDescriptor {
     /// Validates one JSON value against the semantic validator tree.
     pub fn validate(&self, value: &Value) -> SemanticValidationResult {
         let mut result = SemanticValidationResult::default();
+        let context = ValidationContext {
+            schema_node_id: "#".to_owned(),
+            selected_variant: None,
+            selected_variant_instance_path: None,
+            semantic_type: Some(self.semantic_type.clone()),
+            field_description: self.node.metadata().description.clone(),
+            nested_item: false,
+        };
         validate_node(
             &self.node,
             &self.definitions,
             value,
             "",
             0,
-            None,
+            &context,
             &mut result,
         );
+        result.finish(self);
         result
-    }
-
-    /// Resolves descriptor-owned metadata for one instance JSON Pointer.
-    pub fn metadata_at_instance_path(&self, path: &str) -> Option<SemanticPathMetadata> {
-        metadata_at_path(&self.node, &self.definitions, path)
     }
 
     /// Checks structural integrity without selecting a best-effort branch.
@@ -270,19 +256,20 @@ impl SemanticSchemaDescriptor {
                 ));
             }
             for expected in &example.expected_variants {
-                match selected_tagged_variant(
-                    &self.node,
-                    &self.definitions,
-                    example.value(),
-                    expected.instance_path,
-                    expected.discriminator_path,
-                ) {
-                    Some((value, semantic_type))
-                        if value == expected.discriminator_value
-                            && semantic_type == expected.semantic_type => {}
-                    Some((value, semantic_type)) => errors.push(format!(
-                        "example `{}` selected `{value}`/`{semantic_type}` instead of `{}`/`{}`",
-                        example.id, expected.discriminator_value, expected.semantic_type
+                match validation.selections.iter().find(|selection| {
+                    selection.instance_path == expected.instance_path
+                        && selection.discriminator_path == expected.discriminator_path
+                }) {
+                    Some(selection)
+                        if selection.discriminator_value == expected.discriminator_value
+                            && selection.semantic_type == expected.semantic_type => {}
+                    Some(selection) => errors.push(format!(
+                        "example `{}` selected `{}`/`{}` instead of `{}`/`{}`",
+                        example.id,
+                        selection.discriminator_value,
+                        selection.semantic_type,
+                        expected.discriminator_value,
+                        expected.semantic_type
                     )),
                     None => errors.push(format!(
                         "example `{}` did not select tagged union {} at {}",
@@ -616,8 +603,8 @@ pub struct SemanticTaggedUnionSchema {
 pub struct SemanticTaggedUnionVariant {
     pub discriminator_value: String,
     pub semantic_type: String,
+    pub meaning: String,
     pub schema: Box<SemanticSchemaNode>,
-    pub canonical_examples: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -661,7 +648,6 @@ pub enum SemanticValidationIssueCode {
     Unknown,
     TypeMismatch,
     EnumValue,
-    AmbiguousUnion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -669,12 +655,24 @@ pub struct SemanticValidationIssue {
     pub path: String,
     pub code: SemanticValidationIssueCode,
     pub message: String,
+    pub schema_node_id: String,
+    pub selected_variant: Option<String>,
+    pub expected_semantic_type: Option<String>,
+    pub field_description: Option<String>,
+    pub allowed_values: Vec<String>,
+    discriminator: bool,
+    nested_item: bool,
+    selected_variant_instance_path: Option<String>,
+    variant_summary: Option<Map<String, Value>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SemanticValidationResult {
     pub issues: Vec<SemanticValidationIssue>,
     pub truncated: bool,
+    pub selected_variant: Option<String>,
+    pub canonical_example: Option<Map<String, Value>>,
+    selections: Vec<SemanticTaggedSelection>,
 }
 
 impl SemanticValidationResult {
@@ -684,21 +682,82 @@ impl SemanticValidationResult {
         if self.issues.contains(&issue) {
             return;
         }
-        if self.issues.len() < Self::MAX_ISSUES {
-            self.issues.push(issue);
-        } else {
+        self.issues.push(issue);
+        self.issues.sort_by(issue_order);
+        if self.issues.len() > Self::MAX_ISSUES {
+            self.issues.truncate(Self::MAX_ISSUES);
             self.truncated = true;
         }
     }
+
+    fn select_variant(&mut self, selection: SemanticTaggedSelection) {
+        if !self.selections.contains(&selection) {
+            self.selections.push(selection);
+        }
+    }
+
+    fn finish(&mut self, descriptor: &SemanticSchemaDescriptor) {
+        self.issues.sort_by(issue_order);
+        let primary = self.issues.first();
+        let selected = primary
+            .and_then(|issue| {
+                issue.selected_variant.as_ref().map(|value| {
+                    (
+                        issue.selected_variant_instance_path.as_deref(),
+                        value.as_str(),
+                    )
+                })
+            })
+            .and_then(|(instance_path, value)| {
+                self.selections.iter().find(|selection| {
+                    selection.discriminator_value == value
+                        && instance_path == Some(selection.instance_path.as_str())
+                })
+            })
+            .or_else(|| self.selections.first());
+        self.selected_variant = selected.map(|selection| selection.discriminator_value.clone());
+        self.canonical_example = primary
+            .and_then(|issue| issue.variant_summary.clone())
+            .or_else(|| {
+                selected.and_then(|selection| {
+                    descriptor.canonical_examples.iter().find_map(|example| {
+                        example
+                            .expected_variants
+                            .iter()
+                            .any(|expected| {
+                                expected.instance_path == selection.instance_path
+                                    && expected.discriminator_value == selection.discriminator_value
+                            })
+                            .then(|| example.value.as_object().cloned())
+                            .flatten()
+                    })
+                })
+            })
+            .or_else(|| {
+                descriptor
+                    .canonical_examples
+                    .first()
+                    .and_then(|example| example.value.as_object().cloned())
+            });
+    }
 }
 
-/// Descriptor-owned metadata used to enrich one validation issue.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SemanticPathMetadata {
-    pub semantic_type: String,
-    pub required_fields: Vec<String>,
-    pub allowed_enum_values: Vec<String>,
-    pub description: Option<String>,
+struct SemanticTaggedSelection {
+    instance_path: String,
+    discriminator_path: String,
+    discriminator_value: String,
+    semantic_type: String,
+}
+
+#[derive(Debug, Clone)]
+struct ValidationContext {
+    schema_node_id: String,
+    selected_variant: Option<String>,
+    selected_variant_instance_path: Option<String>,
+    semantic_type: Option<String>,
+    field_description: Option<String>,
+    nested_item: bool,
 }
 
 fn parse_schema_node(
@@ -845,7 +904,7 @@ fn parse_schema_node(
         Some("number") => SemanticSchemaNode::Number(metadata),
         Some("boolean") => SemanticSchemaNode::Boolean(metadata),
         Some("null") => SemanticSchemaNode::Null(metadata),
-        Some("object") | None if object.contains_key("properties") => {
+        Some("object") | None => {
             let required = object
                 .get("required")
                 .and_then(Value::as_array)
@@ -1188,11 +1247,18 @@ fn parse_tagged_union(
             let discriminator_value = constants.get(&discriminator_path)?.clone();
             let semantic_type = branch_semantic_type(branch)
                 .unwrap_or_else(|| format!("{fallback_type}::{discriminator_value}"));
+            let meaning = branch
+                .get("description")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    format!("Selects the `{discriminator_value}` variant of `{fallback_type}`.")
+                });
             Some(SemanticTaggedUnionVariant {
                 discriminator_value,
                 semantic_type: semantic_type.clone(),
+                meaning,
                 schema: Box::new(parse_schema_node(branch, &semantic_type, definitions)),
-                canonical_examples: Vec::new(),
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -1364,17 +1430,20 @@ fn validate_node(
     instance: &Value,
     path: &str,
     depth: usize,
-    expected_type: Option<&str>,
+    context: &ValidationContext,
     result: &mut SemanticValidationResult,
 ) {
-    if result.issues.len() >= SemanticValidationResult::MAX_ISSUES {
-        result.truncated = true;
-        return;
-    }
     if depth >= 64 {
         result.truncated = true;
         return;
     }
+    let nullable_constraint_context;
+    let constraint_context = if let SemanticSchemaNode::Nullable(nullable) = node {
+        nullable_constraint_context = context_for_nullable(context, &nullable.schema);
+        &nullable_constraint_context
+    } else {
+        context
+    };
     if node
         .metadata()
         .validation
@@ -1382,12 +1451,9 @@ fn validate_node(
         .and_then(|constraint| constraint.get("const"))
         == Some(instance)
     {
-        let semantic_type = expected_type
-            .map(str::to_owned)
-            .unwrap_or_else(|| node.semantic_type_name());
         result.push(type_issue(
             path,
-            &semantic_type,
+            constraint_context,
             instance,
             "Value matches a forbidden semantic literal.",
         ));
@@ -1398,63 +1464,81 @@ fn validate_node(
             let Some(target) = reference_target(definitions, &reference.reference) else {
                 result.push(type_issue(
                     path,
-                    &reference.semantic_type,
+                    context,
                     instance,
                     "Referenced semantic type is unavailable.",
                 ));
                 return;
             };
+            let mut target_context = context.clone();
+            target_context.schema_node_id = reference.reference.clone();
+            target_context.semantic_type = context
+                .semantic_type
+                .clone()
+                .or_else(|| Some(reference.semantic_type.clone()));
+            target_context.field_description = context
+                .field_description
+                .clone()
+                .or_else(|| reference.metadata.description.clone())
+                .or_else(|| target.metadata().description.clone());
             validate_node(
                 target,
                 definitions,
                 instance,
                 path,
                 depth + 1,
-                Some(&reference.semantic_type),
+                &target_context,
                 result,
             );
         }
         SemanticSchemaNode::Nullable(nullable) => {
             if !instance.is_null() {
+                let nullable_context = context_for_nullable(context, &nullable.schema);
                 validate_node(
                     &nullable.schema,
                     definitions,
                     instance,
                     path,
                     depth + 1,
-                    expected_type,
+                    &nullable_context,
                     result,
                 );
             }
         }
         SemanticSchemaNode::Object(schema) => {
             let Some(instance) = instance.as_object() else {
-                result.push(type_issue(
-                    path,
-                    expected_type.unwrap_or("object"),
-                    instance,
-                    "Expected an object.",
-                ));
+                result.push(type_issue(path, context, instance, "Expected an object."));
                 return;
             };
+            if !object_length_valid(&schema.metadata, instance.len()) {
+                result.push(type_issue(
+                    path,
+                    context,
+                    &Value::Object(instance.clone()),
+                    "Object member count does not satisfy the semantic schema.",
+                ));
+            }
             for field in schema.fields.iter().filter(|field| field.required) {
                 if !instance.contains_key(&field.field_name) {
-                    result.push(SemanticValidationIssue {
-                        path: pointer_child(path, &field.field_name),
-                        code: SemanticValidationIssueCode::Required,
-                        message: format!("Required argument `{}` is missing.", field.field_name),
-                    });
+                    let field_context = context_for_field(context, field);
+                    result.push(validation_issue(
+                        pointer_child(path, &field.field_name),
+                        SemanticValidationIssueCode::Required,
+                        format!("Required argument `{}` is missing.", field.field_name),
+                        &field_context,
+                    ));
                 }
             }
             for (name, value) in instance {
                 if let Some(field) = schema.fields.iter().find(|field| field.field_name == *name) {
+                    let field_context = context_for_field(context, field);
                     validate_node(
                         &field.schema,
                         definitions,
                         value,
                         &pointer_child(path, name),
                         depth + 1,
-                        Some(&field.semantic_type),
+                        &field_context,
                         result,
                     );
                     continue;
@@ -1462,100 +1546,113 @@ fn validate_node(
                 match &schema.additional_properties {
                     SemanticAdditionalProperties::Allowed => {}
                     SemanticAdditionalProperties::Forbidden => {
-                        result.push(SemanticValidationIssue {
-                            path: pointer_child(path, name),
-                            code: SemanticValidationIssueCode::Unknown,
-                            message: format!("Unknown argument `{name}` is not allowed."),
-                        });
+                        result.push(validation_issue(
+                            pointer_child(path, name),
+                            SemanticValidationIssueCode::Unknown,
+                            format!("Unknown argument `{name}` is not allowed."),
+                            context,
+                        ));
                     }
-                    SemanticAdditionalProperties::Schema(schema) => validate_node(
-                        schema,
-                        definitions,
-                        value,
-                        &pointer_child(path, name),
-                        depth + 1,
-                        None,
-                        result,
-                    ),
+                    SemanticAdditionalProperties::Schema(schema) => {
+                        let mut additional_context = context.clone();
+                        additional_context.schema_node_id =
+                            format!("{}/additionalProperties", context.schema_node_id);
+                        additional_context.semantic_type = Some(schema.semantic_type_name());
+                        validate_node(
+                            schema,
+                            definitions,
+                            value,
+                            &pointer_child(path, name),
+                            depth + 1,
+                            &additional_context,
+                            result,
+                        );
+                    }
                 }
             }
         }
         SemanticSchemaNode::Array(schema) => {
             let Some(items) = instance.as_array() else {
-                result.push(type_issue(
-                    path,
-                    expected_type.unwrap_or("array"),
-                    instance,
-                    "Expected an array.",
-                ));
+                result.push(type_issue(path, context, instance, "Expected an array."));
                 return;
             };
             if !array_length_valid(&schema.metadata, items.len()) {
                 result.push(type_issue(
                     path,
-                    expected_type.unwrap_or("array"),
+                    context,
                     instance,
                     "Array length does not satisfy the semantic schema.",
                 ));
             }
+            if schema
+                .metadata
+                .validation
+                .get("uniqueItems")
+                .and_then(Value::as_bool)
+                == Some(true)
+                && items
+                    .iter()
+                    .enumerate()
+                    .any(|(index, value)| items[..index].contains(value))
+            {
+                result.push(type_issue(
+                    path,
+                    context,
+                    instance,
+                    "Array items must be unique.",
+                ));
+            }
             for (index, value) in items.iter().enumerate() {
+                let mut item_context = context.clone();
+                item_context.schema_node_id = format!("{}/items", context.schema_node_id);
+                item_context.semantic_type = Some(schema.items.semantic_type_name());
+                item_context.field_description = schema
+                    .metadata
+                    .description
+                    .clone()
+                    .or_else(|| context.field_description.clone());
+                item_context.nested_item = true;
                 validate_node(
                     &schema.items,
                     definitions,
                     value,
                     &pointer_child(path, &index.to_string()),
                     depth + 1,
-                    Some(&schema.items.semantic_type_name()),
+                    &item_context,
                     result,
                 );
             }
         }
-        SemanticSchemaNode::String(metadata) => validate_primitive(
-            instance,
-            path,
-            expected_type.unwrap_or("string"),
-            "string",
-            metadata,
-            result,
-        ),
-        SemanticSchemaNode::Integer(metadata) => validate_primitive(
-            instance,
-            path,
-            expected_type.unwrap_or("integer"),
-            "integer",
-            metadata,
-            result,
-        ),
-        SemanticSchemaNode::Number(metadata) => validate_primitive(
-            instance,
-            path,
-            expected_type.unwrap_or("number"),
-            "number",
-            metadata,
-            result,
-        ),
-        SemanticSchemaNode::Boolean(metadata) => validate_primitive(
-            instance,
-            path,
-            expected_type.unwrap_or("boolean"),
-            "boolean",
-            metadata,
-            result,
-        ),
-        SemanticSchemaNode::Null(metadata) => validate_primitive(
-            instance,
-            path,
-            expected_type.unwrap_or("null"),
-            "null",
-            metadata,
-            result,
-        ),
+        SemanticSchemaNode::String(metadata) => {
+            validate_primitive(instance, path, "string", metadata, context, result)
+        }
+        SemanticSchemaNode::Integer(metadata) => {
+            validate_primitive(instance, path, "integer", metadata, context, result)
+        }
+        SemanticSchemaNode::Number(metadata) => {
+            validate_primitive(instance, path, "number", metadata, context, result)
+        }
+        SemanticSchemaNode::Boolean(metadata) => {
+            validate_primitive(instance, path, "boolean", metadata, context, result)
+        }
+        SemanticSchemaNode::Null(metadata) => {
+            validate_primitive(instance, path, "null", metadata, context, result)
+        }
         SemanticSchemaNode::Enum(schema) => {
-            if !schema.values.contains(instance) {
-                result.push(SemanticValidationIssue {
-                    path: path.to_owned(),
-                    code: SemanticValidationIssueCode::EnumValue,
-                    message: format!(
+            if !value_matches_type(instance, &schema.value_type) {
+                let mut issue = type_issue(
+                    path,
+                    context,
+                    instance,
+                    &format!("Expected {} enum value.", schema.value_type),
+                );
+                issue.allowed_values = schema.values.iter().map(enum_value_text).collect();
+                result.push(issue);
+            } else if !schema.values.contains(instance) {
+                let mut issue = validation_issue(
+                    path.to_owned(),
+                    SemanticValidationIssueCode::EnumValue,
+                    format!(
                         "Expected one of [{}], but received {}.",
                         schema
                             .values
@@ -1563,30 +1660,71 @@ fn validate_node(
                             .map(Value::to_string)
                             .collect::<Vec<_>>()
                             .join(", "),
-                        instance
+                        instance,
                     ),
-                });
+                    context,
+                );
+                issue.allowed_values = schema.values.iter().map(enum_value_text).collect();
+                result.push(issue);
             }
         }
         SemanticSchemaNode::TaggedUnion(schema) => {
+            let discriminator_path = format!("{path}{}", schema.discriminator_path);
+            let allowed_values = schema
+                .variants
+                .iter()
+                .map(|variant| variant.discriminator_value.clone())
+                .collect::<Vec<_>>();
+            let meanings = schema
+                .variants
+                .iter()
+                .map(|variant| format!("`{}` — {}", variant.discriminator_value, variant.meaning))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let summary = tagged_variant_summary(&discriminator_path, schema);
+            let mut discriminator_context = context.clone();
+            discriminator_context.schema_node_id = format!(
+                "{}/discriminator{}",
+                context.schema_node_id, schema.discriminator_path
+            );
+            discriminator_context.semantic_type = Some(
+                context
+                    .semantic_type
+                    .clone()
+                    .unwrap_or_else(|| node.semantic_type_name()),
+            );
+            discriminator_context.field_description = schema
+                .metadata
+                .description
+                .clone()
+                .or_else(|| context.field_description.clone());
             let Some(value) = instance.pointer(&schema.discriminator_path) else {
-                result.push(SemanticValidationIssue {
-                    path: format!("{path}{}", schema.discriminator_path),
-                    code: SemanticValidationIssueCode::Required,
-                    message: format!(
-                        "Tagged union discriminator `{}` is required.",
-                        schema.discriminator_path
+                let mut issue = validation_issue(
+                    discriminator_path,
+                    SemanticValidationIssueCode::Required,
+                    format!(
+                        "Tagged union discriminator `{}` is required. Allowed variants: {meanings}",
+                        schema.discriminator_path,
                     ),
-                });
+                    &discriminator_context,
+                );
+                issue.allowed_values = allowed_values;
+                issue.discriminator = true;
+                issue.variant_summary = Some(summary);
+                result.push(issue);
                 return;
             };
             let Some(value) = value.as_str() else {
-                result.push(type_issue(
-                    &format!("{path}{}", schema.discriminator_path),
-                    "string discriminator",
+                let mut issue = type_issue(
+                    &discriminator_path,
+                    &discriminator_context,
                     value,
                     "Expected a string discriminator.",
-                ));
+                );
+                issue.allowed_values = allowed_values;
+                issue.discriminator = true;
+                issue.variant_summary = Some(summary);
+                result.push(issue);
                 return;
             };
             let Some(variant) = schema
@@ -1594,35 +1732,58 @@ fn validate_node(
                 .iter()
                 .find(|variant| variant.discriminator_value == value)
             else {
-                result.push(SemanticValidationIssue {
-                    path: format!("{path}{}", schema.discriminator_path),
-                    code: SemanticValidationIssueCode::EnumValue,
-                    message: format!(
-                        "Expected one of [{}], but received {}.",
-                        schema
-                            .variants
-                            .iter()
-                            .map(|variant| format!("\"{}\"", variant.discriminator_value))
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        Value::String(value.to_owned())
+                let mut issue = validation_issue(
+                    discriminator_path,
+                    SemanticValidationIssueCode::EnumValue,
+                    format!(
+                        "Received discriminator value {}. Allowed variants: {meanings}",
+                        Value::String(value.to_owned()),
                     ),
-                });
+                    &discriminator_context,
+                );
+                issue.allowed_values = allowed_values;
+                issue.discriminator = true;
+                issue.variant_summary = Some(summary);
+                result.push(issue);
                 return;
             };
+            result.select_variant(SemanticTaggedSelection {
+                instance_path: path.to_owned(),
+                discriminator_path: schema.discriminator_path.clone(),
+                discriminator_value: variant.discriminator_value.clone(),
+                semantic_type: variant.semantic_type.clone(),
+            });
+            let mut variant_context = context.clone();
+            variant_context.schema_node_id = format!(
+                "{}/variants/{}",
+                context.schema_node_id,
+                variant
+                    .discriminator_value
+                    .replace('~', "~0")
+                    .replace('/', "~1")
+            );
+            variant_context.selected_variant = Some(variant.discriminator_value.clone());
+            variant_context.selected_variant_instance_path = Some(path.to_owned());
+            variant_context.semantic_type = Some(variant.semantic_type.clone());
             validate_node(
                 &variant.schema,
                 definitions,
                 instance,
                 path,
                 depth + 1,
-                Some(&variant.semantic_type),
+                &variant_context,
                 result,
             );
         }
-        SemanticSchemaNode::Union(schema) => {
-            validate_union(&schema.variants, definitions, instance, path, depth, result)
-        }
+        SemanticSchemaNode::Union(schema) => validate_union(
+            &schema.variants,
+            definitions,
+            instance,
+            path,
+            depth,
+            context,
+            result,
+        ),
         SemanticSchemaNode::AllOf(schema) => {
             for child in &schema.schemas {
                 validate_node(
@@ -1631,7 +1792,7 @@ fn validate_node(
                     instance,
                     path,
                     depth + 1,
-                    expected_type,
+                    context,
                     result,
                 );
             }
@@ -1645,58 +1806,55 @@ fn validate_union(
     instance: &Value,
     path: &str,
     depth: usize,
+    context: &ValidationContext,
     result: &mut SemanticValidationResult,
 ) {
-    let attempts = variants
+    let matching = variants
         .iter()
-        .map(|variant| {
-            let mut attempt = SemanticValidationResult::default();
-            validate_node(
-                variant,
-                definitions,
-                instance,
-                path,
-                depth + 1,
-                None,
-                &mut attempt,
-            );
-            attempt
-        })
+        .filter(|variant| node_matches_instance_kind(variant, definitions, instance, 0))
         .collect::<Vec<_>>();
-    let matches = attempts
-        .iter()
-        .filter(|attempt| attempt.issues.is_empty())
-        .count();
-    match matches {
-        1 => {}
-        0 => {
-            if let Some(best) = attempts.iter().min_by_key(|attempt| attempt.issues.len()) {
-                for issue in &best.issues {
-                    result.push(issue.clone());
-                }
-                result.truncated |= best.truncated;
-            }
-        }
-        _ => result.push(SemanticValidationIssue {
-            path: path.to_owned(),
-            code: SemanticValidationIssueCode::AmbiguousUnion,
-            message: "Value matched more than one semantic union variant.".to_owned(),
-        }),
+    if let [variant] = matching.as_slice() {
+        let mut variant_context = context.clone();
+        variant_context.schema_node_id = format!("{}/type_variant", context.schema_node_id);
+        variant_context.semantic_type = Some(variant.semantic_type_name());
+        validate_node(
+            variant,
+            definitions,
+            instance,
+            path,
+            depth + 1,
+            &variant_context,
+            result,
+        );
+        return;
     }
+    let expected = variants
+        .iter()
+        .map(SemanticSchemaNode::semantic_type_name)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let mut union_context = context.clone();
+    union_context.semantic_type = Some(expected);
+    let detail = if matching.is_empty() {
+        "Value does not match any type-distinct semantic union branch."
+    } else {
+        "Value matches overlapping semantic union branches; an explicit discriminator is required."
+    };
+    result.push(type_issue(path, &union_context, instance, detail));
 }
 
 fn validate_primitive(
     instance: &Value,
     path: &str,
-    expected_semantic_type: &str,
     primitive: &str,
     metadata: &SemanticNodeMetadata,
+    context: &ValidationContext,
     result: &mut SemanticValidationResult,
 ) {
     if !value_matches_type(instance, primitive) {
         result.push(type_issue(
             path,
-            expected_semantic_type,
+            context,
             instance,
             &format!("Expected {primitive}."),
         ));
@@ -1712,9 +1870,29 @@ fn validate_primitive(
             {
                 result.push(type_issue(
                     path,
-                    expected_semantic_type,
+                    context,
                     instance,
                     "String length does not satisfy the semantic schema.",
+                ));
+            }
+            if let Some(pattern) = metadata.validation.get("pattern").and_then(Value::as_str) {
+                if Regex::new(pattern).is_ok_and(|pattern| !pattern.is_match(value)) {
+                    result.push(type_issue(
+                        path,
+                        context,
+                        instance,
+                        "String does not satisfy the semantic schema pattern.",
+                    ));
+                }
+            }
+            if metadata.validation.get("format").and_then(Value::as_str) == Some("date-time")
+                && UtcTimestamp::parse(value).is_err()
+            {
+                result.push(type_issue(
+                    path,
+                    context,
+                    instance,
+                    "String is not a valid RFC 3339 date-time.",
                 ));
             }
         }
@@ -1729,9 +1907,35 @@ fn validate_primitive(
         }) {
             result.push(type_issue(
                 path,
-                expected_semantic_type,
+                context,
                 instance,
                 "Number does not satisfy the semantic schema range.",
+            ));
+        }
+        let exclusive_minimum = metadata
+            .validation
+            .get("exclusiveMinimum")
+            .and_then(Value::as_f64);
+        let exclusive_maximum = metadata
+            .validation
+            .get("exclusiveMaximum")
+            .and_then(Value::as_f64);
+        let multiple_of = metadata
+            .validation
+            .get("multipleOf")
+            .and_then(Value::as_f64);
+        if value.is_some_and(|value| {
+            exclusive_minimum.is_some_and(|minimum| value <= minimum)
+                || exclusive_maximum.is_some_and(|maximum| value >= maximum)
+                || multiple_of.is_some_and(|multiple| {
+                    multiple <= 0.0 || (value / multiple - (value / multiple).round()).abs() > 1e-9
+                })
+        }) {
+            result.push(type_issue(
+                path,
+                context,
+                instance,
+                "Number does not satisfy the semantic schema constraint.",
             ));
         }
     }
@@ -1745,19 +1949,203 @@ fn array_length_valid(metadata: &SemanticNodeMetadata, length: usize) -> bool {
         && !maximum.is_some_and(|maximum| length > maximum)
 }
 
+fn object_length_valid(metadata: &SemanticNodeMetadata, length: usize) -> bool {
+    let length = length as u64;
+    let minimum = metadata
+        .validation
+        .get("minProperties")
+        .and_then(Value::as_u64);
+    let maximum = metadata
+        .validation
+        .get("maxProperties")
+        .and_then(Value::as_u64);
+    !minimum.is_some_and(|minimum| length < minimum)
+        && !maximum.is_some_and(|maximum| length > maximum)
+}
+
 fn type_issue(
     path: &str,
-    expected_semantic_type: &str,
+    context: &ValidationContext,
     instance: &Value,
     detail: &str,
 ) -> SemanticValidationIssue {
-    SemanticValidationIssue {
-        path: path.to_owned(),
-        code: SemanticValidationIssueCode::TypeMismatch,
-        message: format!(
-            "{detail} Expected `{expected_semantic_type}`, but received {}.",
+    let expected = context
+        .semantic_type
+        .as_deref()
+        .unwrap_or("the declared semantic type");
+    validation_issue(
+        path.to_owned(),
+        SemanticValidationIssueCode::TypeMismatch,
+        format!(
+            "{detail} Expected `{expected}`, but received {}.",
             instance_type_name(instance)
         ),
+        context,
+    )
+}
+
+fn validation_issue(
+    path: String,
+    code: SemanticValidationIssueCode,
+    message: String,
+    context: &ValidationContext,
+) -> SemanticValidationIssue {
+    SemanticValidationIssue {
+        path,
+        code,
+        message,
+        schema_node_id: context.schema_node_id.clone(),
+        selected_variant: context.selected_variant.clone(),
+        expected_semantic_type: context.semantic_type.clone(),
+        field_description: context.field_description.clone(),
+        allowed_values: Vec::new(),
+        discriminator: false,
+        nested_item: context.nested_item,
+        selected_variant_instance_path: context.selected_variant_instance_path.clone(),
+        variant_summary: None,
+    }
+}
+
+fn context_for_field(
+    context: &ValidationContext,
+    field: &SemanticObjectField,
+) -> ValidationContext {
+    ValidationContext {
+        schema_node_id: format!(
+            "{}/properties/{}",
+            context.schema_node_id,
+            field.field_name.replace('~', "~0").replace('/', "~1")
+        ),
+        selected_variant: context.selected_variant.clone(),
+        selected_variant_instance_path: context.selected_variant_instance_path.clone(),
+        semantic_type: Some(field.semantic_type.clone()),
+        field_description: Some(field.description.clone()),
+        nested_item: context.nested_item,
+    }
+}
+
+fn context_for_nullable(
+    context: &ValidationContext,
+    schema: &SemanticSchemaNode,
+) -> ValidationContext {
+    let mut nullable_context = context.clone();
+    let non_null_type = context
+        .semantic_type
+        .clone()
+        .unwrap_or_else(|| schema.semantic_type_name());
+    nullable_context.semantic_type = Some(if non_null_type.ends_with(" | null") {
+        non_null_type
+    } else {
+        format!("{non_null_type} | null")
+    });
+    nullable_context
+}
+
+fn tagged_variant_summary(
+    discriminator_path: &str,
+    schema: &SemanticTaggedUnionSchema,
+) -> Map<String, Value> {
+    Map::from_iter([
+        (
+            "discriminator_path".to_owned(),
+            Value::String(discriminator_path.to_owned()),
+        ),
+        (
+            "variants".to_owned(),
+            Value::Array(
+                schema
+                    .variants
+                    .iter()
+                    .map(|variant| {
+                        Value::Object(Map::from_iter([
+                            (
+                                "value".to_owned(),
+                                Value::String(variant.discriminator_value.clone()),
+                            ),
+                            (
+                                "semantic_type".to_owned(),
+                                Value::String(variant.semantic_type.clone()),
+                            ),
+                            ("meaning".to_owned(), Value::String(variant.meaning.clone())),
+                        ]))
+                    })
+                    .collect(),
+            ),
+        ),
+    ])
+}
+
+fn enum_value_text(value: &Value) -> String {
+    value
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn issue_order(
+    left: &SemanticValidationIssue,
+    right: &SemanticValidationIssue,
+) -> std::cmp::Ordering {
+    issue_rank(left)
+        .cmp(&issue_rank(right))
+        .then_with(|| left.path.cmp(&right.path))
+        .then_with(|| format!("{:?}", left.code).cmp(&format!("{:?}", right.code)))
+        .then_with(|| left.message.cmp(&right.message))
+        .then_with(|| left.schema_node_id.cmp(&right.schema_node_id))
+}
+
+fn issue_rank(issue: &SemanticValidationIssue) -> u8 {
+    if issue.discriminator {
+        return 0;
+    }
+    if issue.nested_item {
+        return 5;
+    }
+    match issue.code {
+        SemanticValidationIssueCode::TypeMismatch => 1,
+        SemanticValidationIssueCode::Required => 2,
+        SemanticValidationIssueCode::Unknown => 3,
+        SemanticValidationIssueCode::EnumValue => 4,
+    }
+}
+
+fn node_matches_instance_kind(
+    node: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    instance: &Value,
+    depth: usize,
+) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            reference_target(definitions, &reference.reference).is_some_and(|target| {
+                node_matches_instance_kind(target, definitions, instance, depth + 1)
+            })
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            instance.is_null()
+                || node_matches_instance_kind(&nullable.schema, definitions, instance, depth + 1)
+        }
+        SemanticSchemaNode::Object(_) | SemanticSchemaNode::TaggedUnion(_) => instance.is_object(),
+        SemanticSchemaNode::Array(_) => instance.is_array(),
+        SemanticSchemaNode::String(_) => instance.is_string(),
+        SemanticSchemaNode::Integer(_) => instance
+            .as_number()
+            .is_some_and(|number| number.is_i64() || number.is_u64()),
+        SemanticSchemaNode::Number(_) => instance.is_number(),
+        SemanticSchemaNode::Boolean(_) => instance.is_boolean(),
+        SemanticSchemaNode::Null(_) => instance.is_null(),
+        SemanticSchemaNode::Enum(schema) => value_matches_type(instance, &schema.value_type),
+        SemanticSchemaNode::Union(union) => union
+            .variants
+            .iter()
+            .any(|variant| node_matches_instance_kind(variant, definitions, instance, depth + 1)),
+        SemanticSchemaNode::AllOf(all_of) => all_of
+            .schemas
+            .iter()
+            .all(|schema| node_matches_instance_kind(schema, definitions, instance, depth + 1)),
     }
 }
 
@@ -1799,136 +2187,6 @@ fn reference_target<'a>(
     reference
         .strip_prefix("#/definitions/")
         .and_then(|name| definitions.get(name))
-}
-
-fn metadata_at_path(
-    node: &SemanticSchemaNode,
-    definitions: &BTreeMap<String, SemanticSchemaNode>,
-    path: &str,
-) -> Option<SemanticPathMetadata> {
-    let mut current = node;
-    let mut parent_required = Vec::new();
-    for segment in path
-        .split('/')
-        .skip(1)
-        .map(|segment| segment.replace("~1", "/").replace("~0", "~"))
-    {
-        current = resolve_node(current, definitions);
-        match current {
-            SemanticSchemaNode::Nullable(nullable) => current = &nullable.schema,
-            SemanticSchemaNode::TaggedUnion(union) => {
-                current = union
-                    .variants
-                    .first()
-                    .map(|variant| variant.schema.as_ref())?;
-            }
-            _ => {}
-        }
-        current = resolve_node(current, definitions);
-        match current {
-            SemanticSchemaNode::Object(object) => {
-                parent_required = object
-                    .fields
-                    .iter()
-                    .filter(|field| field.required)
-                    .map(|field| field.field_name.clone())
-                    .collect();
-                let Some(field) = object
-                    .fields
-                    .iter()
-                    .find(|field| field.field_name == segment)
-                else {
-                    return Some(path_metadata(
-                        current,
-                        current,
-                        parent_required,
-                        definitions,
-                    ));
-                };
-                current = &field.schema;
-            }
-            SemanticSchemaNode::Array(array) if segment.parse::<usize>().is_ok() => {
-                current = &array.items;
-            }
-            SemanticSchemaNode::Union(union) => {
-                current = union.variants.first()?;
-            }
-            SemanticSchemaNode::AllOf(all_of) => {
-                current = all_of.schemas.first()?;
-            }
-            _ => return None,
-        }
-    }
-    let resolved = resolve_node(current, definitions);
-    if let SemanticSchemaNode::Object(object) = resolved {
-        parent_required = object
-            .fields
-            .iter()
-            .filter(|field| field.required)
-            .map(|field| field.field_name.clone())
-            .collect();
-    }
-    Some(path_metadata(
-        current,
-        resolved,
-        parent_required,
-        definitions,
-    ))
-}
-
-fn path_metadata(
-    semantic_node: &SemanticSchemaNode,
-    resolved_node: &SemanticSchemaNode,
-    required_fields: Vec<String>,
-    definitions: &BTreeMap<String, SemanticSchemaNode>,
-) -> SemanticPathMetadata {
-    SemanticPathMetadata {
-        semantic_type: semantic_node.semantic_type_name(),
-        required_fields,
-        allowed_enum_values: allowed_enum_values(semantic_node, definitions),
-        description: semantic_node
-            .metadata()
-            .description
-            .clone()
-            .or_else(|| resolved_node.metadata().description.clone()),
-    }
-}
-
-fn resolve_node<'a>(
-    mut node: &'a SemanticSchemaNode,
-    definitions: &'a BTreeMap<String, SemanticSchemaNode>,
-) -> &'a SemanticSchemaNode {
-    for _ in 0..32 {
-        let SemanticSchemaNode::Reference(reference) = node else {
-            break;
-        };
-        let Some(target) = reference_target(definitions, &reference.reference) else {
-            break;
-        };
-        node = target;
-    }
-    node
-}
-
-fn allowed_enum_values(
-    node: &SemanticSchemaNode,
-    definitions: &BTreeMap<String, SemanticSchemaNode>,
-) -> Vec<String> {
-    match resolve_node(node, definitions) {
-        SemanticSchemaNode::Enum(schema) => schema
-            .values
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_owned)
-            .collect(),
-        SemanticSchemaNode::TaggedUnion(schema) => schema
-            .variants
-            .iter()
-            .map(|variant| variant.discriminator_value.clone())
-            .collect(),
-        SemanticSchemaNode::Nullable(schema) => allowed_enum_values(&schema.schema, definitions),
-        _ => Vec::new(),
-    }
 }
 
 fn validate_node_integrity(
@@ -2045,30 +2303,6 @@ fn validate_node_integrity(
                         variant.semantic_type, union.discriminator_path
                     ));
                 }
-                for (index, example) in variant.canonical_examples.iter().enumerate() {
-                    let mut validation = SemanticValidationResult::default();
-                    validate_node(
-                        &variant.schema,
-                        definitions,
-                        example,
-                        "",
-                        0,
-                        Some(&variant.semantic_type),
-                        &mut validation,
-                    );
-                    if !validation.issues.is_empty() {
-                        errors.push(format!(
-                            "{path} variant `{}` canonical example {index} is invalid: {}",
-                            variant.semantic_type,
-                            validation
-                                .issues
-                                .iter()
-                                .map(|issue| format!("{} {}", issue.path, issue.message))
-                                .collect::<Vec<_>>()
-                                .join("; ")
-                        ));
-                    }
-                }
                 validate_node_integrity(
                     &variant.schema,
                     definitions,
@@ -2088,6 +2322,18 @@ fn validate_node_integrity(
                 errors.push(format!(
                     "{path} is an object union without an explicit discriminator"
                 ));
+            } else {
+                for left in 0..union.variants.len() {
+                    for right in (left + 1)..union.variants.len() {
+                        let left_kinds = instance_kinds(&union.variants[left], definitions, 0);
+                        let right_kinds = instance_kinds(&union.variants[right], definitions, 0);
+                        if left_kinds.iter().any(|kind| right_kinds.contains(kind)) {
+                            errors.push(format!(
+                                "{path} has overlapping union variants {left} and {right} without an explicit discriminator"
+                            ));
+                        }
+                    }
+                }
             }
             for (index, variant) in union.variants.iter().enumerate() {
                 validate_node_integrity(
@@ -2120,6 +2366,60 @@ fn validate_node_integrity(
         | SemanticSchemaNode::Boolean(_)
         | SemanticSchemaNode::Null(_)
         | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn instance_kinds(
+    node: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    depth: usize,
+) -> BTreeSet<&'static str> {
+    if depth >= 32 {
+        return BTreeSet::new();
+    }
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            reference_target(definitions, &reference.reference)
+                .map(|target| instance_kinds(target, definitions, depth + 1))
+                .unwrap_or_default()
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            let mut kinds = instance_kinds(&nullable.schema, definitions, depth + 1);
+            kinds.insert("null");
+            kinds
+        }
+        SemanticSchemaNode::Object(_) | SemanticSchemaNode::TaggedUnion(_) => {
+            BTreeSet::from(["object"])
+        }
+        SemanticSchemaNode::Array(_) => BTreeSet::from(["array"]),
+        SemanticSchemaNode::String(_) => BTreeSet::from(["string"]),
+        SemanticSchemaNode::Integer(_) => BTreeSet::from(["integer"]),
+        SemanticSchemaNode::Number(_) => BTreeSet::from(["integer", "number"]),
+        SemanticSchemaNode::Boolean(_) => BTreeSet::from(["boolean"]),
+        SemanticSchemaNode::Null(_) => BTreeSet::from(["null"]),
+        SemanticSchemaNode::Enum(schema) => match schema.value_type.as_str() {
+            "number" => BTreeSet::from(["integer", "number"]),
+            "integer" => BTreeSet::from(["integer"]),
+            "boolean" => BTreeSet::from(["boolean"]),
+            _ => BTreeSet::from(["string"]),
+        },
+        SemanticSchemaNode::Union(union) => union
+            .variants
+            .iter()
+            .flat_map(|variant| instance_kinds(variant, definitions, depth + 1))
+            .collect(),
+        SemanticSchemaNode::AllOf(all_of) => {
+            let mut schemas = all_of.schemas.iter();
+            let Some(first) = schemas.next() else {
+                return BTreeSet::new();
+            };
+            let mut kinds = instance_kinds(first, definitions, depth + 1);
+            for schema in schemas {
+                let child = instance_kinds(schema, definitions, depth + 1);
+                kinds.retain(|kind| child.contains(kind));
+            }
+            kinds
+        }
     }
 }
 
@@ -2270,62 +2570,6 @@ fn discriminator_path_is_required(
     }
 }
 
-fn attach_tagged_variant_example(
-    node: &mut SemanticSchemaNode,
-    expected: &ExpectedTaggedVariant,
-    value: &Value,
-) {
-    match node {
-        SemanticSchemaNode::Object(object) => {
-            for field in &mut object.fields {
-                attach_tagged_variant_example(&mut field.schema, expected, value);
-            }
-            if let SemanticAdditionalProperties::Schema(schema) = &mut object.additional_properties
-            {
-                attach_tagged_variant_example(schema, expected, value);
-            }
-        }
-        SemanticSchemaNode::Array(array) => {
-            attach_tagged_variant_example(&mut array.items, expected, value);
-        }
-        SemanticSchemaNode::Nullable(nullable) => {
-            attach_tagged_variant_example(&mut nullable.schema, expected, value);
-        }
-        SemanticSchemaNode::TaggedUnion(union) => {
-            if union.discriminator_path == expected.discriminator_path {
-                if let Some(variant) = union.variants.iter_mut().find(|variant| {
-                    variant.discriminator_value == expected.discriminator_value
-                        && variant.semantic_type == expected.semantic_type
-                }) {
-                    if !variant.canonical_examples.contains(value) {
-                        variant.canonical_examples.push(value.clone());
-                    }
-                }
-            }
-            for variant in &mut union.variants {
-                attach_tagged_variant_example(&mut variant.schema, expected, value);
-            }
-        }
-        SemanticSchemaNode::Union(union) => {
-            for variant in &mut union.variants {
-                attach_tagged_variant_example(variant, expected, value);
-            }
-        }
-        SemanticSchemaNode::AllOf(all_of) => {
-            for schema in &mut all_of.schemas {
-                attach_tagged_variant_example(schema, expected, value);
-            }
-        }
-        SemanticSchemaNode::String(_)
-        | SemanticSchemaNode::Integer(_)
-        | SemanticSchemaNode::Number(_)
-        | SemanticSchemaNode::Boolean(_)
-        | SemanticSchemaNode::Null(_)
-        | SemanticSchemaNode::Enum(_)
-        | SemanticSchemaNode::Reference(_) => {}
-    }
-}
-
 fn rendered_discriminator_constants(
     node: &SemanticSchemaNode,
     definitions: &BTreeMap<String, SemanticSchemaNode>,
@@ -2335,65 +2579,6 @@ fn rendered_discriminator_constants(
         .map(|(name, node)| (name.clone(), node.to_json_schema()))
         .collect::<Map<_, _>>();
     discriminator_constants(&node.to_json_schema(), &raw_definitions, 0)
-}
-
-fn selected_tagged_variant<'a>(
-    root: &'a SemanticSchemaNode,
-    definitions: &'a BTreeMap<String, SemanticSchemaNode>,
-    value: &Value,
-    instance_path: &str,
-    discriminator_path: &str,
-) -> Option<(&'a str, &'a str)> {
-    let instance = value.pointer(instance_path)?;
-    find_tagged_union(root, definitions, discriminator_path).and_then(|union| {
-        let discriminator = instance.pointer(discriminator_path)?.as_str()?;
-        union
-            .variants
-            .iter()
-            .find(|variant| variant.discriminator_value == discriminator)
-            .map(|variant| {
-                (
-                    variant.discriminator_value.as_str(),
-                    variant.semantic_type.as_str(),
-                )
-            })
-    })
-}
-
-fn find_tagged_union<'a>(
-    node: &'a SemanticSchemaNode,
-    definitions: &'a BTreeMap<String, SemanticSchemaNode>,
-    discriminator_path: &str,
-) -> Option<&'a SemanticTaggedUnionSchema> {
-    match resolve_node(node, definitions) {
-        SemanticSchemaNode::TaggedUnion(union)
-            if union.discriminator_path == discriminator_path =>
-        {
-            Some(union)
-        }
-        SemanticSchemaNode::TaggedUnion(union) => union.variants.iter().find_map(|variant| {
-            find_tagged_union(&variant.schema, definitions, discriminator_path)
-        }),
-        SemanticSchemaNode::Object(object) => object
-            .fields
-            .iter()
-            .find_map(|field| find_tagged_union(&field.schema, definitions, discriminator_path)),
-        SemanticSchemaNode::Array(array) => {
-            find_tagged_union(&array.items, definitions, discriminator_path)
-        }
-        SemanticSchemaNode::Nullable(nullable) => {
-            find_tagged_union(&nullable.schema, definitions, discriminator_path)
-        }
-        SemanticSchemaNode::Union(union) => union
-            .variants
-            .iter()
-            .find_map(|variant| find_tagged_union(variant, definitions, discriminator_path)),
-        SemanticSchemaNode::AllOf(all_of) => all_of
-            .schemas
-            .iter()
-            .find_map(|schema| find_tagged_union(schema, definitions, discriminator_path)),
-        _ => None,
-    }
 }
 
 #[cfg(test)]
@@ -2413,6 +2598,63 @@ mod tests {
     struct ExampleRoot {
         required_nullable: Option<String>,
         tagged: ExampleUnion,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum LeftUnion {
+        Text { shared: String },
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum RightUnion {
+        Count { shared: u64 },
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct SameNameSiblings {
+        left: LeftUnion,
+        right: RightUnion,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(untagged)]
+    enum UntaggedObjectUnion {
+        Alpha { alpha: String },
+        Beta { beta: u64 },
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct UntaggedRoot {
+        value: UntaggedObjectUnion,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct ConstraintRoot {
+        #[schemars(regex(pattern = "^[a-z]+$"))]
+        patterned: String,
+        timestamp: UtcTimestamp,
+        #[schemars(range(min = 2, max = 4))]
+        count: u64,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    enum OrderEnum {
+        Allowed,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct OrderedIssues {
+        typed: String,
+        required: String,
+        enum_value: OrderEnum,
+        items: Vec<u64>,
     }
 
     #[test]
@@ -2484,6 +2726,92 @@ mod tests {
                 .iter()
                 .any(|error| error.contains("does not require discriminator")),
             "{errors:#?}"
+        );
+    }
+
+    #[test]
+    fn same_name_siblings_keep_branch_local_issue_context() {
+        let descriptor = SemanticSchemaDescriptor::for_type::<SameNameSiblings>(Vec::new());
+        let validation = descriptor.validate(&serde_json::json!({
+            "left": {"kind": "text", "shared": 7},
+            "right": {"kind": "count", "shared": "seven"}
+        }));
+        let left = validation
+            .issues
+            .iter()
+            .find(|issue| issue.path == "/left/shared")
+            .expect("left issue");
+        let right = validation
+            .issues
+            .iter()
+            .find(|issue| issue.path == "/right/shared")
+            .expect("right issue");
+
+        assert_eq!(left.selected_variant.as_deref(), Some("text"));
+        assert_eq!(left.expected_semantic_type.as_deref(), Some("string"));
+        assert_eq!(right.selected_variant.as_deref(), Some("count"));
+        assert_eq!(right.expected_semantic_type.as_deref(), Some("integer"));
+        assert_ne!(left.schema_node_id, right.schema_node_id);
+    }
+
+    #[test]
+    fn untagged_object_union_reports_one_non_guessing_issue() {
+        let descriptor = SemanticSchemaDescriptor::for_type::<UntaggedRoot>(Vec::new());
+        let validation = descriptor.validate(&serde_json::json!({
+            "value": {"unrelated": true}
+        }));
+
+        assert_eq!(validation.issues.len(), 1);
+        assert_eq!(validation.issues[0].path, "/value");
+        assert!(validation.issues[0]
+            .message
+            .contains("explicit discriminator is required"));
+        assert!(descriptor
+            .integrity_errors()
+            .iter()
+            .any(|error| error.contains("object union without an explicit discriminator")));
+    }
+
+    #[test]
+    fn semantic_constraints_reject_pattern_format_and_range_mismatches() {
+        let descriptor = SemanticSchemaDescriptor::for_type::<ConstraintRoot>(Vec::new());
+        let validation = descriptor.validate(&serde_json::json!({
+            "patterned": "UPPER",
+            "timestamp": "not-a-timestamp",
+            "count": 1
+        }));
+
+        assert!(validation
+            .issues
+            .iter()
+            .any(|issue| issue.path == "/patterned" && issue.message.contains("pattern")));
+        assert!(validation
+            .issues
+            .iter()
+            .any(|issue| issue.path == "/timestamp" && issue.message.contains("date-time")));
+        assert!(validation
+            .issues
+            .iter()
+            .any(|issue| issue.path == "/count" && issue.message.contains("range")));
+    }
+
+    #[test]
+    fn issues_have_stable_semantic_precedence() {
+        let descriptor = SemanticSchemaDescriptor::for_type::<OrderedIssues>(Vec::new());
+        let validation = descriptor.validate(&serde_json::json!({
+            "typed": false,
+            "enum_value": "invalid",
+            "items": ["invalid"],
+            "unknown": true
+        }));
+
+        assert_eq!(
+            validation
+                .issues
+                .iter()
+                .map(|issue| issue.path.as_str())
+                .collect::<Vec<_>>(),
+            ["/typed", "/required", "/unknown", "/enum_value", "/items/0",]
         );
     }
 }

@@ -61,6 +61,10 @@ state version과 결합해 공개 분기를 선택합니다.
 - 상태 영향: 커밋된 동작이 없고 상태 변경도 없습니다.
 
 Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에 있습니다. [MCP 전송](../mcp-transport.md)이나 해당 전송 또는 어댑터 담당 문서로 보냅니다.
+Known MCP tool의 descriptor 유래 인자 issue는 구조화된 MCP invalid-arguments 응답으로
+남습니다. Descriptor에는 유효하지만 정확한 Rust request type으로 decode할 수 없는 값은
+내부 schema contract 실패입니다. 이를 사용자 field나 다른 union branch로 다시 분류하지
+않습니다. 두 경로 모두 `ToolRejectedResponse`를 만들거나 Core에 도달하지 않습니다.
 어떤 메서드 결과도 만들 수 없게 하는 typed Core 운영 불가도 이 분기 밖에 있으며 호출
 어댑터가 변환합니다.
 

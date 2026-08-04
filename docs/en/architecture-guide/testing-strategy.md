@@ -168,15 +168,24 @@ UserAction service tests remain filesystem-free. Adapter tests verify the
 stable projected operation and resource identities.
 
 `volicord-mcp-wire` tests own exact MCP serialization, JSON-RPC envelopes,
-semantic descriptors, explicit nested discriminators, required-nullable
-behavior, typed canonical examples, deterministic input/output schemas, and
-descriptor integrity. `volicord-mcp` tests consume the same validator trees in
-registry, argument-error, output, and bounded discovery projections.
+semantic descriptors, discriminator-first nested-union selection,
+required-nullable behavior, branch-local issue context, deterministic issue
+ordering and bounds, typed canonical examples, deterministic input/output
+schemas, and descriptor integrity. They prove that an invalid or missing
+discriminator cannot expose fields from an unselected branch and that
+same-named sibling fields cannot exchange metadata. `volicord-mcp` tests
+consume the same validator trees in registry, response-level selected variants
+and canonical examples, compact argument errors, exact decode parity, output,
+and bounded discovery projections. A descriptor-valid value rejected by the
+exact request decoder is an internal diagnostic failure before Core, not a
+user-field issue.
 `volicord-types` tests own only neutral public schemas. Cross-owner coverage
 asserts that public method schemas contain no MCP-only structures and that the
 MCP adapter maps neutral Core operational failures to the current wire error.
 The conformance package consumes the same descriptors and examples directly;
-it does not copy JSON fixtures or schema metadata.
+it does not copy JSON fixtures or schema metadata. Its MCP semantic case
+requires every canonical value to validate and decode exactly and mutates each
+declared discriminator to prove branch-local rejection without branch guessing.
 
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
