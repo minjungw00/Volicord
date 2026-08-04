@@ -157,7 +157,7 @@ where
                 }
                 Err(failure) => {
                     state = Some(*failure.state);
-                    return Err(failure.error);
+                    return Err(*failure.error);
                 }
             }
         }
@@ -170,7 +170,7 @@ where
             .map(|closed| {
                 debug_assert!(matches!(closed, SessionState::Closed(_)));
             })
-            .map_err(|failure| failure.error),
+            .map_err(|failure| *failure.error),
         Err(error) => {
             let _closed = terminate_session(&adapter, state, &error);
             Err(error)

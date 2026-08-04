@@ -210,9 +210,11 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
                 "forms": [{
                     "form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "method": "volicord.record_shaping_checkpoint",
+                    "selected_semantic_variant": "create",
                     "role": "required",
                     "expected_state_version": 7,
                     "fixed_arguments": {"task_id": "task_current"},
+                    "fixed_argument_paths": ["/task_id"],
                     "suggested_arguments": {},
                     "required_inputs": [],
                     "optional_inputs": []

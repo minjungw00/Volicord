@@ -31,6 +31,13 @@ pub(crate) struct ActiveFence {
 
 pub fn run_docs_sync(root: &Path) -> Result<DocsSyncReport> {
     let root = normalize_existing_root(root)?;
+    let action_form_errors = volicord_mcp_wire::action_form_request_projection_integrity_errors();
+    if !action_form_errors.is_empty() {
+        anyhow::bail!(
+            "docs-sync requires integral action-form request projections:\n{}",
+            action_form_errors.join("\n")
+        );
+    }
     if !root.join(DOC_INDEX_PATH).exists() {
         anyhow::bail!(
             "docs-sync must run from the repository root; missing {}",

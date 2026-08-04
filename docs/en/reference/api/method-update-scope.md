@@ -53,6 +53,16 @@ sensitive expectation, and explicitly forbids `product_file_write`,
 Core rejects an update that would create or retain any write-capable or
 otherwise incompatible advisor Change Unit before committing scope effects.
 
+The current MCP action form fixes the Task, complete scope-owned
+`related_scope_decision_refs`, and the exact `change_unit.operation` selected
+from current Change Unit authority. The request's `baseline_ref` is the
+Agent-authored next baseline, not a copy of the current nullable baseline.
+Current baseline and scope revision remain Core-current authority covered by
+the admitted form and expected state version. Scope content and the
+operation-specific Change Unit fields are also Agent-authored slots. The
+adapter injects project and expected state version; the generic binder rejects
+any altered or omitted caller-visible fixed value before Core.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.

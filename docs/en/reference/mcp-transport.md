@@ -643,9 +643,11 @@ tool's canonical semantic descriptor:
 WorkflowActionForm:
   form_ref: string
   method: string
+  selected_semantic_variant: string
   role: required | allowed
   expected_state_version: integer
   fixed_arguments: object
+  fixed_argument_paths: string[]
   suggested_arguments: object
   required_inputs: WorkflowActionInput[]
   optional_inputs: WorkflowActionInput[]
@@ -657,7 +659,8 @@ WorkflowActionFormCatalog:
 
 `form_ref` is the opaque canonical digest of project, Task, method, selected
 semantic variant, expected state version, exact fixed authority coordinates,
-and current semantic-schema digest. It is not a numeric workflow version.
+the complete `fixed_arguments` object and `fixed_argument_paths`, and the
+current semantic-schema digest. It is not a numeric workflow version.
 The form catalog preserves Core catalog ordering, required method, and role.
 It appears in normal Task status, mutation success and rejection presentation,
 authoritative argument context, and retry contracts. Status with no active Task
@@ -677,6 +680,16 @@ return `MCP_ACTION_FORM_STALE` before Core with the current called-method form.
 An allowed form for one method never authorizes another, and there is no
 omission or required-form fallback. Read-only `volicord.status` observes the
 catalog but creates no mutation authority.
+
+After form admission, one descriptor-driven binder resolves every
+`fixed_argument_paths` entry through the selected method and semantic variant.
+Every caller-visible fixed value must be present and deeply equal to the form
+value before method decoding or Core entry. JSON primitive types and array
+order are exact; object member order is irrelevant. JSON null does not equal
+the string `"null"` or an empty string. Project and expected state version are
+not caller-controlled fields: the adapter injects them from the admitted form
+and connection route. Hidden envelope fields cannot override those injected
+coordinates.
 
 ```schema
 McpWorkflowAdmissionRejection:
@@ -700,12 +713,28 @@ required method and available required form.
 
 Initial checkpoint forms fix Task, `create_initial`, scope revision, and the
 actual nullable baseline while leaving summary, implementation boundary, and
-gaps as typed Agent inputs. Replacement forms additionally fix current and
-predecessor checkpoint refs and every retirement, carry-forward, and stale
-authority ref. Advisor-finalization forms fix the current checkpoint,
-non-write Change Unit, scope revision, baseline, resolution IDs, and state
-version; only result content, evidence, risks, and recovery constraints remain
+gaps as typed Agent inputs. Replacement forms additionally fix the expected
+checkpoint identity at `checkpoint_operation.expected_current_checkpoint_id`
+and every retirement, carry-forward, and stale-authority ref. Checkpoint
+lineage and the current Store checkpoint remain contextual authority; there
+are no top-level caller-submitted current or predecessor checkpoint mirror
+fields. Advisor-finalization forms fix the current checkpoint,
+non-write Change Unit, scope revision, baseline, and resolution IDs; only
+result content, evidence, risks, and recovery constraints remain
 Agent-authored.
+Update-scope forms instead treat request `baseline_ref` as the Agent-authored
+next baseline. They fix the exact scope-owned resolution refs and Change Unit
+operation, while the current baseline and scope revision remain Core-current
+authority covered by the admitted form and injected expected state version.
+
+If any caller-visible fixed value is altered or omitted, the adapter returns
+`ACTION_FORM_ARGUMENT_MISMATCH` with deterministically ordered, bounded
+mismatch entries. Each entry identifies the method, form, JSON Pointer, exact
+expected and received values, whether a received value was present, and the
+current method form. It reports `state_change_applied=false` and
+`reached_core=false`; the compact message says the form was current, fixed
+authority was altered or omitted, Core was not reached, and the exact fixed
+arguments must be retried.
 
 Known-tool invalid arguments are checked against the descriptor's semantic
 validator tree rather than scanning generated JSON or using method-specific
@@ -749,8 +778,19 @@ McpToolErrorIssue:
   allowed_values: string[]
   owner_hint: string | null
 
+McpActionFormArgumentMismatch:
+  method: string
+  form_ref: string
+  path: string
+  expected_value: json
+  received_value: json
+  received_value_present: boolean
+  state_change_applied: false
+  reached_core: false
+  current_method_form: WorkflowActionForm
+
 McpToolErrorResponse:
-  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | MCP_ADAPTER_PRECONDITION_FAILED
+  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | ACTION_FORM_ARGUMENT_MISMATCH | MCP_ADAPTER_PRECONDITION_FAILED
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -763,6 +803,8 @@ McpToolErrorResponse:
   authoritative_context: AuthoritativeArgumentContext | null
   retry_contract: RetryContract | null
   failure: McpArgumentFailurePresentation | null
+  workflow_admission: McpWorkflowAdmissionRejection | null
+  action_form_argument_mismatches: McpActionFormArgumentMismatch[]
 ```
 
 Invalid arguments bootstrap only independently valid `project_selector`,

@@ -156,6 +156,42 @@ impl SemanticSchemaDescriptor {
         &self.canonical_examples
     }
 
+    /// Resolves one JSON Pointer pattern through the semantic request tree.
+    ///
+    /// `*` selects an array item. Tagged-union and ordinary union branches are
+    /// searched without guessing an instance branch, and the returned semantic
+    /// type names are sorted and deduplicated.
+    pub fn semantic_types_at_pointer_pattern(&self, pattern: &str) -> Vec<String> {
+        let Some(segments) = pointer_pattern_segments(pattern) else {
+            return Vec::new();
+        };
+        let mut resolved = BTreeSet::new();
+        resolve_pointer_pattern(
+            &self.node,
+            &self.definitions,
+            &segments,
+            0,
+            &mut BTreeSet::new(),
+            &mut resolved,
+        );
+        resolved.into_iter().collect()
+    }
+
+    /// Checks whether one concrete pointer selects a schema that accepts the value.
+    pub fn accepts_value_at_pointer(&self, pointer: &str, value: &Value) -> bool {
+        let Some(segments) = pointer_pattern_segments(pointer) else {
+            return false;
+        };
+        pointer_accepts_value(
+            &self.node,
+            &self.definitions,
+            &segments,
+            value,
+            0,
+            &mut BTreeSet::new(),
+        )
+    }
+
     /// Generates deterministic MCP JSON Schema from this descriptor.
     pub fn json_schema(&self) -> Value {
         let mut schema = self.node.to_json_schema();
@@ -279,6 +315,264 @@ impl SemanticSchemaDescriptor {
             }
         }
         errors
+    }
+}
+
+fn pointer_pattern_segments(pattern: &str) -> Option<Vec<String>> {
+    if pattern.is_empty() {
+        return Some(Vec::new());
+    }
+    pattern.strip_prefix('/').map(|path| {
+        path.split('/')
+            .map(|segment| segment.replace("~1", "/").replace("~0", "~"))
+            .collect()
+    })
+}
+
+fn resolve_pointer_pattern(
+    node: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    segments: &[String],
+    depth: usize,
+    references: &mut BTreeSet<String>,
+    resolved: &mut BTreeSet<String>,
+) {
+    if depth > 64 {
+        return;
+    }
+    if segments.is_empty() {
+        resolved.insert(node.semantic_type_name());
+        return;
+    }
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            if references.insert(reference.reference.clone()) {
+                if let Some(target) = reference_target(definitions, &reference.reference) {
+                    resolve_pointer_pattern(
+                        target,
+                        definitions,
+                        segments,
+                        depth + 1,
+                        references,
+                        resolved,
+                    );
+                }
+                references.remove(&reference.reference);
+            }
+        }
+        SemanticSchemaNode::Nullable(nullable) => resolve_pointer_pattern(
+            &nullable.schema,
+            definitions,
+            segments,
+            depth + 1,
+            references,
+            resolved,
+        ),
+        SemanticSchemaNode::Object(object) => {
+            if let Some(field) = object
+                .fields
+                .iter()
+                .find(|field| field.field_name == segments[0])
+            {
+                resolve_pointer_pattern(
+                    &field.schema,
+                    definitions,
+                    &segments[1..],
+                    depth + 1,
+                    references,
+                    resolved,
+                );
+            } else {
+                match &object.additional_properties {
+                    SemanticAdditionalProperties::Allowed if segments.len() == 1 => {
+                        resolved.insert("json".to_owned());
+                    }
+                    SemanticAdditionalProperties::Schema(schema) => resolve_pointer_pattern(
+                        schema,
+                        definitions,
+                        &segments[1..],
+                        depth + 1,
+                        references,
+                        resolved,
+                    ),
+                    SemanticAdditionalProperties::Allowed
+                    | SemanticAdditionalProperties::Forbidden => {}
+                }
+            }
+        }
+        SemanticSchemaNode::Array(array)
+            if segments[0] == "*" || segments[0].parse::<usize>().is_ok() =>
+        {
+            resolve_pointer_pattern(
+                &array.items,
+                definitions,
+                &segments[1..],
+                depth + 1,
+                references,
+                resolved,
+            );
+        }
+        SemanticSchemaNode::TaggedUnion(union) => {
+            for variant in &union.variants {
+                resolve_pointer_pattern(
+                    &variant.schema,
+                    definitions,
+                    segments,
+                    depth + 1,
+                    references,
+                    resolved,
+                );
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for variant in &union.variants {
+                resolve_pointer_pattern(
+                    variant,
+                    definitions,
+                    segments,
+                    depth + 1,
+                    references,
+                    resolved,
+                );
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for schema in &all_of.schemas {
+                resolve_pointer_pattern(
+                    schema,
+                    definitions,
+                    segments,
+                    depth + 1,
+                    references,
+                    resolved,
+                );
+            }
+        }
+        SemanticSchemaNode::Array(_)
+        | SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn pointer_accepts_value(
+    node: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    segments: &[String],
+    value: &Value,
+    depth: usize,
+    references: &mut BTreeSet<String>,
+) -> bool {
+    if depth > 64 {
+        return false;
+    }
+    if segments.is_empty() {
+        let mut result = SemanticValidationResult::default();
+        let context = ValidationContext {
+            schema_node_id: "#fixed_argument".to_owned(),
+            selected_variant: None,
+            selected_variant_instance_path: None,
+            semantic_type: Some(node.semantic_type_name()),
+            field_description: node.metadata().description.clone(),
+            nested_item: false,
+        };
+        validate_node(node, definitions, value, "", 0, &context, &mut result);
+        return result.issues.is_empty();
+    }
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            if !references.insert(reference.reference.clone()) {
+                return false;
+            }
+            let accepted =
+                reference_target(definitions, &reference.reference).is_some_and(|target| {
+                    pointer_accepts_value(
+                        target,
+                        definitions,
+                        segments,
+                        value,
+                        depth + 1,
+                        references,
+                    )
+                });
+            references.remove(&reference.reference);
+            accepted
+        }
+        SemanticSchemaNode::Nullable(nullable) => pointer_accepts_value(
+            &nullable.schema,
+            definitions,
+            segments,
+            value,
+            depth + 1,
+            references,
+        ),
+        SemanticSchemaNode::Object(object) => {
+            if let Some(field) = object
+                .fields
+                .iter()
+                .find(|field| field.field_name == segments[0])
+            {
+                pointer_accepts_value(
+                    &field.schema,
+                    definitions,
+                    &segments[1..],
+                    value,
+                    depth + 1,
+                    references,
+                )
+            } else {
+                match &object.additional_properties {
+                    SemanticAdditionalProperties::Allowed => segments.len() == 1,
+                    SemanticAdditionalProperties::Forbidden => false,
+                    SemanticAdditionalProperties::Schema(schema) => pointer_accepts_value(
+                        schema,
+                        definitions,
+                        &segments[1..],
+                        value,
+                        depth + 1,
+                        references,
+                    ),
+                }
+            }
+        }
+        SemanticSchemaNode::Array(array)
+            if segments[0] == "*" || segments[0].parse::<usize>().is_ok() =>
+        {
+            pointer_accepts_value(
+                &array.items,
+                definitions,
+                &segments[1..],
+                value,
+                depth + 1,
+                references,
+            )
+        }
+        SemanticSchemaNode::TaggedUnion(union) => union.variants.iter().any(|variant| {
+            pointer_accepts_value(
+                &variant.schema,
+                definitions,
+                segments,
+                value,
+                depth + 1,
+                references,
+            )
+        }),
+        SemanticSchemaNode::Union(union) => union.variants.iter().any(|variant| {
+            pointer_accepts_value(variant, definitions, segments, value, depth + 1, references)
+        }),
+        SemanticSchemaNode::AllOf(all_of) => all_of.schemas.iter().any(|schema| {
+            pointer_accepts_value(schema, definitions, segments, value, depth + 1, references)
+        }),
+        SemanticSchemaNode::Array(_)
+        | SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => false,
     }
 }
 

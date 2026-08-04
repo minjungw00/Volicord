@@ -1,4 +1,4 @@
-use crate::action_form::{retry_contract, workflow_action_form_catalog};
+use crate::action_form::{bind_fixed_arguments, retry_contract, workflow_action_form_catalog};
 use crate::authority_refresh::{validated_authority_refresh, MutationRefreshContext};
 use crate::constants::DEFAULT_LOCALE;
 use crate::errors::McpAdapterError;
@@ -31,6 +31,7 @@ use volicord_mcp_wire::{
     McpRecordRunArguments, McpRecordShapingCheckpointArguments, McpRequestUserActionArguments,
     McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments, McpToolErrorCode,
     McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments, McpWorkflowAdmissionRejection,
+    WorkflowActionForm,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
@@ -413,68 +414,145 @@ impl McpAdapter {
                     .to_owned(),
             ));
         }
-        if let Some(method) = tool.method() {
-            if let Err(admission_error) =
-                self.admit_workflow_action(context, method, &params, session)
-            {
-                if matches!(admission_error, McpAdapterError::ToolExecution { .. }) {
-                    if let Err(validation_error) = validate_mcp_tool_arguments(tool_name, &params) {
-                        return Err(self.enrich_invalid_arguments(
-                            context,
-                            tool,
-                            &params,
-                            session,
-                            validation_error,
-                        ));
+        let current_action_form = if let Some(method) = tool.method() {
+            match self.admit_workflow_action(context, method, &params, session) {
+                Ok(form) => form,
+                Err(admission_error) => {
+                    if matches!(admission_error, McpAdapterError::ToolExecution { .. }) {
+                        if let Err(validation_error) =
+                            validate_mcp_tool_arguments(tool_name, &params)
+                        {
+                            return Err(self.enrich_invalid_arguments(
+                                context,
+                                tool,
+                                &params,
+                                session,
+                                validation_error,
+                            ));
+                        }
                     }
+                    return Err(admission_error);
                 }
-                return Err(admission_error);
+            }
+        } else {
+            None
+        };
+        if let Some(form) = current_action_form.as_ref() {
+            let binding = bind_fixed_arguments(form, &params).map_err(|_| {
+                McpAdapterError::SchemaContractFailure {
+                    tool_name: tool_name.to_owned(),
+                }
+            })?;
+            if !binding.mismatches.is_empty() {
+                let authoritative_context = self
+                    .load_authoritative_argument_context(context, &params, session)
+                    .unwrap_or_else(unloaded_authoritative_argument_context);
+                let catalog = authoritative_context
+                    .action_form_catalog
+                    .as_ref()
+                    .ok_or_else(|| McpAdapterError::SchemaContractFailure {
+                        tool_name: tool_name.to_owned(),
+                    })?;
+                let issues = binding
+                    .mismatches
+                    .iter()
+                    .map(|mismatch| {
+                        McpToolErrorIssue::new(
+                            mismatch.path.clone(),
+                            McpToolIssueCode::ActionFormArgumentMismatch,
+                            "the action form was current, but a fixed authority value was altered or omitted; Core was not reached; retry with the exact fixed arguments",
+                        )
+                    })
+                    .collect();
+                return Err(McpAdapterError::InvalidParams {
+                    code: McpToolErrorCode::ActionFormArgumentMismatch,
+                    tool_name: tool_name.to_owned(),
+                    issues,
+                    truncated: binding.truncated,
+                    selected_variant: Some(form.selected_semantic_variant.clone()),
+                    canonical_example: None,
+                    authoritative_context: Some(Box::new(authoritative_context.clone())),
+                    retry_contract: Some(Box::new(retry_contract(
+                        form,
+                        catalog,
+                        binding
+                            .mismatches
+                            .iter()
+                            .map(|mismatch| mismatch.path.clone())
+                            .collect(),
+                    ))),
+                    failure: Some(Box::new(argument_failure_presentation(
+                        &authoritative_context,
+                        false,
+                    ))),
+                    workflow_admission: None,
+                    action_form_argument_mismatches: Box::new(binding.mismatches),
+                });
             }
         }
         if let Err(error) = validate_mcp_tool_arguments(tool_name, &params) {
             return Err(self.enrich_invalid_arguments(context, tool, &params, session, error));
         }
+        let bound_state_version = current_action_form
+            .as_ref()
+            .map(|form| form.expected_state_version);
         match tool.method() {
             Some(MethodName::Intake) => self.call_intake(context, tool_name, params, session),
             Some(MethodName::UpdateScope) => {
-                self.call_update_scope(context, tool_name, params, session)
+                self.call_update_scope(context, tool_name, params, session, bound_state_version)
             }
-            Some(MethodName::RecordShapingCheckpoint) => {
-                self.call_record_shaping_checkpoint(context, tool_name, params, session)
-            }
+            Some(MethodName::RecordShapingCheckpoint) => self.call_record_shaping_checkpoint(
+                context,
+                tool_name,
+                params,
+                session,
+                bound_state_version,
+            ),
             Some(MethodName::FinalizeAdvice) => {
-                self.call_finalize_advice(context, tool_name, params, session)
+                self.call_finalize_advice(context, tool_name, params, session, bound_state_version)
             }
             Some(MethodName::AdvanceTask) => {
-                self.call_advance_task(context, tool_name, params, session)
+                self.call_advance_task(context, tool_name, params, session, bound_state_version)
             }
             Some(MethodName::Status) => self.call_status(context, tool_name, params, session),
             Some(MethodName::GetOperationResult) => {
                 self.call_get_operation_result(context, tool_name, params, session)
             }
-            Some(MethodName::PrepareEvidenceCapture) => {
-                self.call_prepare_evidence_capture(context, tool_name, params, session)
-            }
+            Some(MethodName::PrepareEvidenceCapture) => self.call_prepare_evidence_capture(
+                context,
+                tool_name,
+                params,
+                session,
+                bound_state_version,
+            ),
             Some(MethodName::PrepareWrite) => {
-                self.call_prepare_write(context, tool_name, params, session)
+                self.call_prepare_write(context, tool_name, params, session, bound_state_version)
             }
             Some(MethodName::StageArtifact) => {
-                self.call_stage_artifact(context, tool_name, params, session)
+                self.call_stage_artifact(context, tool_name, params, session, bound_state_version)
             }
             Some(MethodName::RecordRun) => {
-                self.call_record_run(context, tool_name, params, session)
+                self.call_record_run(context, tool_name, params, session, bound_state_version)
             }
-            Some(MethodName::RequestUserAction) => {
-                self.call_request_user_action(context, tool_name, params, session)
-            }
-            Some(MethodName::ReconcileChanges) => {
-                self.call_reconcile_changes(context, tool_name, params, session)
-            }
+            Some(MethodName::RequestUserAction) => self.call_request_user_action(
+                context,
+                tool_name,
+                params,
+                session,
+                bound_state_version,
+            ),
+            Some(MethodName::ReconcileChanges) => self.call_reconcile_changes(
+                context,
+                tool_name,
+                params,
+                session,
+                bound_state_version,
+            ),
             Some(MethodName::CheckClose) => {
                 self.call_check_close(context, tool_name, params, session)
             }
             Some(MethodName::CloseTask) => {
-                self.call_close_task(context, tool_name, params, session)
+                self.call_close_task(context, tool_name, params, session, bound_state_version)
             }
             None | Some(MethodName::ResolveUserAction) => {
                 Err(McpAdapterError::UnknownTool(tool_name.to_owned()))
@@ -529,22 +607,30 @@ impl McpAdapter {
         method: MethodName,
         params: &Value,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<(), McpAdapterError> {
+    ) -> Result<Option<WorkflowActionForm>, McpAdapterError> {
         if public_method_contract(method).workflow_action_admission()
             != WorkflowActionAdmissionClass::TaskStateBound
         {
-            return Ok(());
+            return Ok(None);
         }
-        let Some(task_id) = admission_task_id(params) else {
-            return Ok(());
-        };
+        if method == MethodName::RequestUserAction
+            && params.pointer("/request/operation").and_then(Value::as_str) == Some("resume")
+        {
+            return Ok(None);
+        }
+        let submitted_task_id = admission_task_id(params);
         let authoritative_context = self
             .load_authoritative_argument_context(context, params, session)
             .ok_or_else(|| McpAdapterError::ToolExecution {
                 tool_name: method.as_str().to_owned(),
-                message: format!(
-                    "current authoritative workflow could not be loaded for Task {}",
-                    task_id.as_str()
+                message: submitted_task_id.as_ref().map_or_else(
+                    || "current authoritative workflow could not be loaded".to_owned(),
+                    |task_id| {
+                        format!(
+                            "current authoritative workflow could not be loaded for Task {}",
+                            task_id.as_str()
+                        )
+                    },
                 ),
             })?;
         let catalog = authoritative_context
@@ -607,6 +693,7 @@ impl McpAdapter {
                     false,
                 ))),
                 workflow_admission: Some(Box::new(admission)),
+                action_form_argument_mismatches: Box::default(),
             });
         };
         let supplied = params
@@ -614,7 +701,7 @@ impl McpAdapter {
             .cloned()
             .and_then(|value| serde_json::from_value::<RequestHash>(value).ok());
         if supplied.as_ref() == Some(&called_method_form.form_ref) {
-            return Ok(());
+            return Ok(Some(called_method_form));
         }
         Err(McpAdapterError::InvalidParams {
             code: McpToolErrorCode::ActionFormStale,
@@ -638,6 +725,7 @@ impl McpAdapter {
                 false,
             ))),
             workflow_admission: Some(Box::new(admission)),
+            action_form_argument_mismatches: Box::default(),
         })
     }
 
@@ -653,8 +741,19 @@ impl McpAdapter {
             Some(Value::String(value)) => Some(value.as_str()),
             Some(_) => return None,
         };
-        let task_id = admission_task_id(params)?;
         let project_id = self.select_project(context, project_selector).ok()?;
+        let submitted_task_id = admission_task_id(params);
+        let task_id = if object.contains_key("action_form_ref") {
+            CoreProjectStore::open_for_mutation(context, &project_id)
+                .ok()?
+                .project_state()
+                .ok()?
+                .active_task_id
+                .map(TaskId::new)
+                .or(submitted_task_id)?
+        } else {
+            submitted_task_id?
+        };
         let refresh_context = MutationRefreshContext {
             project_id: project_id.clone(),
             task_id: task_id.clone(),
@@ -706,6 +805,7 @@ impl McpAdapter {
             &prepared.project_id,
             None,
             OperationCategory::AgentWorkflow,
+            None,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -734,6 +834,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -744,6 +845,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -783,6 +885,7 @@ impl McpAdapter {
             &prepared.project_id,
             task_id.as_ref(),
             OperationCategory::Read,
+            None,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -804,6 +907,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordShapingCheckpointArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -814,6 +918,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -842,6 +947,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpFinalizeAdviceArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -852,6 +958,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -882,6 +989,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpAdvanceTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -892,6 +1000,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -926,6 +1035,7 @@ impl McpAdapter {
             &prepared.project_id,
             None,
             OperationCategory::Read,
+            None,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -964,6 +1074,7 @@ impl McpAdapter {
             project_id,
             Some(task_id),
             OperationCategory::Read,
+            None,
         )?;
         self.call_core_request(
             context,
@@ -999,6 +1110,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareEvidenceCaptureArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -1009,6 +1121,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -1033,6 +1146,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -1043,6 +1157,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -1069,6 +1184,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -1079,6 +1195,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -1106,6 +1223,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordRunArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -1116,6 +1234,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -1156,6 +1275,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRequestUserActionArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -1173,6 +1293,7 @@ impl McpAdapter {
                     &prepared.project_id,
                     Some(&task_id),
                     OperationCategory::AgentWorkflow,
+                    bound_expected_state_version,
                 )?;
                 self.call_core_request(
                     context,
@@ -1250,6 +1371,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -1260,6 +1382,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -1291,6 +1414,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::Read,
+            None,
         )?;
         self.call_core_request(
             context,
@@ -1307,6 +1431,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
@@ -1317,6 +1442,7 @@ impl McpAdapter {
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::AgentWorkflow,
+            bound_expected_state_version,
         )?;
         let args = prepared.arguments;
         self.call_core_request(
@@ -1723,9 +1849,23 @@ impl McpAdapter {
         project_id: &ProjectId,
         task_id: Option<&volicord_types::ids::TaskId>,
         operation_category: OperationCategory,
+        bound_expected_state_version: Option<u64>,
     ) -> Result<ToolEnvelope, McpAdapterError> {
         let state_version = if operation_category == OperationCategory::Read {
             None
+        } else if AgentToolId::from_wire_name(tool_name)
+            .ok()
+            .and_then(AgentToolId::method)
+            .is_some_and(|method| {
+                public_method_contract(method).workflow_action_admission()
+                    == WorkflowActionAdmissionClass::TaskStateBound
+            })
+        {
+            Some(bound_expected_state_version.ok_or_else(|| {
+                McpAdapterError::SchemaContractFailure {
+                    tool_name: tool_name.to_owned(),
+                }
+            })?)
         } else {
             Some(self.current_state_version(context, project_id)?)
         };

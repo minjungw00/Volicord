@@ -88,6 +88,12 @@ authorize a write.
 
 Security non-claims belong to [Security](../security.md).
 
+The current MCP action form fixes `task_id`, `change_unit_id`, and
+`baseline_ref`. The intended operation, paths, product-write intent, and
+sensitive categories remain Agent-authored. Project and expected state version
+are adapter-injected; the generic binder rejects an altered or omitted fixed
+coordinate before Core and does not silently replace caller input.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.

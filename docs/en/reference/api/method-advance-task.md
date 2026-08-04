@@ -35,6 +35,12 @@ current User Channel resolution IDs for product, technical, and sensitive gaps
 owned by this method. The envelope
 supplies the current expected state version.
 
+The current MCP action form exposes those Task, checkpoint, Change Unit, scope
+revision, baseline, and resolution coordinates as caller-visible fixed
+arguments. It has no Agent-authored method input slots. Project and expected
+state version are adapter-injected, and the generic binder requires every
+fixed value to match exactly before Core.
+
 Core requires `mode=work`, `work_phase=shaping`, a current `ready` checkpoint,
 matching Task/checkpoint scope revision, compatible Task/checkpoint/Change Unit
 baseline coordinates, the exact current active Change Unit, and no current

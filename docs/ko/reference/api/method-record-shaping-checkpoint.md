@@ -42,12 +42,15 @@ catalog로 표시된 단일 의미 descriptor에서 나옵니다.
 `implementation_boundary`, typed `gaps`, `source_refs`, `evidence_refs`를 직접 받습니다.
 바깥쪽 operation union은 없습니다.
 
-현재 MCP action-form catalog의 이 메서드 entry는 상태에 결속됩니다. `create_initial`에서는 프로젝트 selector,
-Task, 정확한 `create_initial` operation, 범위 리비전, 실제 nullable 기준선, 예상 상태
-버전을 고정합니다. 빈 source·evidence ref를 제안하며 summary, 필수 nullable
+현재 MCP action-form catalog의 이 메서드 entry는 상태에 결속됩니다. `create_initial`에서
+호출자가 보내는 고정 인자는 Task, 정확한 `create_initial` operation, 범위 리비전, 실제
+nullable 기준선입니다. 프로젝트와 예상 상태 버전은 허용된 form에서 adapter가
+주입합니다. 빈 source·evidence ref를 제안하며 summary, 필수 nullable
 implementation boundary, typed gap만 필수 에이전트 입력으로 남깁니다.
-`replace_current`에서는 정확한 현재·선행 checkpoint 참조, retirement 참조,
-carry-forward 참조, stale application 참조도 고정합니다. MCP는 현재 workflow catalog에
+`replace_current`에서는 `checkpoint_operation.expected_current_checkpoint_id`, retirement
+참조, carry-forward 참조, stale application 참조도 고정합니다. 현재·선행 checkpoint
+참조는 문맥 계보로 남으며 최상위 mutation 인자가 아닙니다. 일반 binder는 Core 전에
+모든 고정 경로가 존재하고 깊은 동등성을 만족하도록 요구합니다. MCP는 현재 workflow catalog에
 이 메서드가 있을 때만 허용하며 Core 호출 전에 이 메서드별 form의 정확한
 `action_form_ref`를 요구합니다.
 

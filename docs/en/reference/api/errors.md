@@ -26,6 +26,7 @@ It routes to owners for:
 | Where close-readiness blockers meet API responses | [API Blocker Routing](blocker-routing.md) |
 | Which machine-readable fields describe an error | [API Error Details](error-details.md) |
 | Which discriminator-first, descriptor-derived issue rejects an MCP argument before Core | [MCP Transport](../mcp-transport.md#public-argument-projection) |
+| How an altered or omitted current action-form fixed argument is reported before Core | [MCP Transport](../mcp-transport.md#public-argument-projection) |
 | Where a successful descriptor validation that disagrees with exact MCP request decoding routes | [MCP Transport](../mcp-transport.md#public-argument-projection) |
 | How `volicord.close_task` produces method-specific blockers | [Close-Task Method](method-close-task.md) |
 

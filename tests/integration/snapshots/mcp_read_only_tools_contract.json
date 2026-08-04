@@ -88,6 +88,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -171,7 +173,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e1aa2c9f4bd7c352c9e5baff068a97fc88e0e5cac2048eb333943e9c26230494"
+        "sha256": "sha256:b5024c7a1694f6496834780064e03691a30a0f49a397d2e6b60884d10fa198a3"
       }
     },
     {
@@ -210,6 +212,8 @@
           "GetOperationResultResultBase",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -259,7 +263,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ef594c8b26d1c345a798fc77b027f1452368126015106e6ad87a1b5f87057306"
+        "sha256": "sha256:9926dda8694257277ae3c302d268cef0eeeb2b410b1ca35931394939633c50bf"
       }
     },
     {
@@ -327,6 +331,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -405,7 +411,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:159b1e560ae05174c78da1c884589e36e555c4ddb92f7c9872c0dc0628f812d3"
+        "sha256": "sha256:718570db0efaa7601c9c53cf18c84d97520c54fbc1a99ea94557c7c65e025485"
       }
     },
     {
@@ -428,6 +434,8 @@
           "AgentConnectionMode",
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpListProjectItem",
           "McpToolErrorCode",
@@ -464,7 +472,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f9772ce84cbe547a249a57e86e12dbc8c3c224ac41b69512addedcec78a6dcff"
+        "sha256": "sha256:3e5dc43524b14785eb3a50fe591aab4c45ac59589f04cd0a28cee597ec2f832f"
       }
     },
     {
@@ -494,6 +502,8 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -530,7 +540,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:097c256883632388959796255f09bc29cfcc27fac7c4bdcf4ee142e518a1c631"
+        "sha256": "sha256:0d5d17bd1bb0119caa122f1e582aeaa19563ee8774a62fd585bf623c8869095b"
       }
     },
     {
@@ -562,6 +572,8 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -598,7 +610,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f28c6f81534d81d0ef2e565d485e7f94790b8786ef30d2efa10dd71c36484423"
+        "sha256": "sha256:5643a05bf0141a71aa7ae8576ef06ca37cb42fa1ba91cf4b1cc669a80de2818a"
       }
     },
     {
@@ -632,6 +644,8 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -668,7 +682,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c37fb1fafb2e2c14ee70d211f51f1675ec07c356e8e4a153114c28d414bbbe6e"
+        "sha256": "sha256:2afcea19d01b774474f2a9195d8f0fe3eb98714359e993bd0203cbc89fb932c9"
       }
     }
   ]

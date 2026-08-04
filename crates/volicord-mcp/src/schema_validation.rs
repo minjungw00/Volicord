@@ -53,6 +53,7 @@ pub(crate) fn validate_mcp_tool_arguments(
         retry_contract: None,
         failure: None,
         workflow_admission: None,
+        action_form_argument_mismatches: Box::default(),
     })
 }
 

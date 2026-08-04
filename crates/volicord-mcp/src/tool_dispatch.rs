@@ -1007,6 +1007,7 @@ fn tool_execution_error_result_for_capabilities(
             retry_contract,
             failure,
             workflow_admission,
+            action_form_argument_mismatches,
             ..
         } => McpToolErrorResponse {
             code: *code,
@@ -1023,6 +1024,7 @@ fn tool_execution_error_result_for_capabilities(
             retry_contract: RequiredNullable::new(retry_contract.as_deref().cloned()),
             failure: RequiredNullable::new(failure.as_deref().cloned()),
             workflow_admission: RequiredNullable::new(workflow_admission.as_deref().cloned()),
+            action_form_argument_mismatches: action_form_argument_mismatches.as_ref().clone(),
         },
         McpAdapterError::ToolExecution { tool_name, message } => {
             let (path, message) = if tool_name == "project routing" {
@@ -1058,6 +1060,7 @@ fn tool_execution_error_result_for_capabilities(
                 retry_contract: RequiredNullable::null(),
                 failure: RequiredNullable::null(),
                 workflow_admission: RequiredNullable::null(),
+                action_form_argument_mismatches: Vec::new(),
             }
         }
         McpAdapterError::MutationAdmission(condition) => McpToolErrorResponse {
@@ -1079,6 +1082,7 @@ fn tool_execution_error_result_for_capabilities(
             retry_contract: RequiredNullable::null(),
             failure: RequiredNullable::null(),
             workflow_admission: RequiredNullable::null(),
+            action_form_argument_mismatches: Vec::new(),
         },
         _ => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
@@ -1099,6 +1103,7 @@ fn tool_execution_error_result_for_capabilities(
             retry_contract: RequiredNullable::null(),
             failure: RequiredNullable::null(),
             workflow_admission: RequiredNullable::null(),
+            action_form_argument_mismatches: Vec::new(),
         },
     };
     bounded_tool_error_result(structured, capabilities)
@@ -1111,6 +1116,12 @@ fn bounded_tool_error_result(
     let mut truncated = structured.truncated;
     if structured.issues.len() > MAX_VALIDATION_ISSUES {
         structured.issues.truncate(MAX_VALIDATION_ISSUES);
+        truncated = true;
+    }
+    if structured.action_form_argument_mismatches.len() > MAX_VALIDATION_ISSUES {
+        structured
+            .action_form_argument_mismatches
+            .truncate(MAX_VALIDATION_ISSUES);
         truncated = true;
     }
     structured.issues = structured
@@ -1143,6 +1154,9 @@ fn bounded_tool_error_result(
         }
         if structured.issues.len() > 1 {
             structured.issues.pop();
+            if structured.action_form_argument_mismatches.len() > structured.issues.len() {
+                structured.action_form_argument_mismatches.pop();
+            }
             truncated = true;
             continue;
         }

@@ -128,6 +128,8 @@
           "GuaranteeLevel",
           "IntakeResult",
           "IntakeResultBase",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -218,7 +220,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:43218012423f69369f62a626a1db1adb344df5ad2c59c3a71ae461c2a8ce404b"
+        "sha256": "sha256:096722da38a7272cf9ff16d32a317d625f3129f2c7bb1a0e57a327452cf302dc"
       }
     },
     {
@@ -309,6 +311,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -402,7 +406,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:434359917a75f764c657747346012e25c018393c6861137960bf07d5dcefd936"
+        "sha256": "sha256:9bf5c867a4d494ed8d646ae06107247752b2f2518f5c16e6f805d9c62ed611d9"
       }
     },
     {
@@ -450,12 +454,10 @@
           "action_form_ref",
           "baseline_ref",
           "checkpoint_operation",
-          "current_checkpoint_ref",
           "detail",
           "evidence_refs",
           "gaps",
           "implementation_boundary",
-          "predecessor_checkpoint_ref",
           "project_selector",
           "scope_revision",
           "source_refs",
@@ -471,7 +473,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:e08e8de386317734088116e155759a4bfb20e452ad43a67809fd814625ec0af5"
+        "sha256": "sha256:5b54d00cba85655683f0b23653db9993e6e80e0c85fe92939be8918d052a0978"
       },
       "name": "volicord.record_shaping_checkpoint",
       "output_schema": {
@@ -522,6 +524,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -620,7 +624,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:55533ec8f666af3ec3e473bead58c58b9b6ddfa8a928e85b4c139ef83d4a1981"
+        "sha256": "sha256:74cd0dac883b350ca592fab0fc6dd9f415ecde32a4465dac8110d4376e59192a"
       }
     },
     {
@@ -716,6 +720,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -812,7 +818,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a89f7112bd81b0e14aaef6d2e258fc94fdbc163b6b5c930b6ff9c8f3a9662862"
+        "sha256": "sha256:2e0aaed68563ba08fc3c1f2e6a5ff19edf90c0cc193bde493563b36c0779f194"
       }
     },
     {
@@ -895,6 +901,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAdvanceTaskCompactResult",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
@@ -986,7 +994,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8809716ff6dd2cd7deaa0d380e523dd486479921e6437c3da8b73cc1d5cf337f"
+        "sha256": "sha256:4c8e388751c8bbbf83f286402bf78e75df020cdcdd23de6a86afce1baf929227"
       }
     },
     {
@@ -1057,6 +1065,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -1140,7 +1150,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e1aa2c9f4bd7c352c9e5baff068a97fc88e0e5cac2048eb333943e9c26230494"
+        "sha256": "sha256:b5024c7a1694f6496834780064e03691a30a0f49a397d2e6b60884d10fa198a3"
       }
     },
     {
@@ -1179,6 +1189,8 @@
           "GetOperationResultResultBase",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -1228,7 +1240,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ef594c8b26d1c345a798fc77b027f1452368126015106e6ad87a1b5f87057306"
+        "sha256": "sha256:9926dda8694257277ae3c302d268cef0eeeb2b410b1ca35931394939633c50bf"
       }
     },
     {
@@ -1289,6 +1301,8 @@
           "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -1364,7 +1378,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bb99f1a318b29631eaa0a1675a99f0a263c96271f5fe1f9a49e88877649d5490"
+        "sha256": "sha256:5697e3980a734c3c7e531061210d71f2ce27acc5e491bb68491417cdb07e7b4f"
       }
     },
     {
@@ -1448,8 +1462,10 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
           "JudgmentKind",
           "JudgmentPresentation",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -1555,7 +1571,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d1fe4ab3f7a216d2ec7b859bb9a580a49b59359404ad724fc28504b6a8c0f2e7"
+        "sha256": "sha256:1f880edb96056355b811726dd213ffc7787c154a77e4c926f1e3468fa43cc25d"
       }
     },
     {
@@ -1615,6 +1631,8 @@
           "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -1692,7 +1710,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6aa66f0bb165be07568175f323da44cabe3bab227e5dc494cee516b100561c33"
+        "sha256": "sha256:8b06dfc6ac4c6405966360a9671e17edbbdbab229f13dfdfeeebdd97bbde08df"
       }
     },
     {
@@ -1824,6 +1842,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -1926,7 +1946,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:32f7f5aff4716b196587674e4765bd8564d87d8e002f96706ba1eb3be02bb7cb"
+        "sha256": "sha256:abf367ea11c3edbade3e6ac7300e414eb14bd98e093578686e25170ef5d8cfaa"
       }
     },
     {
@@ -2016,7 +2036,9 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
           "JudgmentResolutionOutcome",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -2115,7 +2137,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:02fce6520c4dac95c0e7e236853c7238dbd459ee2bb746c7393efbceb1855aed"
+        "sha256": "sha256:bf2b34364b7eff57b6385b14aae9f97cef468f202ee4771b2b6920ddce6b2372"
       }
     },
     {
@@ -2190,6 +2212,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -2290,7 +2314,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e42da1be02a0b1a69ffda12a15cbe4dae438ba7cfdf603b1359a11e9f599d001"
+        "sha256": "sha256:01cc6f777af1ad59e632ad93b0a40c41de6f46198518198ca705b442acae987f"
       }
     },
     {
@@ -2358,6 +2382,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -2436,7 +2462,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:159b1e560ae05174c78da1c884589e36e555c4ddb92f7c9872c0dc0628f812d3"
+        "sha256": "sha256:718570db0efaa7601c9c53cf18c84d97520c54fbc1a99ea94557c7c65e025485"
       }
     },
     {
@@ -2518,6 +2544,8 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpAgentStateChange",
           "McpArgumentFailurePresentation",
           "McpAuthorityBasisMismatch",
@@ -2616,7 +2644,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fb4fa6fbe4bf47ec25da26f25be2fa147e7b8e0c91a838005143dcc2d934fabb"
+        "sha256": "sha256:eaef18ce8271171008ba76c5b84f1bf1be10852cd05035e9273cc83e3e14d40b"
       }
     },
     {
@@ -2639,6 +2667,8 @@
           "AgentConnectionMode",
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpListProjectItem",
           "McpToolErrorCode",
@@ -2675,7 +2705,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f9772ce84cbe547a249a57e86e12dbc8c3c224ac41b69512addedcec78a6dcff"
+        "sha256": "sha256:3e5dc43524b14785eb3a50fe591aab4c45ac59589f04cd0a28cee597ec2f832f"
       }
     },
     {
@@ -2705,6 +2735,8 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -2741,7 +2773,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:097c256883632388959796255f09bc29cfcc27fac7c4bdcf4ee142e518a1c631"
+        "sha256": "sha256:0d5d17bd1bb0119caa122f1e582aeaa19563ee8774a62fd585bf623c8869095b"
       }
     },
     {
@@ -2773,6 +2805,8 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -2809,7 +2843,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f28c6f81534d81d0ef2e565d485e7f94790b8786ef30d2efa10dd71c36484423"
+        "sha256": "sha256:5643a05bf0141a71aa7ae8576ef06ca37cb42fa1ba91cf4b1cc669a80de2818a"
       }
     },
     {
@@ -2843,6 +2877,8 @@
           "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
+          "JsonValue",
+          "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -2879,7 +2915,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c37fb1fafb2e2c14ee70d211f51f1675ec07c356e8e4a153114c28d414bbbe6e"
+        "sha256": "sha256:2afcea19d01b774474f2a9195d8f0fe3eb98714359e993bd0203cbc89fb932c9"
       }
     }
   ]

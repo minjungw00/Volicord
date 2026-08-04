@@ -81,6 +81,11 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 
 보안 비주장은 [보안](../security.md)이 담당합니다.
 
+현재 MCP action form은 `task_id`, `change_unit_id`, `baseline_ref`를 고정합니다. 의도한
+작업, 경로, 제품 쓰기 의도, 민감 범주는 에이전트 작성 입력으로 남습니다. 프로젝트와
+예상 상태 버전은 adapter가 주입하며 일반 binder는 고정 좌표가 바뀌거나 빠지면 Core 전에
+거부하고 호출자 입력을 조용히 교체하지 않습니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.

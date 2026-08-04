@@ -61,7 +61,15 @@ Agent-authored inputs, and send that method's exact `form_ref` as
 `action_form_ref`. A form for one method never authorizes another method; do
 not speculate with a different shaping or implementation method. Never
 reconstruct checkpoint lineage, scope revision, baseline, Change Unit, or
-resolution coordinates. If validation or pre-Core admission fails, use the MCP
+resolution coordinates advertised as fixed. `volicord.update_scope` is the
+exception where the listed Agent-authored `baseline_ref` supplies the next
+baseline rather than copying the current one. The generic MCP binder checks every advertised
+`fixed_argument_paths` value for exact deep equality before Core; preserve JSON
+types and array order. Project and expected state version are adapter-injected
+from current authority rather than copied into caller-controlled fields. If a
+fixed value is altered or omitted, use the current form returned with
+`ACTION_FORM_ARGUMENT_MISMATCH` and retry its exact fixed arguments. If other
+validation or pre-Core admission fails, use the MCP
 schema, authoritative argument context, and retry contract. Report accurately
 that Core was not reached and state did not change. Preserve JSON primitive
 types and the selected union branch; an argument error does not imply Task

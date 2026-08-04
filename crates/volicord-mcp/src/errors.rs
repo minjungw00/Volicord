@@ -1,8 +1,8 @@
 use std::{error::Error, fmt, io};
 use volicord_core::pipeline::CorePipelineError;
 use volicord_mcp_wire::{
-    AuthoritativeArgumentContext, McpArgumentFailurePresentation, McpToolErrorCode,
-    McpToolErrorIssue, McpWorkflowAdmissionRejection, RetryContract,
+    AuthoritativeArgumentContext, McpActionFormArgumentMismatch, McpArgumentFailurePresentation,
+    McpToolErrorCode, McpToolErrorIssue, McpWorkflowAdmissionRejection, RetryContract,
     MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES,
 };
 use volicord_platform_fs::RuntimeHomeMutationLeaseError;
@@ -52,6 +52,7 @@ pub enum McpAdapterError {
         retry_contract: Option<Box<RetryContract>>,
         failure: Option<Box<McpArgumentFailurePresentation>>,
         workflow_admission: Option<Box<McpWorkflowAdmissionRejection>>,
+        action_form_argument_mismatches: Box<Vec<McpActionFormArgumentMismatch>>,
     },
     SchemaContractFailure {
         tool_name: String,

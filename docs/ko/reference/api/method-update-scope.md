@@ -50,6 +50,15 @@ sensitive expectation은 없고 `product_file_write`, `run_recording`, `sensitiv
 호환되지 않는 advisor Change Unit을 만들거나 유지하는 갱신을 scope 효과 커밋 전에
 거부합니다.
 
+현재 MCP action form은 Task, scope 소유 gap에 해당하는 완전한
+`related_scope_decision_refs`, 현재 Change Unit 권한이 선택한 정확한
+`change_unit.operation`을 고정합니다. 요청의 `baseline_ref`는 현재 nullable 기준선의
+복사본이 아니라 에이전트가 작성하는 다음 기준선입니다. 현재 기준선과 범위 리비전은
+허용된 form과 예상 상태 버전이 포괄하는 Core 현재 권한으로 남습니다. Scope 내용과
+operation별 Change Unit 필드도 에이전트 작성 slot입니다. 프로젝트와 예상 상태 버전은
+adapter가 주입하며 일반 binder는 호출자에게 보이는 고정 값이 바뀌거나 빠지면 Core 전에
+거부합니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.

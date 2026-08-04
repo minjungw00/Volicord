@@ -786,11 +786,23 @@ fn workflow_action_intent(
     let required_refs = context.required_refs;
     let task_id = TaskId::new(&task.task_id);
     let baseline_ref = RequiredNullable::new(task.shaping.baseline_ref.clone());
-    let user_action_resolution_ids = task_wide_authority
-        .current_resolution_ids
-        .iter()
-        .map(UserActionResolutionId::new)
-        .collect::<Vec<_>>();
+    let resolution_refs_for = |owner: MethodName| {
+        task_wide_authority
+            .accepted_unapplied
+            .iter()
+            .filter(|fact| fact.required_owner_method == owner)
+            .filter_map(|fact| fact.resolution_ref.clone())
+            .collect::<Vec<_>>()
+    };
+    let resolution_ids_for = |owner: MethodName| {
+        task_wide_authority
+            .accepted_unapplied
+            .iter()
+            .filter(|fact| fact.required_owner_method == owner)
+            .filter_map(|fact| fact.resolution_ref.as_ref())
+            .map(|reference| UserActionResolutionId::new(reference.record_id.as_str()))
+            .collect::<Vec<_>>()
+    };
     let fixed_authority_coordinates = match method {
         MethodName::RecordShapingCheckpoint => {
             let checkpoint_operation = checkpoint.map_or(
@@ -822,11 +834,7 @@ fn workflow_action_intent(
                 current_change_unit
                     .map(|change_unit| ChangeUnitId::new(&change_unit.change_unit_id)),
             ),
-            related_scope_decision_refs: required_refs
-                .iter()
-                .filter(|reference| reference.record_kind == StateRecordKind::UserActionResolution)
-                .cloned()
-                .collect(),
+            related_scope_decision_refs: resolution_refs_for(MethodName::UpdateScope),
         },
         MethodName::FinalizeAdvice => {
             let checkpoint = checkpoint?;
@@ -839,7 +847,7 @@ fn workflow_action_intent(
                 change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
                 scope_revision: task.scope_revision,
                 baseline_ref,
-                user_action_resolution_ids,
+                user_action_resolution_ids: resolution_ids_for(MethodName::FinalizeAdvice),
             }
         }
         MethodName::AdvanceTask => {
@@ -853,7 +861,7 @@ fn workflow_action_intent(
                 change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
                 scope_revision: task.scope_revision,
                 baseline_ref,
-                user_action_resolution_ids,
+                user_action_resolution_ids: resolution_ids_for(MethodName::AdvanceTask),
             }
         }
         MethodName::PrepareEvidenceCapture => {

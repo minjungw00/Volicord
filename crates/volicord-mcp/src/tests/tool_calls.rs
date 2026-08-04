@@ -473,7 +473,8 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
 }
 
 #[test]
-fn checkpoint_basis_mismatch_reports_typed_null_without_repair() -> Result<(), Box<dyn Error>> {
+fn checkpoint_fixed_basis_mismatch_is_pre_core_and_reports_typed_null() -> Result<(), Box<dyn Error>>
+{
     let fixture = CoreFixture::new("mcp-checkpoint-null-basis-mismatch")?;
     let adapter = adapter(&fixture)?;
     let (task_id, _) = create_task(&adapter)?;
@@ -504,31 +505,29 @@ fn checkpoint_basis_mismatch_reports_typed_null_without_repair() -> Result<(), B
     run_stdio(adapter, BufReader::new(input), &mut output)?;
     let responses = stdio_responses(&output)?;
     let structured = &responses[1]["result"]["structuredContent"];
+    assert_eq!(structured["result_type"], "adapter_error");
+    assert_eq!(structured["code"], "ACTION_FORM_ARGUMENT_MISMATCH");
     assert_eq!(
-        structured["method_result"]["base"]["response_kind"],
-        "rejected"
+        structured["action_form_argument_mismatches"][0]["path"],
+        "/baseline_ref"
     );
     assert_eq!(
-        structured["authority_basis_mismatch"]["field"],
-        "baseline_ref"
-    );
-    assert_eq!(
-        structured["authority_basis_mismatch"]["expected"],
+        structured["action_form_argument_mismatches"][0]["expected_value"],
         Value::Null
     );
-    assert!(structured["authority_basis_mismatch"]["received"].is_string());
+    assert!(structured["action_form_argument_mismatches"][0]["received_value"].is_string());
     assert_eq!(
-        structured["authority_basis_mismatch"]["state_change_applied"],
+        structured["action_form_argument_mismatches"][0]["state_change_applied"],
         false
     );
-    assert_eq!(structured["failure"]["reached_core"], true);
+    assert_eq!(structured["failure"]["reached_core"], false);
     assert_eq!(structured["failure"]["checkpoint_recorded"], false);
     assert_eq!(structured["failure"]["user_action_created"], false);
     assert_eq!(structured["failure"]["core_state_unchanged"], true);
     assert_eq!(structured["failure"]["current_baseline_valid"], true);
     assert_eq!(structured["failure"]["repair_required"], false);
     assert_eq!(
-        structured["authority_basis_mismatch"]["called_method_form"]["form_ref"],
+        structured["action_form_argument_mismatches"][0]["current_method_form"]["form_ref"],
         action_form_ref
     );
     assert_eq!(
@@ -544,10 +543,71 @@ fn checkpoint_basis_mismatch_reports_typed_null_without_repair() -> Result<(), B
         "create_initial"
     );
     assert_eq!(structured["failure"]["current_task_phase"], "shaping");
-    assert!(structured["method_result"]["errors"][0]["message"]
+    assert!(structured["issues"][0]["message"]
         .as_str()
-        .is_some_and(|message| message.contains("Expected baseline_ref=null")));
+        .is_some_and(|message| message.contains("Core was not reached")));
     assert_eq!(fixture.counts()?, before);
+
+    let retry_adapter = super::support::adapter(&fixture)?;
+    let corrected = bind_action_form_arguments(
+        &retry_adapter,
+        &task_id,
+        MethodName::RecordShapingCheckpoint,
+        json!({
+            "summary": "The exact current authority basis is accepted.",
+            "implementation_boundary": "Only the current bounded implementation.",
+            "gaps": [{
+                "gap_kind": "baseline_missing",
+                "summary": "The current Task has no baseline.",
+                "affected_refs": [],
+                "user_action": null
+            }],
+            "source_refs": [],
+            "evidence_refs": []
+        }),
+    )?;
+    let corrected = retry_adapter.call_tool(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        corrected,
+    )?;
+    assert_eq!(corrected.response_value["base"]["response_kind"], "result");
+    Ok(())
+}
+
+#[test]
+fn removed_checkpoint_mirror_fields_are_branch_local_unknown_arguments(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-checkpoint-removed-mirrors")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&adapter)?;
+    let before = fixture.counts()?;
+
+    for field in ["current_checkpoint_ref", "predecessor_checkpoint_ref"] {
+        let mut arguments = bind_action_form_arguments(
+            &adapter,
+            &task_id,
+            MethodName::RecordShapingCheckpoint,
+            json!({
+                "summary": "Removed checkpoint mirrors are not mutation inputs.",
+                "implementation_boundary": null,
+                "gaps": [],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )?;
+        arguments[field] = Value::Null;
+        let error = adapter
+            .call_tool(
+                AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+                arguments,
+            )
+            .expect_err("removed checkpoint mirror must be unknown");
+        let error =
+            structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
+        tool_error_issue(&error, &format!("/{field}"), "MCP_ARGUMENT_UNKNOWN");
+        assert_eq!(error["reached_core"], false);
+        assert_eq!(fixture.counts()?, before);
+    }
     Ok(())
 }
 
@@ -893,8 +953,6 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     let fixture = CoreFixture::new("mcp-operation-result-budget-chain")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, _, _) = create_implementation_task(&fixture)?;
-    let update_scope_action_form_ref =
-        action_form_ref_for_method(&setup_adapter, &task_id, MethodName::UpdateScope)?;
     let mut next_request_id = 10_u64;
     let mut call_stdio = |tool_name: &str, arguments: Value| -> Result<Value, Box<dyn Error>> {
         let initialize_id = next_request_id;
@@ -930,12 +988,12 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
         })
         .collect::<Vec<_>>();
     let autonomy_boundary = bounded_unicode_text("autonomy", 0);
-    let omitted = call_stdio(
-        AgentToolId::UPDATE_SCOPE.wire_name(),
+    let update_scope_arguments = bind_action_form_arguments(
+        &setup_adapter,
+        &task_id,
+        MethodName::UpdateScope,
         json!({
-            "action_form_ref": update_scope_action_form_ref,
             "detail": "full",
-            "task_id": task_id,
             "goal_summary": goal_summary,
             "scope_boundary": scope_boundary,
             "non_goals": non_goals,
@@ -945,6 +1003,10 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
                 "operation": "keep_current"
             }
         }),
+    )?;
+    let omitted = call_stdio(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        update_scope_arguments,
     )?;
     let omitted_result = &omitted["result"];
     let omitted_structured = &omitted_result["structuredContent"];
@@ -983,16 +1045,13 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     assert!(stored.response_json.len() > MAX_MCP_FULL_MUTATION_RESULT_BYTES);
     assert!(stored.response_json.contains(omitted_exact_marker));
 
-    let advanced_action_form_ref =
-        action_form_ref_for_method(&setup_adapter, &task_id, MethodName::UpdateScope)?;
-    let advanced = call_stdio(
-        AgentToolId::UPDATE_SCOPE.wire_name(),
-        json!({
-            "action_form_ref": advanced_action_form_ref,
-            "task_id": task_id,
-            "change_unit": { "operation": "keep_current" }
-        }),
+    let advanced_arguments = bind_action_form_arguments(
+        &setup_adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        json!({"change_unit": {"operation": "keep_current"}}),
     )?;
+    let advanced = call_stdio(AgentToolId::UPDATE_SCOPE.wire_name(), advanced_arguments)?;
     let advanced_structured = &advanced["result"]["structuredContent"];
     assert_eq!(advanced["result"]["isError"], false);
     assert!(advanced_structured.get("code").is_none());

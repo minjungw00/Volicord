@@ -663,6 +663,11 @@ authority facts that apply. MCP may project each neutral intent into an
 executable method-specific action form, but MCP forms and their input slots are
 not Core state.
 
+For MCP checkpoint submission, the canonical compare-and-swap coordinate is
+`checkpoint_operation.expected_current_checkpoint_id`. The current and
+predecessor checkpoint refs in this workflow projection describe contextual
+lineage; they are not duplicated as top-level mutation arguments.
+
 Workflow mutation rejection details embed this same complete tagged
 `WorkflowProjection`; they do not reconstruct progression from the received
 payload. `allowed_actions`, blocker refs, exact Task mode/work phase, and the

@@ -327,6 +327,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         "task_id": task_id,
         "action_form_ref": action_form_ref,
         "checkpoint_operation": {"operation": "create"},
+        "scope_revision": 0,
         "baseline_ref": null
     });
     let connection = agent_connection_record(&fixture.runtime_home, &connection_id)?
@@ -455,7 +456,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         invalid_counts.3
     );
 
-    let mismatch = live_mcp_call(
+    let mismatch_response = live_mcp_raw_call(
         &mut child,
         call_id,
         AgentToolId::RECORD_SHAPING_CHECKPOINT,
@@ -477,20 +478,23 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         "future.turn.planning-recovery.corrected",
     )?;
     call_id += 1;
+    assert_eq!(mismatch_response["result"]["isError"], true);
+    let mismatch = &mismatch_response["result"]["structuredContent"];
+    assert_eq!(mismatch["code"], "ACTION_FORM_ARGUMENT_MISMATCH");
     assert_eq!(
-        method_result(&mismatch)["base"]["response_kind"],
-        "rejected"
+        mismatch["action_form_argument_mismatches"][0]["path"],
+        "/baseline_ref"
     );
     assert_eq!(
-        mismatch["authority_basis_mismatch"]["field"],
-        "baseline_ref"
-    );
-    assert_eq!(
-        mismatch["authority_basis_mismatch"]["expected"],
+        mismatch["action_form_argument_mismatches"][0]["expected_value"],
         Value::Null
     );
-    assert!(mismatch["authority_basis_mismatch"]["received"].is_string());
-    assert_eq!(mismatch["failure"]["reached_core"], true);
+    assert!(mismatch["action_form_argument_mismatches"][0]["received_value"].is_string());
+    assert_eq!(mismatch["failure"]["reached_core"], false);
+    assert_eq!(
+        mismatch["action_form_argument_mismatches"][0]["state_change_applied"],
+        false
+    );
     assert_eq!(mismatch["failure"]["current_baseline_valid"], true);
     assert_eq!(mismatch["failure"]["repair_required"], false);
     assert_eq!(
@@ -541,43 +545,42 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         &mut child,
         call_id,
         AgentToolId::RECORD_SHAPING_CHECKPOINT,
-        json!({
-            "project_selector": project_id,
-            "detail": "full",
-            "task_id": task_id,
-            "action_form_ref": action_form_ref,
-            "checkpoint_operation": {"operation": "create_initial"},
-            "scope_revision": 0,
-            "baseline_ref": null,
-            "summary": "The initial bounded proposal requires product, technical, and scope decisions.",
-            "implementation_boundary": "Create only the bounded preparation note.",
-            "gaps": [{
-                "gap_kind": "user_product_decision_required",
-                "summary": "Confirm the bounded product recommendation.",
-                "affected_refs": [],
-                "user_action": {"action": action("product_decision", "Use the bounded product recommendation?", options.clone()), "expires_at": null}
-            }, {
-                "gap_kind": "user_technical_decision_required",
-                "summary": "Confirm the bounded technical recommendation.",
-                "affected_refs": [],
-                "user_action": {"action": action("technical_decision", "Use the bounded technical recommendation?", options), "expires_at": null}
-            }, {
-                "gap_kind": "user_scope_decision_required",
-                "summary": "Confirm the exact scope boundary.",
-                "affected_refs": [],
-                "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null), "expires_at": null}
-            }],
-            "source_refs": [{
-                "source_kind": "repository_file",
-                "source": {
-                    "repository_path": "plans/product.md",
-                    "baseline_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                    "line_range": null
-                }
-            }],
-            "evidence_refs": []
-        }),
+        bound_action_arguments(
+            &intake,
+            AgentToolId::RECORD_SHAPING_CHECKPOINT,
+            json!({
+                "project_selector": project_id,
+                "detail": "full",
+                "summary": "The initial bounded proposal requires product, technical, and scope decisions.",
+                "implementation_boundary": "Create only the bounded preparation note.",
+                "gaps": [{
+                    "gap_kind": "user_product_decision_required",
+                    "summary": "Confirm the bounded product recommendation.",
+                    "affected_refs": [],
+                    "user_action": {"action": action("product_decision", "Use the bounded product recommendation?", options.clone()), "expires_at": null}
+                }, {
+                    "gap_kind": "user_technical_decision_required",
+                    "summary": "Confirm the bounded technical recommendation.",
+                    "affected_refs": [],
+                    "user_action": {"action": action("technical_decision", "Use the bounded technical recommendation?", options), "expires_at": null}
+                }, {
+                    "gap_kind": "user_scope_decision_required",
+                    "summary": "Confirm the exact scope boundary.",
+                    "affected_refs": [],
+                    "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null), "expires_at": null}
+                }],
+                "source_refs": [{
+                    "source_kind": "repository_file",
+                    "source": {
+                        "repository_path": "plans/product.md",
+                        "baseline_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                        "line_range": null
+                    }
+                }],
+                "evidence_refs": []
+            }),
+        )?,
         SESSION,
         "future.turn.planning-recovery.corrected",
     )?;
@@ -596,10 +599,6 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         successful_result["shaping_checkpoint"]["readiness"],
         "blocked"
     );
-    let checkpoint_id = required_string(
-        &successful_result["shaping_checkpoint"],
-        "shaping_checkpoint_id",
-    )?;
     let request_refs = successful_result["created_user_action_request_refs"]
         .as_array()
         .ok_or("atomic shaping UserAction refs")?;
@@ -651,7 +650,6 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         .iter()
         .map(|reference| required_string(reference, "record_id"))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut resolution_refs = Vec::new();
     for (index, request_id) in request_ids.iter().enumerate() {
         let choice = if index == 2 { "accept" } else { "recommended" };
         let resolved = fixture.run_inbox(&[
@@ -664,8 +662,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
             "--json",
         ])?;
         assert_eq!(resolved.status.code(), Some(0));
-        let resolved: Value = serde_json::from_slice(&resolved.stdout)?;
-        resolution_refs.push(resolved["user_action_resolution_ref"].clone());
+        let _: Value = serde_json::from_slice(&resolved.stdout)?;
     }
     assert_eq!(fixture.repository_snapshot()?, repository_before);
 
@@ -688,54 +685,44 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         &mut child,
         call_id,
         AgentToolId::UPDATE_SCOPE,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "task_id": task_id,
-            "action_form_ref": update_scope_form_ref,
-            "goal_summary": null,
-            "scope_update": null,
-            "scope_boundary": "Create only the bounded preparation note.",
-            "non_goals": ["Add unrelated product behavior."],
+        bound_action_arguments(
+            &decisions_ready,
+            AgentToolId::UPDATE_SCOPE,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": "Create only the bounded preparation note.",
+                "non_goals": ["Add unrelated product behavior."],
             "acceptance_criteria": null,
             "autonomy_boundary": "No other Product Repository path may change.",
             "baseline_ref": BASELINE,
             "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Create the bounded preparation note.",
-                "affected_paths": [IMPLEMENTATION_PATH]
-            },
-            "related_scope_decision_refs": [resolution_refs[2].clone()]
-        }),
+                    "scope_summary": "Create the bounded preparation note.",
+                    "affected_paths": [IMPLEMENTATION_PATH]
+                }
+            }),
+        )?,
         SESSION,
         "future.turn.planning-recovery.apply",
     )?;
     call_id += 1;
     assert_eq!(scope["workflow"]["kind"], "ready_for_implementation");
-    let change_unit_id =
-        required_string(&scope["authority_receipt"]["change_unit_ref"], "record_id")?;
     let advance_form_ref = required_action_form_ref(&scope)?;
     assert_ne!(advance_form_ref, update_scope_form_ref);
-    let resolution_ids = resolution_refs
-        .iter()
-        .take(2)
-        .map(|reference| required_string(reference, "record_id"))
-        .collect::<Result<Vec<_>, _>>()?;
     let advanced = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::ADVANCE_TASK,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "task_id": task_id,
-            "action_form_ref": advance_form_ref,
-            "shaping_checkpoint_id": checkpoint_id,
-            "change_unit_id": change_unit_id,
-            "scope_revision": 1,
-            "baseline_ref": BASELINE,
-            "user_action_resolution_ids": resolution_ids
-        }),
+        bound_action_arguments(
+            &scope,
+            AgentToolId::ADVANCE_TASK,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow"
+            }),
+        )?,
         SESSION,
         "future.turn.planning-recovery.advance",
     )?;
@@ -1004,25 +991,24 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         &mut child,
         call_id,
         AgentToolId::RECORD_SHAPING_CHECKPOINT,
-        json!({
-            "project_selector": project_id,
-            "detail": "full",
-            "task_id": task_id,
-            "action_form_ref": initial_checkpoint_action_form_ref,
-            "scope_revision": 0,
-            "baseline_ref": null,
-            "checkpoint_operation": {"operation": "create_initial"},
-            "summary": "The initial proposal requires one user-owned scope decision before the plan can proceed.",
-            "implementation_boundary": "Create only the release-preparation note at the bounded path.",
-            "gaps": [{
-                "gap_kind": "user_scope_decision_required",
-                "summary": "Confirm the initial scope proposal.",
-                "affected_refs": [],
-                "user_action": {"action": action("scope_decision", "Accept the initial scope proposal?", Value::Null, initial_state_version + 1), "expires_at": null}
-            }],
-            "source_refs": [],
-            "evidence_refs": []
-        }),
+        bound_action_arguments(
+            &intake,
+            AgentToolId::RECORD_SHAPING_CHECKPOINT,
+            json!({
+                "project_selector": project_id,
+                "detail": "full",
+                "summary": "The initial proposal requires one user-owned scope decision before the plan can proceed.",
+                "implementation_boundary": "Create only the release-preparation note at the bounded path.",
+                "gaps": [{
+                    "gap_kind": "user_scope_decision_required",
+                    "summary": "Confirm the initial scope proposal.",
+                    "affected_refs": [],
+                    "user_action": {"action": action("scope_decision", "Accept the initial scope proposal?", Value::Null, initial_state_version + 1), "expires_at": null}
+                }],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.shaping",
     )?;
@@ -1185,9 +1171,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         rejected["state"]["workflow"]["required_action"],
         "volicord.record_shaping_checkpoint"
     );
-    let retired_request_ref = rejected["state"]["workflow"]["checkpoint"]
-        ["decision_recovery_requirements"][0]["user_action_request_ref"]
-        .clone();
     let recovery_status = live_mcp_call(
         &mut child,
         call_id,
@@ -1210,45 +1193,38 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         &mut child,
         call_id,
         AgentToolId::RECORD_SHAPING_CHECKPOINT,
-        json!({
-            "project_selector": project_id,
-            "detail": "full",
-            "task_id": task_id,
-                "action_form_ref": recovery_checkpoint_action_form_ref,
-                "scope_revision": 0,
-                "baseline_ref": null,
-                "checkpoint_operation": {
-                    "operation": "replace_current",
-                    "expected_current_checkpoint_id": retired_checkpoint_id,
-                    "retired_non_authorizing_request_refs": [retired_request_ref],
-                    "stale_authority_actions": [],
-                    "carry_forward_application_refs": []
-                },
-                "summary": "The revised plan replaces the rejected proposal with three current user-owned decisions.",
-                "implementation_boundary": "Create only the release-preparation note at the bounded path.",
-                "gaps": [
-                    {
-                        "gap_kind": "user_product_decision_required",
-                        "summary": "Confirm the revised product recommendation.",
-                        "affected_refs": [],
-                        "user_action": {"action": action("product_decision", "Use the revised product recommendation?", recommendations.clone(), initial_state_version + 3), "expires_at": null}
-                    },
-                    {
-                        "gap_kind": "user_technical_decision_required",
-                        "summary": "Confirm the technical recommendation.",
-                        "affected_refs": [],
-                        "user_action": {"action": action("technical_decision", "Use the recommended technical boundary?", recommendations, initial_state_version + 3), "expires_at": null}
-                    },
-                    {
-                        "gap_kind": "user_scope_decision_required",
-                        "summary": "Confirm the exact scope boundary.",
-                        "affected_refs": [],
-                        "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null, initial_state_version + 3), "expires_at": null}
-                    }
-                ],
-                "source_refs": [],
-                "evidence_refs": []
-        }),
+        bound_action_arguments(
+            &recovery_status,
+            AgentToolId::RECORD_SHAPING_CHECKPOINT,
+            json!({
+                "project_selector": project_id,
+                "detail": "full",
+                    "summary": "The revised plan replaces the rejected proposal with three current user-owned decisions.",
+                    "implementation_boundary": "Create only the release-preparation note at the bounded path.",
+                    "gaps": [
+                        {
+                            "gap_kind": "user_product_decision_required",
+                            "summary": "Confirm the revised product recommendation.",
+                            "affected_refs": [],
+                            "user_action": {"action": action("product_decision", "Use the revised product recommendation?", recommendations.clone(), initial_state_version + 3), "expires_at": null}
+                        },
+                        {
+                            "gap_kind": "user_technical_decision_required",
+                            "summary": "Confirm the technical recommendation.",
+                            "affected_refs": [],
+                            "user_action": {"action": action("technical_decision", "Use the recommended technical boundary?", recommendations, initial_state_version + 3), "expires_at": null}
+                        },
+                        {
+                            "gap_kind": "user_scope_decision_required",
+                            "summary": "Confirm the exact scope boundary.",
+                            "affected_refs": [],
+                            "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null, initial_state_version + 3), "expires_at": null}
+                        }
+                    ],
+                    "source_refs": [],
+                    "evidence_refs": []
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.recover-shaping",
     )?;
@@ -1386,8 +1362,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "future.turn.planning-product.decision-application-status",
     )?;
     call_id += 1;
-    let update_scope_action_form_ref = required_action_form_ref(&decision_application_status)?;
-
     let resolved_replacement = live_mcp_error(
         &mut child,
         call_id,
@@ -1428,25 +1402,25 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         &mut child,
         call_id,
         AgentToolId::UPDATE_SCOPE,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "task_id": task_id,
-            "action_form_ref": update_scope_action_form_ref,
-            "goal_summary": null,
-            "scope_update": null,
-            "scope_boundary": "Create only the bounded release-preparation note.",
-            "non_goals": ["Add product runtime behavior."],
+        bound_action_arguments(
+            &decision_application_status,
+            AgentToolId::UPDATE_SCOPE,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": "Create only the bounded release-preparation note.",
+                "non_goals": ["Add product runtime behavior."],
             "acceptance_criteria": null,
             "autonomy_boundary": "No additional Product Repository paths may change.",
             "baseline_ref": BASELINE,
             "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Create the bounded release-preparation note.",
-                "affected_paths": [IMPLEMENTATION_PATH]
-            },
-            "related_scope_decision_refs": [resolution_refs[2].clone()]
-        }),
+                    "scope_summary": "Create the bounded release-preparation note.",
+                    "affected_paths": [IMPLEMENTATION_PATH]
+                }
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.apply-decisions",
     )?;
@@ -1458,9 +1432,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         Some("shaping"),
         "ready_for_implementation",
     );
-    let change_unit_id =
-        required_string(&scope["authority_receipt"]["change_unit_ref"], "record_id")?;
-    let advance_action_form_ref = required_action_form_ref(&scope)?;
     let state = rusqlite::Connection::open(&state_db)?;
     let gap_statuses = state
         .prepare(
@@ -1487,26 +1458,18 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         0
     );
 
-    let resolution_ids = resolution_refs
-        .iter()
-        .take(2)
-        .map(|reference| required_string(reference, "record_id"))
-        .collect::<Result<Vec<_>, _>>()?;
     let advanced = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::ADVANCE_TASK,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "task_id": task_id,
-            "action_form_ref": advance_action_form_ref,
-            "shaping_checkpoint_id": checkpoint_id,
-            "change_unit_id": change_unit_id,
-            "scope_revision": 1,
-            "baseline_ref": BASELINE,
-            "user_action_resolution_ids": resolution_ids
-        }),
+        bound_action_arguments(
+            &scope,
+            AgentToolId::ADVANCE_TASK,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow"
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.advance",
     )?;
@@ -1518,7 +1481,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         Some("implementation"),
         "implementation",
     );
-    let prepare_write_action_form_ref = action_form_ref(&advanced, AgentToolId::PREPARE_WRITE)?;
     let state = rusqlite::Connection::open(&state_db)?;
     let unapplied_gap_count: u64 = state.query_row(
         "SELECT COUNT(*) FROM shaping_checkpoint_gaps
@@ -1546,18 +1508,18 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         &mut child,
         call_id,
         AgentToolId::PREPARE_WRITE,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "task_id": task_id,
-            "action_form_ref": prepare_write_action_form_ref,
-            "change_unit_id": change_unit_id,
-            "intended_operation": "Create the bounded release-preparation note.",
-            "intended_paths": [IMPLEMENTATION_PATH],
-            "product_file_write_intended": true,
-            "sensitive_categories": [],
-            "baseline_ref": BASELINE
-        }),
+        bound_action_arguments(
+            &advanced,
+            AgentToolId::PREPARE_WRITE,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "intended_operation": "Create the bounded release-preparation note.",
+                "intended_paths": [IMPLEMENTATION_PATH],
+                "product_file_write_intended": true,
+                "sensitive_categories": []
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.prepare-write",
     )?;
@@ -1572,7 +1534,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(prepared_result["decision"], "allowed");
     let write_ticket_id = required_string(prepared_result, "write_ticket_id")?;
-    let record_run_action_form_ref = action_form_ref(&prepared, AgentToolId::RECORD_RUN)?;
     assert_eq!(
         fixture.repository_snapshot()?,
         before_analysis,
@@ -1645,35 +1606,34 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         &mut child,
         call_id,
         AgentToolId::RECORD_RUN,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "task_id": task_id,
-            "action_form_ref": record_run_action_form_ref,
-            "change_unit_id": change_unit_id,
-            "kind": "implementation",
-            "run_id": null,
-            "baseline_ref": BASELINE,
-            "write_ticket_id": write_ticket_id,
-            "performed_operation": "Create the bounded release-preparation note.",
-            "summary": "The approved bounded release preparation was recorded.",
-            "observed_changes": {
-                "changed_paths": [IMPLEMENTATION_PATH],
-                "product_file_write_observed": true,
-                "sensitive_categories": [],
-                "baseline_ref": BASELINE
-            },
-            "artifact_inputs": [],
-            "evidence_updates": [],
-            "evidence_observations": [],
-            "close_assessment": {
-                "result_summary": "The bounded release preparation is complete and self-checked.",
-                "result_refs": [],
-                "residual_risks": [],
-                "sensitive_categories": [],
-                "recovery_constraints": []
-            }
-        }),
+        bound_action_arguments(
+            &prepared,
+            AgentToolId::RECORD_RUN,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "run_id": null,
+                "write_ticket_id": write_ticket_id,
+                "performed_operation": "Create the bounded release-preparation note.",
+                "summary": "The approved bounded release preparation was recorded.",
+                "observed_changes": {
+                    "changed_paths": [IMPLEMENTATION_PATH],
+                    "product_file_write_observed": true,
+                    "sensitive_categories": [],
+                    "baseline_ref": BASELINE
+                },
+                "artifact_inputs": [],
+                "evidence_updates": [],
+                "evidence_observations": [],
+                "close_assessment": {
+                    "result_summary": "The bounded release preparation is complete and self-checked.",
+                    "result_refs": [],
+                    "residual_risks": [],
+                    "sensitive_categories": [],
+                    "recovery_constraints": []
+                }
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.record-run",
     )?;
@@ -1715,17 +1675,17 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(run_kind, "implementation");
     drop(state);
-    let check_close_action_form_ref = action_form_ref(&recorded, AgentToolId::CHECK_CLOSE)?;
-
     let close_review = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::CHECK_CLOSE,
-        json!({
-            "project_selector": project_id,
-            "task_id": task_id,
-            "action_form_ref": check_close_action_form_ref
-        }),
+        bound_action_arguments(
+            &recorded,
+            AgentToolId::CHECK_CLOSE,
+            json!({
+                "project_selector": project_id
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.close-review",
     )?;
@@ -1746,26 +1706,23 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "future.turn.planning-product.close-review-status",
     )?;
     call_id += 1;
-    let request_user_action_form_ref =
-        action_form_ref(&close_review_status, AgentToolId::REQUEST_USER_ACTION)?;
-
     let final_action = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::REQUEST_USER_ACTION,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "action_form_ref": request_user_action_form_ref,
-            "request": {
-                "operation": "create",
-                "task_id": task_id,
-                "change_unit_id": change_unit_id,
-                "action": action("final_acceptance", "Accept the completed bounded result?", Value::Null, initial_state_version + 11),
-                "required_for": ["close_complete"],
-                "expires_at": null
-            }
-        }),
+        bound_action_arguments(
+            &close_review_status,
+            AgentToolId::REQUEST_USER_ACTION,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "request": {
+                    "action": action("final_acceptance", "Accept the completed bounded result?", Value::Null, initial_state_version + 11),
+                    "required_for": ["close_complete"],
+                    "expires_at": null
+                }
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.final-acceptance",
     )?;
@@ -1810,19 +1767,17 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "future.turn.planning-product.final-status",
     )?;
     call_id += 1;
-    let final_check_close_action_form_ref =
-        action_form_ref(&final_status, AgentToolId::CHECK_CLOSE)?;
-    let close_task_action_form_ref = action_form_ref(&final_status, AgentToolId::CLOSE_TASK)?;
-
     let ready = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::CHECK_CLOSE,
-        json!({
-            "project_selector": project_id,
-            "task_id": task_id,
-            "action_form_ref": final_check_close_action_form_ref
-        }),
+        bound_action_arguments(
+            &final_status,
+            AgentToolId::CHECK_CLOSE,
+            json!({
+                "project_selector": project_id
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.close",
     )?;
@@ -1832,16 +1787,18 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         &mut child,
         call_id,
         AgentToolId::CLOSE_TASK,
-        json!({
-            "project_selector": project_id,
-            "detail": "workflow",
-            "task_id": task_id,
-            "action_form_ref": close_task_action_form_ref,
-            "intent": "complete",
-            "close_reason": "completed_self_checked",
-            "superseding_task_id": null,
-            "user_note": "The bounded planning-product journey is complete."
-        }),
+        bound_action_arguments(
+            &final_status,
+            AgentToolId::CLOSE_TASK,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "intent": "complete",
+                "close_reason": "completed_self_checked",
+                "superseding_task_id": null,
+                "user_note": "The bounded planning-product journey is complete."
+            }),
+        )?,
         SESSION,
         "future.turn.planning-product.close",
     )?;
@@ -6239,7 +6196,7 @@ fn required_action_form_ref(structured: &Value) -> Result<String, Box<dyn Error>
         })
 }
 
-fn action_form_ref(structured: &Value, tool: AgentToolId) -> Result<String, Box<dyn Error>> {
+fn method_action_form(structured: &Value, tool: AgentToolId) -> Result<&Value, Box<dyn Error>> {
     ["/action_form_catalog", "/presentation/action_form_catalog"]
         .into_iter()
         .find_map(|pointer| {
@@ -6248,13 +6205,7 @@ fn action_form_ref(structured: &Value, tool: AgentToolId) -> Result<String, Box<
                 .get("forms")?
                 .as_array()?
                 .iter()
-                .find_map(|form| {
-                    if form["method"].as_str() == Some(tool.wire_name()) {
-                        form["form_ref"].as_str().map(str::to_owned)
-                    } else {
-                        None
-                    }
-                })
+                .find(|form| form["method"].as_str() == Some(tool.wire_name()))
         })
         .ok_or_else(|| {
             format!(
@@ -6263,6 +6214,36 @@ fn action_form_ref(structured: &Value, tool: AgentToolId) -> Result<String, Box<
             )
             .into()
         })
+}
+
+fn bound_action_arguments(
+    structured: &Value,
+    tool: AgentToolId,
+    agent_arguments: Value,
+) -> Result<Value, Box<dyn Error>> {
+    let form = method_action_form(structured, tool)?;
+    let mut arguments = form["fixed_arguments"].clone();
+    merge_json(&mut arguments, agent_arguments);
+    arguments
+        .as_object_mut()
+        .ok_or("action-form fixed arguments should be an object")?
+        .insert("action_form_ref".to_owned(), form["form_ref"].clone());
+    Ok(arguments)
+}
+
+fn merge_json(target: &mut Value, source: Value) {
+    match (target, source) {
+        (Value::Object(target), Value::Object(source)) => {
+            for (key, value) in source {
+                if let Some(current) = target.get_mut(&key) {
+                    merge_json(current, value);
+                } else {
+                    target.insert(key, value);
+                }
+            }
+        }
+        (target, source) => *target = source,
+    }
 }
 
 fn required_string(value: &Value, key: &str) -> Result<String, Box<dyn Error>> {

@@ -99,7 +99,7 @@ fn apply_json_rpc_message(
         }
         Err(failure) => {
             *state = *failure.state;
-            Err(failure.error)
+            Err(*failure.error)
         }
     }
 }

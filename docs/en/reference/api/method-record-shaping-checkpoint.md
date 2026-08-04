@@ -43,13 +43,17 @@ The request directly supplies `checkpoint_operation`, `scope_revision`,
 nullable `baseline_ref`, `summary`, nullable `implementation_boundary`, typed
 `gaps`, `source_refs`, and `evidence_refs`. There is no outer operation union.
 
-The method's entry in the current MCP action-form catalog is state-bound. For `create_initial` it fixes the
-project selector, Task, exact `create_initial` operation, scope revision, actual
-nullable baseline, and expected state version. It suggests empty source and
+The method's entry in the current MCP action-form catalog is state-bound. For
+`create_initial`, its caller-visible fixed arguments are Task, the exact
+`create_initial` operation, scope revision, and actual nullable baseline. The
+adapter injects project and expected state version from the admitted form. It suggests empty source and
 evidence refs and leaves only summary, required-nullable implementation
 boundary, and typed gaps as required Agent input. For `replace_current` it also
-fixes the exact current and predecessor checkpoint refs, retirement refs,
-carry-forward refs, and stale-application refs. MCP admits this method only
+fixes `checkpoint_operation.expected_current_checkpoint_id`, retirement refs,
+carry-forward refs, and stale-application refs. Current and predecessor
+checkpoint refs remain contextual lineage and are not top-level mutation
+arguments. The generic binder requires every fixed path to be present and
+deeply equal before Core. MCP admits this method only
 when it is present in the current workflow catalog and requires this
 method-specific form's exact `action_form_ref` before Core invocation.
 

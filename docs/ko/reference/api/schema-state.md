@@ -652,6 +652,11 @@ checkpoint 좌표는 실제 null 기준선을 보존하고, 교체 좌표는 정
 가능한 메서드별 action form으로 투영할 수 있지만 MCP form과 입력 slot은 Core 상태가
 아닙니다.
 
+MCP checkpoint 제출의 정규 compare-and-swap 좌표는
+`checkpoint_operation.expected_current_checkpoint_id`입니다. 이 workflow projection의
+현재·선행 checkpoint 참조는 문맥 계보를 설명하며 최상위 mutation 인자로 중복되지
+않습니다.
+
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task
 mode/work phase, 단일 recovery owner는 현재 authority에서 읽습니다. 거부된 요청의 내장

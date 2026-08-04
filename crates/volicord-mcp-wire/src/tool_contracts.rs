@@ -225,6 +225,7 @@ pub fn mcp_tool_contract_integrity_errors() -> Vec<String> {
             ));
         }
     }
+    errors.extend(crate::action_form::action_form_request_projection_integrity_errors());
     errors
 }
 
@@ -663,8 +664,6 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
             detail: MutationDetailLevel::Summary,
             action_form_ref: example_action_form_ref(),
             task_id: TaskId::new(id),
-            current_checkpoint_ref: None,
-            predecessor_checkpoint_ref: None,
             checkpoint_operation,
             scope_revision: 4,
             baseline_ref,

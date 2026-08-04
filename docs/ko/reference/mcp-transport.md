@@ -563,9 +563,11 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 WorkflowActionForm:
   form_ref: string
   method: string
+  selected_semantic_variant: string
   role: required | allowed
   expected_state_version: integer
   fixed_arguments: object
+  fixed_argument_paths: string[]
   suggested_arguments: object
   required_inputs: WorkflowActionInput[]
   optional_inputs: WorkflowActionInput[]
@@ -576,8 +578,9 @@ WorkflowActionFormCatalog:
 ```
 
 `form_ref`는 프로젝트, Task, 메서드, 선택된 semantic variant, 예상 상태 버전, 정확한
-고정 권한 좌표, 현재 semantic-schema digest의 불투명 canonical digest입니다. 숫자
-workflow 버전이 아닙니다. Form catalog는 Core catalog의 순서, 필수 메서드, 역할을
+고정 권한 좌표, 완전한 `fixed_arguments` 객체와 `fixed_argument_paths`, 현재
+semantic-schema digest의 불투명 canonical digest입니다. 숫자 workflow 버전이 아닙니다.
+Form catalog는 Core catalog의 순서, 필수 메서드, 역할을
 보존합니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
 인자 context, retry contract에 나타납니다. 활성 Task가 없는 status의 catalog는
 null입니다. 단일 form은 독립된 권한 계약이 아닙니다.
@@ -594,6 +597,14 @@ stale이거나, 다른 Task·프로젝트·메서드에 속한 ref는 Core 전�
 `MCP_ACTION_FORM_STALE`과 현재 호출 메서드 form을 반환합니다. 한 메서드에 허용된 form은
 다른 메서드에 권한을 주지 않으며 생략 fallback이나 필수 form fallback은 없습니다.
 읽기 전용 `volicord.status`는 catalog를 관찰할 뿐 mutation 권한을 만들지 않습니다.
+
+Form admission 뒤에는 descriptor 기반 binder 하나가 선택된 메서드와 semantic variant에서
+모든 `fixed_argument_paths` entry를 해석합니다. 호출자에게 보이는 고정 값은 메서드
+decode나 Core 진입 전에 모두 존재하고 form 값과 깊은 동등성을 만족해야 합니다. JSON
+원시 타입과 배열 순서는 정확히 일치해야 하며 객체 member 순서는 무관합니다. JSON
+null은 문자열 `"null"`이나 빈 문자열과 같지 않습니다. 프로젝트와 예상 상태 버전은
+호출자 제어 필드가 아닙니다. Adapter가 허용된 form과 connection route에서 주입하며,
+숨긴 envelope 필드는 이 주입 좌표를 덮어쓸 수 없습니다.
 
 ```schema
 McpWorkflowAdmissionRejection:
@@ -616,10 +627,23 @@ form을 식별합니다.
 
 첫 checkpoint form은 Task, `create_initial`, 범위 리비전, 실제 nullable 기준선을
 고정하고 summary, implementation boundary, gap만 typed 에이전트 입력으로 남깁니다.
-교체 form은 현재·선행 checkpoint 참조와 모든 retirement, carry-forward, stale authority
-참조도 고정합니다. Advisor-finalization form은 현재 checkpoint, 비쓰기 Change Unit,
-범위 리비전, 기준선, resolution ID, 상태 버전을 고정하며 결과 내용, 증거, 위험, 복구
+교체 form은 `checkpoint_operation.expected_current_checkpoint_id`의 예상 checkpoint
+identity와 모든 retirement, carry-forward, stale authority 참조도 고정합니다.
+Checkpoint 계보와 현재 Store checkpoint는 문맥 권한으로 남으며 호출자가 보내는 최상위
+현재·선행 checkpoint mirror 필드는 없습니다. Advisor-finalization form은 현재
+checkpoint, 비쓰기 Change Unit,
+범위 리비전, 기준선, resolution ID를 고정하며 결과 내용, 증거, 위험, 복구
 제약만 에이전트가 작성합니다.
+반면 update-scope form에서 요청 `baseline_ref`는 에이전트가 작성하는 다음 기준선입니다.
+이 form은 scope 소유 resolution ref와 Change Unit operation을 정확히 고정하고, 현재 기준선과
+범위 리비전은 허용된 form과 주입된 예상 상태 버전이 포괄하는 Core 현재 권한으로 둡니다.
+
+호출자에게 보이는 고정 값을 하나라도 바꾸거나 생략하면 adapter는 결정적으로 정렬되고
+개수가 제한된 mismatch entry와 함께 `ACTION_FORM_ARGUMENT_MISMATCH`를 반환합니다. 각
+entry는 메서드, form, JSON Pointer, 정확한 예상 값과 받은 값, 값이 실제로 있었는지,
+현재 메서드 form을 식별합니다. `state_change_applied=false`, `reached_core=false`를
+보고하며 간결한 message는 form이 현재 값이었고 고정 권한 값이 변경되거나 빠졌으며
+Core에 도달하지 않았고 정확한 고정 인자로 재시도해야 한다고 알립니다.
 
 Known-tool의 유효하지 않은 인자는 생성 JSON을 다시 훑거나 method별 문자열 matching을
 사용하지 않고 descriptor의 semantic validator tree로 검증합니다. 필수 nullable member는
@@ -658,8 +682,19 @@ McpToolErrorIssue:
   allowed_values: string[]
   owner_hint: string | null
 
+McpActionFormArgumentMismatch:
+  method: string
+  form_ref: string
+  path: string
+  expected_value: json
+  received_value: json
+  received_value_present: boolean
+  state_change_applied: false
+  reached_core: false
+  current_method_form: WorkflowActionForm
+
 McpToolErrorResponse:
-  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | MCP_ADAPTER_PRECONDITION_FAILED
+  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | ACTION_FORM_ARGUMENT_MISMATCH | MCP_ADAPTER_PRECONDITION_FAILED
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -672,6 +707,8 @@ McpToolErrorResponse:
   authoritative_context: AuthoritativeArgumentContext | null
   retry_contract: RetryContract | null
   failure: McpArgumentFailurePresentation | null
+  workflow_admission: McpWorkflowAdmissionRejection | null
+  action_form_argument_mismatches: McpActionFormArgumentMismatch[]
 ```
 
 유효하지 않은 인자에서는 독립적으로 유효한 `project_selector`, `task_id`, 제공된

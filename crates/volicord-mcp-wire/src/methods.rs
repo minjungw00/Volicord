@@ -1,5 +1,7 @@
 //! MCP tool argument, structured-content, failure, and recovery wire values.
 
+use std::collections::BTreeMap;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -71,6 +73,8 @@ pub enum McpToolErrorCode {
     AdapterPreconditionFailed,
     #[serde(rename = "MCP_ACTION_FORM_STALE")]
     ActionFormStale,
+    #[serde(rename = "ACTION_FORM_ARGUMENT_MISMATCH")]
+    ActionFormArgumentMismatch,
     #[serde(rename = "WORKFLOW_ACTION_NOT_ALLOWED")]
     WorkflowActionNotAllowed,
 }
@@ -135,6 +139,8 @@ pub enum McpToolIssueCode {
     AdapterPreconditionFailed,
     #[serde(rename = "MCP_ACTION_FORM_MISMATCH")]
     ActionFormMismatch,
+    #[serde(rename = "ACTION_FORM_ARGUMENT_MISMATCH")]
+    ActionFormArgumentMismatch,
     #[serde(rename = "WORKFLOW_ACTION_NOT_ALLOWED")]
     WorkflowActionNotAllowed,
 }
@@ -184,9 +190,11 @@ pub struct WorkflowActionInput {
 pub struct WorkflowActionForm {
     pub form_ref: RequestHash,
     pub method: MethodName,
+    pub selected_semantic_variant: String,
     pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_arguments: JsonObject,
+    pub fixed_argument_paths: Vec<String>,
     pub suggested_arguments: JsonObject,
     pub required_inputs: Vec<WorkflowActionInput>,
     pub optional_inputs: Vec<WorkflowActionInput>,
@@ -235,6 +243,7 @@ pub struct RetryContract {
     pub method: MethodName,
     pub action_form_ref: RequiredNullable<RequestHash>,
     pub fixed_arguments: JsonObject,
+    pub fixed_argument_paths: Vec<String>,
     pub invalid_paths: Vec<String>,
     pub required_inputs: Vec<WorkflowActionInput>,
     pub action_form_catalog: WorkflowActionFormCatalog,
@@ -283,6 +292,37 @@ pub struct McpWorkflowAdmissionRejection {
     pub reached_core: bool,
 }
 
+/// One exact fixed-authority argument mismatch detected before Core entry.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpActionFormArgumentMismatch {
+    pub method: MethodName,
+    pub form_ref: RequestHash,
+    pub path: String,
+    #[schemars(with = "McpJsonValueSchema")]
+    pub expected_value: Value,
+    #[schemars(with = "McpJsonValueSchema")]
+    pub received_value: Value,
+    pub received_value_present: bool,
+    pub state_change_applied: bool,
+    pub reached_core: bool,
+    pub current_method_form: WorkflowActionForm,
+}
+
+/// Schema-only recursive projection for raw JSON values in mismatch details.
+#[derive(JsonSchema)]
+#[serde(untagged)]
+#[schemars(rename = "JsonValue")]
+#[allow(dead_code)]
+enum McpJsonValueSchema {
+    Null(()),
+    Boolean(bool),
+    Number(f64),
+    String(String),
+    Array(Vec<McpJsonValueSchema>),
+    Object(BTreeMap<String, McpJsonValueSchema>),
+}
+
 /// Structured known-tool failure returned before Core method entry.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -303,6 +343,7 @@ pub struct McpToolErrorResponse {
     pub retry_contract: RequiredNullable<RetryContract>,
     pub failure: RequiredNullable<McpArgumentFailurePresentation>,
     pub workflow_admission: RequiredNullable<McpWorkflowAdmissionRejection>,
+    pub action_form_argument_mismatches: Vec<McpActionFormArgumentMismatch>,
 }
 
 /// Structured MCP failure when an operational dependency cannot produce a tool result.
@@ -823,10 +864,6 @@ pub struct McpRecordShapingCheckpointArguments {
     pub detail: MutationDetailLevel,
     pub action_form_ref: RequestHash,
     pub task_id: TaskId,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub current_checkpoint_ref: Option<StateRecordRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub predecessor_checkpoint_ref: Option<RequiredNullable<StateRecordRef>>,
     pub checkpoint_operation: ShapingCheckpointOperation,
     pub scope_revision: u64,
     pub baseline_ref: RequiredNullable<BaselineRef>,

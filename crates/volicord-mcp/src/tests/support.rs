@@ -969,14 +969,8 @@ pub(super) fn action_args(
     options: Value,
     required_for: Value,
 ) -> Value {
-    let action_form_ref = action_form_ref_for_method(
-        &adapter(fixture).expect("request-user-action form adapter"),
-        task_id,
-        MethodName::RequestUserAction,
-    )
-    .expect("request-user-action form");
-    json!({
-        "action_form_ref": action_form_ref,
+    let adapter = adapter(fixture).expect("request-user-action form adapter");
+    let arguments = json!({
         "detail": "full",
         "request": {
             "operation": "create",
@@ -1009,7 +1003,9 @@ pub(super) fn action_args(
             "required_for": required_for,
             "expires_at": null
         }
-    })
+    });
+    bind_action_form_arguments(&adapter, task_id, MethodName::RequestUserAction, arguments)
+        .expect("request-user-action fixed arguments")
 }
 
 pub(super) fn json_lines(messages: &[Value]) -> Result<Vec<u8>, serde_json::Error> {
@@ -1195,11 +1191,53 @@ pub(super) fn action_form_ref_for_method(
     current_action_form_ref_for_method(adapter, task_id, Some(method))
 }
 
+pub(super) fn action_form_for_method(
+    adapter: &McpAdapter,
+    task_id: &str,
+    method: MethodName,
+) -> Result<volicord_mcp_wire::WorkflowActionForm, Box<dyn Error>> {
+    current_action_form(adapter, task_id, Some(method))
+}
+
+pub(super) fn bind_action_form_arguments(
+    adapter: &McpAdapter,
+    task_id: &str,
+    method: MethodName,
+    mut arguments: Value,
+) -> Result<Value, Box<dyn Error>> {
+    fn merge(target: &mut Value, fixed: &Value) {
+        match (target, fixed) {
+            (Value::Object(target), Value::Object(fixed)) => {
+                for (name, value) in fixed {
+                    merge(target.entry(name.clone()).or_insert(Value::Null), value);
+                }
+            }
+            (target, fixed) => *target = fixed.clone(),
+        }
+    }
+
+    let form = action_form_for_method(adapter, task_id, method)?;
+    arguments["action_form_ref"] = json!(form.form_ref);
+    merge(&mut arguments, &Value::Object(form.fixed_arguments));
+    Ok(arguments)
+}
+
 fn current_action_form_ref_for_method(
     adapter: &McpAdapter,
     task_id: &str,
     method: Option<MethodName>,
 ) -> Result<String, Box<dyn Error>> {
+    Ok(current_action_form(adapter, task_id, method)?
+        .form_ref
+        .as_str()
+        .to_owned())
+}
+
+fn current_action_form(
+    adapter: &McpAdapter,
+    task_id: &str,
+    method: Option<MethodName>,
+) -> Result<volicord_mcp_wire::WorkflowActionForm, Box<dyn Error>> {
     let status = adapter.call_tool(
         AgentToolId::STATUS.wire_name(),
         json!({"task_id": task_id, "detail": "workflow"}),
@@ -1218,10 +1256,9 @@ fn current_action_form_ref_for_method(
         .project_id;
     let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow);
     let form = method
-        .and_then(|method| catalog.form(method))
-        .or_else(|| catalog.required_form())
+        .map_or_else(|| catalog.required_form(), |method| catalog.form(method))
         .ok_or("workflow should expose the requested current action form")?;
-    Ok(form.form_ref.as_str().to_owned())
+    Ok(form.clone())
 }
 
 pub(super) fn decode_mcp_arguments_to_value(

@@ -880,6 +880,7 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
                 "action_form_ref": action_form_ref,
                 "task_id": task_id,
                 "checkpoint_operation": {"operation": "create"},
+                "scope_revision": 0,
                 "baseline_ref": null
             }),
         )
@@ -887,7 +888,8 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     let response =
         structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
 
-    assert!(response["selected_variant"].is_null());
+    assert_eq!(response["code"], "ACTION_FORM_ARGUMENT_MISMATCH");
+    assert_eq!(response["selected_variant"], "create_initial");
     assert_eq!(response["authoritative_context"]["context_loaded"], true);
     assert_eq!(
         response["authoritative_context"]["action_form_catalog"]["forms"][0]["method"],
@@ -898,13 +900,18 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
         .is_some_and(|paths| paths.contains(&json!("/checkpoint_operation/operation"))));
     assert_eq!(response["failure"]["reached_core"], false);
     assert_eq!(response["failure"]["core_state_unchanged"], true);
+    assert!(response["canonical_example"].is_null());
     assert_eq!(
-        response["canonical_example"]["discriminator_path"],
+        response["action_form_argument_mismatches"][0]["path"],
         "/checkpoint_operation/operation"
     );
     assert_eq!(
-        response["canonical_example"]["variants"][0]["value"],
+        response["action_form_argument_mismatches"][0]["expected_value"],
         "create_initial"
+    );
+    assert_eq!(
+        response["action_form_argument_mismatches"][0]["received_value"],
+        "create"
     );
     assert_eq!(
         response["issues"][0]["path"],
@@ -913,40 +920,17 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     assert_eq!(
         response["issues"].as_array().map(Vec::len),
         Some(1),
-        "an invalid checkpoint discriminator must suppress every unselected or advisor field: {}",
+        "one altered fixed discriminator must produce one mismatch: {}",
         response["issues"]
     );
     let issue = tool_error_issue(
         &response,
         "/checkpoint_operation/operation",
-        "MCP_ARGUMENT_ENUM_VALUE",
+        "ACTION_FORM_ARGUMENT_MISMATCH",
     );
-    assert_eq!(
-        issue["allowed_values"],
-        json!(["create_initial", "replace_current"])
-    );
-    assert_eq!(
-        issue["expected_semantic_type"],
-        "ShapingCheckpointOperation"
-    );
-    assert!(response["issues"]
+    assert!(issue["allowed_values"]
         .as_array()
-        .expect("issues")
-        .iter()
-        .all(|issue| {
-            ![
-                "expected_current_checkpoint_id",
-                "retired_non_authorizing_request_refs",
-                "carry_forward_application_refs",
-                "stale_authority_actions",
-            ]
-            .iter()
-            .any(|field| {
-                issue["path"]
-                    .as_str()
-                    .is_some_and(|path| path.contains(field))
-            })
-        }));
+        .is_some_and(Vec::is_empty));
     assert!(response["issues"]
         .as_array()
         .expect("issues")
@@ -1057,13 +1041,6 @@ fn nested_shaping_call_errors_stay_inside_the_selected_local_branch() -> Result<
             "/gaps/0/user_action/action",
             "judgment_kind",
             "/gaps/0/user_action/action/judgment_kind",
-        ),
-        (
-            "stale-authority",
-            "exact_stale_authority_recovery",
-            "/checkpoint_operation/stale_authority_actions/0",
-            "stale_application_ref",
-            "/checkpoint_operation/stale_authority_actions/0/stale_application_ref",
         ),
     ] {
         let fixture = CoreFixture::new(&format!("mcp-nested-{label}"))?;
@@ -1674,16 +1651,19 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     let capture_adapter = adapter(&capture_fixture)?;
     let (capture_task_id, capture_change_unit_id, _) =
         create_implementation_task(&capture_fixture)?;
-    let capture_scope_action_form_ref =
-        action_form_ref_for_method(&capture_adapter, &capture_task_id, MethodName::UpdateScope)?;
-    capture_adapter.call_tool(
-        AgentToolId::UPDATE_SCOPE.wire_name(),
+    let capture_scope_arguments = bind_action_form_arguments(
+        &capture_adapter,
+        &capture_task_id,
+        MethodName::UpdateScope,
         json!({
-            "action_form_ref": capture_scope_action_form_ref,
             "task_id": capture_task_id,
             "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
             "change_unit": {"operation": "keep_current"}
         }),
+    )?;
+    capture_adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        capture_scope_arguments,
     )?;
     let capture_status = capture_adapter.call_tool(
         AgentToolId::STATUS.wire_name(),

@@ -45,9 +45,10 @@ non-null `baseline_ref`, 완전한 `user_action_resolution_ids`, `result_summary
 `result_refs`와 `evidence_refs`, `residual_risks`, `recovery_constraints`를 직접 받습니다.
 바깥쪽 operation union은 없습니다.
 
-현재 MCP action-form catalog의 이 메서드 entry는 프로젝트, Task, checkpoint, 비쓰기
-Change Unit, 범위 리비전, 기준선, 완전한 현재 resolution ID, 예상 상태 버전을
-고정합니다. MCP는 현재 workflow catalog에 이 메서드가 있을 때만 허용하며 Core 호출
+현재 MCP action-form catalog의 이 메서드 entry는 Task, checkpoint, 비쓰기 Change Unit,
+범위 리비전, 기준선, 완전한 현재 resolution ID를 호출자에게 보이는 고정 인자로
+제공합니다. 프로젝트와 예상 상태 버전은 adapter가 주입하며 일반 binder는 Core 전에
+모든 고정 값의 정확한 일치를 요구합니다. MCP는 현재 workflow catalog에 이 메서드가 있을 때만 허용하며 Core 호출
 전에 이 메서드별 form의 정확한 `action_form_ref`가 필요합니다. 결과 summary, 결과 ref, evidence ref, residual risk,
 recovery constraint만 에이전트가 작성하며 권한 좌표를 다시 조립하지 않습니다.
 

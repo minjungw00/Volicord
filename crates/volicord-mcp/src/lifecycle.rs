@@ -190,14 +190,14 @@ pub(crate) struct MessageTransition {
 #[derive(Debug)]
 pub(crate) struct SessionTransitionFailure {
     pub(crate) state: Box<SessionState>,
-    pub(crate) error: McpAdapterError,
+    pub(crate) error: Box<McpAdapterError>,
 }
 
 impl SessionTransitionFailure {
     fn new(state: SessionState, error: McpAdapterError) -> Self {
         Self {
             state: Box::new(state),
-            error,
+            error: Box::new(error),
         }
     }
 }

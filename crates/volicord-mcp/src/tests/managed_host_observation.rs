@@ -274,10 +274,20 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
     let fixture = CoreFixture::new("mcp-nondesignated-read-only-round-trip")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, _, _) = create_implementation_task(&fixture)?;
-    let committed = setup_adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))?;
+    let update_arguments = bind_action_form_arguments(
+        &setup_adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        json!({
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "change_unit": {"operation": "keep_current"}
+        }),
+    )?;
+    let committed =
+        setup_adapter.call_tool(AgentToolId::UPDATE_SCOPE.wire_name(), update_arguments)?;
     let operation_result_ref = committed
         .operation_result_ref
-        .ok_or("intake operation result ref")?;
+        .ok_or("update_scope operation result ref")?;
     let check_close_action_form_ref =
         action_form_ref_for_method(&setup_adapter, &task_id, MethodName::CheckClose)?;
     let input = Cursor::new(json_lines(&[

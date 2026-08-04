@@ -48,9 +48,11 @@ non-write `change_unit_id`, `scope_revision`, non-null `baseline_ref`, complete
 `evidence_refs`, `residual_risks`, and `recovery_constraints`. There is no
 outer operation union.
 
-The method's entry in the current MCP action-form catalog fixes project, Task, checkpoint, non-write Change
-Unit, scope revision, baseline, complete current resolution IDs, and expected
-state version. MCP admits this method only when it is present in the current
+The method's entry in the current MCP action-form catalog exposes Task,
+checkpoint, non-write Change Unit, scope revision, baseline, and complete
+current resolution IDs as caller-visible fixed arguments. Project and expected
+state version are adapter-injected. The generic binder requires every fixed
+value to match exactly before Core. MCP admits this method only when it is present in the current
 workflow catalog and requires this method-specific form's exact
 `action_form_ref` before Core invocation.
 Only result summary, result refs, evidence refs, residual risks, and recovery

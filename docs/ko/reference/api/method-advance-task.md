@@ -33,6 +33,11 @@ Unit, 현재 scope revision과 baseline, 이 메서드가 담당하는 제품·�
 현재 User Channel resolution ID를 제공합니다. Envelope는 현재 기대 state version을
 제공합니다.
 
+현재 MCP action form은 이 Task, checkpoint, Change Unit, scope revision, baseline,
+resolution 좌표를 호출자에게 보이는 고정 인자로 제공합니다. 이 메서드에는 에이전트 작성
+입력 slot이 없습니다. 프로젝트와 예상 상태 버전은 adapter가 주입하고 일반 binder는
+Core 전에 모든 고정 값의 정확한 일치를 요구합니다.
+
 Core는 `mode=work`, `work_phase=shaping`, 현재 `ready` 체크포인트, 일치하는
 Task/checkpoint scope revision, 호환되는 Task/checkpoint/Change Unit baseline 좌표,
 정확한 현재 활성 Change Unit과 recovery constraint 부재를 요구합니다. 모든 범위 owner

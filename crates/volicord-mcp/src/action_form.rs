@@ -3,8 +3,9 @@
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use volicord_mcp_wire::{
-    mcp_tool_contract, RetryContract, WorkflowActionForm, WorkflowActionFormCatalog,
-    WorkflowActionInput,
+    action_form_request_projection, mcp_tool_contract, McpActionFormArgumentMismatch,
+    RetryContract, WorkflowActionForm, WorkflowActionFormCatalog, WorkflowActionInput,
+    MAX_VALIDATION_ISSUES,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
@@ -24,6 +25,8 @@ struct WorkflowActionFormDigestBasis<'a> {
     selected_semantic_variant: &'a str,
     expected_state_version: u64,
     fixed_authority_coordinates: &'a WorkflowActionAuthorityCoordinates,
+    fixed_arguments: &'a JsonObject,
+    fixed_argument_paths: &'a [String],
     semantic_schema_digest: &'a RequestHash,
 }
 
@@ -114,7 +117,7 @@ fn checkpoint_operation(
 }
 
 fn project_fixed_arguments(
-    project_id: &ProjectId,
+    _project_id: &ProjectId,
     coordinates: &WorkflowActionAuthorityCoordinates,
 ) -> (
     TaskId,
@@ -124,10 +127,6 @@ fn project_fixed_arguments(
     Vec<WorkflowActionInput>,
 ) {
     let mut fixed = Map::new();
-    fixed.insert(
-        "project_selector".to_owned(),
-        Value::String(project_id.as_str().to_owned()),
-    );
     let mut suggested = Map::new();
     match coordinates {
         WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
@@ -138,21 +137,6 @@ fn project_fixed_arguments(
         } => {
             let (operation_value, mut conditional_inputs) = checkpoint_operation(operation);
             fixed.insert("task_id".to_owned(), json!(task_id));
-            if let WorkflowCheckpointActionCoordinates::ReplaceCurrent {
-                current_checkpoint_ref,
-                predecessor_checkpoint_ref,
-                ..
-            } = operation
-            {
-                fixed.insert(
-                    "current_checkpoint_ref".to_owned(),
-                    json!(current_checkpoint_ref),
-                );
-                fixed.insert(
-                    "predecessor_checkpoint_ref".to_owned(),
-                    json!(predecessor_checkpoint_ref),
-                );
-            }
             fixed.insert("checkpoint_operation".to_owned(), operation_value);
             fixed.insert("scope_revision".to_owned(), json!(scope_revision));
             fixed.insert("baseline_ref".to_owned(), json!(baseline_ref));
@@ -177,13 +161,11 @@ fn project_fixed_arguments(
         }
         WorkflowActionAuthorityCoordinates::UpdateScope {
             task_id,
-            baseline_ref,
             current_change_unit_id,
             related_scope_decision_refs,
             ..
         } => {
             fixed.insert("task_id".to_owned(), json!(task_id));
-            fixed.insert("baseline_ref".to_owned(), json!(baseline_ref));
             fixed.insert(
                 "related_scope_decision_refs".to_owned(),
                 Value::Array(
@@ -193,27 +175,27 @@ fn project_fixed_arguments(
                         .collect(),
                 ),
             );
-            let change_unit_inputs = if current_change_unit_id.as_ref().is_some() {
+            let mut required = vec![input("/baseline_ref", "string | null")];
+            if current_change_unit_id.as_ref().is_some() {
                 fixed.insert(
                     "change_unit".to_owned(),
                     json!({ "operation": "keep_current" }),
                 );
-                Vec::new()
             } else {
                 fixed.insert(
                     "change_unit".to_owned(),
                     json!({ "operation": "create_current" }),
                 );
-                vec![
+                required.extend([
                     input("/change_unit/scope_summary", "string"),
                     input("/change_unit/affected_paths", "array<string>"),
-                ]
-            };
+                ]);
+            }
             (
                 task_id.clone(),
                 fixed,
                 suggested,
-                change_unit_inputs,
+                required,
                 vec![
                     input("/change_unit/effect_contract", "ChangeUnitEffectContract"),
                     input("/goal_summary", "string | null"),
@@ -450,26 +432,125 @@ pub(crate) fn workflow_action_form(
     let semantic_schema_digest = canonical_json_sha256(&descriptor.input_schema()).ok()?;
     let (task_id, fixed_arguments, suggested_arguments, required_inputs, optional_inputs) =
         project_fixed_arguments(project_id, &intent.fixed_authority_coordinates);
+    let selected_semantic_variant = selected_variant(&intent.fixed_authority_coordinates);
+    let projection = action_form_request_projection(intent.method, selected_semantic_variant)?;
+    let fixed_argument_paths = projection
+        .concrete_fixed_argument_paths(&fixed_arguments)
+        .ok()?;
+    let fixed = Value::Object(fixed_arguments.clone());
+    if fixed_argument_paths.iter().any(|path| {
+        fixed.pointer(path).is_none_or(|value| {
+            !descriptor
+                .input_descriptor()
+                .accepts_value_at_pointer(path, value)
+        })
+    }) {
+        return None;
+    }
     let form_ref = canonical_json_sha256(&WorkflowActionFormDigestBasis {
         domain: "volicord.mcp-workflow-action-form",
         project_id,
         task_id: &task_id,
         method: intent.method,
-        selected_semantic_variant: selected_variant(&intent.fixed_authority_coordinates),
+        selected_semantic_variant,
         expected_state_version: intent.expected_state_version,
         fixed_authority_coordinates: &intent.fixed_authority_coordinates,
+        fixed_arguments: &fixed_arguments,
+        fixed_argument_paths: &fixed_argument_paths,
         semantic_schema_digest: &semantic_schema_digest,
     })
     .ok()?;
     Some(WorkflowActionForm {
         form_ref,
         method: intent.method,
+        selected_semantic_variant: selected_semantic_variant.to_owned(),
         role: intent.role,
         expected_state_version: intent.expected_state_version,
         fixed_arguments,
+        fixed_argument_paths,
         suggested_arguments,
         required_inputs,
         optional_inputs,
+    })
+}
+
+pub(crate) struct FixedArgumentBindingResult {
+    pub mismatches: Vec<McpActionFormArgumentMismatch>,
+    pub truncated: bool,
+}
+
+/// Validates every current fixed authority value through one descriptor-driven binder.
+pub(crate) fn bind_fixed_arguments(
+    form: &WorkflowActionForm,
+    submitted: &Value,
+) -> Result<FixedArgumentBindingResult, String> {
+    let projection =
+        action_form_request_projection(form.method, form.selected_semantic_variant.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "{} {} has no request projection descriptor",
+                    form.method.as_str(),
+                    form.selected_semantic_variant
+                )
+            })?;
+    let expected_paths = projection.concrete_fixed_argument_paths(&form.fixed_arguments)?;
+    if expected_paths != form.fixed_argument_paths {
+        return Err(format!(
+            "{} current form fixed path set disagrees with its request projection",
+            form.method.as_str()
+        ));
+    }
+
+    let fixed = Value::Object(form.fixed_arguments.clone());
+    let tool = AgentToolId::from_method(form.method)
+        .ok_or_else(|| format!("{} has no canonical MCP tool", form.method.as_str()))?;
+    let request = mcp_tool_contract(tool).ok_or_else(|| {
+        format!(
+            "{} has no semantic request descriptor",
+            form.method.as_str()
+        )
+    })?;
+    let mut mismatches = Vec::new();
+    for path in &form.fixed_argument_paths {
+        let expected_value = fixed.pointer(path).ok_or_else(|| {
+            format!(
+                "{} current form omits fixed value {}",
+                form.method.as_str(),
+                path
+            )
+        })?;
+        if !request
+            .input_descriptor()
+            .accepts_value_at_pointer(path, expected_value)
+        {
+            return Err(format!(
+                "{} fixed value at {} does not match its request semantic type",
+                form.method.as_str(),
+                path
+            ));
+        }
+        let received = submitted.pointer(path);
+        if received == Some(expected_value) {
+            continue;
+        }
+        mismatches.push(McpActionFormArgumentMismatch {
+            method: form.method,
+            form_ref: form.form_ref.clone(),
+            path: path.clone(),
+            expected_value: expected_value.clone(),
+            received_value: received.cloned().unwrap_or(Value::Null),
+            received_value_present: received.is_some(),
+            state_change_applied: false,
+            reached_core: false,
+            current_method_form: form.clone(),
+        });
+    }
+    mismatches.sort_by(|left, right| left.path.cmp(&right.path));
+    let truncated = mismatches.len() > MAX_VALIDATION_ISSUES;
+    mismatches.truncate(MAX_VALIDATION_ISSUES);
+    Ok(FixedArgumentBindingResult {
+        mismatches,
+        truncated,
     })
 }
 
@@ -504,6 +585,7 @@ pub(crate) fn retry_contract(
         method: form.method,
         action_form_ref: RequiredNullable::some(form.form_ref.clone()),
         fixed_arguments: form.fixed_arguments.clone(),
+        fixed_argument_paths: form.fixed_argument_paths.clone(),
         invalid_paths,
         required_inputs: form.required_inputs.clone(),
         action_form_catalog: catalog.clone(),
@@ -519,7 +601,7 @@ mod tests {
         BaselineRef, ChangeUnitId, RecordId, ShapingCheckpointId, UserActionResolutionId,
     };
     use volicord_types::schema::{StateRecordRef, WorkflowActionRole};
-    use volicord_types::values::StateRecordKind;
+    use volicord_types::values::{RunKind, StateRecordKind};
 
     fn reference(
         kind: StateRecordKind,
@@ -568,7 +650,6 @@ mod tests {
         assert_eq!(
             Value::Object(form.fixed_arguments),
             json!({
-                "project_selector": "prj_action_form",
                 "task_id": "task_action_form",
                 "checkpoint_operation": { "operation": "create_initial" },
                 "scope_revision": 0,
@@ -650,8 +731,12 @@ mod tests {
 
         let form = workflow_action_form(&project_id, &intent).expect("replacement form");
         let fixed = Value::Object(form.fixed_arguments);
-        assert_eq!(fixed["current_checkpoint_ref"], json!(current));
-        assert_eq!(fixed["predecessor_checkpoint_ref"], json!(predecessor));
+        assert!(fixed.get("current_checkpoint_ref").is_none());
+        assert!(fixed.get("predecessor_checkpoint_ref").is_none());
+        assert_eq!(
+            fixed["checkpoint_operation"]["expected_current_checkpoint_id"],
+            json!(current.record_id.as_str())
+        );
         assert_eq!(
             fixed["checkpoint_operation"]["retired_non_authorizing_request_refs"],
             json!([retired])
@@ -698,5 +783,192 @@ mod tests {
         next.expected_state_version += 1;
         let next_form = workflow_action_form(&project_id, &next).expect("next form");
         assert_ne!(form.form_ref, next_form.form_ref);
+    }
+
+    fn altered(value: &Value) -> Value {
+        match value {
+            Value::Null => json!("null"),
+            Value::Bool(value) => json!(!value),
+            Value::Number(value) => json!(value.as_u64().unwrap_or_default() + 1),
+            Value::String(value) => json!(format!("{value}_altered")),
+            Value::Array(values) if values.is_empty() => json!([null]),
+            Value::Array(_) => json!([]),
+            Value::Object(values) => {
+                let mut values = values.clone();
+                values.insert("altered".to_owned(), Value::Bool(true));
+                Value::Object(values)
+            }
+        }
+    }
+
+    fn remove_pointer(value: &mut Value, pointer: &str) {
+        let (parent, leaf) = pointer
+            .rsplit_once('/')
+            .expect("fixed pointer must have a parent");
+        let leaf = leaf.replace("~1", "/").replace("~0", "~");
+        let parent = value
+            .pointer_mut(parent)
+            .expect("fixed pointer parent must exist");
+        match parent {
+            Value::Object(object) => {
+                object.remove(&leaf);
+            }
+            Value::Array(array) => {
+                array.remove(leaf.parse::<usize>().expect("array pointer index"));
+            }
+            _ => panic!("fixed pointer parent must be a container"),
+        }
+    }
+
+    #[test]
+    fn every_state_bound_form_binds_and_rejects_each_altered_or_omitted_fixed_value() {
+        let project_id = ProjectId::new("prj_binding_table");
+        let task_id = TaskId::new("task_binding_table");
+        let checkpoint_ref = reference(
+            StateRecordKind::ShapingCheckpoint,
+            "checkpoint_binding_table",
+            &project_id,
+            &task_id,
+            20,
+        );
+        let resolution_ref = reference(
+            StateRecordKind::UserActionResolution,
+            "resolution_binding_table",
+            &project_id,
+            &task_id,
+            20,
+        );
+        let application_ref = reference(
+            StateRecordKind::ShapingDecisionApplication,
+            "application_binding_table",
+            &project_id,
+            &task_id,
+            20,
+        );
+        let baseline = BaselineRef::new("baseline_binding_table");
+        let change_unit = ChangeUnitId::new("change_unit_binding_table");
+        let coordinates = vec![
+            WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                task_id: task_id.clone(),
+                checkpoint_operation: WorkflowCheckpointActionCoordinates::CreateInitial,
+                scope_revision: 4,
+                baseline_ref: RequiredNullable::null(),
+            },
+            WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                task_id: task_id.clone(),
+                checkpoint_operation: WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                    current_checkpoint_ref: checkpoint_ref.clone(),
+                    predecessor_checkpoint_ref: RequiredNullable::null(),
+                    retired_non_authorizing_request_refs: vec![resolution_ref.clone()],
+                    carry_forward_application_refs: vec![application_ref.clone()],
+                    stale_application_refs: vec![application_ref.clone()],
+                },
+                scope_revision: 4,
+                baseline_ref: RequiredNullable::some(baseline.clone()),
+            },
+            WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id: task_id.clone(),
+                scope_revision: 4,
+                baseline_ref: RequiredNullable::some(baseline.clone()),
+                current_change_unit_id: RequiredNullable::some(change_unit.clone()),
+                related_scope_decision_refs: vec![resolution_ref],
+            },
+            WorkflowActionAuthorityCoordinates::FinalizeAdvice {
+                task_id: task_id.clone(),
+                shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_binding_table"),
+                change_unit_id: change_unit.clone(),
+                scope_revision: 4,
+                baseline_ref: RequiredNullable::some(baseline.clone()),
+                user_action_resolution_ids: vec![UserActionResolutionId::new(
+                    "resolution_binding_table",
+                )],
+            },
+            WorkflowActionAuthorityCoordinates::AdvanceTask {
+                task_id: task_id.clone(),
+                shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_binding_table"),
+                change_unit_id: change_unit.clone(),
+                scope_revision: 4,
+                baseline_ref: RequiredNullable::some(baseline.clone()),
+                user_action_resolution_ids: Vec::new(),
+            },
+            WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture {
+                task_id: task_id.clone(),
+                change_unit_id: change_unit.clone(),
+                baseline_ref: baseline.clone(),
+            },
+            WorkflowActionAuthorityCoordinates::PrepareWrite {
+                task_id: task_id.clone(),
+                change_unit_id: change_unit.clone(),
+                baseline_ref: baseline.clone(),
+            },
+            WorkflowActionAuthorityCoordinates::StageArtifact {
+                task_id: task_id.clone(),
+            },
+            WorkflowActionAuthorityCoordinates::RecordRun {
+                task_id: task_id.clone(),
+                change_unit_id: change_unit.clone(),
+                baseline_ref: baseline,
+                run_kind: RunKind::Implementation,
+            },
+            WorkflowActionAuthorityCoordinates::RequestUserAction {
+                task_id: task_id.clone(),
+                change_unit_id: RequiredNullable::some(change_unit),
+            },
+            WorkflowActionAuthorityCoordinates::ReconcileChanges {
+                task_id: task_id.clone(),
+            },
+            WorkflowActionAuthorityCoordinates::CheckClose {
+                task_id: task_id.clone(),
+            },
+            WorkflowActionAuthorityCoordinates::CloseTask { task_id },
+        ];
+
+        for fixed_authority_coordinates in coordinates {
+            let method = fixed_authority_coordinates.method();
+            let form = workflow_action_form(
+                &project_id,
+                &WorkflowActionIntent {
+                    method,
+                    role: WorkflowActionRole::Allowed,
+                    expected_state_version: 21,
+                    fixed_authority_coordinates,
+                    required_refs: Vec::new(),
+                },
+            )
+            .expect("current form");
+            let exact = Value::Object(form.fixed_arguments.clone());
+            assert!(
+                bind_fixed_arguments(&form, &exact)
+                    .expect("binding contract")
+                    .mismatches
+                    .is_empty(),
+                "{} exact fixed arguments",
+                method.as_str()
+            );
+
+            for path in &form.fixed_argument_paths {
+                let expected = exact.pointer(path).expect("fixed value").clone();
+                let mut mutated = exact.clone();
+                *mutated.pointer_mut(path).expect("fixed value") = altered(&expected);
+                let mismatch = bind_fixed_arguments(&form, &mutated)
+                    .expect("binding contract")
+                    .mismatches;
+                assert_eq!(mismatch.len(), 1, "{} {path}", method.as_str());
+                assert_eq!(mismatch[0].path, *path);
+                assert_eq!(mismatch[0].expected_value, expected);
+                assert!(mismatch[0].received_value_present);
+                assert!(!mismatch[0].reached_core);
+                assert!(!mismatch[0].state_change_applied);
+
+                let mut omitted = exact.clone();
+                remove_pointer(&mut omitted, path);
+                let mismatch = bind_fixed_arguments(&form, &omitted)
+                    .expect("binding contract")
+                    .mismatches;
+                assert_eq!(mismatch.len(), 1, "{} omitted {path}", method.as_str());
+                assert_eq!(mismatch[0].path, *path);
+                assert!(!mismatch[0].received_value_present);
+            }
+        }
     }
 }
