@@ -577,50 +577,25 @@ declare_method_result! {
     }
 }
 
-/// `volicord.record_shaping` request params.
+/// `volicord.record_shaping_checkpoint` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct RecordShapingRequest {
+pub struct RecordShapingCheckpointRequest {
     pub envelope: ToolEnvelope,
     pub task_id: TaskId,
-    pub operation: RecordShapingOperation,
+    pub checkpoint_operation: ShapingCheckpointOperation,
+    pub scope_revision: u64,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub summary: String,
+    pub implementation_boundary: RequiredNullable<String>,
+    pub gaps: Vec<ShapingGapInput>,
+    pub source_refs: Vec<SourceRef>,
+    pub evidence_refs: Vec<StateRecordRef>,
 }
 
-/// The explicit operation owned by `volicord.record_shaping`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
-pub enum RecordShapingOperation {
-    /// Records or replaces the current shaping checkpoint without establishing
-    /// a close basis.
-    RecordCheckpoint {
-        checkpoint_operation: ShapingCheckpointOperation,
-        scope_revision: u64,
-        baseline_ref: RequiredNullable<BaselineRef>,
-        summary: String,
-        implementation_boundary: RequiredNullable<String>,
-        gaps: Vec<ShapingGapInput>,
-        source_refs: Vec<SourceRef>,
-        evidence_refs: Vec<StateRecordRef>,
-    },
-    /// Applies exact current advisor decisions and establishes the advice result
-    /// as the current close basis without replacing its checkpoint.
-    FinalizeAdvice {
-        shaping_checkpoint_id: ShapingCheckpointId,
-        change_unit_id: ChangeUnitId,
-        scope_revision: u64,
-        baseline_ref: BaselineRef,
-        user_action_resolution_ids: Vec<UserActionResolutionId>,
-        result_summary: String,
-        result_refs: Vec<StateRecordRef>,
-        evidence_refs: Vec<StateRecordRef>,
-        residual_risks: Vec<ResidualRiskInput>,
-        recovery_constraints: Vec<String>,
-    },
-}
-
-impl MethodOperationCategory for RecordShapingRequest {
+impl MethodOperationCategory for RecordShapingCheckpointRequest {
     fn method_name(&self) -> MethodName {
-        MethodName::RecordShaping
+        MethodName::RecordShapingCheckpoint
     }
 
     fn operation_category(&self) -> OperationCategory {
@@ -629,12 +604,49 @@ impl MethodOperationCategory for RecordShapingRequest {
 }
 
 declare_method_result! {
-    /// `volicord.record_shaping` method result branch and its method-specific fields.
-    pub struct RecordShapingResult from RecordShapingResultFields with RecordShapingResultBase {
+    /// `volicord.record_shaping_checkpoint` method result branch and its method-specific fields.
+    pub struct RecordShapingCheckpointResult from RecordShapingCheckpointResultFields with RecordShapingCheckpointResultBase {
         pub shaping_checkpoint: ShapingCheckpoint,
         pub created_user_action_request_refs: Vec<StateRecordRef>,
-        pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
         pub shaping_authority_reauthorization_refs: Vec<StateRecordRef>,
+        pub workflow: WorkflowProjection,
+        pub state: StateSummary,
+    }
+}
+
+/// `volicord.finalize_advice` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FinalizeAdviceRequest {
+    pub envelope: ToolEnvelope,
+    pub task_id: TaskId,
+    pub shaping_checkpoint_id: ShapingCheckpointId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    pub user_action_resolution_ids: Vec<UserActionResolutionId>,
+    pub result_summary: String,
+    pub result_refs: Vec<StateRecordRef>,
+    pub evidence_refs: Vec<StateRecordRef>,
+    pub residual_risks: Vec<ResidualRiskInput>,
+    pub recovery_constraints: Vec<String>,
+}
+
+impl MethodOperationCategory for FinalizeAdviceRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::FinalizeAdvice
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::AgentWorkflow
+    }
+}
+
+declare_method_result! {
+    /// `volicord.finalize_advice` method result branch and its method-specific fields.
+    pub struct FinalizeAdviceResult from FinalizeAdviceResultFields with FinalizeAdviceResultBase {
+        pub shaping_checkpoint: ShapingCheckpoint,
+        pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
         pub workflow: WorkflowProjection,
         pub state: StateSummary,
     }
@@ -1580,16 +1592,28 @@ declare_public_method_contracts! {
         response_contract: "api.method.update_scope.response",
         committed_result_replay: true
     },
-    RecordShaping {
-        request: RecordShapingRequest,
-        fields: RecordShapingResultFields,
-        base: RecordShapingResultBase,
-        result: RecordShapingResult,
-        response: RecordShapingResponse,
+    RecordShapingCheckpoint {
+        request: RecordShapingCheckpointRequest,
+        fields: RecordShapingCheckpointResultFields,
+        base: RecordShapingCheckpointResultBase,
+        result: RecordShapingCheckpointResult,
+        response: RecordShapingCheckpointResponse,
         dry_run_policy: Preview,
         result_effects: [CoreCommitted],
-        request_contract: "api.method.record_shaping.request",
-        response_contract: "api.method.record_shaping.response",
+        request_contract: "api.method.record_shaping_checkpoint.request",
+        response_contract: "api.method.record_shaping_checkpoint.response",
+        committed_result_replay: true
+    },
+    FinalizeAdvice {
+        request: FinalizeAdviceRequest,
+        fields: FinalizeAdviceResultFields,
+        base: FinalizeAdviceResultBase,
+        result: FinalizeAdviceResult,
+        response: FinalizeAdviceResponse,
+        dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
+        request_contract: "api.method.finalize_advice.request",
+        response_contract: "api.method.finalize_advice.response",
         committed_result_replay: true
     },
     AdvanceTask {

@@ -65,7 +65,7 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
 
 ## 목적
 
-`volicord.record_run`은 실행과 그 증거를 기록합니다. shaping 분석은 `volicord.record_shaping`으로 기록합니다.
+`volicord.record_run`은 실행과 그 증거를 기록합니다. shaping 분석은 `volicord.record_shaping_checkpoint`으로 기록합니다.
 
 현재 저장된 `Task.mode`, `work_phase`, 요청한 `kind`는 아래 완전한 행렬과
 일치해야 합니다.
@@ -76,7 +76,7 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
 | `work` | `implementation` | `implementation` |
 
 Core는 그 밖의 모드, 단계, 종류 조합을 커밋 전에 거절합니다. Advisor 결과는 정확한
-지속 shaping checkpoint에서 `volicord.record_shaping(operation=finalize_advice)`로만
+지속 shaping checkpoint에서 `volicord.finalize_advice`로만
 최종화합니다. work shaping 결과는 `volicord.advance_task` 전까지 checkpoint 권한으로
 남습니다. advisor Run fallback은 없습니다.
 

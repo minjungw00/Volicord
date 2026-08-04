@@ -279,9 +279,9 @@ sensitive
 
 | `Task.mode` | `work_phase` | 지원 권한 | 성공한 `intent=complete` 결과 |
 |---|---|---|---|
-| `advisor` | `shaping` | `volicord.record_shaping` | `advice_only` |
+| `advisor` | `shaping` | `volicord.record_shaping_checkpoint` 후 `volicord.finalize_advice` | `advice_only` |
 | `direct` | `implementation` | `direct` | `completed` |
-| `work` | `shaping` | `volicord.record_shaping` 후 `volicord.advance_task` | `completed` |
+| `work` | `shaping` | `volicord.record_shaping_checkpoint` 후 `volicord.advance_task` | `completed` |
 | `work` | `implementation` | `implementation` | `completed` |
 
 `RunKind`는 `direct`와 `implementation`만 포함합니다. Advisor Task는 shaping checkpoint를 사용하며 `prepare_write`나 쓰기 티켓을 사용하지 않습니다.
@@ -358,13 +358,13 @@ work + user_product_decision_required -> volicord.advance_task
 work + user_technical_decision_required -> volicord.advance_task
 advisor|work + user_scope_decision_required -> volicord.update_scope
 work + sensitive_approval_required -> volicord.advance_task
-advisor + user_product_decision_required -> volicord.record_shaping
-advisor + user_technical_decision_required -> volicord.record_shaping
-advisor + sensitive_approval_required -> volicord.record_shaping
+advisor + user_product_decision_required -> volicord.finalize_advice
+advisor + user_technical_decision_required -> volicord.finalize_advice
+advisor + sensitive_approval_required -> volicord.finalize_advice
 ```
 
 `ShapingDecisionApplicationOwner` 값은 `volicord.update_scope`,
-`volicord.record_shaping`, `volicord.advance_task`뿐입니다.
+`volicord.finalize_advice`, `volicord.advance_task`뿐입니다.
 
 `ShapingDecisionApplication.authority_status`는 정확히 `current`, `stale`,
 `superseded`를 사용합니다. `current`는 `stale` 또는 `superseded`로 전이할 수 있고,
@@ -406,7 +406,7 @@ inconsistent_authority_state
 이 값은 현재 진행만 설명합니다. 닫기 준비 차단 사유는 자체 로컬 범주와 해결 행동을
 유지하며 workflow kind나 required action을 선택하지 않습니다.
 `application_authority_stale`은 advisor 또는 work shaping에서 `shaping_required`,
-`next_actor=agent`, `required_action=volicord.record_shaping`을 선택합니다. Work
+`next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`을 선택합니다. Work
 implementation 중 stale shaping 권한을 만들 update는 mutation 전에 거부되고
 close/supersede 복구로 `volicord.close_task`를 지정합니다. `status`를 복구로 선택하거나
 Task를 shaping으로 되돌리지 않습니다.

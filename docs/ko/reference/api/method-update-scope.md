@@ -170,7 +170,7 @@ application ref를 제시하고 Task가 소유된 close/supersede 전이를 통�
 
 거부, 보류, 만료, 불일치 상태의 shaping 결정은 scope 권한을 부여하지 않습니다. 이
 메서드는 현재 workflow가 `decision_recovery_required`이고 recovery owner가
-`volicord.record_shaping`인 no-effect workflow 거부를 반환합니다. 의미상 no-op인 scope
+`volicord.record_shaping_checkpoint`인 no-effect workflow 거부를 반환합니다. 의미상 no-op인 scope
 요청도 이 gate를 우회할 수 없습니다.
 
 ## 성공 결과
@@ -391,7 +391,7 @@ state:
     branch_ref: "refs/heads/filter-scope"
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 19, blocking_reason: no_current_checkpoint, checkpoint: null}
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping_checkpoint, allowed_actions: [volicord.record_shaping_checkpoint, volicord.status], required_refs: [], expected_state_version: 19, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

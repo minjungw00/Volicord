@@ -1,8 +1,9 @@
 # Storage Effects
 
-`volicord.record_shaping` commits either a checkpoint aggregate or exact advisor
-finalization, with its event, replay result, and one state-version increment in
-a single transaction. `volicord.advance_task` atomically applies its exact
+`volicord.record_shaping_checkpoint` commits a checkpoint aggregate, while
+`volicord.finalize_advice` commits exact advisor finalization. Each includes its
+event, replay result, and one state-version increment in a single transaction.
+`volicord.advance_task` atomically applies its exact
 selected work shaping decisions with the explicit Task phase transition and
 event/replay result. Neither method writes Product Repository files or issues a
 write ticket.
@@ -528,7 +529,8 @@ This table summarizes persistence effects. Method behavior and response unions r
 |---|---|---|
 | `volicord.intake` | creates task and shaping records | See [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | updates current scope records | See [`volicord.update_scope`](#volicordupdate_scope) |
-| `volicord.record_shaping` | atomically replaces current shaping, retires or reissues exact stale authority, and creates linked UserAction requests | See [`volicord.record_shaping`](#volicordrecord_shaping) |
+| `volicord.record_shaping_checkpoint` | atomically replaces current shaping, retires or reissues exact stale authority, and creates linked UserAction requests | See [`volicord.record_shaping_checkpoint`](#volicordrecord_shaping_checkpoint) |
+| `volicord.finalize_advice` | applies exact current advisor decisions and establishes the checkpoint-backed close basis | See [`volicord.finalize_advice`](#volicordfinalize_advice) |
 | `volicord.advance_task` | explicitly transitions one work Task from shaping to implementation | See [`volicord.advance_task`](#volicordadvance_task) |
 | `volicord.status` | read-style response | See [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | reads immutable historical replay bytes without storage effects | See [`volicord.get_operation_result`](#volicordget_operation_result) |
@@ -621,8 +623,8 @@ Owner links:
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="volicordrecord_shaping"></a>
-### `volicord.record_shaping`
+<a id="volicordrecord_shaping_checkpoint"></a>
+### `volicord.record_shaping_checkpoint`
 
 A committed `dry_run=false` call:
 
@@ -645,19 +647,12 @@ A committed `dry_run=false` call:
   `shaping_checkpoint_gaps` rows;
 - atomically creates one pending `UserActionRequest` and one exact
   `shaping_checkpoint_user_actions` link for every user-owned gap;
-- for `operation=finalize_advice`, verifies the exact current advisor Task,
-  ready checkpoint, compatible non-write Change Unit, scope, baseline, and
-  accepted resolution set; creates exact advisor-owned application rows,
-  applies their source gaps, preserves the checkpoint, and updates the advice
-  result, checkpoint-backed close basis, exact application lineage, evidence
-  refs, and risk records in the same transaction;
 - appends one authority event, creates the exact replay row, advances the
   canonical Core UTC floor, and increments `project_state.state_version`
   exactly once.
 
-Finalization creates no replacement checkpoint or UserAction request. Neither
-operation creates a Run, Change Unit, write ticket, Product Repository file
-effect, UserAction resolution, or work-phase transition. Any invalid
+The method creates no Run, Change Unit, write ticket, Product Repository file
+effect, UserAction resolution, close basis, or work-phase transition. Any invalid
 checkpoint, gap, request, link, event, replay, or state update rolls back the
 whole transaction.
 A valid dry-run preview and every rejected attempt create none of these rows or
@@ -672,6 +667,22 @@ supersession, reauthorization lineage, successor requests, checkpoint, gaps,
 links, predecessor update, event, replay row, and state-version increment share
 one rollback boundary; immutable request, resolution, application, and
 reauthorization history remains present.
+
+<a id="volicordfinalize_advice"></a>
+### `volicord.finalize_advice`
+
+A committed `dry_run=false` call verifies the exact current advisor Task,
+ready checkpoint, compatible non-write Change Unit, scope revision, baseline,
+and complete accepted resolution-ID set. In one transaction it creates exact
+advisor-owned application rows, applies their source gaps, preserves the
+checkpoint, updates the advice result, establishes the checkpoint-backed close
+basis with exact application lineage, evidence refs, and risk records, appends
+one authority event, creates the exact replay row, advances the canonical Core
+UTC floor, and increments `project_state.state_version` exactly once.
+
+It creates no replacement checkpoint, UserAction request, Run, Change Unit,
+write ticket, Product Repository file effect, UserAction resolution, or
+work-phase transition. Dry-run and rejected branches have no storage effect.
 
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`

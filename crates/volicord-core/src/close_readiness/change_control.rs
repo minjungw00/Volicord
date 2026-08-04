@@ -275,7 +275,7 @@ fn current_close_basis_blocker(
             CloseReadinessBlockerCategory::Task,
             "missing_current_close_basis",
             if advisor {
-                "Completion requires the current advice to be finalized by volicord.record_shaping."
+                "Completion requires the current advice to be finalized by volicord.finalize_advice."
             } else {
                 "Completion requires a current close basis recorded by volicord.record_run."
             },

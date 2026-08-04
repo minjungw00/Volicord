@@ -166,7 +166,7 @@ pub enum ShapingOutcomeExpectation {
 pub enum ShapingApplicationOwnerExpectation {
     AdvanceTask,
     UpdateScope,
-    RecordShaping,
+    FinalizeAdvice,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -311,7 +311,7 @@ pub struct ShapingWorkflowObservation {
     pub tagged_workflow_opportunities: u64,
     pub exact_tagged_workflows: u64,
     pub advisor_finalization_opportunities: u64,
-    pub advisor_finalizations_via_record_shaping: u64,
+    pub advisor_finalizations_via_finalize_advice: u64,
     pub completion_claim_opportunities: u64,
     pub premature_completion_claims: u64,
     pub accepted_outcome_opportunities: u64,

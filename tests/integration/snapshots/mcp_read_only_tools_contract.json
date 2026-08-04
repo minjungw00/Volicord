@@ -160,7 +160,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4a3d87c06b2358e11cba0a5ed79ab6339b01e1e7569f7d80ece8c3f65c2e7c7b"
+        "sha256": "sha256:b44901a4549494b6da44f070202002fb3d16511ad2a7f47e45a17efdc9441661"
       }
     },
     {
@@ -184,7 +184,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:ed1fa0292f9433eb0211bbbb53d8e56ae54004a832a5e87f145683fa708f1866"
+        "sha256": "sha256:4b0af465a33de16d9a6108d8a54f3a9bce64be17be38645dd7d551c6e654eb06"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -238,7 +238,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c052d199e179b8fb6fb239d39cae90bc2b18e59e2f18a84da8b8c142f1099ede"
+        "sha256": "sha256:a59aebaecc60e489a41c601666bed347ccc82172cfee8fc24f5a8aedd1d9e1a6"
       }
     },
     {
@@ -372,7 +372,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3fa63b804194485c4230113d1c50c8e0c91760f4f16df9143228f35b10bccf0a"
+        "sha256": "sha256:ae8ab61ee2e993a8309b0d3da8359e628a578ffce097b05d1d5748c1db4c06ee"
       }
     },
     {

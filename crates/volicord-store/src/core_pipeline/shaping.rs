@@ -1107,7 +1107,7 @@ impl MutationContext<'_> {
                 | JudgmentKind::TechnicalDecision
                 | JudgmentKind::SensitiveApproval => {
                     if task_mode == TaskMode::Advisor {
-                        ShapingDecisionApplicationOwner::RecordShaping
+                        ShapingDecisionApplicationOwner::FinalizeAdvice
                     } else {
                         ShapingDecisionApplicationOwner::AdvanceTask
                     }
@@ -1186,7 +1186,7 @@ impl MutationContext<'_> {
                FROM user_action_requests AS r
               WHERE r.project_id = ?1
                 AND r.task_id = ?2
-                AND r.source_method = 'volicord.record_shaping'
+                AND r.source_method = 'volicord.record_shaping_checkpoint'
                 AND r.basis_status = 'current'
                 AND NOT EXISTS (
                   SELECT 1
@@ -1665,7 +1665,7 @@ impl MutationContext<'_> {
         self.apply_selected_gaps(
             &input.task_id,
             &input.shaping_checkpoint_id,
-            ShapingDecisionApplicationOwner::RecordShaping,
+            ShapingDecisionApplicationOwner::FinalizeAdvice,
             ShapingApplicationBasis {
                 scope_revision: input.scope_revision,
                 baseline_ref: Some(&input.baseline_ref),
@@ -1676,7 +1676,7 @@ impl MutationContext<'_> {
         self.require_owner_gaps_applied(
             &input.task_id,
             &input.shaping_checkpoint_id,
-            ShapingDecisionApplicationOwner::RecordShaping,
+            ShapingDecisionApplicationOwner::FinalizeAdvice,
         )?;
         let current_count: i64 = self.tx.query_row(
             "SELECT COUNT(*) FROM shaping_checkpoint_gaps
@@ -2295,7 +2295,7 @@ fn validate_current_shaping_authority(
            FROM user_action_requests AS r
           WHERE r.project_id = ?1
             AND r.task_id = ?2
-            AND r.source_method = 'volicord.record_shaping'
+            AND r.source_method = 'volicord.record_shaping_checkpoint'
             AND r.basis_status = 'current'
             AND NOT EXISTS (
               SELECT 1
@@ -3138,7 +3138,7 @@ fn shaping_reauthorization_history_for_task(
                               AND request.task_id = ?2
                               AND link.linked_at = ?8
                               AND request.requested_at = ?8
-                              AND request.source_method = 'volicord.record_shaping'
+                              AND request.source_method = 'volicord.record_shaping_checkpoint'
                               AND json_extract(request.metadata_json, '$.reauthorizes_application_id') = ?5
                               AND request.user_action_request_id <> ?7
                          )",

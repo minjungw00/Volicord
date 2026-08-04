@@ -9,20 +9,20 @@ use volicord_types::ids::{
 };
 use volicord_types::methods::{
     AdvanceTaskResponse, ChangeUnitUpdate, CheckCloseResponse, CloseTaskResponse,
-    GetOperationResultResponse, InitialScope, IntakeResponse, OperationResultRef,
-    PrepareEvidenceCaptureResponse, PrepareWriteResponse, ReconcileChangesResponse,
-    RecordRunResponse, RecordShapingOperation, RecordShapingResponse, RequestUserActionResponse,
-    ScopeUpdate, StageArtifactResponse, StatusInclude, StatusResponse, UnrecordedChangeRejection,
-    UnrecordedChangeResolutionRequest, UpdateScopeResponse,
+    FinalizeAdviceResponse, GetOperationResultResponse, InitialScope, IntakeResponse,
+    OperationResultRef, PrepareEvidenceCaptureResponse, PrepareWriteResponse,
+    ReconcileChangesResponse, RecordRunResponse, RecordShapingCheckpointResponse,
+    RequestUserActionResponse, ScopeUpdate, StageArtifactResponse, StatusInclude, StatusResponse,
+    UnrecordedChangeRejection, UnrecordedChangeResolutionRequest, UpdateScopeResponse,
 };
 use volicord_types::schema::{
     AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
     AuthorityReceipt, CloseAssessmentInput, ContinuityPageRequest, EvidenceCaptureIntent,
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceObservationInput, EvidenceTarget,
-    EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, SourceRef,
-    StagedArtifactHandle, StateRecordRef, ToolDryRunResponse, ToolRejectedResponse,
-    UserActionDraft, WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason,
-    WriteTicket,
+    EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, ResidualRiskInput,
+    ShapingCheckpointOperation, ShapingGapInput, SourceRef, StagedArtifactHandle, StateRecordRef,
+    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowProjection,
+    WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -235,10 +235,10 @@ pub struct McpMutationEffectSummary {
     pub events: Vec<volicord_types::schema::EventRef>,
 }
 
-/// Compact `volicord.record_shaping` authority and routing outcome.
+/// Compact `volicord.record_shaping_checkpoint` authority and routing outcome.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpRecordShapingCompactResult {
+pub struct McpRecordShapingCheckpointCompactResult {
     pub effect: McpMutationEffectSummary,
     pub shaping_checkpoint_id: ShapingCheckpointId,
     pub readiness: ShapingCheckpointReadiness,
@@ -246,8 +246,23 @@ pub struct McpRecordShapingCompactResult {
     pub decision_recovery_requirements:
         Vec<volicord_types::schema::ShapingDecisionRecoveryRequirement>,
     pub created_user_action_request_refs: Vec<StateRecordRef>,
-    pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
     pub shaping_authority_reauthorization_refs: Vec<StateRecordRef>,
+    pub workflow_kind: WorkflowStateKind,
+    pub close_state: Option<CloseState>,
+    pub close_blocker_count: usize,
+}
+
+/// Compact `volicord.finalize_advice` authority and close-basis outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpFinalizeAdviceCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub shaping_checkpoint_id: ShapingCheckpointId,
+    pub readiness: ShapingCheckpointReadiness,
+    pub unresolved_application_owners: Vec<ShapingDecisionApplicationOwner>,
+    pub decision_recovery_requirements:
+        Vec<volicord_types::schema::ShapingDecisionRecoveryRequirement>,
+    pub applied_shaping_decision_application_refs: Vec<StateRecordRef>,
     pub workflow_kind: WorkflowStateKind,
     pub close_state: Option<CloseState>,
     pub close_blocker_count: usize,
@@ -676,16 +691,52 @@ pub struct McpUpdateScopeArguments {
     pub related_scope_decision_refs: Vec<StateRecordRef>,
 }
 
-/// MCP-visible `volicord.record_shaping` arguments.
+/// MCP-visible `volicord.record_shaping_checkpoint` arguments.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpRecordShapingArguments {
+pub struct McpRecordShapingCheckpointArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
     pub task_id: TaskId,
-    pub operation: RecordShapingOperation,
+    pub checkpoint_operation: ShapingCheckpointOperation,
+    pub scope_revision: u64,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub summary: String,
+    pub implementation_boundary: RequiredNullable<String>,
+    #[serde(default)]
+    pub gaps: Vec<ShapingGapInput>,
+    #[serde(default)]
+    pub source_refs: Vec<SourceRef>,
+    #[serde(default)]
+    pub evidence_refs: Vec<StateRecordRef>,
+}
+
+/// MCP-visible `volicord.finalize_advice` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpFinalizeAdviceArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
+    pub task_id: TaskId,
+    pub shaping_checkpoint_id: ShapingCheckpointId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    #[serde(default)]
+    pub user_action_resolution_ids: Vec<UserActionResolutionId>,
+    pub result_summary: String,
+    #[serde(default)]
+    pub result_refs: Vec<StateRecordRef>,
+    #[serde(default)]
+    pub evidence_refs: Vec<StateRecordRef>,
+    #[serde(default)]
+    pub residual_risks: Vec<ResidualRiskInput>,
+    #[serde(default)]
+    pub recovery_constraints: Vec<String>,
 }
 
 /// MCP-visible `volicord.advance_task` arguments.
@@ -1046,7 +1097,10 @@ pub fn mcp_request_schema(tool: AgentToolId) -> Option<Value> {
     match tool.method()? {
         MethodName::Intake => Some(request_schema::<McpIntakeArguments>()),
         MethodName::UpdateScope => Some(request_schema::<McpUpdateScopeArguments>()),
-        MethodName::RecordShaping => Some(request_schema::<McpRecordShapingArguments>()),
+        MethodName::RecordShapingCheckpoint => {
+            Some(request_schema::<McpRecordShapingCheckpointArguments>())
+        }
+        MethodName::FinalizeAdvice => Some(request_schema::<McpFinalizeAdviceArguments>()),
         MethodName::AdvanceTask => Some(request_schema::<McpAdvanceTaskArguments>()),
         MethodName::Status => Some(request_schema::<McpStatusArguments>()),
         MethodName::GetOperationResult => Some(request_schema::<McpGetOperationResultArguments>()),
@@ -1079,8 +1133,14 @@ pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
         MethodName::UpdateScope => Some(response_schema::<
             McpMutationStructuredContent<UpdateScopeResponse, McpUpdateScopeCompactResult>,
         >()),
-        MethodName::RecordShaping => Some(response_schema::<
-            McpMutationStructuredContent<RecordShapingResponse, McpRecordShapingCompactResult>,
+        MethodName::RecordShapingCheckpoint => Some(response_schema::<
+            McpMutationStructuredContent<
+                RecordShapingCheckpointResponse,
+                McpRecordShapingCheckpointCompactResult,
+            >,
+        >()),
+        MethodName::FinalizeAdvice => Some(response_schema::<
+            McpMutationStructuredContent<FinalizeAdviceResponse, McpFinalizeAdviceCompactResult>,
         >()),
         MethodName::AdvanceTask => Some(response_schema::<
             McpMutationStructuredContent<AdvanceTaskResponse, McpAdvanceTaskCompactResult>,

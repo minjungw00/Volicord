@@ -213,7 +213,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:45012b958c7ea758c7d74a725ef5bd28307e1554c6fa263ae5be235acdce7d4b"
+        "sha256": "sha256:e7b318be74e9666abba291543bd2b2748ac7ca88c456fefedfe7e88212223faa"
       }
     },
     {
@@ -390,7 +390,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b774b754347a621f5de99d59914e4cc9b68a75c6d035061477c2f2463998a85b"
+        "sha256": "sha256:0de6bb214e311923c7a875074a4d493930af97cb35931f2415b7dc78395c59c5"
       }
     },
     {
@@ -400,7 +400,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Atomically record or replace current shaping authority, preserve compatible applications, retire or reissue exact stale authority with fresh UserAction identity, or finalize the current advisor result and close basis.",
+      "description": "Atomically record or replace current shaping authority, preserve compatible applications, and retire or reissue exact stale authority with fresh UserAction identity.",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",
@@ -416,10 +416,8 @@
           "JudgmentKind",
           "JudgmentPresentation",
           "MutationDetailLevel",
-          "RecordShapingOperation",
           "RedactionState",
           "RepositoryFileSource",
-          "ResidualRiskInput",
           "SensitiveActionScope",
           "ShapingCheckpointOperation",
           "ShapingGapInput",
@@ -437,18 +435,29 @@
           "UtcTimestamp"
         ],
         "root_properties": [
+          "baseline_ref",
+          "checkpoint_operation",
           "detail",
-          "operation",
+          "evidence_refs",
+          "gaps",
+          "implementation_boundary",
           "project_selector",
+          "scope_revision",
+          "source_refs",
+          "summary",
           "task_id"
         ],
         "root_required": [
-          "operation",
+          "baseline_ref",
+          "checkpoint_operation",
+          "implementation_boundary",
+          "scope_revision",
+          "summary",
           "task_id"
         ],
-        "sha256": "sha256:1bfe9e7580a9de45ccf7fe29e3fe215bc1d57fb2f9b5091be1dbd1d2858b8c6c"
+        "sha256": "sha256:ace7371ae35270d6bdc1f40a640fdc2bf9f525434791c547623459ef094b9cf3"
       },
-      "name": "volicord.record_shaping",
+      "name": "volicord.record_shaping_checkpoint",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
@@ -496,21 +505,21 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpRecordShapingCompactResult",
+          "McpAuthoritativeRefreshFailure_for_McpRecordShapingCheckpointCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordShapingResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordShapingCheckpointResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpRecordShapingCompactResult",
-          "McpMutationSummaryResponse_for_McpRecordShapingCompactResult",
-          "McpMutationWorkflowResponse_for_McpRecordShapingCompactResult",
+          "McpMutationResponseBudgetExceeded_for_McpRecordShapingCheckpointCompactResult",
+          "McpMutationSummaryResponse_for_McpRecordShapingCheckpointCompactResult",
+          "McpMutationWorkflowResponse_for_McpRecordShapingCheckpointCompactResult",
           "McpOperationalErrorCode",
           "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
-          "McpRecordShapingCompactResult",
+          "McpRecordShapingCheckpointCompactResult",
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -532,10 +541,10 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
-          "PreviewableToolResponse_for_RecordShapingResult",
+          "PreviewableToolResponse_for_RecordShapingCheckpointResult",
           "ProjectWorkflowPolicySummary",
-          "RecordShapingResult",
-          "RecordShapingResultBase",
+          "RecordShapingCheckpointResult",
+          "RecordShapingCheckpointResultBase",
           "RedactionState",
           "RepositoryFileSource",
           "RequestedControlLevel",
@@ -591,7 +600,193 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:87923c7f64332141a0dc9beaae33f9da2b5d76f546534e0ae8a432cfc5b543bb"
+        "sha256": "sha256:6505c043de9b62d2a3b523a2c7ed81acf6140a4317f64b222ca77f47a8195529"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Apply exact current advisor decisions and finalize the current advisor result and checkpoint-backed close basis.",
+      "input_schema": {
+        "definitions": [
+          "MutationDetailLevel",
+          "ResidualRiskInput",
+          "StateRecordKind",
+          "StateRecordRef"
+        ],
+        "root_properties": [
+          "baseline_ref",
+          "change_unit_id",
+          "detail",
+          "evidence_refs",
+          "project_selector",
+          "recovery_constraints",
+          "residual_risks",
+          "result_refs",
+          "result_summary",
+          "scope_revision",
+          "shaping_checkpoint_id",
+          "task_id",
+          "user_action_resolution_ids"
+        ],
+        "root_required": [
+          "baseline_ref",
+          "change_unit_id",
+          "result_summary",
+          "scope_revision",
+          "shaping_checkpoint_id",
+          "task_id"
+        ],
+        "sha256": "sha256:32454d3c0bcd8ebdfdb5da364b99204b73e65a2bb9d5b267ee2d0f48b663adfe"
+      },
+      "name": "volicord.finalize_advice",
+      "output_schema": {
+        "definitions": [
+          "AcceptanceCriterion",
+          "AcceptancePolicy",
+          "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
+          "ArtifactAvailability",
+          "ArtifactIntegrityStatus",
+          "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
+          "ChangeUnitEffectContract",
+          "ChangeUnitEffectKind",
+          "CloseReadinessBlocker",
+          "CloseReadinessBlockerCategory",
+          "CloseReason",
+          "CloseState",
+          "CommandSource",
+          "CoreCommittedResultBase",
+          "DryRunSummary",
+          "EffectKind",
+          "EmptyEventRefs",
+          "ErrorCode",
+          "EventRef",
+          "EvidenceCoverageItem",
+          "EvidenceCoverageState",
+          "EvidenceDisplayState",
+          "EvidenceGateState",
+          "EvidenceGateSummary",
+          "EvidenceRequirement",
+          "EvidenceStatus",
+          "EvidenceSummary",
+          "EvidenceTarget",
+          "ExternalUriSource",
+          "FailureCategory",
+          "FinalizeAdviceResult",
+          "FinalizeAdviceResultBase",
+          "GitCommitSource",
+          "GitDiffSource",
+          "GuaranteeClass",
+          "GuaranteeDisclosure",
+          "GuaranteeDisplay",
+          "GuaranteeLevel",
+          "McpAgentStateChange",
+          "McpAuthoritativeRefreshFailure_for_McpFinalizeAdviceCompactResult",
+          "McpFinalizeAdviceCompactResult",
+          "McpMustSurfaceFact",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_FinalizeAdviceResult",
+          "McpMutationPostEffectFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded_for_McpFinalizeAdviceCompactResult",
+          "McpMutationSummaryResponse_for_McpFinalizeAdviceCompactResult",
+          "McpMutationWorkflowResponse_for_McpFinalizeAdviceCompactResult",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
+          "McpPostEffectFailureCode",
+          "McpTaskPhasePresentation",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
+          "McpUserChannelInstructions",
+          "McpWorkflowBlockerSummary",
+          "McpWorkflowDryRunResponse",
+          "McpWorkflowPresentation",
+          "McpWorkflowRejectedResponse",
+          "MethodName",
+          "MutationDetailLevel",
+          "NextActionKind",
+          "NextActionSummary",
+          "NonEmptyEventRefs",
+          "NonGuarantee",
+          "OperationCategory",
+          "OperationResultRef",
+          "PlannedBlocker",
+          "PlannedBlockerSourceKind",
+          "PlannedEffect",
+          "PreviewableToolResponse_for_FinalizeAdviceResult",
+          "ProjectWorkflowPolicySummary",
+          "RedactionState",
+          "RepositoryFileSource",
+          "RequestedControlLevel",
+          "RunKind",
+          "ShapingCheckpoint",
+          "ShapingCheckpointGap",
+          "ShapingCheckpointReadiness",
+          "ShapingCheckpointSummary",
+          "ShapingDecisionApplicationOwner",
+          "ShapingDecisionAuthorityState",
+          "ShapingDecisionRecoveryReason",
+          "ShapingDecisionRecoveryRequirement",
+          "ShapingGapKind",
+          "ShapingGapStatus",
+          "SourceLineRange",
+          "SourceRef",
+          "StateRecordKind",
+          "StateRecordRef",
+          "StateSummary",
+          "StatusCloseState",
+          "TaskControlLevel",
+          "TaskLifecyclePhase",
+          "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
+          "TaskMode",
+          "TaskResult",
+          "ToolDryRunBase",
+          "ToolDryRunResponse",
+          "ToolError",
+          "ToolRejectedBase",
+          "ToolRejectedResponse",
+          "UserActionChannelKind",
+          "UserActionResolutionRef",
+          "UserActionResolutionRefRecordKind",
+          "UserActionStatus",
+          "UserContextSource",
+          "UtcTimestamp",
+          "WorkPhase",
+          "WorkflowBlockingReason",
+          "WorkflowProjection",
+          "WorkflowRecovery",
+          "WorkflowRejectionBlocker",
+          "WorkflowRejectionDetails",
+          "WorkflowRejectionUserAction",
+          "WorkflowStateKind",
+          "WorkspaceContext",
+          "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
+          "WriteTicketStateSummary",
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
+        ],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:1fb8119397e8deab5c15638346df36bbd8d340934322498404d2033ad0f5a27b"
       }
     },
     {
@@ -758,7 +953,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5e817e0961d19e7e7df7dd70ee6ae0d0ec8e11152e0a5d22a7315491199c720f"
+        "sha256": "sha256:c1ae83bf6080ef8177e49b18066e11ec91b35964fe95240063a59782559c82da"
       }
     },
     {
@@ -901,7 +1096,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4a3d87c06b2358e11cba0a5ed79ab6339b01e1e7569f7d80ece8c3f65c2e7c7b"
+        "sha256": "sha256:b44901a4549494b6da44f070202002fb3d16511ad2a7f47e45a17efdc9441661"
       }
     },
     {
@@ -925,7 +1120,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:ed1fa0292f9433eb0211bbbb53d8e56ae54004a832a5e87f145683fa708f1866"
+        "sha256": "sha256:4b0af465a33de16d9a6108d8a54f3a9bce64be17be38645dd7d551c6e654eb06"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -979,7 +1174,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c052d199e179b8fb6fb239d39cae90bc2b18e59e2f18a84da8b8c142f1099ede"
+        "sha256": "sha256:a59aebaecc60e489a41c601666bed347ccc82172cfee8fc24f5a8aedd1d9e1a6"
       }
     },
     {
@@ -1108,7 +1303,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d1feede2f0dc920f6eef286f3f76d89bd84427fbbc97c14b65ec44c9cf92b29a"
+        "sha256": "sha256:1249896dedf20681ff62db1b5a633704fd5ac5b371290422d16c6f59bfb20c84"
       }
     },
     {
@@ -1290,7 +1485,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6e869fbbf5fe64085c006ef6fbe2e80ad9190043f1834cd5ed14b6d187a2ea35"
+        "sha256": "sha256:22498b023151a99902b038538116d84bd4406ca42f361e681b21b974c1022fa7"
       }
     },
     {
@@ -1420,7 +1615,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:77874ecdd164bdd966dbf9af0d3276f6164938a2e144df71ce985fee0cc6fb3b"
+        "sha256": "sha256:e0e314df46a1cd2dd135667a290911d1a35cfb25c267d7b043c7fe68621637b8"
       }
     },
     {
@@ -1647,7 +1842,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8005c67a9ead00bbe6ad8bbad66f7f0cbe339b4f72872e36ffcd2d90f215de4f"
+        "sha256": "sha256:6fddf7c3d93c600378587e356a81ace8da27ae0dd5a9a7116ed202ce41fa77d5"
       }
     },
     {
@@ -1830,7 +2025,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:dc5833560b10b07081df035a8d460f77ca96c676be59f63eada800eac0c38dda"
+        "sha256": "sha256:35965f903d3f67dbc1dcf0ae1135d41f97413bae0e63e8325a3c66d6a8d63b0a"
       }
     },
     {
@@ -1998,7 +2193,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e3b2add7623bd46a9b79a3990d4e68ddfd0a3e8541fd3f3c7eb1384f3a869093"
+        "sha256": "sha256:0295381368004234f03eb32749e2ba2b1b26ac6971752f60fdf5c315079ff266"
       }
     },
     {
@@ -2132,7 +2327,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3fa63b804194485c4230113d1c50c8e0c91760f4f16df9143228f35b10bccf0a"
+        "sha256": "sha256:ae8ab61ee2e993a8309b0d3da8359e628a578ffce097b05d1d5748c1db4c06ee"
       }
     },
     {
@@ -2305,7 +2500,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:35072c2af2c2474ad88303f8bf3f1c42043369b95a2fdd0db75a919f29c4b1a7"
+        "sha256": "sha256:467af4703a74138992c883505537fbed8beaffd195cc7c61720d8c8efeb39b68"
       }
     },
     {

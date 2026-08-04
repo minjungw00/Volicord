@@ -15,7 +15,7 @@ use volicord_types::schema::{
 use volicord_types::values::{
     ActorSource, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
     ShapingCheckpointReadiness, ShapingDecisionApplicationOwner, ShapingGapKind, ShapingGapStatus,
-    UserActionBasisStatus, UserActionChannelKind, UserActionKind, UserActionOptionAction,
+    TaskMode, UserActionBasisStatus, UserActionChannelKind, UserActionKind, UserActionOptionAction,
     UserActionVerificationBasis, UtcTimestamp, WorkPhase,
 };
 
@@ -59,7 +59,7 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
     task.shaping.baseline_ref = Some(baseline.clone());
     let initial = commit_input(
         &ProjectId::new(PROJECT_ID),
-        MethodName::RecordShaping,
+        MethodName::RecordShapingCheckpoint,
         Some(&IdempotencyKey::new("idem_shaping_exact_initial")),
         &RequestHash::new("sha256:shaping-exact-initial"),
         Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -582,12 +582,12 @@ fn shaping_request(
         requested_by_actor_source: ActorSource::AgentConnection(AgentConnectionId::new(
             CONNECTION_ID,
         )),
-        source_method: MethodName::RecordShaping,
+        source_method: MethodName::RecordShapingCheckpoint,
         source_idempotency_key: format!("idem_{request_id}"),
         requested_at: UtcTimestamp::parse("2026-01-01T00:00:00Z").expect("test timestamp"),
         expires_at: None,
         metadata: PersistedUserActionRequestMetadata::Shaping(PersistedUserActionShapingMetadata {
-            created_by: MethodName::RecordShaping,
+            created_by: MethodName::RecordShapingCheckpoint,
             shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
             shaping_gap_id: ShapingGapId::new(gap_id),
             reauthorizes_application_id: RequiredNullable::null(),
@@ -658,7 +658,7 @@ fn outcome_specific_gap_resolution_is_atomic_and_only_accepted_can_apply(
     store.commit_mutation(
         commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RecordShaping,
+            MethodName::RecordShapingCheckpoint,
             Some(&IdempotencyKey::new("idem_shaping_rejected_atomic_initial")),
             &RequestHash::new("sha256:shaping-rejected-atomic-initial"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -886,6 +886,20 @@ fn policy_owner_names_remain_exact() {
             .application_owner,
         ShapingDecisionApplicationOwner::UpdateScope
     );
+    assert_eq!(
+        ShapingGapKind::UserProductDecisionRequired
+            .decision_policy_for_mode(TaskMode::Advisor)
+            .expect("advisor product policy")
+            .application_owner,
+        ShapingDecisionApplicationOwner::FinalizeAdvice
+    );
+    assert_eq!(
+        ShapingGapKind::UserProductDecisionRequired
+            .decision_policy_for_mode(TaskMode::Work)
+            .expect("work product policy")
+            .application_owner,
+        ShapingDecisionApplicationOwner::AdvanceTask
+    );
 }
 
 #[test]
@@ -905,7 +919,7 @@ fn current_checkpoint_read_rejects_persisted_detached_user_action_authority(
     store.commit_mutation(
         commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RecordShaping,
+            MethodName::RecordShapingCheckpoint,
             Some(&IdempotencyKey::new("idem_shaping_detached_authority")),
             &RequestHash::new("sha256:shaping-detached-authority"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),

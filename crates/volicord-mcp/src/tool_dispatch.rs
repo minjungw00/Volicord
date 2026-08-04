@@ -1063,7 +1063,7 @@ mod mutation_projection_and_recovery_tests {
         ShapingCheckpointId,
     };
     use volicord_types::methods::{
-        AdvanceTaskRequest, RecordShapingRequest, MAX_OPERATION_RESULT_PAGE_BYTES,
+        AdvanceTaskRequest, RecordShapingCheckpointRequest, MAX_OPERATION_RESULT_PAGE_BYTES,
     };
     use volicord_types::schema::{
         EvidenceCaptureSpec, EvidenceObservationInput, EvidenceProducer, EvidenceTarget,
@@ -1297,9 +1297,9 @@ mod mutation_projection_and_recovery_tests {
             ["acceptance_criterion_id"]
             .as_str()
             .ok_or("scope should expose the current acceptance criterion")?;
-        let shaped = core.record_shaping(
+        let shaped = core.record_shaping_checkpoint(
             &fixture.mutation_context()?,
-            RecordShapingRequest {
+            RecordShapingCheckpointRequest {
                 envelope: fixture.envelope(
                     "req_mcp_producer_recovery_shaping",
                     Some("idem_mcp_producer_recovery_shaping"),
@@ -1308,28 +1308,26 @@ mod mutation_projection_and_recovery_tests {
                     Some(task_id.as_str()),
                 ),
                 task_id: task_id.clone(),
-                operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                    checkpoint_operation:
-                        volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                    scope_revision: 1,
-                    baseline_ref: RequiredNullable::some(BaselineRef::new(
-                        volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                    )),
-                    summary: "The evidence-producer recovery boundary is ready.".to_owned(),
-                    implementation_boundary: RequiredNullable::some(
-                        "Record only the scoped evidence producer.".to_owned(),
-                    ),
-                    gaps: Vec::new(),
-                    source_refs: Vec::new(),
-                    evidence_refs: Vec::new(),
-                },
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The evidence-producer recovery boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Record only the scoped evidence producer.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
             },
             workflow_invocation(),
         )?;
         let shaping_checkpoint_id = shaped.response_value["shaping_checkpoint"]
             ["shaping_checkpoint_id"]
             .as_str()
-            .ok_or("record_shaping should expose its checkpoint")?;
+            .ok_or("record_shaping_checkpoint should expose its checkpoint")?;
         core.advance_task(
             &fixture.mutation_context()?,
             AdvanceTaskRequest {

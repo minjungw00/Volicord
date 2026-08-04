@@ -162,7 +162,7 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
     );
     assert_eq!(
         premature_advance.response_value["errors"][0]["details"]["recovery"]["owner_method"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
 
     let premature_run = harness.service.record_run(
@@ -182,7 +182,7 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
     );
     assert_eq!(
         premature_run.response_value["errors"][0]["details"]["recovery"]["owner_method"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
 
     let shaping_close = harness.service.check_close(
@@ -236,11 +236,11 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
     );
     assert_eq!(
         denied.response_value["errors"][0]["details"]["recovery"]["owner_method"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
 
-    let shaped = harness.service.record_shaping(
-        RecordShapingRequest {
+    let shaped = harness.service.record_shaping_checkpoint(
+        RecordShapingCheckpointRequest {
             envelope: envelope(
                 "req_shaping_record",
                 Some("idem_shaping_record"),
@@ -249,23 +249,20 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                checkpoint_operation:
-                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-                summary: "The implementation boundary is ready.".to_owned(),
-                implementation_boundary: RequiredNullable::some(
-                    "Implement only the current export boundary.".to_owned(),
-                ),
-                gaps: Vec::new(),
-                source_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-            },
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            summary: "The implementation boundary is ready.".to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Implement only the current export boundary.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    assert_typed_result_contract::<RecordShapingResult>(&shaped);
+    assert_typed_result_contract::<RecordShapingCheckpointResult>(&shaped);
     assert_eq!(
         shaped.response_value["shaping_checkpoint"]["readiness"],
         "ready"
@@ -409,8 +406,8 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
     )?;
     let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
     let before = harness.counts()?;
-    let invalid = harness.service.record_shaping(
-        RecordShapingRequest {
+    let invalid = harness.service.record_shaping_checkpoint(
+        RecordShapingCheckpointRequest {
             envelope: envelope(
                 "req_shaping_gap_invalid",
                 Some("idem_shaping_gap_invalid"),
@@ -419,22 +416,19 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                checkpoint_operation:
-                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-                summary: "A technical decision is required.".to_owned(),
-                implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
-                gaps: vec![ShapingGapInput {
-                    gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
-                    summary: "Choose the current technical direction.".to_owned(),
-                    affected_refs: Vec::new(),
-                    user_action: RequiredNullable::null(),
-                }],
-                source_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-            },
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            summary: "A technical decision is required.".to_owned(),
+            implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
+            gaps: vec![ShapingGapInput {
+                gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
+                summary: "Choose the current technical direction.".to_owned(),
+                affected_refs: Vec::new(),
+                user_action: RequiredNullable::null(),
+            }],
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -451,8 +445,8 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
         JudgmentKind::TechnicalDecision,
     )
     .action;
-    let response = harness.service.record_shaping(
-        RecordShapingRequest {
+    let response = harness.service.record_shaping_checkpoint(
+        RecordShapingCheckpointRequest {
             envelope: envelope(
                 "req_shaping_gap",
                 Some("idem_shaping_gap"),
@@ -461,25 +455,22 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                checkpoint_operation:
-                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-                summary: "A technical decision is required.".to_owned(),
-                implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
-                gaps: vec![ShapingGapInput {
-                    gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
-                    summary: "Choose the current technical direction.".to_owned(),
-                    affected_refs: Vec::new(),
-                    user_action: RequiredNullable::some(ShapingUserActionDraft {
-                        action,
-                        expires_at: RequiredNullable::null(),
-                    }),
-                }],
-                source_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-            },
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            summary: "A technical decision is required.".to_owned(),
+            implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
+            gaps: vec![ShapingGapInput {
+                gap_kind: ShapingGapKind::UserTechnicalDecisionRequired,
+                summary: "Choose the current technical direction.".to_owned(),
+                affected_refs: Vec::new(),
+                user_action: RequiredNullable::some(ShapingUserActionDraft {
+                    action,
+                    expires_at: RequiredNullable::null(),
+                }),
+            }],
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -640,7 +631,10 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
         let workflow = &resolved.response_value["state"]["workflow"];
         assert_eq!(workflow["kind"], "decision_recovery_required", "{label}");
         assert_eq!(workflow["next_actor"], "agent", "{label}");
-        assert_eq!(workflow["required_action"], "volicord.record_shaping");
+        assert_eq!(
+            workflow["required_action"],
+            "volicord.record_shaping_checkpoint"
+        );
         assert_eq!(
             workflow["checkpoint"]["decision_recovery_requirements"][0]["disposition"],
             expected_disposition
@@ -657,8 +651,8 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
 
         let before_application = harness.counts()?;
         let application = if mode == RequestedMode::Advisor {
-            harness.service.record_shaping(
-                RecordShapingRequest {
+            harness.service.finalize_advice(
+                FinalizeAdviceRequest {
                     envelope: envelope(
                         &format!("req_{label}_invalid_application"),
                         Some(&format!("idem_{label}_invalid_application")),
@@ -667,19 +661,16 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                         Some(&task_id),
                     ),
                     task_id: TaskId::new(&task_id),
-                    operation: RecordShapingOperation::FinalizeAdvice {
-                        shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-                        change_unit_id: ChangeUnitId::new(&change_unit_id),
-                        scope_revision: 1,
-                        baseline_ref: BaselineRef::new("baseline_test"),
-                        user_action_resolution_ids: Vec::new(),
-                        result_summary: "A non-authorizing outcome cannot finalize advice."
-                            .to_owned(),
-                        result_refs: Vec::new(),
-                        evidence_refs: Vec::new(),
-                        residual_risks: Vec::new(),
-                        recovery_constraints: Vec::new(),
-                    },
+                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                    change_unit_id: ChangeUnitId::new(&change_unit_id),
+                    scope_revision: 1,
+                    baseline_ref: BaselineRef::new("baseline_test"),
+                    user_action_resolution_ids: Vec::new(),
+                    result_summary: "A non-authorizing outcome cannot finalize advice.".to_owned(),
+                    result_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    residual_risks: Vec::new(),
+                    recovery_constraints: Vec::new(),
                 },
                 invocation(OperationCategory::AgentWorkflow),
             )?
@@ -747,7 +738,7 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
             assert_eq!(harness.counts()?, before_application);
         }
 
-        let omitted = harness.service.record_shaping(
+        let omitted = harness.service.record_shaping_checkpoint(
             ready_shaping_request(
                 &format!("req_{label}_omitted_retirement"),
                 &format!("idem_{label}_omitted_retirement"),
@@ -789,9 +780,7 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
             judgment_kind,
         )
         .action;
-        let RecordShapingOperation::RecordCheckpoint { gaps, .. } = &mut successor.operation else {
-            unreachable!();
-        };
+        let gaps = &mut successor.gaps;
         *gaps = vec![ShapingGapInput {
             gap_kind,
             summary: "The revised plan still requires this user judgment.".to_owned(),
@@ -803,7 +792,7 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
         }];
         let replaced = harness
             .service
-            .record_shaping(successor, invocation(OperationCategory::AgentWorkflow))?;
+            .record_shaping_checkpoint(successor, invocation(OperationCategory::AgentWorkflow))?;
         assert_eq!(replaced.response_value["base"]["response_kind"], "result");
         assert_eq!(
             replaced.response_value["workflow"]["kind"],
@@ -936,9 +925,9 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                     invocation(OperationCategory::AgentWorkflow),
                 )?
             }
-            (ShapingDecisionApplicationOwner::RecordShaping, RequestedMode::Advisor) => {
-                harness.service.record_shaping(
-                    RecordShapingRequest {
+            (ShapingDecisionApplicationOwner::FinalizeAdvice, RequestedMode::Advisor) => {
+                harness.service.finalize_advice(
+                    FinalizeAdviceRequest {
                         envelope: envelope(
                             &format!("req_{label}_successor_apply"),
                             Some(&format!("idem_{label}_successor_apply")),
@@ -947,23 +936,20 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                             Some(&task_id),
                         ),
                         task_id: TaskId::new(&task_id),
-                        operation: RecordShapingOperation::FinalizeAdvice {
-                            shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
-                                &replaced.response_value,
-                            )),
-                            change_unit_id: ChangeUnitId::new(&change_unit_id),
-                            scope_revision: 1,
-                            baseline_ref: BaselineRef::new("baseline_test"),
-                            user_action_resolution_ids: vec![UserActionResolutionId::new(
-                                resolution_ref.record_id.as_str(),
-                            )],
-                            result_summary: "The accepted successor decision is applied."
-                                .to_owned(),
-                            result_refs: Vec::new(),
-                            evidence_refs: Vec::new(),
-                            residual_risks: Vec::new(),
-                            recovery_constraints: Vec::new(),
-                        },
+                        shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
+                            &replaced.response_value,
+                        )),
+                        change_unit_id: ChangeUnitId::new(&change_unit_id),
+                        scope_revision: 1,
+                        baseline_ref: BaselineRef::new("baseline_test"),
+                        user_action_resolution_ids: vec![UserActionResolutionId::new(
+                            resolution_ref.record_id.as_str(),
+                        )],
+                        result_summary: "The accepted successor decision is applied.".to_owned(),
+                        result_refs: Vec::new(),
+                        evidence_refs: Vec::new(),
+                        residual_risks: Vec::new(),
+                        recovery_constraints: Vec::new(),
                     },
                     invocation(OperationCategory::AgentWorkflow),
                 )?
@@ -1096,7 +1082,10 @@ fn mixed_non_authorizing_outcomes_preserve_other_live_authority_without_effects(
         let workflow = &terminal.response_value["state"]["workflow"];
         assert_eq!(workflow["kind"], "decision_recovery_required", "{label}");
         assert_eq!(workflow["next_actor"], "agent", "{label}");
-        assert_eq!(workflow["required_action"], "volicord.record_shaping");
+        assert_eq!(
+            workflow["required_action"],
+            "volicord.record_shaping_checkpoint"
+        );
         assert_eq!(
             workflow["checkpoint"]["current_application_refs"],
             json!([]),
@@ -1150,7 +1139,7 @@ fn mixed_non_authorizing_outcomes_preserve_other_live_authority_without_effects(
         );
         assert_eq!(harness.counts()?, after_resolutions, "{label}");
 
-        let replacement = harness.service.record_shaping(
+        let replacement = harness.service.record_shaping_checkpoint(
             ready_shaping_request(
                 &format!("req_{label}_invalid_replacement"),
                 &format!("idem_{label}_invalid_replacement"),
@@ -1246,9 +1235,7 @@ fn assert_expired_shaping_kind_recovery(
         judgment_kind,
     )
     .action;
-    let RecordShapingOperation::RecordCheckpoint { gaps, .. } = &mut shaping.operation else {
-        unreachable!();
-    };
+    let gaps = &mut shaping.gaps;
     *gaps = vec![ShapingGapInput {
         gap_kind,
         summary: "The request expires at its fixed authority boundary.".to_owned(),
@@ -1260,7 +1247,7 @@ fn assert_expired_shaping_kind_recovery(
     }];
     let shaped = harness
         .service
-        .record_shaping(shaping, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(shaping, invocation(OperationCategory::AgentWorkflow))?;
     let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
     let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
         .as_str()
@@ -1301,7 +1288,10 @@ fn assert_expired_shaping_kind_recovery(
     let workflow = &status.response_value["active_task"]["workflow"];
     assert_eq!(workflow["kind"], "decision_recovery_required");
     assert_eq!(workflow["next_actor"], "agent");
-    assert_eq!(workflow["required_action"], "volicord.record_shaping");
+    assert_eq!(
+        workflow["required_action"],
+        "volicord.record_shaping_checkpoint"
+    );
     assert_eq!(
         workflow["checkpoint"]["decision_recovery_requirements"][0]["reason"],
         "expired"
@@ -1360,9 +1350,7 @@ fn assert_expired_shaping_kind_recovery(
         judgment_kind,
     )
     .action;
-    let RecordShapingOperation::RecordCheckpoint { gaps, .. } = &mut successor.operation else {
-        unreachable!();
-    };
+    let gaps = &mut successor.gaps;
     *gaps = vec![ShapingGapInput {
         gap_kind,
         summary: "The successor request has an independent immutable identity.".to_owned(),
@@ -1374,7 +1362,7 @@ fn assert_expired_shaping_kind_recovery(
     }];
     let replaced = harness
         .service
-        .record_shaping(successor, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(successor, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(
         replaced.response_value["workflow"]["kind"],
         "awaiting_user_action"
@@ -1507,8 +1495,8 @@ fn assert_expired_shaping_kind_recovery(
             },
             invocation(OperationCategory::AgentWorkflow),
         )?,
-        ShapingDecisionApplicationOwner::RecordShaping => harness.service.record_shaping(
-            RecordShapingRequest {
+        ShapingDecisionApplicationOwner::FinalizeAdvice => harness.service.finalize_advice(
+            FinalizeAdviceRequest {
                 envelope: envelope(
                     "req_expired_recovery_successor_apply",
                     Some("idem_expired_recovery_successor_apply"),
@@ -1517,23 +1505,21 @@ fn assert_expired_shaping_kind_recovery(
                     Some(&task_id),
                 ),
                 task_id: TaskId::new(&task_id),
-                operation: RecordShapingOperation::FinalizeAdvice {
-                    shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
-                        &replaced.response_value,
-                    )),
-                    change_unit_id: ChangeUnitId::new(&change_unit_id),
-                    scope_revision: 1,
-                    baseline_ref: BaselineRef::new("baseline_test"),
-                    user_action_resolution_ids: vec![UserActionResolutionId::new(
-                        resolution_ref.record_id.as_str(),
-                    )],
-                    result_summary: "The accepted successor decision is applied to the advice."
-                        .to_owned(),
-                    result_refs: Vec::new(),
-                    evidence_refs: Vec::new(),
-                    residual_risks: Vec::new(),
-                    recovery_constraints: Vec::new(),
-                },
+                shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
+                    &replaced.response_value,
+                )),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: vec![UserActionResolutionId::new(
+                    resolution_ref.record_id.as_str(),
+                )],
+                result_summary: "The accepted successor decision is applied to the advice."
+                    .to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
             },
             invocation(OperationCategory::AgentWorkflow),
         )?,
@@ -1563,7 +1549,7 @@ fn assert_expired_shaping_kind_recovery(
             (RequestedMode::Advisor, ShapingDecisionApplicationOwner::AdvanceTask) => {
                 unreachable!("advisor decisions cannot be owned by advance_task")
             }
-            (_, ShapingDecisionApplicationOwner::RecordShaping) => "close_review",
+            (_, ShapingDecisionApplicationOwner::FinalizeAdvice) => "close_review",
             _ => unreachable!("expiration recovery fixture uses work or advisor mode"),
         }
     );
@@ -1633,9 +1619,7 @@ fn applied_scope_authority_survives_sibling_expiration_recovery() -> Result<(), 
         JudgmentKind::SensitiveApproval,
     )
     .action;
-    let RecordShapingOperation::RecordCheckpoint { gaps, .. } = &mut shaping.operation else {
-        unreachable!();
-    };
+    let gaps = &mut shaping.gaps;
     *gaps = vec![
         ShapingGapInput {
             gap_kind: ShapingGapKind::UserScopeDecisionRequired,
@@ -1658,7 +1642,7 @@ fn applied_scope_authority_survives_sibling_expiration_recovery() -> Result<(), 
     ];
     let shaped = harness
         .service
-        .record_shaping(shaping, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(shaping, invocation(OperationCategory::AgentWorkflow))?;
     let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
     let request_refs = shaped.response_value["created_user_action_request_refs"]
         .as_array()
@@ -1740,7 +1724,10 @@ fn applied_scope_authority_survives_sibling_expiration_recovery() -> Result<(), 
     let workflow = &expired.response_value["active_task"]["workflow"];
     assert_eq!(workflow["kind"], "decision_recovery_required");
     assert_eq!(workflow["next_actor"], "agent");
-    assert_eq!(workflow["required_action"], "volicord.record_shaping");
+    assert_eq!(
+        workflow["required_action"],
+        "volicord.record_shaping_checkpoint"
+    );
     assert_eq!(
         workflow["checkpoint"]["current_application_refs"],
         serde_json::to_value(&application_refs)?
@@ -1770,7 +1757,7 @@ fn applied_scope_authority_survives_sibling_expiration_recovery() -> Result<(), 
         "Recovery cannot silently lose the applied scope authority.",
     );
     set_shaping_scope_revision(&mut omit_application_request, 2);
-    let omitted_application = harness.service.record_shaping(
+    let omitted_application = harness.service.record_shaping_checkpoint(
         omit_application_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -1794,7 +1781,7 @@ fn applied_scope_authority_survives_sibling_expiration_recovery() -> Result<(), 
         "Recovery requires the exact expired request ref.",
     );
     set_shaping_scope_revision(&mut omit_retirement_request, 2);
-    let omitted_retirement = harness.service.record_shaping(
+    let omitted_retirement = harness.service.record_shaping_checkpoint(
         omit_retirement_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -1818,7 +1805,7 @@ fn applied_scope_authority_survives_sibling_expiration_recovery() -> Result<(), 
         "Carry the exact applied scope authority while retiring the expired sibling.",
     );
     set_shaping_scope_revision(&mut recovery_request, 2);
-    let recovered = harness.service.record_shaping(
+    let recovered = harness.service.record_shaping_checkpoint(
         recovery_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -1895,8 +1882,8 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         "rejected"
     );
     assert_eq!(harness.counts()?, before_write_capable_scope);
-    let shaped = harness.service.record_shaping(
-        RecordShapingRequest {
+    let shaped = harness.service.record_shaping_checkpoint(
+        RecordShapingCheckpointRequest {
             envelope: envelope(
                 "req_advisor_shaping_record",
                 Some("idem_advisor_shaping_record"),
@@ -1905,19 +1892,16 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                checkpoint_operation:
-                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-                summary: "The advice is complete.".to_owned(),
-                implementation_boundary: RequiredNullable::some(
-                    "Advice is limited to the current export boundary.".to_owned(),
-                ),
-                gaps: Vec::new(),
-                source_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-            },
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            summary: "The advice is complete.".to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Advice is limited to the current export boundary.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -1925,6 +1909,12 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         shaped.response_value["workflow"]["kind"],
         "ready_to_finalize_advice"
     );
+    let checkpoint_event: String = harness.conn()?.query_row(
+        "SELECT event_type FROM authority_events ORDER BY event_seq DESC LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(checkpoint_event, "shaping_recorded");
     let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
     let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
     let pre_finalize_close = harness.service.check_close(
@@ -1941,7 +1931,7 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         invocation(OperationCategory::Read),
     )?;
     let pre_finalize_json = serde_json::to_string(&pre_finalize_close.response_value)?;
-    assert!(pre_finalize_json.contains("volicord.record_shaping"));
+    assert!(pre_finalize_json.contains("volicord.finalize_advice"));
     assert!(!pre_finalize_json.contains("volicord.record_run"));
 
     enable_record_run_capabilities(&harness)?;
@@ -1978,7 +1968,7 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
     );
     assert_eq!(harness.counts()?, before_forbidden_mutations);
     assert!(!product_repo_root(&harness)?.join("src").exists());
-    let finalize_request = RecordShapingRequest {
+    let finalize_request = FinalizeAdviceRequest {
         envelope: envelope(
             "req_advisor_shaping_finalize",
             Some("idem_advisor_shaping_finalize"),
@@ -1987,29 +1977,33 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
             Some(&task_id),
         ),
         task_id: TaskId::new(&task_id),
-        operation: volicord_types::methods::RecordShapingOperation::FinalizeAdvice {
-            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-            change_unit_id: ChangeUnitId::new(&change_unit_id),
-            scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
-            user_action_resolution_ids: Vec::new(),
-            result_summary: "The requested advice is complete.".to_owned(),
-            result_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-            residual_risks: Vec::new(),
-            recovery_constraints: Vec::new(),
-        },
+        shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+        change_unit_id: ChangeUnitId::new(&change_unit_id),
+        scope_revision: 1,
+        baseline_ref: BaselineRef::new("baseline_test"),
+        user_action_resolution_ids: Vec::new(),
+        result_summary: "The requested advice is complete.".to_owned(),
+        result_refs: Vec::new(),
+        evidence_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        recovery_constraints: Vec::new(),
     };
-    let finalized = harness.service.record_shaping(
+    let finalized = harness.service.finalize_advice(
         finalize_request.clone(),
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
+    let finalization_event: String = harness.conn()?.query_row(
+        "SELECT event_type FROM authority_events ORDER BY event_seq DESC LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(finalization_event, "advisor_advice_finalized");
     assert!(finalized.response_value["workflow"]["allowed_actions"]
         .as_array()
         .is_some_and(|actions| actions
             .iter()
-            .any(|action| action == "volicord.record_shaping")));
+            .any(|action| action == "volicord.finalize_advice")));
     let finalized_task = task_revision(&harness, &task_id)?;
     let finalized_basis = finalized_task
         .current_close_basis
@@ -2025,18 +2019,14 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         checkpoint_id
     );
     assert!(finalized_basis.source_run_ref.as_ref().is_none());
-    let replay = harness.service.record_shaping(
+    let replay = harness.service.finalize_advice(
         finalize_request.clone(),
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(replay.response_value, finalized.response_value);
     let mut conflict_request = finalize_request;
-    if let RecordShapingOperation::FinalizeAdvice { result_summary, .. } =
-        &mut conflict_request.operation
-    {
-        *result_summary = "A conflicting advice result.".to_owned();
-    }
-    let conflict = harness.service.record_shaping(
+    conflict_request.result_summary = "A conflicting advice result.".to_owned();
+    let conflict = harness.service.finalize_advice(
         conflict_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -2113,8 +2103,8 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
         .as_str()
         .expect("advisor resolution id")
         .to_owned();
-    let finalized = harness.service.record_shaping(
-        RecordShapingRequest {
+    let finalized = harness.service.finalize_advice(
+        FinalizeAdviceRequest {
             envelope: envelope(
                 "req_advisor_checkpoint_invalidation_finalize",
                 Some("idem_advisor_checkpoint_invalidation_finalize"),
@@ -2123,18 +2113,16 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: RecordShapingOperation::FinalizeAdvice {
-                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-                change_unit_id: ChangeUnitId::new(&change_unit_id),
-                scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
-                user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
-                result_summary: "Current bounded advice result.".to_owned(),
-                result_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                recovery_constraints: Vec::new(),
-            },
+            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
+            result_summary: "Current bounded advice result.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -2146,7 +2134,7 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
     let before = task_revision(&harness, &task_id)?;
     assert!(before.current_close_basis.is_some());
 
-    let replaced = harness.service.record_shaping(
+    let replaced = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_advisor_checkpoint_invalidation_replace",
             "idem_advisor_checkpoint_invalidation_replace",
@@ -2189,8 +2177,8 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
             .as_deref(),
         Some(checkpoint_id.as_str())
     );
-    let revised = harness.service.record_shaping(
-        RecordShapingRequest {
+    let revised = harness.service.finalize_advice(
+        FinalizeAdviceRequest {
             envelope: envelope(
                 "req_advisor_checkpoint_invalidation_refinalize",
                 Some("idem_advisor_checkpoint_invalidation_refinalize"),
@@ -2199,27 +2187,25 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: RecordShapingOperation::FinalizeAdvice {
-                shaping_checkpoint_id: ShapingCheckpointId::new(&successor_id),
-                change_unit_id: ChangeUnitId::new(&change_unit_id),
-                scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
-                user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
-                result_summary: "Revised bounded advice result.".to_owned(),
-                result_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                recovery_constraints: Vec::new(),
-            },
+            shaping_checkpoint_id: ShapingCheckpointId::new(&successor_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
+            result_summary: "Revised bounded advice result.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(revised.response_value["base"]["response_kind"], "result");
     assert_eq!(revised.response_value["workflow"]["kind"], "close_review");
-    assert!(revised.response_value["created_user_action_request_refs"]
-        .as_array()
-        .expect("created request refs")
-        .is_empty());
+    assert!(revised
+        .response_value
+        .get("created_user_action_request_refs")
+        .is_none());
     Ok(())
 }
 
@@ -2279,8 +2265,8 @@ fn stale_advisor_resolution_blocks_finalization() -> Result<(), Box<dyn Error>> 
         scoped.response_value
     );
 
-    let stale_finalize = harness.service.record_shaping(
-        RecordShapingRequest {
+    let stale_finalize = harness.service.finalize_advice(
+        FinalizeAdviceRequest {
             envelope: envelope(
                 "req_advisor_stale_resolution_finalize",
                 Some("idem_advisor_stale_resolution_finalize"),
@@ -2289,18 +2275,16 @@ fn stale_advisor_resolution_blocks_finalization() -> Result<(), Box<dyn Error>> 
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: RecordShapingOperation::FinalizeAdvice {
-                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-                change_unit_id: ChangeUnitId::new(&change_unit_id),
-                scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
-                user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
-                result_summary: "Stale advice must not finalize.".to_owned(),
-                result_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                recovery_constraints: Vec::new(),
-            },
+            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
+            result_summary: "Stale advice must not finalize.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -2458,8 +2442,8 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             .as_array()
             .expect("advisor decision requests")
             .clone();
-        let pending_finalize = harness.service.record_shaping(
-            RecordShapingRequest {
+        let pending_finalize = harness.service.finalize_advice(
+            FinalizeAdviceRequest {
                 envelope: envelope(
                     &format!("req_{label}_pending_finalize"),
                     Some(&format!("idem_{label}_pending_finalize")),
@@ -2468,18 +2452,16 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
                     Some(&task_id),
                 ),
                 task_id: TaskId::new(&task_id),
-                operation: RecordShapingOperation::FinalizeAdvice {
-                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-                    change_unit_id: ChangeUnitId::new(&initial_change_unit_id),
-                    scope_revision: 1,
-                    baseline_ref: BaselineRef::new("baseline_test"),
-                    user_action_resolution_ids: Vec::new(),
-                    result_summary: "Advice result.".to_owned(),
-                    result_refs: Vec::new(),
-                    evidence_refs: Vec::new(),
-                    residual_risks: Vec::new(),
-                    recovery_constraints: Vec::new(),
-                },
+                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&initial_change_unit_id),
+                scope_revision: 1,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: Vec::new(),
+                result_summary: "Advice result.".to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
             },
             invocation(OperationCategory::AgentWorkflow),
         )?;
@@ -2546,8 +2528,8 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             .current_shaping_checkpoint(&TaskId::new(&task_id))?
             .expect("current advisor checkpoint");
         assert_eq!(current_checkpoint.shaping_checkpoint_id, checkpoint_id);
-        let finalized = harness.service.record_shaping(
-            RecordShapingRequest {
+        let finalized = harness.service.finalize_advice(
+            FinalizeAdviceRequest {
                 envelope: envelope(
                     &format!("req_{label}_finalize"),
                     Some(&format!("idem_{label}_finalize")),
@@ -2556,21 +2538,19 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
                     Some(&task_id),
                 ),
                 task_id: TaskId::new(&task_id),
-                operation: RecordShapingOperation::FinalizeAdvice {
-                    shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-                    change_unit_id: ChangeUnitId::new(&change_unit_id),
-                    scope_revision,
-                    baseline_ref: BaselineRef::new("baseline_test"),
-                    user_action_resolution_ids: resolution_refs
-                        .iter()
-                        .map(|reference| UserActionResolutionId::new(reference.record_id.as_str()))
-                        .collect(),
-                    result_summary: "The bounded advisor decision is complete.".to_owned(),
-                    result_refs: Vec::new(),
-                    evidence_refs: Vec::new(),
-                    residual_risks: Vec::new(),
-                    recovery_constraints: Vec::new(),
-                },
+                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+                change_unit_id: ChangeUnitId::new(&change_unit_id),
+                scope_revision,
+                baseline_ref: BaselineRef::new("baseline_test"),
+                user_action_resolution_ids: resolution_refs
+                    .iter()
+                    .map(|reference| UserActionResolutionId::new(reference.record_id.as_str()))
+                    .collect(),
+                result_summary: "The bounded advisor decision is complete.".to_owned(),
+                result_refs: Vec::new(),
+                evidence_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                recovery_constraints: Vec::new(),
             },
             invocation(OperationCategory::AgentWorkflow),
         )?;
@@ -2579,10 +2559,10 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             finalized.response_value["shaping_checkpoint"]["shaping_checkpoint_id"],
             checkpoint_id
         );
-        assert!(finalized.response_value["created_user_action_request_refs"]
-            .as_array()
-            .expect("created request refs")
-            .is_empty());
+        assert!(finalized
+            .response_value
+            .get("created_user_action_request_refs")
+            .is_none());
         let advisor_owned_count = decisions
             .iter()
             .filter(|(kind, _)| *kind != ShapingGapKind::UserScopeDecisionRequired)
@@ -2604,6 +2584,13 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
             decisions.len(),
             "{label}"
         );
+        assert!(current_checkpoint.applications.iter().all(|application| {
+            if application.judgment_kind == JudgmentKind::ScopeDecision {
+                application.application_owner == ShapingDecisionApplicationOwner::UpdateScope
+            } else {
+                application.application_owner == ShapingDecisionApplicationOwner::FinalizeAdvice
+            }
+        }));
         let task_after_finalization = task_revision(&harness, &task_id)?;
         assert_eq!(
             task_after_finalization
@@ -2777,7 +2764,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
         ShapingCheckpointOperation::CreateInitial,
         "Initial current shaping authority.",
     );
-    let initial = harness.service.record_shaping(
+    let initial = harness.service.record_shaping_checkpoint(
         initial_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -2788,7 +2775,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
     );
     let after_initial = harness.counts()?;
 
-    let duplicate_initial = harness.service.record_shaping(
+    let duplicate_initial = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_succession_duplicate_initial",
             "idem_succession_duplicate_initial",
@@ -2804,7 +2791,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
         "SHAPING_CHECKPOINT_STALE"
     );
 
-    let stale_replacement = harness.service.record_shaping(
+    let stale_replacement = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_succession_stale",
             "idem_succession_stale",
@@ -2839,7 +2826,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
         },
         "Exact successor authority.",
     );
-    let replacement = harness.service.record_shaping(
+    let replacement = harness.service.record_shaping_checkpoint(
         replacement_request.clone(),
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -2869,14 +2856,14 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
     );
     drop(store);
 
-    let replay = harness.service.record_shaping(
+    let replay = harness.service.record_shaping_checkpoint(
         replacement_request.clone(),
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(replay.response_value, replacement.response_value);
     let after_replacement = harness.counts()?;
 
-    let losing_competitor = harness.service.record_shaping(
+    let losing_competitor = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_succession_competing_replace",
             "idem_succession_competing_replace",
@@ -2899,14 +2886,10 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
     assert_eq!(harness.counts()?, after_replacement);
 
     let mut conflict = replacement_request;
-    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint { summary, .. } =
-        &mut conflict.operation
-    {
-        *summary = "Conflicting replay payload.".to_owned();
-    }
+    conflict.summary = "Conflicting replay payload.".to_owned();
     let conflict = harness
         .service
-        .record_shaping(conflict, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(conflict, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(conflict.response_value["base"]["response_kind"], "rejected");
     assert_eq!(harness.counts()?, after_replacement);
     Ok(())
@@ -2916,7 +2899,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
 fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = shaping_task(&harness, "concurrent_succession")?;
-    let initial = harness.service.record_shaping(
+    let initial = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_concurrent_succession_initial",
             "idem_concurrent_succession_initial",
@@ -2961,13 +2944,15 @@ fn concurrent_checkpoint_replacements_commit_exactly_one_successor() -> Result<(
         let first_service = &harness.service;
         let first = scope.spawn(move || {
             first_barrier.wait();
-            first_service.record_shaping(first, invocation(OperationCategory::AgentWorkflow))
+            first_service
+                .record_shaping_checkpoint(first, invocation(OperationCategory::AgentWorkflow))
         });
         let second_barrier = Arc::clone(&barrier);
         let second_service = &harness.service;
         let second = scope.spawn(move || {
             second_barrier.wait();
-            second_service.record_shaping(second, invocation(OperationCategory::AgentWorkflow))
+            second_service
+                .record_shaping_checkpoint(second, invocation(OperationCategory::AgentWorkflow))
         });
         barrier.wait();
         (
@@ -3047,7 +3032,7 @@ fn every_live_user_owned_shaping_decision_blocks_replacement() -> Result<(), Box
         let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
         let request_ref = shaped.response_value["created_user_action_request_refs"][0].clone();
         let before = harness.counts()?;
-        let replacement = harness.service.record_shaping(
+        let replacement = harness.service.record_shaping_checkpoint(
             ready_shaping_request(
                 &format!("req_{label}_replace"),
                 &format!("idem_{label}_replace"),
@@ -3108,7 +3093,7 @@ fn direct_store_mutation_cannot_detach_live_shaping_authority() -> Result<(), Bo
     let mut store = harness.mutation_store()?;
     let input = volicord_store::core_pipeline::commit_input(
         &ProjectId::new(PROJECT_ID),
-        MethodName::RecordShaping,
+        MethodName::RecordShapingCheckpoint,
         Some(&IdempotencyKey::new("idem_direct_store_detach")),
         &volicord_types::ids::RequestHash::new("sha256:direct-store-detach"),
         Some(volicord_store::core_pipeline::VerifiedReplayContext {
@@ -3209,7 +3194,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
     let resolution_ref: StateRecordRef =
         serde_json::from_value(resolved.response_value["user_action_resolution_ref"].clone())?;
     let before_rejected = harness.counts()?;
-    let rejected = harness.service.record_shaping(
+    let rejected = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_resolved_scope_replace_early",
             "idem_resolved_scope_replace_early",
@@ -3273,15 +3258,11 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         },
         "Missing carry authority must reject.",
     );
-    if let RecordShapingOperation::RecordCheckpoint { scope_revision, .. } =
-        &mut missing_carry.operation
-    {
-        *scope_revision = 2;
-    }
+    missing_carry.scope_revision = 2;
     let before_missing = harness.counts()?;
     let missing = harness
         .service
-        .record_shaping(missing_carry, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(missing_carry, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(missing.response_value["base"]["response_kind"], "rejected");
     assert_eq!(harness.counts()?, before_missing);
 
@@ -3306,15 +3287,11 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         },
         "Extra carry authority must reject.",
     );
-    if let RecordShapingOperation::RecordCheckpoint { scope_revision, .. } =
-        &mut extra_carry.operation
-    {
-        *scope_revision = 2;
-    }
+    extra_carry.scope_revision = 2;
     let before_extra = harness.counts()?;
     let extra = harness
         .service
-        .record_shaping(extra_carry, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(extra_carry, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(extra.response_value["base"]["response_kind"], "rejected");
     assert_eq!(harness.counts()?, before_extra);
 
@@ -3331,16 +3308,10 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         },
         "Applied authority permits exact checkpoint succession.",
     );
-    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-        scope_revision,
-        ..
-    } = &mut later_request.operation
-    {
-        *scope_revision = 2;
-    }
+    later_request.scope_revision = 2;
     let later = harness
         .service
-        .record_shaping(later_request, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(later_request, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(
         later.response_value["base"]["response_kind"], "result",
         "{}",
@@ -3412,7 +3383,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
     );
     assert_eq!(
         invalidated.response_value["state"]["workflow"]["required_action"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
     let application = harness
         .store()?
@@ -3480,14 +3451,10 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         "Reauthorize stale scope authority through a fresh UserAction request.",
     );
     set_shaping_scope_revision(&mut reauthorize, 3);
-    if let RecordShapingOperation::RecordCheckpoint { baseline_ref, .. } =
-        &mut reauthorize.operation
-    {
-        *baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
-    }
+    reauthorize.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
     let reauthorized = harness
         .service
-        .record_shaping(reauthorize, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(reauthorize, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(
         reauthorized.response_value["base"]["response_kind"], "result",
         "{}",
@@ -3669,8 +3636,8 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
         ));
     }
     let before_finalization = harness.counts()?;
-    let finalized = harness.service.record_shaping(
-        RecordShapingRequest {
+    let finalized = harness.service.finalize_advice(
+        FinalizeAdviceRequest {
             envelope: envelope(
                 "req_advisor_stale_finalize",
                 Some("idem_advisor_stale_finalize"),
@@ -3679,18 +3646,16 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: RecordShapingOperation::FinalizeAdvice {
-                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-                change_unit_id: ChangeUnitId::new(&change_unit_id),
-                scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
-                user_action_resolution_ids: resolution_ids,
-                result_summary: "Both advisor judgments are applied.".to_owned(),
-                result_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                recovery_constraints: Vec::new(),
-            },
+            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: resolution_ids,
+            result_summary: "Both advisor judgments are applied.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -3732,7 +3697,7 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
     );
     assert_eq!(
         invalidated.response_value["state"]["workflow"]["required_action"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
     let invalidated_version = harness.counts()?.state_version;
     let store = harness.store()?;
@@ -3793,7 +3758,7 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
     let mut direct_store = harness.mutation_store()?;
     let direct_input = volicord_store::core_pipeline::commit_input(
         &ProjectId::new(PROJECT_ID),
-        MethodName::RecordShaping,
+        MethodName::RecordShapingCheckpoint,
         Some(&IdempotencyKey::new(
             "idem_advisor_stale_direct_store_missing",
         )),
@@ -3935,12 +3900,9 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
             "Invalid stale authority inventory must have no effect.",
         );
         set_shaping_scope_revision(&mut invalid_replacement, 2);
-        if let RecordShapingOperation::RecordCheckpoint { baseline_ref, .. } =
-            &mut invalid_replacement.operation
-        {
-            *baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
-        }
-        let rejected = harness.service.record_shaping(
+        invalid_replacement.baseline_ref =
+            RequiredNullable::some(BaselineRef::new("baseline_revised"));
+        let rejected = harness.service.record_shaping_checkpoint(
             invalid_replacement,
             invocation(OperationCategory::AgentWorkflow),
         )?;
@@ -3973,15 +3935,11 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
         "Consume every stale advisor application explicitly.",
     );
     set_shaping_scope_revision(&mut replacement, 2);
-    if let RecordShapingOperation::RecordCheckpoint { baseline_ref, .. } =
-        &mut replacement.operation
-    {
-        *baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
-    }
+    replacement.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
     let replay_request = replacement.clone();
     let replaced = harness
         .service
-        .record_shaping(replacement, invocation(OperationCategory::AgentWorkflow))?;
+        .record_shaping_checkpoint(replacement, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(
         replaced.response_value["base"]["response_kind"], "result",
         "{}",
@@ -4016,19 +3974,16 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
         ])
     );
     let after_commit = harness.counts()?;
-    let replayed = harness.service.record_shaping(
+    let replayed = harness.service.record_shaping_checkpoint(
         replay_request.clone(),
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(replayed.response_value, replaced.response_value);
     assert_eq!(harness.counts()?, after_commit);
     let mut conflicting_replay = replay_request;
-    if let RecordShapingOperation::RecordCheckpoint { summary, .. } =
-        &mut conflicting_replay.operation
-    {
-        *summary = "Conflicting payload for the committed reauthorization.".to_owned();
-    }
-    let conflict = harness.service.record_shaping(
+    conflicting_replay.summary =
+        "Conflicting payload for the committed reauthorization.".to_owned();
+    let conflict = harness.service.record_shaping_checkpoint(
         conflicting_replay,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -4062,8 +4017,8 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
         .as_str()
         .expect("fresh advisor resolution");
     let before_revised_finalization = harness.counts()?;
-    let revised_finalized = harness.service.record_shaping(
-        RecordShapingRequest {
+    let revised_finalized = harness.service.finalize_advice(
+        FinalizeAdviceRequest {
             envelope: envelope(
                 "req_advisor_stale_revised_finalize",
                 Some("idem_advisor_stale_revised_finalize"),
@@ -4072,18 +4027,16 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: RecordShapingOperation::FinalizeAdvice {
-                shaping_checkpoint_id: ShapingCheckpointId::new(&successor_checkpoint_id),
-                change_unit_id: ChangeUnitId::new(&new_change_unit_id),
-                scope_revision: 2,
-                baseline_ref: BaselineRef::new("baseline_revised"),
-                user_action_resolution_ids: vec![UserActionResolutionId::new(fresh_resolution_id)],
-                result_summary: "Revised advice uses only fresh technical authority.".to_owned(),
-                result_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                recovery_constraints: Vec::new(),
-            },
+            shaping_checkpoint_id: ShapingCheckpointId::new(&successor_checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&new_change_unit_id),
+            scope_revision: 2,
+            baseline_ref: BaselineRef::new("baseline_revised"),
+            user_action_resolution_ids: vec![UserActionResolutionId::new(fresh_resolution_id)],
+            result_summary: "Revised advice uses only fresh technical authority.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -4381,7 +4334,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
 
         if !decisions.is_empty() {
             let before_pending_replace = harness.counts()?;
-            let pending_replace = harness.service.record_shaping(
+            let pending_replace = harness.service.record_shaping_checkpoint(
                 ready_shaping_request(
                     &format!("req_{label}_pending_replace"),
                     &format!("idem_{label}_pending_replace"),
@@ -4503,7 +4456,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
             );
 
             let before_resolved_replace = harness.counts()?;
-            let resolved_replace = harness.service.record_shaping(
+            let resolved_replace = harness.service.record_shaping_checkpoint(
                 ready_shaping_request(
                     &format!("req_{label}_resolved_replace"),
                     &format!("idem_{label}_resolved_replace"),
@@ -5039,7 +4992,7 @@ fn detached_direct_request_does_not_enter_current_work_shaping_authority(
         "awaiting_user_action"
     );
     let request_id = response_record_id(&requested.response_value, "user_action_request_ref");
-    let shaped = harness.service.record_shaping(
+    let shaped = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_task_wide_shaping",
             "idem_task_wide_shaping",
@@ -5161,7 +5114,7 @@ fn detached_direct_request_does_not_enter_current_advisor_shaping_authority(
         "shaping_required"
     );
     let request_id = response_record_id(&requested.response_value, "user_action_request_ref");
-    let shaped = harness.service.record_shaping(
+    let shaped = harness.service.record_shaping_checkpoint(
         ready_shaping_request(
             "req_task_wide_advisor_shaping",
             "idem_task_wide_advisor_shaping",
@@ -5199,8 +5152,8 @@ fn detached_direct_request_does_not_enter_current_advisor_shaping_authority(
 
     let checkpoint_id = shaping_checkpoint_id(&shaped.response_value);
     let before = harness.counts()?;
-    let finalized = harness.service.record_shaping(
-        RecordShapingRequest {
+    let finalized = harness.service.finalize_advice(
+        FinalizeAdviceRequest {
             envelope: envelope(
                 "req_task_wide_advisor_finalize",
                 Some("idem_task_wide_advisor_finalize"),
@@ -5209,18 +5162,16 @@ fn detached_direct_request_does_not_enter_current_advisor_shaping_authority(
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: RecordShapingOperation::FinalizeAdvice {
-                shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
-                change_unit_id: ChangeUnitId::new(&change_unit_id),
-                scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
-                user_action_resolution_ids: Vec::new(),
-                result_summary: "The current checkpoint advice is complete.".to_owned(),
-                result_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                recovery_constraints: Vec::new(),
-            },
+            shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: Vec::new(),
+            result_summary: "The current checkpoint advice is complete.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -5290,8 +5241,8 @@ fn ready_shaping_request(
     task_id: &str,
     checkpoint_operation: ShapingCheckpointOperation,
     summary: &str,
-) -> RecordShapingRequest {
-    RecordShapingRequest {
+) -> RecordShapingCheckpointRequest {
+    RecordShapingCheckpointRequest {
         envelope: envelope(
             request_id,
             Some(idempotency_key),
@@ -5300,27 +5251,21 @@ fn ready_shaping_request(
             Some(task_id),
         ),
         task_id: TaskId::new(task_id),
-        operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-            checkpoint_operation,
-            scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-            summary: summary.to_owned(),
-            implementation_boundary: RequiredNullable::some(
-                "Keep implementation inside the exact current scope.".to_owned(),
-            ),
-            gaps: Vec::new(),
-            source_refs: Vec::new(),
-            evidence_refs: Vec::new(),
-        },
+        checkpoint_operation,
+        scope_revision: 1,
+        baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+        summary: summary.to_owned(),
+        implementation_boundary: RequiredNullable::some(
+            "Keep implementation inside the exact current scope.".to_owned(),
+        ),
+        gaps: Vec::new(),
+        source_refs: Vec::new(),
+        evidence_refs: Vec::new(),
     }
 }
 
-fn set_shaping_scope_revision(request: &mut RecordShapingRequest, revision: u64) {
-    let RecordShapingOperation::RecordCheckpoint { scope_revision, .. } = &mut request.operation
-    else {
-        unreachable!();
-    };
-    *scope_revision = revision;
+fn set_shaping_scope_revision(request: &mut RecordShapingCheckpointRequest, revision: u64) {
+    request.scope_revision = revision;
 }
 
 pub(super) fn record_user_owned_gap(
@@ -5358,16 +5303,10 @@ pub(super) fn record_user_owned_gap(
             expires_at: RequiredNullable::null(),
         }),
     }];
-    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-        gaps: request_gaps,
-        ..
-    } = &mut request.operation
-    {
-        *request_gaps = gaps;
-    }
+    request.gaps = gaps;
     harness
         .service
-        .record_shaping(request, invocation(OperationCategory::AgentWorkflow))
+        .record_shaping_checkpoint(request, invocation(OperationCategory::AgentWorkflow))
 }
 
 fn record_user_owned_gaps(
@@ -5409,14 +5348,8 @@ fn record_user_owned_gaps(
             }
         })
         .collect();
-    if let volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-        gaps: request_gaps,
-        ..
-    } = &mut request.operation
-    {
-        *request_gaps = gaps;
-    }
+    request.gaps = gaps;
     harness
         .service
-        .record_shaping(request, invocation(OperationCategory::AgentWorkflow))
+        .record_shaping_checkpoint(request, invocation(OperationCategory::AgentWorkflow))
 }

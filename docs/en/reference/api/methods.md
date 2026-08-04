@@ -20,7 +20,8 @@ The labels below use the vocabulary in [Documentation Policy](../../maintain/doc
 
 <a id="volicordintake"></a>
 <a id="volicordupdate_scope"></a>
-<a id="volicordrecord_shaping"></a>
+<a id="volicordrecord_shaping_checkpoint"></a>
+<a id="volicordfinalize_advice"></a>
 <a id="volicordadvance_task"></a>
 <a id="volicordstatus"></a>
 <a id="volicordget_operation_result"></a>
@@ -38,7 +39,8 @@ The labels below use the vocabulary in [Documentation Policy](../../maintain/doc
 |---|---|
 | `volicord.intake` | [Intake method](method-intake.md) |
 | `volicord.update_scope` | [Update-scope method](method-update-scope.md) |
-| `volicord.record_shaping` | [Record-shaping method](method-record-shaping.md) |
+| `volicord.record_shaping_checkpoint` | [Record-shaping-checkpoint method](method-record-shaping-checkpoint.md) |
+| `volicord.finalize_advice` | [Finalize-advice method](method-finalize-advice.md) |
 | `volicord.advance_task` | [Advance-task method](method-advance-task.md) |
 | `volicord.status` | [Status method](method-status.md) |
 | `volicord.get_operation_result` | [Get-operation-result method](method-get-operation-result.md#volicordget_operation_result) |

@@ -124,13 +124,13 @@ decision produces `inconsistent_authority_state`; workflow cannot report
 
 Rejected, deferred, and expired shaping decisions are never application
 inputs. They select `decision_recovery_required`, name
-`volicord.record_shaping` as the recovery owner, and prevent phase transition,
+`volicord.record_shaping_checkpoint` as the recovery owner, and prevent phase transition,
 Run creation, and Product Repository effects. Only accepted current compatible
 resolutions may be applied, exactly once.
 
 A stale shaping application likewise grants no progression authority. While
 the work Task remains in shaping, it selects `shaping_required` with
-`next_actor=agent`, `required_action=volicord.record_shaping`, and
+`next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, and
 `blocking_reason=application_authority_stale`; the caller must retire or
 reauthorize the exact stale application before advance can be admitted.
 Reauthorization uses a fresh unresolved UserAction request, so the stale

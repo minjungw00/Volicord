@@ -1461,11 +1461,9 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         .as_str()
         .ok_or("scope response should expose the acceptance criterion")?;
     let shaped = record_adapter.call_tool(
-        AgentToolId::RECORD_SHAPING.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
             "task_id": record_task_id,
-            "operation": {
-            "operation": "record_checkpoint",
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_record_compact",
@@ -1474,12 +1472,11 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "gaps": [],
             "source_refs": [],
             "evidence_refs": []
-            }
         }),
     )?;
     let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
         .as_str()
-        .ok_or("record_shaping should expose its checkpoint")?;
+        .ok_or("record_shaping_checkpoint should expose its checkpoint")?;
     record_adapter.call_tool(
         AgentToolId::ADVANCE_TASK.wire_name(),
         json!({
@@ -1657,11 +1654,9 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         .as_str()
         .ok_or("prepare scope should expose its current Change Unit")?;
     let shaped = prepare_adapter.call_tool(
-        AgentToolId::RECORD_SHAPING.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
             "task_id": prepare_task_id,
-            "operation": {
-            "operation": "record_checkpoint",
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_fixture",
@@ -1670,13 +1665,12 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "gaps": [],
             "source_refs": [],
             "evidence_refs": []
-            }
         }),
     )?;
     let prepare_checkpoint_id = shaped.response_value["shaping_checkpoint"]
         ["shaping_checkpoint_id"]
         .as_str()
-        .ok_or("prepare record_shaping should expose its checkpoint")?;
+        .ok_or("prepare record_shaping_checkpoint should expose its checkpoint")?;
     prepare_adapter.call_tool(
         AgentToolId::ADVANCE_TASK.wire_name(),
         json!({

@@ -85,7 +85,7 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
         != [
             ShapingApplicationOwnerExpectation::AdvanceTask,
             ShapingApplicationOwnerExpectation::UpdateScope,
-            ShapingApplicationOwnerExpectation::RecordShaping,
+            ShapingApplicationOwnerExpectation::FinalizeAdvice,
         ]
         .into_iter()
         .collect()

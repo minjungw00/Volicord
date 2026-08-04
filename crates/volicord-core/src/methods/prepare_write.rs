@@ -358,7 +358,7 @@ fn plan_prepare_write(
             operation_now,
         )?;
         let shaping_recovery_owner = if !shaping_authority.recovery_required.is_empty() {
-            Some(MethodName::RecordShaping)
+            Some(MethodName::RecordShapingCheckpoint)
         } else if !shaping_authority.stale.is_empty() || !shaping_authority.inconsistent.is_empty()
         {
             Some(MethodName::Status)

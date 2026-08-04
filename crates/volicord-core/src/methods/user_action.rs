@@ -619,10 +619,10 @@ fn projected_user_action_state(
                     }),
                 ShapingDecisionAuthorityState::Rejected
                 | ShapingDecisionAuthorityState::Deferred
-                | ShapingDecisionAuthorityState::Expired => MethodName::RecordShaping,
+                | ShapingDecisionAuthorityState::Expired => MethodName::RecordShapingCheckpoint,
                 ShapingDecisionAuthorityState::Stale => {
                     if task.work_phase == WorkPhase::Shaping {
-                        MethodName::RecordShaping
+                        MethodName::RecordShapingCheckpoint
                     } else {
                         MethodName::CloseTask
                     }
@@ -1123,11 +1123,11 @@ fn plan_resolve_user_action(
                 }),
             ShapingDecisionAuthorityState::Rejected
             | ShapingDecisionAuthorityState::Deferred
-            | ShapingDecisionAuthorityState::Expired => MethodName::RecordShaping,
+            | ShapingDecisionAuthorityState::Expired => MethodName::RecordShapingCheckpoint,
             ShapingDecisionAuthorityState::AwaitingUser => MethodName::ResolveUserAction,
             ShapingDecisionAuthorityState::Stale => {
                 if projected_task.work_phase == WorkPhase::Shaping {
-                    MethodName::RecordShaping
+                    MethodName::RecordShapingCheckpoint
                 } else {
                     MethodName::CloseTask
                 }

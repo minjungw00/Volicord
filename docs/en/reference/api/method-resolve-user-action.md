@@ -147,7 +147,7 @@ and the exact gap disposition. `machine_action=accept` with
 calculates structural checkpoint readiness, and routes to the application owner
 from `ShapingDecisionPolicy`. `reject/rejected` records `rejected`, while
 `defer/deferred` records `deferred`; both grant no authority and route to
-`volicord.record_shaping` through `decision_recovery_required`. The immutable
+`volicord.record_shaping_checkpoint` through `decision_recovery_required`. The immutable
 request cannot be resolved again. Expired requests remain unresolved audit
 history, reject this method without state change, and use the same agent-owned
 recovery workflow. Resolution never applies the shaping decision.

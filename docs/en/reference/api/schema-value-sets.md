@@ -271,9 +271,9 @@ Mode and `work_phase` jointly select progression and execution authority:
 
 | `Task.mode` | `work_phase` | Supported authority | Successful `intent=complete` result |
 |---|---|---|---|
-| `advisor` | `shaping` | `volicord.record_shaping` | `advice_only` |
+| `advisor` | `shaping` | `volicord.record_shaping_checkpoint`, then `volicord.finalize_advice` | `advice_only` |
 | `direct` | `implementation` | `direct` | `completed` |
-| `work` | `shaping` | `volicord.record_shaping`, then `volicord.advance_task` | `completed` |
+| `work` | `shaping` | `volicord.record_shaping_checkpoint`, then `volicord.advance_task` | `completed` |
 | `work` | `implementation` | `implementation` | `completed` |
 
 `RunKind` contains only `direct` and `implementation`. Advisor Tasks use shaping checkpoints and do not use `prepare_write` or write tickets.
@@ -351,13 +351,13 @@ work + user_product_decision_required -> volicord.advance_task
 work + user_technical_decision_required -> volicord.advance_task
 advisor|work + user_scope_decision_required -> volicord.update_scope
 work + sensitive_approval_required -> volicord.advance_task
-advisor + user_product_decision_required -> volicord.record_shaping
-advisor + user_technical_decision_required -> volicord.record_shaping
-advisor + sensitive_approval_required -> volicord.record_shaping
+advisor + user_product_decision_required -> volicord.finalize_advice
+advisor + user_technical_decision_required -> volicord.finalize_advice
+advisor + sensitive_approval_required -> volicord.finalize_advice
 ```
 
 The only `ShapingDecisionApplicationOwner` values are
-`volicord.update_scope`, `volicord.record_shaping`, and
+`volicord.update_scope`, `volicord.finalize_advice`, and
 `volicord.advance_task`.
 
 `ShapingDecisionApplication.authority_status` uses exactly `current`, `stale`,
@@ -401,7 +401,7 @@ These values describe current progression only. Close-readiness blockers keep
 their own local categories and remediation and do not select a workflow kind
 or required action.
 `application_authority_stale` selects `shaping_required`, `next_actor=agent`,
-and `required_action=volicord.record_shaping` for advisor or work shaping.
+and `required_action=volicord.record_shaping_checkpoint` for advisor or work shaping.
 During work implementation, an update that would create stale shaping
 authority is rejected before mutation and names `volicord.close_task` as the
 close/supersede recovery; it does not select `status` as the recovery or return

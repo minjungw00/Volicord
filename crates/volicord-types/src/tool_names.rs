@@ -131,7 +131,9 @@ impl JsonSchema for AgentToolId {
 impl AgentToolId {
     pub const INTAKE: Self = Self(AgentToolKind::Method(MethodName::Intake));
     pub const UPDATE_SCOPE: Self = Self(AgentToolKind::Method(MethodName::UpdateScope));
-    pub const RECORD_SHAPING: Self = Self(AgentToolKind::Method(MethodName::RecordShaping));
+    pub const RECORD_SHAPING_CHECKPOINT: Self =
+        Self(AgentToolKind::Method(MethodName::RecordShapingCheckpoint));
+    pub const FINALIZE_ADVICE: Self = Self(AgentToolKind::Method(MethodName::FinalizeAdvice));
     pub const ADVANCE_TASK: Self = Self(AgentToolKind::Method(MethodName::AdvanceTask));
     pub const STATUS: Self = Self(AgentToolKind::Method(MethodName::Status));
     pub const GET_OPERATION_RESULT: Self =
@@ -153,10 +155,11 @@ impl AgentToolId {
     pub const GET_INTEGRATION_VERIFICATION: Self = Self(AgentToolKind::GetIntegrationVerification);
 
     /// The complete Agent Connection MCP tool catalog in stable discovery order.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::INTAKE,
         Self::UPDATE_SCOPE,
-        Self::RECORD_SHAPING,
+        Self::RECORD_SHAPING_CHECKPOINT,
+        Self::FINALIZE_ADVICE,
         Self::ADVANCE_TASK,
         Self::STATUS,
         Self::GET_OPERATION_RESULT,
@@ -179,7 +182,8 @@ impl AgentToolId {
         match method {
             MethodName::Intake => Some(Self::INTAKE),
             MethodName::UpdateScope => Some(Self::UPDATE_SCOPE),
-            MethodName::RecordShaping => Some(Self::RECORD_SHAPING),
+            MethodName::RecordShapingCheckpoint => Some(Self::RECORD_SHAPING_CHECKPOINT),
+            MethodName::FinalizeAdvice => Some(Self::FINALIZE_ADVICE),
             MethodName::AdvanceTask => Some(Self::ADVANCE_TASK),
             MethodName::Status => Some(Self::STATUS),
             MethodName::GetOperationResult => Some(Self::GET_OPERATION_RESULT),

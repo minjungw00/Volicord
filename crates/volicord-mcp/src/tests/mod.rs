@@ -63,7 +63,7 @@ use volicord_test_support::core_fixtures::{
 };
 use volicord_types::ids::{BaselineRef, ChangeUnitId, ShapingCheckpointId, TaskId};
 use volicord_types::managed_mcp_client_info::CODEX_MANAGED_MCP_CLIENT_NAME;
-use volicord_types::methods::{AdvanceTaskRequest, RecordShapingRequest};
+use volicord_types::methods::{AdvanceTaskRequest, RecordShapingCheckpointRequest};
 use volicord_types::schema::{
     CloseAssessmentInput, RequiredNullable, ResidualRiskInput, StagedArtifactHandle,
 };

@@ -697,11 +697,16 @@ history. Absence is represented as absence, not a generated empty basis.
 Evidence and acceptance refs must remain exact and current under their owners.
 Direct/work bases identify an exact compatible source Run. Advisor bases have
 no source Run and instead identify the exact current shaping checkpoint and
-the exact set of current shaping decision applications linked to it. Store validates current Task,
-scope revision, close-basis revision, baseline, Change Unit, mode-compatible
-lineage, result/evidence refs, residual risks, and update time as one aggregate.
-An advisor basis whose Change Unit violates the canonical non-write predicate
-or whose checkpoint is not exact current state is corrupt persisted data.
+the exact set of current shaping decision applications linked to it.
+`volicord.record_shaping_checkpoint` persists checkpoint-owned gaps and linked
+UserAction requests with that exact `source_method`, but it cannot create an
+advisor application or close basis. Only `volicord.finalize_advice` persists
+advisor-owned applications and the checkpoint-backed advisor basis. Store
+validates current Task, scope revision, close-basis revision, baseline, Change
+Unit, mode-compatible lineage, result/evidence refs, residual risks, and update
+time as one aggregate. An advisor basis whose Change Unit violates the
+canonical non-write predicate or whose checkpoint is not exact current state is
+corrupt persisted data.
 
 Project continuity records are durable context, not a waiver. Their typed cursor
 and ordering belong to the status method. Carry-forward never bypasses current

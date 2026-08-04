@@ -109,7 +109,7 @@ Choice 요청의 모든 `affected_refs` 항목은 요청 프로젝트에 속해�
 `informational`은 그 자체로 Task를 대기 상태로 유지하거나 연산을 막지 않습니다.
 
 이 일반 호환 행렬은 shaping application owner를 선택하지 않습니다.
-`volicord.record_shaping`이 만든 요청은 gap별 정확한 정책을 사용합니다. 제품·기술은
+`volicord.record_shaping_checkpoint`이 만든 요청은 gap별 정확한 정책을 사용합니다. 제품·기술은
 `[advance_task]`, 범위는 `[scope_update]`, 민감 승인은 `[advance_task, prepare_write,
 record_run, close_complete]`를 사용합니다. 불변 resolution은 연결된 gap을 정확한
 `accepted`, `rejected`, `deferred` disposition으로 바꿉니다. 의미 owner method는
@@ -128,7 +128,7 @@ Shaping에 연결된 요청에서는 이 유효 lifecycle 상태가 별도
 
 Shaping application이 stale이 되면 해결된 요청과 accepted resolution은 변경 불가능한
 감사 record로 남지만 변경된 좌표에 어떤 권한도 부여하지 않습니다. 정확한
-`volicord.record_shaping` 재권한은 이전 요청 근거와 application을 supersede한 뒤 독립
+`volicord.record_shaping_checkpoint` 재권한은 이전 요청 근거와 application을 supersede한 뒤 독립
 identity를 가진 새 current gap과 resolution이 없는 새 unresolved `UserActionRequest`를
 만듭니다. Successor gap의 `reauthorizes_application_ref`와 변경 불가능한
 `ShapingAuthorityReauthorization` record가 lineage를 보존하며 이전 accepted resolution은

@@ -83,7 +83,7 @@ pub(crate) fn plan_record_run(
         operation_now,
     )?;
     let shaping_recovery_owner = if !shaping_authority.recovery_required.is_empty() {
-        Some(MethodName::RecordShaping)
+        Some(MethodName::RecordShapingCheckpoint)
     } else if !shaping_authority.awaiting_user.is_empty() {
         Some(MethodName::ResolveUserAction)
     } else if !shaping_authority.accepted_unapplied.is_empty()

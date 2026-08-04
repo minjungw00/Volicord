@@ -5,7 +5,7 @@ A user-owned shaping gap is not authority to infer a decision. Only a verified U
 Resolution is not application. Scope decisions are applied only by
 `volicord.update_scope`. Product, technical, and sensitive shaping decisions
 are applied by `volicord.advance_task` for work and by
-`volicord.record_shaping(operation=finalize_advice)` for advisor. Exact-ID
+`volicord.finalize_advice` for advisor. Exact-ID
 Store validation and one transaction prevent unrelated gap application or a
 phase transition after failed application. Work-sensitive authority remains
 subject to downstream prepare-write and sensitive-effect checks.

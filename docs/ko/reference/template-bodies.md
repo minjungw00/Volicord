@@ -308,7 +308,7 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 - During `work/implementation`, an authority-invalidating scope, baseline, or Change Unit update is rejected before mutation. Follow the tagged `volicord.close_task` recovery to leave implementation; implementation work never returns silently to shaping.
 - Do not invent a scope decision or pass a scope-decision ref for product-only or technical-only work; follow that decision's mode-specific application owner.
 - Creating or replacing a Change Unit does not advance the Task phase. For work, call `volicord.advance_task` only when the tagged workflow requires explicit advance and never while a UserAction is pending. Do not call `volicord.prepare_write` before the Task enters implementation.
-- Advisor work uses only a non-write Change Unit. On `ready_to_finalize_advice`, finalize the current advisor result with `volicord.record_shaping`; do not use `volicord.record_run`, `volicord.advance_task`, or `volicord.prepare_write` for advisor.
+- Advisor work uses only a non-write Change Unit. On `ready_to_finalize_advice`, finalize the current advisor result with `volicord.finalize_advice`; do not use `volicord.record_run`, `volicord.advance_task`, or `volicord.prepare_write` for advisor.
 - Create current UserAction requests before presenting user-owned choices. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.
 - Never hide or paraphrase a rejected mutation as success. Surface the tagged workflow and every rejection and recovery fact in `presentation.must_surface`, including the current Task phase and exact recovery method.
 - Evaluate close readiness only during close review. Close blockers do not replace tagged workflow progression.

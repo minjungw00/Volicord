@@ -2084,7 +2084,7 @@ pub enum StaleShapingAuthorityAction {
     },
 }
 
-/// One typed shaping gap supplied to `volicord.record_shaping`.
+/// One typed shaping gap supplied to `volicord.record_shaping_checkpoint`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ShapingGapInput {

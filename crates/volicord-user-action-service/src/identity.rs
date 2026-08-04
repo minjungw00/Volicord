@@ -34,7 +34,7 @@ impl UserActionOrigin {
     fn source_method(&self) -> MethodName {
         match self {
             Self::DirectRequest => MethodName::RequestUserAction,
-            Self::Shaping { .. } => MethodName::RecordShaping,
+            Self::Shaping { .. } => MethodName::RecordShapingCheckpoint,
             Self::Reconciliation { .. } => MethodName::ReconcileChanges,
         }
     }
@@ -49,7 +49,7 @@ impl UserActionOrigin {
                 shaping_gap_id,
                 reauthorizes_application_id,
             } => PersistedUserActionRequestMetadata::Shaping(PersistedUserActionShapingMetadata {
-                created_by: MethodName::RecordShaping,
+                created_by: MethodName::RecordShapingCheckpoint,
                 shaping_checkpoint_id: shaping_checkpoint_id.clone(),
                 shaping_gap_id: shaping_gap_id.clone(),
                 reauthorizes_application_id: RequiredNullable::new(

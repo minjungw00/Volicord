@@ -158,8 +158,10 @@ pub enum MethodName {
     Intake,
     #[serde(rename = "volicord.update_scope")]
     UpdateScope,
-    #[serde(rename = "volicord.record_shaping")]
-    RecordShaping,
+    #[serde(rename = "volicord.record_shaping_checkpoint")]
+    RecordShapingCheckpoint,
+    #[serde(rename = "volicord.finalize_advice")]
+    FinalizeAdvice,
     #[serde(rename = "volicord.advance_task")]
     AdvanceTask,
     #[serde(rename = "volicord.status")]
@@ -188,10 +190,11 @@ pub enum MethodName {
 
 impl MethodName {
     /// Complete current public method catalog in declaration order.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Intake,
         Self::UpdateScope,
-        Self::RecordShaping,
+        Self::RecordShapingCheckpoint,
+        Self::FinalizeAdvice,
         Self::AdvanceTask,
         Self::Status,
         Self::GetOperationResult,
@@ -211,7 +214,8 @@ impl MethodName {
         match self {
             Self::Intake => "volicord.intake",
             Self::UpdateScope => "volicord.update_scope",
-            Self::RecordShaping => "volicord.record_shaping",
+            Self::RecordShapingCheckpoint => "volicord.record_shaping_checkpoint",
+            Self::FinalizeAdvice => "volicord.finalize_advice",
             Self::AdvanceTask => "volicord.advance_task",
             Self::Status => "volicord.status",
             Self::GetOperationResult => "volicord.get_operation_result",
@@ -339,7 +343,7 @@ impl Error for ActorSourceParseError {}
 #[serde(rename_all = "snake_case")]
 pub enum NextActionKind {
     UpdateScope,
-    RecordShaping,
+    FinalizeAdvice,
     PrepareWrite,
     StageArtifact,
     RecordRun,
@@ -901,8 +905,8 @@ pub enum ShapingDecisionApplicationOwner {
     UpdateScope,
     #[serde(rename = "volicord.advance_task")]
     AdvanceTask,
-    #[serde(rename = "volicord.record_shaping")]
-    RecordShaping,
+    #[serde(rename = "volicord.finalize_advice")]
+    FinalizeAdvice,
 }
 
 /// Closed current-authority status of one shaping decision application.
@@ -951,7 +955,7 @@ impl ShapingDecisionApplicationOwner {
         match self {
             Self::UpdateScope => MethodName::UpdateScope,
             Self::AdvanceTask => MethodName::AdvanceTask,
-            Self::RecordShaping => MethodName::RecordShaping,
+            Self::FinalizeAdvice => MethodName::FinalizeAdvice,
         }
     }
 }
@@ -1087,7 +1091,7 @@ const fn advisor_or_work_required_for(mode: TaskMode) -> &'static [UserActionReq
 
 const fn advisor_or_work_application_owner(mode: TaskMode) -> ShapingDecisionApplicationOwner {
     if matches!(mode, TaskMode::Advisor) {
-        ShapingDecisionApplicationOwner::RecordShaping
+        ShapingDecisionApplicationOwner::FinalizeAdvice
     } else {
         ShapingDecisionApplicationOwner::AdvanceTask
     }

@@ -30,7 +30,7 @@ use volicord_test_support::{
 use volicord_types::{
     guard_manifest::{guard_manifest_from_json, GuardManifest},
     ids::{AgentConnectionId, BaselineRef, ChangeUnitId, ProjectId, ShapingCheckpointId, TaskId},
-    methods::{AdvanceTaskRequest, RecordShapingRequest},
+    methods::{AdvanceTaskRequest, RecordShapingCheckpointRequest},
     schema::RequiredNullable,
     tool_names::AgentToolId,
     values::{ChangeUnitOperation, GuardHookPhase, OperationCategory},
@@ -301,9 +301,9 @@ impl GuardRepositoryFixture {
             .as_str()
             .ok_or("prepared Change Unit ID")?
             .to_owned();
-        let shaped = service.record_shaping(
+        let shaped = service.record_shaping_checkpoint(
             &self.core.mutation_context()?,
-            RecordShapingRequest {
+            RecordShapingCheckpointRequest {
                 envelope: self.core.envelope(
                     &format!("req_{prefix}_shaping"),
                     Some(&format!("idem_{prefix}_shaping")),
@@ -312,21 +312,19 @@ impl GuardRepositoryFixture {
                     Some(&task_id),
                 ),
                 task_id: TaskId::new(&task_id),
-                operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                    checkpoint_operation:
-                        volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                    scope_revision: 1,
-                    baseline_ref: RequiredNullable::some(BaselineRef::new(
-                        volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                    )),
-                    summary: "The exact write-attribution boundary is ready.".to_owned(),
-                    implementation_boundary: RequiredNullable::some(
-                        "Write only the intended fixture paths.".to_owned(),
-                    ),
-                    gaps: Vec::new(),
-                    source_refs: Vec::new(),
-                    evidence_refs: Vec::new(),
-                },
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The exact write-attribution boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Write only the intended fixture paths.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
             },
             self.agent_invocation()?,
         )?;

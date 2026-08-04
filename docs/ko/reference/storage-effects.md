@@ -1,7 +1,8 @@
 # 저장 효과
 
-`volicord.record_shaping`은 checkpoint aggregate 또는 정확한 advisor finalization을 event,
-replay result, 단 한 번의 state-version 증가와 함께 한 transaction에서 커밋합니다.
+`volicord.record_shaping_checkpoint`은 checkpoint aggregate를 커밋하고,
+`volicord.finalize_advice`는 정확한 advisor finalization을 커밋합니다. 각 메서드는 event,
+replay result, 단 한 번의 state-version 증가를 한 transaction에 포함합니다.
 `volicord.advance_task`는 선택한 정확한 work shaping 결정을 명시적 Task 단계 전이 및 해당
 event/replay result와 원자적으로 커밋합니다. 두 메서드 모두 Product Repository 파일을
 쓰거나 쓰기 티켓을 발급하지 않습니다.
@@ -498,7 +499,8 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 |---|---|---|
 | `volicord.intake` | `Task`와 구체화 기록 생성 | [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | 현재 적용 범위 기록 갱신 | [`volicord.update_scope`](#volicordupdate_scope) |
-| `volicord.record_shaping` | 현재 shaping을 원자적으로 교체하고 정확한 stale 권한을 폐기 또는 재발급하며 연결된 UserAction 요청 생성 | [`volicord.record_shaping`](#volicordrecord_shaping) |
+| `volicord.record_shaping_checkpoint` | 현재 shaping을 원자적으로 교체하고 정확한 stale 권한을 폐기 또는 재발급하며 연결된 UserAction 요청 생성 | [`volicord.record_shaping_checkpoint`](#volicordrecord_shaping_checkpoint) |
+| `volicord.finalize_advice` | 정확한 현재 advisor 결정을 적용하고 checkpoint 기반 닫기 근거 확립 | [`volicord.finalize_advice`](#volicordfinalize_advice) |
 | `volicord.advance_task` | work Task 하나를 shaping에서 implementation으로 명시적으로 전환 | [`volicord.advance_task`](#volicordadvance_task) |
 | `volicord.status` | 읽기형 응답 | [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | 저장 효과 없이 변경 불가능한 과거 재실행 바이트 조회 | [`volicord.get_operation_result`](#volicordget_operation_result) |
@@ -588,8 +590,8 @@ Task phase, event, replay row, state version을 바꾸지 않으며 typed recove
 - [저장소 기록](storage-records.md)
 - [저장소 버전 관리](storage-versioning.md)
 
-<a id="volicordrecord_shaping"></a>
-### `volicord.record_shaping`
+<a id="volicordrecord_shaping_checkpoint"></a>
+### `volicord.record_shaping_checkpoint`
 
 커밋되는 `dry_run=false` 호출은 다음을 수행합니다.
 
@@ -609,17 +611,11 @@ Task phase, event, replay row, state version을 바꾸지 않으며 typed recove
 - `shaping_checkpoints` row 하나와 그 모든 `shaping_checkpoint_gaps` row를 삽입합니다.
 - 사용자 소유 gap마다 대기 `UserActionRequest` 하나와 정확한
   `shaping_checkpoint_user_actions` link 하나를 원자적으로 만듭니다.
-- `operation=finalize_advice`이면 정확한 현재 advisor Task, ready checkpoint, 호환되는
-  비쓰기 Change Unit, scope, baseline, accepted resolution 집합을 검증하고 정확한 advisor
-  owner application row를 만들며 source gap을 적용합니다. Checkpoint를 보존하고 자문 결과,
-  checkpoint 기반 close basis, 정확한 application lineage, evidence ref, risk record를 같은
-  transaction에서 갱신합니다.
 - authority event 하나와 정확한 replay row를 만들고 정규 Core UTC 하한을 진행시키며
   `project_state.state_version`을 정확히 한 번 증가시킵니다.
 
-Finalization은 replacement checkpoint나 UserAction 요청을 만들지 않습니다. 어느
-operation도 Run, Change Unit, write ticket, Product Repository 파일 효과, UserAction
-resolution, work-phase 전환을 만들지 않습니다. Checkpoint, gap, 요청, link, event, replay, 상태 갱신 중
+이 메서드는 Run, Change Unit, write ticket, Product Repository 파일 효과, UserAction
+resolution, close basis, work-phase 전환을 만들지 않습니다. Checkpoint, gap, 요청, link, event, replay, 상태 갱신 중
 하나라도 유효하지 않으면 transaction 전체를 rollback합니다. 유효한 dry-run 미리보기와
 모든 거절 시도에는 이 row와 효과가 없습니다.
 
@@ -631,6 +627,21 @@ carry-forward가 필요하고 관련된 stale application마다 폐기 또는 �
 checkpoint, gap, link, predecessor 갱신, event, replay row, state-version 증가는 하나의
 rollback 경계를 공유하며 변경 불가능한 request, resolution, application, 재권한 이력은
 그대로 남습니다.
+
+<a id="volicordfinalize_advice"></a>
+### `volicord.finalize_advice`
+
+커밋되는 `dry_run=false` 호출은 정확한 현재 advisor Task, ready checkpoint, 호환되는
+비쓰기 Change Unit, scope revision, baseline, 완전한 accepted resolution-ID 집합을
+검증합니다. 한 transaction에서 정확한 advisor owner application row를 만들고 source
+gap을 적용하며 checkpoint를 보존합니다. 또한 자문 결과를 갱신하고 정확한 application
+lineage, evidence ref, risk record가 있는 checkpoint 기반 close basis를 확립하며 authority
+event와 replay row를 만들고 정규 Core UTC 하한과
+`project_state.state_version`을 정확히 한 번 진행합니다.
+
+Replacement checkpoint, UserAction 요청, Run, Change Unit, write ticket, Product
+Repository 파일 효과, UserAction resolution, work-phase 전환은 만들지 않습니다. Dry-run과
+거절 분기에는 저장 효과가 없습니다.
 
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`

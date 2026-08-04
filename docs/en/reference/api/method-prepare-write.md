@@ -84,7 +84,7 @@ not cross that boundary. Final acceptance is a post-work judgment, not the
 required pre-write sensitive-action approval, and cannot retroactively
 authorize a write.
 
-`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not project this method as an allowed advisor workflow action, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. Shaping analysis is recorded with `volicord.record_shaping`, and only a successful explicit `volicord.advance_task` admits work-mode write preparation or an implementation Run.
+`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not project this method as an allowed advisor workflow action, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. Shaping analysis is recorded with `volicord.record_shaping_checkpoint`, and only a successful explicit `volicord.advance_task` admits work-mode write preparation or an implementation Run.
 
 Security non-claims belong to [Security](../security.md).
 
@@ -189,7 +189,7 @@ A separate sensitive-action approval satisfies this method only when the user ac
 
 When the current checkpoint carries rejected, deferred, or expired decision
 authority, this method returns the typed `decision_recovery_required` workflow
-with `volicord.record_shaping` as owner and creates no write ticket or Product
+with `volicord.record_shaping_checkpoint` as owner and creates no write ticket or Product
 Repository delta.
 
 Ticket selection also requires a non-null

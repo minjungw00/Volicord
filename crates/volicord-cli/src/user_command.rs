@@ -1314,9 +1314,7 @@ mod tests {
     use volicord_types::ids::{
         AgentConnectionId, BaselineRef, ChangeUnitId, EvidenceClaimId, ShapingCheckpointId,
     };
-    use volicord_types::methods::{
-        AdvanceTaskRequest, RecordShapingOperation, RecordShapingRequest,
-    };
+    use volicord_types::methods::{AdvanceTaskRequest, RecordShapingCheckpointRequest};
     use volicord_types::schema::{
         ChangeUnitEffectContract, RequiredNullable, ShapingCheckpointOperation, ShapingGapInput,
         ShapingUserActionDraft, StagedArtifactHandle,
@@ -1442,9 +1440,9 @@ mod tests {
                 judgment_kind,
             })
             .action;
-        let shaped = core.record_shaping(
+        let shaped = core.record_shaping_checkpoint(
             &core_fixture.mutation_context()?,
-            RecordShapingRequest {
+            RecordShapingCheckpointRequest {
                 envelope: core_fixture.envelope(
                     &format!("req_{prefix}_shaping"),
                     Some(&format!("idem_{prefix}_shaping")),
@@ -1453,34 +1451,32 @@ mod tests {
                     Some(&task_id),
                 ),
                 task_id: TaskId::new(&task_id),
-                operation: RecordShapingOperation::RecordCheckpoint {
-                    checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
-                    scope_revision: 1,
-                    baseline_ref: RequiredNullable::some(BaselineRef::new(
-                        volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                    )),
-                    summary: "The plan has one exact user-owned shaping boundary.".to_owned(),
-                    implementation_boundary: RequiredNullable::some(
-                        "Apply only the exact resolved decision before implementation.".to_owned(),
-                    ),
-                    gaps: vec![ShapingGapInput {
-                        gap_kind,
-                        summary: "The user owns this exact shaping decision.".to_owned(),
-                        affected_refs: Vec::new(),
-                        user_action: RequiredNullable::some(ShapingUserActionDraft {
-                            action,
-                            expires_at: RequiredNullable::null(),
-                        }),
-                    }],
-                    source_refs: Vec::new(),
-                    evidence_refs: Vec::new(),
-                },
+                checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The plan has one exact user-owned shaping boundary.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Apply only the exact resolved decision before implementation.".to_owned(),
+                ),
+                gaps: vec![ShapingGapInput {
+                    gap_kind,
+                    summary: "The user owns this exact shaping decision.".to_owned(),
+                    affected_refs: Vec::new(),
+                    user_action: RequiredNullable::some(ShapingUserActionDraft {
+                        action,
+                        expires_at: RequiredNullable::null(),
+                    }),
+                }],
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
             },
             invocation,
         )?;
         let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
             .as_str()
-            .expect("record_shaping UserAction request")
+            .expect("record_shaping_checkpoint UserAction request")
             .to_owned();
         Ok(PendingShapingChoiceFixture {
             fixture,
@@ -1671,9 +1667,9 @@ mod tests {
         let scope_state_version = scope.response_value["base"]["state_version"]
             .as_u64()
             .expect("scope update should expose its committed state version");
-        let shaped = core.record_shaping(
+        let shaped = core.record_shaping_checkpoint(
             &fixture.mutation_context()?,
-            RecordShapingRequest {
+            RecordShapingCheckpointRequest {
                 envelope: fixture.envelope(
                     "req_cli_observation_shaping",
                     Some("idem_cli_observation_shaping"),
@@ -1682,30 +1678,28 @@ mod tests {
                     Some(&task_id),
                 ),
                 task_id: TaskId::new(&task_id),
-                operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                    checkpoint_operation:
-                        volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                    scope_revision: 1,
-                    baseline_ref: RequiredNullable::some(BaselineRef::new(
-                        volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                    )),
-                    summary: "The CLI evidence-observation boundary is ready.".to_owned(),
-                    implementation_boundary: RequiredNullable::some(
-                        "Register only the scoped observation artifact.".to_owned(),
-                    ),
-                    gaps: Vec::new(),
-                    source_refs: Vec::new(),
-                    evidence_refs: Vec::new(),
-                },
+                checkpoint_operation:
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                )),
+                summary: "The CLI evidence-observation boundary is ready.".to_owned(),
+                implementation_boundary: RequiredNullable::some(
+                    "Register only the scoped observation artifact.".to_owned(),
+                ),
+                gaps: Vec::new(),
+                source_refs: Vec::new(),
+                evidence_refs: Vec::new(),
             },
             invocation.clone(),
         )?;
         let shaped_state_version = shaped.response_value["base"]["state_version"]
             .as_u64()
-            .expect("record_shaping should expose its committed state version");
+            .expect("record_shaping_checkpoint should expose its committed state version");
         let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
             .as_str()
-            .expect("record_shaping should identify its checkpoint");
+            .expect("record_shaping_checkpoint should identify its checkpoint");
         let advanced = core.advance_task(
             &fixture.mutation_context()?,
             AdvanceTaskRequest {
@@ -2122,7 +2116,7 @@ mod tests {
             "unexpected CLI resolution output: {output}"
         );
         assert!(output.contains("Next actor: agent"));
-        assert!(output.contains("Required action: volicord.record_shaping"));
+        assert!(output.contains("Required action: volicord.record_shaping_checkpoint"));
         Ok(())
     }
 
@@ -2143,7 +2137,7 @@ mod tests {
         assert!(output.contains("Shaping application: none"));
         assert!(output.contains("Workflow: decision_recovery_required"));
         assert!(output.contains("Next actor: agent"));
-        assert!(output.contains("Required action: volicord.record_shaping"));
+        assert!(output.contains("Required action: volicord.record_shaping_checkpoint"));
         Ok(())
     }
 
@@ -2192,7 +2186,7 @@ mod tests {
                 );
                 let expected_owner = match (mode, judgment_kind) {
                     (_, JudgmentKind::ScopeDecision) => "volicord.update_scope",
-                    (RequestedMode::Advisor, _) => "volicord.record_shaping",
+                    (RequestedMode::Advisor, _) => "volicord.finalize_advice",
                     _ => "volicord.advance_task",
                 };
                 assert_eq!(
@@ -2251,7 +2245,7 @@ mod tests {
                     assert_eq!(status_workflow["next_actor"], "agent");
                     assert_eq!(
                         status_workflow["required_action"],
-                        "volicord.record_shaping"
+                        "volicord.record_shaping_checkpoint"
                     );
                     assert_eq!(
                         status_workflow["checkpoint"]["decision_recovery_requirements"][0]

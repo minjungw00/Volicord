@@ -2744,7 +2744,11 @@ mod tests {
         vec![
             ("volicord.intake", intake_request_json()),
             ("volicord.update_scope", update_scope_request_json()),
-            ("volicord.record_shaping", record_shaping_request_json()),
+            (
+                "volicord.record_shaping_checkpoint",
+                record_shaping_checkpoint_request_json(),
+            ),
+            ("volicord.finalize_advice", finalize_advice_request_json()),
             ("volicord.advance_task", advance_task_request_json()),
             ("volicord.status", status_request_json()),
             (
@@ -2808,25 +2812,25 @@ mod tests {
             "received_action": "volicord.advance_task",
             "received_run_kind": null,
             "allowed_run_kinds": [],
-            "allowed_actions": ["volicord.record_shaping"],
+            "allowed_actions": ["volicord.record_shaping_checkpoint"],
             "blockers": [{
                 "code": "SHAPING_CHECKPOINT_REQUIRED",
-                "owner_method": "volicord.record_shaping",
+                "owner_method": "volicord.record_shaping_checkpoint",
                 "required_refs": [],
                 "user_actions": []
             }],
             "workflow": {
                 "kind": "shaping_required",
                 "next_actor": "agent",
-                "required_action": "volicord.record_shaping",
-                "allowed_actions": ["volicord.record_shaping"],
+                "required_action": "volicord.record_shaping_checkpoint",
+                "allowed_actions": ["volicord.record_shaping_checkpoint"],
                 "required_refs": [],
                 "expected_state_version": 4,
                 "blocking_reason": "no_current_checkpoint",
                 "checkpoint": null
             },
             "corrected_retry_allowed": true,
-            "recovery": {"owner_method": "volicord.record_shaping"}
+            "recovery": {"owner_method": "volicord.record_shaping_checkpoint"}
         })
     }
 
@@ -3417,9 +3421,13 @@ mod tests {
             "volicord.update_scope" => canonical_request_hash(
                 &serde_json::from_value::<UpdateScopeRequest>(value).expect("update request"),
             ),
-            "volicord.record_shaping" => canonical_request_hash(
-                &serde_json::from_value::<RecordShapingRequest>(value)
-                    .expect("record shaping request"),
+            "volicord.record_shaping_checkpoint" => canonical_request_hash(
+                &serde_json::from_value::<RecordShapingCheckpointRequest>(value)
+                    .expect("record shaping checkpoint request"),
+            ),
+            "volicord.finalize_advice" => canonical_request_hash(
+                &serde_json::from_value::<FinalizeAdviceRequest>(value)
+                    .expect("finalize advice request"),
             ),
             "volicord.advance_task" => canonical_request_hash(
                 &serde_json::from_value::<AdvanceTaskRequest>(value).expect("advance task request"),
@@ -3497,7 +3505,32 @@ mod tests {
                 "change_unit",
                 "related_scope_decision_refs",
             ],
-            "volicord.record_shaping" => &["envelope", "task_id", "operation"],
+            "volicord.record_shaping_checkpoint" => &[
+                "envelope",
+                "task_id",
+                "checkpoint_operation",
+                "scope_revision",
+                "baseline_ref",
+                "summary",
+                "implementation_boundary",
+                "gaps",
+                "source_refs",
+                "evidence_refs",
+            ],
+            "volicord.finalize_advice" => &[
+                "envelope",
+                "task_id",
+                "shaping_checkpoint_id",
+                "change_unit_id",
+                "scope_revision",
+                "baseline_ref",
+                "user_action_resolution_ids",
+                "result_summary",
+                "result_refs",
+                "evidence_refs",
+                "residual_risks",
+                "recovery_constraints",
+            ],
             "volicord.advance_task" => &[
                 "envelope",
                 "task_id",
@@ -3590,8 +3623,11 @@ mod tests {
             "volicord.update_scope" => {
                 serde_json::from_value::<UpdateScopeRequest>(value).map(drop)
             }
-            "volicord.record_shaping" => {
-                serde_json::from_value::<RecordShapingRequest>(value).map(drop)
+            "volicord.record_shaping_checkpoint" => {
+                serde_json::from_value::<RecordShapingCheckpointRequest>(value).map(drop)
+            }
+            "volicord.finalize_advice" => {
+                serde_json::from_value::<FinalizeAdviceRequest>(value).map(drop)
             }
             "volicord.advance_task" => {
                 serde_json::from_value::<AdvanceTaskRequest>(value).map(drop)
@@ -3684,21 +3720,35 @@ mod tests {
         })
     }
 
-    fn record_shaping_request_json() -> Value {
+    fn record_shaping_checkpoint_request_json() -> Value {
         json!({
             "envelope": envelope_json(),
             "task_id": "task_empty_001",
-            "operation": {
-                "operation": "record_checkpoint",
-                "checkpoint_operation": {"operation": "create_initial"},
-                "scope_revision": 2,
-                "baseline_ref": "baseline_empty_001",
-                "summary": "The saved-filter implementation boundary is ready.",
-                "implementation_boundary": "Limit edits to saved-filter validation.",
-                "gaps": [],
-                "source_refs": [],
-                "evidence_refs": []
-            }
+            "checkpoint_operation": {"operation": "create_initial"},
+            "scope_revision": 2,
+            "baseline_ref": "baseline_empty_001",
+            "summary": "The saved-filter implementation boundary is ready.",
+            "implementation_boundary": "Limit edits to saved-filter validation.",
+            "gaps": [],
+            "source_refs": [],
+            "evidence_refs": []
+        })
+    }
+
+    fn finalize_advice_request_json() -> Value {
+        json!({
+            "envelope": envelope_json(),
+            "task_id": "task_empty_001",
+            "shaping_checkpoint_id": "shaping_checkpoint_empty_001",
+            "change_unit_id": "cu_empty_001",
+            "scope_revision": 2,
+            "baseline_ref": "baseline_empty_001",
+            "user_action_resolution_ids": [],
+            "result_summary": "The saved-filter advice is final.",
+            "result_refs": [],
+            "evidence_refs": [],
+            "residual_risks": [],
+            "recovery_constraints": []
         })
     }
 

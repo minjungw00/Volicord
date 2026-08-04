@@ -31,7 +31,7 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "explicit_advance_required_for_work_implementation",
     "implementation_authority_invalidating_update_rejected_before_mutation",
     "implementation_never_silently_returns_to_shaping",
-    "advisor_results_finalize_through_record_shaping",
+    "advisor_results_finalize_through_finalize_advice",
     "advisor_change_units_are_non_write",
     "user_decisions_require_user_action_requests",
     "chat_reply_is_not_resolution",

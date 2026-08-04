@@ -184,7 +184,7 @@ the method never silently returns the Task to shaping.
 A rejected, deferred, expired, or inconsistent shaping decision grants no
 scope authority. The method returns a no-effect workflow rejection whose
 current workflow is `decision_recovery_required` and whose recovery owner is
-`volicord.record_shaping`; a semantic no-op scope request cannot bypass this
+`volicord.record_shaping_checkpoint`; a semantic no-op scope request cannot bypass this
 gate.
 
 ## Success result
@@ -405,7 +405,7 @@ state:
     branch_ref: "refs/heads/filter-scope"
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 19, blocking_reason: no_current_checkpoint, checkpoint: null}
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping_checkpoint, allowed_actions: [volicord.record_shaping_checkpoint, volicord.status], required_refs: [], expected_state_version: 19, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

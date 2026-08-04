@@ -624,7 +624,7 @@ mod tests {
         .expect("replayed application ID");
         let other_owner = shaping_decision_application_id(
             &resolution_id,
-            crate::values::ShapingDecisionApplicationOwner::RecordShaping,
+            crate::values::ShapingDecisionApplicationOwner::FinalizeAdvice,
         )
         .expect("other owner application ID");
         assert_eq!(first, replay);

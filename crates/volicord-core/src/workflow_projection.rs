@@ -542,10 +542,10 @@ pub(crate) fn task_wide_shaping_authority(
                     }),
                 ShapingDecisionAuthorityState::Rejected
                 | ShapingDecisionAuthorityState::Deferred
-                | ShapingDecisionAuthorityState::Expired => MethodName::RecordShaping,
+                | ShapingDecisionAuthorityState::Expired => MethodName::RecordShapingCheckpoint,
                 ShapingDecisionAuthorityState::Stale => {
                     if task.work_phase == WorkPhase::Shaping {
-                        MethodName::RecordShaping
+                        MethodName::RecordShapingCheckpoint
                     } else {
                         MethodName::CloseTask
                     }
@@ -826,8 +826,8 @@ pub(crate) fn workflow_projection(
     if !task_wide_authority.recovery_required.is_empty() {
         return WorkflowProjection::DecisionRecoveryRequired {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::RecordShaping),
-            allowed_actions: vec![MethodName::RecordShaping, MethodName::Status],
+            required_action: RequiredNullable::some(MethodName::RecordShapingCheckpoint),
+            allowed_actions: vec![MethodName::RecordShapingCheckpoint, MethodName::Status],
             required_refs: refs,
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(
@@ -840,12 +840,12 @@ pub(crate) fn workflow_projection(
         return WorkflowProjection::ShapingRequired {
             next_actor: AuthorityNextActor::Agent,
             required_action: RequiredNullable::some(if task.work_phase == WorkPhase::Shaping {
-                MethodName::RecordShaping
+                MethodName::RecordShapingCheckpoint
             } else {
                 MethodName::CloseTask
             }),
             allowed_actions: if task.work_phase == WorkPhase::Shaping {
-                vec![MethodName::RecordShaping, MethodName::Status]
+                vec![MethodName::RecordShapingCheckpoint, MethodName::Status]
             } else {
                 vec![MethodName::CloseTask, MethodName::Status]
             },
@@ -902,8 +902,8 @@ pub(crate) fn workflow_projection(
         }
         return WorkflowProjection::ShapingRequired {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::RecordShaping),
-            allowed_actions: vec![MethodName::RecordShaping, MethodName::Status],
+            required_action: RequiredNullable::some(MethodName::RecordShapingCheckpoint),
+            allowed_actions: vec![MethodName::RecordShapingCheckpoint, MethodName::Status],
             required_refs: refs,
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(WorkflowBlockingReason::NoCurrentCheckpoint),
@@ -974,8 +974,8 @@ pub(crate) fn workflow_projection(
     {
         return WorkflowProjection::ShapingRequired {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::RecordShaping),
-            allowed_actions: vec![MethodName::RecordShaping, MethodName::Status],
+            required_action: RequiredNullable::some(MethodName::RecordShapingCheckpoint),
+            allowed_actions: vec![MethodName::RecordShapingCheckpoint, MethodName::Status],
             required_refs: refs,
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(WorkflowBlockingReason::ShapingGapsCurrent),
@@ -1006,7 +1006,7 @@ pub(crate) fn workflow_projection(
                 allowed_actions: vec![
                     MethodName::CheckClose,
                     MethodName::CloseTask,
-                    MethodName::RecordShaping,
+                    MethodName::FinalizeAdvice,
                     MethodName::Status,
                 ],
                 required_refs: refs,
@@ -1028,8 +1028,8 @@ pub(crate) fn workflow_projection(
         }
         return WorkflowProjection::ReadyToFinalizeAdvice {
             next_actor: AuthorityNextActor::Agent,
-            required_action: RequiredNullable::some(MethodName::RecordShaping),
-            allowed_actions: vec![MethodName::RecordShaping, MethodName::Status],
+            required_action: RequiredNullable::some(MethodName::FinalizeAdvice),
+            allowed_actions: vec![MethodName::FinalizeAdvice, MethodName::Status],
             required_refs: refs,
             expected_state_version: state_version,
             blocking_reason: RequiredNullable::some(

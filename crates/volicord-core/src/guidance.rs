@@ -36,7 +36,8 @@ pub(crate) fn allowed_operation_categories(
         ],
         Some(
             MethodName::UpdateScope
-            | MethodName::RecordShaping
+            | MethodName::RecordShapingCheckpoint
+            | MethodName::FinalizeAdvice
             | MethodName::AdvanceTask
             | MethodName::PrepareEvidenceCapture
             | MethodName::PrepareWrite

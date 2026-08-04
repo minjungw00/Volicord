@@ -114,7 +114,7 @@ The request validator and operation-blocker projection use this one matrix.
 `informational` never keeps the Task waiting or blocks an operation by itself.
 
 The generic compatibility matrix does not choose shaping application owners.
-A request created by `volicord.record_shaping` uses the exact per-gap policy:
+A request created by `volicord.record_shaping_checkpoint` uses the exact per-gap policy:
 product and technical use `[advance_task]`; scope uses `[scope_update]`; and
 sensitive approval uses `[advance_task, prepare_write, record_run,
 close_complete]`. Its immutable resolution changes the linked gap to
@@ -134,7 +134,7 @@ terminal answer but does not by itself grant shaping authority.
 
 When a shaping application becomes stale, its resolved request and accepted
 resolution remain immutable audit records but grant no permission on the
-changed coordinates. Exact `volicord.record_shaping` reauthorization
+changed coordinates. Exact `volicord.record_shaping_checkpoint` reauthorization
 supersedes the old request basis and application, then creates a new current
 gap and a fresh unresolved `UserActionRequest` with independent identity and
 no resolution. The successor gap's `reauthorizes_application_ref` and the

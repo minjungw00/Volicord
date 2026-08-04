@@ -530,7 +530,7 @@
         "multi_session_expected": false,
         "shell_write_expected": false,
         "shaping_outcome": "accepted",
-        "shaping_application_owner": "record_shaping"
+        "shaping_application_owner": "finalize_advice"
       }
     },
     {

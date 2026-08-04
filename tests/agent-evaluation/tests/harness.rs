@@ -433,7 +433,7 @@ impl TrialDriver for AggregateSyntheticDriver {
                 tagged_workflow_opportunities: if shaping_scenario { 6 } else { 0 },
                 exact_tagged_workflows: if shaping_scenario { 6 } else { 0 },
                 advisor_finalization_opportunities: u64::from(advisor),
-                advisor_finalizations_via_record_shaping: u64::from(advisor),
+                advisor_finalizations_via_finalize_advice: u64::from(advisor),
                 completion_claim_opportunities: u64::from(shaping_scenario),
                 premature_completion_claims: 0,
                 accepted_outcome_opportunities: u64::from(accepted),
@@ -609,8 +609,8 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
     assert_defect(
         &result.observations,
         "planning-advisor-recommendation",
-        "advisor_finalization_via_record_shaping",
-        |workflow| workflow.advisor_finalizations_via_record_shaping = 0,
+        "advisor_finalization_via_finalize_advice",
+        |workflow| workflow.advisor_finalizations_via_finalize_advice = 0,
     );
     assert_defect(
         &result.observations,

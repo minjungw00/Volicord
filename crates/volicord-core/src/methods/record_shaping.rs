@@ -14,8 +14,8 @@ use volicord_types::ids::{
     ShapingDecisionApplicationId,
 };
 use volicord_types::methods::{
-    MethodOperationCategory, RecordShapingOperation, RecordShapingRequest,
-    RecordShapingResultFields,
+    FinalizeAdviceRequest, FinalizeAdviceResultFields, MethodOperationCategory,
+    RecordShapingCheckpointRequest, RecordShapingCheckpointResultFields,
 };
 use volicord_types::schema::{
     advisor_compatible_change_unit, CurrentCloseBasis, PersistedUserActionRequestMetadata,
@@ -58,11 +58,11 @@ use crate::policy::workflow::project_workflow_policy;
 use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
 
 impl CoreService {
-    /// Executes `volicord.record_shaping` as one authority-bearing aggregate mutation.
-    pub fn record_shaping(
+    /// Executes `volicord.record_shaping_checkpoint` as an authority-bearing aggregate mutation.
+    pub fn record_shaping_checkpoint(
         &self,
         context: &RuntimeHomeMutationContext<'_>,
-        request: RecordShapingRequest,
+        request: RecordShapingCheckpointRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         if request
@@ -75,19 +75,19 @@ impl CoreService {
                 request.envelope.dry_run,
                 None,
                 "task_id",
-                "envelope.task_id must match RecordShapingRequest.task_id",
+                "envelope.task_id must match RecordShapingCheckpointRequest.task_id",
             );
         }
         let request_json = serde_json::to_value(&request)?;
         let prepared = match prepare_or_response(
             self,
             Some(context),
-            MethodName::RecordShaping,
+            MethodName::RecordShapingCheckpoint,
             request.envelope.clone(),
             request_json,
             invocation,
             mutation_method_policy(
-                MethodName::RecordShaping,
+                MethodName::RecordShapingCheckpoint,
                 request.operation_category(),
                 TaskRequirement::Exact(request.task_id.clone()),
                 request.envelope.dry_run,
@@ -96,7 +96,7 @@ impl CoreService {
             Ok(prepared) => prepared,
             Err(response) => return Ok(response),
         };
-        let plan = match plan_record_shaping(
+        let plan = match plan_record_shaping_checkpoint(
             self,
             &prepared.store,
             &prepared.context.project_state,
@@ -111,42 +111,112 @@ impl CoreService {
                 return Ok(response.with_prepared_context(&prepared));
             }
         };
-        let (entity_kind, description, event_kind) = match &request.operation {
-            RecordShapingOperation::RecordCheckpoint { .. } => (
-                "shaping_checkpoint",
-                "Shaping checkpoint and linked UserAction requests would be recorded atomically.",
-                "shaping_recorded",
-            ),
-            RecordShapingOperation::FinalizeAdvice { .. } => (
-                "advisor_advice",
-                "Advisor decisions, result, and checkpoint-backed close basis would be recorded atomically.",
-                "advisor_advice_finalized",
-            ),
-        };
         if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request(
                 prepared,
-                dry_run_preview_branch::<RecordShapingRequest>(dry_run_summary(
-                    entity_kind,
+                dry_run_preview_branch::<RecordShapingCheckpointRequest>(dry_run_summary(
+                    "shaping_checkpoint",
                     "commit",
-                    description,
+                    "Shaping checkpoint and linked UserAction requests would be recorded atomically.",
                     Vec::new(),
                 )),
             );
         }
         self.execute_prepared_request(
             prepared,
-            commit_mutation_branch::<RecordShapingRequest>(
+            commit_mutation_branch::<RecordShapingCheckpointRequest>(
                 plan.operation
-                    .into_commit_branch::<RecordShapingRequest>(plan.result_fields, event_kind),
+                    .into_commit_branch::<RecordShapingCheckpointRequest>(
+                        plan.result_fields,
+                        "shaping_recorded",
+                    ),
+            ),
+        )
+    }
+
+    /// Executes `volicord.finalize_advice` as an authority-bearing aggregate mutation.
+    pub fn finalize_advice(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        request: FinalizeAdviceRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        if request
+            .envelope
+            .task_id
+            .as_ref()
+            .is_some_and(|id| id != &request.task_id)
+        {
+            return validation_rejected(
+                request.envelope.dry_run,
+                None,
+                "task_id",
+                "envelope.task_id must match FinalizeAdviceRequest.task_id",
+            );
+        }
+        let request_json = serde_json::to_value(&request)?;
+        let prepared = match prepare_or_response(
+            self,
+            Some(context),
+            MethodName::FinalizeAdvice,
+            request.envelope.clone(),
+            request_json,
+            invocation,
+            mutation_method_policy(
+                MethodName::FinalizeAdvice,
+                request.operation_category(),
+                TaskRequirement::Exact(request.task_id.clone()),
+                request.envelope.dry_run,
+            ),
+        )? {
+            Ok(prepared) => prepared,
+            Err(response) => return Ok(response),
+        };
+        let plan = match plan_finalize_advice(
+            self,
+            &prepared.store,
+            &prepared.context.project_state,
+            &request,
+            &prepared.operation_now,
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                let response =
+                    plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
+                return Ok(response.with_prepared_context(&prepared));
+            }
+        };
+        if request.envelope.dry_run.is_requested() {
+            return self.execute_prepared_request(
+                prepared,
+                dry_run_preview_branch::<FinalizeAdviceRequest>(dry_run_summary(
+                    "advisor_advice",
+                    "commit",
+                    "Advisor decisions, result, and checkpoint-backed close basis would be recorded atomically.",
+                    Vec::new(),
+                )),
+            );
+        }
+        self.execute_prepared_request(
+            prepared,
+            commit_mutation_branch::<FinalizeAdviceRequest>(
+                plan.operation.into_commit_branch::<FinalizeAdviceRequest>(
+                    plan.result_fields,
+                    "advisor_advice_finalized",
+                ),
             ),
         )
     }
 }
 
-struct RecordShapingPlan {
+struct RecordShapingCheckpointPlan {
     operation: OperationPlan,
-    result_fields: RecordShapingResultFields,
+    result_fields: RecordShapingCheckpointResultFields,
+}
+
+struct FinalizeAdvicePlan {
+    operation: OperationPlan,
+    result_fields: FinalizeAdviceResultFields,
 }
 
 #[derive(Clone)]
@@ -156,27 +226,22 @@ struct StaleAuthorityPlan {
     successor_gap: Option<ShapingGapInput>,
 }
 
-fn plan_record_shaping(
+fn plan_record_shaping_checkpoint(
     service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: RecordShapingRequest,
+    request: RecordShapingCheckpointRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &volicord_types::values::UtcTimestamp,
-) -> Result<RecordShapingPlan, PlanError> {
-    let RecordShapingOperation::RecordCheckpoint {
-        checkpoint_operation,
-        scope_revision,
-        baseline_ref,
-        summary,
-        implementation_boundary,
-        gaps,
-        source_refs,
-        evidence_refs,
-    } = &request.operation
-    else {
-        return plan_finalize_advice(service, store, project_state, &request, operation_now);
-    };
+) -> Result<RecordShapingCheckpointPlan, PlanError> {
+    let checkpoint_operation = &request.checkpoint_operation;
+    let scope_revision = &request.scope_revision;
+    let baseline_ref = &request.baseline_ref;
+    let summary = &request.summary;
+    let implementation_boundary = &request.implementation_boundary;
+    let gaps = &request.gaps;
+    let source_refs = &request.source_refs;
+    let evidence_refs = &request.evidence_refs;
     let task = store
         .task_record(&request.task_id)
         .map_err(CorePipelineError::from)?
@@ -195,8 +260,8 @@ fn plan_record_shaping(
             &request.envelope,
             &request.task_id,
             ErrorCode::WorkflowActionNotAllowed,
-            "record_shaping is not allowed for the current Task mode and work phase",
-            MethodName::RecordShaping,
+            "record_shaping_checkpoint is not allowed for the current Task mode and work phase",
+            MethodName::RecordShapingCheckpoint,
             None,
             Vec::new(),
             false,
@@ -229,11 +294,11 @@ fn plan_record_shaping(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "create_initial requires that the Task have no current shaping checkpoint",
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                 );
             }
             if !authority_graph.stale_recovery_obligations.is_empty() {
@@ -244,7 +309,7 @@ fn plan_record_shaping(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "stale shaping authority requires exact checkpoint replacement",
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                     None,
                     Vec::new(),
                     false,
@@ -267,11 +332,11 @@ fn plan_record_shaping(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "replace_current requires an exact current shaping checkpoint",
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                 );
             };
             if current.shaping_checkpoint_id != expected_current_checkpoint_id.as_str() {
@@ -282,11 +347,11 @@ fn plan_record_shaping(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "expected_current_checkpoint_id is not the exact current checkpoint",
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                 );
             }
             let expected_application_ids = current
@@ -313,7 +378,7 @@ fn plan_record_shaping(
                     return shaping_validation(
                         &request,
                         project_state,
-                        "operation.checkpoint_operation.carry_forward_application_refs",
+                        "checkpoint_operation.carry_forward_application_refs",
                         "carry-forward refs must be unique exact current Task shaping decision application refs",
                     );
                 }
@@ -326,7 +391,7 @@ fn plan_record_shaping(
                     &request.task_id,
                     ErrorCode::UserDecisionUnresolved,
                     "carry-forward refs must exactly match every current compatible shaping decision application",
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                     None,
                     Vec::new(),
                     true,
@@ -342,7 +407,7 @@ fn plan_record_shaping(
                 return shaping_validation(
                     &request,
                     project_state,
-                    "operation.gaps",
+                    "gaps",
                     "a successor gap cannot conflict with carried application authority",
                 );
             }
@@ -393,7 +458,7 @@ fn plan_record_shaping(
                     return shaping_validation(
                         &request,
                         project_state,
-                        "operation.checkpoint_operation.stale_authority_actions",
+                        "checkpoint_operation.stale_authority_actions",
                         "stale authority actions must use unique exact current-state Task application refs",
                     );
                 }
@@ -409,7 +474,7 @@ fn plan_record_shaping(
                     return shaping_validation(
                         &request,
                         project_state,
-                        "operation.checkpoint_operation.stale_authority_actions",
+                        "checkpoint_operation.stale_authority_actions",
                         "each stale authority action must identify one exact stale application",
                     );
                 };
@@ -426,7 +491,7 @@ fn plan_record_shaping(
                         return shaping_validation(
                             &request,
                             project_state,
-                            "operation.checkpoint_operation.stale_authority_actions",
+                            "checkpoint_operation.stale_authority_actions",
                             "reauthorization must preserve the stale judgment kind and application owner through a user-owned successor gap",
                         );
                     }
@@ -445,11 +510,11 @@ fn plan_record_shaping(
                     &request.task_id,
                     ErrorCode::UserDecisionUnresolved,
                     "stale authority actions must exactly consume every stale shaping application",
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                 );
             }
             let mut live_linked_decisions = Vec::new();
@@ -480,7 +545,7 @@ fn plan_record_shaping(
                         &request.task_id,
                         ErrorCode::UserDecisionUnresolved,
                         "the current checkpoint contains stale or superseded shaping authority",
-                        MethodName::RecordShaping,
+                        MethodName::RecordShapingCheckpoint,
                         None,
                         Vec::new(),
                         false,
@@ -528,7 +593,7 @@ fn plan_record_shaping(
                     &request.task_id,
                     ErrorCode::UserDecisionUnresolved,
                     "the current shaping checkpoint has live linked UserAction authority",
-                    MethodName::RecordShaping,
+                    MethodName::RecordShapingCheckpoint,
                     None,
                     Vec::new(),
                     false,
@@ -552,7 +617,7 @@ fn plan_record_shaping(
                     return shaping_validation(
                             &request,
                             project_state,
-                            "operation.checkpoint_operation.retired_non_authorizing_request_refs",
+                            "checkpoint_operation.retired_non_authorizing_request_refs",
                             "retired request refs must be unique exact current Task UserAction request refs",
                         );
                 }
@@ -565,11 +630,11 @@ fn plan_record_shaping(
                         &request.task_id,
                         ErrorCode::UserDecisionUnresolved,
                         "retired request refs must exactly match every rejected, deferred, or expired predecessor decision",
-                        MethodName::RecordShaping,
+                        MethodName::RecordShapingCheckpoint,
                         None,
                         Vec::new(),
                         true,
-                        MethodName::RecordShaping,
+                        MethodName::RecordShapingCheckpoint,
                     );
             }
             Some(expected_current_checkpoint_id.clone())
@@ -609,7 +674,7 @@ fn plan_record_shaping(
                     request.envelope.dry_run,
                     Some(project_state.state_version),
                     "envelope.idempotency_key",
-                    "record_shaping requires an idempotency key",
+                    "record_shaping_checkpoint requires an idempotency key",
                 )
                 .expect("validation response serializes"),
             ))
@@ -661,7 +726,7 @@ fn plan_record_shaping(
         return shaping_validation(
             &request,
             project_state,
-            "operation.gaps",
+            "gaps",
             "a successor gap cannot conflict with carried application authority",
         );
     }
@@ -1022,15 +1087,14 @@ fn plan_record_shaping(
             ))
         })
         .collect::<CoreResult<Vec<_>>>()?;
-    let result_fields = RecordShapingResultFields {
+    let result_fields = RecordShapingCheckpointResultFields {
         shaping_checkpoint,
         created_user_action_request_refs: created_request_refs,
-        applied_shaping_decision_application_refs: Vec::new(),
         shaping_authority_reauthorization_refs: shaping_authority_reauthorization_refs.clone(),
         workflow,
         state,
     };
-    Ok(RecordShapingPlan {
+    Ok(RecordShapingCheckpointPlan {
         operation: OperationPlan::new(
             request.task_id,
             current_change_unit
@@ -1052,15 +1116,31 @@ fn plan_record_shaping(
     })
 }
 
+trait ShapingValidationRequest {
+    fn envelope(&self) -> &volicord_types::schema::ToolEnvelope;
+}
+
+impl ShapingValidationRequest for RecordShapingCheckpointRequest {
+    fn envelope(&self) -> &volicord_types::schema::ToolEnvelope {
+        &self.envelope
+    }
+}
+
+impl ShapingValidationRequest for FinalizeAdviceRequest {
+    fn envelope(&self) -> &volicord_types::schema::ToolEnvelope {
+        &self.envelope
+    }
+}
+
 fn shaping_validation<T>(
-    request: &RecordShapingRequest,
+    request: &impl ShapingValidationRequest,
     project_state: &ProjectStateHeader,
     field: &'static str,
     message: &'static str,
 ) -> Result<T, PlanError> {
     Err(PlanError::Response(Box::new(
         validation_rejected(
-            request.envelope.dry_run,
+            request.envelope().dry_run,
             Some(project_state.state_version),
             field,
             message,
@@ -1073,27 +1153,19 @@ fn plan_finalize_advice(
     service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &RecordShapingRequest,
+    request: &FinalizeAdviceRequest,
     operation_now: &volicord_types::values::UtcTimestamp,
-) -> Result<RecordShapingPlan, PlanError> {
-    let RecordShapingOperation::FinalizeAdvice {
-        shaping_checkpoint_id,
-        change_unit_id,
-        scope_revision,
-        baseline_ref,
-        user_action_resolution_ids,
-        result_summary,
-        result_refs,
-        evidence_refs,
-        residual_risks: risk_inputs,
-        recovery_constraints,
-    } = &request.operation
-    else {
-        return Err(CorePipelineError::Invariant {
-            detail: "advisor finalization planner received a checkpoint operation".to_owned(),
-        }
-        .into());
-    };
+) -> Result<FinalizeAdvicePlan, PlanError> {
+    let shaping_checkpoint_id = &request.shaping_checkpoint_id;
+    let change_unit_id = &request.change_unit_id;
+    let scope_revision = &request.scope_revision;
+    let baseline_ref = &request.baseline_ref;
+    let user_action_resolution_ids = &request.user_action_resolution_ids;
+    let result_summary = &request.result_summary;
+    let result_refs = &request.result_refs;
+    let evidence_refs = &request.evidence_refs;
+    let risk_inputs = &request.residual_risks;
+    let recovery_constraints = &request.recovery_constraints;
     let task = store
         .task_record(&request.task_id)
         .map_err(CorePipelineError::from)?
@@ -1111,7 +1183,7 @@ fn plan_finalize_advice(
             &request.task_id,
             ErrorCode::WorkflowActionNotAllowed,
             "finalize_advice requires an advisor Task in shaping",
-            MethodName::RecordShaping,
+            MethodName::FinalizeAdvice,
             None,
             Vec::new(),
             false,
@@ -1132,7 +1204,7 @@ fn plan_finalize_advice(
         return shaping_validation(
             request,
             project_state,
-            "operation.result_summary",
+            "result_summary",
             "result_summary must not be empty",
         );
     }
@@ -1143,7 +1215,7 @@ fn plan_finalize_advice(
         return shaping_validation(
             request,
             project_state,
-            "operation.recovery_constraints",
+            "recovery_constraints",
             "recovery constraints must not be empty strings",
         );
     }
@@ -1169,7 +1241,7 @@ fn plan_finalize_advice(
             &request.task_id,
             ErrorCode::ShapingCheckpointStale,
             "finalize_advice requires the exact structurally ready current checkpoint with no unresolved gap",
-            MethodName::RecordShaping,
+            MethodName::FinalizeAdvice,
             None,
             Vec::new(),
             true,
@@ -1197,7 +1269,7 @@ fn plan_finalize_advice(
             &request.task_id,
             ErrorCode::ChangeUnitStale,
             "finalize_advice requires the exact current observe-only Change Unit",
-            MethodName::RecordShaping,
+            MethodName::FinalizeAdvice,
             None,
             Vec::new(),
             true,
@@ -1215,7 +1287,7 @@ fn plan_finalize_advice(
     )?;
     if task_wide_authority.blocks_advance_application() {
         let recovery_owner = if !task_wide_authority.recovery_required.is_empty() {
-            MethodName::RecordShaping
+            MethodName::RecordShapingCheckpoint
         } else if !task_wide_authority.awaiting_user.is_empty() {
             MethodName::ResolveUserAction
         } else {
@@ -1228,7 +1300,7 @@ fn plan_finalize_advice(
             &request.task_id,
             ErrorCode::UserDecisionUnresolved,
             "task-wide UserAction authority required for advisor finalization is not accepted",
-            MethodName::RecordShaping,
+            MethodName::FinalizeAdvice,
             None,
             Vec::new(),
             false,
@@ -1288,14 +1360,14 @@ fn plan_finalize_advice(
                 &request.task_id,
                 ErrorCode::UserDecisionUnresolved,
                 "an advisor scope decision must be applied by update_scope before finalization",
-                MethodName::RecordShaping,
+                MethodName::FinalizeAdvice,
                 None,
                 Vec::new(),
                 true,
                 MethodName::UpdateScope,
             );
         }
-        if policy.application_owner == ShapingDecisionApplicationOwner::RecordShaping
+        if policy.application_owner == ShapingDecisionApplicationOwner::FinalizeAdvice
             && !matches!(
                 gap.status,
                 ShapingGapStatus::Accepted | ShapingGapStatus::Applied
@@ -1308,7 +1380,7 @@ fn plan_finalize_advice(
                 &request.task_id,
                 ErrorCode::UserDecisionUnresolved,
                 "every advisor-owned decision must be accepted before finalization",
-                MethodName::RecordShaping,
+                MethodName::FinalizeAdvice,
                 None,
                 Vec::new(),
                 true,
@@ -1316,7 +1388,7 @@ fn plan_finalize_advice(
                     gap.status,
                     ShapingGapStatus::Rejected | ShapingGapStatus::Deferred
                 ) {
-                    MethodName::RecordShaping
+                    MethodName::RecordShapingCheckpoint
                 } else {
                     MethodName::ResolveUserAction
                 },
@@ -1373,7 +1445,7 @@ fn plan_finalize_advice(
                 &request.task_id,
                 ErrorCode::UserDecisionUnresolved,
                 "an advisor resolution is stale or does not match its exact current gap basis",
-                MethodName::RecordShaping,
+                MethodName::FinalizeAdvice,
                 None,
                 Vec::new(),
                 false,
@@ -1381,12 +1453,12 @@ fn plan_finalize_advice(
             );
         }
         expected_resolution_ids.insert(resolution_id.clone());
-        if policy.application_owner == ShapingDecisionApplicationOwner::RecordShaping
+        if policy.application_owner == ShapingDecisionApplicationOwner::FinalizeAdvice
             && gap.status == ShapingGapStatus::Accepted
         {
             let application_id = shaping_decision_application_id(
                 &volicord_types::ids::UserActionResolutionId::new(resolution_id),
-                ShapingDecisionApplicationOwner::RecordShaping,
+                ShapingDecisionApplicationOwner::FinalizeAdvice,
             )
             .map_err(CorePipelineError::from)?
             .into_inner();
@@ -1414,7 +1486,7 @@ fn plan_finalize_advice(
         return shaping_validation(
             request,
             project_state,
-            "operation.user_action_resolution_ids",
+            "user_action_resolution_ids",
             "finalize_advice requires the exact current resolution set",
         );
     }
@@ -1442,7 +1514,7 @@ fn plan_finalize_advice(
             return shaping_validation(
                 request,
                 project_state,
-                "operation.residual_risks",
+                "residual_risks",
                 "residual risk summary and consequence must not be empty",
             );
         }
@@ -1500,7 +1572,7 @@ fn plan_finalize_advice(
     crate::workflow_projection::apply_projected_shaping_applications(
         &mut projected_checkpoint,
         &applications,
-        ShapingDecisionApplicationOwner::RecordShaping,
+        ShapingDecisionApplicationOwner::FinalizeAdvice,
         *scope_revision,
         baseline_ref,
         Some(change_unit_id),
@@ -1624,7 +1696,7 @@ fn plan_finalize_advice(
             close_summary: None,
         })),
     ];
-    Ok(RecordShapingPlan {
+    Ok(FinalizeAdvicePlan {
         operation: OperationPlan::new(
             request.task_id.clone(),
             Some(change_unit_id.clone()),
@@ -1654,9 +1726,8 @@ fn plan_finalize_advice(
                 "close_basis_revision": projected_task.close_basis_revision,
             }))?,
         ),
-        result_fields: RecordShapingResultFields {
+        result_fields: FinalizeAdviceResultFields {
             shaping_checkpoint,
-            created_user_action_request_refs: Vec::new(),
             applied_shaping_decision_application_refs: applications
                 .iter()
                 .map(|application| {
@@ -1669,7 +1740,6 @@ fn plan_finalize_advice(
                     )
                 })
                 .collect(),
-            shaping_authority_reauthorization_refs: Vec::new(),
             workflow,
             state,
         },
@@ -1679,7 +1749,7 @@ fn plan_finalize_advice(
 fn validate_advisor_refs(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &RecordShapingRequest,
+    request: &FinalizeAdviceRequest,
     change_unit_id: &volicord_types::ids::ChangeUnitId,
     refs: &[StateRecordRef],
     evidence_only: bool,
@@ -1693,7 +1763,7 @@ fn validate_advisor_refs(
             return shaping_validation(
                 request,
                 project_state,
-                "operation.result_refs",
+                "result_refs",
                 "advisor refs must be unique and owned by the exact Task",
             );
         }
@@ -1718,7 +1788,7 @@ fn validate_advisor_refs(
             return shaping_validation(
                 request,
                 project_state,
-                "operation.result_refs",
+                "result_refs",
                 "advisor refs must identify current supported artifact, evidence, or Change Unit state",
             );
         }

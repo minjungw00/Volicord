@@ -4,7 +4,7 @@
 
 Resolution은 application이 아닙니다. 범위 결정은 `volicord.update_scope`만 적용합니다.
 제품·기술·민감 shaping 결정은 work에서는 `volicord.advance_task`, advisor에서는
-`volicord.record_shaping(operation=finalize_advice)`가 적용합니다. Store의 exact-ID 검증과
+`volicord.finalize_advice`가 적용합니다. Store의 exact-ID 검증과
 단일 transaction은 관련 없는 gap 적용이나 적용 실패 뒤의 단계 전이를 막습니다. work의
 민감 권한은 shaping 적용 뒤에도 prepare-write 및 민감 효과 검사의 대상입니다.
 

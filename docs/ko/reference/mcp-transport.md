@@ -1,6 +1,6 @@
 # MCP 전송 참조
 
-폐쇄형 tool catalog는 `volicord.record_shaping`과 `volicord.advance_task`를 포함합니다. 두 도구는 Core 권한을 변경하지만 Product Repository 파일에는 직접 효과가 없습니다. 생성 request/response schema와 compact registry 설명은 정규 tool registry에서 나옵니다.
+폐쇄형 tool catalog는 `volicord.record_shaping_checkpoint`, `volicord.finalize_advice`, `volicord.advance_task`를 포함합니다. 세 도구는 Core 권한을 변경하지만 Product Repository 파일에는 직접 효과가 없습니다. 생성 request/response schema와 compact registry 설명은 정규 tool registry에서 나옵니다.
 
 이 문서는 로컬 MCP 프로세스 경계인 관리 stdio 시작, 엄격한 binding, JSON-RPC
 lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 담당합니다. Core
@@ -473,7 +473,7 @@ lifecycle 및 상관관계 좌표입니다.
 
 | 모드와 저장소 | MCP에 보이는 도구 |
 |---|---|
-| `workflow`, 쓰기 가능 | `volicord.intake`, `volicord.update_scope`, `volicord.record_shaping`, `volicord.advance_task`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
+| `workflow`, 쓰기 가능 | `volicord.intake`, `volicord.update_scope`, `volicord.record_shaping_checkpoint`, `volicord.finalize_advice`, `volicord.advance_task`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | `workflow`, 읽기만 가능 | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action`(resume만), `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | `read_only`, 읽기 가능 | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | 읽을 수 있는 허용 프로젝트 없음 | `volicord.list_projects` |
@@ -821,13 +821,13 @@ ref와 함께 `implementation_blocked_until_user_action_authority_satisfied`를 
 아니라는 사실, Product Repository mutation 경계, 정규 Task 범위 inbox instruction을
 추가합니다. Shaping에 연결된 각 결정의 정확한 request ref, 존재하는 resolution ref,
 disposition, 권한 부여 여부를 `shaping_decision_outcome`으로 제공합니다. 거부, 보류,
-만료 결정은 `volicord.record_shaping`, 종료 또는 만료 요청의 재시도 불가, 계획에 판단이
+만료 결정은 `volicord.record_shaping_checkpoint`, 종료 또는 만료 요청의 재시도 불가, 계획에 판단이
 계속 필요할 때의 successor-request identity, chat 경계, Product Repository mutation 불가를
 담은 `non_authorizing_shaping_decision`도 추가합니다. Compact record-shaping 결과는 타입이
 정해진 decision recovery requirement를 유지합니다. Stale shaping application은 어떤
 권한도 부여하지 않습니다. 해당 blocker fact는 정확한 stale application과 요청 ref,
 현재 recovery owner를 지정합니다. Advisor 또는 work shaping에서 `workflow`는
-`shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping`,
+`shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`,
 `blocking_reason=application_authority_stale`를 선택하고, `record_shaping`은 완전하고
 정확한 tagged 폐기 또는 재권한 action 집합을 요구합니다. 재발급은 새 unresolved
 UserAction identity를 만들고 변경 불가능한 재권한 lineage를 보존합니다. 이력

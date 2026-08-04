@@ -19,21 +19,22 @@ use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
-    McpAdvanceTaskCompactResult, McpAgentStateChange, McpMustSurfaceFact, McpMutationEffectSummary,
-    McpMutationFullResponse, McpMutationSummaryResponse, McpMutationWorkflowResponse,
-    McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
+    McpAdvanceTaskCompactResult, McpAgentStateChange, McpFinalizeAdviceCompactResult,
+    McpMustSurfaceFact, McpMutationEffectSummary, McpMutationFullResponse,
+    McpMutationSummaryResponse, McpMutationWorkflowResponse, McpPostEffectFailureCode,
+    McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
     McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
-    McpRecordShapingCompactResult, McpRequestUserActionCompactResult, McpRequestUserActionResponse,
-    McpStageArtifactCompactResult, McpTaskPhasePresentation, McpUpdateScopeCompactResult,
-    McpUserChannelInstructions, McpWorkflowBlockerSummary, McpWorkflowDryRunResponse,
-    McpWorkflowPresentation, McpWorkflowRejectedResponse,
+    McpRecordShapingCheckpointCompactResult, McpRequestUserActionCompactResult,
+    McpRequestUserActionResponse, McpStageArtifactCompactResult, McpTaskPhasePresentation,
+    McpUpdateScopeCompactResult, McpUserChannelInstructions, McpWorkflowBlockerSummary,
+    McpWorkflowDryRunResponse, McpWorkflowPresentation, McpWorkflowRejectedResponse,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::RecordId;
 use volicord_types::methods::{
-    AdvanceTaskResult, CloseTaskResult, IntakeResult, MethodResultBase,
+    AdvanceTaskResult, CloseTaskResult, FinalizeAdviceResult, IntakeResult, MethodResultBase,
     PrepareEvidenceCaptureResult, PrepareWriteResult, PublicMethodResult, ReconcileChangesResult,
-    RecordRunResult, RecordShapingResult, StageArtifactResult, UpdateScopeResult,
+    RecordRunResult, RecordShapingCheckpointResult, StageArtifactResult, UpdateScopeResult,
 };
 use volicord_types::schema::{
     AuthorityReceipt, PreviewableToolResponse, RequiredNullable, StateRecordRef,
@@ -446,7 +447,7 @@ fn workflow_presentation(
                     request_ref,
                     resolution_ref: gap.user_action_resolution_ref.clone(),
                     disposition,
-                    recovery_owner: MethodName::RecordShaping,
+                    recovery_owner: MethodName::RecordShapingCheckpoint,
                     authority_granted: volicord_types::schema::FalseValue,
                     terminal_request_cannot_be_retried: volicord_types::schema::TrueValue,
                     successor_request_required_if_still_needed: volicord_types::schema::TrueValue,
@@ -728,8 +729,8 @@ pub(crate) fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        AgentToolId::RECORD_SHAPING => {
-            let result: RecordShapingResult =
+        AgentToolId::RECORD_SHAPING_CHECKPOINT => {
+            let result: RecordShapingCheckpointResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
             let unresolved_application_owners = workflow_checkpoint(&result.workflow)
                 .map(|checkpoint| checkpoint.unresolved_application_owners.clone())
@@ -737,17 +738,38 @@ pub(crate) fn compact_mutation_method_result(
             let decision_recovery_requirements = workflow_checkpoint(&result.workflow)
                 .map(|checkpoint| checkpoint.decision_recovery_requirements.clone())
                 .unwrap_or_default();
-            serde_json::to_value(McpRecordShapingCompactResult {
+            serde_json::to_value(McpRecordShapingCheckpointCompactResult {
                 effect: compact_mutation_effect(&result),
                 shaping_checkpoint_id: result.shaping_checkpoint.shaping_checkpoint_id,
                 readiness: result.shaping_checkpoint.readiness,
                 unresolved_application_owners,
                 decision_recovery_requirements,
                 created_user_action_request_refs: result.created_user_action_request_refs,
-                applied_shaping_decision_application_refs: result
-                    .applied_shaping_decision_application_refs,
                 shaping_authority_reauthorization_refs: result
                     .shaping_authority_reauthorization_refs,
+                workflow_kind: workflow_state_kind(&result.workflow),
+                close_state: result.state.close_state,
+                close_blocker_count: result.state.close_blockers.len(),
+            })
+            .map_err(McpAdapterError::Json)
+        }
+        AgentToolId::FINALIZE_ADVICE => {
+            let result: FinalizeAdviceResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            let unresolved_application_owners = workflow_checkpoint(&result.workflow)
+                .map(|checkpoint| checkpoint.unresolved_application_owners.clone())
+                .unwrap_or_default();
+            let decision_recovery_requirements = workflow_checkpoint(&result.workflow)
+                .map(|checkpoint| checkpoint.decision_recovery_requirements.clone())
+                .unwrap_or_default();
+            serde_json::to_value(McpFinalizeAdviceCompactResult {
+                effect: compact_mutation_effect(&result),
+                shaping_checkpoint_id: result.shaping_checkpoint.shaping_checkpoint_id,
+                readiness: result.shaping_checkpoint.readiness,
+                unresolved_application_owners,
+                decision_recovery_requirements,
+                applied_shaping_decision_application_refs: result
+                    .applied_shaping_decision_application_refs,
                 workflow_kind: workflow_state_kind(&result.workflow),
                 close_state: result.state.close_state,
                 close_blocker_count: result.state.close_blockers.len(),

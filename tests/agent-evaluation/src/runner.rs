@@ -541,7 +541,7 @@ fn validate_observation(
             > observation.shaping_workflow.tagged_workflow_opportunities
         || observation
             .shaping_workflow
-            .advisor_finalizations_via_record_shaping
+            .advisor_finalizations_via_finalize_advice
             > observation
                 .shaping_workflow
                 .advisor_finalization_opportunities
@@ -931,9 +931,9 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         all_shaping_totals(|value| value.exact_tagged_workflows),
     ));
     criteria.push(complete_rate(
-        "advisor_finalization_via_record_shaping",
+        "advisor_finalization_via_finalize_advice",
         all_shaping_totals(|value| value.advisor_finalization_opportunities),
-        all_shaping_totals(|value| value.advisor_finalizations_via_record_shaping),
+        all_shaping_totals(|value| value.advisor_finalizations_via_finalize_advice),
     ));
     criteria.push(zero_rate(
         "premature_completion_claim",
@@ -1309,7 +1309,7 @@ fn criterion_definitions() -> [CriterionDefinition; 46] {
             unit: "percent",
         },
         CriterionDefinition {
-            id: "advisor_finalization_via_record_shaping",
+            id: "advisor_finalization_via_finalize_advice",
             target: "= 100",
             unit: "percent",
         },

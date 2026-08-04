@@ -591,7 +591,7 @@ ShapingAuthorityReauthorization:
   created_at: string
 ```
 
-`ShapingCheckpoint`는 `volicord.record_shaping`이 반환하는 일급 영속 기록입니다.
+`ShapingCheckpoint`는 `volicord.record_shaping_checkpoint`이 반환하는 일급 영속 기록입니다.
 workflow는 현재 checkpoint의 간결한 요약과 gap projection을 포함합니다. 교체는 영속
 record에 정확한 predecessor identity를 담고 엄격한 checkpoint-application lineage로
 완전하고 명시적인 `current_application_refs` 집합을 전달합니다. `applied` gap만이 아니라
@@ -618,13 +618,13 @@ Checkpoint readiness는 구조적이며 decision application과 독립적입니�
 `volicord.update_scope`가 있을 때만 `ready_to_apply_decisions`를 선택합니다.
 `decision_recovery_requirements`는 정확한 각 거부·보류·만료 요청, 존재하는 변경 불가능한
 resolution, authority disposition, 타입이 정해진 reason을 식별합니다. 이 값이 있으면 구조적
-readiness가 `ready`여도 `next_actor=agent`, `required_action=volicord.record_shaping`인
+readiness가 `ready`여도 `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`인
 `decision_recovery_required`를 선택합니다. Work의
 advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으로 진행합니다.
 Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
 진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. 진행은 `advance_task`, `finalize_advice`, shaping 소유 scope update, write preparation, Run 기록, 닫기 준비 상태, mutation 거부에 Store 소유 현재 유효 shaping 권한 graph를 사용합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. Stale application은 권한을 부여하지 않고 현재 복구 의무로만 나타납니다. `advisor|work` shaping에서는 `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping`, `blocking_reason=application_authority_stale`, 정확한 복구 ref를 선택합니다. 이 상태를 만들 implementation 단계 update는 mutation 전에 거부되고 Task를 shaping으로 돌리는 대신 close/supersede 복구로 `volicord.close_task`를 지정합니다. 현재 graph 내부의 모순은 `inconsistent_authority_state`를 사용합니다. Superseded 요청, resolution, application, checkpoint ref는 변경 불가능한 감사 이력으로 남으며 존재한다는 이유만으로 현재 `required_refs`나 진행에 들어가지 않습니다.
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. 진행은 `advance_task`, `finalize_advice`, shaping 소유 scope update, write preparation, Run 기록, 닫기 준비 상태, mutation 거부에 Store 소유 현재 유효 shaping 권한 graph를 사용합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. Stale application은 권한을 부여하지 않고 현재 복구 의무로만 나타납니다. `advisor|work` shaping에서는 `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, `blocking_reason=application_authority_stale`, 정확한 복구 ref를 선택합니다. 이 상태를 만들 implementation 단계 update는 mutation 전에 거부되고 Task를 shaping으로 돌리는 대신 close/supersede 복구로 `volicord.close_task`를 지정합니다. 현재 graph 내부의 모순은 `inconsistent_authority_state`를 사용합니다. Superseded 요청, resolution, application, checkpoint ref는 변경 불가능한 감사 이력으로 남으며 존재한다는 이유만으로 현재 `required_refs`나 진행에 들어가지 않습니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task
@@ -1274,7 +1274,7 @@ GuaranteeDisclosure:
 담당 문서 링크:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)
 - 현재 닫기 근거 생성: direct/work는 [`volicord.record_run`](method-record-run.md),
-  advisor는 [`volicord.record_shaping`](method-record-shaping.md)
+  advisor는 [`volicord.finalize_advice`](method-finalize-advice.md)
 - 판단 호환성과 수락된 위험 입력: [API 판단 스키마](schema-judgment.md)
 - 응답 분기 동작, 닫기 준비 상태 평가 순서, 응답 전용 차단 결과: [`volicord.check_close`와 `volicord.close_task`](method-close-task.md)
 - 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md)

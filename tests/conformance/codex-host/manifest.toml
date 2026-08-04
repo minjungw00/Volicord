@@ -54,5 +54,5 @@ path = "callable-names/mcp-tools.json"
 profile_id = "codex-mcp-callable-names"
 purpose = "Explicit MCP source identities and their current Codex callable-name projection"
 source_reference = "reviewed Codex MCP callable-name contract"
-checksum_sha256 = "23769a24d9b74b17b394e3cf4312d3a5b4fc38ca80f0e6ee94d9732eeacaa8f3"
+checksum_sha256 = "477a26936dc954872c5142e29fe6a3ac70dbfe9e7fd7d067c9ad11b18cb3bc8e"
 production_covered = true

@@ -15,9 +15,15 @@
     },
     {
       "server_key": "volicord",
-      "raw_tool_name": "volicord.record_shaping",
-      "expected_callable_name": "mcp__volicord__volicord_record_shaping",
+      "raw_tool_name": "volicord.record_shaping_checkpoint",
+      "expected_callable_name": "mcp__volicord__volicord_record_shaping_checkpoint",
       "purpose": "Public shaping-checkpoint recording tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.finalize_advice",
+      "expected_callable_name": "mcp__volicord__volicord_finalize_advice",
+      "purpose": "Public advisor-finalization tool"
     },
     {
       "server_key": "volicord",

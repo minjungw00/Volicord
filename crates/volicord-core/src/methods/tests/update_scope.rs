@@ -274,7 +274,7 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
     );
     assert_eq!(
         response.response_value["state"]["workflow"]["required_action"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
 
     let status = harness.service.status(
@@ -290,7 +290,7 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
     )?;
     assert_eq!(
         status.response_value["active_task"]["workflow"]["required_action"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
     Ok(())
 }

@@ -267,9 +267,9 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 
 | `Task.mode` | `work_phase` | 권한 경로 |
 |---|---|---|
-| `advisor` | `shaping` | `volicord.record_shaping`: checkpoint 기록 뒤 정확한 자문 결과와 checkpoint 기반 닫기 근거 finalization |
+| `advisor` | `shaping` | `volicord.record_shaping_checkpoint` 뒤 `volicord.finalize_advice`로 정확한 자문 결과와 checkpoint 기반 닫기 근거 finalization |
 | `direct` | `implementation` | `direct` |
-| `work` | `shaping` | `volicord.record_shaping` 후 정확한 현재 권한으로 `volicord.advance_task` |
+| `work` | `shaping` | `volicord.record_shaping_checkpoint` 후 정확한 현재 권한으로 `volicord.advance_task` |
 | `work` | `implementation` | `implementation` |
 
 Shaping checkpoint succession은 명시적 권한입니다. `create_initial`은 현재 checkpoint가
@@ -325,7 +325,7 @@ identity를 가진 새 successor gap과 unresolved `UserActionRequest`를 만든
 timestamp는 감사 이력으로 남습니다.
 
 Shaping 단계의 advisor와 work Task 모두에서 `application_authority_stale`은
-`next_actor=agent`, `required_action=volicord.record_shaping`을 선택합니다.
+`next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`을 선택합니다.
 `volicord.status`는 이 상태를 관찰할 수 있지만 복구 전이는 아닙니다.
 `work/implementation` 중 현재 shaping 권한을 무효화할 scope, baseline, Change Unit
 update는 mutation 전에 거부됩니다. Typed recovery는 `volicord.close_task`의 완료 또는
@@ -340,9 +340,9 @@ shaping으로 돌아가지 않습니다.
 | `work` | `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | 유지 | 아니요 |
 | `advisor|work` | `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | 증가 | 아니요 |
 | `work` | `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | 유지 | 예 |
-| `advisor` | `user_product_decision_required` | `product_decision` | `finalize_advice` | `volicord.record_shaping` | 유지 | 닫기 근거에 유지 |
-| `advisor` | `user_technical_decision_required` | `technical_decision` | `finalize_advice` | `volicord.record_shaping` | 유지 | 닫기 근거에 유지 |
-| `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.record_shaping` | 유지 | 닫기 근거에 유지 |
+| `advisor` | `user_product_decision_required` | `product_decision` | `finalize_advice` | `volicord.finalize_advice` | 유지 | 닫기 근거에 유지 |
+| `advisor` | `user_technical_decision_required` | `technical_decision` | `finalize_advice` | `volicord.finalize_advice` | 유지 | 닫기 근거에 유지 |
+| `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.finalize_advice` | 유지 | 닫기 근거에 유지 |
 
 Checkpoint `readiness=ready`는 구조적 상태입니다. baseline과 implementation boundary가
 있고, 비사용자 gap이 닫혔으며, 사용자 gap이 `current` 상태로 남아 있지 않다는 뜻입니다.
@@ -356,7 +356,7 @@ checkpoint와 현재 호환 Change Unit이 있으면 `ready_to_finalize_advice`�
 finalization이 현재 닫기 근거를 만든 뒤에만 `close_review`를 선택합니다.
 
 거부, 보류, 만료 상태의 checkpoint 결정은 `next_actor=agent`,
-`required_action=volicord.record_shaping`인 `decision_recovery_required`를 선택합니다.
+`required_action=volicord.record_shaping_checkpoint`인 `decision_recovery_required`를 선택합니다.
 이 상태는 정확한 checkpoint, request ref, 존재하는 resolution ref, disposition, 타입이
 정해진 recovery reason, 기대 state version을 포함합니다. 만료 요청은 해결되지 않은 감사
 이력으로 남으며 `volicord.resolve_user_action`으로 연결될 수 없습니다. Pending 요청만

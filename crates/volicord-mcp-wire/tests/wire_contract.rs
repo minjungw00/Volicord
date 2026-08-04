@@ -172,8 +172,8 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
     let workflow = json!({
         "kind": "shaping_required",
         "next_actor": "agent",
-        "required_action": "volicord.record_shaping",
-        "allowed_actions": ["volicord.record_shaping", "volicord.status"],
+        "required_action": "volicord.record_shaping_checkpoint",
+        "allowed_actions": ["volicord.record_shaping_checkpoint", "volicord.status"],
         "required_refs": [task_ref],
         "expected_state_version": 7,
         "blocking_reason": "no_current_checkpoint",

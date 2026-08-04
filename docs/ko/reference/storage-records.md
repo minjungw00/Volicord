@@ -609,10 +609,13 @@ basis가 아니라 없음으로 표현합니다. Evidence와 acceptance ref는 �
 정확하고 현재 상태여야 합니다.
 Direct/work basis는 정확히 호환되는 source Run을 식별합니다. Advisor basis에는 source
 Run이 없고 대신 정확한 현재 shaping checkpoint와 여기에 연결된 현재 shaping decision
-application의 정확한 집합을 식별합니다. Store는 현재 Task, scope revision, close-basis revision, baseline,
-Change Unit, 모드 호환 lineage, result/evidence ref, 잔여 위험, 갱신 시각을 하나의
-aggregate로 검증합니다. 정규 비쓰기 조건을 위반하는 Change Unit이나 정확한 현재 상태가
-아닌 checkpoint에 연결된 advisor basis는 영속 데이터 손상입니다.
+application의 정확한 집합을 식별합니다. `volicord.record_shaping_checkpoint`는 checkpoint
+소유 gap과 연결된 UserAction request를 정확한 `source_method`와 함께 저장하지만 advisor
+application이나 close basis를 만들 수 없습니다. Advisor 소유 application과 checkpoint 기반
+advisor basis는 `volicord.finalize_advice`만 저장합니다. Store는 현재 Task, scope revision,
+close-basis revision, baseline, Change Unit, 모드 호환 lineage, result/evidence ref, 잔여 위험,
+갱신 시각을 하나의 aggregate로 검증합니다. 정규 비쓰기 조건을 위반하는 Change Unit이나
+정확한 현재 상태가 아닌 checkpoint에 연결된 advisor basis는 영속 데이터 손상입니다.
 
 Project continuity record는 오래 유지되는 맥락이며 면제가 아닙니다. Typed cursor와
 ordering은 status 메서드가 담당합니다. Carry-forward는 현재 scope, baseline, 쓰기

@@ -483,7 +483,8 @@ documents:
   translation_policy: semantic_parity
   contracts:
   - api.methods
-  - api.method.record_shaping.request
+  - api.method.record_shaping_checkpoint.request
+  - api.method.finalize_advice.request
   - api.schema.state
   - api.schema.user_action
   owner_area: user_workflow
@@ -502,7 +503,8 @@ documents:
   - reference.mcp-transport
   - reference.security
   - reference.api.method-intake
-  - reference.api.method-record-shaping
+  - reference.api.method-record-shaping-checkpoint
+  - reference.api.method-finalize-advice
   - reference.api.method-advance-task
   - reference.api.method-prepare-write
   - reference.api.method-record-run
@@ -740,7 +742,8 @@ documents:
   - architecture-guide.testing-strategy
   - reference.index
   - reference.repository-observation
-  - reference.api.method-record-shaping
+  - reference.api.method-record-shaping-checkpoint
+  - reference.api.method-finalize-advice
   - reference.api.method-advance-task
   - reference.storage-records
 - doc_id: architecture-guide.cli-workflows
@@ -1065,8 +1068,10 @@ documents:
   normative_level: guide
   translation_policy: semantic_parity
   contracts:
-  - api.method.record_shaping.request
-  - api.method.record_shaping.response
+  - api.method.record_shaping_checkpoint.request
+  - api.method.finalize_advice.request
+  - api.method.record_shaping_checkpoint.response
+  - api.method.finalize_advice.response
   - api.method.advance_task.request
   - api.method.advance_task.response
   - api.method.check_close.response
@@ -1845,8 +1850,10 @@ documents:
   - api.method.get_operation_result.response
   - api.method.intake.request
   - api.method.intake.response
-  - api.method.record_shaping.request
-  - api.method.record_shaping.response
+  - api.method.record_shaping_checkpoint.request
+  - api.method.finalize_advice.request
+  - api.method.record_shaping_checkpoint.response
+  - api.method.finalize_advice.response
   - api.method.advance_task.request
   - api.method.advance_task.response
   - api.method.prepare_evidence_capture.request
@@ -1910,7 +1917,7 @@ documents:
     capability mapping
   - selected-profile server capability and JSON-RPC batch behavior
   - canonical tool registry and capability-driven `tools/list` field projection
-  - public MCP routing for `volicord.record_shaping` and `volicord.advance_task`
+  - public MCP routing for `volicord.record_shaping_checkpoint`, `volicord.finalize_advice`, and `volicord.advance_task`
   - MCP projection of current shaping authority, exact stale recovery ownership, fresh UserAction
     identity, immutable reauthorization lineage, and historical/current query separation
   - static runtime-compact tool schemas and public tool list
@@ -2065,13 +2072,13 @@ documents:
   - '`UpdateScopeResult` branch behavior'
   - exact resolved scope-decision application without product, technical, or sensitive decision consumption
   - update-scope examples
-- doc_id: reference.api.method-record-shaping
-  path_en: docs/en/reference/api/method-record-shaping.md
-  path_ko: docs/ko/reference/api/method-record-shaping.md
+- doc_id: reference.api.method-record-shaping-checkpoint
+  path_en: docs/en/reference/api/method-record-shaping-checkpoint.md
+  path_ko: docs/ko/reference/api/method-record-shaping-checkpoint.md
   kind: reference
   summary: Reference contract for explicit shaping checkpoint succession, live-decision preservation,
-    exact stale retirement or fresh-request reauthorization, and advisor result finalization through
-    `volicord.record_shaping`.
+    and exact stale retirement or fresh-request reauthorization through
+    `volicord.record_shaping_checkpoint`.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2090,15 +2097,42 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`volicord.record_shaping` behavior'
-  - '`RecordShapingResult` branch behavior'
+  - '`volicord.record_shaping_checkpoint` behavior'
+  - '`RecordShapingCheckpointResult` branch behavior'
   - explicit initial/replacement checkpoint operations and predecessor lineage
   - live-decision checkpoint replacement prohibition
   - complete stale-authority action sets, separate transition timestamps, and immutable retirement or reissue lineage
   - structural readiness and mode-aware decision application ownership
-  - advisor-owned decision application, result finalization, and checkpoint-backed close-basis creation
   - atomic ShapingCheckpoint and shaping-gap recording behavior
   - shaping-owned UserAction request creation and linking
+- doc_id: reference.api.method-finalize-advice
+  path_en: docs/en/reference/api/method-finalize-advice.md
+  path_ko: docs/ko/reference/api/method-finalize-advice.md
+  kind: reference
+  summary: Reference contract for exact advisor-owned decision application, result finalization,
+    and checkpoint-backed close-basis creation through `volicord.finalize_advice`.
+  normative_level: contract
+  translation_policy: semantic_parity
+  contracts:
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  owner_area: core_api
+  created_on: '2026-08-04'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
+  primary_audience:
+  - API implementers
+  - agent integrators
+  - maintainers
+  journeys:
+  - implement
+  - operate
+  canonical_for:
+  - '`volicord.finalize_advice` behavior'
+  - '`FinalizeAdviceResult` branch behavior'
+  - advisor-owned shaping decision application
+  - advisor result finalization and checkpoint-backed close-basis creation
 - doc_id: reference.api.method-advance-task
   path_en: docs/en/reference/api/method-advance-task.md
   path_ko: docs/ko/reference/api/method-advance-task.md
@@ -2514,8 +2548,10 @@ documents:
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
-  - api.method.record_shaping.request
-  - api.method.record_shaping.response
+  - api.method.record_shaping_checkpoint.request
+  - api.method.finalize_advice.request
+  - api.method.record_shaping_checkpoint.response
+  - api.method.finalize_advice.response
   - api.method.advance_task.request
   - api.method.advance_task.response
   - api.method.check_close.response
@@ -3020,7 +3056,8 @@ documents:
   - operate
   canonical_for:
   - method-to-storage effects
-  - atomic checkpoint succession and advisor-finalization effects for `volicord.record_shaping`
+  - atomic checkpoint succession effects for `volicord.record_shaping_checkpoint`
+  - atomic advisor-finalization effects for `volicord.finalize_advice`
   - atomic stale-application retirement or fresh-request reauthorization effects and implementation-phase no-effect rejection
   - owner-specific scope/advance decision application and explicit `volicord.advance_task` phase-transition effects
   - read-only and dry-run storage effects

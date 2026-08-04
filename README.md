@@ -107,7 +107,7 @@ running a fixed status-then-intake-then-write-then-close ritual or probing
 workflow tools in case they might be needed. Work Tasks record shaping first;
 creating a Change Unit does not change phase, and only an explicit
 `volicord.advance_task` enters implementation. An advisor Task uses a non-write
-Change Unit, finalizes its current result through `volicord.record_shaping`, and
+Change Unit, finalizes its current result through `volicord.finalize_advice`, and
 reaches close review only after that finalization establishes its close basis.
 Product-file changes still need a compatible current write authorization, and
 a blocked session may end without claiming that its Task is complete.

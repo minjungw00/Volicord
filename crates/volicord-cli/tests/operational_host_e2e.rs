@@ -241,7 +241,12 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         .as_array()
         .is_some_and(|tools| tools
             .iter()
-            .any(|tool| tool["name"] == "volicord.record_shaping")));
+            .any(|tool| tool["name"] == "volicord.record_shaping_checkpoint")));
+    assert!(startup[1]["result"]["tools"]
+        .as_array()
+        .is_some_and(|tools| tools
+            .iter()
+            .any(|tool| tool["name"] == "volicord.finalize_advice")));
     let mut call_id = 10;
 
     let projects = live_mcp_call(
@@ -360,13 +365,11 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let shaping = live_mcp_call(
         &mut child,
         call_id,
-        AgentToolId::RECORD_SHAPING,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
         json!({
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
-            "operation": {
-            "operation": "record_checkpoint",
             "scope_revision": 0,
             "baseline_ref": null,
             "checkpoint_operation": {"operation": "create_initial"},
@@ -380,7 +383,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             }],
             "source_refs": [],
             "evidence_refs": []
-            }
         }),
         SESSION,
         "future.turn.planning-product.shaping",
@@ -418,13 +420,11 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let pending_replacement = live_mcp_call(
         &mut child,
         call_id,
-        AgentToolId::RECORD_SHAPING,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
         json!({
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
-            "operation": {
-                "operation": "record_checkpoint",
                 "checkpoint_operation": {
                     "operation": "replace_current",
                     "expected_current_checkpoint_id": retired_checkpoint_id,
@@ -439,7 +439,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 "gaps": [],
                 "source_refs": [],
                 "evidence_refs": []
-            }
         }),
         SESSION,
         "future.turn.planning-product.pending-replacement",
@@ -542,7 +541,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(
         rejected["state"]["workflow"]["required_action"],
-        "volicord.record_shaping"
+        "volicord.record_shaping_checkpoint"
     );
     let retired_request_ref = rejected["state"]["workflow"]["checkpoint"]
         ["decision_recovery_requirements"][0]["user_action_request_ref"]
@@ -567,13 +566,11 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let recovered_shaping = live_mcp_call(
         &mut child,
         call_id,
-        AgentToolId::RECORD_SHAPING,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
         json!({
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
-            "operation": {
-                "operation": "record_checkpoint",
                 "scope_revision": 0,
                 "baseline_ref": null,
                 "checkpoint_operation": {
@@ -607,7 +604,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 ],
                 "source_refs": [],
                 "evidence_refs": []
-            }
         }),
         SESSION,
         "future.turn.planning-product.recover-shaping",
@@ -740,13 +736,11 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let resolved_replacement = live_mcp_call(
         &mut child,
         call_id,
-        AgentToolId::RECORD_SHAPING,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
         json!({
             "project_selector": project_id,
             "detail": "full",
             "task_id": task_id,
-            "operation": {
-                "operation": "record_checkpoint",
                 "checkpoint_operation": {
                     "operation": "replace_current",
                     "expected_current_checkpoint_id": checkpoint_id,
@@ -761,7 +755,6 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 "gaps": [],
                 "source_refs": [],
                 "evidence_refs": []
-            }
         }),
         SESSION,
         "future.turn.planning-product.resolved-replacement",

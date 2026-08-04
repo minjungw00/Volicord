@@ -11,7 +11,7 @@ pub(crate) fn server_instructions() -> String {
     format!(
         concat!(
             "Volicord records task scope, shaping checkpoints, write tickets, evidence, runs, user-action requests, evidence attachments, and Close Status for explicitly registered Product Repositories. ",
-            "Preserve the user's requested outcome when choosing Task scope: when shaping is a step toward implementation, keep one work Task, call volicord.record_shaping, create or update its Change Unit without changing phase, and call volicord.advance_task only when the returned workflow requires it; use advisor only when the requested outcome itself is read-only advice. ",
+            "Preserve the user's requested outcome when choosing Task scope: when shaping is a step toward implementation, keep one work Task, call volicord.record_shaping_checkpoint, create or update its Change Unit without changing phase, and call volicord.advance_task only when the returned workflow requires it; use advisor only when the requested outcome itself is read-only advice. ",
             "If the broader outcome is unclear, keep the known boundary in shaping state or ask the user instead of expanding it. ",
             "If project selection is unclear, call {} and use one listed project_selector; do not guess from folders, roots, labels, or memory. ",
             "For the canonical request `Run the Volicord integration verification.`, call {} and then {}. Follow the returned `workflow` tagged state: `{}` calls its exact `{}` tool once; `{}` calls its exact `{}` status tool once; `{}` and `{}` are terminal and call no verification tool. Do not use shell sleep or poll loops, make repeated status calls, or automatically restart the workflow in the same turn. Begin, probe, and status expose this same state contract. ",
@@ -22,7 +22,7 @@ pub(crate) fn server_instructions() -> String {
             "Inspect the exact User Channel resolution outcome. Resolution does not apply a shaping decision: apply only accepted, current, compatible authority through its application_owner with the exact current resolution refs. After rejection, deferral, or expiration, follow decision_recovery_required and revise shaping. Never retry resolution of a terminal or expired request. If the revised plan still needs that judgment, create a successor UserActionRequest with an independent identity; chat text cannot replace it. A rejected, deferred, or expired decision grants no authority and keeps Product Repository mutation unavailable; surface that outcome and do not hide it as success. ",
             "During work/implementation, an authority-invalidating scope, baseline, or Change Unit update is rejected before mutation. Follow the tagged volicord.close_task recovery to leave implementation; implementation work never returns silently to shaping. ",
             "Do not invent a scope decision or pass a scope-decision ref for product-only or technical-only work. Change Unit creation does not advance phase. For work, call volicord.advance_task only when the tagged workflow requires explicit advance and never while a UserAction is pending; do not call volicord.prepare_write before implementation. ",
-            "Advisor work uses only a non-write Change Unit. On ready_to_finalize_advice, finalize the current advisor result with volicord.record_shaping; do not use volicord.record_run, volicord.advance_task, or volicord.prepare_write for advisor. Create current UserAction requests before presenting user-owned choices; a chat reply is not a User Channel resolution. ",
+            "Advisor work uses only a non-write Change Unit. On ready_to_finalize_advice, finalize the current advisor result with volicord.finalize_advice; do not use volicord.record_run, volicord.advance_task, or volicord.prepare_write for advisor. Create current UserAction requests before presenting user-owned choices; a chat reply is not a User Channel resolution. ",
             "Never present a rejected mutation as success; surface the tagged workflow and every structured presentation.must_surface rejection and recovery fact. Evaluate close readiness only during close review. Close blockers do not replace workflow progression. ",
             "Mutation tools default to a fresh compact authority receipt plus the method outcome needed for the next step; request detail=workflow for current workflow authority or detail=full only when the bounded full method result is needed. When a mutation returns a non-null operation_result_ref, use {} for omitted exact historical bytes and {} separately for current authority; never retry an applied mutation. ",
             "Volicord state management is separate from product-file edit authority: product-file edits still require the host/user path and any required write ticket. A write ticket records intended product-file changes; it is not OS permission, review bypass, access control, or a promise of automatic tool use.",
@@ -50,7 +50,8 @@ mod tests {
     fn server_instructions_preserve_outcome_across_shaping_and_implementation() {
         let instructions = server_instructions();
         assert!(instructions.contains("keep one work Task"));
-        assert!(instructions.contains("volicord.record_shaping"));
+        assert!(instructions.contains("volicord.record_shaping_checkpoint"));
+        assert!(instructions.contains("volicord.finalize_advice"));
         assert!(instructions.contains("volicord.advance_task"));
         assert!(instructions.contains("use advisor only"));
         assert!(instructions.contains("instead of expanding it"));
@@ -88,7 +89,7 @@ mod tests {
             "never while a UserAction is pending",
             "Advisor work uses only a non-write Change Unit",
             "ready_to_finalize_advice",
-            "finalize the current advisor result with volicord.record_shaping",
+            "finalize the current advisor result with volicord.finalize_advice",
             "volicord.prepare_write before implementation",
             "rejected mutation as success",
             "presentation.must_surface rejection and recovery fact",

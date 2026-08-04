@@ -1189,7 +1189,7 @@ CREATE TABLE user_action_requests (
   source_method TEXT NOT NULL CHECK (
     source_method IN (
       'volicord.request_user_action',
-      'volicord.record_shaping',
+      'volicord.record_shaping_checkpoint',
       'volicord.reconcile_changes'
     )
   ),
@@ -1498,7 +1498,7 @@ CREATE TABLE shaping_decision_applications (
     application_owner IN (
       'volicord.update_scope',
       'volicord.advance_task',
-      'volicord.record_shaping'
+      'volicord.finalize_advice'
     )
   ),
   applied_scope_revision INTEGER NOT NULL CHECK (applied_scope_revision >= 0),
@@ -1678,7 +1678,7 @@ BEGIN
       AND NEW.application_owner = CASE (
         SELECT mode FROM tasks
          WHERE project_id = NEW.project_id AND task_id = NEW.task_id
-      ) WHEN 'advisor' THEN 'volicord.record_shaping'
+      ) WHEN 'advisor' THEN 'volicord.finalize_advice'
         ELSE 'volicord.advance_task' END)
   ) THEN RAISE(ABORT, 'shaping application owner conflicts with decision policy') END;
   SELECT CASE WHEN NEW.authority_status <> 'current'
@@ -1834,7 +1834,7 @@ BEGIN
        AND application.application_owner = CASE
          WHEN NEW.gap_kind = 'user_scope_decision_required'
            THEN 'volicord.update_scope'
-         WHEN task.mode = 'advisor' THEN 'volicord.record_shaping'
+         WHEN task.mode = 'advisor' THEN 'volicord.finalize_advice'
          ELSE 'volicord.advance_task'
        END
   ) THEN RAISE(ABORT, 'successor gap reauthorization origin is invalid') END;

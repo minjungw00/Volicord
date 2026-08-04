@@ -39,7 +39,7 @@ Task 세분성 지침:
 - `plain_language_request`와 첫 범위에는 다음 분석 기법이나 다른 중간 단계로
   축소하지 않은 사용자의 요청 결과를 유지합니다.
 - 분석이나 shaping이 요청된 구현 결과의 한 단계라면 호출자는 `work` Task를
-  선택하고 `volicord.record_shaping`으로 명시적인 shaping checkpoint를 기록합니다.
+  선택하고 `volicord.record_shaping_checkpoint`으로 명시적인 shaping checkpoint를 기록합니다.
   분석이 먼저라는 이유만으로 고립된 `advisor` Task를 만들지 않습니다.
 - 요청된 결과 자체가 읽기 전용 조언일 때 `advisor`를 선택합니다. 더 넓은 결과가
   불명확하면 shaping 상태에 알려진 경계만 두거나 사용자에게 묻고, 더 큰 목표를
@@ -362,7 +362,7 @@ state:
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null
-  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 18, blocking_reason: no_current_checkpoint, checkpoint: null}
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping_checkpoint, allowed_actions: [volicord.record_shaping_checkpoint, volicord.status], required_refs: [], expected_state_version: 18, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

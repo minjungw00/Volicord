@@ -126,7 +126,7 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 쓰기나 민감 효과에서도 계속 확인합니다.
 
 advisor Task에서는 제품·기술·민감 shaping 답변이 agent가 정확한 자문 결과를
-`volicord.record_shaping`으로 finalization할 때까지 보입니다. advisor 범위 답변은 계속
+`volicord.finalize_advice`로 적용할 때까지 보입니다. advisor 범위 답변은 계속
 `volicord.update_scope`를 사용합니다. Finalization은 Product Repository 파일을 쓰거나
 Run을 기록하지 않으며 close review에는 별도의 최종 수락이 계속 필요합니다.
 

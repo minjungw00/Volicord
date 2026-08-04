@@ -2,7 +2,7 @@
 
 # `volicord.request_user_action` 참조
 
-`volicord.record_shaping`은 사용자 소유 shaping gap에 이 메서드 계열의 typed UserAction draft와 judgment model을 재사용합니다. checkpoint transaction은 실행 가능한 선택지를 제시하기 전에 정확한 요청을 원자적으로 생성하고 연결하므로 호출자는 그 gap에 별도 `volicord.request_user_action`을 발행하면 안 됩니다. 별도 decision schema를 만들거나 요청을 해결하지 않으며, User Channel만 해결할 수 있고 대화 문장은 그 권한을 제공하지 않습니다.
+`volicord.record_shaping_checkpoint`은 사용자 소유 shaping gap에 이 메서드 계열의 typed UserAction draft와 judgment model을 재사용합니다. checkpoint transaction은 실행 가능한 선택지를 제시하기 전에 정확한 요청을 원자적으로 생성하고 연결하므로 호출자는 그 gap에 별도 `volicord.request_user_action`을 발행하면 안 됩니다. 별도 decision schema를 만들거나 요청을 해결하지 않으며, User Channel만 해결할 수 있고 대화 문장은 그 권한을 제공하지 않습니다.
 
 이 문서는 대기 `UserActionRequest` 하나를 만드는 agent-workflow 메서드를
 담당합니다. 일곱 판단 종류와 `evidence_observation`에 대한 유일한 공개 요청

@@ -41,7 +41,7 @@ Task-granularity guidance:
   intermediate step.
 - When analysis or shaping is one phase of a requested implementation outcome,
   the caller selects a `work` Task and records explicit shaping checkpoints with
-  `volicord.record_shaping`; it does not create an isolated `advisor` Task merely
+  `volicord.record_shaping_checkpoint`; it does not create an isolated `advisor` Task merely
   because analysis happens first.
 - The caller selects `advisor` when the requested outcome itself is read-only
   advice. When a broader outcome is unclear, it keeps only the known boundary
@@ -378,7 +378,7 @@ state:
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null
-  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping, allowed_actions: [volicord.record_shaping, volicord.status], required_refs: [], expected_state_version: 18, blocking_reason: no_current_checkpoint, checkpoint: null}
+  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping_checkpoint, allowed_actions: [volicord.record_shaping_checkpoint, volicord.status], required_refs: [], expected_state_version: 18, blocking_reason: no_current_checkpoint, checkpoint: null}
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

@@ -321,7 +321,7 @@ fn decide_update_scope_policy(
             None,
             Vec::new(),
             false,
-            MethodName::RecordShaping,
+            MethodName::RecordShapingCheckpoint,
         );
     }
     let validated_scope_decisions = validate_related_scope_decisions(

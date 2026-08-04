@@ -244,13 +244,22 @@ impl AdmittedCoreService {
             .update_scope(&self.context(), request, invocation)
     }
 
-    fn record_shaping(
+    fn record_shaping_checkpoint(
         &self,
-        request: RecordShapingRequest,
+        request: RecordShapingCheckpointRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.inner
-            .record_shaping(&self.context(), request, invocation)
+            .record_shaping_checkpoint(&self.context(), request, invocation)
+    }
+
+    fn finalize_advice(
+        &self,
+        request: FinalizeAdviceRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .finalize_advice(&self.context(), request, invocation)
     }
 
     fn advance_task(
@@ -2392,8 +2401,8 @@ fn record_ready_advisor_shaping_for_test(
     task_id: &str,
     expected_state_version: u64,
 ) -> Result<u64, Box<dyn Error>> {
-    let response = harness.service.record_shaping(
-        RecordShapingRequest {
+    let response = harness.service.record_shaping_checkpoint(
+        RecordShapingCheckpointRequest {
             envelope: envelope(
                 &format!("req_{prefix}_record_shaping"),
                 Some(&format!("idem_{prefix}_record_shaping")),
@@ -2402,20 +2411,16 @@ fn record_ready_advisor_shaping_for_test(
                 Some(task_id),
             ),
             task_id: TaskId::new(task_id),
-            operation: RecordShapingOperation::RecordCheckpoint {
-                checkpoint_operation:
-                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
-                summary: "Advisor analysis is ready for close review.".to_owned(),
-                implementation_boundary: RequiredNullable::some(
-                    "Deliver the bounded advisory result without Product Repository writes."
-                        .to_owned(),
-                ),
-                gaps: Vec::new(),
-                source_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-            },
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            summary: "Advisor analysis is ready for close review.".to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Deliver the bounded advisory result without Product Repository writes.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -2432,8 +2437,8 @@ fn record_ready_advisor_shaping_for_test(
         .current_change_unit(&TaskId::new(task_id))?
         .expect("advisor current Change Unit");
     drop(store);
-    let finalized = harness.service.record_shaping(
-        RecordShapingRequest {
+    let finalized = harness.service.finalize_advice(
+        FinalizeAdviceRequest {
             envelope: envelope(
                 &format!("req_{prefix}_finalize_advice"),
                 Some(&format!("idem_{prefix}_finalize_advice")),
@@ -2442,18 +2447,16 @@ fn record_ready_advisor_shaping_for_test(
                 Some(task_id),
             ),
             task_id: TaskId::new(task_id),
-            operation: RecordShapingOperation::FinalizeAdvice {
-                shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
-                change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
-                scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
-                user_action_resolution_ids: Vec::new(),
-                result_summary: "Advisor analysis is complete.".to_owned(),
-                result_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-                residual_risks: Vec::new(),
-                recovery_constraints: Vec::new(),
-            },
+            shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
+            change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
+            scope_revision: 1,
+            baseline_ref: BaselineRef::new("baseline_test"),
+            user_action_resolution_ids: Vec::new(),
+            result_summary: "Advisor analysis is complete.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
     )?;

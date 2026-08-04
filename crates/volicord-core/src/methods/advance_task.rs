@@ -193,7 +193,7 @@ fn plan_advance_task(
     )?;
     if task_wide_authority.blocks_advance_application() {
         let recovery_owner = if !task_wide_authority.recovery_required.is_empty() {
-            MethodName::RecordShaping
+            MethodName::RecordShapingCheckpoint
         } else if !task_wide_authority.awaiting_user.is_empty() {
             MethodName::ResolveUserAction
         } else {
@@ -227,7 +227,7 @@ fn plan_advance_task(
                 None,
                 Vec::new(),
                 true,
-                MethodName::RecordShaping,
+                MethodName::RecordShapingCheckpoint,
             )
         }
     };

@@ -77,7 +77,7 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 후 판단이지 쓰기 전에 필요한 민감 동작 승인이 아니며, 쓰기를 소급해 권한 부여할 수
 없습니다.
 
-`Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor workflow의 허용 동작으로 이 메서드를 projection하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. Shaping 분석은 `volicord.record_shaping`으로 기록하며, 명시적 `volicord.advance_task`가 성공한 뒤에만 work 모드 쓰기 준비나 implementation Run이 허용됩니다.
+`Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor workflow의 허용 동작으로 이 메서드를 projection하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. Shaping 분석은 `volicord.record_shaping_checkpoint`으로 기록하며, 명시적 `volicord.advance_task`가 성공한 뒤에만 work 모드 쓰기 준비나 implementation Run이 허용됩니다.
 
 보안 비주장은 [보안](../security.md)이 담당합니다.
 
@@ -177,7 +177,7 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 별도 민감 동작 승인은 그 사용자 행동이 현재 상태이고, `resolved_by_actor_source=local_user`와 호환 User Channel 출처로 해결되었으며, `resolution_outcome=accepted`인 선택지를 골랐고, 그 `UserActionBasis`가 현재 `scope_revision`, 현재 Change Unit, 의도한 동작, 정규화된 `intended_paths`, 민감 범주, `baseline_ref`와 계속 호환될 때만 이 메서드를 만족합니다. 근거 상태가 유효하지 않거나 오래됨, 대체됨, 만료됨, 거절, 연기, 필요한 해결 권한 정보 누락, 비호환인 사용자 행동은 민감 동작 승인을 만족할 수 없습니다. 호출자는 승인을 호환되게 만들기 위한 리비전 필드를 제출하지 않습니다.
 
 현재 checkpoint에 거부, 보류, 만료 상태의 decision authority가 있으면 이 메서드는
-`volicord.record_shaping`을 owner로 지정한 타입이 정해진 `decision_recovery_required`
+`volicord.record_shaping_checkpoint`을 owner로 지정한 타입이 정해진 `decision_recovery_required`
 workflow를 반환하며 쓰기 티켓이나 Product Repository delta를 만들지 않습니다.
 
 티켓 선택에는 현재 정규화 쓰기 권한 fingerprint와 같은 `null`이 아닌

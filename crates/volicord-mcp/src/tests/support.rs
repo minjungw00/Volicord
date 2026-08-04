@@ -591,9 +591,9 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
     let mut state_version = scope.response_value["base"]["state_version"]
         .as_u64()
         .ok_or("scope response should expose state_version")?;
-    let shaped = core.record_shaping(
+    let shaped = core.record_shaping_checkpoint(
         &fixture.mutation_context()?,
-        RecordShapingRequest {
+        RecordShapingCheckpointRequest {
             envelope: fixture.envelope(
                 &format!("req_mcp_user_action_{}_shaping", case.name),
                 Some(&format!("idem_mcp_user_action_{}_shaping", case.name)),
@@ -602,31 +602,28 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
                 Some(&task_id),
             ),
             task_id: TaskId::new(&task_id),
-            operation: volicord_types::methods::RecordShapingOperation::RecordCheckpoint {
-                checkpoint_operation:
-                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
-                scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new(
-                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                )),
-                summary: "The UserAction adapter fixture boundary is ready.".to_owned(),
-                implementation_boundary: RequiredNullable::some(
-                    "Exercise only the current UserAction adapter boundary.".to_owned(),
-                ),
-                gaps: Vec::new(),
-                source_refs: Vec::new(),
-                evidence_refs: Vec::new(),
-            },
+            checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+            scope_revision: 1,
+            baseline_ref: RequiredNullable::some(BaselineRef::new(
+                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            )),
+            summary: "The UserAction adapter fixture boundary is ready.".to_owned(),
+            implementation_boundary: RequiredNullable::some(
+                "Exercise only the current UserAction adapter boundary.".to_owned(),
+            ),
+            gaps: Vec::new(),
+            source_refs: Vec::new(),
+            evidence_refs: Vec::new(),
         },
         invocation(),
     )?;
     state_version = shaped.response_value["base"]["state_version"]
         .as_u64()
-        .ok_or("record_shaping response should expose state_version")?;
+        .ok_or("record_shaping_checkpoint response should expose state_version")?;
     let shaping_checkpoint_id = shaped.response_value["shaping_checkpoint"]
         ["shaping_checkpoint_id"]
         .as_str()
-        .ok_or("record_shaping response should expose its checkpoint")?;
+        .ok_or("record_shaping_checkpoint response should expose its checkpoint")?;
     let advanced = core.advance_task(
         &fixture.mutation_context()?,
         AdvanceTaskRequest {

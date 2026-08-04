@@ -68,7 +68,7 @@ The exact dependency and transaction boundaries are described in the
 
 ## Purpose
 
-`volicord.record_run` records execution and its Evidence. Shaping analysis is recorded with `volicord.record_shaping`.
+`volicord.record_run` records execution and its Evidence. Shaping analysis is recorded with `volicord.record_shaping_checkpoint`.
 
 The current persisted `Task.mode`, `work_phase`, and requested `kind` must match
 this exhaustive matrix:
@@ -79,7 +79,7 @@ this exhaustive matrix:
 | `work` | `implementation` | `implementation` |
 
 Core rejects every other mode, phase, or kind before commit. Advisor results
-are finalized only by `volicord.record_shaping(operation=finalize_advice)` from
+are finalized only by `volicord.finalize_advice` from
 the exact durable shaping checkpoint; work shaping results remain checkpoint
 authority until `volicord.advance_task`. There is no advisor Run fallback.
 

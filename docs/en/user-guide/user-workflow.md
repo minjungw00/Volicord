@@ -132,7 +132,7 @@ effects.
 
 For an advisor Task, product, technical, and sensitive shaping answers remain
 visible until the agent finalizes the exact advice result through
-`volicord.record_shaping`; advisor scope answers still use
+`volicord.finalize_advice`; advisor scope answers still use
 `volicord.update_scope`. Finalization does not write Product Repository files or
 record a Run, and close review still requires your separate final acceptance.
 

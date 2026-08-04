@@ -92,14 +92,15 @@ fn known_tool_validation_aggregates_independent_issues_without_core_effects(
 }
 
 #[test]
-fn record_shaping_rejects_unknown_root_fields_without_core_effects() -> Result<(), Box<dyn Error>> {
+fn record_shaping_checkpoint_rejects_the_removed_combined_request_shape_without_core_effects(
+) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-record-shaping-closed-shape")?;
     let adapter = adapter(&fixture)?;
     let (task_id, _) = create_task(&adapter)?;
     let before = fixture.counts()?;
     let error = adapter
         .call_tool(
-            AgentToolId::RECORD_SHAPING.wire_name(),
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
             json!({
                 "task_id": task_id,
                 "operation": {
@@ -112,14 +113,15 @@ fn record_shaping_rejects_unknown_root_fields_without_core_effects() -> Result<(
                     "gaps": [],
                     "source_refs": [],
                     "evidence_refs": []
-                },
-                "unexpected_field": true
+                }
             }),
         )
-        .expect_err("unknown record_shaping fields must fail before Core");
-    let response = structured_tool_error(AgentToolId::RECORD_SHAPING.wire_name(), &error);
+        .expect_err("the removed combined request shape must fail before Core");
+    let response =
+        structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
 
-    tool_error_issue(&response, "/unexpected_field", "MCP_ARGUMENT_UNKNOWN");
+    tool_error_issue(&response, "/operation", "MCP_ARGUMENT_UNKNOWN");
+    tool_error_issue(&response, "/checkpoint_operation", "MCP_ARGUMENT_REQUIRED");
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -300,7 +302,13 @@ fn mcp_readwrite_storage_exposes_workflow_tools() -> Result<(), Box<dyn Error>> 
         .map(|tool| tool.wire_name())
         .collect::<Vec<_>>();
 
-    assert_eq!(tool_names(&adapter.tools()?), expected);
+    let names = tool_names(&adapter.tools()?);
+    assert_eq!(names, expected);
+    assert!(!names.contains(&"volicord.record_shaping"));
+    assert!(matches!(
+        adapter.call_tool("volicord.record_shaping", json!({})),
+        Err(McpAdapterError::UnknownTool(name)) if name == "volicord.record_shaping"
+    ));
     Ok(())
 }
 
@@ -1307,12 +1315,10 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
         initialized_notification(),
         tools_call(
             2,
-            AgentToolId::RECORD_SHAPING.wire_name(),
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
             json!({
                 "detail": "workflow",
                 "task_id": task_id,
-                "operation": {
-                "operation": "record_checkpoint",
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 0,
                 "baseline_ref": null,
@@ -1362,7 +1368,6 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
                 }],
                 "source_refs": [],
                 "evidence_refs": []
-                }
             }),
         ),
     ])?);
@@ -1416,11 +1421,9 @@ fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
     let shaped = setup_adapter.call_tool(
-        AgentToolId::RECORD_SHAPING.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
             "task_id": task_id,
-            "operation": {
-                "operation": "record_checkpoint",
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 0,
                 "baseline_ref": null,
@@ -1458,7 +1461,6 @@ fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
                 }],
                 "source_refs": [],
                 "evidence_refs": []
-            }
         }),
     )?;
     let user_action_request_id = shaped.response_value["created_user_action_request_refs"][0]
@@ -1528,7 +1530,7 @@ fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
     }));
     assert!(facts.iter().any(|fact| {
         fact["fact_kind"] == "non_authorizing_shaping_decision"
-            && fact["recovery_owner"] == "volicord.record_shaping"
+            && fact["recovery_owner"] == "volicord.record_shaping_checkpoint"
             && fact["terminal_request_cannot_be_retried"] == true
             && fact["successor_request_required_if_still_needed"] == true
             && fact["chat_text_cannot_replace_successor"] == true
@@ -1557,11 +1559,9 @@ fn product_and_technical_only_shaping_outputs_do_not_fabricate_scope_gaps(
         let adapter = adapter(&fixture)?;
         let (task_id, _) = create_task(&adapter)?;
         let shaped = adapter.call_tool(
-            AgentToolId::RECORD_SHAPING.wire_name(),
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
             json!({
                 "task_id": task_id,
-                "operation": {
-                    "operation": "record_checkpoint",
                     "checkpoint_operation": {"operation": "create_initial"},
                     "scope_revision": 0,
                     "baseline_ref": null,
@@ -1605,7 +1605,6 @@ fn product_and_technical_only_shaping_outputs_do_not_fabricate_scope_gaps(
                     }],
                     "source_refs": [],
                     "evidence_refs": []
-                }
             }),
         )?;
         let gaps = shaped.response_value["workflow"]["checkpoint"]["gaps"]
@@ -1628,7 +1627,7 @@ fn product_and_technical_only_shaping_outputs_do_not_fabricate_scope_gaps(
 }
 
 #[test]
-fn advisor_close_guidance_names_record_shaping_and_never_record_run() -> Result<(), Box<dyn Error>>
+fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("mcp-advisor-close-guidance")?;
     let adapter = adapter(&fixture)?;
@@ -1673,11 +1672,9 @@ fn advisor_close_guidance_names_record_shaping_and_never_record_run() -> Result<
     )?;
     assert_eq!(scope.response_value["base"]["response_kind"], "result");
     let shaped = adapter.call_tool(
-        AgentToolId::RECORD_SHAPING.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
             "task_id": task_id,
-            "operation": {
-                "operation": "record_checkpoint",
                 "checkpoint_operation": {"operation": "create_initial"},
                 "scope_revision": 1,
                 "baseline_ref": "baseline_advisor_guidance",
@@ -1686,7 +1683,6 @@ fn advisor_close_guidance_names_record_shaping_and_never_record_run() -> Result<
                 "gaps": [],
                 "source_refs": [],
                 "evidence_refs": []
-            }
         }),
     )?;
     assert_eq!(
@@ -1699,7 +1695,7 @@ fn advisor_close_guidance_names_record_shaping_and_never_record_run() -> Result<
         json!({"task_id": task_id}),
     )?;
     let guidance = serde_json::to_string(&close.response_value)?;
-    assert!(guidance.contains("volicord.record_shaping"));
+    assert!(guidance.contains("volicord.finalize_advice"));
     assert!(!guidance.contains("volicord.record_run"));
     Ok(())
 }
@@ -1799,11 +1795,9 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
         .as_str()
         .ok_or("scope should expose the current Change Unit")?;
     let shaped = setup_adapter.call_tool(
-        AgentToolId::RECORD_SHAPING.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
             "task_id": task_id,
-            "operation": {
-            "operation": "record_checkpoint",
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 1,
             "baseline_ref": "baseline_transition",
@@ -1812,12 +1806,11 @@ fn phase_transition_presentation_denies_implicit_write_authority() -> Result<(),
             "gaps": [],
             "source_refs": [],
             "evidence_refs": []
-            }
         }),
     )?;
     let checkpoint_id = shaped.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
         .as_str()
-        .ok_or("record_shaping should expose the current checkpoint")?;
+        .ok_or("record_shaping_checkpoint should expose the current checkpoint")?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),

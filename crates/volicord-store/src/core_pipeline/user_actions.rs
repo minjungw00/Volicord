@@ -450,7 +450,7 @@ fn stored_user_action_request_from_insert(
             MethodName::ReconcileChanges,
             PersistedUserActionRequestMetadata::Reconciliation(_)
         ) | (
-            MethodName::RecordShaping,
+            MethodName::RecordShapingCheckpoint,
             PersistedUserActionRequestMetadata::Shaping(_)
         )
     );
@@ -798,7 +798,7 @@ fn decode_user_action_request_record(
     })?;
     if raw.source_method != MethodName::RequestUserAction.as_str()
         && raw.source_method != MethodName::ReconcileChanges.as_str()
-        && raw.source_method != MethodName::RecordShaping.as_str()
+        && raw.source_method != MethodName::RecordShapingCheckpoint.as_str()
     {
         return Err(StoreError::corrupt_owner_state_value(
             "user_action_requests",
@@ -856,7 +856,9 @@ fn decode_user_action_request_record(
     let source_method = match raw.source_method.as_str() {
         value if value == MethodName::RequestUserAction.as_str() => MethodName::RequestUserAction,
         value if value == MethodName::ReconcileChanges.as_str() => MethodName::ReconcileChanges,
-        value if value == MethodName::RecordShaping.as_str() => MethodName::RecordShaping,
+        value if value == MethodName::RecordShapingCheckpoint.as_str() => {
+            MethodName::RecordShapingCheckpoint
+        }
         _ => {
             return Err(StoreError::corrupt_owner_state_value(
                 "user_action_requests",
@@ -889,7 +891,7 @@ fn decode_user_action_request_record(
             MethodName::ReconcileChanges,
             PersistedUserActionRequestMetadata::Reconciliation(_)
         ) | (
-            MethodName::RecordShaping,
+            MethodName::RecordShapingCheckpoint,
             PersistedUserActionRequestMetadata::Shaping(_)
         )
     );
@@ -1410,7 +1412,7 @@ impl MutationContext<'_> {
                 MethodName::ReconcileChanges,
                 PersistedUserActionRequestMetadata::Reconciliation(_)
             ) | (
-                MethodName::RecordShaping,
+                MethodName::RecordShapingCheckpoint,
                 PersistedUserActionRequestMetadata::Shaping(_)
             )
         );

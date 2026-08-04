@@ -597,7 +597,7 @@ ShapingAuthorityReauthorization:
 ```
 
 `ShapingCheckpoint` is the first-class durable record returned by
-`volicord.record_shaping`; the workflow embeds its current compact summary and
+`volicord.record_shaping_checkpoint`; the workflow embeds its current compact summary and
 gap projections. A replacement carries the exact predecessor identity and the
 complete explicit `current_application_refs` set through strict
 checkpoint-application lineage. `ShapingDecisionApplication`, rather than an
@@ -624,7 +624,7 @@ decisions not yet applied. It can be non-empty while `readiness=ready`.
 `decision_recovery_requirements` identifies each exact rejected, deferred, or
 expired request, available immutable resolution, authority disposition, and
 typed reason. Its presence selects `decision_recovery_required` with
-`next_actor=agent` and `required_action=volicord.record_shaping` even when
+`next_actor=agent` and `required_action=volicord.record_shaping_checkpoint` even when
 structural readiness is `ready`.
 `ready_to_apply_decisions` is selected only when that set includes
 `volicord.update_scope`. Work advance-owned decisions proceed toward a Change
@@ -632,7 +632,7 @@ Unit or `ready_for_implementation`. Advisor finalization-owned decisions
 proceed toward a non-write Change Unit and `ready_to_finalize_advice`; only a
 current checkpoint-backed close basis selects `close_review`.
 
-The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Progression consumes the Store-owned current effective shaping authority graph for `advance_task`, `finalize_advice`, shaping-owned scope update, write preparation, Run recording, close readiness, and mutation rejection. A compatible application carried from an ancestor remains `applied` without copying its source gap. A stale application grants no authority and appears only as a current recovery obligation: in `advisor|work` shaping it selects `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping`, `blocking_reason=application_authority_stale`, and its exact recovery refs. An implementation-phase update that would create this condition is rejected before mutation and names `volicord.close_task` as the close/supersede recovery instead of returning the Task to shaping. A contradiction inside the current graph uses `inconsistent_authority_state`. Superseded request, resolution, application, and checkpoint refs remain immutable audit history and never enter current `required_refs` or progression merely because they exist.
+The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Progression consumes the Store-owned current effective shaping authority graph for `advance_task`, `finalize_advice`, shaping-owned scope update, write preparation, Run recording, close readiness, and mutation rejection. A compatible application carried from an ancestor remains `applied` without copying its source gap. A stale application grants no authority and appears only as a current recovery obligation: in `advisor|work` shaping it selects `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, `blocking_reason=application_authority_stale`, and its exact recovery refs. An implementation-phase update that would create this condition is rejected before mutation and names `volicord.close_task` as the close/supersede recovery instead of returning the Task to shaping. A contradiction inside the current graph uses `inconsistent_authority_state`. Superseded request, resolution, application, and checkpoint refs remain immutable audit history and never enter current `required_refs` or progression merely because they exist.
 
 Workflow mutation rejection details embed this same complete tagged
 `WorkflowProjection`; they do not reconstruct progression from the received
@@ -1303,7 +1303,7 @@ Guarantee display rules:
 Owner links:
 - Close-readiness meaning and non-substitution rules: [Core Model close readiness](../core-model.md#close_task)
 - Current close basis creation: [`volicord.record_run`](method-record-run.md)
-  for direct/work and [`volicord.record_shaping`](method-record-shaping.md) for
+  for direct/work and [`volicord.finalize_advice`](method-finalize-advice.md) for
   advisor
 - Judgment compatibility and accepted-risk input: [API Judgment Schemas](schema-judgment.md)
 - Response branch behavior, close-readiness evaluation order, and response-only blocked outcomes: [`volicord.check_close` and `volicord.close_task`](method-close-task.md)

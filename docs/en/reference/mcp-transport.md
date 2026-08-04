@@ -1,6 +1,6 @@
 # MCP transport reference
 
-The closed tool catalog includes `volicord.record_shaping` and `volicord.advance_task`. Both mutate Core authority and declare no direct Product Repository file effect. Generated request/response schemas and compact registry descriptions come from the canonical tool registry.
+The closed tool catalog includes `volicord.record_shaping_checkpoint`, `volicord.finalize_advice`, and `volicord.advance_task`. All three mutate Core authority and declare no direct Product Repository file effect. Generated request/response schemas and compact registry descriptions come from the canonical tool registry.
 
 This document owns the local MCP process boundary: managed stdio startup,
 strict binding, JSON-RPC lifecycle, tool discovery, public argument projection,
@@ -545,7 +545,7 @@ the validated operational ownership recorded in the audit event.
 
 | Mode and storage | MCP-visible tools |
 |---|---|
-| `workflow`, writable | `volicord.intake`, `volicord.update_scope`, `volicord.record_shaping`, `volicord.advance_task`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
+| `workflow`, writable | `volicord.intake`, `volicord.update_scope`, `volicord.record_shaping_checkpoint`, `volicord.finalize_advice`, `volicord.advance_task`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | `workflow`, readable only | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action` (resume only), `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | `read_only`, readable | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | no readable allowed project | `volicord.list_projects` |
@@ -920,7 +920,7 @@ Repository mutation boundary, and canonical task-scoped inbox instructions.
 Each shaping-linked decision adds `shaping_decision_outcome` with exact request
 and available resolution refs, disposition, and whether authority was granted.
 Rejected, deferred, and expired decisions also add
-`non_authorizing_shaping_decision`, naming `volicord.record_shaping`, terminal
+`non_authorizing_shaping_decision`, naming `volicord.record_shaping_checkpoint`, terminal
 or expired non-retryability, successor-request identity when the plan still
 needs the judgment, the chat boundary, and unavailable Product Repository
 mutation. Compact record-shaping results retain the typed decision recovery
@@ -928,7 +928,7 @@ requirements.
 A stale shaping application grants no permission. Its blocker fact names the
 exact stale application and request refs and the current recovery owner. In
 advisor or work shaping, `workflow` selects `shaping_required`,
-`next_actor=agent`, `required_action=volicord.record_shaping`, and
+`next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, and
 `blocking_reason=application_authority_stale`; `record_shaping` then requires
 the complete exact tagged retirement or reauthorization action set. A reissue
 creates a fresh unresolved UserAction identity and preserves immutable

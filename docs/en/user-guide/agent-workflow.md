@@ -1,7 +1,7 @@
 # Agent Guide
 
 Advisor and work Tasks begin in shaping. Record analysis with
-`volicord.record_shaping`, explicitly creating the
+`volicord.record_shaping_checkpoint`, explicitly creating the
 first checkpoint when none is current or replacing the exact current checkpoint
 with every exact current compatible application ref carried forward. Create a current `UserActionRequest`
 before presenting an actionable user-owned choice; accept a resolution only
@@ -9,7 +9,7 @@ through the User Channel; apply decisions through their current resolution refs
 and retain the returned `ShapingDecisionApplication` refs;
 and create or update the Change Unit without changing phase. For advisor, use
 only a non-write Change Unit and follow `ready_to_finalize_advice` with
-advisor finalization through `volicord.record_shaping` before close review. For
+advisor finalization through `volicord.finalize_advice` before close review. For
 work, call `volicord.advance_task` only when the tagged workflow requires it.
 `volicord.record_run` is reserved for direct or implementation execution.
 
@@ -193,7 +193,7 @@ Resolution does not apply a shaping decision. Inspect its exact outcome. Route
 accepted scope gaps through `volicord.update_scope`. For work, supply accepted
 product, technical, and sensitive gaps to `volicord.advance_task`. For advisor,
 preserve those exact accepted resolutions until `ready_to_finalize_advice` requires advisor finalization
-through `volicord.record_shaping`; finalization creates their durable applications,
+through `volicord.finalize_advice`; finalization creates their durable applications,
 records the result and evidence/risk lineage, preserves the checkpoint, and
 establishes the close basis with exact application refs. A compatible advice
 revision carries those application refs into the successor checkpoint; it does
@@ -211,7 +211,7 @@ close recovery instead of revising scope in place.
 When scope and another decision coexist, apply
 only the scope gap first and leave the other gap for its mode-specific owner.
 Rejection, deferral, or expiration grants no authority and selects
-`decision_recovery_required`; revise the plan with `volicord.record_shaping`.
+`decision_recovery_required`; revise the plan with `volicord.record_shaping_checkpoint`.
 Do not retry the terminal or expired request. If the revised plan still needs
 the decision, create a successor UserAction request and present it through the
 User Channel rather than treating chat as resolution.

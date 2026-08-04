@@ -15,7 +15,8 @@
   "method_order": [
     "volicord.intake",
     "volicord.update_scope",
-    "volicord.record_shaping",
+    "volicord.record_shaping_checkpoint",
+    "volicord.finalize_advice",
     "volicord.advance_task",
     "volicord.status",
     "volicord.get_operation_result",
@@ -92,6 +93,43 @@
       ],
       "sha256": "sha256:86152021876ab5fe92ec36c4ba4f53bd70ad4b5e1371ddbb682f7adda17a24f5"
     },
+    "volicord.finalize_advice": {
+      "definitions": [
+        "ResidualRiskInput",
+        "StateRecordKind",
+        "StateRecordRef",
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "baseline_ref",
+        "change_unit_id",
+        "envelope",
+        "evidence_refs",
+        "recovery_constraints",
+        "residual_risks",
+        "result_refs",
+        "result_summary",
+        "scope_revision",
+        "shaping_checkpoint_id",
+        "task_id",
+        "user_action_resolution_ids"
+      ],
+      "root_required": [
+        "baseline_ref",
+        "change_unit_id",
+        "envelope",
+        "evidence_refs",
+        "recovery_constraints",
+        "residual_risks",
+        "result_refs",
+        "result_summary",
+        "scope_revision",
+        "shaping_checkpoint_id",
+        "task_id",
+        "user_action_resolution_ids"
+      ],
+      "sha256": "sha256:18dfc9f1bd87c762970b85766f89800ef206ef693221761811169ed24ad3c210"
+    },
     "volicord.get_operation_result": {
       "definitions": [
         "MethodName",
@@ -108,7 +146,7 @@
         "envelope",
         "operation_result_ref"
       ],
-      "sha256": "sha256:a75577c8fae4653e6d1b413b307b753811471d399a53dc72809f85e6c48c101b"
+      "sha256": "sha256:9d6b37672409d907dcca2121770863ab99b169b0a4ff7d173146cb9acb412a17"
     },
     "volicord.intake": {
       "definitions": [
@@ -299,7 +337,7 @@
       ],
       "sha256": "sha256:8ef288f75d94b65748d051914032586b80fd081546fc282ac3331ba100841683"
     },
-    "volicord.record_shaping": {
+    "volicord.record_shaping_checkpoint": {
       "definitions": [
         "AcceptedRiskInput",
         "ActorSource",
@@ -313,10 +351,8 @@
         "GitDiffSource",
         "JudgmentKind",
         "JudgmentPresentation",
-        "RecordShapingOperation",
         "RedactionState",
         "RepositoryFileSource",
-        "ResidualRiskInput",
         "SensitiveActionScope",
         "ShapingCheckpointOperation",
         "ShapingGapInput",
@@ -335,16 +371,30 @@
         "UtcTimestamp"
       ],
       "root_properties": [
+        "baseline_ref",
+        "checkpoint_operation",
         "envelope",
-        "operation",
+        "evidence_refs",
+        "gaps",
+        "implementation_boundary",
+        "scope_revision",
+        "source_refs",
+        "summary",
         "task_id"
       ],
       "root_required": [
+        "baseline_ref",
+        "checkpoint_operation",
         "envelope",
-        "operation",
+        "evidence_refs",
+        "gaps",
+        "implementation_boundary",
+        "scope_revision",
+        "source_refs",
+        "summary",
         "task_id"
       ],
-      "sha256": "sha256:96e7303aca2637cba425ca2a4d00174f63fa77cec92ed9745cb0296d8ef84e28"
+      "sha256": "sha256:c090d18d8034866cb3135d2f96e8269533f8a120f8203992b30a59fa14869b40"
     },
     "volicord.request_user_action": {
       "definitions": [

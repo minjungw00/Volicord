@@ -270,9 +270,9 @@ The concrete `Task.mode` and `work_phase` select the authority record and transi
 
 | `Task.mode` | `work_phase` | Authority path |
 |---|---|---|
-| `advisor` | `shaping` | `volicord.record_shaping`: record the checkpoint, then finalize the exact advice result and checkpoint-backed close basis |
+| `advisor` | `shaping` | `volicord.record_shaping_checkpoint`, then `volicord.finalize_advice` for the exact advice result and checkpoint-backed close basis |
 | `direct` | `implementation` | `direct` |
-| `work` | `shaping` | `volicord.record_shaping`, then `volicord.advance_task` with exact current authority |
+| `work` | `shaping` | `volicord.record_shaping_checkpoint`, then `volicord.advance_task` with exact current authority |
 | `work` | `implementation` | `implementation` |
 
 Shaping checkpoint succession is explicit authority. `create_initial` requires
@@ -337,7 +337,7 @@ resolution, application, and both transition timestamps remain audit history.
 
 For both advisor and work Tasks in shaping, `application_authority_stale`
 selects `next_actor=agent` and
-`required_action=volicord.record_shaping`; `volicord.status` may observe that
+`required_action=volicord.record_shaping_checkpoint`; `volicord.status` may observe that
 state but is not its recovery transition. During `work/implementation`, a
 scope, baseline, or Change Unit update that would invalidate current shaping
 authority is rejected before mutation. Its typed recovery requires the Task to
@@ -352,9 +352,9 @@ The closed owner policy is:
 | `work` | `user_technical_decision_required` | `technical_decision` | `advance_task` | `volicord.advance_task` | unchanged | no |
 | `advisor|work` | `user_scope_decision_required` | `scope_decision` | `scope_update` | `volicord.update_scope` | incremented | no |
 | `work` | `sensitive_approval_required` | `sensitive_approval` | `advance_task`, `prepare_write`, `record_run`, `close_complete` | `volicord.advance_task` | unchanged | yes |
-| `advisor` | `user_product_decision_required` | `product_decision` | `finalize_advice` | `volicord.record_shaping` | unchanged | retained in close basis |
-| `advisor` | `user_technical_decision_required` | `technical_decision` | `finalize_advice` | `volicord.record_shaping` | unchanged | retained in close basis |
-| `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.record_shaping` | unchanged | retained in close basis |
+| `advisor` | `user_product_decision_required` | `product_decision` | `finalize_advice` | `volicord.finalize_advice` | unchanged | retained in close basis |
+| `advisor` | `user_technical_decision_required` | `technical_decision` | `finalize_advice` | `volicord.finalize_advice` | unchanged | retained in close basis |
+| `advisor` | `sensitive_approval_required` | `sensitive_approval` | `finalize_advice` | `volicord.finalize_advice` | unchanged | retained in close basis |
 
 Checkpoint `readiness=ready` is structural: the baseline and implementation
 boundary exist, non-user gaps are closed, and no user gap remains `current`.
@@ -371,7 +371,7 @@ has established a current close basis.
 
 A rejected, deferred, or expired checkpoint decision selects
 `decision_recovery_required` with `next_actor=agent` and
-`required_action=volicord.record_shaping`. The state carries the exact
+`required_action=volicord.record_shaping_checkpoint`. The state carries the exact
 checkpoint, request and available resolution refs, disposition, typed recovery
 reason, and expected state version. An expired request remains unresolved in
 audit history and cannot route to `volicord.resolve_user_action`. Pending

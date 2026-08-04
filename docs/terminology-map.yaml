@@ -3502,10 +3502,10 @@ terms:
       - "retire"
       - "reauthorize"
       - "carry_forward_application_refs"
-      - "volicord.record_shaping"
+      - "volicord.record_shaping_checkpoint"
     primary_owner:
-      en: "docs/en/reference/api/method-record-shaping.md"
-      ko: "docs/ko/reference/api/method-record-shaping.md"
+      en: "docs/en/reference/api/method-record-shaping-checkpoint.md"
+      ko: "docs/ko/reference/api/method-record-shaping-checkpoint.md"
     related_references:
       - en: "docs/en/reference/api/schema-state.md"
         ko: "docs/ko/reference/api/schema-state.md"
@@ -3534,8 +3534,8 @@ terms:
     related_references:
       - en: "docs/en/reference/api/schema-value-sets.md"
         ko: "docs/ko/reference/api/schema-value-sets.md"
-      - en: "docs/en/reference/api/method-record-shaping.md"
-        ko: "docs/ko/reference/api/method-record-shaping.md"
+      - en: "docs/en/reference/api/method-record-shaping-checkpoint.md"
+        ko: "docs/ko/reference/api/method-record-shaping-checkpoint.md"
       - en: "docs/en/reference/storage-records.md"
         ko: "docs/ko/reference/storage-records.md"
     notes:
@@ -3566,8 +3566,8 @@ terms:
         ko: "docs/ko/reference/core-model.md"
       - en: "docs/en/reference/api/method-resolve-user-action.md"
         ko: "docs/ko/reference/api/method-resolve-user-action.md"
-      - en: "docs/en/reference/api/method-record-shaping.md"
-        ko: "docs/ko/reference/api/method-record-shaping.md"
+      - en: "docs/en/reference/api/method-record-shaping-checkpoint.md"
+        ko: "docs/ko/reference/api/method-record-shaping-checkpoint.md"
       - en: "docs/en/reference/api/schema-state.md"
         ko: "docs/ko/reference/api/schema-state.md"
     notes:
@@ -3600,14 +3600,14 @@ terms:
       - "current_application_refs"
       - "carry_forward_application_refs"
       - "volicord.update_scope"
-      - "volicord.record_shaping"
+      - "volicord.finalize_advice"
       - "volicord.advance_task"
     primary_owner:
       en: "docs/en/reference/api/schema-value-sets.md"
       ko: "docs/ko/reference/api/schema-value-sets.md"
     related_references:
-      - en: "docs/en/reference/api/method-record-shaping.md"
-        ko: "docs/ko/reference/api/method-record-shaping.md"
+      - en: "docs/en/reference/api/method-finalize-advice.md"
+        ko: "docs/ko/reference/api/method-finalize-advice.md"
       - en: "docs/en/reference/api/method-update-scope.md"
         ko: "docs/ko/reference/api/method-update-scope.md"
       - en: "docs/en/reference/api/method-advance-task.md"
@@ -3669,8 +3669,8 @@ terms:
       - "retired"
       - "reissued"
     primary_owner:
-      en: "docs/en/reference/api/method-record-shaping.md"
-      ko: "docs/ko/reference/api/method-record-shaping.md"
+      en: "docs/en/reference/api/method-record-shaping-checkpoint.md"
+      ko: "docs/ko/reference/api/method-record-shaping-checkpoint.md"
     related_references:
       - en: "docs/en/reference/api/schema-state.md"
         ko: "docs/ko/reference/api/schema-state.md"
@@ -3691,10 +3691,10 @@ terms:
       - "finalize_advice"
       - "ready_to_finalize_advice"
       - "advice_only"
-      - "volicord.record_shaping"
+      - "volicord.finalize_advice"
     primary_owner:
-      en: "docs/en/reference/api/method-record-shaping.md"
-      ko: "docs/ko/reference/api/method-record-shaping.md"
+      en: "docs/en/reference/api/method-finalize-advice.md"
+      ko: "docs/ko/reference/api/method-finalize-advice.md"
     related_references:
       - en: "docs/en/reference/core-model.md"
         ko: "docs/ko/reference/core-model.md"

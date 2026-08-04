@@ -21,7 +21,8 @@ const SNAPSHOT_UPDATE_COMMAND: &str = concat!(
 const PUBLIC_API_METHOD_NAMES: &[&str] = &[
     AgentToolId::INTAKE.wire_name(),
     AgentToolId::UPDATE_SCOPE.wire_name(),
-    AgentToolId::RECORD_SHAPING.wire_name(),
+    AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+    AgentToolId::FINALIZE_ADVICE.wire_name(),
     AgentToolId::ADVANCE_TASK.wire_name(),
     AgentToolId::STATUS.wire_name(),
     AgentToolId::GET_OPERATION_RESULT.wire_name(),
