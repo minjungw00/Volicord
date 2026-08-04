@@ -66,6 +66,13 @@ Display output must:
 - link back to the relevant owner when a reader needs the authority record
 - treat hand-edited or stale display as display to discard or recompute, not as Core repair input
 
+A shaping workflow display derives progression only from the Store-owned
+current effective authority graph. If a view includes stale recovery refs, it
+must preserve their non-authorizing recovery status. If it includes superseded
+checkpoint, request, resolution, application, or reauthorization records, it
+must identify them as immutable audit history and must not merge them into
+current workflow refs, blockers, or next-action selection.
+
 ## Template and label boundary
 
 [Template Bodies](template-bodies.md) owns current rendered body guidance for

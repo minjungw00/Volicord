@@ -312,6 +312,26 @@ checkpoint가 현재일 필요는 없지만 변경 불가능한 source 좌표는
 종료된 Task에는 현재 shaping 권한 graph가 없으며 checkpoint, 요청, resolution,
 application lineage는 변경 불가능한 이력으로 남습니다.
 
+Application 권한은 한 방향 생명주기만 따릅니다. `current`는 `stale` 또는
+`superseded`가 될 수 있고 `stale`은 `superseded`만 될 수 있습니다. `stale_at`은
+current-to-stale 경계를 기록하고 `superseded_at`은 current 또는 stale에서 superseded로
+바뀐 별도 경계를 기록합니다. Stale application은 어떤 권한도 부여하지 않으며
+carry-forward할 수 없고 변경된 좌표에 이전 accepted resolution을 재사용할 수 없습니다.
+정확한 checkpoint 교체는 모든 stale 복구 의무를 tagged action 하나씩으로 소비해야
+합니다. `retire`는 successor 판단 권한 없이 종료되는 변경 불가능한 lineage 항목을
+기록합니다. `reauthorize`는 stale application과 이전 요청 근거를 supersede하고 독립
+identity를 가진 새 successor gap과 unresolved `UserActionRequest`를 만든 뒤 이들 사이의
+변경 불가능한 lineage를 기록합니다. 이전 요청, resolution, application, 두 전이
+timestamp는 감사 이력으로 남습니다.
+
+Shaping 단계의 advisor와 work Task 모두에서 `application_authority_stale`은
+`next_actor=agent`, `required_action=volicord.record_shaping`을 선택합니다.
+`volicord.status`는 이 상태를 관찰할 수 있지만 복구 전이는 아닙니다.
+`work/implementation` 중 현재 shaping 권한을 무효화할 scope, baseline, Change Unit
+update는 mutation 전에 거부됩니다. Typed recovery는 `volicord.close_task`의 완료 또는
+supersede 경로로 Task가 implementation을 벗어나도록 요구하며, implementation은 조용히
+shaping으로 돌아가지 않습니다.
+
 폐쇄형 owner 정책은 다음과 같습니다.
 
 | 모드 | Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | downstream 유지 |

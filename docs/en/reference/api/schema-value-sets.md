@@ -400,6 +400,12 @@ inconsistent_authority_state
 These values describe current progression only. Close-readiness blockers keep
 their own local categories and remediation and do not select a workflow kind
 or required action.
+`application_authority_stale` selects `shaping_required`, `next_actor=agent`,
+and `required_action=volicord.record_shaping` for advisor or work shaping.
+During work implementation, an update that would create stale shaping
+authority is rejected before mutation and names `volicord.close_task` as the
+close/supersede recovery; it does not select `status` as the recovery or return
+the Task to shaping.
 
 `StateSummary.acceptance_policy` uses:
 

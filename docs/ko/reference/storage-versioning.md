@@ -75,6 +75,7 @@ enabled_capabilities:
   - managed_codex_connection
   - operational_mcp_sessions
   - project_continuity
+  - shaping_authority_reauthorization
   - shaping_checkpoint_lineage
   - shaping_decision_applications
   - shaping_decision_recovery
@@ -102,6 +103,10 @@ UserAction 분리 방지를 식별합니다. 이 capability는 exact manifest �
 `shaping_decision_applications`는 결정적인 일급 application record, 폐쇄형 권한 무효화,
 정확한 checkpoint-application carry-forward lineage를 식별합니다. 이 capability는 exact
 manifest 비교에 포함됩니다.
+
+`shaping_authority_reauthorization`은 stale application의 정확한 폐기 또는 재발급,
+재발급 시 새 unresolved successor 요청, 변경 불가능한 재권한 lineage를 식별합니다.
+이 capability는 exact manifest 비교에 포함됩니다.
 
 `shaping_decision_recovery`는 outcome별 shaping gap disposition, accepted-only application,
 정확한 rejected/deferred/expired 요청 폐기, 원자적 successor 요청 identity를 식별합니다.

@@ -126,6 +126,14 @@ Shaping에 연결된 요청에서는 이 유효 lifecycle 상태가 별도
 `ShapingDecisionAuthorityState`의 입력입니다. 따라서 `resolved`는 종료 답변을 기록하지만
 그 자체로 shaping 권한을 부여하지 않습니다.
 
+Shaping application이 stale이 되면 해결된 요청과 accepted resolution은 변경 불가능한
+감사 record로 남지만 변경된 좌표에 어떤 권한도 부여하지 않습니다. 정확한
+`volicord.record_shaping` 재권한은 이전 요청 근거와 application을 supersede한 뒤 독립
+identity를 가진 새 current gap과 resolution이 없는 새 unresolved `UserActionRequest`를
+만듭니다. Successor gap의 `reauthorizes_application_ref`와 변경 불가능한
+`ShapingAuthorityReauthorization` record가 lineage를 보존하며 이전 accepted resolution은
+복사하거나 재사용하지 않습니다. Chat 답변은 successor 요청을 해결할 수 없습니다.
+
 Choice 요청은 호출자의 명시적인 nullable `expires_at`을 보존합니다. `null`은 시간
 deadline이 없다는 뜻이며 근거 무효화는 계속 적용됩니다. Evidence 관찰 요청은 호출자
 deadline을 받지 않고 Core가 15분 만료를 부여합니다.

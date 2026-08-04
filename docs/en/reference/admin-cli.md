@@ -2185,7 +2185,9 @@ volicord export authority-bundle --output "<path>" --repo "<repo>"
 
 Export writes the owner-defined authority bundle to a new or explicitly allowed
 output path. It does not alter project authority state or create release
-evidence.
+evidence. The bundle may preserve current, stale, and superseded shaping
+records as audit history, but export is not a current workflow authority query
+and no historical record in the bundle authorizes progression.
 
 ## Change Reconciliation
 
@@ -2213,6 +2215,11 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 explicit choice or evidence observation to `volicord.resolve_user_action`. An
 MCP agent may create or resume a pending request but cannot run this resolution
 path.
+
+The inbox lists only current pending requests. A stale application cannot be
+resolved through its old request; reauthorization creates a fresh pending
+request with independent identity, while the superseded request and its
+resolution remain audit history. Chat text is never an inbox resolution.
 
 `volicord-user-action-presentation` owns the exact closed CLI inbox document
 and its JSON Schema:

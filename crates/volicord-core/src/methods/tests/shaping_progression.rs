@@ -3406,6 +3406,14 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         invalidated.response_value["state"]["workflow"]["blocking_reason"],
         "application_authority_stale"
     );
+    assert_eq!(
+        invalidated.response_value["state"]["workflow"]["next_actor"],
+        "agent"
+    );
+    assert_eq!(
+        invalidated.response_value["state"]["workflow"]["required_action"],
+        "volicord.record_shaping"
+    );
     let application = harness
         .store()?
         .shaping_decision_application_record(
@@ -3717,6 +3725,14 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
     assert_eq!(
         invalidated.response_value["state"]["workflow"]["blocking_reason"],
         "application_authority_stale"
+    );
+    assert_eq!(
+        invalidated.response_value["state"]["workflow"]["next_actor"],
+        "agent"
+    );
+    assert_eq!(
+        invalidated.response_value["state"]["workflow"]["required_action"],
+        "volicord.record_shaping"
     );
     let invalidated_version = harness.counts()?.state_version;
     let store = harness.store()?;

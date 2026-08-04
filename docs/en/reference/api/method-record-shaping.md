@@ -201,6 +201,16 @@ request refs, `next_actor=user`, `chat_reply_is_resolution=false`, the Product
 Repository mutation boundary, and the canonical task-scoped inbox command.
 The chat transcript cannot substitute for a User Channel resolution.
 
+For either advisor or work shaping, a current stale application selects
+`shaping_required` with `next_actor=agent`,
+`required_action=volicord.record_shaping`, and
+`blocking_reason=application_authority_stale`. The replacement request must
+consume every exact stale application through its `stale_authority_actions`;
+a status read only observes this obligation. Retirement and reauthorization
+both supersede the stale application while preserving `stale_at` and recording
+the separate `superseded_at`. Reauthorization creates a fresh unresolved
+UserAction identity and never reuses the stale accepted resolution.
+
 After resolution, only an accepted scope gap selects
 `ready_to_apply_decisions`. Product-only and technical-only checkpoints select
 `ready_for_change_unit` when the mode-compatible current Change Unit is still

@@ -492,6 +492,27 @@ ShapingGapInput:
   affected_refs: StateRecordRef[]
   user_action: ShapingUserActionDraft | null
 
+ShapingCheckpointOperation:
+  # initial variant
+  operation: create_initial
+
+  # replacement variant
+  operation: replace_current
+  expected_current_checkpoint_id: string
+  retired_non_authorizing_request_refs: StateRecordRef[]
+  carry_forward_application_refs: StateRecordRef[]
+  stale_authority_actions: StaleShapingAuthorityAction[]
+
+StaleShapingAuthorityAction:
+  # retirement variant
+  action: retire
+  stale_application_ref: StateRecordRef
+
+  # reauthorization variant
+  action: reauthorize
+  stale_application_ref: StateRecordRef
+  successor_gap: ShapingGapInput
+
 ShapingCheckpoint:
   shaping_checkpoint_id: string
   predecessor_checkpoint_id: string | null
@@ -530,6 +551,7 @@ ShapingCheckpointGap:
   decision_authority_state: string | null
   user_action_request_ref: StateRecordRef | null
   user_action_resolution_ref: StateRecordRef | null
+  reauthorizes_application_ref: StateRecordRef | null
 
 ShapingDecisionRecoveryRequirement:
   shaping_gap_id: string
@@ -583,6 +605,11 @@ workflow kind, blocking reason은 [API 값 집합](schema-value-sets.md)의 폐�
 `ShapingAuthorityReauthorization`은 변경 불가능한 감사 lineage입니다. `retired`
 outcome의 successor gap/request identity는 null이고, `reissued` outcome은 둘 다 가지며
 항상 새 unresolved 요청을 가리킵니다.
+`ShapingCheckpointOperation`은 하나의 폐쇄형 tagged union입니다. 교체에는 현재 호환
+carry-forward 집합 전체와 stale application action 집합 전체가 필요합니다. `retire`는
+successor 요청 없이 stale 권한 경로 하나를 끝냅니다. `reauthorize`는
+`reauthorizes_application_ref`로 stale application을 지정하는 새 successor gap과
+unresolved 요청을 만들며, 이전 accepted resolution을 새 요청으로 넘기지 않습니다.
 
 Checkpoint readiness는 구조적이며 decision application과 독립적입니다.
 `application_owner`는 사용자 소유 gap일 때만 null이 아닙니다.
@@ -597,7 +624,7 @@ advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으�
 Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
 진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. 진행은 `advance_task`, `finalize_advice`, shaping 소유 scope update, write preparation, Run 기록, 닫기 준비 상태, mutation 거부에 Store 소유 현재 유효 shaping 권한 graph를 사용합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. 명시적으로 stale인 application에는 `application_authority_stale`를 사용하고, 모순된 현재 graph에는 `inconsistent_authority_state`를 사용합니다. 두 상태 모두 현재 권한 또는 복구 ref를 `required_refs`에 추가하고 진행을 차단합니다. Superseded 요청, resolution, application, checkpoint ref는 감사 이력으로 남으며 현재 checkpoint에 없다는 이유만으로 `required_refs`에 들어가지 않습니다.
+workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. 진행은 `advance_task`, `finalize_advice`, shaping 소유 scope update, write preparation, Run 기록, 닫기 준비 상태, mutation 거부에 Store 소유 현재 유효 shaping 권한 graph를 사용합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. Stale application은 권한을 부여하지 않고 현재 복구 의무로만 나타납니다. `advisor|work` shaping에서는 `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping`, `blocking_reason=application_authority_stale`, 정확한 복구 ref를 선택합니다. 이 상태를 만들 implementation 단계 update는 mutation 전에 거부되고 Task를 shaping으로 돌리는 대신 close/supersede 복구로 `volicord.close_task`를 지정합니다. 현재 graph 내부의 모순은 `inconsistent_authority_state`를 사용합니다. Superseded 요청, resolution, application, checkpoint ref는 변경 불가능한 감사 이력으로 남으며 존재한다는 이유만으로 현재 `required_refs`나 진행에 들어가지 않습니다.
 
 Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
 tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task

@@ -92,9 +92,8 @@ fn known_tool_validation_aggregates_independent_issues_without_core_effects(
 }
 
 #[test]
-fn record_shaping_rejects_the_removed_flat_argument_shape_without_core_effects(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-record-shaping-flat-shape")?;
+fn record_shaping_rejects_unknown_root_fields_without_core_effects() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-record-shaping-closed-shape")?;
     let adapter = adapter(&fixture)?;
     let (task_id, _) = create_task(&adapter)?;
     let before = fixture.counts()?;
@@ -103,32 +102,24 @@ fn record_shaping_rejects_the_removed_flat_argument_shape_without_core_effects(
             AgentToolId::RECORD_SHAPING.wire_name(),
             json!({
                 "task_id": task_id,
-                "checkpoint_operation": {"operation": "create_initial"},
-                "scope_revision": 0,
-                "baseline_ref": null,
-                "summary": "Removed flat record_shaping shape.",
-                "implementation_boundary": "The canonical nested operation is required.",
-                "gaps": [],
-                "source_refs": [],
-                "evidence_refs": []
+                "operation": {
+                    "operation": "record_checkpoint",
+                    "checkpoint_operation": {"operation": "create_initial"},
+                    "scope_revision": 0,
+                    "baseline_ref": null,
+                    "summary": "The current shaping checkpoint is bounded.",
+                    "implementation_boundary": "Only the recorded boundary is in scope.",
+                    "gaps": [],
+                    "source_refs": [],
+                    "evidence_refs": []
+                },
+                "unexpected_field": true
             }),
         )
-        .expect_err("the removed flat record_shaping shape must fail before Core");
+        .expect_err("unknown record_shaping fields must fail before Core");
     let response = structured_tool_error(AgentToolId::RECORD_SHAPING.wire_name(), &error);
 
-    tool_error_issue(&response, "/operation", "MCP_ARGUMENT_REQUIRED");
-    for field in [
-        "checkpoint_operation",
-        "scope_revision",
-        "baseline_ref",
-        "summary",
-        "implementation_boundary",
-        "gaps",
-        "source_refs",
-        "evidence_refs",
-    ] {
-        tool_error_issue(&response, &format!("/{field}"), "MCP_ARGUMENT_UNKNOWN");
-    }
+    tool_error_issue(&response, "/unexpected_field", "MCP_ARGUMENT_UNKNOWN");
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }

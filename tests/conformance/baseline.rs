@@ -35,8 +35,7 @@ use volicord_types::values::{
 use volicord_user_action_service::PendingUserActionFactsRequest;
 
 #[test]
-fn stale_shaping_reauthorization_public_contract_is_closed_and_has_no_legacy_shape(
-) -> Result<(), Box<dyn Error>> {
+fn stale_shaping_reauthorization_public_contract_is_closed() -> Result<(), Box<dyn Error>> {
     let stale_application_ref = StateRecordRef::new(
         StateRecordKind::ShapingDecisionApplication,
         "shaping_application_contract",
@@ -66,7 +65,6 @@ fn stale_shaping_reauthorization_public_contract_is_closed_and_has_no_legacy_sha
     let value = serde_json::to_value(&operation)?;
     assert_eq!(value["operation"], "replace_current");
     assert!(value.get("retired_non_authorizing_request_refs").is_some());
-    assert!(value.get("retired_user_action_request_refs").is_none());
     assert_eq!(value["stale_authority_actions"][0]["action"], "retire");
     assert_eq!(value["stale_authority_actions"][1]["action"], "reauthorize");
     assert!(value["stale_authority_actions"][1]
@@ -77,12 +75,12 @@ fn stale_shaping_reauthorization_public_contract_is_closed_and_has_no_legacy_sha
         operation
     );
 
-    let mut legacy = value.clone();
-    legacy
+    let mut unexpected_field = value.clone();
+    unexpected_field
         .as_object_mut()
         .expect("operation object")
-        .insert("retired_user_action_request_refs".to_owned(), json!([]));
-    assert!(serde_json::from_value::<ShapingCheckpointOperation>(legacy).is_err());
+        .insert("unexpected_field".to_owned(), json!([]));
+    assert!(serde_json::from_value::<ShapingCheckpointOperation>(unexpected_field).is_err());
 
     let mut missing_actions = value.clone();
     missing_actions
@@ -92,7 +90,7 @@ fn stale_shaping_reauthorization_public_contract_is_closed_and_has_no_legacy_sha
     assert!(serde_json::from_value::<ShapingCheckpointOperation>(missing_actions).is_err());
 
     let mut unknown_action = value;
-    unknown_action["stale_authority_actions"][0]["action"] = json!("reuse_resolution");
+    unknown_action["stale_authority_actions"][0]["action"] = json!("unsupported_action");
     assert!(serde_json::from_value::<ShapingCheckpointOperation>(unknown_action).is_err());
     Ok(())
 }

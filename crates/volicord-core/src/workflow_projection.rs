@@ -543,8 +543,14 @@ pub(crate) fn task_wide_shaping_authority(
                 ShapingDecisionAuthorityState::Rejected
                 | ShapingDecisionAuthorityState::Deferred
                 | ShapingDecisionAuthorityState::Expired => MethodName::RecordShaping,
+                ShapingDecisionAuthorityState::Stale => {
+                    if task.work_phase == WorkPhase::Shaping {
+                        MethodName::RecordShaping
+                    } else {
+                        MethodName::CloseTask
+                    }
+                }
                 ShapingDecisionAuthorityState::Applied
-                | ShapingDecisionAuthorityState::Stale
                 | ShapingDecisionAuthorityState::Superseded
                 | ShapingDecisionAuthorityState::Inconsistent => MethodName::Status,
             },
@@ -836,12 +842,12 @@ pub(crate) fn workflow_projection(
             required_action: RequiredNullable::some(if task.work_phase == WorkPhase::Shaping {
                 MethodName::RecordShaping
             } else {
-                MethodName::Status
+                MethodName::CloseTask
             }),
             allowed_actions: if task.work_phase == WorkPhase::Shaping {
                 vec![MethodName::RecordShaping, MethodName::Status]
             } else {
-                vec![MethodName::Status]
+                vec![MethodName::CloseTask, MethodName::Status]
             },
             required_refs: refs,
             expected_state_version: state_version,

@@ -119,10 +119,13 @@ Non-claim: `StatusResult.close_blockers` are not stored `close_task` results, co
   public result never returns User Channel availability, the Core-derived
   request body, resolution form, or a complete `CliUserActionInboxItem`. A
   verified User Channel renderer fetches the availability and complete item
-  through its separate internal Core boundary. Relevant stale or superseded records can
-  still appear as opaque authority refs in owner-defined state and
-  blocker-local or display fields; those refs are not request-detail
-  projections.
+  through its separate internal Core boundary. A stale shaping application may
+  appear only as a current recovery obligation in the tagged workflow and does
+  not authorize work. Superseded requests, resolutions, applications, and
+  checkpoints are excluded from current pending projection, workflow refs,
+  blockers, and progression. Their immutable records remain available only
+  through explicitly historical reads, diagnostics, or authority export; a
+  historical ref is not a current request-detail projection.
 - `include.write_ticket` returns active, invalidated, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`. An invalidated summary exposes its stable invalidation reason and validity basis; an optional project idle timeout is represented by `idle_timeout`, not by a fixed lifetime.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available, plus the canonical `evidence_gate` projection.

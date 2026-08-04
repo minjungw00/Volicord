@@ -56,7 +56,7 @@ use volicord_types::values::{
     evaluate_shaping_decision_authority, ActorSource, ErrorCode, JudgmentResolutionOutcome,
     MethodName, ShapingDecisionAuthorityFacts, ShapingDecisionAuthorityState, ShapingGapStatus,
     StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionOptionAction,
-    UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
+    UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis, UtcTimestamp, WorkPhase,
 };
 
 fn shaping_disposition(resolution: &UserActionResolutionBody) -> Option<ShapingGapStatus> {
@@ -620,8 +620,14 @@ fn projected_user_action_state(
                 ShapingDecisionAuthorityState::Rejected
                 | ShapingDecisionAuthorityState::Deferred
                 | ShapingDecisionAuthorityState::Expired => MethodName::RecordShaping,
+                ShapingDecisionAuthorityState::Stale => {
+                    if task.work_phase == WorkPhase::Shaping {
+                        MethodName::RecordShaping
+                    } else {
+                        MethodName::CloseTask
+                    }
+                }
                 ShapingDecisionAuthorityState::Applied
-                | ShapingDecisionAuthorityState::Stale
                 | ShapingDecisionAuthorityState::Superseded
                 | ShapingDecisionAuthorityState::Inconsistent => MethodName::Status,
             },
@@ -1119,8 +1125,14 @@ fn plan_resolve_user_action(
             | ShapingDecisionAuthorityState::Deferred
             | ShapingDecisionAuthorityState::Expired => MethodName::RecordShaping,
             ShapingDecisionAuthorityState::AwaitingUser => MethodName::ResolveUserAction,
+            ShapingDecisionAuthorityState::Stale => {
+                if projected_task.work_phase == WorkPhase::Shaping {
+                    MethodName::RecordShaping
+                } else {
+                    MethodName::CloseTask
+                }
+            }
             ShapingDecisionAuthorityState::Applied
-            | ShapingDecisionAuthorityState::Stale
             | ShapingDecisionAuthorityState::Superseded
             | ShapingDecisionAuthorityState::Inconsistent => MethodName::Status,
         };

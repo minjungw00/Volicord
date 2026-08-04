@@ -31,8 +31,8 @@ version = "0.9.1"
 
 [workspace.metadata.architecture.packages.volicord-types]
 group = "shared-types"
-description = "Dependency-safe public schemas and closed values for checkpoint lineage, decision application ownership, advisor finalization, tagged workflow progression, typed rejection, canonical encodings, and platform-neutral facts."
-description_ko = "checkpoint lineage, 결정 적용 담당, advisor finalization, 태그 기반 workflow 진행, typed rejection, 정규 인코딩, 플랫폼 중립 fact를 위한 의존 안전한 공개 스키마와 폐쇄형 값을 담당합니다."
+description = "Dependency-safe public schemas and closed values for checkpoint and application lineage, stale-authority actions and reauthorization, advisor finalization, tagged workflow progression, typed rejection, canonical encodings, and platform-neutral facts."
+description_ko = "checkpoint 및 application lineage, stale 권한 action과 재권한, advisor finalization, 태그 기반 workflow 진행, typed rejection, 정규 인코딩, 플랫폼 중립 fact를 위한 의존 안전한 공개 스키마와 폐쇄형 값을 담당합니다."
 kind = "schema"
 production = true
 boundary = "core-facing"
@@ -64,8 +64,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-mcp-wire]
 group = "mcp-wire"
-description = "MCP checkpoint/finalization and advance arguments/results, tagged workflow presentation shapes, errors, structured content, JSON-RPC envelopes, and generated wire schemas."
-description_ko = "MCP checkpoint/finalization 및 advance 인자와 결과, 태그 기반 workflow presentation 형태, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다."
+description = "MCP checkpoint, stale-authority recovery, finalization, and advance arguments/results; tagged workflow presentation shapes; errors; structured content; JSON-RPC envelopes; and generated wire schemas."
+description_ko = "MCP checkpoint, stale 권한 복구, finalization, advance 인자와 결과, 태그 기반 workflow presentation 형태, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다."
 kind = "schema"
 production = true
 boundary = "adapter"
@@ -75,8 +75,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-store]
 group = "storage"
-description = "Canonical Runtime Home persistence, strict shaping-aggregate decoding, lineage and live-decision invariants, atomic owner-specific decision application/finalization/phase transitions, and invariant-preserving transactions."
-description_ko = "정규 Runtime Home 영속화, shaping aggregate의 엄격한 디코딩, lineage와 live-decision 불변 조건, owner별 결정 적용·finalization·단계 전이의 원자성, 불변 조건을 보존하는 transaction을 담당합니다."
+description = "Canonical Runtime Home persistence, Store-derived current shaping authority, separate immutable application and reauthorization history, atomic owner-specific decision application/finalization/phase transitions, and invariant-preserving transactions."
+description_ko = "정규 Runtime Home 영속화, Store가 도출한 현재 shaping 권한, 분리된 변경 불가능한 application 및 재권한 이력, owner별 결정 적용·finalization·단계 전이의 원자성, 불변 조건을 보존하는 transaction을 담당합니다."
 kind = "infrastructure"
 production = true
 boundary = "core-facing"
@@ -128,8 +128,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-core]
 group = "core"
-description = "Adapter-independent checkpoint succession, decision-owner application, advisor finalization, explicit advance, Task-wide tagged workflow projection, typed recovery, policy evaluation, and atomic commit coordination."
-description_ko = "어댑터 독립 checkpoint succession, 결정 owner별 적용, advisor finalization, 명시적 advance, Task 전체 태그 기반 workflow projection, typed recovery, 정책 평가, 원자적 커밋 조율을 담당합니다."
+description = "Adapter-independent current shaping authority projection, checkpoint succession, exact stale retirement or reauthorization, decision-owner application, advisor finalization, explicit advance, implementation-preserving rejection, policy evaluation, and atomic commit coordination."
+description_ko = "어댑터 독립 현재 shaping 권한 projection, checkpoint succession, 정확한 stale 폐기 또는 재권한, 결정 owner별 적용, advisor finalization, 명시적 advance, implementation 보존 거부, 정책 평가, 원자적 커밋 조율을 담당합니다."
 kind = "application"
 production = true
 boundary = "core"
@@ -166,8 +166,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-mcp]
 group = "mcp-adapter"
-description = "MCP lifecycle, canonical AgentToolId registry, compact tagged-workflow and rejection projection, session binding, checkpoint/finalization/advance dispatch, and Core invocation adaptation."
-description_ko = "MCP 생명주기, 정규 AgentToolId registry, 간결한 태그 기반 workflow 및 rejection projection, 세션 결속, checkpoint/finalization/advance dispatch, Core 호출 adapter를 담당합니다."
+description = "MCP lifecycle, canonical AgentToolId registry, current-authority and stale-recovery guidance, compact tagged-workflow and rejection projection, session binding, checkpoint/finalization/advance dispatch, and Core invocation adaptation."
+description_ko = "MCP 생명주기, 정규 AgentToolId registry, 현재 권한 및 stale 복구 지침, 간결한 태그 기반 workflow 및 rejection projection, 세션 결속, checkpoint/finalization/advance dispatch, Core 호출 adapter를 담당합니다."
 kind = "adapter"
 production = true
 boundary = "adapter"
@@ -187,8 +187,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-cli]
 group = "cli-adapter"
-description = "Administrative CLI, typed User Channel resolution, Guard lifecycle observation/terminalization, managed tagged-workflow guidance, Codex setup, rendering, and MCP supervision."
-description_ko = "관리 CLI, typed User Channel resolution, Guard lifecycle 관찰과 terminalization, 관리형 태그 기반 workflow 지침, Codex 설정, rendering, MCP 감독을 담당합니다."
+description = "Administrative CLI, typed User Channel resolution, Guard lifecycle observation/terminalization, managed current-authority and stale-recovery guidance, Codex setup, rendering, and MCP supervision."
+description_ko = "관리 CLI, typed User Channel resolution, Guard lifecycle 관찰과 terminalization, 관리형 현재 권한 및 stale 복구 지침, Codex 설정, rendering, MCP 감독을 담당합니다."
 kind = "adapter"
 production = true
 boundary = "adapter"

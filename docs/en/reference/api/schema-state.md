@@ -497,6 +497,27 @@ ShapingGapInput:
   affected_refs: StateRecordRef[]
   user_action: ShapingUserActionDraft | null
 
+ShapingCheckpointOperation:
+  # initial variant
+  operation: create_initial
+
+  # replacement variant
+  operation: replace_current
+  expected_current_checkpoint_id: string
+  retired_non_authorizing_request_refs: StateRecordRef[]
+  carry_forward_application_refs: StateRecordRef[]
+  stale_authority_actions: StaleShapingAuthorityAction[]
+
+StaleShapingAuthorityAction:
+  # retirement variant
+  action: retire
+  stale_application_ref: StateRecordRef
+
+  # reauthorization variant
+  action: reauthorize
+  stale_application_ref: StateRecordRef
+  successor_gap: ShapingGapInput
+
 ShapingCheckpoint:
   shaping_checkpoint_id: string
   predecessor_checkpoint_id: string | null
@@ -535,6 +556,7 @@ ShapingCheckpointGap:
   decision_authority_state: string | null
   user_action_request_ref: StateRecordRef | null
   user_action_resolution_ref: StateRecordRef | null
+  reauthorizes_application_ref: StateRecordRef | null
 
 ShapingDecisionRecoveryRequirement:
   shaping_gap_id: string
@@ -588,6 +610,12 @@ blocking reasons use the closed sets in [API Value Sets](schema-value-sets.md).
 `ShapingAuthorityReauthorization` is immutable audit lineage. A `retired`
 outcome has null successor gap/request identities; a `reissued` outcome has
 both and always points to a fresh unresolved request.
+`ShapingCheckpointOperation` is one closed tagged union. Replacement requires
+the complete current compatible carry-forward set and the complete stale
+application action set. `retire` ends one stale authority path without a
+successor request. `reauthorize` creates a fresh successor gap and unresolved
+request whose `reauthorizes_application_ref` names the stale application; it
+does not carry the old accepted resolution into the new request.
 
 Checkpoint readiness is structural and is independent from decision
 application. `application_owner` is non-null exactly for a user-owned gap.
@@ -604,7 +632,7 @@ Unit or `ready_for_implementation`. Advisor finalization-owned decisions
 proceed toward a non-write Change Unit and `ready_to_finalize_advice`; only a
 current checkpoint-backed close basis selects `close_review`.
 
-The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Progression consumes the Store-owned current effective shaping authority graph for `advance_task`, `finalize_advice`, shaping-owned scope update, write preparation, Run recording, close readiness, and mutation rejection. A compatible application carried from an ancestor remains `applied` without copying its source gap. An explicitly stale application uses `application_authority_stale`; a contradictory current graph uses `inconsistent_authority_state`. Both contribute current authority or recovery refs to `required_refs` and prevent progression. Superseded request, resolution, application, and checkpoint refs remain audit history and do not appear in `required_refs` solely because they are absent from the current checkpoint.
+The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Progression consumes the Store-owned current effective shaping authority graph for `advance_task`, `finalize_advice`, shaping-owned scope update, write preparation, Run recording, close readiness, and mutation rejection. A compatible application carried from an ancestor remains `applied` without copying its source gap. A stale application grants no authority and appears only as a current recovery obligation: in `advisor|work` shaping it selects `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping`, `blocking_reason=application_authority_stale`, and its exact recovery refs. An implementation-phase update that would create this condition is rejected before mutation and names `volicord.close_task` as the close/supersede recovery instead of returning the Task to shaping. A contradiction inside the current graph uses `inconsistent_authority_state`. Superseded request, resolution, application, and checkpoint refs remain immutable audit history and never enter current `required_refs` or progression merely because they exist.
 
 Workflow mutation rejection details embed this same complete tagged
 `WorkflowProjection`; they do not reconstruct progression from the received

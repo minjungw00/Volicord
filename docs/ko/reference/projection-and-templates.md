@@ -63,6 +63,12 @@
 - 독자가 권한 기록을 확인해야 하면 관련 담당 문서로 연결합니다.
 - 사람이 고쳤거나 오래된 표시는 버리거나 다시 계산할 표시로 다루며, Core 복구 입력으로 쓰지 않습니다.
 
+Shaping workflow 표시는 Store 소유 현재 유효 권한 graph에서만 진행을 도출합니다. 보기에
+stale 복구 ref가 들어가면 권한을 부여하지 않는 복구 상태를 보존해야 합니다.
+Superseded checkpoint, 요청, resolution, application, 재권한 record가 들어가면 변경
+불가능한 감사 이력임을 표시해야 하며 현재 workflow ref, blocker, next-action 선택에
+합치면 안 됩니다.
+
 ## 템플릿과 라벨 경계
 
 [템플릿 본문](template-bodies.md)은 상태 카드, 판단 요청, 실행/증거 요약, 닫기 결과,

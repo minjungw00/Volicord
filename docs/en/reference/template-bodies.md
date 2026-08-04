@@ -288,20 +288,26 @@ boundaries without requiring a fixed status/intake/check-close call ritual.
 <!-- BEGIN VOLICORD MANAGED GUIDANCE -->
 # Volicord
 
-- Treat Volicord's recorded scope, current shaping checkpoint, and linked UserAction authority as authoritative.
+- Treat Volicord's recorded scope and Store-derived tagged current effective shaping authority graph as authoritative. Superseded checkpoint, request, resolution, and application history is immutable audit history, never actionable authority.
 - Do not modify Product Repository files outside an active compatible write authorization.
 - Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.
+- For the request `Run the Volicord integration verification.`, call `volicord.list_projects`, then `volicord.begin_integration_verification`. Follow its returned `workflow` tagged state: `awaiting_probe` calls its exact `volicord.guard_probe` tool once; `awaiting_observation` calls its exact `volicord.get_integration_verification` status tool once; `repair_required` and `complete` call no verification tool. Do not use shell sleep or poll loops, make repeated status calls, or automatically restart the workflow in the same turn. Begin, probe, and status expose the same workflow state.
+- Only that first-party state-directed workflow proves current MCP and Guard correlation. Manual stdio and CLI MCP preflight are diagnostic and are not managed-host evidence.
+- If Volicord tools are not exposed, report the managed MCP connection as unavailable. Do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as tool proof; use read-only connection status or MCP preflight only for diagnosis.
+- `volicord connection verify` is optional active diagnostics only; it does not replace the managed-host workflow.
 - Follow the tagged workflow's `required_action`; do not call workflow tools speculatively or select progression from top-level array order.
 - Never replace the current shaping checkpoint to remove a pending or accepted-but-unapplied decision. Preserve its UserAction authority and follow the tagged recovery method.
 - Carry every current compatible applied decision explicitly through `carry_forward_application_refs` when revising a checkpoint. Never replace a checkpoint to discard applied authority.
+- Stale shaping authority grants no permission. Never carry a stale application forward or reuse its accepted resolution. For `application_authority_stale`, follow the exact `stale_authority_actions`: `retire` it or `reauthorize` it through a fresh successor gap and fresh `UserActionRequest`, preserving immutable `ShapingAuthorityReauthorization` lineage.
 - Inspect the exact User Channel resolution outcome. Resolution does not apply a shaping decision: apply only accepted, current, compatible authority through its `application_owner`, using the exact current resolution refs.
 - After rejection, deferral, or expiration, follow `decision_recovery_required` and revise shaping. Never retry resolution of a terminal or expired request. If the revised plan still needs that judgment, create a successor UserActionRequest with an independent identity; chat text cannot replace it.
 - A rejected, deferred, or expired decision grants no authority and keeps Product Repository mutation unavailable. Surface that outcome and do not hide it as success.
+- During `work/implementation`, an authority-invalidating scope, baseline, or Change Unit update is rejected before mutation. Follow the tagged `volicord.close_task` recovery to leave implementation; implementation work never returns silently to shaping.
 - Do not invent a scope decision or pass a scope-decision ref for product-only or technical-only work; follow that decision's mode-specific application owner.
 - Creating or replacing a Change Unit does not advance the Task phase. For work, call `volicord.advance_task` only when the tagged workflow requires explicit advance and never while a UserAction is pending. Do not call `volicord.prepare_write` before the Task enters implementation.
 - Advisor work uses only a non-write Change Unit. On `ready_to_finalize_advice`, finalize the current advisor result with `volicord.record_shaping`; do not use `volicord.record_run`, `volicord.advance_task`, or `volicord.prepare_write` for advisor.
 - Create current UserAction requests before presenting user-owned choices. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.
-- Never hide or paraphrase a rejected mutation as success. Surface the tagged workflow and every fact in `presentation.must_surface`, including the current Task phase and exact recovery method.
+- Never hide or paraphrase a rejected mutation as success. Surface the tagged workflow and every rejection and recovery fact in `presentation.must_surface`, including the current Task phase and exact recovery method.
 - Evaluate close readiness only during close review. Close blockers do not replace tagged workflow progression.
 - Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.
 - Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.

@@ -128,6 +128,14 @@ inputs. They select `decision_recovery_required`, name
 Run creation, and Product Repository effects. Only accepted current compatible
 resolutions may be applied, exactly once.
 
+A stale shaping application likewise grants no progression authority. While
+the work Task remains in shaping, it selects `shaping_required` with
+`next_actor=agent`, `required_action=volicord.record_shaping`, and
+`blocking_reason=application_authority_stale`; the caller must retire or
+reauthorize the exact stale application before advance can be admitted.
+Reauthorization uses a fresh unresolved UserAction request, so the stale
+accepted resolution is never an `advance_task` input.
+
 MCP presentation for a successful transition requires three structured facts:
 the Task entered `implementation`, the transition created no write ticket, and
 Product Repository writes still require `volicord.prepare_write`. A caller

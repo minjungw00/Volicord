@@ -15,10 +15,15 @@ enabled_capabilities:
   - artifact_storage
   - authority_event_chain
   - exact_operation_result
-  - guard_reconciliation
+  - invocation_repository_observation
   - managed_codex_connection
   - operational_mcp_sessions
   - project_continuity
+  - shaping_authority_reauthorization
+  - shaping_checkpoint_lineage
+  - shaping_decision_applications
+  - shaping_decision_recovery
+  - shaping_progression
   - user_action_cli_resolution
 ```
 

@@ -117,9 +117,12 @@ Task가 선택되면 성공한 모든 결과는 선택적 `include` 필드와 �
 - `include.pending_user_actions`는 `pending_user_action_summaries`를 반환합니다. 공개 결과는
   User Channel 가용성, Core가 도출한 요청 본문, resolution form, 완전한
   `CliUserActionInboxItem`을 반환하지 않습니다. 검증된 User Channel renderer는 별도 내부
-  Core 경계를 통해 가용성과 완전한 항목을 조회합니다. 관련 stale 또는 superseded
-  기록은 owner가 정의한 상태와 차단 사유 전용 또는 표시 전용 필드에 불투명한 authority
-  ref로 계속 나타날 수 있지만, 그 ref는 요청 상세 projection이 아닙니다.
+  Core 경계를 통해 가용성과 완전한 항목을 조회합니다. Stale shaping application은 태그가
+  있는 workflow의 현재 복구 의무로만 나타날 수 있으며 작업 권한을 부여하지 않습니다.
+  Superseded 요청, resolution, application, checkpoint는 현재 pending projection,
+  workflow ref, blocker, 진행에서 제외됩니다. 변경 불가능한 해당 record는 명시적인 이력
+  조회, diagnostics, authority export에서만 확인할 수 있으며 이력 ref는 현재 요청 상세
+  projection이 아닙니다.
 - `include.write_ticket`는 활성, 무효화됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 상태를 `write_ticket_summary`로 반환합니다. 무효화된 요약은 안정된 무효화 사유와 유효성 근거를 노출합니다. 선택적 프로젝트 idle timeout은 고정 수명이 아니라 `idle_timeout`으로 나타냅니다.
 - `write_ticket_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위, 기준 `evidence_gate` 상태 보기를 반환합니다.

@@ -322,6 +322,28 @@ contradiction inside that current graph; superseded history does not select it.
 Terminal Tasks have no current shaping authority graph; their checkpoint,
 request, resolution, and application lineage remains immutable history.
 
+Application authority follows one forward-only lifecycle: `current` may become
+`stale` or `superseded`, and `stale` may become only `superseded`. `stale_at`
+records the current-to-stale boundary; `superseded_at` separately records the
+current-or-stale-to-superseded boundary. A stale application grants no
+permission, cannot be carried forward, and cannot reuse its accepted
+resolution for changed coordinates. Exact checkpoint replacement must consume
+every stale recovery obligation through one tagged action. `retire` records a
+terminal immutable lineage entry without successor judgment authority.
+`reauthorize` supersedes the stale application and old request basis, creates a
+fresh successor gap and unresolved `UserActionRequest` with independent
+identity, and records immutable lineage among them. The old request,
+resolution, application, and both transition timestamps remain audit history.
+
+For both advisor and work Tasks in shaping, `application_authority_stale`
+selects `next_actor=agent` and
+`required_action=volicord.record_shaping`; `volicord.status` may observe that
+state but is not its recovery transition. During `work/implementation`, a
+scope, baseline, or Change Unit update that would invalidate current shaping
+authority is rejected before mutation. Its typed recovery requires the Task to
+leave implementation through `volicord.close_task` completion or supersession;
+implementation never silently returns to shaping.
+
 The closed owner policy is:
 
 | Mode | Shaping gap | UserAction kind | `required_for` | Application owner | Scope revision | Downstream retention |

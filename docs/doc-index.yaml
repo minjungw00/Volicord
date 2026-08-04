@@ -243,8 +243,9 @@ shared_documents:
 - doc_id: terminology.map
   path: docs/terminology-map.yaml
   kind: maintenance
-  summary: Structured terminology metadata, normalized write-authority and shaping-decision
-    lifecycle terminology, and identifier presentation and preservation policy.
+  summary: Structured terminology metadata for current shaping authority, immutable history,
+    stale reauthorization, normalized write authority, shaping-decision lifecycle, and identifier
+    presentation and preservation policy.
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
@@ -711,10 +712,10 @@ documents:
   path_en: docs/en/architecture-guide/source-map.md
   path_ko: docs/ko/architecture-guide/source-map.md
   kind: explanation
-  summary: Source path responsibility map for current Rust workspace modules, including checkpoint
-    succession, exact decision outcomes, application carry-forward and ownership, advisor
-    finalization, tagged workflow authority, storage aggregates, managed-guidance revision identity,
-    and MCP routing.
+  summary: Source path responsibility map for current Rust workspace modules, including the current
+    effective shaping authority graph, immutable history, stale reauthorization, checkpoint
+    succession, application carry-forward and ownership, advisor finalization, tagged workflow
+    authority, managed-guidance revision identity, and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1671,9 +1672,9 @@ documents:
   path_en: docs/en/reference/core-model.md
   path_ko: docs/ko/reference/core-model.md
   kind: reference
-  summary: Reference contract for Core authority records, checkpoint lineage, owner-specific decision
-    application, advisor finalization, Task-wide tagged workflow authority, implementation admission,
-    and close-review state concepts.
+  summary: Reference contract for current effective shaping authority, immutable history, checkpoint
+    and application lineage, stale reauthorization, owner-specific decision application, advisor
+    finalization, Task-wide tagged workflow authority, implementation admission, and close review.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
@@ -1693,6 +1694,8 @@ documents:
   - current scope and current Change Unit authority context
   - current shaping checkpoint lineage, structural readiness, and live-decision replacement prohibition
   - current effective shaping authority graph and immutable shaping authority history participation
+  - current-to-stale-to-superseded application lifecycle, separate transition timestamps, exact stale
+    retirement or fresh-request reauthorization, and implementation-preserving recovery
   - resolution/application separation and the mode-aware shaping decision application-owner matrix
   - Task-wide decision gates, advisor finalization, explicit Task advance, and tagged workflow progression
   - current Change Unit effect contract authority boundary
@@ -1757,8 +1760,8 @@ documents:
   path_en: docs/en/reference/admin-cli.md
   path_ko: docs/ko/reference/admin-cli.md
   kind: reference
-  summary: Reference contract for administrative CLI behavior, exact UserAction outcome and
-    workflow presentation, and local bootstrap commands.
+  summary: Reference contract for administrative CLI behavior, current UserAction and stale
+    reauthorization presentation, historical authority export boundaries, and local bootstrap commands.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -1806,6 +1809,8 @@ documents:
   - exact typed CLI inbox JSON document, channel and capture-path schemas, listing,
     CLI-only UserAction resolution, and text separation of request status, exact outcome,
     authority effect, non-application, and tagged workflow
+  - current pending-only inbox projection, fresh reauthorization-request identity, and immutable
+    historical authority-export non-progression boundary
   - bounded finding and runtime-session diagnostic lookup commands, workflow metrics,
     privacy-footprint diagnostic projection, policy, authority-bundle export, and
     change-reconciliation commands
@@ -1827,8 +1832,8 @@ documents:
   path_ko: docs/ko/reference/mcp-transport.md
   kind: reference
   summary: Reference contract for managed stdio startup, revision-profiled JSON-RPC framing,
-    canonical tool projection including explicit shaping and advance, tagged workflow authority,
-    response wrapping, UserAction request boundaries, and shutdown.
+    canonical tool projection including current shaping, stale recovery, and advance, tagged workflow
+    authority, response wrapping, UserAction request boundaries, and shutdown.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -1884,8 +1889,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -1906,6 +1911,8 @@ documents:
   - selected-profile server capability and JSON-RPC batch behavior
   - canonical tool registry and capability-driven `tools/list` field projection
   - public MCP routing for `volicord.record_shaping` and `volicord.advance_task`
+  - MCP projection of current shaping authority, exact stale recovery ownership, fresh UserAction
+    identity, immutable reauthorization lineage, and historical/current query separation
   - static runtime-compact tool schemas and public tool list
   - MCP public input and output projections without hidden Core context
   - known-tool argument, lifecycle, and adapter-precondition failure shapes
@@ -1934,8 +1941,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - agents
   - implementers
@@ -1947,6 +1954,7 @@ documents:
   canonical_for:
   - supported local cooperative security guarantees and explicit non-guarantees
   - Core authority, Write Ticket, UserAction, Guard observation, and display boundaries
+  - current shaping authority, stale non-permission, fresh-identity reauthorization, and immutable-history boundaries
   - Agent Connection, process, actor source, and user-identity non-inference
   - Store-owned Connection integration-instance and generation lifecycle coordinates
   - managed stdio process topology without a network-listener guarantee
@@ -2062,7 +2070,8 @@ documents:
   path_ko: docs/ko/reference/api/method-record-shaping.md
   kind: reference
   summary: Reference contract for explicit shaping checkpoint succession, live-decision preservation,
-    and advisor result finalization through `volicord.record_shaping`.
+    exact stale retirement or fresh-request reauthorization, and advisor result finalization through
+    `volicord.record_shaping`.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2085,6 +2094,7 @@ documents:
   - '`RecordShapingResult` branch behavior'
   - explicit initial/replacement checkpoint operations and predecessor lineage
   - live-decision checkpoint replacement prohibition
+  - complete stale-authority action sets, separate transition timestamps, and immutable retirement or reissue lineage
   - structural readiness and mode-aware decision application ownership
   - advisor-owned decision application, result finalization, and checkpoint-backed close-basis creation
   - atomic ShapingCheckpoint and shaping-gap recording behavior
@@ -2102,8 +2112,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-08-02'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2116,6 +2126,7 @@ documents:
   - '`AdvanceTaskResult` branch behavior'
   - exact product, technical, and sensitive shaping-decision application for work Tasks
   - Task-wide decision gate for explicit work progression
+  - stale-application exclusion and exact shaping recovery before work progression
   - explicit `work/shaping` to `work/implementation` transition
 - doc_id: reference.api.method-status
   path_en: docs/en/reference/api/method-status.md
@@ -2130,8 +2141,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2143,6 +2154,7 @@ documents:
   - '`volicord.status` behavior'
   - '`StatusResult` branch behavior'
   - status read-only behavior
+  - current stale recovery projection and superseded shaping-history exclusion from progression
   - continuity default page size, maximum page size, exact ordering, cursor, total count, and truncation behavior
   - status examples
   depends_on:
@@ -2496,8 +2508,9 @@ documents:
   path_en: docs/en/reference/api/schema-state.md
   path_ko: docs/ko/reference/api/schema-state.md
   kind: reference
-  summary: Reference contract for state API schema families, including checkpoint lineage, structural
-    readiness, decision application owners, and single tagged workflow authority.
+  summary: Reference contract for state API schema families, including checkpoint and reauthorization
+    lineage, stale-authority actions, structural readiness, decision application owners, and single
+    tagged workflow authority.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2531,6 +2544,7 @@ documents:
   - state schemas
   - tagged `WorkflowProjection.required_action` authority independent of top-level array ordering
   - shaping checkpoint lineage, gap, structural readiness, application owner, and shaping-owned UserAction link shapes
+  - exact replacement operation, stale-authority action, application timestamp, and immutable reauthorization shapes
   - Task-wide shaping decision gates and `ready_to_finalize_advice` projection
   - normative public state display text and adapter-presentation boundary
   - '`WriteTicketValidityBasis.write_authority_fingerprint` shape and normalization scope'
@@ -2619,8 +2633,8 @@ documents:
   - cli.output.inbox
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2637,6 +2651,7 @@ documents:
   - Core-derived adapter-neutral `UserActionResolutionForm`
   - User Channel evidence-observation request and resolution payloads
   - UserAction kind compatibility with explicit `volicord.advance_task` progression
+  - stale shaping request non-authority and fresh unresolved reauthorization-request identity
 - doc_id: reference.api.schema-value-sets
   path_en: docs/en/reference/api/schema-value-sets.md
   path_ko: docs/ko/reference/api/schema-value-sets.md
@@ -2673,6 +2688,7 @@ documents:
   - public API closed value sets
   - structural shaping checkpoint readiness, shaping gap kind/status/application-owner, workflow kind,
     and workflow blocking reason sets
+  - shaping application lifecycle, reauthorization outcome, and workflow recovery-action values
   - '`FailureCategory` and `CloseReadinessBlocker.category` identifiers'
   - method-name and operation-category values
   - Codex Record profile and supported observation-source values
@@ -2894,8 +2910,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-05-06'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - implementers
   - maintainers
@@ -2928,6 +2944,7 @@ documents:
   - canonical persisted record families and storage locations
   - strict stored owner values and JSON placement
   - Store-owned current effective shaping authority graph and separate immutable history reads
+  - shaping application current-to-stale-to-superseded timestamps and immutable retirement/reissue lineage records
   - canonical project time-floor and commit timestamp relationships
   - Agent Connection, project membership, and Codex binding records
   - immutable Store-owned Connection integration-instance identity and physical recreation boundary
@@ -2954,8 +2971,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - storage implementers
   - API implementers
@@ -2979,6 +2996,7 @@ documents:
   - physical canonical-time-floor and cross-row commit timestamp constraints
   - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, write-ticket
     basis versions, staged artifact provenance, and host-observation records
+  - shaping application lifecycle, reauthorization-origin, fresh-request, and immutable lineage constraints
   depends_on:
   - reference.storage-records
   - reference.storage-versioning
@@ -2991,8 +3009,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - storage implementers
   - API implementers
@@ -3003,6 +3021,7 @@ documents:
   canonical_for:
   - method-to-storage effects
   - atomic checkpoint succession and advisor-finalization effects for `volicord.record_shaping`
+  - atomic stale-application retirement or fresh-request reauthorization effects and implementation-phase no-effect rejection
   - owner-specific scope/advance decision application and explicit `volicord.advance_task` phase-transition effects
   - read-only and dry-run storage effects
   - rejected and blocked branch storage effects
@@ -3041,8 +3060,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - storage implementers
   - maintainers
@@ -3053,6 +3072,7 @@ documents:
   - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and complete ordered enabled-capability list'
   - one canonical SQLite format and fail-closed exact-open validation
   - exact `shaping_progression` storage capability identity
+  - exact `shaping_authority_reauthorization` capability and one current manifest representation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - noncurrent-contract corruption, unavailable, and fresh-recreation storage boundaries
   - exact-open acceptance of the current Guard verification relation and constraint inventory
@@ -3129,13 +3149,13 @@ documents:
   path_en: docs/en/reference/projection-and-templates.md
   path_ko: docs/ko/reference/projection-and-templates.md
   kind: reference
-  summary: Reference contract for Projection authority and template behavior.
+  summary: Reference contract for current-authority and immutable-history Projection boundaries and template behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-08-04'
+  last_verified_on: '2026-08-04'
   primary_audience:
   - implementers
   - agent integrators
@@ -3146,15 +3166,16 @@ documents:
   canonical_for:
   - Projection authority boundaries
   - Core authoritative records versus projected status and template views
+  - current shaping workflow projection versus explicitly historical audit display
   - derived display and non-authority boundaries
   - display labels versus canonical schema values
 - doc_id: reference.template-bodies
   path_en: docs/en/reference/template-bodies.md
   path_ko: docs/ko/reference/template-bodies.md
   kind: reference
-  summary: Reference contract for exact template body ownership, including managed explicit-shaping,
-    exact decision outcome and application carry-forward, UserAction, Task advance, rejection, and
-    close-review guidance.
+  summary: Reference contract for exact template body ownership, including current shaping authority,
+    immutable history, stale retirement or reauthorization, implementation-preserving rejection,
+    UserAction, Task advance, rejection/recovery surfacing, and close-review guidance.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api

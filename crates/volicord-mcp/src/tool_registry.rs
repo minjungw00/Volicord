@@ -1097,10 +1097,10 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "Start or resume work and return its authority state."
         }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::UPDATE_SCOPE) => {
-            "Update Task scope and Change Unit before more work."
+            "Update Task scope and Change Unit when current workflow permits."
         }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECORD_SHAPING) => {
-            "Record shaping or finalize the advisor result."
+            "Record current shaping, recover stale authority, or finalize advice."
         }
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::ADVANCE_TASK) => {
             "Explicitly advance ready work from shaping to implementation."
@@ -1154,7 +1154,7 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "Update the current Task scope and keep, create, or replace its current Change Unit."
         }
         (_, AgentToolId::RECORD_SHAPING) => {
-            "Atomically record or replace the current shaping checkpoint and linked UserAction requests, or finalize the current advisor result and close basis."
+            "Atomically record or replace current shaping authority, preserve compatible applications, retire or reissue exact stale authority with fresh UserAction identity, or finalize the current advisor result and close basis."
         }
         (_, AgentToolId::ADVANCE_TASK) => {
             "Advance an exact ready work Task checkpoint and current Change Unit into implementation."

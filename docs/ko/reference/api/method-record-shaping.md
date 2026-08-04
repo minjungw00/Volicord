@@ -177,6 +177,14 @@ recovery owner 하나를 보고합니다. Core 또는 replay 효과는 없습니
 canonical Task 범위 inbox command를 반드시 surface합니다. Chat transcript는 User Channel
 resolution을 대신할 수 없습니다.
 
+Advisor 또는 work shaping에서 현재 stale application은 `shaping_required`,
+`next_actor=agent`, `required_action=volicord.record_shaping`,
+`blocking_reason=application_authority_stale`를 선택합니다. 교체 요청은
+`stale_authority_actions`로 모든 정확한 stale application을 소비해야 하며 status 읽기는
+이 의무를 관찰할 뿐입니다. 폐기와 재권한은 모두 `stale_at`을 보존하고 별도
+`superseded_at`을 기록하면서 stale application을 supersede합니다. 재권한은 새 unresolved
+UserAction identity를 만들며 stale accepted resolution을 재사용하지 않습니다.
+
 해결 뒤에는 accepted scope gap이 있을 때만 `ready_to_apply_decisions`를 선택합니다.
 제품 전용·기술 전용 checkpoint는 mode와 호환되는 현재 Change Unit이 없으면
 `ready_for_change_unit`을 선택하며 scope-decision ref를 요구하거나 합성하지 않습니다.

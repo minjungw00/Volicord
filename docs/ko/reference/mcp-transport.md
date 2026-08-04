@@ -824,7 +824,15 @@ disposition, 권한 부여 여부를 `shaping_decision_outcome`으로 제공합�
 만료 결정은 `volicord.record_shaping`, 종료 또는 만료 요청의 재시도 불가, 계획에 판단이
 계속 필요할 때의 successor-request identity, chat 경계, Product Repository mutation 불가를
 담은 `non_authorizing_shaping_decision`도 추가합니다. Compact record-shaping 결과는 타입이
-정해진 decision recovery requirement를 유지합니다. 성공한 `advance_task`는 implementation
+정해진 decision recovery requirement를 유지합니다. Stale shaping application은 어떤
+권한도 부여하지 않습니다. 해당 blocker fact는 정확한 stale application과 요청 ref,
+현재 recovery owner를 지정합니다. Advisor 또는 work shaping에서 `workflow`는
+`shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping`,
+`blocking_reason=application_authority_stale`를 선택하고, `record_shaping`은 완전하고
+정확한 tagged 폐기 또는 재권한 action 집합을 요구합니다. 재발급은 새 unresolved
+UserAction identity를 만들고 변경 불가능한 재권한 lineage를 보존합니다. 이력
+operation-result 조회와 authority export는 이 현재 workflow 권한과 분리됩니다.
+성공한 `advance_task`는 implementation
 진입, write ticket을 만들지 않았다는 사실, Product Repository write에는 여전히
 `volicord.prepare_write`가 필요하다는 사실을 추가합니다.
 

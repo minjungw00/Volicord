@@ -10,6 +10,14 @@ Store validation and one transaction prevent unrelated gap application or a
 phase transition after failed application. Work-sensitive authority remains
 subject to downstream prepare-write and sensitive-effect checks.
 
+Only the Store-derived current effective shaping authority graph can
+participate in progression. A stale application grants no permission and must
+be retired or reauthorized through the exact current workflow. Reauthorization
+creates a fresh unresolved UserAction request and immutable lineage; it never
+reuses the stale accepted resolution. Superseded checkpoint, request,
+resolution, and application records remain immutable audit history and cannot
+authorize a later coordinate.
+
 Advisor Change Units are structurally non-write: they carry no Product
 Repository path authority, allow only the closed observation-supporting
 effects, and forbid product writes, Runs, sensitive actions, network access,

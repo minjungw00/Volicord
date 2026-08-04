@@ -400,7 +400,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Atomically record or replace the current shaping checkpoint and linked UserAction requests, or finalize the current advisor result and close basis.",
+      "description": "Atomically record or replace current shaping authority, preserve compatible applications, retire or reissue exact stale authority with fresh UserAction identity, or finalize the current advisor result and close basis.",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",

@@ -405,6 +405,11 @@ inconsistent_authority_state
 
 이 값은 현재 진행만 설명합니다. 닫기 준비 차단 사유는 자체 로컬 범주와 해결 행동을
 유지하며 workflow kind나 required action을 선택하지 않습니다.
+`application_authority_stale`은 advisor 또는 work shaping에서 `shaping_required`,
+`next_actor=agent`, `required_action=volicord.record_shaping`을 선택합니다. Work
+implementation 중 stale shaping 권한을 만들 update는 mutation 전에 거부되고
+close/supersede 복구로 `volicord.close_task`를 지정합니다. `status`를 복구로 선택하거나
+Task를 shaping으로 되돌리지 않습니다.
 
 `StateSummary.acceptance_policy`는 아래 값을 사용합니다.
 

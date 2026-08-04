@@ -2025,7 +2025,9 @@ volicord export authority-bundle --output "<path>" --repo "<repo>"
 ```
 
 내보내기는 담당 문서가 정의한 권한 번들을 새 경로나 명시적으로 허용된 출력 경로에
-씁니다. 프로젝트 권한 상태를 바꾸지 않습니다.
+씁니다. 프로젝트 권한 상태를 바꾸거나 release evidence를 만들지 않습니다. Bundle은
+current, stale, superseded shaping record를 감사 이력으로 보존할 수 있지만 현재 workflow
+권한 조회가 아니며 bundle 안의 이력 record는 진행 권한을 부여하지 않습니다.
 
 ## 변경 조정
 
@@ -2051,6 +2053,10 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 `UserActionResolutionForm`을 로컬 사용자 소유 표면에 투영하고 명시적인 choice 또는
 evidence observation 하나를 `volicord.resolve_user_action`에 제출합니다. MCP
 에이전트는 대기 요청을 만들거나 재개할 수 있지만 이 해결 경로를 실행할 수 없습니다.
+
+Inbox는 현재 pending 요청만 나열합니다. Stale application의 이전 요청은 해결할 수 없고,
+재권한은 독립 identity를 가진 새 pending 요청을 만듭니다. Superseded 요청과 그
+resolution은 감사 이력으로 남습니다. Chat text는 inbox resolution이 될 수 없습니다.
 
 `volicord-user-action-presentation`은 다음과 같은 정확한 닫힌 CLI inbox 문서와 그
 JSON Schema를 담당합니다.

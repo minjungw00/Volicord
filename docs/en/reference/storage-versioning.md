@@ -79,6 +79,7 @@ enabled_capabilities:
   - managed_codex_connection
   - operational_mcp_sessions
   - project_continuity
+  - shaping_authority_reauthorization
   - shaping_checkpoint_lineage
   - shaping_decision_applications
   - shaping_decision_recovery
@@ -111,6 +112,10 @@ protection. It is part of exact manifest matching.
 application records, closed authority invalidation, and exact
 checkpoint-application carry-forward lineage. It is part of exact manifest
 matching.
+
+`shaping_authority_reauthorization` identifies exact stale-application
+retirement or reissue, a fresh unresolved successor request for reissue, and
+immutable reauthorization lineage. It is part of exact manifest matching.
 
 `shaping_decision_recovery` identifies outcome-specific shaping gap
 dispositions, accepted-only application, exact rejected/deferred/expired

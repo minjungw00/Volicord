@@ -498,7 +498,7 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 |---|---|---|
 | `volicord.intake` | `Task`와 구체화 기록 생성 | [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | 현재 적용 범위 기록 갱신 | [`volicord.update_scope`](#volicordupdate_scope) |
-| `volicord.record_shaping` | 현재 shaping checkpoint aggregate를 원자적으로 교체하고 연결된 UserAction 요청 생성 | [`volicord.record_shaping`](#volicordrecord_shaping) |
+| `volicord.record_shaping` | 현재 shaping을 원자적으로 교체하고 정확한 stale 권한을 폐기 또는 재발급하며 연결된 UserAction 요청 생성 | [`volicord.record_shaping`](#volicordrecord_shaping) |
 | `volicord.advance_task` | work Task 하나를 shaping에서 implementation으로 명시적으로 전환 | [`volicord.advance_task`](#volicordadvance_task) |
 | `volicord.status` | 읽기형 응답 | [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | 저장 효과 없이 변경 불가능한 과거 재실행 바이트 조회 | [`volicord.get_operation_result`](#volicordget_operation_result) |
@@ -573,6 +573,11 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 - 유효한 `dry_run` 미리보기
 - 거절된 시도
 
+`work/implementation` 중 현재 shaping application을 stale로 만들 scope, baseline, Change
+Unit update는 이 거절 시도에 해당합니다. Scope, Change Unit, application 상태나 timestamp,
+Task phase, event, replay row, state version을 바꾸지 않으며 typed recovery owner는
+`volicord.close_task`입니다.
+
 유효한 `dry_run` 미리보기는 범위, Change Unit, 차단 사유, 오래된 쓰기 티켓 효과만 미리 설명합니다.
 
 의미가 같은 정규화된 갱신은 `tasks.scope_revision`을 증가시키거나 현재 닫기 근거를 무효화하지 않습니다.
@@ -595,6 +600,12 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
   집합을 검증하고 같은 transaction에서 해당 요청 근거를 `superseded`로 바꿉니다.
 - 완전하고 정확한 `carry_forward_application_refs` 집합을 검증하고 엄격한
   predecessor-to-successor application lineage를 삽입합니다.
+- 완전하고 정확한 `stale_authority_actions` 집합을 검증합니다. 각 action은 `stale_at`을
+  보존하고 별도 `superseded_at`을 기록하면서 stale application을 `superseded`로 바꾸고,
+  이전 요청 근거를 supersede하며, 변경 불가능한
+  `shaping_authority_reauthorizations` row 하나를 삽입합니다. `reissued` outcome을 가진
+  `reauthorize` action은 독립 identity를 가진 새 successor gap과 resolution이 복사되지
+  않은 unresolved UserAction 요청도 만듭니다.
 - `shaping_checkpoints` row 하나와 그 모든 `shaping_checkpoint_gaps` row를 삽입합니다.
 - 사용자 소유 gap마다 대기 `UserActionRequest` 하나와 정확한
   `shaping_checkpoint_user_actions` link 하나를 원자적으로 만듭니다.
@@ -612,11 +623,14 @@ resolution, work-phase 전환을 만들지 않습니다. Checkpoint, gap, 요청
 하나라도 유효하지 않으면 transaction 전체를 rollback합니다. 유효한 dry-run 미리보기와
 모든 거절 시도에는 이 row와 효과가 없습니다.
 
-Replacement는 pending, accepted, stale, 외부 linked authority를 폐기할 수 없습니다.
-Applied 권한에는 정확한 carry-forward가 필요하며 application 또는 recovery ref가 누락되거나
-추가되면 mutation 전에 거부합니다. 폐기 요청, successor 요청,
+Replacement는 pending, accepted, stale, 외부 linked authority를
+`retired_non_authorizing_request_refs`에 넣을 수 없습니다. Applied current 권한에는 정확한
+carry-forward가 필요하고 관련된 stale application마다 폐기 또는 재권한 action이 정확히
+하나 필요합니다. Application 또는 recovery ref가 누락·중복·추가되면 mutation 전에
+거부합니다. 폐기 요청, stale application supersession, 재권한 lineage, successor 요청,
 checkpoint, gap, link, predecessor 갱신, event, replay row, state-version 증가는 하나의
-rollback 경계를 공유하며 변경 불가능한 request와 resolution 이력은 그대로 남습니다.
+rollback 경계를 공유하며 변경 불가능한 request, resolution, application, 재권한 이력은
+그대로 남습니다.
 
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`

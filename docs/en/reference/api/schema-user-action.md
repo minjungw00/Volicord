@@ -132,6 +132,16 @@ For a shaping-linked request, this effective lifecycle status is an input to
 the separate `ShapingDecisionAuthorityState`; `resolved` therefore records a
 terminal answer but does not by itself grant shaping authority.
 
+When a shaping application becomes stale, its resolved request and accepted
+resolution remain immutable audit records but grant no permission on the
+changed coordinates. Exact `volicord.record_shaping` reauthorization
+supersedes the old request basis and application, then creates a new current
+gap and a fresh unresolved `UserActionRequest` with independent identity and
+no resolution. The successor gap's `reauthorizes_application_ref` and the
+immutable `ShapingAuthorityReauthorization` record preserve the lineage; the
+old accepted resolution is never copied or reused. A chat reply cannot resolve
+the successor request.
+
 Choice requests preserve the explicit nullable caller `expires_at`; `null`
 means no time deadline while basis invalidation still applies.
 Evidence-observation requests do not accept a caller deadline; Core assigns a

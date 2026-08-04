@@ -8,6 +8,13 @@ Resolution은 application이 아닙니다. 범위 결정은 `volicord.update_sco
 단일 transaction은 관련 없는 gap 적용이나 적용 실패 뒤의 단계 전이를 막습니다. work의
 민감 권한은 shaping 적용 뒤에도 prepare-write 및 민감 효과 검사의 대상입니다.
 
+Store가 도출한 현재 유효 shaping 권한 graph만 진행에 참여할 수 있습니다. Stale
+application은 어떤 권한도 부여하지 않으며 정확한 현재 workflow에 따라 폐기하거나
+재권한해야 합니다. 재권한은 새 unresolved UserAction 요청과 변경 불가능한 lineage를
+만들고 stale accepted resolution을 재사용하지 않습니다. Superseded checkpoint, 요청,
+resolution, application record는 변경 불가능한 감사 이력으로 남으며 이후 좌표에 권한을
+부여할 수 없습니다.
+
 Advisor Change Unit은 구조적으로 비쓰기입니다. Product Repository path 권한이 없고 폐쇄형
 관찰 지원 효과만 허용하며 제품 쓰기, Run, 민감 동작, 네트워크 접근, secret 접근을
 금지합니다. Core는 호환되지 않는 advisor scope update를 거부하고 Store는 호환되지 않는

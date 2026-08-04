@@ -528,7 +528,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 |---|---|---|
 | `volicord.intake` | creates task and shaping records | See [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | updates current scope records | See [`volicord.update_scope`](#volicordupdate_scope) |
-| `volicord.record_shaping` | atomically replaces the current shaping checkpoint aggregate and creates linked UserAction requests | See [`volicord.record_shaping`](#volicordrecord_shaping) |
+| `volicord.record_shaping` | atomically replaces current shaping, retires or reissues exact stale authority, and creates linked UserAction requests | See [`volicord.record_shaping`](#volicordrecord_shaping) |
 | `volicord.advance_task` | explicitly transitions one work Task from shaping to implementation | See [`volicord.advance_task`](#volicordadvance_task) |
 | `volicord.status` | read-style response | See [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | reads immutable historical replay bytes without storage effects | See [`volicord.get_operation_result`](#volicordget_operation_result) |
@@ -605,6 +605,12 @@ No-effect branches:
 - valid dry-run previews
 - rejected attempts
 
+During `work/implementation`, a scope, baseline, or Change Unit update that
+would mark any current shaping application stale is one of those rejected
+attempts. It changes no scope, Change Unit, application status, timestamp,
+Task phase, event, replay row, or state version; the typed recovery owner is
+`volicord.close_task`.
+
 Valid dry-run previews only describe scope, Change Unit, blocker, and stale write-ticket effects.
 
 Semantically identical normalized updates do not increment `tasks.scope_revision` or invalidate the current close basis.
@@ -628,6 +634,13 @@ A committed `dry_run=false` call:
   and changes those request bases to `superseded` in the same transaction;
 - validates the complete exact `carry_forward_application_refs` set and inserts
   strict predecessor-to-successor application lineage;
+- validates the complete exact `stale_authority_actions` set; for each action,
+  changes the stale application to `superseded` while preserving `stale_at` and
+  recording the separate `superseded_at`, supersedes the old request basis, and
+  inserts one immutable `shaping_authority_reauthorizations` row; a
+  `reauthorize` action with `reissued` outcome also creates a fresh successor
+  gap and unresolved UserAction request with independent identity and no copied
+  resolution;
 - inserts one `shaping_checkpoints` row and all of its
   `shaping_checkpoint_gaps` rows;
 - atomically creates one pending `UserActionRequest` and one exact
@@ -650,12 +663,15 @@ whole transaction.
 A valid dry-run preview and every rejected attempt create none of these rows or
 effects.
 
-Replacement cannot retire pending, accepted, stale, or foreign linked
-authority. Applied authority requires exact carry-forward; omitted or extra
-application or recovery refs reject before mutation. The retired
-request, successor requests, checkpoint, gap, link, predecessor update, event,
-replay row, and state-version increment share one rollback boundary; immutable
-request and resolution history remains present.
+Replacement cannot put pending, accepted, stale, or foreign linked authority
+in `retired_non_authorizing_request_refs`. Applied current authority requires
+exact carry-forward, and every relevant stale application requires exactly one
+retirement or reauthorization action. Missing, duplicate, or extra application
+or recovery refs reject before mutation. Retired requests, stale application
+supersession, reauthorization lineage, successor requests, checkpoint, gaps,
+links, predecessor update, event, replay row, and state-version increment share
+one rollback boundary; immutable request, resolution, application, and
+reauthorization history remains present.
 
 <a id="volicordadvance_task"></a>
 ### `volicord.advance_task`
