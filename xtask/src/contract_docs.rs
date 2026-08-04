@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::ops::Range;
 use std::path::Path;
+use volicord_mcp_wire::{mcp_tool_contracts, SemanticSchemaNode};
 use volicord_types::contracts::{public_json_contract_descriptors, JsonContractDescriptor};
 use volicord_types::methods::{
     DryRunRequestPolicy, ResultDryRunContract, ResultEffectContract, ResultEventContract,
@@ -14,6 +15,7 @@ use volicord_types::values::PUBLIC_ERROR_CODE_CONTRACTS;
 
 const CORE_SCHEMA_DOC_ID: &str = "reference.api.schema-core";
 const ERROR_CODE_DOC_ID: &str = "reference.api.error-codes";
+const MCP_TRANSPORT_DOC_ID: &str = "reference.mcp-transport";
 const CORE_SCHEMA_CONTRACT_ID: &str = "api.schema.core";
 const GENERATED_REGION_PREFIX: &str = "<!-- BEGIN GENERATED: contract-structures ";
 const GENERATED_NOTICE: &str =
@@ -279,7 +281,121 @@ fn contract_documents<'a>(
             ));
         }
     }
+    if let Some(mcp_owner) = index.paired_documents.get(MCP_TRANSPORT_DOC_ID) {
+        for (path, language) in [
+            (&mcp_owner.path_en, Language::English),
+            (&mcp_owner.path_ko, Language::Korean),
+        ] {
+            let region = render_mcp_semantic_descriptor_region(language)?;
+            if let Some((_, _, regions)) = documents
+                .iter_mut()
+                .find(|(document_path, _, _)| document_path == path)
+            {
+                regions.push(region);
+            } else {
+                documents.push((path.clone(), language, vec![region]));
+            }
+        }
+    }
     Ok(documents)
+}
+
+fn render_mcp_semantic_descriptor_region(language: Language) -> Result<RenderedRegion> {
+    let (heading, intro, headers, none) = match language {
+        Language::English => (
+            "### Generated semantic schema catalog",
+            "This table is generated from the canonical MCP semantic descriptors. Required-nullable fields, typed examples, and output discriminators are projections of the same entries used by tool discovery, validation, and conformance.",
+            [
+                "Tool",
+                "Input semantic type",
+                "Required nullable root fields",
+                "Typed examples",
+                "Output semantic type",
+                "Output discriminator",
+            ],
+            "none",
+        ),
+        Language::Korean => (
+            "### 생성된 의미 schema catalog",
+            "이 표는 정규 MCP 의미 descriptor에서 생성됩니다. 필수 nullable field, typed example, output discriminator는 도구 검색, 검증, 적합성에서 사용하는 동일한 entry의 projection입니다.",
+            [
+                "도구",
+                "입력 의미 type",
+                "필수 nullable 최상위 field",
+                "Typed example",
+                "출력 의미 type",
+                "출력 discriminator",
+            ],
+            "없음",
+        ),
+    };
+    let mut body = format!(
+        "<a id=\"generated-semantic-schema-catalog\"></a>\n{heading}\n\n{intro}\n\n| {} | {} | {} | {} | {} | {} |\n|---|---|---|---|---|---|\n",
+        headers[0], headers[1], headers[2], headers[3], headers[4], headers[5]
+    );
+    for contract in mcp_tool_contracts() {
+        let required_nullable = match contract.input_descriptor().node() {
+            SemanticSchemaNode::Object(object) => object
+                .fields
+                .iter()
+                .filter(|field| field.required && field.nullable)
+                .map(|field| format!("`{}`: `{}`", field.field_name, field.semantic_type))
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        };
+        let examples = contract
+            .canonical_examples()
+            .iter()
+            .map(|example| format!("`{}`", example.id()))
+            .collect::<Vec<_>>();
+        let output_discriminator = root_discriminator(contract.output_descriptor().node())
+            .map(|(path, values)| {
+                format!(
+                    "`{path}`: {}",
+                    values
+                        .iter()
+                        .map(|value| format!("`{value}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .unwrap_or_else(|| none.to_owned());
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | `{}` | {} |\n",
+            contract.tool().wire_name(),
+            contract.input_descriptor().semantic_type(),
+            nonempty_join(&required_nullable, none),
+            nonempty_join(&examples, none),
+            contract.output_descriptor().semantic_type(),
+            output_discriminator,
+        ));
+    }
+    render_region(
+        region_id(&[("mcp.wire".to_owned(), "semantic_descriptors")]),
+        body,
+    )
+}
+
+fn root_discriminator(node: &SemanticSchemaNode) -> Option<(&str, Vec<&str>)> {
+    match node {
+        SemanticSchemaNode::TaggedUnion(union) => Some((
+            union.discriminator_path.as_str(),
+            union
+                .variants
+                .iter()
+                .map(|variant| variant.discriminator_value.as_str())
+                .collect(),
+        )),
+        _ => None,
+    }
+}
+
+fn nonempty_join(values: &[String], none: &str) -> String {
+    if values.is_empty() {
+        none.to_owned()
+    } else {
+        values.join("<br>")
+    }
 }
 
 fn render_request_region(

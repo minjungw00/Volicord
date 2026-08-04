@@ -111,13 +111,13 @@ Store, UserAction 서비스, CLI, presentation package는 `volicord-mcp-wire`를
 | `volicord-agent-evaluation` | `agent-evaluation` | 검증 | 비프로덕션 | 중립 | 독립형 에이전트 평가 카탈로그, 실행기, 스키마, 결과 하네스를 담당합니다. |
 | `volicord-cli` | `cli-adapter` | 어댑터 | 프로덕션 | 어댑터 | 관리 CLI, typed User Channel resolution, Guard lifecycle 관찰과 terminalization, 관리형 현재 권한 및 stale 복구 지침, Codex 설정, rendering, MCP 감독을 담당합니다. |
 | `volicord-command-model` | `command-model` | 스키마 | 프로덕션 | 중립 | 실행과 분리된 관리 명령 선언, 문법 모델, 정규 호출 빌더를 담당합니다. |
-| `volicord-conformance-tests` | `conformance-validation` | 검증 | 비프로덕션 | 중립 | Core 지향 API를 통한 교차 메서드 적합성 시나리오를 담당합니다. |
+| `volicord-conformance-tests` | `conformance-validation` | 검증 | 비프로덕션 | 중립 | Core 지향 교차 메서드 시나리오와 정규 MCP 의미 schema 적합성 사례를 담당합니다. |
 | `volicord-core` | `core` | 애플리케이션 | 프로덕션 | Core | 어댑터 독립 현재 shaping 권한 projection, checkpoint succession, 정확한 stale 폐기 또는 재권한, 결정 owner별 적용, advisor finalization, 명시적 advance, implementation 보존 거부, 정책 평가, 원자적 커밋 조율을 담당합니다. |
 | `volicord-host-contract` | `host-contract` | 스키마 | 프로덕션 | Core 지향 | 사용자 권한이나 Core 진행 권한을 만들지 않고 정확한 Guard hook 상관관계와 예상 효과 분류를 제공하는 의존 안전한 host contract를 담당합니다. |
 | `volicord-integration-tests` | `integration-validation` | 검증 | 비프로덕션 | 중립 | 계층 간 통합, Agent Connection, 공개 계약 스냅샷 테스트를 담당합니다. |
-| `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, 정규 AgentToolId registry, 현재 권한 및 stale 복구 지침, 간결한 태그 기반 workflow 및 rejection projection, 세션 결속, checkpoint/finalization/advance dispatch, Core 호출 adapter를 담당합니다. |
+| `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, descriptor를 소비하는 AgentToolId registry 및 의미 검증, 현재 권한 지침, 간결한 태그 기반 결과 projection, 세션 결속, 메서드 dispatch, Core 호출 adapter를 담당합니다. |
 | `volicord-mcp-protocol` | `mcp-protocol` | 스키마 | 프로덕션 | 중립 | 호스트 독립 MCP 리비전 프로필과 의미 기반 역량 레지스트리를 담당합니다. |
-| `volicord-mcp-wire` | `mcp-wire` | 스키마 | 프로덕션 | 어댑터 | MCP checkpoint, stale 권한 복구, finalization, advance 인자와 결과, 태그 기반 workflow presentation 형태, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다. |
+| `volicord-mcp-wire` | `mcp-wire` | 스키마 | 프로덕션 | 어댑터 | 정규 MCP 의미 descriptor, typed example, discriminator 및 nullable metadata, validator tree, checkpoint/finalization 인자와 결과, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다. |
 | `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | 호출 범위 Product Repository 관찰, 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
 | `volicord-platform-process` | `platform-process` | 인프라 | 프로덕션 | 중립 | 플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다. |
 | `volicord-release-integrity-tests` | `release-integrity` | 검증 | 비프로덕션 | 중립 | 릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다. |
@@ -139,7 +139,7 @@ Store, UserAction 서비스, CLI, presentation package는 `volicord-mcp-wire`를
 | `volicord-agent-evaluation` | `volicord-test-support` | — | — |
 | `volicord-cli` | `volicord-command-model`, `volicord-core`, `volicord-host-contract`, `volicord-mcp`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-platform-process`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-store`, `volicord-test-support` | — |
 | `volicord-command-model` | — | — | — |
-| `volicord-conformance-tests` | — | `volicord-core`, `volicord-host-contract`, `volicord-platform-fs`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
+| `volicord-conformance-tests` | — | `volicord-core`, `volicord-host-contract`, `volicord-mcp-wire`, `volicord-platform-fs`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
 | `volicord-core` | `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-host-contract` | `volicord-types` | — | — |
 | `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-mcp-wire`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |

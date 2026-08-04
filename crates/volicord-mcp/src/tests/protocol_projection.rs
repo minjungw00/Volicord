@@ -297,7 +297,7 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             tool.id.wire_name()
         );
         assert!(
-            schema_has_definition(&tool.output_schema, "McpToolErrorResponse"),
+            schema_variant_by_tag(&tool.output_schema, "result_type", "adapter_error").is_some(),
             "{} output schema should cover structured adapter failures",
             tool.id.wire_name()
         );
@@ -305,12 +305,18 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             && !matches!(tool.id.category(), AgentToolCategory::ReadOnly)
         {
             assert!(
-                schema_has_definition(&tool.output_schema, "McpMutationResponseBudgetExceeded"),
+                schema_variant_by_tag(
+                    &tool.output_schema,
+                    "result_type",
+                    "response_budget_exceeded"
+                )
+                .is_some(),
                 "{} output schema should cover compact response-budget failures",
                 tool.id.wire_name()
             );
             assert!(
-                schema_has_definition(&tool.output_schema, "McpMutationPostEffectFailure"),
+                schema_variant_by_tag(&tool.output_schema, "result_type", "post_effect_failure")
+                    .is_some(),
                 "{} output schema should cover post-effect adapter failures",
                 tool.id.wire_name()
             );
@@ -385,20 +391,18 @@ fn request_user_action_output_schema_covers_compound_agent_safe_response() {
         &schema,
         "McpRequestUserActionCompactResult"
     ));
-    assert!(schema_has_definition(&schema, "McpMutationFullResponse"));
-    assert!(schema_has_definition(&schema, "McpMutationSummaryResponse"));
-    assert!(schema_has_definition(
-        &schema,
-        "McpMutationWorkflowResponse"
-    ));
-    assert!(schema_has_definition(
-        &schema,
-        "McpAuthoritativeRefreshFailure"
-    ));
-    assert!(schema_has_definition(
-        &schema,
-        "McpMutationResponseBudgetExceeded"
-    ));
+    for variant in [
+        "full",
+        "summary",
+        "workflow",
+        "refresh_failure",
+        "response_budget_exceeded",
+    ] {
+        assert!(
+            schema_variant_by_tag(&schema, "result_type", variant).is_some(),
+            "request-user-action output must expose `{variant}`"
+        );
+    }
 }
 
 #[test]
@@ -537,10 +541,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         let example = canonical_tool_examples(tool.id)
             .first()
             .expect("mutation tool should advertise an example");
-        let decoded = decode_mcp_arguments_to_value(
-            tool_name,
-            serde_json::from_str(example.arguments_json)?,
-        )?;
+        let decoded = decode_mcp_arguments_to_value(tool_name, example.value().clone())?;
         let example_detail = if matches!(
             tool.id,
             AgentToolId::PREPARE_WRITE
@@ -786,7 +787,7 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
         assert_eq!(
             canonical
                 .iter()
-                .map(|example| example.id)
+                .map(|example| example.id())
                 .collect::<Vec<_>>(),
             *expected_ids,
             "{tool_name} should advertise exactly the supported example branches"
@@ -804,12 +805,12 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
             .unwrap_or_else(|| panic!("{tool_name} should advertise inputSchema.examples"));
         assert_eq!(advertised.len(), canonical.len());
         for (value, example) in advertised.iter().zip(canonical) {
-            assert!(!example.description.is_empty());
+            assert!(!example.description().is_empty());
             assert_eq!(
                 value,
-                &serde_json::from_str::<Value>(example.arguments_json)?,
+                example.value(),
                 "{} should use its canonical example value",
-                example.id
+                example.id()
             );
             crate::schema_validation::validate_mcp_tool_arguments(tool_name, value)?;
             decode_mcp_arguments_to_value(tool_name, value.clone())?;
@@ -1268,6 +1269,7 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
             "method_result",
             "operation_result_ref",
             "presentation",
+            "result_type",
         ])
     );
     assert!(summary["structuredContent"]["operation_result_ref"].is_object());
@@ -1298,6 +1300,7 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
             "method_result",
             "operation_result_ref",
             "presentation",
+            "result_type",
             "workflow",
         ])
     );

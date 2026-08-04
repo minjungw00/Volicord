@@ -853,9 +853,10 @@ fn canonical_tool_result_from_output(output: &ToolCallOutput) -> CanonicalToolRe
 
 pub(crate) fn tool_call_result_from_output_for_capabilities(
     tool_name: &str,
-    output: ToolCallOutput,
+    mut output: ToolCallOutput,
     capabilities: McpProtocolCapabilities,
 ) -> Result<Value, McpAdapterError> {
+    tag_tool_call_output(tool_name, &mut output)?;
     if capabilities.tools().structured_content() && is_known_mcp_tool(tool_name) {
         validate_mcp_tool_output(tool_name, &output.structured_content)?;
     }
@@ -863,6 +864,83 @@ pub(crate) fn tool_call_result_from_output_for_capabilities(
         .project(capabilities)
         .map(|projected| projected.into_value())
         .map_err(McpAdapterError::Json)
+}
+
+fn tag_tool_call_output(
+    tool_name: &str,
+    output: &mut ToolCallOutput,
+) -> Result<(), McpAdapterError> {
+    let Ok(tool) = AgentToolId::from_wire_name(tool_name) else {
+        return Ok(());
+    };
+    let result_type = semantic_result_type(tool, &output.structured_content, output.is_error);
+    output
+        .structured_content
+        .as_object_mut()
+        .expect("known MCP tool output has an object root")
+        .insert(
+            "result_type".to_owned(),
+            Value::String(result_type.to_owned()),
+        );
+    if serde_json::from_str::<Value>(&output.primary_text).is_ok() {
+        output.primary_text =
+            serde_json::to_string(&output.structured_content).map_err(McpAdapterError::Json)?;
+    }
+    Ok(())
+}
+
+fn semantic_result_type(
+    tool: AgentToolId,
+    structured_content: &Value,
+    is_error: bool,
+) -> &'static str {
+    let code = structured_content.get("code").and_then(Value::as_str);
+    if code == Some("MCP_UNAVAILABLE") {
+        return if structured_content.get("status_read_required").is_some() {
+            "refresh_failure"
+        } else {
+            "operational_failure"
+        };
+    }
+    if code == Some("MCP_RESPONSE_BUDGET_EXCEEDED") {
+        return "response_budget_exceeded";
+    }
+    if matches!(
+        code,
+        Some("MCP_RESPONSE_PROJECTION_FAILED" | "MCP_POST_EFFECT_ADAPTER_FAILED")
+    ) {
+        return "post_effect_failure";
+    }
+    if is_error {
+        return "adapter_error";
+    }
+    if !matches!(tool.owner(), AgentToolOwner::CoreMethod(_))
+        || matches!(
+            tool,
+            AgentToolId::STATUS | AgentToolId::GET_OPERATION_RESULT | AgentToolId::CHECK_CLOSE
+        )
+    {
+        return "response";
+    }
+    match structured_content
+        .pointer("/method_result/base/response_kind")
+        .and_then(Value::as_str)
+    {
+        Some("rejected") => return "rejected",
+        Some("dry_run") => return "dry_run",
+        _ => {}
+    }
+    if structured_content.get("workflow").is_some() {
+        "workflow"
+    } else if structured_content.pointer("/method_result/base").is_some()
+        || structured_content
+            .pointer("/method_result/agent_workflow_result")
+            .is_some()
+    {
+        "full"
+    } else {
+        "summary"
+    }
 }
 
 pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
@@ -1028,8 +1106,15 @@ fn serialize_tool_error_result(
     structured: &McpToolErrorResponse,
     capabilities: McpProtocolCapabilities,
 ) -> Value {
-    let structured_content =
+    let mut structured_content =
         serde_json::to_value(structured).expect("MCP tool error should serialize");
+    structured_content
+        .as_object_mut()
+        .expect("MCP tool error has an object root")
+        .insert(
+            "result_type".to_owned(),
+            Value::String("adapter_error".to_owned()),
+        );
     let text = serde_json::to_string(&structured_content)
         .expect("MCP tool error compatibility text should serialize");
     if capabilities.tools().structured_content() {

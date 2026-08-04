@@ -29,17 +29,19 @@ use crate::{
         canonical_tool_examples, compact_runtime_schema, mcp_tool_naming_style,
         mcp_tools_for_mode_and_storage, mcp_tools_for_mode_and_storage_with_detail,
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
-        ToolSchemaDetail, CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
-        GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, MAX_RUNTIME_TOOLS_LIST_BYTES,
-        PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
-        PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-        RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID, REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
-        STATUS_READ_ONLY_EXAMPLE_ID, UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
+        ToolSchemaDetail, MAX_RUNTIME_TOOLS_LIST_BYTES,
     },
 };
 use volicord_host_contract::{
     CodexMcpCorrelation, HostContractProfileId, HostNativeCorrelation, HostSessionId, HostThreadId,
     HostTurnId,
+};
+use volicord_mcp_wire::{
+    CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID, GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID,
+    PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
+    PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
+    RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID, REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    STATUS_READ_ONLY_EXAMPLE_ID, UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
 };
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,

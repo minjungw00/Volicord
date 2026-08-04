@@ -275,6 +275,8 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-mcp-wire/src/methods.rs` | Exact MCP argument, structured result, operational error, compact mutation, UserAction projection, serialization, and generated request/result schema ownership. |
+| `crates/volicord-mcp-wire/src/semantic_schema.rs` | Closed semantic schema nodes, explicit discriminators and nullability, deterministic JSON Schema projection, semantic validation metadata, and descriptor integrity checks. |
+| `crates/volicord-mcp-wire/src/tool_contracts.rs` | The single `AgentToolId`-keyed MCP contract entries for input/output descriptors, descriptions, typed canonical examples, exact request decoding, and catalog integrity. |
 | `crates/volicord-mcp-wire/src/tools.rs` | Exact capability-field names, tool annotations, and capability-selected tool-definition and tool-result envelopes. |
 | `crates/volicord-mcp-wire/src/json_rpc.rs` | JSON syntax decoding, JSON-RPC envelope classification, request-ID and object-parameter validation, and success/error response construction without Core access. |
 | `crates/volicord-mcp-wire/src/contracts.rs` | `mcp.wire` identifier derivation from canonical MCP schemas, profile field vocabularies, and envelopes. |
@@ -303,8 +305,8 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/diagnostics.rs` | Closed MCP diagnostic mapping, shared finding construction, and preservation of platform-owned diagnostic codes and action classes in bootstrap and persisted terminal projections. |
 | `crates/volicord-mcp/src/adapter.rs` | Retained pre-operation routing identity, live mutation-context correlation, context-bound Core invocation APIs, plus managed in-chat begin/probe/get integration-verification orchestration outside Core that serializes the Store-owned workflow projection without adapter-local state derivation. |
 | `crates/volicord-mcp/src/constants.rs` | MCP initialize instructions for the user-level verification request and current managed workflow: Store-derived current authority, immutable-history exclusion, exact stale recovery, fresh UserAction identity, explicit shaping and advance, implementation-preserving rejection, rejection/recovery surfacing, close review, stop rules, unavailable boundary, and optional active diagnostics. |
-| `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed current-authority and stale-recovery descriptions, schemas, annotations, effects metadata, and method lookup into canonical tool definitions/results, including the three Connection-integration tools; semantic-capability-only wire projection; and construction of the explicit-server, collision-checked Codex callable catalog. |
-| `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |
+| `crates/volicord-mcp/src/tool_registry.rs` | Descriptor-consuming assembly of `AgentToolId` definitions, protocol-profile schema compaction, annotations, visibility, and the explicit-server collision-checked Codex callable catalog. |
+| `crates/volicord-mcp/src/schema_validation.rs` | Known-tool argument and output validation through wire-owned semantic validator trees and metadata. |
 | `crates/volicord-mcp/src/routing.rs` | Bound Product Repository discovery, current Connection/project routing, and preflight diagnostic projection of server/raw/callable identities from the canonical catalog. |
 
 ## Tests
@@ -326,7 +328,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/tests/protocol_conformance.rs` | One registry-driven wire conformance case for every production profile, including pinned-schema validation, required tools, the designated round trip, profile-specific projection and batching, lifecycle rejection, and EOF. |
 | `crates/volicord-cli/tests/binary_admin.rs` | Actual-binary administrative CLI parser, help, output, and exit contracts. |
 | `crates/volicord-cli/tests/operational_host_e2e.rs` | Full managed Codex activation journey from applied setup through lease-bound MCP and exact Guard prompt/pre/post verification to complete read-only status, plus operational failure and cleanup regressions. |
-| `tests/conformance/` | Cross-method conformance scenarios. |
+| `tests/conformance/` | Cross-method scenarios and direct conformance consumption of the canonical MCP descriptor schemas and typed examples. |
 | `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed `production_supported` and `pre_release_only` facts, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
 | `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, source-bundle command, and semantic CI/release-workflow integrity tests, including build/smoke/staging order, matrix binary inputs, exactly-once action use, path filters, and dependency direction. |
 | `tests/release-smoke/Cargo.toml` | Publish-disabled dedicated smoke package boundary with protocol, canonical tool type, and shared bounded test-process dependencies but no CLI library, MCP implementation, Core, Store, or `xtask` dependency. |
@@ -350,6 +352,7 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/src/parity.rs` | English/Korean heading-structure parity. |
 | `xtask/src/terminology.rs` | Terminology-map paths and identity-sensitive role validation. |
 | `xtask/src/cli_docs.rs` | `docs-sync` composition, generated Administrative CLI regions, and documented invocation validation through `volicord-command-model`; shell tokenization is not a second command grammar. |
+| `xtask/src/contract_docs.rs` | Generated neutral API contract regions and the MCP semantic-descriptor catalog consumed directly from `volicord-mcp-wire`. |
 | `xtask/src/document_structure.rs` | Current architecture-design section and surface-stability structure. |
 | `xtask/src/contract_identifiers.rs` | Current neutral public-schema, command-model, typed-diagnostic, semantic protocol-profile, and MCP wire-owner identifier derivation; paired meaning-unit validation; and operation-category table parity. |
 | `xtask/src/workspace_manifests.rs` | Shared workspace-manifest parsing and current package and Rust applicability values. |

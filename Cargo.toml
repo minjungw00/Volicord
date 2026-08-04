@@ -64,8 +64,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-mcp-wire]
 group = "mcp-wire"
-description = "MCP checkpoint, stale-authority recovery, finalization, and advance arguments/results; tagged workflow presentation shapes; errors; structured content; JSON-RPC envelopes; and generated wire schemas."
-description_ko = "MCP checkpoint, stale 권한 복구, finalization, advance 인자와 결과, 태그 기반 workflow presentation 형태, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다."
+description = "Canonical MCP semantic descriptors, typed examples, discriminator and nullable metadata, validator trees, checkpoint/finalization arguments and results, errors, structured content, JSON-RPC envelopes, and generated wire schemas."
+description_ko = "정규 MCP 의미 descriptor, typed example, discriminator 및 nullable metadata, validator tree, checkpoint/finalization 인자와 결과, 오류, 구조화 콘텐츠, JSON-RPC envelope, 생성 wire schema를 담당합니다."
 kind = "schema"
 production = true
 boundary = "adapter"
@@ -166,8 +166,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-mcp]
 group = "mcp-adapter"
-description = "MCP lifecycle, canonical AgentToolId registry, current-authority and stale-recovery guidance, compact tagged-workflow and rejection projection, session binding, checkpoint/finalization/advance dispatch, and Core invocation adaptation."
-description_ko = "MCP 생명주기, 정규 AgentToolId registry, 현재 권한 및 stale 복구 지침, 간결한 태그 기반 workflow 및 rejection projection, 세션 결속, checkpoint/finalization/advance dispatch, Core 호출 adapter를 담당합니다."
+description = "MCP lifecycle, descriptor-consuming AgentToolId registry and semantic validation, current-authority guidance, compact tagged-result projection, session binding, method dispatch, and Core invocation adaptation."
+description_ko = "MCP 생명주기, descriptor를 소비하는 AgentToolId registry 및 의미 검증, 현재 권한 지침, 간결한 태그 기반 결과 projection, 세션 결속, 메서드 dispatch, Core 호출 adapter를 담당합니다."
 kind = "adapter"
 production = true
 boundary = "adapter"
@@ -232,8 +232,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-conformance-tests]
 group = "conformance-validation"
-description = "Cross-method conformance scenarios over Core-facing APIs."
-description_ko = "Core 지향 API를 통한 교차 메서드 적합성 시나리오를 담당합니다."
+description = "Cross-method Core-facing scenarios and canonical MCP semantic-schema conformance cases."
+description_ko = "Core 지향 교차 메서드 시나리오와 정규 MCP 의미 schema 적합성 사례를 담당합니다."
 kind = "validation"
 production = false
 boundary = "neutral"
@@ -241,6 +241,7 @@ normal = []
 development = [
     "volicord-core",
     "volicord-host-contract",
+    "volicord-mcp-wire",
     "volicord-platform-fs",
     "volicord-store",
     "volicord-test-support",

@@ -1,6 +1,6 @@
 //! MCP tool argument, structured-content, failure, and recovery wire values.
 
-use schemars::{schema_for, JsonSchema};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use volicord_types::ids::{
@@ -8,12 +8,8 @@ use volicord_types::ids::{
     UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
-    AdvanceTaskResponse, ChangeUnitUpdate, CheckCloseResponse, CloseTaskResponse,
-    FinalizeAdviceResponse, GetOperationResultResponse, InitialScope, IntakeResponse,
-    OperationResultRef, PrepareEvidenceCaptureResponse, PrepareWriteResponse,
-    ReconcileChangesResponse, RecordRunResponse, RecordShapingCheckpointResponse,
-    RequestUserActionResponse, ScopeUpdate, StageArtifactResponse, StatusInclude, StatusResponse,
-    UnrecordedChangeRejection, UnrecordedChangeResolutionRequest, UpdateScopeResponse,
+    ChangeUnitUpdate, InitialScope, OperationResultRef, RequestUserActionResponse, ScopeUpdate,
+    StatusInclude, UnrecordedChangeRejection, UnrecordedChangeResolutionRequest,
 };
 use volicord_types::schema::{
     AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
@@ -211,7 +207,7 @@ pub struct McpOperationalFailure {
 
 /// Structured MCP result advertised by each known tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
+#[serde(tag = "result_type", rename_all = "snake_case")]
 pub enum McpToolStructuredContent<T> {
     Response(Box<T>),
     AdapterError(McpToolErrorResponse),
@@ -219,7 +215,7 @@ pub enum McpToolStructuredContent<T> {
 
 /// Structured MCP result advertised by a read-only Core-owned tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
+#[serde(tag = "result_type", rename_all = "snake_case")]
 pub enum McpReadOnlyToolStructuredContent<T> {
     Response(Box<T>),
     OperationalFailure(McpOperationalFailure),
@@ -625,7 +621,7 @@ pub struct McpMutationResponseBudgetExceeded<T> {
 
 /// Structured MCP output advertised by mutation tools.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
+#[serde(tag = "result_type", rename_all = "snake_case")]
 pub enum McpMutationStructuredContent<T, C> {
     Rejected(McpWorkflowRejectedResponse),
     DryRun(McpWorkflowDryRunResponse),
@@ -1092,106 +1088,36 @@ pub struct McpCloseTaskArguments {
     pub user_note: RequiredNullable<String>,
 }
 
+/// MCP-visible empty argument object for `volicord.list_projects`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpListProjectsArguments {}
+
+/// MCP-visible `volicord.list_projects` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpListProjectsResult {
+    pub connection_id: String,
+    pub mode: volicord_types::values::AgentConnectionMode,
+    pub projects: Vec<McpListProjectItem>,
+}
+
+/// One connection-allowed project returned by `volicord.list_projects`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpListProjectItem {
+    pub project_selector: String,
+    pub available: bool,
+    pub unavailable_reason: Option<String>,
+    pub repo_root: String,
+}
+
 /// Returns the generated JSON Schema for one MCP-visible tool argument shape.
 pub fn mcp_request_schema(tool: AgentToolId) -> Option<Value> {
-    match tool.method()? {
-        MethodName::Intake => Some(request_schema::<McpIntakeArguments>()),
-        MethodName::UpdateScope => Some(request_schema::<McpUpdateScopeArguments>()),
-        MethodName::RecordShapingCheckpoint => {
-            Some(request_schema::<McpRecordShapingCheckpointArguments>())
-        }
-        MethodName::FinalizeAdvice => Some(request_schema::<McpFinalizeAdviceArguments>()),
-        MethodName::AdvanceTask => Some(request_schema::<McpAdvanceTaskArguments>()),
-        MethodName::Status => Some(request_schema::<McpStatusArguments>()),
-        MethodName::GetOperationResult => Some(request_schema::<McpGetOperationResultArguments>()),
-        MethodName::PrepareEvidenceCapture => {
-            Some(request_schema::<McpPrepareEvidenceCaptureArguments>())
-        }
-        MethodName::PrepareWrite => Some(request_schema::<McpPrepareWriteArguments>()),
-        MethodName::StageArtifact => Some(request_schema::<McpStageArtifactArguments>()),
-        MethodName::RecordRun => Some(request_schema::<McpRecordRunArguments>()),
-        MethodName::RequestUserAction => Some(request_schema::<McpRequestUserActionArguments>()),
-        MethodName::ReconcileChanges => Some(request_schema::<McpReconcileChangesArguments>()),
-        MethodName::CheckClose => Some(request_schema::<McpCheckCloseArguments>()),
-        MethodName::CloseTask => Some(request_schema::<McpCloseTaskArguments>()),
-        MethodName::ResolveUserAction => None,
-    }
+    crate::tool_contracts::mcp_tool_contract(tool).map(|contract| contract.input_schema())
 }
 
 /// Returns the generated JSON Schema for one MCP-visible public method result.
 pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
-    match tool.method()? {
-        MethodName::RequestUserAction => Some(response_schema::<
-            McpMutationStructuredContent<
-                McpRequestUserActionResponse,
-                McpRequestUserActionCompactResult,
-            >,
-        >()),
-        MethodName::Intake => Some(response_schema::<
-            McpMutationStructuredContent<IntakeResponse, McpMutationEffectSummary>,
-        >()),
-        MethodName::UpdateScope => Some(response_schema::<
-            McpMutationStructuredContent<UpdateScopeResponse, McpUpdateScopeCompactResult>,
-        >()),
-        MethodName::RecordShapingCheckpoint => Some(response_schema::<
-            McpMutationStructuredContent<
-                RecordShapingCheckpointResponse,
-                McpRecordShapingCheckpointCompactResult,
-            >,
-        >()),
-        MethodName::FinalizeAdvice => Some(response_schema::<
-            McpMutationStructuredContent<FinalizeAdviceResponse, McpFinalizeAdviceCompactResult>,
-        >()),
-        MethodName::AdvanceTask => Some(response_schema::<
-            McpMutationStructuredContent<AdvanceTaskResponse, McpAdvanceTaskCompactResult>,
-        >()),
-        MethodName::Status => Some(response_schema::<
-            McpReadOnlyToolStructuredContent<StatusResponse>,
-        >()),
-        MethodName::GetOperationResult => Some(response_schema::<
-            McpReadOnlyToolStructuredContent<GetOperationResultResponse>,
-        >()),
-        MethodName::PrepareEvidenceCapture => Some(response_schema::<
-            McpMutationStructuredContent<
-                PrepareEvidenceCaptureResponse,
-                McpPrepareEvidenceCaptureCompactResult,
-            >,
-        >()),
-        MethodName::PrepareWrite => Some(response_schema::<
-            McpMutationStructuredContent<PrepareWriteResponse, McpPrepareWriteCompactResult>,
-        >()),
-        MethodName::StageArtifact => Some(response_schema::<
-            McpMutationStructuredContent<StageArtifactResponse, McpStageArtifactCompactResult>,
-        >()),
-        MethodName::RecordRun => Some(response_schema::<
-            McpMutationStructuredContent<RecordRunResponse, McpRecordRunCompactResult>,
-        >()),
-        MethodName::ReconcileChanges => Some(response_schema::<
-            McpMutationStructuredContent<
-                ReconcileChangesResponse,
-                McpReconcileChangesCompactResult,
-            >,
-        >()),
-        MethodName::CheckClose => Some(response_schema::<
-            McpReadOnlyToolStructuredContent<CheckCloseResponse>,
-        >()),
-        MethodName::CloseTask => Some(response_schema::<
-            McpMutationStructuredContent<CloseTaskResponse, McpMutationEffectSummary>,
-        >()),
-        MethodName::ResolveUserAction => None,
-    }
-}
-
-fn request_schema<T: JsonSchema>() -> Value {
-    serde_json::to_value(schema_for!(T)).expect("request schema should serialize")
-}
-
-fn response_schema<T: JsonSchema>() -> Value {
-    let mut schema =
-        serde_json::to_value(schema_for!(T)).expect("response schema should serialize");
-    schema
-        .as_object_mut()
-        .expect("generated response schema should be an object")
-        .insert("type".to_owned(), Value::String("object".to_owned()));
-    schema
+    crate::tool_contracts::mcp_tool_contract(tool).map(|contract| contract.output_schema())
 }

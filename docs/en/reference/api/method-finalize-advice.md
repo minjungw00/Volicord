@@ -37,6 +37,11 @@ application semantics, and aggregate close-basis transaction are `stable`.
 | `user_action_resolution_ids` | yes | no | `string[]` |
 <!-- END GENERATED: contract-structures api.method.finalize_advice.request[params] -->
 
+The generated table above is the adapter-neutral method request. Its MCP wire
+projection and typed canonical examples for no-decision, exact accepted
+resolution, evidence, and residual-risk cases come from the single semantic
+descriptor cataloged by [MCP Transport](../mcp-transport.md#generated-semantic-schema-catalog).
+
 The request directly supplies the exact `shaping_checkpoint_id`, current
 non-write `change_unit_id`, `scope_revision`, non-null `baseline_ref`, complete
 `user_action_resolution_ids`, `result_summary`, supported `result_refs` and

@@ -34,6 +34,10 @@
 | `task_id` | 예 | 아니요 | `string` |
 <!-- END GENERATED: contract-structures api.method.record_shaping_checkpoint.request[params] -->
 
+위 생성 표는 adapter-neutral 메서드 요청입니다. MCP wire projection, 필수 nullable
+`baseline_ref`, 중첩 discriminator, typed canonical example은 [MCP 전송](../mcp-transport.md#generated-semantic-schema-catalog)에
+catalog로 표시된 단일 의미 descriptor에서 나옵니다.
+
 요청은 `checkpoint_operation`, `scope_revision`, nullable `baseline_ref`, `summary`, nullable
 `implementation_boundary`, typed `gaps`, `source_refs`, `evidence_refs`를 직접 받습니다.
 바깥쪽 operation union은 없습니다.

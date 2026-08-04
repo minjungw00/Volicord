@@ -121,13 +121,13 @@ Each current workspace package has one responsibility entry in the root Cargo me
 | `volicord-agent-evaluation` | `agent-evaluation` | validation | non-production | neutral | Standalone agent evaluation catalog, runner, schemas, and result harness. |
 | `volicord-cli` | `cli-adapter` | adapter | production | adapter | Administrative CLI, typed User Channel resolution, Guard lifecycle observation/terminalization, managed current-authority and stale-recovery guidance, Codex setup, rendering, and MCP supervision. |
 | `volicord-command-model` | `command-model` | schema | production | neutral | Execution-free administrative command declaration, syntax model, and canonical invocation builders. |
-| `volicord-conformance-tests` | `conformance-validation` | validation | non-production | neutral | Cross-method conformance scenarios over Core-facing APIs. |
+| `volicord-conformance-tests` | `conformance-validation` | validation | non-production | neutral | Cross-method Core-facing scenarios and canonical MCP semantic-schema conformance cases. |
 | `volicord-core` | `core` | application | production | Core | Adapter-independent current shaping authority projection, checkpoint succession, exact stale retirement or reauthorization, decision-owner application, advisor finalization, explicit advance, implementation-preserving rejection, policy evaluation, and atomic commit coordination. |
 | `volicord-host-contract` | `host-contract` | schema | production | Core-facing | Dependency-safe host contracts for exact Guard hook correlation and prospective effect classification, without user or Core progression authority. |
 | `volicord-integration-tests` | `integration-validation` | validation | non-production | neutral | Cross-layer integration, Agent Connection, and public contract snapshot tests. |
-| `volicord-mcp` | `mcp-adapter` | adapter | production | adapter | MCP lifecycle, canonical AgentToolId registry, current-authority and stale-recovery guidance, compact tagged-workflow and rejection projection, session binding, checkpoint/finalization/advance dispatch, and Core invocation adaptation. |
+| `volicord-mcp` | `mcp-adapter` | adapter | production | adapter | MCP lifecycle, descriptor-consuming AgentToolId registry and semantic validation, current-authority guidance, compact tagged-result projection, session binding, method dispatch, and Core invocation adaptation. |
 | `volicord-mcp-protocol` | `mcp-protocol` | schema | production | neutral | Host-independent MCP revision profiles and semantic capability registry. |
-| `volicord-mcp-wire` | `mcp-wire` | schema | production | adapter | MCP checkpoint, stale-authority recovery, finalization, and advance arguments/results; tagged workflow presentation shapes; errors; structured content; JSON-RPC envelopes; and generated wire schemas. |
+| `volicord-mcp-wire` | `mcp-wire` | schema | production | adapter | Canonical MCP semantic descriptors, typed examples, discriminator and nullable metadata, validator trees, checkpoint/finalization arguments and results, errors, structured content, JSON-RPC envelopes, and generated wire schemas. |
 | `volicord-platform-fs` | `platform-filesystem` | infrastructure | production | Core-facing | Invocation-scoped Product Repository observation, platform filesystem observation, publication, mutation admission, and Git layout primitives. |
 | `volicord-platform-process` | `platform-process` | infrastructure | production | neutral | Platform child-process containment, termination, and pipe-readiness primitives. |
 | `volicord-release-integrity-tests` | `release-integrity` | validation | non-production | neutral | Release packaging, version, canonical-byte, checksum, and workflow integrity validation. |
@@ -149,7 +149,7 @@ The lists are package-level allowlists by Cargo dependency kind. An em dash mean
 | `volicord-agent-evaluation` | `volicord-test-support` | — | — |
 | `volicord-cli` | `volicord-command-model`, `volicord-core`, `volicord-host-contract`, `volicord-mcp`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-platform-process`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-store`, `volicord-test-support` | — |
 | `volicord-command-model` | — | — | — |
-| `volicord-conformance-tests` | — | `volicord-core`, `volicord-host-contract`, `volicord-platform-fs`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
+| `volicord-conformance-tests` | — | `volicord-core`, `volicord-host-contract`, `volicord-mcp-wire`, `volicord-platform-fs`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
 | `volicord-core` | `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-host-contract` | `volicord-types` | — | — |
 | `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-mcp-wire`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |

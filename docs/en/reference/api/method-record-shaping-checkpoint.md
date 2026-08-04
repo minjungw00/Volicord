@@ -34,6 +34,11 @@ and checkpoint-readiness semantics are `stable`.
 | `task_id` | yes | no | `string` |
 <!-- END GENERATED: contract-structures api.method.record_shaping_checkpoint.request[params] -->
 
+The generated table above is the adapter-neutral method request. Its MCP wire
+projection, required-nullable `baseline_ref`, nested discriminators, and typed
+canonical examples come from the single semantic descriptor cataloged by
+[MCP Transport](../mcp-transport.md#generated-semantic-schema-catalog).
+
 The request directly supplies `checkpoint_operation`, `scope_revision`,
 nullable `baseline_ref`, `summary`, nullable `implementation_boundary`, typed
 `gaps`, `source_refs`, and `evidence_refs`. There is no outer operation union.

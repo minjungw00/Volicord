@@ -43,8 +43,10 @@ This document does not own:
 here. Its generated public method schemas contain no MCP request wrappers,
 MCP error identities, structured-content unions, tool-definition envelopes, or
 JSON-RPC fields. Those generated wire schemas and exact serialization rules
-belong to `volicord-mcp-wire`; semantic profile selection belongs to
-`volicord-mcp-protocol`.
+belong to `volicord-mcp-wire`. Its per-tool semantic descriptors own explicit
+MCP discriminators, required-nullable metadata, descriptions, semantic types,
+typed canonical examples, validation, and MCP documentation generation from
+one entry. Semantic profile selection belongs to `volicord-mcp-protocol`.
 
 For Core-owned MCP tools, the canonical `AgentToolId` identity reuses the
 existing `MethodName` domain and projects its stable MCP wire name. Adapter
@@ -149,11 +151,13 @@ Owner links:
 ## Common response branches
 
 These response schemas define the canonical public result body independently
-of its transport carrier. An MCP adapter retains that same object and projects
-it into the carrier permitted by the selected protocol profile. `toolResult`,
-`content`, `structuredContent`, and MCP `isError` are transport fields owned by
-[MCP transport](../mcp-transport.md); they do not add, remove, or reinterpret
-the fields in the API result body and do not change Core branch semantics.
+of its transport carrier. An MCP adapter nests that body inside the structured
+object permitted by the selected protocol profile; the MCP wrapper adds its
+required `result_type` discriminator outside the method result body.
+`toolResult`, `content`, `structuredContent`, `result_type`, and MCP `isError`
+are transport fields owned by [MCP transport](../mcp-transport.md). They do not
+add, remove, or reinterpret fields inside the API result body and do not change
+Core branch semantics.
 
 Every public method response uses exactly one branch:
 

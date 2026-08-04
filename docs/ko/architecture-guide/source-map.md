@@ -273,6 +273,8 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-mcp-wire/src/methods.rs` | 정확한 MCP 인자, 구조화 결과, 운영 오류, 간결한 mutation, UserAction projection, 직렬화, 생성 요청/결과 schema 소유권. |
+| `crates/volicord-mcp-wire/src/semantic_schema.rs` | 닫힌 의미 schema node, 명시적 discriminator와 nullability, 결정적 JSON Schema projection, 의미 검증 metadata, descriptor 무결성 검증. |
+| `crates/volicord-mcp-wire/src/tool_contracts.rs` | Input/output descriptor, description, typed canonical example, 정확한 request decoding, catalog 무결성을 묶는 단일 `AgentToolId` 기반 MCP 계약 entry. |
 | `crates/volicord-mcp-wire/src/tools.rs` | 정확한 capability field 이름, tool annotation, capability가 선택하는 tool-definition 및 tool-result envelope. |
 | `crates/volicord-mcp-wire/src/json_rpc.rs` | Core 접근 없는 JSON 구문 decoding, JSON-RPC envelope 분류, request ID와 object parameter 검증, 성공/오류 응답 구성. |
 | `crates/volicord-mcp-wire/src/contracts.rs` | 정규 MCP schema, profile field 어휘, envelope에서 `mcp.wire` identifier 도출. |
@@ -301,8 +303,8 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-mcp/src/diagnostics.rs` | 폐쇄형 MCP diagnostic mapping, 공유 finding 구성, bootstrap 및 영속 terminal projection에서 플랫폼 담당 diagnostic code와 action class 보존. |
 | `crates/volicord-mcp/src/adapter.rs` | 유지되는 연산 전 routing identity, 활성 mutation-context 상관관계, context에 결합된 Core 호출 API, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
 | `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청과 현재 managed workflow의 Store 유래 현재 권한, 변경 불가능한 이력 제외, 정확한 stale 복구, 새 UserAction identity, 명시적 shaping과 advance, implementation 보존 거부, rejection/recovery 표면화, close review, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
-| `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 현재 권한 및 stale 복구 설명, schema, annotation, 효과 metadata, method lookup을 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 semantic capability만으로 wire projection을 수행하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |
-| `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
+| `crates/volicord-mcp/src/tool_registry.rs` | Descriptor를 소비해 `AgentToolId` 정의, protocol profile용 schema 압축, annotation, 가시성, 명시적 server의 충돌 검사 Codex callable catalog를 조립합니다. |
+| `crates/volicord-mcp/src/schema_validation.rs` | Wire 담당 semantic validator tree와 metadata를 통한 known-tool 인자 및 출력 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색, 현재 Connection/project routing, 정규 catalog에서 server/raw/callable identity를 가져오는 preflight diagnostic 투영. |
 
 ## 테스트
@@ -324,7 +326,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-mcp/tests/protocol_conformance.rs` | 모든 프로덕션 profile에 적용하는 하나의 registry 기반 wire 적합성 case. 고정 schema 검증, 필수 도구, 지정 왕복, profile별 projection 및 batching, lifecycle 거절, EOF를 다룹니다. |
 | `crates/volicord-cli/tests/binary_admin.rs` | 실제 바이너리 관리 CLI parser, help, output, exit 계약. |
 | `crates/volicord-cli/tests/operational_host_e2e.rs` | 적용된 setup부터 lease-bound MCP와 정확한 Guard prompt/pre/post 검증을 거쳐 complete 읽기 전용 status에 이르는 전체 managed Codex activation journey 및 운영 실패·정리 regression. |
-| `tests/conformance/` | 교차 메서드 conformance scenario. |
+| `tests/conformance/` | 교차 메서드 scenario와 정규 MCP descriptor schema 및 typed example의 직접 conformance 소비. |
 | `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 `production_supported`와 `pre_release_only` 사실, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
 | `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 소스 번들 명령, CI 및 릴리스 workflow 의미 테스트. Build/smoke/staging 순서, matrix binary input, 정확히 한 번인 action 사용, 경로 filter, 의존 방향을 포함합니다. |
 | `tests/release-smoke/Cargo.toml` | 게시하지 않는 전용 스모크 패키지 경계. Protocol, 정규 tool type, 공유 한도 테스트 프로세스에는 의존하지만 CLI library, MCP 구현, Core, Store, `xtask`에는 의존하지 않습니다. |
@@ -348,6 +350,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `xtask/src/parity.rs` | 한영 제목 구조 일치. |
 | `xtask/src/terminology.rs` | 용어 지도 경로와 신원 민감 역할 검증. |
 | `xtask/src/cli_docs.rs` | `docs-sync` 조합, 생성 관리 CLI 영역, `volicord-command-model`을 통한 문서 invocation 검증. 셸 tokenization은 두 번째 명령 grammar가 아닙니다. |
+| `xtask/src/contract_docs.rs` | 생성 neutral API 계약 영역과 `volicord-mcp-wire`에서 직접 소비하는 MCP 의미 descriptor catalog. |
 | `xtask/src/document_structure.rs` | 현재 아키텍처 설계 절과 표면 안정성 구조. |
 | `xtask/src/contract_identifiers.rs` | 현재 neutral 공개 스키마, 명령 모델, typed 진단, semantic protocol profile, MCP wire 담당 식별자 도출, 대응 의미 단위 검증, 작업 범주 표 일치. |
 | `xtask/src/workspace_manifests.rs` | 공유 workspace manifest parsing과 현재 package 및 Rust 적용 가능성 값. |

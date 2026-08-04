@@ -146,11 +146,14 @@ Product Repository 경로 테스트도 같은 소유권 분리를 따릅니다.
 routing을 검증합니다. UserAction 서비스 테스트는 파일시스템을 사용하지 않습니다.
 Adapter 테스트는 안정적인 operation 및 resource identity projection을 검증합니다.
 
-`volicord-mcp-wire` 테스트는 정확한 MCP 직렬화, JSON-RPC envelope, 생성 MCP
-요청/결과 schema, wire contract descriptor를 담당합니다. `volicord-types` 테스트는
-neutral 공개 schema만 담당합니다. 담당자 간 coverage는 공개 메서드 schema에 MCP 전용
-구조가 없고 MCP adapter가 neutral Core 운영 실패를 현재 wire 오류로 변환하는지
-확인합니다.
+`volicord-mcp-wire` 테스트는 정확한 MCP 직렬화, JSON-RPC envelope, 의미 descriptor,
+명시적 중첩 discriminator, 필수 nullable 동작, typed canonical example, 결정적 input/output
+schema, descriptor 무결성을 담당합니다. `volicord-mcp` 테스트는 registry, 인자 오류,
+출력, 한도 있는 discovery projection에서 같은 validator tree를 소비합니다.
+`volicord-types` 테스트는 neutral 공개 schema만 담당합니다. 담당자 간 coverage는 공개
+메서드 schema에 MCP 전용 구조가 없고 MCP adapter가 neutral Core 운영 실패를 현재 wire
+오류로 변환하는지 확인합니다. Conformance package도 같은 descriptor와 example을 직접
+소비하며 JSON fixture나 schema metadata를 복사하지 않습니다.
 
 일회용 Runtime Home과 Product Repository를 사용합니다. fixture는 최소이며 typed여야
 합니다. fixture는 parser 또는 구현 동작만 증명하며 실제 Codex 설치의 행동이나 플랫폼

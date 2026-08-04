@@ -7,6 +7,7 @@ use volicord_core::{
     CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,
     PipelineResponse,
 };
+use volicord_mcp_wire::{mcp_tool_contract_integrity_errors, mcp_tool_contracts};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, choice_user_action_resolution, observation_user_action_resolution,
     supported_evidence_update, unsupported_evidence_update, ArtifactOwnerJsonColumn,
@@ -33,6 +34,52 @@ use volicord_types::values::{
     UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
 };
 use volicord_user_action_service::PendingUserActionFactsRequest;
+
+#[test]
+fn canonical_mcp_semantic_cases_are_the_conformance_fixtures() -> Result<(), Box<dyn Error>> {
+    let integrity_errors = mcp_tool_contract_integrity_errors();
+    assert!(
+        integrity_errors.is_empty(),
+        "{}",
+        integrity_errors.join("\n")
+    );
+
+    for contract in mcp_tool_contracts() {
+        let input_schema = contract.input_schema();
+        assert_eq!(input_schema, contract.input_schema());
+        assert_eq!(contract.output_schema(), contract.output_schema());
+        let advertised = input_schema
+            .get("examples")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        assert_eq!(advertised.len(), contract.canonical_examples().len());
+        for (advertised, example) in advertised.iter().zip(contract.canonical_examples()) {
+            assert_eq!(advertised, example.value());
+            assert!(
+                contract
+                    .input_descriptor()
+                    .validate(example.value())
+                    .issues
+                    .is_empty(),
+                "{} example `{}` must satisfy the canonical validator",
+                contract.tool().wire_name(),
+                example.id()
+            );
+            let round_trip = contract
+                .decode_input(example.value())
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} example `{}` failed exact decoding: {error}",
+                        contract.tool().wire_name(),
+                        example.id()
+                    )
+                });
+            assert_eq!(round_trip, *example.value());
+        }
+    }
+    Ok(())
+}
 
 #[test]
 fn stale_shaping_reauthorization_public_contract_is_closed() -> Result<(), Box<dyn Error>> {

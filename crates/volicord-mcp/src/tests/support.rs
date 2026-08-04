@@ -1004,13 +1004,13 @@ pub(super) fn tool_definition(tool_name: &str) -> CanonicalToolDefinition {
 pub(super) fn canonical_example(
     tool_name: &str,
     example_id: &str,
-) -> &'static crate::tool_registry::McpToolExample {
+) -> &'static volicord_mcp_wire::CanonicalSchemaExample {
     canonical_tool_examples(
         AgentToolId::from_wire_name(tool_name)
             .unwrap_or_else(|_| panic!("unknown canonical tool {tool_name}")),
     )
     .iter()
-    .find(|example| example.id == example_id)
+    .find(|example| example.id() == example_id)
     .unwrap_or_else(|| panic!("missing canonical example {example_id} for {tool_name}"))
 }
 
@@ -1018,58 +1018,20 @@ pub(super) fn canonical_example_value(
     tool_name: &str,
     example_id: &str,
 ) -> Result<Value, Box<dyn Error>> {
-    Ok(serde_json::from_str(
-        canonical_example(tool_name, example_id).arguments_json,
-    )?)
+    Ok(canonical_example(tool_name, example_id).value().clone())
 }
 
 pub(super) fn decode_mcp_arguments_to_value(
     tool_name: &str,
     value: Value,
-) -> Result<Value, serde_json::Error> {
-    match AgentToolId::from_wire_name(tool_name)
-        .unwrap_or_else(|_| panic!("unsupported MCP tool example decoder: {tool_name}"))
-    {
-        AgentToolId::INTAKE => {
-            serde_json::to_value(serde_json::from_value::<McpIntakeArguments>(value)?)
-        }
-        AgentToolId::UPDATE_SCOPE => {
-            serde_json::to_value(serde_json::from_value::<McpUpdateScopeArguments>(value)?)
-        }
-        AgentToolId::STATUS => {
-            serde_json::to_value(serde_json::from_value::<McpStatusArguments>(value)?)
-        }
-        AgentToolId::GET_OPERATION_RESULT => serde_json::to_value(serde_json::from_value::<
-            McpGetOperationResultArguments,
-        >(value)?),
-        AgentToolId::PREPARE_EVIDENCE_CAPTURE => serde_json::to_value(serde_json::from_value::<
-            McpPrepareEvidenceCaptureArguments,
-        >(value)?),
-        AgentToolId::PREPARE_WRITE => {
-            serde_json::to_value(serde_json::from_value::<McpPrepareWriteArguments>(value)?)
-        }
-        AgentToolId::STAGE_ARTIFACT => {
-            serde_json::to_value(serde_json::from_value::<McpStageArtifactArguments>(value)?)
-        }
-        AgentToolId::RECORD_RUN => {
-            serde_json::to_value(serde_json::from_value::<McpRecordRunArguments>(value)?)
-        }
-        AgentToolId::REQUEST_USER_ACTION => serde_json::to_value(serde_json::from_value::<
-            McpRequestUserActionArguments,
-        >(value)?),
-        AgentToolId::RECONCILE_CHANGES => serde_json::to_value(serde_json::from_value::<
-            McpReconcileChangesArguments,
-        >(value)?),
-        AgentToolId::CHECK_CLOSE => {
-            serde_json::to_value(serde_json::from_value::<McpCheckCloseArguments>(value)?)
-        }
-        AgentToolId::CLOSE_TASK => {
-            serde_json::to_value(serde_json::from_value::<McpCloseTaskArguments>(value)?)
-        }
-        other => panic!("unsupported MCP tool example decoder: {other}"),
-    }
+) -> Result<Value, Box<dyn Error>> {
+    let tool = AgentToolId::from_wire_name(tool_name)
+        .unwrap_or_else(|_| panic!("unsupported MCP tool example decoder: {tool_name}"));
+    volicord_mcp_wire::mcp_tool_contract(tool)
+        .expect("production MCP semantic contract")
+        .decode_input(&value)
+        .map_err(Into::into)
 }
-
 pub(super) fn structured_tool_error(tool_name: &str, error: &McpAdapterError) -> Value {
     let result = tool_execution_error_result(tool_name, error);
     let parsed = structured_error_result(&result);
@@ -1103,7 +1065,13 @@ pub(super) fn structured_error_result(result: &Value) -> Value {
     )
     .expect("tool error compatibility text should be JSON");
     assert_eq!(result["structuredContent"], parsed);
-    serde_json::from_value::<McpToolErrorResponse>(parsed.clone())
+    assert_eq!(parsed["result_type"], "adapter_error");
+    let mut payload = parsed.clone();
+    payload
+        .as_object_mut()
+        .expect("structured tool error object")
+        .remove("result_type");
+    serde_json::from_value::<McpToolErrorResponse>(payload)
         .expect("structured tool error should match its advertised response type");
     assert_eq!(parsed["reached_core"], false);
     assert_eq!(parsed["committed"], false);

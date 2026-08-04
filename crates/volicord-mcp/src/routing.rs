@@ -1,14 +1,15 @@
 use crate::constants::TRANSPORT_DISCLOSURE_TEXT;
 use crate::errors::McpAdapterError;
 use crate::util::validate_identifier_text;
-use schemars::{schema_for, JsonSchema};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use volicord_host_contract::{HostContractProfileId, McpServerKey};
 use volicord_mcp_protocol::ProtocolRegistry;
-use volicord_mcp_wire::McpToolStructuredContent;
+pub(crate) use volicord_mcp_wire::{
+    McpListProjectItem as ListProjectItem, McpListProjectsResult as ListProjectsResult,
+};
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_store::agent_connections::{
     agent_connection_project_access_read_only, agent_connection_record_read_only,
@@ -577,32 +578,6 @@ pub(crate) fn storage_capability_for_projects(
 
 fn inspect_allowed_project_read_only(project: &ConnectionProjectRecord) -> McpProjectAvailability {
     inspect_allowed_project_with_write_probe(None, project)
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
-pub(crate) struct ListProjectsResult {
-    pub(crate) connection_id: String,
-    pub(crate) mode: AgentConnectionMode,
-    pub(crate) projects: Vec<ListProjectItem>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
-pub(crate) struct ListProjectItem {
-    pub(crate) project_selector: String,
-    pub(crate) available: bool,
-    pub(crate) unavailable_reason: Option<String>,
-    pub(crate) repo_root: String,
-}
-
-pub(crate) fn list_projects_output_schema() -> Value {
-    let mut schema =
-        serde_json::to_value(schema_for!(McpToolStructuredContent<ListProjectsResult>))
-            .expect("list-projects output schema should serialize");
-    schema
-        .as_object_mut()
-        .expect("list-projects output schema should be an object")
-        .insert("type".to_owned(), Value::String("object".to_owned()));
-    schema
 }
 
 pub(crate) fn validate_mcp_project_allowlist(

@@ -5,10 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use schemars::schema_for;
 use serde_json::Value;
 use volicord_types::contracts::{identifiers_from_json_schema, JsonExampleShape};
-use volicord_types::tool_names::AgentToolId;
 
-use crate::methods::{mcp_request_schema, mcp_response_schema};
-use crate::tools::McpToolAnnotations;
+use crate::tool_contracts::mcp_tool_contracts;
+use crate::{McpToolAnnotations, SemanticSchemaNode};
 
 /// Exact identifiers for one stable semantic MCP wire contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +37,7 @@ impl WireContractDescriptor {
     }
 }
 
-/// Returns the MCP wire contract derived from its generated schemas.
+/// Returns the MCP wire catalog projected from the canonical tool descriptors.
 pub fn wire_contract_descriptors() -> Vec<WireContractDescriptor> {
     let mut example_schemas = BTreeMap::new();
     let mut identifiers = BTreeSet::from([
@@ -59,25 +58,49 @@ pub fn wire_contract_descriptors() -> Vec<WireContractDescriptor> {
         "openWorldHint".to_owned(),
         "McpToolStructuredContent".to_owned(),
         "McpReadOnlyToolStructuredContent".to_owned(),
+        "McpOperationalFailure".to_owned(),
         "McpToolDefinitionEnvelope".to_owned(),
         "McpToolResultEnvelope".to_owned(),
     ]);
 
-    for tool in AgentToolId::ALL {
-        if let Some(schema) = mcp_request_schema(tool) {
-            example_schemas.insert(
-                JsonExampleShape::McpWireRequest(tool.wire_name().to_owned()).id(),
-                schema.clone(),
-            );
-            extend_wire_identifiers(&mut identifiers, &schema);
+    for contract in mcp_tool_contracts() {
+        let input_schema = contract.input_schema();
+        identifiers.extend(
+            contract
+                .input_descriptor()
+                .definitions()
+                .keys()
+                .filter(|name| name.starts_with("Mcp"))
+                .cloned(),
+        );
+        extend_semantic_identifiers(&mut identifiers, contract.input_descriptor().node());
+        for node in contract.input_descriptor().definitions().values() {
+            extend_semantic_identifiers(&mut identifiers, node);
         }
-        if let Some(schema) = mcp_response_schema(tool) {
-            example_schemas.insert(
-                JsonExampleShape::McpWireResponse(tool.wire_name().to_owned()).id(),
-                schema.clone(),
-            );
-            extend_wire_identifiers(&mut identifiers, &schema);
+        example_schemas.insert(
+            JsonExampleShape::McpWireRequest(contract.tool().wire_name().to_owned()).id(),
+            input_schema.clone(),
+        );
+        extend_wire_identifiers(&mut identifiers, &input_schema);
+
+        let output_schema = contract.output_schema();
+        identifiers.extend(
+            contract
+                .output_descriptor()
+                .definitions()
+                .keys()
+                .filter(|name| name.starts_with("Mcp"))
+                .cloned(),
+        );
+        extend_semantic_identifiers(&mut identifiers, contract.output_descriptor().node());
+        for node in contract.output_descriptor().definitions().values() {
+            extend_semantic_identifiers(&mut identifiers, node);
         }
+        example_schemas.insert(
+            JsonExampleShape::McpWireResponse(contract.tool().wire_name().to_owned()).id(),
+            output_schema.clone(),
+        );
+        extend_wire_identifiers(&mut identifiers, &output_schema);
     }
 
     let annotations = serde_json::to_value(schema_for!(McpToolAnnotations))
@@ -97,6 +120,54 @@ pub fn wire_contract_descriptors() -> Vec<WireContractDescriptor> {
         related_contracts: vec!["mcp.protocol"],
         example_schemas,
     }]
+}
+
+fn extend_semantic_identifiers(identifiers: &mut BTreeSet<String>, node: &SemanticSchemaNode) {
+    let semantic_type = node.semantic_type_name();
+    if semantic_type.starts_with("Mcp") {
+        identifiers.insert(semantic_type);
+    }
+    match node {
+        SemanticSchemaNode::Object(object) => {
+            for field in &object.fields {
+                if field.semantic_type.starts_with("Mcp") {
+                    identifiers.insert(field.semantic_type.clone());
+                }
+                extend_semantic_identifiers(identifiers, &field.schema);
+            }
+        }
+        SemanticSchemaNode::Array(array) => {
+            extend_semantic_identifiers(identifiers, &array.items);
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            extend_semantic_identifiers(identifiers, &nullable.schema);
+        }
+        SemanticSchemaNode::TaggedUnion(union) => {
+            for variant in &union.variants {
+                if variant.semantic_type.starts_with("Mcp") {
+                    identifiers.insert(variant.semantic_type.clone());
+                }
+                extend_semantic_identifiers(identifiers, &variant.schema);
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for variant in &union.variants {
+                extend_semantic_identifiers(identifiers, variant);
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for schema in &all_of.schemas {
+                extend_semantic_identifiers(identifiers, schema);
+            }
+        }
+        SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_)
+        | SemanticSchemaNode::Reference(_) => {}
+    }
 }
 
 fn extend_wire_identifiers(identifiers: &mut BTreeSet<String>, schema: &Value) {

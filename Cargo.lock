@@ -1587,6 +1587,7 @@ dependencies = [
  "serde_json",
  "volicord-core",
  "volicord-host-contract",
+ "volicord-mcp-wire",
  "volicord-platform-fs",
  "volicord-store",
  "volicord-test-support",
@@ -1642,7 +1643,6 @@ name = "volicord-mcp"
 version = "0.9.1"
 dependencies = [
  "chrono",
- "schemars",
  "serde",
  "serde_json",
  "sha2",

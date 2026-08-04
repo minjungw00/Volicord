@@ -79,7 +79,7 @@
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:85d194108e69c0d1e7572058ffe0e14cf5cc4aceb855adae621a44c1ce33c7f1"
+        "sha256": "sha256:ebfa6adacd62d96db447809320f0268164c331bba69e1df8b2043a5c1c26d7d1"
       },
       "name": "volicord.intake",
       "output_schema": {
@@ -127,30 +127,20 @@
           "IntakeResult",
           "IntakeResultBase",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_IntakeResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
-          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
-          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -213,7 +203,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e7b318be74e9666abba291543bd2b2748ac7ca88c456fefedfe7e88212223faa"
+        "sha256": "sha256:8a928cdb57f053560011b473272fd7a1c2ef93468dffc9bb5ebc045b54d3e3b9"
       }
     },
     {
@@ -255,7 +245,7 @@
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:213b0b4af21229c39e5e6771f601dd87761dcfdb6bee4fb1e851d1bf78d8b98c"
+        "sha256": "sha256:027641c84a92f562c8a97016b4fd9f5468dfadc9ec55b9a5c06bdd63fdcbbdc9"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -301,31 +291,21 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpUpdateScopeCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_UpdateScopeResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpUpdateScopeCompactResult",
-          "McpMutationSummaryResponse_for_McpUpdateScopeCompactResult",
-          "McpMutationWorkflowResponse_for_McpUpdateScopeCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUpdateScopeCompactResult",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -390,7 +370,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0de6bb214e311923c7a875074a4d493930af97cb35931f2415b7dc78395c59c5"
+        "sha256": "sha256:ab5833e3476ab4685663f8a435d83650e15d8bdc8fd5254ffb96d77e8222887b"
       }
     },
     {
@@ -455,7 +435,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:ace7371ae35270d6bdc1f40a640fdc2bf9f525434791c547623459ef094b9cf3"
+        "sha256": "sha256:222596f1fc16bde58757b0cd4c1800d5cc51c7d1a2fcd4e9e99bf2df96a04ddc"
       },
       "name": "volicord.record_shaping_checkpoint",
       "output_schema": {
@@ -505,17 +485,10 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpRecordShapingCheckpointCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordShapingCheckpointResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpRecordShapingCheckpointCompactResult",
-          "McpMutationSummaryResponse_for_McpRecordShapingCheckpointCompactResult",
-          "McpMutationWorkflowResponse_for_McpRecordShapingCheckpointCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
@@ -523,13 +496,10 @@
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -600,7 +570,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6505c043de9b62d2a3b523a2c7ed81acf6140a4317f64b222ca77f47a8195529"
+        "sha256": "sha256:dc5d5b98d3f2fe213dca7c3d54fbc16353f5e7d64b8a5c5a07d6b3a76eecec17"
       }
     },
     {
@@ -641,7 +611,7 @@
           "shaping_checkpoint_id",
           "task_id"
         ],
-        "sha256": "sha256:32454d3c0bcd8ebdfdb5da364b99204b73e65a2bb9d5b267ee2d0f48b663adfe"
+        "sha256": "sha256:62cf06a2e066674627a8833e609c188a27a8ef8611250781a195a01c99e50744"
       },
       "name": "volicord.finalize_advice",
       "output_schema": {
@@ -693,31 +663,21 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpFinalizeAdviceCompactResult",
           "McpFinalizeAdviceCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_FinalizeAdviceResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpFinalizeAdviceCompactResult",
-          "McpMutationSummaryResponse_for_McpFinalizeAdviceCompactResult",
-          "McpMutationWorkflowResponse_for_McpFinalizeAdviceCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -786,7 +746,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1fb8119397e8deab5c15638346df36bbd8d340934322498404d2033ad0f5a27b"
+        "sha256": "sha256:8e87358644f2c8b0900427ea2ab99766a4d639cb3ed8b3c0aca324c65a057386"
       }
     },
     {
@@ -818,7 +778,7 @@
           "shaping_checkpoint_id",
           "task_id"
         ],
-        "sha256": "sha256:2a5bf3db68742754b61cc52522932d66493d33e2647146c85ae38474805c599f"
+        "sha256": "sha256:1a0cc84ebf58e0da85035ce151b6985459d97d3b48feb27c19084db017f349cf"
       },
       "name": "volicord.advance_task",
       "output_schema": {
@@ -867,30 +827,20 @@
           "GuaranteeLevel",
           "McpAdvanceTaskCompactResult",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpAdvanceTaskCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_AdvanceTaskResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpAdvanceTaskCompactResult",
-          "McpMutationSummaryResponse_for_McpAdvanceTaskCompactResult",
-          "McpMutationWorkflowResponse_for_McpAdvanceTaskCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -953,7 +903,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c1ae83bf6080ef8177e49b18066e11ec91b35964fe95240063a59782559c82da"
+        "sha256": "sha256:935e9486bc8c4ad748651f8871b4ca3e52be684fe7c246fc24b115d0d476d529"
       }
     },
     {
@@ -978,7 +928,7 @@
           "task_id"
         ],
         "root_required": [],
-        "sha256": "sha256:07410d24243642557fa708e7647f55064546acd4ec9eed244e74039d49d7c6a9"
+        "sha256": "sha256:ee7df6846a9473edaf66b7f30bf1b68da505aad854b3462e25409f28cc6904a0"
       },
       "name": "volicord.status",
       "output_schema": {
@@ -1024,12 +974,10 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
@@ -1075,7 +1023,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_StatusResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
@@ -1096,7 +1043,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b44901a4549494b6da44f070202002fb3d16511ad2a7f47e45a17efdc9441661"
+        "sha256": "sha256:daf964b5e20c55a2a14993e92f0fa791d452fd8c832aa02d7dfef8304a36770d"
       }
     },
     {
@@ -1120,7 +1067,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:4b0af465a33de16d9a6108d8a54f3a9bce64be17be38645dd7d551c6e654eb06"
+        "sha256": "sha256:e4f4e19ffac09eee9cc082e1ac698389dc852111b71a6c2022088eb00335131a"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -1135,12 +1082,10 @@
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
           "NonGuarantee",
@@ -1162,7 +1107,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_GetOperationResultResult",
           "UserActionStatus",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -1174,7 +1118,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a59aebaecc60e489a41c601666bed347ccc82172cfee8fc24f5a8aedd1d9e1a6"
+        "sha256": "sha256:bc0f2fb9e830014074a8c979c9ebb044d6f6d4852e7ace907d5e69fd2b4e5ad9"
       }
     },
     {
@@ -1207,7 +1151,7 @@
           "target",
           "task_id"
         ],
-        "sha256": "sha256:59a60165e6ea459adcff13b9d7642e5a896a8bf0e2b0623e85c0747aad2a3cde"
+        "sha256": "sha256:234e33748884316000a76d8489008409eca6e3c0344608c47db895aa99a008ef"
       },
       "name": "volicord.prepare_evidence_capture",
       "output_schema": {
@@ -1232,17 +1176,10 @@
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpPrepareEvidenceCaptureCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpPrepareEvidenceCaptureCompactResult",
-          "McpMutationSummaryResponse_for_McpPrepareEvidenceCaptureCompactResult",
-          "McpMutationWorkflowResponse_for_McpPrepareEvidenceCaptureCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
@@ -1250,13 +1187,10 @@
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1303,7 +1237,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1249896dedf20681ff62db1b5a633704fd5ac5b371290422d16c6f59bfb20c84"
+        "sha256": "sha256:8d7dae4f4a844f3e6e5f5141f8817ee91b10460a8eb027d31c82f34b0b208b70"
       }
     },
     {
@@ -1335,7 +1269,7 @@
           "intended_paths",
           "product_file_write_intended"
         ],
-        "sha256": "sha256:7693ce1d007e660d4a6d66a8889f350be40788ef9c7c567b430e7b66402bc6a8"
+        "sha256": "sha256:a1ded185177a8342868798c9112b1a8b82164981856f2572788e6ad77013f666"
       },
       "name": "volicord.prepare_write",
       "output_schema": {
@@ -1384,17 +1318,10 @@
           "JudgmentKind",
           "JudgmentPresentation",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpPrepareWriteCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_PrepareWriteResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpPrepareWriteCompactResult",
-          "McpMutationSummaryResponse_for_McpPrepareWriteCompactResult",
-          "McpMutationWorkflowResponse_for_McpPrepareWriteCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
@@ -1402,13 +1329,10 @@
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1485,7 +1409,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:22498b023151a99902b038538116d84bd4406ca42f361e681b21b974c1022fa7"
+        "sha256": "sha256:5c4bcc3e6948f3fba6168bdc895451fec1b9c26294568a19128eff43fbdc02fb"
       }
     },
     {
@@ -1520,7 +1444,7 @@
           "safe_bytes_or_notice",
           "task_id"
         ],
-        "sha256": "sha256:5dbed98346db6a2da10faf5a3343fbc843b6d8a65b47c17b2673e1d12a0108a0"
+        "sha256": "sha256:2950225d2b15d37ad5d76421ff5571d9c2b25e59b4b90ea33193f65d3d4ab60d"
       },
       "name": "volicord.stage_artifact",
       "output_schema": {
@@ -1542,17 +1466,10 @@
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpStageArtifactCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_StageArtifactResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpStageArtifactCompactResult",
-          "McpMutationSummaryResponse_for_McpStageArtifactCompactResult",
-          "McpMutationWorkflowResponse_for_McpStageArtifactCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
@@ -1560,13 +1477,10 @@
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1615,7 +1529,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e0e314df46a1cd2dd135667a290911d1a35cfb25c267d7b043c7fe68621637b8"
+        "sha256": "sha256:0cc1eab01a9317ebb9b41532e81bd4d140843ea559e0f6c2b546471e0095fd95"
       }
     },
     {
@@ -1685,7 +1599,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:7dc70130c7d210f189eb6388bfc90eac286aee8a31c78f346b84b7925cbcc740"
+        "sha256": "sha256:e86b4638ef2b8b2702770e8c14a40b4dfb9b937da3afd166c23753a522e285fb"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -1744,17 +1658,10 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpRecordRunCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordRunResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpRecordRunCompactResult",
-          "McpMutationSummaryResponse_for_McpRecordRunCompactResult",
-          "McpMutationWorkflowResponse_for_McpRecordRunCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
@@ -1763,13 +1670,10 @@
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1842,7 +1746,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6fddf7c3d93c600378587e356a81ace8da27ae0dd5a9a7116ed202ce41fa77d5"
+        "sha256": "sha256:10c17a218bb9365ed3c7534b94f3ed4a0f5776dd0dc7bf5ef7ad60d0753f8fc2"
       }
     },
     {
@@ -1883,7 +1787,7 @@
         "root_required": [
           "request"
         ],
-        "sha256": "sha256:b5f996b51b295995b43000161e1b660b99b8e7a8271d229c2e071cdec9e8a8d1"
+        "sha256": "sha256:bab4bb55a599bdfd2602adea408461d9d010b59b7d63839157380d641759930a"
       },
       "name": "volicord.request_user_action",
       "output_schema": {
@@ -1931,17 +1835,10 @@
           "GuaranteeLevel",
           "JudgmentResolutionOutcome",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpRequestUserActionCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_McpRequestUserActionResponse",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpRequestUserActionCompactResult",
-          "McpMutationSummaryResponse_for_McpRequestUserActionCompactResult",
-          "McpMutationWorkflowResponse_for_McpRequestUserActionCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
@@ -1950,15 +1847,12 @@
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserActionResolution",
           "McpUserActionResolutionSummary",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -2025,7 +1919,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:35965f903d3f67dbc1dcf0ae1135d41f97413bae0e63e8325a3c66d6a8d63b0a"
+        "sha256": "sha256:f60466dd5541cc46ed4ff216bfe9e4da4415d2c3fafcb971e2282c1aa35a7c04"
       }
     },
     {
@@ -2051,7 +1945,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:9913c6fba982e6b29317656b85156197d3791a6ea2830705e8c64bb86b56d277"
+        "sha256": "sha256:6bb4f720094e009cda425c54d296ec29dce56e406768a4a0584f4f98e8a5b0bc"
       },
       "name": "volicord.reconcile_changes",
       "output_schema": {
@@ -2097,17 +1991,10 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpReconcileChangesCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_ReconcileChangesResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpReconcileChangesCompactResult",
-          "McpMutationSummaryResponse_for_McpReconcileChangesCompactResult",
-          "McpMutationWorkflowResponse_for_McpReconcileChangesCompactResult",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
@@ -2115,13 +2002,10 @@
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -2193,7 +2077,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0295381368004234f03eb32749e2ba2b1b26ac6971752f60fdf5c315079ff266"
+        "sha256": "sha256:6d0afb5607be576ff09c0995a42179fe41d9d89be0da0b88a7001d049b2daa37"
       }
     },
     {
@@ -2213,7 +2097,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:22b43009c43ecffe17dc055bdbc361203b7d033829e3ebd42b3902fac56b12c7"
+        "sha256": "sha256:6b577d38f3ea05790d7a7484d0bb6ac8aad24722598651dda87d119b97ae41f0"
       },
       "name": "volicord.check_close",
       "output_schema": {
@@ -2259,12 +2143,10 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
@@ -2306,7 +2188,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_CheckCloseResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
@@ -2327,7 +2208,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ae8ab61ee2e993a8309b0d3da8359e628a578ffce097b05d1d5748c1db4c06ee"
+        "sha256": "sha256:a1aa0ff5f9c2eada95760bacacfdc708655db42a5d1a207480c06149c0cbe52d"
       }
     },
     {
@@ -2357,7 +2238,7 @@
           "intent",
           "task_id"
         ],
-        "sha256": "sha256:c068b6d49c301e6fdbf8ee405e85f72c88c70ffbf5495e00cdb2ac5a9d5125f5"
+        "sha256": "sha256:a4cc93fa07337aed59bd847ccb7271f12b964e61a4e5dac380ff9944c8fb5dae"
       },
       "name": "volicord.close_task",
       "output_schema": {
@@ -2406,30 +2287,20 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpAgentStateChange",
-          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_PreviewableToolResponse_for_CloseTaskResult",
-          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
-          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
-          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpTaskPhasePresentation",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "McpUserChannelInstructions",
           "McpWorkflowBlockerSummary",
-          "McpWorkflowDryRunResponse",
           "McpWorkflowPresentation",
-          "McpWorkflowRejectedResponse",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -2500,7 +2371,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:467af4703a74138992c883505537fbed8beaffd195cc7c61720d8c8efeb39b68"
+        "sha256": "sha256:a0b5c793a2c6973e04e52b1d13992f1e76b12d587d8553b421880db930537215"
       }
     },
     {
@@ -2515,22 +2386,20 @@
         "definitions": [],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa"
+        "sha256": "sha256:9961d2693da9254197dc67dcd4874148a2a0fe3dc8f95c2035850c6041781607"
       },
       "name": "volicord.list_projects",
       "output_schema": {
         "definitions": [
           "AgentConnectionMode",
-          "ListProjectItem",
-          "ListProjectsResult",
+          "McpListProjectItem",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:82213bb9325f1506e344874edb8e61e1f07a5f76de48d8d96e022049daa92bbd"
+        "sha256": "sha256:c3d9263f9d47bdbd68ef93acc6500daf2640c1ab87a2e75579d224f7768939a7"
       }
     },
     {
@@ -2547,12 +2416,11 @@
           "project_selector"
         ],
         "root_required": [],
-        "sha256": "sha256:06bc1a7eb1927fe9a7725f2d61de9b6a99bea15b59443cd5659769bea63c1b66"
+        "sha256": "sha256:563103ecf80951014a2149a19718f01b763a5ba1b26bb5c315301f29f1ccaee0"
       },
       "name": "volicord.begin_integration_verification",
       "output_schema": {
         "definitions": [
-          "BeginIntegrationVerificationResult",
           "GuardIntegrationVerificationFinding",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
@@ -2561,13 +2429,12 @@
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:36da68e3b7b1ffe9bee238097a7a8aca71810d80f0d00c8e83e7a93b5b3d81a7"
+        "sha256": "sha256:cbb1b68bf87e77a5ecd99fe4cc941127a6285d1f132f432ed5d602fa4667d0f3"
       }
     },
     {
@@ -2586,13 +2453,12 @@
         "root_required": [
           "verification_id"
         ],
-        "sha256": "sha256:343394f366c2fba69c60ab297780c39bfb2ff0317090ccc6fb171460c5d1e246"
+        "sha256": "sha256:9bd76ee6685aebb3e307cf1437923509452e71f78738cf25e5ce5e2f3212347c"
       },
       "name": "volicord.guard_probe",
       "output_schema": {
         "definitions": [
           "GuardIntegrationVerificationFinding",
-          "GuardProbeResult",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
@@ -2600,13 +2466,12 @@
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:167587db3be02e8e0a7e799f24993b9911b6e5edbc122ef90dd6295c4046a22b"
+        "sha256": "sha256:3df7d6deb49f997f6b9b25359593b525b9b7477b8c959c5d0b5e536ca6cd8761"
       }
     },
     {
@@ -2625,12 +2490,11 @@
         "root_required": [
           "verification_id"
         ],
-        "sha256": "sha256:343394f366c2fba69c60ab297780c39bfb2ff0317090ccc6fb171460c5d1e246"
+        "sha256": "sha256:9bd76ee6685aebb3e307cf1437923509452e71f78738cf25e5ce5e2f3212347c"
       },
       "name": "volicord.get_integration_verification",
       "output_schema": {
         "definitions": [
-          "GetIntegrationVerificationResult",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationPhaseStatus",
           "GuardIntegrationVerificationPhases",
@@ -2641,13 +2505,12 @@
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c28729fbc4d17efd9f9df23032f73aa2a38f4a51a54de287618bbd31a20654f9"
+        "sha256": "sha256:ead21c7ac7b59db1dcd921c0fb180fd7ae7d28f8f6e7d5b73363727bd2cb224a"
       }
     }
   ]

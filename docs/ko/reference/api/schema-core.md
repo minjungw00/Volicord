@@ -40,8 +40,10 @@
 `volicord-types`는 이 문서가 설명하는 adapter-neutral 공개 schema 계열을 구현합니다.
 여기에서 생성하는 공개 메서드 schema에는 MCP 요청 wrapper, MCP 오류 identity,
 structured-content union, 도구 정의 envelope, JSON-RPC field가 없습니다. 생성 wire
-schema와 정확한 직렬화 규칙은 `volicord-mcp-wire`가 담당하고 semantic profile 선택은
-`volicord-mcp-protocol`이 담당합니다.
+schema와 정확한 직렬화 규칙은 `volicord-mcp-wire`가 담당합니다. 도구별 의미 descriptor는
+명시적인 MCP discriminator, 필수 nullable metadata, description, semantic type, typed
+canonical example, 검증, MCP 문서 생성을 단일 entry에서 담당합니다. Semantic profile
+선택은 `volicord-mcp-protocol`이 담당합니다.
 
 Core 소유 MCP 도구의 정규 `AgentToolId` identity는 기존 `MethodName` domain을 재사용하고
 안정적인 MCP wire 이름을 투영합니다. Adapter utility도 같은 폐쇄형 identity catalog에
@@ -142,11 +144,12 @@ ToolEnvelope:
 <a id="common-response"></a>
 ## 공통 응답 분기
 
-이 응답 schema는 전송 carrier와 독립된 정식 공개 결과 본문을 정의합니다. MCP 어댑터는
-같은 객체를 유지하고 선택한 protocol profile이 허용하는 carrier로 projection합니다.
-`toolResult`, `content`, `structuredContent`, MCP `isError`는
-[MCP 전송](../mcp-transport.md)이 담당하는 전송 필드입니다. 이 필드는 API 결과 본문의
-필드를 추가, 제거, 재해석하지 않으며 Core 분기 의미도 바꾸지 않습니다.
+이 응답 schema는 전송 carrier와 독립된 정식 공개 결과 본문을 정의합니다. MCP
+어댑터는 그 본문을 선택한 protocol profile이 허용하는 structured object 안에 넣고,
+MCP wrapper는 메서드 결과 본문 바깥에 필수 `result_type` discriminator를 추가합니다.
+`toolResult`, `content`, `structuredContent`, `result_type`, MCP `isError`는
+[MCP 전송](../mcp-transport.md)이 담당하는 전송 필드입니다. 이 필드는 API 결과 본문
+안의 필드를 추가, 제거, 재해석하지 않으며 Core 분기 의미도 바꾸지 않습니다.
 
 공개 메서드 응답은 정확히 하나의 분기를 사용합니다.
 

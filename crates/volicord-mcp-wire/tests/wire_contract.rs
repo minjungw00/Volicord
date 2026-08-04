@@ -83,7 +83,8 @@ fn wire_owner_generates_mcp_schemas_while_public_schemas_stay_neutral() {
     assert_eq!(request["type"], "object");
     assert_eq!(response["type"], "object");
     let response_text = serde_json::to_string(&response).expect("response schema");
-    assert!(response_text.contains("McpOperationalFailure"));
+    assert!(response_text.contains("result_type"));
+    assert!(response_text.contains("operational_failure"));
     assert!(response_text.contains("MCP_UNAVAILABLE"));
 
     for method in MethodName::ALL {
@@ -191,12 +192,14 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
         })
     };
     let rejection = json!({
+        "result_type": "rejected",
         "method_result": rejection_method,
         "authority_receipt": authority_receipt,
         "workflow": workflow,
         "presentation": presentation("rejected")
     });
     let preview = json!({
+        "result_type": "dry_run",
         "method_result": preview_method,
         "authority_receipt": authority_receipt,
         "workflow": workflow,

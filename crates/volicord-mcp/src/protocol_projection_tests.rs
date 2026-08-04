@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use crate::routing::McpStorageCapability;
-use crate::schema_validation::validate_mcp_tool_output;
 use crate::tool_registry::{
     mcp_tools_for_mode_and_storage_with_detail, CanonicalContent, CanonicalToolResult,
     ToolSchemaDetail,
@@ -373,10 +372,6 @@ fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
                 structured_content: body.clone(),
                 is_error,
             };
-            if profile.tools().structured_content() {
-                validate_mcp_tool_output(AgentToolId::STATUS.wire_name(), body)
-                    .expect("structured output should match the advertised runtime schema");
-            }
             let projected = canonical
                 .project(profile.capabilities())
                 .expect("canonical result should project")
@@ -565,7 +560,12 @@ fn integration_verification_results_validate_for_every_production_profile() {
             .expect("integration-verification tool definition")
             .output_schema;
         for body in bodies {
-            validate_schema(schema, schema, &body, 0).unwrap_or_else(|error| {
+            let mut tagged = body;
+            tagged
+                .as_object_mut()
+                .expect("integration result object")
+                .insert("result_type".to_owned(), json!("response"));
+            validate_schema(schema, schema, &tagged, 0).unwrap_or_else(|error| {
                 panic!("{} public output schema: {error}", tool.wire_name())
             });
         }
@@ -592,6 +592,11 @@ fn integration_verification_results_validate_for_every_production_profile() {
             "tool": AgentToolId::GUARD_PROBE.wire_name(),
         })),
     ] {
+        let mut contradictory = contradictory;
+        contradictory
+            .as_object_mut()
+            .expect("integration result object")
+            .insert("result_type".to_owned(), json!("response"));
         assert!(
             validate_schema(begin_schema, begin_schema, &contradictory, 0).is_err(),
             "tagged workflow schema must reject contradictory state fields"

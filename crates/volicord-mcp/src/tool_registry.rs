@@ -1,8 +1,6 @@
 use crate::routing::{
-    effective_tool_mode_for_mode_and_storage, list_projects_output_schema, McpEffectiveToolMode,
-    McpStorageCapability,
+    effective_tool_mode_for_mode_and_storage, McpEffectiveToolMode, McpStorageCapability,
 };
-use schemars::schema_for;
 use serde::Serialize;
 use serde_json::json;
 use serde_json::{Map, Value};
@@ -10,13 +8,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use volicord_host_contract::{HostContractError, McpServerKey, McpToolCatalog};
 use volicord_mcp_protocol::{McpProtocolCapabilities, ToolResultCarrier};
 use volicord_mcp_wire::{
-    mcp_request_schema, mcp_response_schema, McpToolAnnotations, McpToolDefinitionEnvelope,
-    McpToolResultEnvelope, McpToolStructuredContent,
+    mcp_tool_contract, McpToolAnnotations, McpToolDefinitionEnvelope, McpToolResultEnvelope,
 };
-use volicord_types::integration_verification::{
-    BeginIntegrationVerificationArguments, BeginIntegrationVerificationResult,
-    GetIntegrationVerificationResult, GuardProbeResult, IntegrationVerificationIdArguments,
-};
+#[cfg(test)]
+use volicord_mcp_wire::{CanonicalSchemaExample, McpToolContractDescriptor};
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{AgentConnectionMode, MethodName};
 
@@ -191,248 +186,12 @@ pub(crate) enum ToolSchemaDetail {
     Documentation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct McpToolExample {
-    pub id: &'static str,
-    pub description: &'static str,
-    pub arguments_json: &'static str,
+#[cfg(test)]
+pub(crate) fn canonical_tool_examples(tool: AgentToolId) -> &'static [CanonicalSchemaExample] {
+    mcp_tool_contract(tool)
+        .map(McpToolContractDescriptor::canonical_examples)
+        .unwrap_or_default()
 }
-
-const INTAKE_CREATE_NEW_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Create an onboarding checklist.","requested_mode":"work","resume_policy":"create_new","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Onboarding checklist setup.","non_goals":[],"acceptance_criteria":[{"statement":"The checklist is available to new workspace users.","evidence_requirement":"required"}]}}"#;
-const INTAKE_RESUME_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Continue the active onboarding checklist work.","requested_mode":"auto","resume_policy":"resume_active","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Continue the current onboarding checklist scope.","non_goals":[],"acceptance_criteria":[]}}"#;
-const INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Replace the active onboarding work with the revised checklist.","requested_mode":"work","resume_policy":"supersede_active","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Revised onboarding checklist setup.","non_goals":["Changing account creation."],"acceptance_criteria":[{"statement":"The revised checklist replaces the active work.","evidence_requirement":"required"}]}}"#;
-const INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Start an onboarding checklist only when no Task is active.","requested_mode":"advisor","resume_policy":"reject_if_active","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Onboarding checklist guidance.","non_goals":[],"acceptance_criteria":[{"statement":"Provide onboarding checklist guidance.","evidence_requirement":"not_required"}]}}"#;
-
-pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID: &str = "keep_current_change_unit";
-pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON: &str =
-    r#"{"task_id":"task_filter_001","change_unit":{"operation":"keep_current"}}"#;
-const UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_002","goal_summary":"Limit saved search filters.","scope_update":{"include":["Saved-filter owner and label edits."],"exclude":[]},"scope_boundary":"Saved-filter owner and label edits.","acceptance_criteria":[{"acceptance_criterion_id":null,"statement":"Saved filters reject out-of-scope edits.","evidence_requirement":"required"}],"baseline_ref":"baseline_filter_002","change_unit":{"operation":"create_current","scope_summary":"Saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
-const UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_003","scope_boundary":"Saved-filter owner, label, and visibility edits.","baseline_ref":"baseline_filter_003","change_unit":{"operation":"replace_current","scope_summary":"Expanded saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
-
-const RECORD_SHAPING_CHECKPOINT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_shape_001","checkpoint_operation":{"operation":"create_initial"},"scope_revision":4,"baseline_ref":"baseline_shape_001","summary":"The implementation boundary and open decisions are recorded.","implementation_boundary":"Implement only the current saved-filter scope.","gaps":[],"source_refs":[],"evidence_refs":[]}"#;
-const FINALIZE_ADVICE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_advice_001","shaping_checkpoint_id":"shaping_checkpoint_advice_001","change_unit_id":"change_unit_advice_001","scope_revision":2,"baseline_ref":"baseline_advice_001","user_action_resolution_ids":[],"result_summary":"The current advisory result is finalized.","result_refs":[],"evidence_refs":[],"residual_risks":[],"recovery_constraints":[]}"#;
-const ADVANCE_TASK_ARGUMENTS_JSON: &str = r#"{"task_id":"task_shape_001","shaping_checkpoint_id":"shaping_checkpoint_001","change_unit_id":"change_unit_001","scope_revision":4,"baseline_ref":"baseline_shape_001","user_action_resolution_ids":[]}"#;
-
-pub(crate) const STATUS_READ_ONLY_EXAMPLE_ID: &str = "read_only_status";
-const STATUS_SUMMARY_ARGUMENTS_JSON: &str = r#"{"detail":"summary"}"#;
-pub(crate) const STATUS_READ_ONLY_ARGUMENTS_JSON: &str = r#"{"detail":"workflow"}"#;
-const STATUS_FULL_ARGUMENTS_JSON: &str = r#"{"detail":"full"}"#;
-
-pub(crate) const GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID: &str = "first_operation_result_page";
-const GET_OPERATION_RESULT_FIRST_PAGE_ARGUMENTS_JSON: &str = r#"{"operation_result_ref":{"project_id":"proj_history_001","source_method":"volicord.record_run","source_idempotency_key":"idem_run_history_001","committed_state_version":42,"response_sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","response_size_bytes":32768}}"#;
-
-pub(crate) const PREPARE_WRITE_SIMPLE_EXAMPLE_ID: &str = "simple_prepare_write";
-pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = r#"{"detail":"full","intended_operation":"Update the profile preference save flow.","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"baseline_ref":"baseline_pref_001"}"#;
-
-pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID: &str =
-    "verified_command_capture";
-pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"verified_command_execution","command_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","command_label":"Focused validation"}}"#;
-pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID: &str = "verified_tool_capture";
-const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"verified_tool_invocation","tool_name":"example.validate","tool_input_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}"#;
-
-const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"detail":"full","task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
-
-pub(crate) const RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID: &str = "evidence_bearing_record_run";
-pub(crate) const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation reviewed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"coverage_state":"supported"}],"evidence_observations":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"source_kind":"agent_report","assurance_level":"cooperative_report","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation reviewed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
-
-pub(crate) const REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID: &str = "final_acceptance_request";
-pub(crate) const REQUEST_USER_ACTION_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str = r#"{"request":{"operation":"create","task_id":"task_close_001","change_unit_id":null,"action":{"action_type":"choice","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","options":null,"context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"affected_refs":[],"sensitive_action_scope":null},"required_for":["close_complete"],"expires_at":null}}"#;
-const REQUEST_USER_ACTION_RESUME_ARGUMENTS_JSON: &str =
-    r#"{"request":{"operation":"resume","user_action_request_id":"uact_existing_001"}}"#;
-
-const RECONCILE_CHANGES_ARGUMENTS_JSON: &str =
-    r#"{"detail":"full","task_id":"task_reconcile_001"}"#;
-
-pub(crate) const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
-    "check_close_missing_final_acceptance";
-pub(crate) const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str =
-    r#"{"task_id":"task_close_001"}"#;
-
-const CLOSE_TASK_COMPLETE_ARGUMENTS_JSON: &str =
-    r#"{"task_id":"task_close_001","intent":"complete","close_reason":"completed_self_checked"}"#;
-const CLOSE_TASK_CANCEL_ARGUMENTS_JSON: &str =
-    r#"{"task_id":"task_cancel_001","intent":"cancel","close_reason":"cancelled"}"#;
-const CLOSE_TASK_SUPERSEDE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_supersede_001","intent":"supersede","close_reason":"superseded","superseding_task_id":"task_replacement_001"}"#;
-
-const INTAKE_EXAMPLES: [McpToolExample; 4] = [
-    McpToolExample {
-        id: "create_new",
-        description: "Create a new Task when no active Task should be resumed.",
-        arguments_json: INTAKE_CREATE_NEW_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "resume_active",
-        description: "Resume the active Task.",
-        arguments_json: INTAKE_RESUME_ACTIVE_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "supersede_active",
-        description: "Supersede the active Task with revised work.",
-        arguments_json: INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "reject_if_active",
-        description: "Reject intake when a Task is already active.",
-        arguments_json: INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON,
-    },
-];
-
-const UPDATE_SCOPE_EXAMPLES: [McpToolExample; 3] = [
-    McpToolExample {
-        id: UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
-        description: "Keep the current Change Unit and leave omitted scope fields unchanged.",
-        arguments_json: UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "create_current_change_unit",
-        description: "Create a current Change Unit for the updated scope.",
-        arguments_json: UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "replace_current_change_unit",
-        description: "Replace the current Change Unit for revised scope.",
-        arguments_json: UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON,
-    },
-];
-
-const RECORD_SHAPING_CHECKPOINT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: "record_current_shaping",
-    description: "Explicitly create the initial current shaping checkpoint.",
-    arguments_json: RECORD_SHAPING_CHECKPOINT_ARGUMENTS_JSON,
-}];
-
-const FINALIZE_ADVICE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: "finalize_current_advice",
-    description: "Finalize the current advisor result and checkpoint-backed close basis.",
-    arguments_json: FINALIZE_ADVICE_ARGUMENTS_JSON,
-}];
-
-const ADVANCE_TASK_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: "enter_implementation",
-    description: "Advance one ready work Task into implementation.",
-    arguments_json: ADVANCE_TASK_ARGUMENTS_JSON,
-}];
-
-const STATUS_EXAMPLES: [McpToolExample; 3] = [
-    McpToolExample {
-        id: "summary_status",
-        description: "Read the compact status summary.",
-        arguments_json: STATUS_SUMMARY_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: STATUS_READ_ONLY_EXAMPLE_ID,
-        description: "Read the normal workflow status view.",
-        arguments_json: STATUS_READ_ONLY_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "full_status",
-        description: "Read the full status view including continuity detail.",
-        arguments_json: STATUS_FULL_ARGUMENTS_JSON,
-    },
-];
-
-const GET_OPERATION_RESULT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID,
-    description: "Read the first bounded page of one immutable historical mutation response.",
-    arguments_json: GET_OPERATION_RESULT_FIRST_PAGE_ARGUMENTS_JSON,
-}];
-
-const PREPARE_WRITE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-    description: "Check one Product Repository write intent.",
-    arguments_json: PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON,
-}];
-
-const PREPARE_EVIDENCE_CAPTURE_EXAMPLES: [McpToolExample; 2] = [
-    McpToolExample {
-        id: PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
-        description: "Create an intent for a registered command evidence source.",
-        arguments_json: PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID,
-        description: "Create an intent for an exact registered tool invocation.",
-        arguments_json: PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON,
-    },
-];
-
-const STAGE_ARTIFACT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: "stage_safe_text",
-    description: "Stage a text attachment input.",
-    arguments_json: STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON,
-}];
-
-const RECORD_RUN_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
-    description: "Record target-scoped evidence and a close assessment.",
-    arguments_json: RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON,
-}];
-
-const REQUEST_USER_ACTION_EXAMPLES: [McpToolExample; 2] = [
-    McpToolExample {
-        id: REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
-        description: "Create final acceptance through the common user-action model.",
-        arguments_json: REQUEST_USER_ACTION_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "resume_user_action",
-        description:
-            "Resume the original exact Agent Connection result after a later CLI inbox resolution.",
-        arguments_json: REQUEST_USER_ACTION_RESUME_ARGUMENTS_JSON,
-    },
-];
-
-const RECONCILE_CHANGES_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: "reconcile_current_task",
-    description: "Reconcile the current Task without an agent-supplied resolution request.",
-    arguments_json: RECONCILE_CHANGES_ARGUMENTS_JSON,
-}];
-
-const CHECK_CLOSE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
-    description: "Read current close readiness for one Task.",
-    arguments_json: CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
-}];
-
-const CLOSE_TASK_EXAMPLES: [McpToolExample; 3] = [
-    McpToolExample {
-        id: "close_complete",
-        description: "Request the completion close path.",
-        arguments_json: CLOSE_TASK_COMPLETE_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "close_cancel",
-        description: "Request the cancellation close path.",
-        arguments_json: CLOSE_TASK_CANCEL_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: "close_supersede",
-        description: "Request the supersession close path.",
-        arguments_json: CLOSE_TASK_SUPERSEDE_ARGUMENTS_JSON,
-    },
-];
-
-pub(crate) fn canonical_tool_examples(tool: AgentToolId) -> &'static [McpToolExample] {
-    match tool.method() {
-        Some(MethodName::Intake) => &INTAKE_EXAMPLES,
-        Some(MethodName::UpdateScope) => &UPDATE_SCOPE_EXAMPLES,
-        Some(MethodName::RecordShapingCheckpoint) => &RECORD_SHAPING_CHECKPOINT_EXAMPLES,
-        Some(MethodName::FinalizeAdvice) => &FINALIZE_ADVICE_EXAMPLES,
-        Some(MethodName::AdvanceTask) => &ADVANCE_TASK_EXAMPLES,
-        Some(MethodName::Status) => &STATUS_EXAMPLES,
-        Some(MethodName::GetOperationResult) => &GET_OPERATION_RESULT_EXAMPLES,
-        Some(MethodName::PrepareEvidenceCapture) => &PREPARE_EVIDENCE_CAPTURE_EXAMPLES,
-        Some(MethodName::PrepareWrite) => &PREPARE_WRITE_EXAMPLES,
-        Some(MethodName::StageArtifact) => &STAGE_ARTIFACT_EXAMPLES,
-        Some(MethodName::RecordRun) => &RECORD_RUN_EXAMPLES,
-        Some(MethodName::RequestUserAction) => &REQUEST_USER_ACTION_EXAMPLES,
-        Some(MethodName::ReconcileChanges) => &RECONCILE_CHANGES_EXAMPLES,
-        Some(MethodName::CheckClose) => &CHECK_CLOSE_EXAMPLES,
-        Some(MethodName::CloseTask) => &CLOSE_TASK_EXAMPLES,
-        None | Some(MethodName::ResolveUserAction) => &[],
-    }
-}
-
 pub fn public_method_tools() -> Vec<CanonicalToolDefinition> {
     tool_definitions(
         AgentToolId::ALL
@@ -604,72 +363,33 @@ pub(crate) fn tool_definitions(
 ) -> Vec<CanonicalToolDefinition> {
     tools
         .into_iter()
-        .map(|id| CanonicalToolDefinition {
-            id,
-            title: None,
-            description: tool_description(id, detail),
-            input_schema: mcp_tool_input_schema_with_detail(id, detail)
-                .expect("MCP tool schema should exist"),
-            output_schema: match detail {
-                ToolSchemaDetail::RuntimeCompact => compact_output_schema(),
-                ToolSchemaDetail::Documentation => match id.owner() {
-                    AgentToolOwner::CoreMethod(_) => {
-                        mcp_response_schema(id).expect("MCP tool response schema should exist")
-                    }
-                    AgentToolOwner::AdapterUtility => list_projects_output_schema(),
-                    AgentToolOwner::ConnectionIntegration => {
-                        integration_verification_output_schema(id)
-                    }
+        .map(|id| {
+            let contract = mcp_tool_contract(id).expect("MCP semantic contract should exist");
+            CanonicalToolDefinition {
+                id,
+                title: None,
+                description: match detail {
+                    ToolSchemaDetail::RuntimeCompact => contract.compact_description(),
+                    ToolSchemaDetail::Documentation => contract.documentation_description(),
                 },
-            },
-            annotations: tool_annotations(id),
-            metadata: None,
+                input_schema: mcp_tool_input_schema_with_detail(id, detail)
+                    .expect("MCP tool schema should exist"),
+                output_schema: match detail {
+                    ToolSchemaDetail::RuntimeCompact => contract.compact_output_schema(),
+                    ToolSchemaDetail::Documentation => contract.output_schema(),
+                },
+                annotations: tool_annotations(id),
+                metadata: None,
+            }
         })
         .collect()
 }
 
-pub(crate) fn compact_output_schema() -> Value {
-    json!({ "type": "object" })
-}
-
-pub(crate) fn mcp_tool_output_schema(name: &str) -> Option<Value> {
-    AgentToolId::from_wire_name(name)
-        .ok()
-        .map(|_| compact_output_schema())
-}
-
-pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
-    let tool = AgentToolId::from_wire_name(name).ok()?;
-    mcp_tool_input_schema_with_detail(tool, ToolSchemaDetail::Documentation)
-}
-
 fn mcp_tool_input_schema_with_detail(tool: AgentToolId, detail: ToolSchemaDetail) -> Option<Value> {
-    let mut schema = match tool.owner() {
-        AgentToolOwner::AdapterUtility => json!({
-            "type": "object",
-            "properties": {},
-            "additionalProperties": false
-        }),
-        AgentToolOwner::ConnectionIntegration => integration_verification_input_schema(tool),
-        AgentToolOwner::CoreMethod(_) => mcp_request_schema(tool)?,
-    };
+    let mut schema = mcp_tool_contract(tool)?.input_schema();
     match detail {
         ToolSchemaDetail::RuntimeCompact => compact_runtime_schema(&mut schema),
-        ToolSchemaDetail::Documentation => {
-            let examples = canonical_tool_examples(tool)
-                .iter()
-                .map(|example| {
-                    serde_json::from_str(example.arguments_json)
-                        .expect("canonical MCP tool example should be valid JSON")
-                })
-                .collect::<Vec<Value>>();
-            if !examples.is_empty() {
-                schema
-                    .as_object_mut()
-                    .expect("MCP tool input schema should be an object")
-                    .insert("examples".to_owned(), Value::Array(examples));
-            }
-        }
+        ToolSchemaDetail::Documentation => {}
     }
     Some(schema)
 }
@@ -1089,163 +809,6 @@ fn tool_annotations(tool: AgentToolId) -> McpToolAnnotations {
         annotations.idempotent_hint = true;
     }
     annotations
-}
-
-pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &'static str {
-    match (detail, tool) {
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::INTAKE) => {
-            "Start or resume work and return its authority state."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::UPDATE_SCOPE) => {
-            "Update Task scope and Change Unit when current workflow permits."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECORD_SHAPING_CHECKPOINT) => {
-            "Record current shaping or recover stale shaping authority."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::FINALIZE_ADVICE) => {
-            "Finalize the current advisor result and close basis."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::ADVANCE_TASK) => {
-            "Explicitly advance ready work from shaping to implementation."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::STATUS) => {
-            "Refresh unknown Task authority, blockers, and next action."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::GET_OPERATION_RESULT) => {
-            "Read one bounded immutable mutation-result page."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::PREPARE_EVIDENCE_CAPTURE) => {
-            "Before capture, register an evidence intent; this records no Evidence."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::PREPARE_WRITE) => {
-            "Before editing, check Product Repository paths and get a write decision."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::STAGE_ARTIFACT) => {
-            "Stage an Evidence attachment; staging records no Evidence."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECORD_RUN) => {
-            "After work, record its Run, changes, and evidence."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::REQUEST_USER_ACTION) => {
-            "Create or resume one user action; complete pending requests through `volicord inbox`."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECONCILE_CHANGES) => {
-            "Reconcile unresolved Product Repository changes with current authority."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::CHECK_CLOSE) => {
-            "Read close readiness without requesting a terminal change."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::CLOSE_TASK) => {
-            "Request completion, cancellation, or supersession to end the Task."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::LIST_PROJECTS) => {
-            "List projects available to this MCP connection."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::BEGIN_INTEGRATION_VERIFICATION) => {
-            "Begin or resume an in-chat MCP and Guard verification for this managed turn."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::GUARD_PROBE) => {
-            "Acknowledge the exact probe observed by Guard pre-tool and post-tool hooks."
-        }
-        (ToolSchemaDetail::RuntimeCompact, AgentToolId::GET_INTEGRATION_VERIFICATION) => {
-            "Read the exact correlated in-chat integration verification."
-        }
-        (_, AgentToolId::INTAKE) => {
-            "Start, resume, supersede, or reject an ordinary user work loop."
-        }
-        (_, AgentToolId::UPDATE_SCOPE) => {
-            "Update the current Task scope and keep, create, or replace its current Change Unit."
-        }
-        (_, AgentToolId::RECORD_SHAPING_CHECKPOINT) => {
-            "Atomically record or replace current shaping authority, preserve compatible applications, and retire or reissue exact stale authority with fresh UserAction identity."
-        }
-        (_, AgentToolId::FINALIZE_ADVICE) => {
-            "Apply exact current advisor decisions and finalize the current advisor result and checkpoint-backed close basis."
-        }
-        (_, AgentToolId::ADVANCE_TASK) => {
-            "Advance an exact ready work Task checkpoint and current Change Unit into implementation."
-        }
-        (_, AgentToolId::STATUS) => {
-            "Read the current Core status view without creating Core authority state."
-        }
-        (_, AgentToolId::GET_OPERATION_RESULT) => {
-            "Read one bounded page of an immutable historical mutation response; read current status separately."
-        }
-        (_, AgentToolId::PREPARE_EVIDENCE_CAPTURE) => {
-            "Create a short-lived, current-basis intent for a registered evidence source. This does not execute the source or record Evidence."
-        }
-        (_, AgentToolId::PREPARE_WRITE) => {
-            "Check a proposed Product Repository write against current Core scope. The default result includes the decision and any issued write ticket."
-        }
-        (_, AgentToolId::STAGE_ARTIFACT) => {
-            "Prepare an Evidence attachment input; staging alone is not recorded Evidence. The default compact result includes the staged handle and expiry."
-        }
-        (_, AgentToolId::RECORD_RUN) => {
-            "Record execution and evidence. Mode/kind: direct/direct or work/implementation."
-        }
-        (_, AgentToolId::REQUEST_USER_ACTION) => {
-            "Create or resume one focused user action. MCP returns only a bounded pending summary; user-owned delivery and resolution use `volicord inbox`."
-        }
-        (_, AgentToolId::RECONCILE_CHANGES) => {
-            "Reconcile unresolved Product Repository changes without agent-only dismissal. The default result includes per-finding outcomes."
-        }
-        (_, AgentToolId::CHECK_CLOSE) => {
-            "Read current close readiness without requesting a terminal mutation."
-        }
-        (_, AgentToolId::CLOSE_TASK) => {
-            "Request the complete, cancel, or supersede terminal path for one Task."
-        }
-        (_, AgentToolId::LIST_PROJECTS) => {
-            "List projects explicitly allowed for this MCP connection."
-        }
-        (_, AgentToolId::BEGIN_INTEGRATION_VERIFICATION) => {
-            "Create or resume the one immutable integration-verification attempt for the current semantic coordinate; returns the authoritative tagged workflow state and its exact typed operation."
-        }
-        (_, AgentToolId::GUARD_PROBE) => {
-            "Record or replay a first-write-wins MCP probe acknowledgement and return the authoritative tagged workflow state without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse."
-        }
-        (_, AgentToolId::GET_INTEGRATION_VERIFICATION) => {
-            "Observe the authoritative tagged workflow state under the semantic host policy; the bounded read may persist a typed terminal repair reason when expected same-turn Guard correlation is absent or incompatible."
-        }
-        _ => unreachable!("AgentToolId cannot contain a non-MCP MethodName"),
-    }
-}
-
-fn integration_verification_input_schema(tool: AgentToolId) -> Value {
-    match tool {
-        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => {
-            serde_json::to_value(schema_for!(BeginIntegrationVerificationArguments))
-                .expect("begin integration-verification schema serializes")
-        }
-        AgentToolId::GUARD_PROBE | AgentToolId::GET_INTEGRATION_VERIFICATION => {
-            serde_json::to_value(schema_for!(IntegrationVerificationIdArguments))
-                .expect("integration-verification ID schema serializes")
-        }
-        _ => unreachable!("connection-integration owner has an exact input schema"),
-    }
-}
-
-fn integration_verification_output_schema(tool: AgentToolId) -> Value {
-    let mut schema = match tool {
-        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => serde_json::to_value(schema_for!(
-            McpToolStructuredContent<BeginIntegrationVerificationResult>
-        ))
-        .expect("begin integration-verification result schema serializes"),
-        AgentToolId::GUARD_PROBE => {
-            serde_json::to_value(schema_for!(McpToolStructuredContent<GuardProbeResult>))
-                .expect("Guard probe result schema serializes")
-        }
-        AgentToolId::GET_INTEGRATION_VERIFICATION => serde_json::to_value(schema_for!(
-            McpToolStructuredContent<GetIntegrationVerificationResult>
-        ))
-        .expect("get integration-verification result schema serializes"),
-        _ => unreachable!("connection-integration owner has an exact output schema"),
-    };
-    schema
-        .as_object_mut()
-        .expect("integration-verification output schema has an object root")
-        .insert("type".to_owned(), Value::String("object".to_owned()));
-    schema
 }
 
 fn valid_mcp_tool_name(name: &str) -> bool {

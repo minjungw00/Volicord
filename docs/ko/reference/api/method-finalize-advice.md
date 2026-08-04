@@ -36,6 +36,10 @@ aggregate close-basis transaction은 `stable`입니다.
 | `user_action_resolution_ids` | 예 | 아니요 | `string[]` |
 <!-- END GENERATED: contract-structures api.method.finalize_advice.request[params] -->
 
+위 생성 표는 adapter-neutral 메서드 요청입니다. 사용자 결정 없음, 정확한 accepted
+resolution, evidence, residual risk 사례의 MCP wire projection과 typed canonical example은
+[MCP 전송](../mcp-transport.md#generated-semantic-schema-catalog)에 catalog로 표시된 단일 의미 descriptor에서 나옵니다.
+
 요청은 정확한 `shaping_checkpoint_id`, 현재 비쓰기 `change_unit_id`, `scope_revision`,
 non-null `baseline_ref`, 완전한 `user_action_resolution_ids`, `result_summary`, 지원되는
 `result_refs`와 `evidence_refs`, `residual_risks`, `recovery_constraints`를 직접 받습니다.

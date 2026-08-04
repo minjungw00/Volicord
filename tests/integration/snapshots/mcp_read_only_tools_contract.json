@@ -42,7 +42,7 @@
           "task_id"
         ],
         "root_required": [],
-        "sha256": "sha256:07410d24243642557fa708e7647f55064546acd4ec9eed244e74039d49d7c6a9"
+        "sha256": "sha256:ee7df6846a9473edaf66b7f30bf1b68da505aad854b3462e25409f28cc6904a0"
       },
       "name": "volicord.status",
       "output_schema": {
@@ -88,12 +88,10 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
@@ -139,7 +137,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_StatusResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
@@ -160,7 +157,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b44901a4549494b6da44f070202002fb3d16511ad2a7f47e45a17efdc9441661"
+        "sha256": "sha256:daf964b5e20c55a2a14993e92f0fa791d452fd8c832aa02d7dfef8304a36770d"
       }
     },
     {
@@ -184,7 +181,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:4b0af465a33de16d9a6108d8a54f3a9bce64be17be38645dd7d551c6e654eb06"
+        "sha256": "sha256:e4f4e19ffac09eee9cc082e1ac698389dc852111b71a6c2022088eb00335131a"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -199,12 +196,10 @@
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
           "NonGuarantee",
@@ -226,7 +221,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_GetOperationResultResult",
           "UserActionStatus",
           "WorkPhase",
           "WorkflowBlockingReason",
@@ -238,7 +232,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a59aebaecc60e489a41c601666bed347ccc82172cfee8fc24f5a8aedd1d9e1a6"
+        "sha256": "sha256:bc0f2fb9e830014074a8c979c9ebb044d6f6d4852e7ace907d5e69fd2b4e5ad9"
       }
     },
     {
@@ -258,7 +252,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:22b43009c43ecffe17dc055bdbc361203b7d033829e3ebd42b3902fac56b12c7"
+        "sha256": "sha256:6b577d38f3ea05790d7a7484d0bb6ac8aad24722598651dda87d119b97ae41f0"
       },
       "name": "volicord.check_close",
       "output_schema": {
@@ -304,12 +298,10 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "McpOperationalErrorCode",
-          "McpOperationalFailure",
           "McpOperationalOperation",
           "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
@@ -351,7 +343,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultOrRejected_for_CheckCloseResult",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
@@ -372,7 +363,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ae8ab61ee2e993a8309b0d3da8359e628a578ffce097b05d1d5748c1db4c06ee"
+        "sha256": "sha256:a1aa0ff5f9c2eada95760bacacfdc708655db42a5d1a207480c06149c0cbe52d"
       }
     },
     {
@@ -387,22 +378,20 @@
         "definitions": [],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa"
+        "sha256": "sha256:9961d2693da9254197dc67dcd4874148a2a0fe3dc8f95c2035850c6041781607"
       },
       "name": "volicord.list_projects",
       "output_schema": {
         "definitions": [
           "AgentConnectionMode",
-          "ListProjectItem",
-          "ListProjectsResult",
+          "McpListProjectItem",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:82213bb9325f1506e344874edb8e61e1f07a5f76de48d8d96e022049daa92bbd"
+        "sha256": "sha256:c3d9263f9d47bdbd68ef93acc6500daf2640c1ab87a2e75579d224f7768939a7"
       }
     },
     {
@@ -419,12 +408,11 @@
           "project_selector"
         ],
         "root_required": [],
-        "sha256": "sha256:06bc1a7eb1927fe9a7725f2d61de9b6a99bea15b59443cd5659769bea63c1b66"
+        "sha256": "sha256:563103ecf80951014a2149a19718f01b763a5ba1b26bb5c315301f29f1ccaee0"
       },
       "name": "volicord.begin_integration_verification",
       "output_schema": {
         "definitions": [
-          "BeginIntegrationVerificationResult",
           "GuardIntegrationVerificationFinding",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
@@ -433,13 +421,12 @@
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:36da68e3b7b1ffe9bee238097a7a8aca71810d80f0d00c8e83e7a93b5b3d81a7"
+        "sha256": "sha256:cbb1b68bf87e77a5ecd99fe4cc941127a6285d1f132f432ed5d602fa4667d0f3"
       }
     },
     {
@@ -458,13 +445,12 @@
         "root_required": [
           "verification_id"
         ],
-        "sha256": "sha256:343394f366c2fba69c60ab297780c39bfb2ff0317090ccc6fb171460c5d1e246"
+        "sha256": "sha256:9bd76ee6685aebb3e307cf1437923509452e71f78738cf25e5ce5e2f3212347c"
       },
       "name": "volicord.guard_probe",
       "output_schema": {
         "definitions": [
           "GuardIntegrationVerificationFinding",
-          "GuardProbeResult",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
@@ -472,13 +458,12 @@
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:167587db3be02e8e0a7e799f24993b9911b6e5edbc122ef90dd6295c4046a22b"
+        "sha256": "sha256:3df7d6deb49f997f6b9b25359593b525b9b7477b8c959c5d0b5e536ca6cd8761"
       }
     },
     {
@@ -497,12 +482,11 @@
         "root_required": [
           "verification_id"
         ],
-        "sha256": "sha256:343394f366c2fba69c60ab297780c39bfb2ff0317090ccc6fb171460c5d1e246"
+        "sha256": "sha256:9bd76ee6685aebb3e307cf1437923509452e71f78738cf25e5ce5e2f3212347c"
       },
       "name": "volicord.get_integration_verification",
       "output_schema": {
         "definitions": [
-          "GetIntegrationVerificationResult",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationPhaseStatus",
           "GuardIntegrationVerificationPhases",
@@ -513,13 +497,12 @@
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
-          "McpToolErrorResponse",
           "McpToolIssueCode",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c28729fbc4d17efd9f9df23032f73aa2a38f4a51a54de287618bbd31a20654f9"
+        "sha256": "sha256:ead21c7ac7b59db1dcd921c0fb180fd7ae7d28f8f6e7d5b73363727bd2cb224a"
       }
     }
   ]
