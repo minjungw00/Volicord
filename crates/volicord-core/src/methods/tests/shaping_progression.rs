@@ -601,6 +601,7 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
         ),
     ] {
         let harness = MethodHarness::new()?;
+        let repository = planning_only_repository_fixture(&harness, label)?;
         let (task_id, change_unit_id) = if mode == RequestedMode::Work {
             shaping_task(&harness, label)?
         } else {
@@ -983,6 +984,30 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
             application_workflow["blocking_reason"], "inconsistent_authority_state",
             "{label}"
         );
+        let application_status = harness.service.status(
+            StatusRequest {
+                envelope: envelope(
+                    &format!("req_{label}_application_status"),
+                    None,
+                    false,
+                    None,
+                    Some(&task_id),
+                ),
+                include: status_include(),
+                continuity_page: None,
+            },
+            invocation(OperationCategory::Read),
+        )?;
+        let status_workflow = &application_status.response_value["active_task"]["workflow"];
+        for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+            assert_eq!(
+                application_workflow[field], status_workflow[field],
+                "{label} application result and status {field}"
+            );
+        }
+        assert!(repository.status_bytes()?.is_empty(), "{label}");
+        assert_eq!(harness.counts()?.write_tickets, 0, "{label}");
+        assert_eq!(harness.counts()?.runs, 0, "{label}");
     }
     Ok(())
 }
@@ -1168,33 +1193,41 @@ fn mixed_non_authorizing_outcomes_preserve_other_live_authority_without_effects(
 #[test]
 fn expired_shaping_request_routes_to_read_only_recovery_and_can_be_reissued(
 ) -> Result<(), Box<dyn Error>> {
-    for (gap_kind, judgment_kind) in [
-        (
-            ShapingGapKind::UserScopeDecisionRequired,
-            JudgmentKind::ScopeDecision,
-        ),
-        (
-            ShapingGapKind::SensitiveApprovalRequired,
-            JudgmentKind::SensitiveApproval,
-        ),
-        (
-            ShapingGapKind::UserTechnicalDecisionRequired,
-            JudgmentKind::TechnicalDecision,
-        ),
-    ] {
-        assert_expired_shaping_kind_recovery(gap_kind, judgment_kind)?;
+    for mode in [RequestedMode::Work, RequestedMode::Advisor] {
+        for (gap_kind, judgment_kind) in [
+            (
+                ShapingGapKind::UserScopeDecisionRequired,
+                JudgmentKind::ScopeDecision,
+            ),
+            (
+                ShapingGapKind::SensitiveApprovalRequired,
+                JudgmentKind::SensitiveApproval,
+            ),
+            (
+                ShapingGapKind::UserTechnicalDecisionRequired,
+                JudgmentKind::TechnicalDecision,
+            ),
+        ] {
+            assert_expired_shaping_kind_recovery(mode, gap_kind, judgment_kind)?;
+        }
     }
     Ok(())
 }
 
 fn assert_expired_shaping_kind_recovery(
+    mode: RequestedMode,
     gap_kind: ShapingGapKind,
     judgment_kind: JudgmentKind,
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
     harness.use_clock(clock.clone());
-    let (task_id, change_unit_id) = shaping_task(&harness, "expired_recovery")?;
+    let repository = planning_only_repository_fixture(&harness, "expired_recovery")?;
+    let (task_id, change_unit_id) = if mode == RequestedMode::Work {
+        shaping_task(&harness, "expired_recovery")?
+    } else {
+        create_task_with_mode_and_change_unit(&harness, "expired_recovery", mode)?
+    };
     let mut shaping = ready_shaping_request(
         "req_expired_recovery_shaping",
         "idem_expired_recovery_shaping",
@@ -1429,7 +1462,11 @@ fn assert_expired_shaping_kind_recovery(
         serde_json::from_value(accepted.response_value["user_action_resolution_ref"].clone())?;
     let before_application = harness.counts()?;
     let application_owner = gap_kind
-        .decision_policy_for_mode(TaskMode::Work)
+        .decision_policy_for_mode(if mode == RequestedMode::Work {
+            TaskMode::Work
+        } else {
+            TaskMode::Advisor
+        })
         .expect("successor decision policy")
         .application_owner;
     let application = match application_owner {
@@ -1470,9 +1507,36 @@ fn assert_expired_shaping_kind_recovery(
             },
             invocation(OperationCategory::AgentWorkflow),
         )?,
-        ShapingDecisionApplicationOwner::RecordShaping => {
-            unreachable!("work-mode successor cannot require advisor finalization")
-        }
+        ShapingDecisionApplicationOwner::RecordShaping => harness.service.record_shaping(
+            RecordShapingRequest {
+                envelope: envelope(
+                    "req_expired_recovery_successor_apply",
+                    Some("idem_expired_recovery_successor_apply"),
+                    false,
+                    Some(before_application.state_version),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                operation: RecordShapingOperation::FinalizeAdvice {
+                    shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id(
+                        &replaced.response_value,
+                    )),
+                    change_unit_id: ChangeUnitId::new(&change_unit_id),
+                    scope_revision: 1,
+                    baseline_ref: BaselineRef::new("baseline_test"),
+                    user_action_resolution_ids: vec![UserActionResolutionId::new(
+                        resolution_ref.record_id.as_str(),
+                    )],
+                    result_summary: "The accepted successor decision is applied to the advice."
+                        .to_owned(),
+                    result_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    residual_risks: Vec::new(),
+                    recovery_constraints: Vec::new(),
+                },
+            },
+            invocation(OperationCategory::AgentWorkflow),
+        )?,
     };
     assert_eq!(
         application.response_value["base"]["response_kind"],
@@ -1486,16 +1550,51 @@ fn assert_expired_shaping_kind_recovery(
         .expect("application workflow");
     assert_eq!(
         application_workflow["kind"],
-        match application_owner {
-            ShapingDecisionApplicationOwner::UpdateScope => "ready_for_implementation",
-            ShapingDecisionApplicationOwner::AdvanceTask => "implementation",
-            ShapingDecisionApplicationOwner::RecordShaping => unreachable!(),
+        match (mode, application_owner) {
+            (RequestedMode::Work, ShapingDecisionApplicationOwner::UpdateScope) => {
+                "ready_for_implementation"
+            }
+            (RequestedMode::Advisor, ShapingDecisionApplicationOwner::UpdateScope) => {
+                "ready_to_finalize_advice"
+            }
+            (RequestedMode::Work, ShapingDecisionApplicationOwner::AdvanceTask) => {
+                "implementation"
+            }
+            (RequestedMode::Advisor, ShapingDecisionApplicationOwner::AdvanceTask) => {
+                unreachable!("advisor decisions cannot be owned by advance_task")
+            }
+            (_, ShapingDecisionApplicationOwner::RecordShaping) => "close_review",
+            _ => unreachable!("expiration recovery fixture uses work or advisor mode"),
         }
     );
     assert_ne!(
         application_workflow["blocking_reason"],
         "inconsistent_authority_state"
     );
+    let application_status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_expired_recovery_application_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+            continuity_page: None,
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let status_workflow = &application_status.response_value["active_task"]["workflow"];
+    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+        assert_eq!(
+            application_workflow[field], status_workflow[field],
+            "application result and status {field}"
+        );
+    }
+    assert!(repository.status_bytes()?.is_empty());
+    assert_eq!(harness.counts()?.write_tickets, 0);
+    assert_eq!(harness.counts()?.runs, 0);
     Ok(())
 }
 

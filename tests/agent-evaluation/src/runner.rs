@@ -575,6 +575,46 @@ fn validate_observation(
                 .retained_authority_opportunities
         || observation.shaping_workflow.exact_application_owners
             > observation.shaping_workflow.application_owner_opportunities
+        || observation
+            .shaping_workflow
+            .superseded_history_action_instructions
+            > observation
+                .shaping_workflow
+                .superseded_history_opportunities
+        || observation.shaping_workflow.recovery_successor_acceptances
+            > observation
+                .shaping_workflow
+                .recovery_successor_acceptance_opportunities
+        || observation.shaping_workflow.inconsistent_authority_claims
+            > observation
+                .shaping_workflow
+                .valid_history_consistency_opportunities
+        || observation
+            .shaping_workflow
+            .correct_stale_authority_explanations
+            > observation
+                .shaping_workflow
+                .stale_authority_explanation_opportunities
+        || observation
+            .shaping_workflow
+            .stale_accepted_resolution_reuses
+            > observation
+                .shaping_workflow
+                .stale_resolution_reuse_opportunities
+        || observation.shaping_workflow.exact_stale_dispositions
+            > observation.shaping_workflow.stale_disposition_opportunities
+        || observation
+            .shaping_workflow
+            .fresh_stale_user_actions_created
+            > observation
+                .shaping_workflow
+                .stale_reauthorization_request_opportunities
+        || observation
+            .shaping_workflow
+            .correct_implementation_invalidation_rejections
+            > observation
+                .shaping_workflow
+                .implementation_invalidation_opportunities
     {
         return Err(HarnessError::new(
             "driver observation contains an impossible aggregate count",
@@ -637,7 +677,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(38);
+    let mut criteria = Vec::with_capacity(46);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -950,6 +990,46 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         all_shaping_totals(|value| value.application_owner_opportunities),
         all_shaping_totals(|value| value.exact_application_owners),
     ));
+    criteria.push(zero_rate(
+        "superseded_history_action_instruction",
+        all_shaping_totals(|value| value.superseded_history_opportunities),
+        all_shaping_totals(|value| value.superseded_history_action_instructions),
+    ));
+    criteria.push(complete_rate(
+        "recovery_successor_request_acceptance",
+        all_shaping_totals(|value| value.recovery_successor_acceptance_opportunities),
+        all_shaping_totals(|value| value.recovery_successor_acceptances),
+    ));
+    criteria.push(zero_rate(
+        "valid_history_inconsistent_authority_claim",
+        all_shaping_totals(|value| value.valid_history_consistency_opportunities),
+        all_shaping_totals(|value| value.inconsistent_authority_claims),
+    ));
+    criteria.push(complete_rate(
+        "correct_stale_authority_explanation",
+        all_shaping_totals(|value| value.stale_authority_explanation_opportunities),
+        all_shaping_totals(|value| value.correct_stale_authority_explanations),
+    ));
+    criteria.push(zero_rate(
+        "stale_accepted_resolution_reuse",
+        all_shaping_totals(|value| value.stale_resolution_reuse_opportunities),
+        all_shaping_totals(|value| value.stale_accepted_resolution_reuses),
+    ));
+    criteria.push(complete_rate(
+        "exact_stale_retirement_or_reissue",
+        all_shaping_totals(|value| value.stale_disposition_opportunities),
+        all_shaping_totals(|value| value.exact_stale_dispositions),
+    ));
+    criteria.push(complete_rate(
+        "fresh_user_action_for_stale_reauthorization",
+        all_shaping_totals(|value| value.stale_reauthorization_request_opportunities),
+        all_shaping_totals(|value| value.fresh_stale_user_actions_created),
+    ));
+    criteria.push(complete_rate(
+        "implementation_phase_invalidation_rejection",
+        all_shaping_totals(|value| value.implementation_invalidation_opportunities),
+        all_shaping_totals(|value| value.correct_implementation_invalidation_rejections),
+    ));
     criteria
 }
 
@@ -1096,7 +1176,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 38] {
+fn criterion_definitions() -> [CriterionDefinition; 46] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1285,6 +1365,46 @@ fn criterion_definitions() -> [CriterionDefinition; 38] {
         },
         CriterionDefinition {
             id: "exact_decision_application_owner",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "superseded_history_action_instruction",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "recovery_successor_request_acceptance",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "valid_history_inconsistent_authority_claim",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "correct_stale_authority_explanation",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "stale_accepted_resolution_reuse",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "exact_stale_retirement_or_reissue",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "fresh_user_action_for_stale_reauthorization",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "implementation_phase_invalidation_rejection",
             target: "= 100",
             unit: "percent",
         },

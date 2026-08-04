@@ -32,6 +32,7 @@ use volicord_store::agent_connections::{agent_connection_record, AgentConnection
 use volicord_store::diagnostic_findings::{
     diagnostic_occurrences_for_runtime_session, stored_diagnostic_findings_by_ids,
 };
+use volicord_store::export::read_authority_bundle_snapshot;
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
     current_project_agent_session_coordinates, repository_observation, RepositoryObservationState,
@@ -369,28 +370,14 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             "scope_revision": 0,
             "baseline_ref": null,
             "checkpoint_operation": {"operation": "create_initial"},
-            "summary": "The planning documents support one bounded implementation after three user-owned decisions.",
+            "summary": "The initial proposal requires one user-owned scope decision before the plan can proceed.",
             "implementation_boundary": "Create only the release-preparation note at the bounded path.",
-            "gaps": [
-                {
-                    "gap_kind": "user_product_decision_required",
-                    "summary": "Confirm the product recommendation.",
-                    "affected_refs": [],
-                    "user_action": {"action": action("product_decision", "Use the recommended product boundary?", recommendations.clone(), initial_state_version + 1), "expires_at": null}
-                },
-                {
-                    "gap_kind": "user_technical_decision_required",
-                    "summary": "Confirm the technical recommendation.",
-                    "affected_refs": [],
-                    "user_action": {"action": action("technical_decision", "Use the recommended technical boundary?", recommendations, initial_state_version + 1), "expires_at": null}
-                },
-                {
-                    "gap_kind": "user_scope_decision_required",
-                    "summary": "Confirm the exact scope boundary.",
-                    "affected_refs": [],
-                    "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null, initial_state_version + 1), "expires_at": null}
-                }
-            ],
+            "gaps": [{
+                "gap_kind": "user_scope_decision_required",
+                "summary": "Confirm the initial scope proposal.",
+                "affected_refs": [],
+                "user_action": {"action": action("scope_decision", "Accept the initial scope proposal?", Value::Null, initial_state_version + 1), "expires_at": null}
+            }],
             "source_refs": [],
             "evidence_refs": []
             }
@@ -408,14 +395,15 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "awaiting_user_action",
     );
     assert_eq!(shaping_result["shaping_checkpoint"]["readiness"], "blocked");
-    let checkpoint_id = required_string(
+    let retired_checkpoint_id = required_string(
         &shaping_result["shaping_checkpoint"],
         "shaping_checkpoint_id",
     )?;
-    let request_refs = shaping_result["created_user_action_request_refs"]
+    let retired_request_refs = shaping_result["created_user_action_request_refs"]
         .as_array()
         .ok_or("shaping UserAction request refs")?;
-    assert_eq!(request_refs.len(), 3);
+    assert_eq!(retired_request_refs.len(), 1);
+    let retired_request_id = required_string(&retired_request_refs[0], "record_id")?;
     assert_eq!(shaping["presentation"]["next_actor"], "user");
     assert_eq!(
         shaping["presentation"]["required_user_action"]["chat_reply_is_resolution"],
@@ -439,7 +427,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 "operation": "record_checkpoint",
                 "checkpoint_operation": {
                     "operation": "replace_current",
-                    "expected_current_checkpoint_id": checkpoint_id,
+                    "expected_current_checkpoint_id": retired_checkpoint_id,
                     "retired_non_authorizing_request_refs": [],
                     "stale_authority_actions": [],
                     "carry_forward_application_refs": []
@@ -523,6 +511,186 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     );
     drop(state);
 
+    let before_recovery_state = rusqlite::Connection::open(&state_db)?;
+    let recovery_safety_counts = (
+        table_count(&before_recovery_state, "repository_observations")?,
+        table_count(&before_recovery_state, "unrecorded_changes")?,
+        table_count(&before_recovery_state, "write_tickets")?,
+    );
+    drop(before_recovery_state);
+    let rejected = fixture.run_inbox(&[
+        "resolve",
+        &retired_request_id,
+        "--choice",
+        "reject",
+        "--repo",
+        fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+        "--json",
+    ])?;
+    assert_eq!(rejected.status.code(), Some(0));
+    let rejected: Value = serde_json::from_slice(&rejected.stdout)?;
+    assert_typed_mutation_state(
+        &rejected,
+        initial_state_version + 3,
+        "work",
+        Some("shaping"),
+        "decision_recovery_required",
+    );
+    assert_eq!(
+        rejected["user_action_resolution"]["body"]["resolution_outcome"],
+        "rejected"
+    );
+    assert_eq!(
+        rejected["state"]["workflow"]["required_action"],
+        "volicord.record_shaping"
+    );
+    let retired_request_ref = rejected["state"]["workflow"]["checkpoint"]
+        ["decision_recovery_requirements"][0]["user_action_request_ref"]
+        .clone();
+    let recovery_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "full"}),
+        SESSION,
+        "future.turn.planning-product.recovery-status",
+    )?;
+    call_id += 1;
+    let recovery_status_workflow = &method_result(&recovery_status)["active_task"]["workflow"];
+    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+        assert_eq!(
+            rejected["state"]["workflow"][field], recovery_status_workflow[field],
+            "rejected result and subsequent status disagree on {field}"
+        );
+    }
+
+    let recovered_shaping = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "task_id": task_id,
+            "operation": {
+                "operation": "record_checkpoint",
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "checkpoint_operation": {
+                    "operation": "replace_current",
+                    "expected_current_checkpoint_id": retired_checkpoint_id,
+                    "retired_non_authorizing_request_refs": [retired_request_ref],
+                    "stale_authority_actions": [],
+                    "carry_forward_application_refs": []
+                },
+                "summary": "The revised plan replaces the rejected proposal with three current user-owned decisions.",
+                "implementation_boundary": "Create only the release-preparation note at the bounded path.",
+                "gaps": [
+                    {
+                        "gap_kind": "user_product_decision_required",
+                        "summary": "Confirm the revised product recommendation.",
+                        "affected_refs": [],
+                        "user_action": {"action": action("product_decision", "Use the revised product recommendation?", recommendations.clone(), initial_state_version + 3), "expires_at": null}
+                    },
+                    {
+                        "gap_kind": "user_technical_decision_required",
+                        "summary": "Confirm the technical recommendation.",
+                        "affected_refs": [],
+                        "user_action": {"action": action("technical_decision", "Use the recommended technical boundary?", recommendations, initial_state_version + 3), "expires_at": null}
+                    },
+                    {
+                        "gap_kind": "user_scope_decision_required",
+                        "summary": "Confirm the exact scope boundary.",
+                        "affected_refs": [],
+                        "user_action": {"action": action("scope_decision", "Accept the bounded scope?", Value::Null, initial_state_version + 3), "expires_at": null}
+                    }
+                ],
+                "source_refs": [],
+                "evidence_refs": []
+            }
+        }),
+        SESSION,
+        "future.turn.planning-product.recover-shaping",
+    )?;
+    call_id += 1;
+    let recovered_shaping_result = method_result(&recovered_shaping);
+    assert_typed_mutation_state(
+        recovered_shaping_result,
+        initial_state_version + 4,
+        "work",
+        Some("shaping"),
+        "awaiting_user_action",
+    );
+    let checkpoint_id = required_string(
+        &recovered_shaping_result["shaping_checkpoint"],
+        "shaping_checkpoint_id",
+    )?;
+    let request_refs = recovered_shaping_result["created_user_action_request_refs"]
+        .as_array()
+        .ok_or("recovered shaping UserAction request refs")?;
+    assert_eq!(request_refs.len(), 3);
+    assert!(request_refs
+        .iter()
+        .all(|reference| reference["record_id"] != retired_request_id));
+    let recovered_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "full"}),
+        SESSION,
+        "future.turn.planning-product.recovered-status",
+    )?;
+    call_id += 1;
+    let recovered_status_workflow = &method_result(&recovered_status)["active_task"]["workflow"];
+    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+        assert_eq!(
+            recovered_shaping_result["workflow"][field], recovered_status_workflow[field],
+            "recovery mutation and subsequent status disagree on {field}"
+        );
+    }
+    assert!(recovered_status_workflow["required_refs"]
+        .as_array()
+        .is_some_and(|refs| refs
+            .iter()
+            .all(|reference| reference["record_id"] != retired_request_id)));
+
+    let state = rusqlite::Connection::open(&state_db)?;
+    let retired_status: (String, i64) = state.query_row(
+        "SELECT basis_status, EXISTS (
+             SELECT 1 FROM user_action_resolutions AS resolution
+              WHERE resolution.project_id = request.project_id
+                AND resolution.user_action_request_id = request.user_action_request_id
+         )
+           FROM user_action_requests AS request
+          WHERE user_action_request_id = ?1",
+        [&retired_request_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(retired_status, ("superseded".to_owned(), 1));
+    let predecessor: String = state.query_row(
+        "SELECT predecessor_shaping_checkpoint_id FROM shaping_checkpoints WHERE shaping_checkpoint_id = ?1",
+        [&checkpoint_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(predecessor, retired_checkpoint_id);
+    assert_eq!(
+        (
+            table_count(&state, "repository_observations")?,
+            table_count(&state, "unrecorded_changes")?,
+            table_count(&state, "write_tickets")?,
+        ),
+        recovery_safety_counts,
+        "retirement and successor creation must not create repository authority effects"
+    );
+    let open_observations: u64 = state.query_row(
+        "SELECT COUNT(*) FROM repository_observations WHERE state = 'open'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(open_observations, 0);
+    drop(state);
+    assert_eq!(fixture.repository_snapshot()?, before_analysis);
+
     let inbox = fixture.run_inbox(&["--task", &task_id, "--json"])?;
     assert_eq!(inbox.status.code(), Some(0));
     let inbox: Value = serde_json::from_slice(&inbox.stdout)?;
@@ -557,7 +725,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         let resolved: Value = serde_json::from_slice(&resolved.stdout)?;
         assert_typed_mutation_state(
             &resolved,
-            initial_state_version + 3 + index as u64,
+            initial_state_version + 5 + index as u64,
             "work",
             Some("shaping"),
             if index == 2 {
@@ -636,7 +804,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     call_id += 1;
     assert_compact_mutation_state(
         &scope,
-        initial_state_version + 6,
+        initial_state_version + 8,
         "work",
         Some("shaping"),
         "ready_for_implementation",
@@ -694,7 +862,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     call_id += 1;
     assert_compact_mutation_state(
         &advanced,
-        initial_state_version + 7,
+        initial_state_version + 9,
         "work",
         Some("implementation"),
         "implementation",
@@ -744,7 +912,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let prepared_result = method_result(&prepared);
     assert_compact_mutation_state(
         &prepared,
-        initial_state_version + 8,
+        initial_state_version + 10,
         "work",
         Some("implementation"),
         "implementation",
@@ -858,7 +1026,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let recorded_result = method_result(&recorded);
     assert_compact_mutation_state(
         &recorded,
-        initial_state_version + 9,
+        initial_state_version + 11,
         "work",
         Some("implementation"),
         "implementation",
@@ -921,7 +1089,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
                 "operation": "create",
                 "task_id": task_id,
                 "change_unit_id": change_unit_id,
-                "action": action("final_acceptance", "Accept the completed bounded result?", Value::Null, initial_state_version + 9),
+                "action": action("final_acceptance", "Accept the completed bounded result?", Value::Null, initial_state_version + 11),
                 "required_for": ["close_complete"],
                 "expires_at": null
             }
@@ -933,7 +1101,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let final_action_result = method_result(&final_action);
     assert_compact_mutation_state(
         &final_action,
-        initial_state_version + 10,
+        initial_state_version + 12,
         "work",
         Some("implementation"),
         "implementation",
@@ -955,7 +1123,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     let final_resolution: Value = serde_json::from_slice(&final_resolution.stdout)?;
     assert_typed_mutation_state(
         &final_resolution,
-        initial_state_version + 11,
+        initial_state_version + 13,
         "work",
         Some("implementation"),
         "implementation",
@@ -989,13 +1157,37 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     )?;
     assert_compact_mutation_state(
         &closed,
-        initial_state_version + 12,
+        initial_state_version + 14,
         "work",
         Some("implementation"),
         "terminal",
     );
     assert_eq!(closed["authority_receipt"]["close_state"], "closed");
     assert_eq!(closed["authority_receipt"]["close_blockers"], json!([]));
+    let audit = read_authority_bundle_snapshot(&fixture.runtime_home, &fixture.repo_root)?;
+    assert!(audit.records.iter().any(|record| {
+        record.table == "user_action_requests"
+            && record.row["user_action_request_id"] == retired_request_id
+            && record.row["basis_status"] == "superseded"
+    }));
+    assert!(audit.records.iter().any(|record| {
+        record.table == "user_action_resolutions"
+            && record.row["user_action_request_id"] == retired_request_id
+    }));
+    assert!(audit.records.iter().any(|record| {
+        record.table == "shaping_checkpoints"
+            && record.row["shaping_checkpoint_id"] == checkpoint_id
+            && record.row["predecessor_shaping_checkpoint_id"] == retired_checkpoint_id
+    }));
+    let historical_applications = audit
+        .records
+        .iter()
+        .filter(|record| record.table == "shaping_decision_applications")
+        .collect::<Vec<_>>();
+    assert_eq!(historical_applications.len(), 3);
+    assert!(historical_applications
+        .iter()
+        .all(|record| record.row["authority_status"] == "superseded"));
     let output = child.finish()?;
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
@@ -5349,7 +5541,11 @@ fn assert_compact_mutation_state(
 fn table_count(connection: &rusqlite::Connection, table: &str) -> Result<i64, Box<dyn Error>> {
     assert!(matches!(
         table,
-        "change_units" | "write_tickets" | "user_action_resolutions" | "unrecorded_changes"
+        "change_units"
+            | "write_tickets"
+            | "user_action_resolutions"
+            | "repository_observations"
+            | "unrecorded_changes"
     ));
     Ok(
         connection.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {

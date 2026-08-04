@@ -2812,6 +2812,7 @@ mod tests {
         disposable_runtime_home, DeterministicClock, TempRuntimeHome,
     };
     use chrono::Duration;
+    use volicord_store::guards::{agent_session_matches_current_integration, guard_health_record};
     use volicord_types::ids::{ArtifactId, EvidenceClaimId};
     use volicord_types::schema::{EvidenceTarget, UserActionResolutionInput};
     use volicord_types::values::EvidenceRelevanceStatus;
@@ -2848,10 +2849,47 @@ mod tests {
             .status_bytes()
             .expect("Git status")
             .is_empty());
+        let tracked = fixture
+            .repository()
+            .git(&["ls-files"])
+            .expect("tracked planning files");
+        assert_eq!(
+            String::from_utf8(tracked.stdout)
+                .expect("UTF-8 tracked paths")
+                .lines()
+                .collect::<Vec<_>>(),
+            vec![
+                "plans/operations.md",
+                "plans/product.md",
+                "plans/technical.md"
+            ]
+        );
         assert!(!fixture.repository().root().join("src").exists());
         assert!(!fixture.repository().root().join("tests").exists());
         assert!(!fixture.session().runtime_session_id.as_str().is_empty());
         assert!(fixture.guard_installation_id().starts_with("guard_test_"));
+        let guard = guard_health_record(
+            fixture.core().runtime_home_path(),
+            fixture.core().project_id(),
+            fixture.core().connection_id(),
+        )
+        .expect("current Guard health");
+        assert_eq!(
+            guard
+                .guard_installation
+                .as_ref()
+                .map(|installation| installation.guard_installation_id.as_str()),
+            Some(fixture.guard_installation_id())
+        );
+        assert!(agent_session_matches_current_integration(
+            fixture.core().runtime_home_path(),
+            guard
+                .latest_session
+                .as_ref()
+                .expect("current Agent Session"),
+            Some(fixture.guard_installation_id()),
+        )
+        .expect("current managed integration"));
         assert_eq!(fixture.core().counts().expect("empty Core state").tasks, 0);
         fixture.clock().advance(Duration::minutes(2));
         assert_eq!(

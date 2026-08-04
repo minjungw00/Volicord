@@ -60,43 +60,127 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
     )?;
 
     let before_rejection = harness.counts()?;
-    let rejected = harness.service.update_scope(
-        update_scope_request(
-            "req_implementation_scope_guard_reject",
-            "idem_implementation_scope_guard_reject",
-            false,
-            Some(before_rejection.state_version),
-            &task_id,
-            ChangeUnitOperation::KeepCurrent,
-            "A changed implementation boundary must not stale authority silently.",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        rejected.response_value["errors"][0]["code"],
-        ErrorCode::TaskPhaseTransitionRequired.as_str()
+    let mut scope_update = update_scope_request(
+        "req_implementation_scope_guard_scope_invalidation",
+        "idem_implementation_scope_guard_scope_invalidation",
+        false,
+        Some(before_rejection.state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "A changed implementation scope must not stale authority silently.",
     );
-    let details: WorkflowRejectionDetails =
-        serde_json::from_value(rejected.response_value["errors"][0]["details"].clone())?;
-    assert_eq!(details.current_work_phase, WorkPhase::Implementation);
-    assert_eq!(details.recovery.owner_method, MethodName::CloseTask);
-    assert!(!details.corrected_retry_allowed);
-    assert!(details.blockers[0].required_refs.contains(&application_ref));
-    assert_eq!(harness.counts()?, before_rejection);
-    let application = harness
-        .store()?
-        .shaping_decision_application_record(
-            &TaskId::new(&task_id),
-            application_ref.record_id.as_str(),
-        )?
-        .expect("current implementation authority");
-    assert_eq!(
-        application.authority_status,
-        ShapingDecisionApplicationAuthorityStatus::Current
+    scope_update.baseline_ref = RequiredNullable::null();
+    scope_update.change_unit.fields = Map::new();
+
+    let mut baseline_update = update_scope_request(
+        "req_implementation_scope_guard_baseline",
+        "idem_implementation_scope_guard_baseline",
+        false,
+        Some(before_rejection.state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "ignored while testing a baseline-only update",
     );
-    assert!(application.stale_at.is_none());
-    assert!(application.superseded_at.is_none());
+    baseline_update.goal_summary = RequiredNullable::null();
+    baseline_update.scope_update = RequiredNullable::null();
+    baseline_update.scope_boundary = RequiredNullable::null();
+    baseline_update.non_goals = RequiredNullable::null();
+    baseline_update.acceptance_criteria = RequiredNullable::null();
+    baseline_update.autonomy_boundary = RequiredNullable::null();
+    baseline_update.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
+    baseline_update.change_unit.operation = ChangeUnitOperation::ReplaceCurrent;
+
+    let mut change_unit_update = update_scope_request(
+        "req_implementation_scope_guard_change_unit",
+        "idem_implementation_scope_guard_change_unit",
+        false,
+        Some(before_rejection.state_version),
+        &task_id,
+        ChangeUnitOperation::ReplaceCurrent,
+        "Replace only the current implementation Change Unit.",
+    );
+    change_unit_update.goal_summary = RequiredNullable::null();
+    change_unit_update.scope_update = RequiredNullable::null();
+    change_unit_update.scope_boundary = RequiredNullable::null();
+    change_unit_update.non_goals = RequiredNullable::null();
+    change_unit_update.acceptance_criteria = RequiredNullable::null();
+    change_unit_update.autonomy_boundary = RequiredNullable::null();
+    change_unit_update.baseline_ref = RequiredNullable::null();
+
+    for (coordinate, request) in [
+        ("scope", scope_update),
+        ("baseline", baseline_update),
+        ("change_unit", change_unit_update),
+    ] {
+        let rejected = harness
+            .service
+            .update_scope(request, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(
+            rejected.response_value["base"]["response_kind"], "rejected",
+            "{coordinate}: {}",
+            rejected.response_value
+        );
+        assert_eq!(
+            rejected.response_value["errors"][0]["code"],
+            ErrorCode::TaskPhaseTransitionRequired.as_str(),
+            "{coordinate}: {}",
+            rejected.response_value
+        );
+        let details: WorkflowRejectionDetails =
+            serde_json::from_value(rejected.response_value["errors"][0]["details"].clone())?;
+        assert_eq!(
+            details.current_work_phase,
+            WorkPhase::Implementation,
+            "{coordinate}"
+        );
+        assert_eq!(
+            details.recovery.owner_method,
+            MethodName::CloseTask,
+            "{coordinate}"
+        );
+        assert!(!details.corrected_retry_allowed, "{coordinate}");
+        assert!(
+            details.blockers[0].required_refs.contains(&application_ref),
+            "{coordinate}"
+        );
+        assert_eq!(harness.counts()?, before_rejection, "{coordinate}");
+        let application = harness
+            .store()?
+            .shaping_decision_application_record(
+                &TaskId::new(&task_id),
+                application_ref.record_id.as_str(),
+            )?
+            .expect("current implementation authority");
+        assert_eq!(
+            application.authority_status,
+            ShapingDecisionApplicationAuthorityStatus::Current,
+            "{coordinate}"
+        );
+        assert!(application.stale_at.is_none(), "{coordinate}");
+        assert!(application.superseded_at.is_none(), "{coordinate}");
+        let status = harness.service.status(
+            StatusRequest {
+                envelope: envelope(
+                    &format!("req_implementation_scope_guard_{coordinate}_status"),
+                    None,
+                    false,
+                    None,
+                    Some(&task_id),
+                ),
+                include: status_include(),
+                continuity_page: None,
+            },
+            invocation(OperationCategory::Read),
+        )?;
+        assert_eq!(
+            status.response_value["active_task"]["work_phase"], "implementation",
+            "{coordinate}"
+        );
+        assert_eq!(
+            status.response_value["active_task"]["workflow"]["kind"], "implementation",
+            "{coordinate}"
+        );
+    }
 
     let mut compatible_noop = update_scope_request(
         "req_implementation_scope_guard_noop",
@@ -123,6 +207,34 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
         no_op.response_value["base"]["response_kind"], "result",
         "{}",
         no_op.response_value
+    );
+    assert_eq!(
+        no_op.response_value["state"]["workflow"]["kind"],
+        "implementation"
+    );
+    let after_compatible = harness.counts()?;
+    assert_eq!(
+        after_compatible.state_version,
+        before_rejection.state_version + 1
+    );
+    assert_eq!(
+        after_compatible.authority_events,
+        before_rejection.authority_events + 1
+    );
+    assert_eq!(
+        after_compatible.write_tickets,
+        before_rejection.write_tickets
+    );
+    let application = harness
+        .store()?
+        .shaping_decision_application_record(
+            &TaskId::new(&task_id),
+            application_ref.record_id.as_str(),
+        )?
+        .expect("compatible update preserves implementation authority");
+    assert_eq!(
+        application.authority_status,
+        ShapingDecisionApplicationAuthorityStatus::Current
     );
     Ok(())
 }

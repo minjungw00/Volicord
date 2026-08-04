@@ -22,7 +22,7 @@ type ShapingMetricDefect = (
 fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 10);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 13);
 
     let actual = catalog
         .scenarios
@@ -40,6 +40,9 @@ fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() 
         "planning-rejected-outcome",
         "planning-deferred-outcome",
         "planning-expired-outcome",
+        "planning-superseded-history",
+        "planning-stale-reauthorization",
+        "planning-implementation-invalidation",
     ] {
         assert!(catalog
             .scenarios
@@ -108,7 +111,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 38);
+    assert_eq!(result.criteria.len(), 46);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -246,11 +249,10 @@ fn planning_only_fixture_is_neutral_and_contains_no_implementation() {
 #[test]
 fn shaping_evaluation_fixtures_are_generic_plans_without_implementation() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
-    for scenario in catalog
-        .scenarios
-        .iter()
-        .filter(|scenario| scenario.expected.shaping_outcome.is_some())
-    {
+    for scenario in catalog.scenarios.iter().filter(|scenario| {
+        scenario.expected.shaping_outcome.is_some()
+            || scenario.expected.shaping_authority_recovery.is_some()
+    }) {
         assert!(scenario
             .initial_files
             .iter()
@@ -281,11 +283,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(38)
+        Some(46)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(38)
+        Some(46)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -326,11 +328,19 @@ impl TrialDriver for AggregateSyntheticDriver {
         let deferred = record && request.trial.scenario_id == "planning-deferred-outcome";
         let expired = record && request.trial.scenario_id == "planning-expired-outcome";
         let non_authorizing = rejected || deferred || expired;
+        let superseded_history =
+            record && request.trial.scenario_id == "planning-superseded-history";
+        let stale_reauthorization =
+            record && request.trial.scenario_id == "planning-stale-reauthorization";
+        let implementation_invalidation =
+            record && request.trial.scenario_id == "planning-implementation-invalidation";
+        let authority_recovery =
+            superseded_history || stale_reauthorization || implementation_invalidation;
         let shaping_scenario = planning || advisor;
         let planning_decisions =
             if request.trial.scenario_id == "planning-only-development-preparation" {
                 3
-            } else if accepted || non_authorizing {
+            } else if accepted || non_authorizing || authority_recovery {
                 1
             } else {
                 0
@@ -446,6 +456,30 @@ impl TrialDriver for AggregateSyntheticDriver {
                 retained_authority_preserved: u64::from(shaping_scenario),
                 application_owner_opportunities: u64::from(accepted),
                 exact_application_owners: u64::from(accepted),
+                superseded_history_opportunities: u64::from(superseded_history),
+                superseded_history_action_instructions: 0,
+                recovery_successor_acceptance_opportunities: u64::from(superseded_history),
+                recovery_successor_acceptances: u64::from(superseded_history),
+                valid_history_consistency_opportunities: u64::from(superseded_history),
+                inconsistent_authority_claims: 0,
+                stale_authority_explanation_opportunities: u64::from(stale_reauthorization),
+                correct_stale_authority_explanations: u64::from(stale_reauthorization),
+                stale_resolution_reuse_opportunities: u64::from(stale_reauthorization),
+                stale_accepted_resolution_reuses: 0,
+                stale_disposition_opportunities: if stale_reauthorization { 2 } else { 0 },
+                exact_stale_dispositions: if stale_reauthorization { 2 } else { 0 },
+                stale_reauthorization_request_opportunities: u64::from(stale_reauthorization),
+                fresh_stale_user_actions_created: u64::from(stale_reauthorization),
+                implementation_invalidation_opportunities: if implementation_invalidation {
+                    3
+                } else {
+                    0
+                },
+                correct_implementation_invalidation_rejections: if implementation_invalidation {
+                    3
+                } else {
+                    0
+                },
             },
         })
     }
@@ -642,6 +676,51 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
         "decision_authority_retention",
         |workflow| workflow.retained_authority_preserved = 0,
     );
+    let recovery_defects: [ShapingMetricDefect; 8] = [
+        (
+            "planning-superseded-history",
+            "superseded_history_action_instruction",
+            |workflow| workflow.superseded_history_action_instructions = 1,
+        ),
+        (
+            "planning-superseded-history",
+            "recovery_successor_request_acceptance",
+            |workflow| workflow.recovery_successor_acceptances = 0,
+        ),
+        (
+            "planning-superseded-history",
+            "valid_history_inconsistent_authority_claim",
+            |workflow| workflow.inconsistent_authority_claims = 1,
+        ),
+        (
+            "planning-stale-reauthorization",
+            "correct_stale_authority_explanation",
+            |workflow| workflow.correct_stale_authority_explanations = 0,
+        ),
+        (
+            "planning-stale-reauthorization",
+            "stale_accepted_resolution_reuse",
+            |workflow| workflow.stale_accepted_resolution_reuses = 1,
+        ),
+        (
+            "planning-stale-reauthorization",
+            "exact_stale_retirement_or_reissue",
+            |workflow| workflow.exact_stale_dispositions = 1,
+        ),
+        (
+            "planning-stale-reauthorization",
+            "fresh_user_action_for_stale_reauthorization",
+            |workflow| workflow.fresh_stale_user_actions_created = 0,
+        ),
+        (
+            "planning-implementation-invalidation",
+            "implementation_phase_invalidation_rejection",
+            |workflow| workflow.correct_implementation_invalidation_rejections = 2,
+        ),
+    ];
+    for (scenario_id, criterion_id, mutate) in recovery_defects {
+        assert_defect(&result.observations, scenario_id, criterion_id, mutate);
+    }
 }
 
 struct MissingDirtyAttributionDriver;

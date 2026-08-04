@@ -148,6 +148,8 @@ pub struct FixtureExpectation {
     pub shaping_outcome: Option<ShapingOutcomeExpectation>,
     #[serde(default)]
     pub shaping_application_owner: Option<ShapingApplicationOwnerExpectation>,
+    #[serde(default)]
+    pub shaping_authority_recovery: Option<ShapingAuthorityRecoveryExpectation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -165,6 +167,14 @@ pub enum ShapingApplicationOwnerExpectation {
     AdvanceTask,
     UpdateScope,
     RecordShaping,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapingAuthorityRecoveryExpectation {
+    SupersededHistory,
+    StaleReauthorization,
+    ImplementationInvalidation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -324,6 +334,22 @@ pub struct ShapingWorkflowObservation {
     pub retained_authority_preserved: u64,
     pub application_owner_opportunities: u64,
     pub exact_application_owners: u64,
+    pub superseded_history_opportunities: u64,
+    pub superseded_history_action_instructions: u64,
+    pub recovery_successor_acceptance_opportunities: u64,
+    pub recovery_successor_acceptances: u64,
+    pub valid_history_consistency_opportunities: u64,
+    pub inconsistent_authority_claims: u64,
+    pub stale_authority_explanation_opportunities: u64,
+    pub correct_stale_authority_explanations: u64,
+    pub stale_resolution_reuse_opportunities: u64,
+    pub stale_accepted_resolution_reuses: u64,
+    pub stale_disposition_opportunities: u64,
+    pub exact_stale_dispositions: u64,
+    pub stale_reauthorization_request_opportunities: u64,
+    pub fresh_stale_user_actions_created: u64,
+    pub implementation_invalidation_opportunities: u64,
+    pub correct_implementation_invalidation_rejections: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

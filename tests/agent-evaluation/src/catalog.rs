@@ -6,8 +6,8 @@ use std::{
 use crate::{
     model::{
         CheckStatus, EvaluationCondition, FixtureCatalog, FixtureCheck, ScenarioFixture,
-        ShapingApplicationOwnerExpectation, ShapingOutcomeExpectation, TaskGroup,
-        FIXTURE_CATALOG_SCHEMA,
+        ShapingApplicationOwnerExpectation, ShapingAuthorityRecoveryExpectation,
+        ShapingOutcomeExpectation, TaskGroup, FIXTURE_CATALOG_SCHEMA,
     },
     HarnessError, HarnessResult,
 };
@@ -42,6 +42,7 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
     let mut task_groups = BTreeSet::new();
     let mut shaping_outcomes = BTreeSet::new();
     let mut application_owners = BTreeSet::new();
+    let mut authority_recoveries = BTreeSet::new();
     for scenario in &catalog.scenarios {
         validate_scenario(scenario)?;
         if !scenario_ids.insert(&scenario.scenario_id) {
@@ -56,6 +57,9 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
         }
         if let Some(owner) = scenario.expected.shaping_application_owner {
             application_owners.insert(owner);
+        }
+        if let Some(recovery) = scenario.expected.shaping_authority_recovery {
+            authority_recoveries.insert(recovery);
         }
     }
     if task_groups != TaskGroup::ALL.into_iter().collect() {
@@ -90,13 +94,26 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
             "fixture catalog does not cover every shaping application owner",
         ));
     }
+    if authority_recoveries
+        != [
+            ShapingAuthorityRecoveryExpectation::SupersededHistory,
+            ShapingAuthorityRecoveryExpectation::StaleReauthorization,
+            ShapingAuthorityRecoveryExpectation::ImplementationInvalidation,
+        ]
+        .into_iter()
+        .collect()
+    {
+        return Err(HarnessError::new(
+            "fixture catalog does not cover every shaping authority recovery",
+        ));
+    }
 
     Ok(vec![
         FixtureCheck {
-            check_id: "shaping_outcome_and_owner_coverage".to_owned(),
+            check_id: "shaping_authority_coverage".to_owned(),
             status: CheckStatus::Passed,
             detail:
-                "accepted, rejected, deferred, and expired outcomes cover every application owner"
+                "decision outcomes, application owners, and authority recovery paths are covered"
                     .to_owned(),
         },
         FixtureCheck {

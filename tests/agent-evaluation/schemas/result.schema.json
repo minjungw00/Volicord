@@ -66,8 +66,8 @@
     },
     "criteria": {
       "type": "array",
-      "minItems": 38,
-      "maxItems": 38,
+      "minItems": 46,
+      "maxItems": 46,
       "items": {"$ref": "#/$defs/criterion"}
     },
     "privacy": {
@@ -296,7 +296,23 @@
         "retained_authority_opportunities",
         "retained_authority_preserved",
         "application_owner_opportunities",
-        "exact_application_owners"
+        "exact_application_owners",
+        "superseded_history_opportunities",
+        "superseded_history_action_instructions",
+        "recovery_successor_acceptance_opportunities",
+        "recovery_successor_acceptances",
+        "valid_history_consistency_opportunities",
+        "inconsistent_authority_claims",
+        "stale_authority_explanation_opportunities",
+        "correct_stale_authority_explanations",
+        "stale_resolution_reuse_opportunities",
+        "stale_accepted_resolution_reuses",
+        "stale_disposition_opportunities",
+        "exact_stale_dispositions",
+        "stale_reauthorization_request_opportunities",
+        "fresh_stale_user_actions_created",
+        "implementation_invalidation_opportunities",
+        "correct_implementation_invalidation_rejections"
       ],
       "properties": {
         "long_lived_repository_requests": {"type": "integer", "minimum": 0},
@@ -353,7 +369,23 @@
         "retained_authority_opportunities": {"type": "integer", "minimum": 0},
         "retained_authority_preserved": {"type": "integer", "minimum": 0},
         "application_owner_opportunities": {"type": "integer", "minimum": 0},
-        "exact_application_owners": {"type": "integer", "minimum": 0}
+        "exact_application_owners": {"type": "integer", "minimum": 0},
+        "superseded_history_opportunities": {"type": "integer", "minimum": 0},
+        "superseded_history_action_instructions": {"type": "integer", "minimum": 0},
+        "recovery_successor_acceptance_opportunities": {"type": "integer", "minimum": 0},
+        "recovery_successor_acceptances": {"type": "integer", "minimum": 0},
+        "valid_history_consistency_opportunities": {"type": "integer", "minimum": 0},
+        "inconsistent_authority_claims": {"type": "integer", "minimum": 0},
+        "stale_authority_explanation_opportunities": {"type": "integer", "minimum": 0},
+        "correct_stale_authority_explanations": {"type": "integer", "minimum": 0},
+        "stale_resolution_reuse_opportunities": {"type": "integer", "minimum": 0},
+        "stale_accepted_resolution_reuses": {"type": "integer", "minimum": 0},
+        "stale_disposition_opportunities": {"type": "integer", "minimum": 0},
+        "exact_stale_dispositions": {"type": "integer", "minimum": 0},
+        "stale_reauthorization_request_opportunities": {"type": "integer", "minimum": 0},
+        "fresh_stale_user_actions_created": {"type": "integer", "minimum": 0},
+        "implementation_invalidation_opportunities": {"type": "integer", "minimum": 0},
+        "correct_implementation_invalidation_rejections": {"type": "integer", "minimum": 0}
       }
     },
     "trialFailure": {
