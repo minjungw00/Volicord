@@ -1064,8 +1064,9 @@ A stale shaping application grants no permission. Its blocker fact names the
 exact stale application and request refs and the current recovery owner. In
 advisor or work shaping, `workflow` selects `shaping_required`,
 `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, and
-`blocking_reason=application_authority_stale`; `record_shaping` then requires
-the complete exact tagged retirement or reauthorization action set. A reissue
+`blocking_reason=application_authority_stale`;
+`volicord.record_shaping_checkpoint` then requires the complete exact tagged
+retirement or reauthorization action set. A reissue
 creates a fresh unresolved UserAction identity and preserves immutable
 reauthorization lineage. Historical operation-result retrieval and authority
 export remain separate from this current workflow authority.

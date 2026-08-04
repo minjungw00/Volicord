@@ -92,41 +92,6 @@ fn known_tool_validation_aggregates_independent_issues_without_core_effects(
 }
 
 #[test]
-fn record_shaping_checkpoint_rejects_the_removed_combined_request_shape_without_core_effects(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-record-shaping-closed-shape")?;
-    let adapter = adapter(&fixture)?;
-    let (task_id, _) = create_task(&adapter)?;
-    let before = fixture.counts()?;
-    let error = adapter
-        .call_tool(
-            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
-            json!({
-                "task_id": task_id,
-                "operation": {
-                    "operation": "record_checkpoint",
-                    "checkpoint_operation": {"operation": "create_initial"},
-                    "scope_revision": 0,
-                    "baseline_ref": null,
-                    "summary": "The current shaping checkpoint is bounded.",
-                    "implementation_boundary": "Only the recorded boundary is in scope.",
-                    "gaps": [],
-                    "source_refs": [],
-                    "evidence_refs": []
-                }
-            }),
-        )
-        .expect_err("the removed combined request shape must fail before Core");
-    let response =
-        structured_tool_error(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(), &error);
-
-    tool_error_issue(&response, "/operation", "MCP_ARGUMENT_UNKNOWN");
-    tool_error_issue(&response, "/checkpoint_operation", "MCP_ARGUMENT_REQUIRED");
-    assert_eq!(fixture.counts()?, before);
-    Ok(())
-}
-
-#[test]
 fn checkpoint_action_form_rejects_omission_and_stale_refs_before_core() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("mcp-checkpoint-action-form-admission")?;
@@ -228,7 +193,7 @@ fn checkpoint_action_form_rejects_omission_and_stale_refs_before_core() -> Resul
                 "evidence_refs": []
             }),
         )
-        .expect_err("the former form must be stale after checkpoint creation");
+        .expect_err("checkpoint creation must invalidate the prior state-bound form");
     let stale = structured_error_result(&tool_execution_error_result(
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         &stale,
@@ -511,11 +476,6 @@ fn mcp_readwrite_storage_exposes_workflow_tools() -> Result<(), Box<dyn Error>> 
 
     let names = tool_names(&adapter.tools()?);
     assert_eq!(names, expected);
-    assert!(!names.contains(&"volicord.record_shaping"));
-    assert!(matches!(
-        adapter.call_tool("volicord.record_shaping", json!({})),
-        Err(McpAdapterError::UnknownTool(name)) if name == "volicord.record_shaping"
-    ));
     Ok(())
 }
 

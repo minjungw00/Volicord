@@ -947,8 +947,9 @@ disposition, 권한 부여 여부를 `shaping_decision_outcome`으로 제공합�
 권한도 부여하지 않습니다. 해당 blocker fact는 정확한 stale application과 요청 ref,
 현재 recovery owner를 지정합니다. Advisor 또는 work shaping에서 `workflow`는
 `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`,
-`blocking_reason=application_authority_stale`를 선택하고, `record_shaping`은 완전하고
-정확한 tagged 폐기 또는 재권한 action 집합을 요구합니다. 재발급은 새 unresolved
+`blocking_reason=application_authority_stale`를 선택하고,
+`volicord.record_shaping_checkpoint`는 완전하고 정확한 tagged 폐기 또는 재권한 action
+집합을 요구합니다. 재발급은 새 unresolved
 UserAction identity를 만들고 변경 불가능한 재권한 lineage를 보존합니다. 이력
 operation-result 조회와 authority export는 이 현재 workflow 권한과 분리됩니다.
 성공한 `advance_task`는 implementation

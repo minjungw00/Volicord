@@ -221,7 +221,7 @@ impl SemanticSchemaDescriptor {
         result
     }
 
-    /// Checks structural integrity without selecting a best-effort branch.
+    /// Checks descriptor structural integrity independently of instance validation.
     pub fn integrity_errors(&self) -> Vec<String> {
         let mut errors = Vec::new();
         validate_node_integrity(
