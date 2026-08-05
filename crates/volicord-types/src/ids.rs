@@ -3,6 +3,8 @@ use std::{error::Error, fmt, str::FromStr, sync::Mutex};
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de, Deserialize, Deserializer, Serialize};
 
+use crate::canonical_scalar::{CanonicalScalarSpec, BASELINE_REF_SPEC};
+
 macro_rules! opaque_string_type {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
@@ -98,14 +100,19 @@ opaque_string_type!(EventId, "Opaque event identifier.");
 opaque_string_type!(RecordId, "Opaque state-record identifier.");
 /// Opaque, canonical baseline identifier.
 ///
-/// `BaselineRef` is a semantic string type rather than an arbitrary string:
-/// values are non-empty, have no leading or trailing whitespace, and never use
-/// the JSON-looking literal `"null"`.
+/// `BaselineRef` is a semantic string type rather than an arbitrary string.
+/// Its exact portable byte grammar is owned by [`BASELINE_REF_SPEC`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct BaselineRef(String);
 
 impl BaselineRef {
+    /// Returns the canonical scalar specification for every `BaselineRef`
+    /// boundary.
+    pub const fn spec() -> CanonicalScalarSpec {
+        BASELINE_REF_SPEC
+    }
+
     /// Parses one canonical baseline identifier.
     pub fn parse(value: impl Into<String>) -> Result<Self, BaselineRefError> {
         let value = value.into();
@@ -126,7 +133,7 @@ impl BaselineRef {
 }
 
 fn is_valid_baseline_ref(value: &str) -> bool {
-    !value.is_empty() && value != "null" && value.trim() == value
+    BASELINE_REF_SPEC.accepts(value)
 }
 
 /// Parse failure for a non-canonical `BaselineRef`.
@@ -135,9 +142,7 @@ pub struct BaselineRefError;
 
 impl fmt::Display for BaselineRefError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(
-            "BaselineRef must be non-empty, have no surrounding whitespace, and differ from `null`",
-        )
+        formatter.write_str(&BASELINE_REF_SPEC.parse_error_message())
     }
 }
 
@@ -155,21 +160,31 @@ impl<'de> Deserialize<'de> for BaselineRef {
 
 impl JsonSchema for BaselineRef {
     fn schema_name() -> String {
-        "BaselineRef".to_owned()
+        BASELINE_REF_SPEC.semantic_name.to_owned()
     }
 
     fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
-        serde_json::from_value(serde_json::json!({
-            "title": "BaselineRef",
-            "description": "Canonical non-empty baseline identifier; surrounding whitespace and the literal `null` are forbidden.",
+        let spec = Self::spec();
+        let forbidden = if spec.forbidden_complete_values.len() == 1 {
+            serde_json::json!({"const": spec.forbidden_complete_values[0]})
+        } else {
+            serde_json::json!({"enum": spec.forbidden_complete_values})
+        };
+        let schema = serde_json::json!({
+            "title": spec.semantic_name,
+            "description": spec.description(),
             "type": "string",
-            "minLength": 1,
-            "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
-            "not": {"const": "null"},
-            "examples": ["baseline_example_001"],
-            "x-volicord-semantic-type": "BaselineRef"
-        }))
-        .expect("the BaselineRef leaf schema must be valid")
+            "minLength": spec.minimum_length,
+            "maxLength": spec.maximum_length,
+            "pattern": spec.json_schema_pattern(),
+            "not": forbidden,
+            "examples": spec.examples,
+            "x-volicord-semantic-type": spec.semantic_name
+        });
+        match serde_json::from_value(schema) {
+            Ok(schema) => schema,
+            Err(_) => Schema::Bool(false),
+        }
     }
 }
 
@@ -759,27 +774,30 @@ mod tests {
 
     #[test]
     fn baseline_ref_owns_its_canonical_string_contract() {
-        let value = BaselineRef::parse("baseline_owned_001").expect("canonical BaselineRef");
-        assert_eq!(value.as_str(), "baseline_owned_001");
-        assert_eq!(serde_json::to_value(&value).unwrap(), "baseline_owned_001");
+        for valid in BaselineRef::spec().examples {
+            let value = BaselineRef::parse(*valid).expect("canonical BaselineRef");
+            assert_eq!(value.as_str(), *valid);
+            assert_eq!(serde_json::to_value(&value).unwrap(), *valid);
+            assert_eq!(valid.parse::<BaselineRef>().as_ref(), Ok(&value));
+            assert_eq!(BaselineRef::try_from(*valid).as_ref(), Ok(&value));
+            assert_eq!(BaselineRef::try_from((*valid).to_owned()), Ok(value));
+        }
 
-        for invalid in [
-            "",
-            " ",
-            "null",
-            " baseline",
-            "baseline ",
-            "\tbaseline",
-            "baseline\n",
-        ] {
-            assert_eq!(BaselineRef::parse(invalid), Err(BaselineRefError));
+        for invalid in BaselineRef::spec().generated_invalid_corpus() {
+            assert_eq!(BaselineRef::parse(&invalid), Err(BaselineRefError));
             assert!(serde_json::from_value::<BaselineRef>(serde_json::json!(invalid)).is_err());
         }
 
         let schema = serde_json::to_value(schemars::schema_for!(BaselineRef)).unwrap();
         assert_eq!(schema["title"], "BaselineRef");
         assert_eq!(schema["minLength"], 1);
+        assert_eq!(schema["maxLength"], 64);
+        assert_eq!(schema["pattern"], BaselineRef::spec().json_schema_pattern());
         assert_eq!(schema["not"]["const"], "null");
+        assert_eq!(
+            schema["examples"],
+            serde_json::json!(BaselineRef::spec().examples)
+        );
     }
 
     #[test]

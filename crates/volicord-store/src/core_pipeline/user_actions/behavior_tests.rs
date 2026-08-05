@@ -3,8 +3,8 @@ use std::error::Error;
 use rusqlite::params;
 use serde_json::{json, Value};
 use volicord_types::ids::{
-    AcceptanceCriterionId, AgentConnectionId, ArtifactId, IdempotencyKey, ProjectId, RecordId,
-    RequestHash, StorageRef, TaskId, UserActionOptionId,
+    AcceptanceCriterionId, AgentConnectionId, ArtifactId, BaselineRef, IdempotencyKey, ProjectId,
+    RecordId, RequestHash, StorageRef, TaskId, UserActionOptionId,
 };
 use volicord_types::schema::{
     ArtifactRef, EvidenceTarget, PersistedUserActionDirectRequestMetadata,
@@ -1380,15 +1380,7 @@ fn stored_user_action_basis_rejects_every_noncanonical_baseline_without_effects(
         .is_some());
     let before = store.effect_counts()?;
 
-    for invalid in [
-        "",
-        " ",
-        "null",
-        " baseline",
-        "baseline ",
-        "\tbaseline",
-        "baseline\n",
-    ] {
+    for invalid in BaselineRef::spec().generated_invalid_corpus() {
         let mut basis: serde_json::Value = serde_json::from_str(&original)?;
         basis["coordinates"]["baseline_ref"] = serde_json::json!(invalid);
         store.conn.execute(

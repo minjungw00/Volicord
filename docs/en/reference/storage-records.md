@@ -720,14 +720,15 @@ Unknown, missing, duplicate, wrongly typed, noncanonical, or owner-inconsistent
 members are invalid input and corrupt persisted data.
 
 `BaselineRef` is one checked semantic value across scalar columns and typed
-owner JSON. A present value is non-empty, equals its untrimmed stored spelling,
-and is not the string `"null"`; optional JSON uses JSON `null`, and optional
-scalar storage uses SQL `NULL`. Store never trims, substitutes, or converts
-between those representations. Every scalar baseline read uses the shared
-Store decoder and reports persisted-data `Corrupt` with the owning table,
-record reference, and logical column. Every JSON owner decodes through the
-same `BaselineRef` type. Store mutation interfaces accept typed
-`BaselineRef` values, so arbitrary strings do not reach baseline write paths.
+owner JSON. A present value must satisfy the exact byte-level contract in
+[API State Schemas](api/schema-state.md); optional JSON uses JSON `null`, and
+optional scalar storage uses SQL `NULL`. Store never trims, substitutes,
+coerces, or converts between those representations. Every scalar baseline read
+uses the shared checked decoder and reports typed persisted-data `Corrupt` with
+the owning table, record reference, and logical column. Every JSON owner
+decodes through the same `BaselineRef` type. Store mutation interfaces accept
+typed `BaselineRef` values, so arbitrary strings do not reach baseline write
+paths.
 
 Physical row shapes, serialized JSON, closed `TEXT` values, and persisted
 timestamp parsing remain private to Store. Store decodes Task, Change Unit,

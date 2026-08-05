@@ -1640,6 +1640,8 @@ mod tests {
 
     #[test]
     fn shaping_required_nullable_baseline_is_exact() {
+        use jsonschema::{Draft, JSONSchema};
+
         let contract = mcp_tool_contract(AgentToolId::RECORD_SHAPING_CHECKPOINT)
             .expect("record-shaping semantic contract");
         let example = contract
@@ -1655,18 +1657,34 @@ mod tests {
             schema.pointer("/definitions/BaselineRef/not/const"),
             Some(&Value::String("null".to_owned()))
         );
+        assert_eq!(
+            schema.pointer("/definitions/BaselineRef/maxLength"),
+            Some(&Value::from(BaselineRef::spec().maximum_length))
+        );
+        assert_eq!(
+            schema.pointer("/definitions/BaselineRef/pattern"),
+            Some(&Value::String(BaselineRef::spec().json_schema_pattern()))
+        );
+        let compiled_schema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .compile(&schema)
+            .expect("generated MCP input schema must compile");
 
-        for invalid_baseline_ref in [
-            "",
-            " ",
-            "null",
-            " baseline",
-            "baseline ",
-            "\tbaseline",
-            "baseline\n",
-        ] {
+        for valid_baseline_ref in BaselineRef::spec().examples {
+            let mut valid = example.value().clone();
+            valid["baseline_ref"] = Value::String((*valid_baseline_ref).to_owned());
+            assert!(contract
+                .input_descriptor()
+                .validate(&valid)
+                .issues
+                .is_empty());
+            assert!(compiled_schema.is_valid(&valid));
+            assert!(decode_round_trip::<McpRecordShapingCheckpointArguments>(&valid).is_ok());
+        }
+
+        for invalid_baseline_ref in BaselineRef::spec().generated_invalid_corpus() {
             let mut invalid = example.value().clone();
-            invalid["baseline_ref"] = Value::String(invalid_baseline_ref.to_owned());
+            invalid["baseline_ref"] = Value::String(invalid_baseline_ref.clone());
             assert!(
                 !contract
                     .input_descriptor()
@@ -1675,6 +1693,8 @@ mod tests {
                     .is_empty(),
                 "record-shaping input accepted invalid BaselineRef {invalid_baseline_ref:?}"
             );
+            assert!(!compiled_schema.is_valid(&invalid));
+            assert!(decode_round_trip::<McpRecordShapingCheckpointArguments>(&invalid).is_err());
         }
 
         let mut omitted = example.value().clone();

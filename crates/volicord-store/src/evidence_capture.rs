@@ -1687,17 +1687,9 @@ mod tests {
 
     #[test]
     fn capture_intent_decoder_rejects_every_noncanonical_scalar_baseline() {
-        for invalid in [
-            "",
-            " ",
-            "null",
-            " baseline",
-            "baseline ",
-            "\tbaseline",
-            "baseline\n",
-        ] {
+        for invalid in BaselineRef::spec().generated_invalid_corpus() {
             let mut row = valid_raw_intent();
-            row.baseline_ref = invalid.to_owned();
+            row.baseline_ref = invalid;
             assert!(matches!(
                 decode_intent_record(row),
                 Err(StoreError::CorruptOwnerStateValue {

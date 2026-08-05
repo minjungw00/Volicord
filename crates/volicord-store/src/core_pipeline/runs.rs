@@ -474,15 +474,7 @@ mod tests {
             })
         ));
 
-        for invalid in [
-            "",
-            " ",
-            "null",
-            " baseline",
-            "baseline ",
-            "\tbaseline",
-            "baseline\n",
-        ] {
+        for invalid in BaselineRef::spec().generated_invalid_corpus() {
             let mut row = valid();
             row.observed_changes_json = serde_json::json!({
                 "changed_paths": [],

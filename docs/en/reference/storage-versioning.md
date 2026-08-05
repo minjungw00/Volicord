@@ -283,11 +283,12 @@ different storage contract.
 
 This strict boundary includes every persisted `BaselineRef`. Scalar owner
 columns are checked through one Store decoder, while baseline-bearing owner
-JSON is decoded through the same semantic type. Empty values, surrounding
-whitespace, and the string `"null"` are `Corrupt`; SQL `NULL` or JSON `null`
-means absence only at an owner-declared nullable position. Store does not trim
-or recover these values, and Core, MCP, and CLI surface the resulting
-persisted-data corruption without mutation effects.
+JSON is decoded through the same semantic type. Any value outside the exact
+byte-level contract in [API State Schemas](api/schema-state.md) is `Corrupt`;
+SQL `NULL` or JSON `null` means absence only at an owner-declared nullable
+position. Store does not trim, coerce, or recover these values, and Core, MCP,
+and CLI surface the resulting typed persisted-data corruption without mutation
+effects.
 
 <a id="canonical-core-utc-clock"></a>
 ## Canonical Core UTC Clock

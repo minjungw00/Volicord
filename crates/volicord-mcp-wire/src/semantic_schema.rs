@@ -4608,37 +4608,31 @@ mod tests {
             ["BaselineRef"]
         );
 
-        for valid in [
-            serde_json::json!({
-                "current_baseline": null,
-                "nested": {"authority_baseline": null}
-            }),
-            serde_json::json!({
-                "current_baseline": "baseline_current_001",
-                "nested": {"authority_baseline": "baseline_authority_001"}
-            }),
-        ] {
+        let null_value = serde_json::json!({
+            "current_baseline": null,
+            "nested": {"authority_baseline": null}
+        });
+        assert!(descriptor.validate(&null_value).issues.is_empty());
+        assert!(serde_json::from_value::<TypeOwnedBaselineRoot>(null_value).is_ok());
+        for valid_baseline in BaselineRef::spec().examples {
+            let valid = serde_json::json!({
+                "current_baseline": valid_baseline,
+                "nested": {"authority_baseline": valid_baseline}
+            });
             assert!(descriptor.validate(&valid).issues.is_empty());
             assert!(serde_json::from_value::<TypeOwnedBaselineRoot>(valid).is_ok());
         }
 
-        let mut invalid = [
-            "",
-            " ",
-            "null",
-            " baseline",
-            "baseline ",
-            "\tbaseline",
-            "baseline\n",
-        ]
-        .into_iter()
-        .map(|value| {
-            serde_json::json!({
-                "current_baseline": value,
-                "nested": {"authority_baseline": null}
+        let mut invalid = BaselineRef::spec()
+            .generated_invalid_corpus()
+            .into_iter()
+            .map(|value| {
+                serde_json::json!({
+                    "current_baseline": value,
+                    "nested": {"authority_baseline": null}
+                })
             })
-        })
-        .collect::<Vec<_>>();
+            .collect::<Vec<_>>();
         invalid.push(serde_json::json!({
             "current_baseline": null,
             "nested": {"authority_baseline": "null"}

@@ -36,9 +36,9 @@ catalog, conformance case를 만듭니다. 여기에는
 `McpToolResultEnvelope`가 포함됩니다.
 
 의미 동작은 포함 property 이름이나 JSON Pointer가 아니라 Rust 의미 type을 따릅니다.
-따라서 `BaselineRef`는 어느 위치에 중첩되거나 다른 이름으로 쓰이더라도 비어 있지 않은
-정규 string 표현, 앞뒤 공백 거부, 금지된 string literal `"null"`, description, 정규
-example을 직접 소유합니다. `RequiredNullable<T>`에는 하나의 일반 descriptor 규칙만
+따라서 `BaselineRef`는 어느 위치에 중첩되거나 다른 이름으로 쓰이더라도 [API 상태
+스키마](api/schema-state.md)가 담당하는 정확한 byte grammar, 길이 상한, 금지되는 완전한
+값, description, 정규 example을 사용합니다. `RequiredNullable<T>`에는 하나의 일반 descriptor 규칙만
 있습니다. member는 필수이고 JSON `null`은 유효하며, null이 아닌 모든 값은 `T`로 검증하고
 decode합니다. Field 이름 등록이나 nullable 예외는 없습니다. Schemars는 이런 type 소유
 규칙의 leaf JSON Schema 표현만 제공합니다. 부수적인 schema 상수에서 union discriminator를
@@ -50,8 +50,8 @@ identity가 유지됩니다.
 결정적으로 조합한 값을 포함한 정규 descriptor example도 같은 checked parser를
 통과합니다. 구성 실패는 panic이나 unchecked 값이 아니라 descriptor 무결성 실패입니다.
 Wire에서 필수 nullable baseline member의 부재는 JSON `null`로 표현합니다. 문자열
-`"null"`, 빈 문자열, 앞뒤 공백이 있는 문자열은 유효하지 않으며 baseline이나 부재로
-정규화하지 않습니다.
+`"null"`을 포함해 type-owned byte grammar와 일치하지 않는 문자열은 유효하지 않으며
+baseline이나 부재로 정규화하지 않습니다.
 
 `volicord-types`는 adapter-neutral 메서드 fact, domain 값, 공개 메서드 schema만
 담당합니다. `volicord-mcp`는 이 neutral outcome을 소비해 wire 담당 값으로 변환합니다.

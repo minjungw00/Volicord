@@ -63,6 +63,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         cli_docs::validate_volicord_command_examples(&root, index, &mut issues);
         document_structure::validate_architecture_design_documents(&root, index, &mut issues);
         document_structure::validate_surface_stability_sections(&root, index, &mut issues);
+        storage::validate_baseline_ref_contract(&root, index, &mut issues);
         storage::validate_storage_ddl_sql_blocks(&root, index, &mut issues);
     }
     artifact_hygiene::validate_tracked_artifacts(&root, &mut issues);

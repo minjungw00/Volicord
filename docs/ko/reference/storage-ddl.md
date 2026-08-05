@@ -70,15 +70,15 @@ Setup 전용 staging database 생성은 배타 setup context를 요구하며 boo
 버전이나 저장소 형식 식별자가 아닙니다. 기준 SQLite DDL은 다른 공개 상태 시계를
 노출하지 않습니다.
 
-Null이 아닌 모든 scalar `BaselineRef` column은 같은 물리 predicate인
-`length(value) > 0 AND value = trim(value) AND value <> 'null'`을 사용합니다. Nullable
-scalar baseline은 정확히 같은 non-null predicate를 `value IS NULL OR (...)`로 감싸며,
-baseline을 요구하는 readiness check도 같은 predicate를 반복합니다. 같은 check가 앞뒤의
-ASCII 제어 공백도 명시적으로 거부하므로 SQLite의 인자 하나짜리 `trim`이 공백 문자만
-제거하더라도 양 끝의 tab이나 줄바꿈을 허용하지 않습니다. 이 DDL은 현재
-manifest identity와 유지되는 두 언어의 기준 SQL projection에 함께 반영됩니다. 이는
-심층 방어이며 Store는 선택한 scalar 또는 typed JSON baseline이 저장소 경계를 넘기 전에
-여전히 checked decode합니다.
+Null이 아닌 모든 scalar `BaselineRef` column은 type-owned 정규 scalar specification에서
+생성한 predicate를 사용합니다. 생성 predicate는 정확한 byte 길이 구간을 검사하고 문자
+길이와 byte 길이가 같아야 한다고 요구하며, 허용 ASCII alphabet 밖의 모든 byte와
+금지되는 모든 완전한 값을 거부합니다. Nullable scalar 위치는 이 predicate를 SQL
+`NULL`과 결합하고, baseline이 필요한 readiness 위치는 값 존재와 같은 predicate를 함께
+요구합니다. 아래 기준 SQL의 생성 region은 결정적이며 현재 manifest identity에
+반영되고 유지되는 두 언어의 기준 SQL projection을 만듭니다. 이는 심층 방어입니다.
+Store는 선택한 scalar 또는 typed JSON baseline이 저장소 경계를 넘기 전에 여전히 checked
+decode하며 물리 constraint를 우회한 경우 typed corruption을 보고합니다.
 
 물리 `write_tickets` 테이블은 제품 파일 쓰기 시도와 유효 `sensitive` 통제 아래의
 정확한 승인 결속 비제품 동작에 대한 권한 기록을 저장합니다. 이 행은 Volicord 안에서
@@ -1144,10 +1144,12 @@ CREATE TABLE evidence_capture_intents (
   change_unit_id TEXT NOT NULL,
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   baseline_ref TEXT NOT NULL CHECK (
-    length(baseline_ref) > 0
-    AND baseline_ref = trim(baseline_ref)
+    -- BEGIN GENERATED: BaselineRef non-null baseline_ref
+    length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+    AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+    AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
     AND baseline_ref <> 'null'
-    AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+    -- END GENERATED: BaselineRef non-null baseline_ref
   ),
   target_json TEXT NOT NULL,
   capture_kind TEXT NOT NULL CHECK (
@@ -1297,23 +1299,27 @@ CREATE TABLE shaping_checkpoints (
   CHECK (
     readiness <> 'ready'
     OR (
+      -- BEGIN GENERATED: BaselineRef required baseline_ref
       baseline_ref IS NOT NULL
-      AND length(baseline_ref) > 0
-      AND baseline_ref = trim(baseline_ref)
+      AND length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+      AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+      AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
       AND baseline_ref <> 'null'
-      AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+      -- END GENERATED: BaselineRef required baseline_ref
       AND implementation_boundary IS NOT NULL
       AND length(trim(implementation_boundary)) > 0
     )
   ),
   CHECK (
+    -- BEGIN GENERATED: BaselineRef nullable baseline_ref
     baseline_ref IS NULL
     OR (
-      length(baseline_ref) > 0
-      AND baseline_ref = trim(baseline_ref)
+      length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+      AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+      AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
       AND baseline_ref <> 'null'
-      AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
     )
+    -- END GENERATED: BaselineRef nullable baseline_ref
   ),
   CHECK (
     implementation_boundary IS NULL
@@ -1529,10 +1535,12 @@ CREATE TABLE shaping_decision_applications (
   ),
   applied_scope_revision INTEGER NOT NULL CHECK (applied_scope_revision >= 0),
   applied_baseline_ref TEXT NOT NULL CHECK (
-    length(applied_baseline_ref) > 0
-    AND applied_baseline_ref = trim(applied_baseline_ref)
+    -- BEGIN GENERATED: BaselineRef non-null applied_baseline_ref
+    length(CAST(applied_baseline_ref AS BLOB)) BETWEEN 1 AND 64
+    AND length(CAST(applied_baseline_ref AS BLOB)) = length(applied_baseline_ref)
+    AND applied_baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
     AND applied_baseline_ref <> 'null'
-    AND applied_baseline_ref = trim(applied_baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+    -- END GENERATED: BaselineRef non-null applied_baseline_ref
   ),
   applied_change_unit_id TEXT,
   applied_at TEXT NOT NULL,
@@ -2452,10 +2460,12 @@ CREATE TABLE evidence_producers (
   change_unit_id TEXT NOT NULL,
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   baseline_ref TEXT NOT NULL CHECK (
-    length(baseline_ref) > 0
-    AND baseline_ref = trim(baseline_ref)
+    -- BEGIN GENERATED: BaselineRef non-null baseline_ref
+    length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+    AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+    AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
     AND baseline_ref <> 'null'
-    AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+    -- END GENERATED: BaselineRef non-null baseline_ref
   ),
   producer_kind TEXT NOT NULL CHECK (
     producer_kind IN (

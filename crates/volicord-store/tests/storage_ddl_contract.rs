@@ -22,6 +22,7 @@ use volicord_test_support::{
     TestRuntimeHomeMutation,
 };
 use volicord_types::canonical::canonical_json_string;
+use volicord_types::ids::BaselineRef;
 use volicord_types::integration_revision::McpRuntimeSessionSource;
 use volicord_types::managed_mcp_client_info::ManagedMcpClientInfo;
 use volicord_types::storage_contract::{
@@ -29,6 +30,66 @@ use volicord_types::storage_contract::{
     STORAGE_ENABLED_CAPABILITIES,
 };
 use volicord_types::tool_names::AgentToolId;
+
+#[test]
+fn generated_baseline_ref_predicates_match_sqlite_for_the_shared_corpus(
+) -> Result<(), Box<dyn Error>> {
+    let spec = BaselineRef::spec();
+    let connection = Connection::open_in_memory()?;
+    connection.execute_batch(&format!(
+        "CREATE TABLE scalar_baseline (
+            value TEXT NOT NULL CHECK ({})
+         );
+         CREATE TABLE nullable_baseline (
+            value TEXT CHECK ({})
+         );",
+        spec.sqlite_non_null_predicate("value"),
+        spec.sqlite_nullable_predicate("value")
+    ))?;
+
+    for valid in spec.examples {
+        assert!(spec.accepts(valid));
+        connection.execute("DELETE FROM scalar_baseline", [])?;
+        connection.execute("DELETE FROM nullable_baseline", [])?;
+        connection.execute("INSERT INTO scalar_baseline (value) VALUES (?1)", [valid])?;
+        connection.execute("INSERT INTO nullable_baseline (value) VALUES (?1)", [valid])?;
+    }
+    connection.execute("INSERT INTO nullable_baseline (value) VALUES (NULL)", [])?;
+    assert!(connection
+        .execute("INSERT INTO scalar_baseline (value) VALUES (NULL)", [])
+        .is_err());
+
+    for invalid in spec.generated_invalid_corpus() {
+        assert!(!spec.accepts(&invalid));
+        assert!(
+            connection
+                .execute(
+                    "INSERT INTO scalar_baseline (value) VALUES (?1)",
+                    [&invalid]
+                )
+                .is_err(),
+            "generated scalar predicate accepted {invalid:?}"
+        );
+        assert!(
+            connection
+                .execute(
+                    "INSERT INTO nullable_baseline (value) VALUES (?1)",
+                    [&invalid]
+                )
+                .is_err(),
+            "generated nullable predicate accepted {invalid:?}"
+        );
+    }
+    assert_eq!(
+        spec.sqlite_non_null_predicate("value"),
+        spec.sqlite_non_null_predicate("value")
+    );
+    assert_eq!(
+        spec.sqlite_nullable_predicate("value"),
+        spec.sqlite_nullable_predicate("value")
+    );
+    Ok(())
+}
 
 #[test]
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
@@ -376,11 +437,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:1f699b0baf9b2e51e1c0a9ae4361683daeb5ab49da3d08be1f4c3e129f6f41dd"
+        "sha256:95da0587a0fe2e822436da62321000f92f96403b714de7370fdbc31c15cadc5e"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:92aebc3151cee07435284f793976b08c3c8666395d61bf6cb5a49346d25d6c2b"
+        "sha256:205d20fb042f80c2967437bd8be3e82425a82ec8663b274e7d23a1028a514236"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,7 +475,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:1f699b0baf9b2e51e1c0a9ae4361683daeb5ab49da3d08be1f4c3e129f6f41dd\",",
+            "{\"canonical_ddl_digest\":\"sha256:95da0587a0fe2e822436da62321000f92f96403b714de7370fdbc31c15cadc5e\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
@@ -422,7 +483,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
             "\"shaping_checkpoint_lineage\",",
             "\"shaping_decision_applications\",\"shaping_decision_recovery\",\"shaping_progression\",",
             "\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:92aebc3151cee07435284f793976b08c3c8666395d61bf6cb5a49346d25d6c2b\"}"
+            "\"integrity_constraints_digest\":\"sha256:205d20fb042f80c2967437bd8be3e82425a82ec8663b274e7d23a1028a514236\"}"
         )
     );
     Ok(())
@@ -665,6 +726,7 @@ fn canonical_constraints_remain_executable() -> Result<(), Box<dyn Error>> {
 #[test]
 fn baseline_scalar_constraints_are_canonical_and_readiness_uses_the_same_predicate(
 ) -> Result<(), Box<dyn Error>> {
+    let spec = BaselineRef::spec();
     let project = canonical_project()?;
     insert_project_owner(&project, current_storage_manifest_json()?)?;
     insert_task(&project)?;
@@ -685,18 +747,55 @@ fn baseline_scalar_constraints_are_canonical_and_readiness_uses_the_same_predica
             |row| row.get(0),
         )?;
         let normalized_sql = sql.split_whitespace().collect::<Vec<_>>().join(" ");
-        let required =
-            format!("length({column}) > 0 AND {column} = trim({column}) AND {column} <> 'null'");
+        let required = spec
+            .sqlite_non_null_predicate(column)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(
             normalized_sql.contains(&required),
             "{table}.{column}: {sql}"
         );
         if nullable {
+            let nullable_predicate = spec
+                .sqlite_nullable_predicate(column)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
             assert!(
-                normalized_sql.contains(&format!("{column} IS NULL OR (")),
+                normalized_sql.contains(&nullable_predicate),
                 "{table}.{column} must preserve SQL NULL"
             );
+            let required_predicate = spec
+                .sqlite_required_predicate(column)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert!(
+                normalized_sql.contains(&required_predicate),
+                "{table}.{column} readiness must require the generated predicate"
+            );
         }
+    }
+
+    assert_eq!(
+        volicord_store::schema::PROJECT_STATE_SCHEMA_SQL
+            .matches("-- BEGIN GENERATED: BaselineRef non-null baseline_ref")
+            .count(),
+        2
+    );
+    for unique_region in [
+        "-- BEGIN GENERATED: BaselineRef required baseline_ref",
+        "-- BEGIN GENERATED: BaselineRef nullable baseline_ref",
+        "-- BEGIN GENERATED: BaselineRef non-null applied_baseline_ref",
+    ] {
+        assert_eq!(
+            volicord_store::schema::PROJECT_STATE_SCHEMA_SQL
+                .matches(unique_region)
+                .count(),
+            1,
+            "{unique_region}"
+        );
     }
 
     project.execute(
@@ -825,15 +924,7 @@ fn baseline_scalar_constraints_are_canonical_and_readiness_uses_the_same_predica
             [],
         )
         .is_err());
-    for invalid in [
-        "",
-        " ",
-        "null",
-        " baseline",
-        "baseline ",
-        "\tbaseline",
-        "baseline\n",
-    ] {
+    for invalid in BaselineRef::spec().generated_invalid_corpus() {
         for (table, column, id_column, id) in [
             (
                 "evidence_capture_intents",

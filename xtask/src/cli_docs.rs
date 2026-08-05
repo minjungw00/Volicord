@@ -89,6 +89,7 @@ pub fn run_docs_sync(root: &Path) -> Result<DocsSyncReport> {
     updated_paths.extend(crate::architecture::sync_generated_architecture_regions(
         &root, &index,
     )?);
+    updated_paths.extend(crate::storage::sync_baseline_ref_contract(&root, &index)?);
     updated_paths.extend(crate::storage::sync_storage_ddl_sql_blocks(&root, &index)?);
     updated_paths.sort();
     updated_paths.dedup();

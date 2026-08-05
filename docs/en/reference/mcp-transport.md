@@ -38,9 +38,9 @@ cases. This includes `McpOperationalErrorCode`,
 `McpToolDefinitionEnvelope`, and `McpToolResultEnvelope`.
 
 Semantic behavior follows the Rust semantic type, not a containing property
-name or JSON Pointer. `BaselineRef` therefore owns its non-empty canonical
-string representation, surrounding-whitespace rejection, the forbidden string
-literal `"null"`, description, and canonical example wherever it is nested or
+name or JSON Pointer. `BaselineRef` therefore carries the exact byte grammar,
+length bound, forbidden complete values, description, and canonical examples
+owned by [API State Schemas](api/schema-state.md) wherever it is nested or
 renamed. `RequiredNullable<T>` is one generic descriptor rule: its member is
 required, JSON `null` is valid, and every non-null value is validated and
 decoded as `T`. There are no field-name registrations or nullable exceptions.
@@ -54,9 +54,9 @@ All production `BaselineRef` construction is checked. Canonical descriptor
 examples, including values assembled deterministically from other example
 coordinates, pass through the same checked parser; a construction failure is a
 descriptor-integrity failure rather than a panic or an unchecked value. On the
-wire, required-nullable baseline members use JSON `null` for absence. The
-string `"null"`, empty strings, and strings with surrounding whitespace are
-invalid values and are never normalized into either a baseline or absence.
+wire, required-nullable baseline members use JSON `null` for absence. Strings
+outside the type-owned byte grammar, including the string `"null"`, are invalid
+and are never normalized into either a baseline or absence.
 
 `volicord-types` owns only adapter-neutral method facts, domain values, and
 public method schemas. `volicord-mcp` consumes those neutral outcomes and maps

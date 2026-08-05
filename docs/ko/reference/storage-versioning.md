@@ -258,10 +258,10 @@ PRAGMA foreign_keys = ON;
 
 이 엄격한 경계는 모든 영속 `BaselineRef`에도 적용됩니다. Scalar 담당 column은 하나의
 Store decoder로 checked decode하고 baseline을 포함한 담당 JSON은 같은 의미 type으로
-decode합니다. 빈 값, 앞뒤 공백, 문자열 `"null"`은 `Corrupt`입니다. SQL `NULL` 또는
-JSON `null`은 담당자가 nullable로 선언한 위치에서만 부재를 뜻합니다. Store는 이 값을
-trim하거나 복구하지 않으며 Core, MCP, CLI는 변경 효과 없이 해당 영속 데이터 손상을
-표면화합니다.
+decode합니다. [API 상태 스키마](api/schema-state.md)의 정확한 byte-level 계약을 벗어난
+모든 값은 `Corrupt`입니다. SQL `NULL` 또는 JSON `null`은 담당자가 nullable로 선언한
+위치에서만 부재를 뜻합니다. Store는 이 값을 trim, 강제 변환하거나 복구하지 않으며
+Core, MCP, CLI는 변경 효과 없이 해당 typed 영속 데이터 손상을 표면화합니다.
 
 <a id="canonical-core-utc-clock"></a>
 ## 정규 Core UTC 시계

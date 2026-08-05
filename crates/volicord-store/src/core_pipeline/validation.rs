@@ -1025,22 +1025,21 @@ mod source_ref_tests {
             ("shaping_decision_applications", "applied_baseline_ref"),
             ("evidence_producers", "baseline_ref"),
         ] {
-            for invalid in [
-                "",
-                " ",
-                "null",
-                " baseline",
-                "baseline ",
-                "\tbaseline",
-                "baseline\n",
-            ] {
-                let error = decode_owner_baseline_ref(
-                    table,
-                    "owner_ref",
-                    logical_column,
-                    invalid.to_owned(),
-                )
-                .expect_err("non-canonical persisted BaselineRef must fail closed");
+            for valid in BaselineRef::spec().examples {
+                assert_eq!(
+                    decode_owner_baseline_ref(
+                        table,
+                        "owner_ref",
+                        logical_column,
+                        (*valid).to_owned(),
+                    )?
+                    .as_str(),
+                    *valid
+                );
+            }
+            for invalid in BaselineRef::spec().generated_invalid_corpus() {
+                let error = decode_owner_baseline_ref(table, "owner_ref", logical_column, invalid)
+                    .expect_err("non-canonical persisted BaselineRef must fail closed");
                 assert!(matches!(
                     error,
                     StoreError::CorruptOwnerStateValue {
@@ -1055,16 +1054,6 @@ mod source_ref_tests {
             }
         }
 
-        assert_eq!(
-            decode_owner_baseline_ref(
-                "evidence_capture_intents",
-                "owner_ref",
-                "baseline_ref",
-                "baseline".to_owned(),
-            )?
-            .as_str(),
-            "baseline"
-        );
         assert_eq!(
             decode_optional_owner_baseline_ref(
                 "shaping_checkpoints",

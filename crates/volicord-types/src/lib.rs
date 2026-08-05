@@ -9,6 +9,7 @@
 //! adapter behavior.
 
 pub mod canonical;
+pub mod canonical_scalar;
 pub mod connection_verification;
 pub mod contracts;
 pub mod diagnostics;
@@ -1164,17 +1165,9 @@ mod tests {
             ),
         ];
         for (method_name, sample, path) in cases {
-            for invalid in [
-                "",
-                " ",
-                "null",
-                " baseline",
-                "baseline ",
-                "\tbaseline",
-                "baseline\n",
-            ] {
+            for invalid in BaselineRef::spec().generated_invalid_corpus() {
                 let mut request = sample();
-                set_path(&mut request, path, json!(invalid));
+                set_path(&mut request, path, json!(&invalid));
                 assert!(
                     deserialize_public_request(method_name, request).is_err(),
                     "{method_name} must reject BaselineRef {invalid:?}"
@@ -1186,7 +1179,11 @@ mod tests {
         let baseline_ref = definition(&schema, "BaselineRef");
         assert_eq!(baseline_ref["type"], "string");
         assert_eq!(baseline_ref["minLength"], 1);
-        assert_eq!(baseline_ref["pattern"], r"^\S(?:[\s\S]*\S)?(?![\s\S])");
+        assert_eq!(baseline_ref["maxLength"], 64);
+        assert_eq!(
+            baseline_ref["pattern"],
+            BaselineRef::spec().json_schema_pattern()
+        );
         assert_eq!(baseline_ref.pointer("/not/const"), Some(&json!("null")));
 
         for (method_name, sample, path) in [

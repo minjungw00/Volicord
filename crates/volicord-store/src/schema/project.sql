@@ -132,10 +132,12 @@ CREATE TABLE evidence_capture_intents (
   change_unit_id TEXT NOT NULL,
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   baseline_ref TEXT NOT NULL CHECK (
-    length(baseline_ref) > 0
-    AND baseline_ref = trim(baseline_ref)
+    -- BEGIN GENERATED: BaselineRef non-null baseline_ref
+    length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+    AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+    AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
     AND baseline_ref <> 'null'
-    AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+    -- END GENERATED: BaselineRef non-null baseline_ref
   ),
   target_json TEXT NOT NULL,
   capture_kind TEXT NOT NULL CHECK (
@@ -285,23 +287,27 @@ CREATE TABLE shaping_checkpoints (
   CHECK (
     readiness <> 'ready'
     OR (
+      -- BEGIN GENERATED: BaselineRef required baseline_ref
       baseline_ref IS NOT NULL
-      AND length(baseline_ref) > 0
-      AND baseline_ref = trim(baseline_ref)
+      AND length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+      AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+      AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
       AND baseline_ref <> 'null'
-      AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+      -- END GENERATED: BaselineRef required baseline_ref
       AND implementation_boundary IS NOT NULL
       AND length(trim(implementation_boundary)) > 0
     )
   ),
   CHECK (
+    -- BEGIN GENERATED: BaselineRef nullable baseline_ref
     baseline_ref IS NULL
     OR (
-      length(baseline_ref) > 0
-      AND baseline_ref = trim(baseline_ref)
+      length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+      AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+      AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
       AND baseline_ref <> 'null'
-      AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
     )
+    -- END GENERATED: BaselineRef nullable baseline_ref
   ),
   CHECK (
     implementation_boundary IS NULL
@@ -517,10 +523,12 @@ CREATE TABLE shaping_decision_applications (
   ),
   applied_scope_revision INTEGER NOT NULL CHECK (applied_scope_revision >= 0),
   applied_baseline_ref TEXT NOT NULL CHECK (
-    length(applied_baseline_ref) > 0
-    AND applied_baseline_ref = trim(applied_baseline_ref)
+    -- BEGIN GENERATED: BaselineRef non-null applied_baseline_ref
+    length(CAST(applied_baseline_ref AS BLOB)) BETWEEN 1 AND 64
+    AND length(CAST(applied_baseline_ref AS BLOB)) = length(applied_baseline_ref)
+    AND applied_baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
     AND applied_baseline_ref <> 'null'
-    AND applied_baseline_ref = trim(applied_baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+    -- END GENERATED: BaselineRef non-null applied_baseline_ref
   ),
   applied_change_unit_id TEXT,
   applied_at TEXT NOT NULL,
@@ -1440,10 +1448,12 @@ CREATE TABLE evidence_producers (
   change_unit_id TEXT NOT NULL,
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   baseline_ref TEXT NOT NULL CHECK (
-    length(baseline_ref) > 0
-    AND baseline_ref = trim(baseline_ref)
+    -- BEGIN GENERATED: BaselineRef non-null baseline_ref
+    length(CAST(baseline_ref AS BLOB)) BETWEEN 1 AND 64
+    AND length(CAST(baseline_ref AS BLOB)) = length(baseline_ref)
+    AND baseline_ref NOT GLOB '*[^-0123456789_abcdefghijklmnopqrstuvwxyz]*'
     AND baseline_ref <> 'null'
-    AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+    -- END GENERATED: BaselineRef non-null baseline_ref
   ),
   producer_kind TEXT NOT NULL CHECK (
     producer_kind IN (

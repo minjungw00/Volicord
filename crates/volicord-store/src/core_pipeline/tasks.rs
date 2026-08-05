@@ -1552,15 +1552,7 @@ mod tests {
             })
         ));
 
-        for invalid in [
-            "",
-            " ",
-            "null",
-            " baseline",
-            "baseline ",
-            "\tbaseline",
-            "baseline\n",
-        ] {
+        for invalid in BaselineRef::spec().generated_invalid_corpus() {
             let mut invalid_baseline = valid_record.clone();
             invalid_baseline.shaping_summary_json =
                 serde_json::json!({"baseline_ref": invalid}).to_string();

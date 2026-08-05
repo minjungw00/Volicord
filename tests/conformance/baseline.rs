@@ -1674,9 +1674,9 @@ fn persisted_task_and_change_unit_baseline_matrix_fails_closed_without_effects(
         create_task_with_change_unit(&fixture, &service, "corrupt_baseline_owner_matrix")?;
     let before = fixture.counts()?;
 
-    for invalid in ["", " ", "null", " baseline", "baseline "] {
+    for invalid in BaselineRef::spec().generated_invalid_corpus() {
         fixture
-            .corrupt_persisted_baseline(PersistedBaselineOwner::Task(&task_id), Some(invalid))?;
+            .corrupt_persisted_baseline(PersistedBaselineOwner::Task(&task_id), Some(&invalid))?;
         let status = service.status(
             fixture.status_request("req_corrupt_task_baseline", Some(&task_id)),
             invocation(&fixture, OperationCategory::Read),
@@ -1690,7 +1690,7 @@ fn persisted_task_and_change_unit_baseline_matrix_fails_closed_without_effects(
 
         fixture.corrupt_persisted_baseline(
             PersistedBaselineOwner::ChangeUnit(&change_unit_id),
-            Some(invalid),
+            Some(&invalid),
         )?;
         let status = service.status(
             fixture.status_request("req_corrupt_change_unit_baseline", Some(&task_id)),

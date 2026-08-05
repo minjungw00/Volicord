@@ -1345,15 +1345,7 @@ mod tests {
 
     #[test]
     fn write_ticket_json_baselines_are_strict_and_nullable() {
-        for invalid in [
-            "",
-            " ",
-            "null",
-            " baseline",
-            "baseline ",
-            "\tbaseline",
-            "baseline\n",
-        ] {
+        for invalid in volicord_types::ids::BaselineRef::spec().generated_invalid_corpus() {
             let mut validity_row = valid_raw_write_ticket();
             let mut validity: Value = serde_json::from_str(&validity_row.validity_basis_json)
                 .expect("valid validity-basis fixture");

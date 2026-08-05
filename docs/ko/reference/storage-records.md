@@ -629,11 +629,11 @@ Store가 소유하는 모든 구조화된 권한 필드는 닫힌 typed schema, 
 유효하지 않은 입력이며 영속 데이터 손상입니다.
 
 `BaselineRef`는 scalar column과 typed 담당 JSON 전체에서 하나의 checked 의미 값입니다.
-값이 있으면 비어 있지 않고 저장된 표기가 trim 결과와 같으며 문자열 `"null"`이
-아니어야 합니다. 선택 JSON은 JSON `null`을, 선택 scalar 저장소는 SQL `NULL`을
-사용합니다. Store는 이 표현들을 trim, 대체, 상호 변환하지 않습니다. 모든 scalar
-baseline read는 공유 Store decoder를 사용하며 담당 table, record reference, logical
-column을 포함한 영속 데이터 `Corrupt`로 보고합니다. 모든 JSON 담당자는 같은
+값이 있으면 [API 상태 스키마](api/schema-state.md)의 정확한 byte-level 계약을 충족해야
+합니다. 선택 JSON은 JSON `null`을, 선택 scalar 저장소는 SQL `NULL`을 사용합니다.
+Store는 이 표현들을 trim, 대체, 강제 변환하거나 상호 변환하지 않습니다. 모든 scalar
+baseline read는 공유 checked decoder를 사용하며 담당 table, record reference, logical
+column을 포함한 typed 영속 데이터 `Corrupt`로 보고합니다. 모든 JSON 담당자는 같은
 `BaselineRef` type을 통해 decode합니다. Store mutation interface는 typed
 `BaselineRef` 값만 받으므로 임의 문자열이 baseline 쓰기 경로에 도달하지 않습니다.
 

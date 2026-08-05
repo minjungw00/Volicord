@@ -1035,7 +1035,7 @@ terms:
       - en: "docs/en/reference/storage-ddl.md"
         ko: "docs/ko/reference/storage-ddl.md"
     notes:
-      - "Use for the one checked, non-empty opaque baseline identifier with no surrounding whitespace and with the literal string `null` forbidden."
+      - "Use for the one checked opaque baseline identifier whose exact portable byte-level grammar is defined by the primary owner and generated from the type-owned canonical scalar specification."
       - "At owner-declared nullable positions, JSON `null` or SQL `NULL` represents absence; the string `null` is never a baseline or null alias."
       - "Store strictly decodes every persisted scalar and typed JSON baseline through this semantic type; invalid persisted values are corruption and never repaired by trimming or fallback."
   mcp_semantic_schema:
