@@ -194,7 +194,7 @@ fn consume_managed_mcp_launch_lease_and_start_runtime_at(
     runtime: McpRuntimeSessionStart,
     consumed_at: SystemTime,
 ) -> StoreResult<McpRuntimeSessionRecord> {
-    let consumed_at_text = timestamp(consumed_at);
+    let observed_consumed_at_text = timestamp(consumed_at);
     let cleanup_cutoff = timestamp(
         consumed_at
             .checked_sub(TERMINAL_LEASE_RETENTION)
@@ -207,11 +207,14 @@ fn consume_managed_mcp_launch_lease_and_start_runtime_at(
             .generate(DurableIdKind::McpRuntimeSession)
             .map_err(|error| invalid_lease(format!("could not generate runtime id: {error}")))?;
         let tx = begin_immediate_transaction(&mut conn)?;
-        cleanup_leases(&tx, &consumed_at_text, &cleanup_cutoff)?;
+        cleanup_leases(&tx, &observed_consumed_at_text, &cleanup_cutoff)?;
         let lease = lease_from_conn(&tx, &claim.launch_lease_id)?.ok_or_else(lease_not_found)?;
         if lease.terminal_state != ManagedMcpLaunchLeaseState::Issued {
             return Err(lease_conflict("launch lease is no longer consumable"));
         }
+        let consumed_at_text = observed_consumed_at_text
+            .clone()
+            .max(lease.issued_at.clone());
         if consumed_at_text >= lease.expires_at {
             tx.execute(
                 "UPDATE managed_mcp_launch_leases
@@ -661,6 +664,40 @@ mod tests {
             consumed_at,
         );
         assert!(replay.is_err());
+        assert_eq!(runtime_count(&runtime_home)?, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn lease_consumption_clamps_a_regressed_wall_clock_to_the_issue_time(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, runtime_home, mutation, revision, fingerprint) =
+            fixture("launch-lease-clock-regression")?;
+        let context = mutation.context()?;
+        let observed = SystemTime::now();
+        let issued_at = observed.checked_add(Duration::from_secs(1)).unwrap();
+        let lease = issue(
+            &context,
+            &revision,
+            &fingerprint,
+            issued_at,
+            Duration::from_secs(30),
+        )?;
+
+        consume_managed_mcp_launch_lease_and_start_runtime_at(
+            &context,
+            claim(&lease),
+            runtime(observed),
+            observed,
+        )?;
+
+        let stored = managed_mcp_launch_lease(&runtime_home, &lease.launch_lease_id)?
+            .expect("consumed lease");
+        assert_eq!(
+            stored.consumed_at.as_deref(),
+            Some(lease.issued_at.as_str())
+        );
+        assert_eq!(stored.terminal_state, ManagedMcpLaunchLeaseState::Consumed);
         assert_eq!(runtime_count(&runtime_home)?, 1);
         Ok(())
     }

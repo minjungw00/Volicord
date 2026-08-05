@@ -711,6 +711,113 @@ fn baseline_scalar_constraints_are_canonical_and_readiness_uses_the_same_predica
          )",
         [],
     )?;
+    project.pragma_update(None, "foreign_keys", false)?;
+    project.execute(
+        "INSERT INTO evidence_capture_intents (
+            project_id, evidence_capture_intent_id, task_id, change_unit_id,
+            scope_revision, baseline_ref, target_json, capture_kind,
+            capture_spec_json, input_sha256, expected_outcome_json,
+            requested_by_actor_source, requesting_connection_internal_id,
+            created_at, expires_at
+         ) VALUES (
+            'project_a', 'intent_baseline', 'task_a', 'cu_a', 0, 'baseline',
+            '{}', 'verified_command_execution', '{}',
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            '{}', 'agent_connection:conn_main', 'conn_main', 't0', 't1'
+         )",
+        [],
+    )?;
+    project.execute(
+        "UPDATE tasks
+            SET shaping_summary_json = '{\"baseline_ref\":\"baseline\"}'
+          WHERE project_id = 'project_a' AND task_id = 'task_a'",
+        [],
+    )?;
+    project.execute(
+        "INSERT INTO user_action_requests (
+            project_id, user_action_request_id, task_id, action_kind,
+            request_json, basis_json, required_for_json,
+            requested_by_actor_source, source_method, source_idempotency_key,
+            requested_at
+         ) VALUES (
+            'project_a', 'request_a', 'task_a', 'scope_decision', '{}',
+            '{\"coordinates\":{\"scope_revision\":0,\"baseline_ref\":\"baseline\",\"change_unit_id\":null,\"compatibility_status\":\"current\"}}',
+            '[]', 'agent_connection:conn_main', 'volicord.record_shaping_checkpoint',
+            'idem_a', 't0'
+         )",
+        [],
+    )?;
+    project.execute(
+        "INSERT INTO user_action_resolutions (
+            project_id, user_action_resolution_id, user_action_request_id,
+            action_kind, channel_kind, channel_submission_id, resolution_json,
+            resolved_by_actor_source, resolved_verification_basis,
+            resolved_assurance_level, resolved_at
+         ) VALUES (
+            'project_a', 'resolution_a', 'request_a', 'scope_decision', 'cli',
+            'submission-a',
+            '{\"resolution_type\":\"choice\",\"machine_action\":\"accept\",\"resolution_outcome\":\"accepted\"}',
+            'local_user', 'fixture', 'verified', 't0'
+         )",
+        [],
+    )?;
+    project.execute(
+        "INSERT INTO shaping_checkpoint_user_actions (
+            project_id, shaping_checkpoint_id, shaping_gap_id, task_id,
+            user_action_request_id, action_kind, user_action_resolution_id,
+            linked_at, resolved_at
+         ) VALUES (
+            'project_a', 'checkpoint_baseline', 'gap_a', 'task_a',
+            'request_a', 'scope_decision', 'resolution_a', 't0', 't0'
+         )",
+        [],
+    )?;
+    project.execute(
+        "INSERT INTO shaping_checkpoint_gaps (
+            project_id, shaping_checkpoint_id, shaping_gap_id, task_id,
+            gap_kind, summary, status, user_action_request_id, user_action_kind
+         ) VALUES (
+            'project_a', 'checkpoint_baseline', 'gap_a', 'task_a',
+            'user_scope_decision_required', 'Accept the exact scope.', 'current',
+            'request_a', 'scope_decision'
+         )",
+        [],
+    )?;
+    project.execute(
+        "UPDATE shaping_checkpoint_gaps SET status = 'accepted'
+          WHERE project_id = 'project_a'
+            AND shaping_checkpoint_id = 'checkpoint_baseline'
+            AND shaping_gap_id = 'gap_a'",
+        [],
+    )?;
+    project.execute(
+        "INSERT INTO shaping_decision_applications (
+            project_id, shaping_decision_application_id, task_id,
+            source_checkpoint_id, source_gap_id, user_action_request_id,
+            user_action_resolution_id, judgment_kind, application_owner,
+            applied_scope_revision, applied_baseline_ref, applied_at,
+            authority_status
+         ) VALUES (
+            'project_a', 'application_baseline', 'task_a',
+            'checkpoint_baseline', 'gap_a', 'request_a', 'resolution_a',
+            'scope_decision', 'volicord.update_scope', 0, 'baseline', 't0',
+            'current'
+         )",
+        [],
+    )?;
+    project.execute(
+        "INSERT INTO evidence_producers (
+            project_id, evidence_producer_id, evidence_capture_intent_id,
+            evidence_capture_receipt_id, evidence_observation_id, artifact_id,
+            run_id, task_id, change_unit_id, scope_revision, baseline_ref,
+            producer_kind, canonical_producer_json, created_at
+         ) VALUES (
+            'project_a', 'producer_baseline', 'intent_baseline', 'receipt_a',
+            'observation_a', 'artifact_a', 'run_a', 'task_a', 'cu_a', 0,
+            'baseline', 'verified_command_execution', '{}', 't0'
+         )",
+        [],
+    )?;
     assert!(project
         .execute(
             "UPDATE shaping_checkpoints SET readiness = 'ready'
@@ -727,14 +834,73 @@ fn baseline_scalar_constraints_are_canonical_and_readiness_uses_the_same_predica
         "\tbaseline",
         "baseline\n",
     ] {
-        assert!(project
-            .execute(
-                "UPDATE shaping_checkpoints SET baseline_ref = ?1
-                  WHERE shaping_checkpoint_id = 'checkpoint_baseline'",
-                [invalid],
-            )
-            .is_err());
+        for (table, column, id_column, id) in [
+            (
+                "evidence_capture_intents",
+                "baseline_ref",
+                "evidence_capture_intent_id",
+                "intent_baseline",
+            ),
+            (
+                "shaping_checkpoints",
+                "baseline_ref",
+                "shaping_checkpoint_id",
+                "checkpoint_baseline",
+            ),
+            (
+                "shaping_decision_applications",
+                "applied_baseline_ref",
+                "shaping_decision_application_id",
+                "application_baseline",
+            ),
+            (
+                "evidence_producers",
+                "baseline_ref",
+                "evidence_producer_id",
+                "producer_baseline",
+            ),
+        ] {
+            let sql = format!("UPDATE {table} SET {column} = ?1 WHERE {id_column} = ?2");
+            assert!(
+                project.execute(&sql, params![invalid, id]).is_err(),
+                "normal DDL accepted {invalid:?} for {table}.{column}"
+            );
+        }
     }
+    for (table, column, id_column, id) in [
+        (
+            "evidence_capture_intents",
+            "baseline_ref",
+            "evidence_capture_intent_id",
+            "intent_baseline",
+        ),
+        (
+            "shaping_decision_applications",
+            "applied_baseline_ref",
+            "shaping_decision_application_id",
+            "application_baseline",
+        ),
+        (
+            "evidence_producers",
+            "baseline_ref",
+            "evidence_producer_id",
+            "producer_baseline",
+        ),
+    ] {
+        let sql = format!("UPDATE {table} SET {column} = NULL WHERE {id_column} = ?1");
+        assert!(
+            project.execute(&sql, [id]).is_err(),
+            "normal DDL accepted SQL NULL for {table}.{column}"
+        );
+    }
+    assert_eq!(
+        project.execute(
+            "UPDATE shaping_checkpoints SET baseline_ref = NULL
+              WHERE shaping_checkpoint_id = 'checkpoint_baseline'",
+            [],
+        )?,
+        1
+    );
     assert_eq!(
         project.execute(
             "UPDATE shaping_checkpoints SET baseline_ref = 'baseline', readiness = 'ready'

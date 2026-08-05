@@ -1991,20 +1991,19 @@ mod tests {
             JudgmentKind::ProductDecision,
         )?;
         let core_fixture = pending.fixture.core();
-        let conn = core_fixture.mutation_conn()?;
-        conn.pragma_update(None, "ignore_check_constraints", true)?;
-        conn.execute(
-            "UPDATE shaping_checkpoints
-                SET baseline_ref = ?3
-              WHERE project_id = ?1
-                AND task_id = ?2",
-            (
-                core_fixture.project_id(),
-                pending.task_id.as_str(),
-                " baseline",
-            ),
+        let checkpoint_id: String = core_fixture.conn()?.query_row(
+            "SELECT shaping_checkpoint_id
+               FROM shaping_checkpoints
+              WHERE project_id = ?1 AND task_id = ?2",
+            (core_fixture.project_id(), pending.task_id.as_str()),
+            |row| row.get(0),
         )?;
-        conn.pragma_update(None, "ignore_check_constraints", false)?;
+        core_fixture.corrupt_persisted_baseline(
+            volicord_test_support::core_fixtures::PersistedBaselineOwner::ShapingCheckpoint(
+                &checkpoint_id,
+            ),
+            Some(" baseline"),
+        )?;
         let before = core_fixture.counts()?;
         let repository_before = pending.fixture.repository().status_bytes()?;
 

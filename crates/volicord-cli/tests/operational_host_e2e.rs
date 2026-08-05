@@ -947,6 +947,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         SESSION,
         "future.turn.planning-recovery.advance",
     )?;
+    call_id += 1;
     assert_eq!(
         method_result(&current)["active_task"]["workflow"]["kind"],
         advanced["workflow"]["kind"]
@@ -956,6 +957,178 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
         0
     );
+
+    let checkpoint_id: String = rusqlite::Connection::open(&state_db)?.query_row(
+        "SELECT shaping_checkpoint_id FROM shaping_checkpoints
+          WHERE project_id = ?1 AND task_id = ?2",
+        (&project_id, &task_id),
+        |row| row.get(0),
+    )?;
+    let corrupt_conn = rusqlite::Connection::open(&state_db)?;
+    corrupt_conn.pragma_update(None, "ignore_check_constraints", true)?;
+    corrupt_conn.execute(
+        "UPDATE shaping_checkpoints SET baseline_ref = ?3
+          WHERE project_id = ?1 AND shaping_checkpoint_id = ?2",
+        (&project_id, &checkpoint_id, " baseline"),
+    )?;
+    corrupt_conn.pragma_update(None, "ignore_check_constraints", false)?;
+    drop(corrupt_conn);
+    let repository_before_corrupt_read = fixture.repository_snapshot()?;
+    let corrupt_before = rusqlite::Connection::open(&state_db)?;
+    let corrupt_counts = (
+        table_count(&corrupt_before, "authority_events")?,
+        table_count(&corrupt_before, "tool_invocations")?,
+        table_count(&corrupt_before, "write_tickets")?,
+        table_count(&corrupt_before, "runs")?,
+        table_count(&corrupt_before, "unrecorded_changes")?,
+        table_count(&corrupt_before, "repository_observations")?,
+    );
+    drop(corrupt_before);
+    let corrupt_turn = "future.turn.planning-recovery.corrupt-store";
+    let corrupt_tool_use = "future.tool-use.planning-recovery.corrupt-store";
+    let corrupt_status_arguments =
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"});
+    let status_callable = project_mcp_tool(&server, AgentToolId::STATUS)?;
+    let corrupt_pre = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": SESSION,
+        "turn_id": corrupt_turn,
+        "tool_use_id": corrupt_tool_use,
+        "tool_name": status_callable.callable_name().as_str(),
+        "tool_input": corrupt_status_arguments
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PreTool),
+            &corrupt_pre,
+        )?
+        .status
+        .success());
+    let corrupt_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        corrupt_status_arguments,
+        SESSION,
+        corrupt_turn,
+    )?;
+    call_id += 1;
+    let corrupt_result = method_result(&corrupt_status);
+    assert_eq!(corrupt_result["base"]["response_kind"], "rejected");
+    assert_eq!(
+        corrupt_result["errors"][0]["code"],
+        "PERSISTED_DATA_CORRUPT"
+    );
+    assert_eq!(corrupt_result["base"]["effect_kind"], "no_effect");
+    let after_corrupt_call = rusqlite::Connection::open(&state_db)?;
+    let corrupt_observation_id: String = after_corrupt_call.query_row(
+        "SELECT repository_observation_id FROM repository_observations
+          WHERE host_tool_use_id = ?1",
+        [corrupt_tool_use],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        (
+            table_count(&after_corrupt_call, "authority_events")?,
+            table_count(&after_corrupt_call, "tool_invocations")?,
+            table_count(&after_corrupt_call, "write_tickets")?,
+            table_count(&after_corrupt_call, "runs")?,
+            table_count(&after_corrupt_call, "unrecorded_changes")?,
+        ),
+        (
+            corrupt_counts.0,
+            corrupt_counts.1,
+            corrupt_counts.2,
+            corrupt_counts.3,
+            corrupt_counts.4,
+        )
+    );
+    assert_eq!(
+        table_count(&after_corrupt_call, "repository_observations")?,
+        corrupt_counts.5 + 1
+    );
+    drop(after_corrupt_call);
+    assert_eq!(
+        fixture.repository_snapshot()?,
+        repository_before_corrupt_read
+    );
+
+    let corrupt_continuation = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-recovery.corrupt-continuation",
+        "prompt": "Report the stored-state corruption without retrying the mutation."
+    });
+    for _ in 0..2 {
+        assert!(fixture
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+                &corrupt_continuation,
+            )?
+            .status
+            .success());
+    }
+    let corrupt_observation =
+        repository_observation(&fixture.runtime_home, &project_id, &corrupt_observation_id)?
+            .ok_or("terminal corrupt-store observation")?;
+    assert_eq!(
+        corrupt_observation.state,
+        RepositoryObservationState::Unavailable
+    );
+    assert_eq!(
+        corrupt_observation.unavailable_reason,
+        Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
+    );
+    assert!(corrupt_observation.delta.is_none());
+    assert_eq!(
+        table_count(
+            &rusqlite::Connection::open(&state_db)?,
+            "repository_observations"
+        )?,
+        corrupt_counts.5 + 1
+    );
+    assert_eq!(
+        table_count(
+            &rusqlite::Connection::open(&state_db)?,
+            "unrecorded_changes"
+        )?,
+        corrupt_counts.4
+    );
+    let projects_after_corruption = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::LIST_PROJECTS,
+        json!({}),
+        SESSION,
+        "future.turn.planning-recovery.corrupt-continuation",
+    )?;
+    assert!(method_result(&projects_after_corruption)["projects"]
+        .as_array()
+        .is_some_and(|projects| !projects.is_empty()));
+    let mut cli_status = fixture.base_command(env!("CARGO_BIN_EXE_volicord"), FUTURE_VERSION);
+    let cli_status = cli_status
+        .arg("status")
+        .arg("--repo")
+        .arg(&fixture.repo_root)
+        .arg("--task")
+        .arg(&task_id)
+        .arg("--json")
+        .output()?;
+    assert!(cli_status.status.code().is_some());
+    let cli_output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&cli_status.stdout),
+        String::from_utf8_lossy(&cli_status.stderr)
+    );
+    assert!(
+        cli_output.contains("PERSISTED_DATA_CORRUPT"),
+        "{cli_output}"
+    );
+    let cli_after_corruption = fixture
+        .base_command(env!("CARGO_BIN_EXE_volicord"), FUTURE_VERSION)
+        .arg("--version")
+        .output()?;
+    assert!(cli_after_corruption.status.success());
 
     let expected_tools = vec![
         AgentToolId::LIST_PROJECTS.wire_name(),
@@ -972,6 +1145,8 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         AgentToolId::ADVANCE_TASK.wire_name(),
         AgentToolId::ADVANCE_TASK.wire_name(),
         AgentToolId::STATUS.wire_name(),
+        AgentToolId::STATUS.wire_name(),
+        AgentToolId::LIST_PROJECTS.wire_name(),
     ];
     assert_eq!(child.transcript().tool_names(), expected_tools);
     let checkpoint_calls = child
@@ -6523,6 +6698,9 @@ fn table_count(connection: &rusqlite::Connection, table: &str) -> Result<i64, Bo
     assert!(matches!(
         table,
         "change_units"
+            | "authority_events"
+            | "tool_invocations"
+            | "runs"
             | "shaping_checkpoints"
             | "write_tickets"
             | "user_action_requests"

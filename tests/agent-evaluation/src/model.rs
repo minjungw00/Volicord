@@ -150,6 +150,8 @@ pub struct FixtureExpectation {
     pub shaping_application_owner: Option<ShapingApplicationOwnerExpectation>,
     #[serde(default)]
     pub shaping_authority_recovery: Option<ShapingAuthorityRecoveryExpectation>,
+    #[serde(default)]
+    pub scope_retarget_recovery: Option<ScopeRetargetRecoveryExpectation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -175,6 +177,13 @@ pub enum ShapingAuthorityRecoveryExpectation {
     SupersededHistory,
     StaleReauthorization,
     ImplementationInvalidation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeRetargetRecoveryExpectation {
+    ExplicitReplacement,
+    PersistedCorruption,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -303,6 +312,15 @@ pub struct ShapingWorkflowObservation {
     pub speculative_shaping_tool_calls: u64,
     pub argument_error_opportunities: u64,
     pub corruption_misdiagnoses: u64,
+    pub replacement_required_opportunities: u64,
+    pub replace_current_forms_selected: u64,
+    pub keep_current_retry_loops: u64,
+    pub invented_baseline_representations: u64,
+    pub no_effect_replacement_opportunities: u64,
+    pub false_replacement_success_claims: u64,
+    pub persisted_baseline_corruption_opportunities: u64,
+    pub stored_state_corruptions_reported: u64,
+    pub corruption_user_input_misdiagnoses: u64,
     pub checkpoint_status_opportunities: u64,
     pub correct_checkpoint_creation_statuses: u64,
     pub user_action_status_opportunities: u64,

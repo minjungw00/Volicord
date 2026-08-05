@@ -60,8 +60,8 @@ use volicord_store::guards::{agent_session, upsert_guard_installation, GuardInst
 use volicord_store::operational_sessions::{latest_managed_runtime_session, mcp_runtime_session};
 use volicord_store::sqlite::{open_registry_database_read_only, registry_db_path};
 use volicord_test_support::core_fixtures::{
-    artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
-    UserActionFixture,
+    artifact_input_for_handle, CoreFixture, ManagedPlanningFixture, ResolveUserActionFixture,
+    UpdateScopeFixture, UserActionFixture,
 };
 use volicord_types::ids::{BaselineRef, ChangeUnitId, ShapingCheckpointId, TaskId};
 use volicord_types::managed_mcp_client_info::CODEX_MANAGED_MCP_CLIENT_NAME;

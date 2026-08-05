@@ -15,26 +15,28 @@ use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, choice_user_action_resolution, observation_user_action_resolution,
     supported_evidence_update, unsupported_evidence_update, ArtifactOwnerJsonColumn,
     ChangeUnitOwnerJsonColumn, CloseTaskFixture, CoreFixture, EvidenceSummaryOwnerJsonColumn,
-    ObservationUserActionFixture, ResolveUserActionFixture, TaskOwnerJsonColumn,
-    UpdateScopeFixture, UserActionFixture, DEFAULT_PRODUCT_PATH,
+    ManagedPlanningFixture, ObservationUserActionFixture, PersistedBaselineOwner,
+    ResolveUserActionFixture, TaskOwnerJsonColumn, UpdateScopeFixture, UserActionFixture,
+    DEFAULT_PRODUCT_PATH,
 };
 use volicord_test_support::IsolatedGitRepository;
 use volicord_types::ids::{
-    AcceptanceCriterionId, AgentConnectionId, ArtifactInputId, EvidenceClaimId, ProjectId, RunId,
-    ShapingCheckpointId, TaskId, WriteTicketId,
+    AcceptanceCriterionId, AgentConnectionId, ArtifactInputId, BaselineRef, EvidenceClaimId,
+    ProjectId, RunId, ShapingCheckpointId, TaskId, WriteTicketId,
 };
 use volicord_types::methods::StatusRequest;
 use volicord_types::schema::{
-    ArtifactInput, ArtifactRef, CloseAssessmentInput, EvidenceObservationInput, EvidenceTarget,
-    JsonObject, RequiredNullable, ResidualRiskInput, ShapingCheckpointOperation, ShapingGapInput,
-    StagedArtifactHandle, StaleShapingAuthorityAction, StateRecordRef, UserActionBasis,
-    UserActionRequestBody, UserActionResolutionBody,
+    ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
+    EvidenceObservationInput, EvidenceTarget, JsonObject, RequiredNullable, ResidualRiskInput,
+    ShapingCheckpointOperation, ShapingGapInput, StagedArtifactHandle, StaleShapingAuthorityAction,
+    StateRecordRef, UserActionBasis, UserActionRequestBody, UserActionResolutionBody,
 };
 use volicord_types::values::{
-    ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
-    EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
-    JudgmentResolutionOutcome, OperationCategory, ResponseKind, ShapingGapKind, StateRecordKind,
-    UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
+    ArtifactInputSourceKind, ChangeUnitEffectKind, ChangeUnitOperation, CloseIntent, CloseReason,
+    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind,
+    JudgmentKind, JudgmentResolutionOutcome, OperationCategory, RequestedMode, ResponseKind,
+    ShapingGapKind, StateRecordKind, UserActionChannelKind, UserActionOptionAction,
+    UserActionRequiredFor, UtcTimestamp,
 };
 use volicord_user_action_service::PendingUserActionFactsRequest;
 
@@ -131,6 +133,186 @@ fn canonical_mcp_semantic_cases_are_the_conformance_fixtures() -> Result<(), Box
                 assert_eq!(local[0].code, SemanticValidationIssueCode::Required);
             }
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn public_scope_rebaseline_replaces_current_change_unit_in_each_supported_mode(
+) -> Result<(), Box<dyn Error>> {
+    fn advisor_contract() -> ChangeUnitEffectContract {
+        ChangeUnitEffectContract {
+            allowed_effects: vec![
+                ChangeUnitEffectKind::ArtifactRegistration,
+                ChangeUnitEffectKind::UserActionRequest,
+                ChangeUnitEffectKind::EvidenceUpdate,
+            ],
+            forbidden_effects: vec![
+                ChangeUnitEffectKind::ProductFileWrite,
+                ChangeUnitEffectKind::RunRecording,
+                ChangeUnitEffectKind::SensitiveAction,
+                ChangeUnitEffectKind::ExternalNetwork,
+                ChangeUnitEffectKind::SecretAccess,
+            ],
+            allowed_paths: Vec::new(),
+            expected_outputs: vec!["Bounded advice".to_owned()],
+            invariants: vec!["Observe only".to_owned()],
+            evidence_expectations: Vec::new(),
+            sensitive_action_expectations: Vec::new(),
+        }
+    }
+
+    for (label, mode) in [
+        ("direct", RequestedMode::Direct),
+        ("work", RequestedMode::Work),
+        ("advisor", RequestedMode::Advisor),
+    ] {
+        let managed = ManagedPlanningFixture::new(
+            &format!("conformance-scope-rebaseline-{label}"),
+            "2026-08-05T00:00:00Z",
+        )?;
+        let fixture = managed.core();
+        let service = core(fixture);
+        let snapshot =
+            volicord_platform_fs::capture_git_workspace_snapshot(&fixture.product_repo_path())?
+                .ok_or("managed conformance fixture must be a Git workspace")?;
+        let agent_with_workspace = || {
+            invocation(fixture, OperationCategory::AgentWorkflow).with_git_workspace_context(
+                GitWorkspaceContext {
+                    git_common_dir: snapshot.layout.common_dir.display().to_string(),
+                    worktree_id: snapshot.worktree_id.clone(),
+                    branch_ref: snapshot.branch_ref.clone(),
+                    head_sha: snapshot.head_sha.clone(),
+                    workspace_fingerprint: snapshot.workspace_fingerprint.clone(),
+                },
+            )
+        };
+        let mut intake = fixture.intake_request(
+            &format!("req_{label}_retarget_task"),
+            &format!("idem_{label}_retarget_task"),
+            false,
+            Some(0),
+        );
+        intake.requested_mode = mode;
+        let intake = service.intake(intake, agent_with_workspace())?;
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .ok_or("scope retarget Task ref")?
+            .to_owned();
+        let mut create = fixture.update_scope_request(UpdateScopeFixture {
+            request_id: &format!("req_{label}_retarget_create"),
+            idempotency_key: &format!("idem_{label}_retarget_create"),
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Create the initial current Change Unit.",
+        });
+        if mode == RequestedMode::Advisor {
+            create
+                .change_unit
+                .fields
+                .insert("affected_paths".to_owned(), json!([]));
+            create.change_unit.effect_contract = Some(advisor_contract());
+        }
+        let create = service.update_scope(create, agent_with_workspace())?;
+        let old_change_unit_id = create.response_value["change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or("initial Change Unit ref")?
+            .to_owned();
+        let before = fixture.counts()?;
+        let retargeted_baseline = format!("baseline_retargeted_{label}");
+        let mut replace = fixture.update_scope_request(UpdateScopeFixture {
+            request_id: &format!("req_{label}_retarget_replace"),
+            idempotency_key: &format!("idem_{label}_retarget_replace"),
+            dry_run: false,
+            expected_state_version: Some(2),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::ReplaceCurrent,
+            scope_summary: "Replace and explicitly rebaseline the current Change Unit.",
+        });
+        replace.baseline_ref = RequiredNullable::some(BaselineRef::parse(&retargeted_baseline)?);
+        if mode == RequestedMode::Advisor {
+            replace
+                .change_unit
+                .fields
+                .insert("affected_paths".to_owned(), json!([]));
+            replace.change_unit.effect_contract = Some(advisor_contract());
+        }
+        let replaced = service.update_scope(replace, agent_with_workspace())?;
+        let replacement_change_unit_id = replaced.response_value["change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or("replacement Change Unit ref")?
+            .to_owned();
+        assert_ne!(replacement_change_unit_id, old_change_unit_id, "{label}");
+        let after = fixture.counts()?;
+        assert_eq!(after.state_version, before.state_version + 1, "{label}");
+        assert_eq!(after.change_units, before.change_units + 1, "{label}");
+        assert_eq!(
+            after.authority_events,
+            before.authority_events + 1,
+            "{label}"
+        );
+
+        let store = fixture.store()?;
+        let task = store
+            .task_record(&TaskId::new(&task_id))?
+            .ok_or("retargeted Task")?;
+        let current = store
+            .current_change_unit(&TaskId::new(&task_id))?
+            .ok_or("retargeted current Change Unit")?;
+        assert_eq!(
+            task.shaping.baseline_ref.as_ref().map(BaselineRef::as_str),
+            Some(retargeted_baseline.as_str()),
+            "{label}"
+        );
+        assert_eq!(
+            current.change_unit_id, replacement_change_unit_id,
+            "{label}"
+        );
+        assert_eq!(
+            current
+                .write_basis
+                .baseline_ref
+                .as_ref()
+                .map(BaselineRef::as_str),
+            Some(retargeted_baseline.as_str()),
+            "{label}"
+        );
+        assert!(
+            current.write_basis.git_workspace_context.is_some(),
+            "{label}"
+        );
+        let (old_status, old_is_current): (String, bool) = fixture.conn()?.query_row(
+            "SELECT status, is_current FROM change_units
+              WHERE project_id = ?1 AND change_unit_id = ?2",
+            (fixture.project_id(), old_change_unit_id.as_str()),
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(
+            (old_status.as_str(), old_is_current),
+            ("replaced", false),
+            "{label}"
+        );
+        let status = service.status(
+            fixture.status_request(&format!("req_{label}_retarget_status"), Some(&task_id)),
+            invocation(fixture, OperationCategory::Read),
+        )?;
+        assert_eq!(
+            status.response_value["active_task"]["workflow"],
+            replaced.response_value["state"]["workflow"],
+            "{label}"
+        );
+        assert_eq!(
+            status.response_value["base"]["state_version"],
+            replaced.response_value["base"]["state_version"],
+            "{label}"
+        );
+        assert_eq!(
+            managed.repository().status_bytes()?,
+            Vec::<u8>::new(),
+            "{label}"
+        );
     }
     Ok(())
 }
@@ -1480,6 +1662,51 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
     assert_owner_state_corrupt(&check.response_value, "change_units", "lifecycle_json");
     assert_eq!(fixture.counts()?, before);
 
+    Ok(())
+}
+
+#[test]
+fn persisted_task_and_change_unit_baseline_matrix_fails_closed_without_effects(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("corrupt-baseline-owner-matrix")?;
+    let service = core(&fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&fixture, &service, "corrupt_baseline_owner_matrix")?;
+    let before = fixture.counts()?;
+
+    for invalid in ["", " ", "null", " baseline", "baseline "] {
+        fixture
+            .corrupt_persisted_baseline(PersistedBaselineOwner::Task(&task_id), Some(invalid))?;
+        let status = service.status(
+            fixture.status_request("req_corrupt_task_baseline", Some(&task_id)),
+            invocation(&fixture, OperationCategory::Read),
+        )?;
+        assert_owner_state_corrupt(&status.response_value, "tasks", "shaping_summary_json");
+        assert_eq!(fixture.counts()?, before, "Task BaselineRef {invalid:?}");
+        fixture.corrupt_persisted_baseline(
+            PersistedBaselineOwner::Task(&task_id),
+            Some(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF),
+        )?;
+
+        fixture.corrupt_persisted_baseline(
+            PersistedBaselineOwner::ChangeUnit(&change_unit_id),
+            Some(invalid),
+        )?;
+        let status = service.status(
+            fixture.status_request("req_corrupt_change_unit_baseline", Some(&task_id)),
+            invocation(&fixture, OperationCategory::Read),
+        )?;
+        assert_owner_state_corrupt(&status.response_value, "change_units", "write_basis_json");
+        assert_eq!(
+            fixture.counts()?,
+            before,
+            "Change Unit BaselineRef {invalid:?}"
+        );
+        fixture.corrupt_persisted_baseline(
+            PersistedBaselineOwner::ChangeUnit(&change_unit_id),
+            Some(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF),
+        )?;
+    }
     Ok(())
 }
 

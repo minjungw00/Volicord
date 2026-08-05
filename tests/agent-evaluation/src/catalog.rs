@@ -6,8 +6,9 @@ use std::{
 use crate::{
     model::{
         CheckStatus, EvaluationCondition, FixtureCatalog, FixtureCheck, ScenarioFixture,
-        ShapingApplicationOwnerExpectation, ShapingAuthorityRecoveryExpectation,
-        ShapingOutcomeExpectation, TaskGroup, FIXTURE_CATALOG_SCHEMA,
+        ScopeRetargetRecoveryExpectation, ShapingApplicationOwnerExpectation,
+        ShapingAuthorityRecoveryExpectation, ShapingOutcomeExpectation, TaskGroup,
+        FIXTURE_CATALOG_SCHEMA,
     },
     HarnessError, HarnessResult,
 };
@@ -43,6 +44,7 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
     let mut shaping_outcomes = BTreeSet::new();
     let mut application_owners = BTreeSet::new();
     let mut authority_recoveries = BTreeSet::new();
+    let mut scope_retarget_recoveries = BTreeSet::new();
     for scenario in &catalog.scenarios {
         validate_scenario(scenario)?;
         if !scenario_ids.insert(&scenario.scenario_id) {
@@ -60,6 +62,9 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
         }
         if let Some(recovery) = scenario.expected.shaping_authority_recovery {
             authority_recoveries.insert(recovery);
+        }
+        if let Some(recovery) = scenario.expected.scope_retarget_recovery {
+            scope_retarget_recoveries.insert(recovery);
         }
     }
     if task_groups != TaskGroup::ALL.into_iter().collect() {
@@ -107,14 +112,25 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
             "fixture catalog does not cover every shaping authority recovery",
         ));
     }
+    if scope_retarget_recoveries
+        != [
+            ScopeRetargetRecoveryExpectation::ExplicitReplacement,
+            ScopeRetargetRecoveryExpectation::PersistedCorruption,
+        ]
+        .into_iter()
+        .collect()
+    {
+        return Err(HarnessError::new(
+            "fixture catalog does not cover scope replacement and persisted corruption recovery",
+        ));
+    }
 
     Ok(vec![
         FixtureCheck {
             check_id: "shaping_authority_coverage".to_owned(),
             status: CheckStatus::Passed,
             detail:
-                "decision outcomes, application owners, and authority recovery paths are covered"
-                    .to_owned(),
+                "decision outcomes, application owners, authority recovery, scope replacement, and persisted corruption paths are covered".to_owned(),
         },
         FixtureCheck {
             check_id: "evaluation_conditions".to_owned(),

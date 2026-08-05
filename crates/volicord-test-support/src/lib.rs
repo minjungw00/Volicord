@@ -2049,6 +2049,88 @@ pub mod core_fixtures {
             Ok(())
         }
 
+        /// Replaces one persisted BaselineRef with an invalid value for corruption tests.
+        ///
+        /// This deliberately bypasses schema checks and must never be used as setup for
+        /// ordinary behavior tests.
+        pub fn corrupt_persisted_baseline(
+            &self,
+            owner: PersistedBaselineOwner<'_>,
+            value: Option<&str>,
+        ) -> Result<(), Box<dyn Error>> {
+            let conn = self.mutation_conn()?;
+            let (table, id_column, id, column, json_owner) = match owner {
+                PersistedBaselineOwner::EvidenceCaptureIntent(id) => (
+                    "evidence_capture_intents",
+                    "evidence_capture_intent_id",
+                    id,
+                    "baseline_ref",
+                    false,
+                ),
+                PersistedBaselineOwner::ShapingCheckpoint(id) => (
+                    "shaping_checkpoints",
+                    "shaping_checkpoint_id",
+                    id,
+                    "baseline_ref",
+                    false,
+                ),
+                PersistedBaselineOwner::ShapingDecisionApplication(id) => (
+                    "shaping_decision_applications",
+                    "shaping_decision_application_id",
+                    id,
+                    "applied_baseline_ref",
+                    false,
+                ),
+                PersistedBaselineOwner::EvidenceProducer(id) => (
+                    "evidence_producers",
+                    "evidence_producer_id",
+                    id,
+                    "baseline_ref",
+                    false,
+                ),
+                PersistedBaselineOwner::Task(id) => {
+                    ("tasks", "task_id", id, "shaping_summary_json", true)
+                }
+                PersistedBaselineOwner::ChangeUnit(id) => (
+                    "change_units",
+                    "change_unit_id",
+                    id,
+                    "write_basis_json",
+                    true,
+                ),
+            };
+            let replacement = if json_owner {
+                let sql = format!(
+                    "SELECT {column} FROM {table} WHERE project_id = ?1 AND {id_column} = ?2"
+                );
+                let raw: String =
+                    conn.query_row(&sql, rusqlite::params![self.project_id, id], |row| {
+                        row.get(0)
+                    })?;
+                let mut owner: Value = serde_json::from_str(&raw)?;
+                owner["baseline_ref"] =
+                    value.map_or(Value::Null, |value| Value::String(value.to_owned()));
+                Some(serde_json::to_string(&owner)?)
+            } else {
+                value.map(str::to_owned)
+            };
+            let sql = format!(
+                "UPDATE {table} SET {column} = ?3 WHERE project_id = ?1 AND {id_column} = ?2"
+            );
+            conn.pragma_update(None, "ignore_check_constraints", true)?;
+            let update = conn.execute(&sql, rusqlite::params![self.project_id, id, replacement]);
+            let restore = conn.pragma_update(None, "ignore_check_constraints", false);
+            let updated = update?;
+            restore?;
+            if updated != 1 {
+                return Err(format!(
+                    "corruption fixture owner not found: {table}.{id_column}={id}"
+                )
+                .into());
+            }
+            Ok(())
+        }
+
         /// Updates a persistent artifact availability status.
         pub fn set_artifact_status(
             &self,
@@ -2554,6 +2636,17 @@ pub mod core_fixtures {
         BoundedPaths,
         WriteBasis,
         Lifecycle,
+    }
+
+    /// Canonical persisted BaselineRef owners addressable by corruption fixtures.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PersistedBaselineOwner<'a> {
+        EvidenceCaptureIntent(&'a str),
+        ShapingCheckpoint(&'a str),
+        ShapingDecisionApplication(&'a str),
+        EvidenceProducer(&'a str),
+        Task(&'a str),
+        ChangeUnit(&'a str),
     }
 
     impl ChangeUnitOwnerJsonColumn {

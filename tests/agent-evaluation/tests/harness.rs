@@ -24,7 +24,7 @@ type CriterionMetricDefect = (&'static str, fn(&mut ShapingWorkflowObservation))
 fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 13);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 15);
 
     let actual = catalog
         .scenarios
@@ -45,6 +45,8 @@ fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() 
         "planning-superseded-history",
         "planning-stale-reauthorization",
         "planning-implementation-invalidation",
+        "planning-explicit-scope-replacement",
+        "read-only-persisted-baseline-corruption",
     ] {
         assert!(catalog
             .scenarios
@@ -113,7 +115,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 59);
+    assert_eq!(result.criteria.len(), 65);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -285,11 +287,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(59)
+        Some(65)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(59)
+        Some(65)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -338,6 +340,10 @@ impl TrialDriver for AggregateSyntheticDriver {
             record && request.trial.scenario_id == "planning-stale-reauthorization";
         let implementation_invalidation =
             record && request.trial.scenario_id == "planning-implementation-invalidation";
+        let explicit_replacement =
+            record && request.trial.scenario_id == "planning-explicit-scope-replacement";
+        let persisted_corruption =
+            record && request.trial.scenario_id == "read-only-persisted-baseline-corruption";
         let authority_recovery =
             superseded_history || stale_reauthorization || implementation_invalidation;
         let shaping_scenario = planning || advisor;
@@ -429,6 +435,15 @@ impl TrialDriver for AggregateSyntheticDriver {
                 speculative_shaping_tool_calls: 0,
                 argument_error_opportunities: u64::from(schema_recovery),
                 corruption_misdiagnoses: 0,
+                replacement_required_opportunities: u64::from(explicit_replacement),
+                replace_current_forms_selected: u64::from(explicit_replacement),
+                keep_current_retry_loops: 0,
+                invented_baseline_representations: 0,
+                no_effect_replacement_opportunities: u64::from(explicit_replacement),
+                false_replacement_success_claims: 0,
+                persisted_baseline_corruption_opportunities: u64::from(persisted_corruption),
+                stored_state_corruptions_reported: u64::from(persisted_corruption),
+                corruption_user_input_misdiagnoses: 0,
                 checkpoint_status_opportunities: u64::from(planning),
                 correct_checkpoint_creation_statuses: u64::from(planning),
                 user_action_status_opportunities: planning_decisions,
@@ -449,8 +464,8 @@ impl TrialDriver for AggregateSyntheticDriver {
                 explicit_task_advances: u64::from(planning),
                 mutation_calls: if planning { 10 } else { 0 },
                 hidden_mutation_rejections: 0,
-                final_answers: u64::from(planning),
-                concise_user_readable_outputs: u64::from(planning),
+                final_answers: u64::from(planning || persisted_corruption),
+                concise_user_readable_outputs: u64::from(planning || persisted_corruption),
                 raw_mcp_json_repetitions: 0,
                 guarantee_wording_checks: u64::from(planning),
                 accurate_cooperative_guarantee_wording: u64::from(planning),
@@ -820,6 +835,41 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
         ),
     ];
     for (scenario_id, criterion_id, mutate) in recovery_defects {
+        assert_defect(&result.observations, scenario_id, criterion_id, mutate);
+    }
+    let retarget_defects: [ShapingMetricDefect; 6] = [
+        (
+            "planning-explicit-scope-replacement",
+            "replace_current_form_selection",
+            |workflow| workflow.replace_current_forms_selected = 0,
+        ),
+        (
+            "planning-explicit-scope-replacement",
+            "keep_current_retry_loop",
+            |workflow| workflow.keep_current_retry_loops = 1,
+        ),
+        (
+            "planning-explicit-scope-replacement",
+            "invented_baseline_representation",
+            |workflow| workflow.invented_baseline_representations = 1,
+        ),
+        (
+            "planning-explicit-scope-replacement",
+            "false_replacement_success_claim",
+            |workflow| workflow.false_replacement_success_claims = 1,
+        ),
+        (
+            "read-only-persisted-baseline-corruption",
+            "stored_baseline_corruption_reporting",
+            |workflow| workflow.stored_state_corruptions_reported = 0,
+        ),
+        (
+            "read-only-persisted-baseline-corruption",
+            "corruption_as_user_input_misdiagnosis",
+            |workflow| workflow.corruption_user_input_misdiagnoses = 1,
+        ),
+    ];
+    for (scenario_id, criterion_id, mutate) in retarget_defects {
         assert_defect(&result.observations, scenario_id, criterion_id, mutate);
     }
 }

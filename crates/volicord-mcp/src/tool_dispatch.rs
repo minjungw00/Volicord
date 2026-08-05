@@ -1161,21 +1161,46 @@ fn bounded_tool_error_result(
             continue;
         }
 
-        // Individual field limits and known tool names make this fallback
-        // unreachable in normal operation, but keep the byte contract closed
-        // if surrounding JSON overhead changes later.
+        // Authority-rich admission failures can repeat the current form in
+        // several compatibility projections. Shed optional duplicate context
+        // in a stable order before falling back to the minimal typed error.
+        if structured.canonical_example.is_some() {
+            structured.canonical_example = RequiredNullable::null();
+            truncated = true;
+            continue;
+        }
+        if structured.authoritative_context.is_some() {
+            structured.authoritative_context = RequiredNullable::null();
+            truncated = true;
+            continue;
+        }
+        if structured.workflow_admission.is_some() {
+            structured.workflow_admission = RequiredNullable::null();
+            truncated = true;
+            continue;
+        }
+        if structured.failure.is_some() {
+            structured.failure = RequiredNullable::null();
+            truncated = true;
+            continue;
+        }
+        if !structured.action_form_argument_mismatches.is_empty() {
+            structured.action_form_argument_mismatches.clear();
+            truncated = true;
+            continue;
+        }
+        if structured.retry_contract.is_some() {
+            structured.retry_contract = RequiredNullable::null();
+            truncated = true;
+            continue;
+        }
+
+        // Keep the byte contract closed even if surrounding JSON overhead
+        // changes later. This branch retains the typed code and issue route.
         structured.issues[0].path.clear();
         structured.issues[0].message = "Validation failed before reaching Core.".to_owned();
         structured.truncated = true;
-        let fallback = serialize_tool_error_result(&structured, capabilities);
-        assert!(
-            serde_json::to_vec(&fallback)
-                .expect("fallback MCP tool error result should serialize")
-                .len()
-                <= MAX_MCP_TOOL_ERROR_RESULT_BYTES,
-            "known-tool MCP error fallback exceeded its response byte limit"
-        );
-        return fallback;
+        return serialize_tool_error_result(&structured, capabilities);
     }
 }
 

@@ -499,6 +499,38 @@ fn validate_observation(
                 .method_specific_form_opportunities
         || observation.shaping_workflow.exact_fixed_arguments_used
             > observation.shaping_workflow.fixed_argument_opportunities
+        || observation.shaping_workflow.replace_current_forms_selected
+            > observation
+                .shaping_workflow
+                .replacement_required_opportunities
+        || observation.shaping_workflow.keep_current_retry_loops
+            > observation
+                .shaping_workflow
+                .replacement_required_opportunities
+        || observation
+            .shaping_workflow
+            .invented_baseline_representations
+            > observation
+                .shaping_workflow
+                .replacement_required_opportunities
+        || observation
+            .shaping_workflow
+            .false_replacement_success_claims
+            > observation
+                .shaping_workflow
+                .no_effect_replacement_opportunities
+        || observation
+            .shaping_workflow
+            .stored_state_corruptions_reported
+            > observation
+                .shaping_workflow
+                .persisted_baseline_corruption_opportunities
+        || observation
+            .shaping_workflow
+            .corruption_user_input_misdiagnoses
+            > observation
+                .shaping_workflow
+                .persisted_baseline_corruption_opportunities
         || observation
             .shaping_workflow
             .wrong_method_speculative_mutations
@@ -691,7 +723,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(59);
+    let mut criteria = Vec::with_capacity(65);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -920,6 +952,42 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         "argument_error_corruption_misdiagnosis",
         totals(|value| value.argument_error_opportunities),
         totals(|value| value.corruption_misdiagnoses),
+    ));
+    let retarget_totals = |field: fn(&crate::model::ShapingWorkflowObservation) -> u64| {
+        modified_conditions
+            .iter()
+            .map(|observation| u128::from(field(&observation.shaping_workflow)))
+            .sum::<u128>()
+    };
+    criteria.push(complete_rate(
+        "replace_current_form_selection",
+        retarget_totals(|value| value.replacement_required_opportunities),
+        retarget_totals(|value| value.replace_current_forms_selected),
+    ));
+    criteria.push(zero_rate(
+        "keep_current_retry_loop",
+        retarget_totals(|value| value.replacement_required_opportunities),
+        retarget_totals(|value| value.keep_current_retry_loops),
+    ));
+    criteria.push(zero_rate(
+        "invented_baseline_representation",
+        retarget_totals(|value| value.replacement_required_opportunities),
+        retarget_totals(|value| value.invented_baseline_representations),
+    ));
+    criteria.push(zero_rate(
+        "false_replacement_success_claim",
+        retarget_totals(|value| value.no_effect_replacement_opportunities),
+        retarget_totals(|value| value.false_replacement_success_claims),
+    ));
+    criteria.push(complete_rate(
+        "stored_baseline_corruption_reporting",
+        retarget_totals(|value| value.persisted_baseline_corruption_opportunities),
+        retarget_totals(|value| value.stored_state_corruptions_reported),
+    ));
+    criteria.push(zero_rate(
+        "corruption_as_user_input_misdiagnosis",
+        retarget_totals(|value| value.persisted_baseline_corruption_opportunities),
+        retarget_totals(|value| value.corruption_user_input_misdiagnoses),
     ));
     criteria.push(complete_rate(
         "correct_checkpoint_creation_status",
@@ -1258,7 +1326,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 59] {
+fn criterion_definitions() -> [CriterionDefinition; 65] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1367,6 +1435,36 @@ fn criterion_definitions() -> [CriterionDefinition; 59] {
         },
         CriterionDefinition {
             id: "argument_error_corruption_misdiagnosis",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "replace_current_form_selection",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "keep_current_retry_loop",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "invented_baseline_representation",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "false_replacement_success_claim",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "stored_baseline_corruption_reporting",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "corruption_as_user_input_misdiagnosis",
             target: "= 0",
             unit: "percent",
         },

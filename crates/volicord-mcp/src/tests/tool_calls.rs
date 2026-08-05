@@ -769,6 +769,212 @@ fn projected_replace_form_executes_one_atomic_change_unit_replacement() -> Resul
 }
 
 #[test]
+fn managed_git_fixture_exercises_keep_reject_and_atomic_rebaseline() -> Result<(), Box<dyn Error>> {
+    const INITIAL_BASELINE: &str = volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF;
+    const RETARGETED_BASELINE: &str = "baseline_managed_retargeted";
+
+    let managed =
+        ManagedPlanningFixture::new("mcp-update-scope-managed-variants", "2026-08-05T00:00:00Z")?;
+    let fixture = managed.core();
+    let repository_before = managed.repository().status_bytes()?;
+    let (task_id, original_change_unit_id, _) = create_implementation_task(fixture)?;
+    let adapter = adapter(fixture)?;
+    assert!(action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+    )
+    .is_err());
+
+    let keep_form = action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+    )?;
+    let replace_form = action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+    )?;
+    assert_ne!(keep_form.form_ref, replace_form.form_ref);
+    assert_eq!(
+        keep_form.fixed_arguments["change_unit"]["operation"],
+        "keep_current"
+    );
+    assert_eq!(
+        replace_form.fixed_arguments["change_unit"]["operation"],
+        "replace_current"
+    );
+
+    let wrong_variant_before = fixture.counts()?;
+    let wrong_variant = adapter
+        .call_tool(
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+            json!({
+                "action_form_ref": keep_form.form_ref,
+                "task_id": task_id,
+                "detail": "workflow",
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": null,
+                "non_goals": null,
+                "acceptance_criteria": null,
+                "autonomy_boundary": null,
+                "baseline_ref": INITIAL_BASELINE,
+                "change_unit": {
+                    "operation": "replace_current",
+                    "scope_summary": "The keep form must not authorize replacement.",
+                    "affected_paths": ["implementation/managed-scope-proof.md"]
+                },
+                "related_scope_decision_refs": []
+            }),
+        )
+        .expect_err("keep-current form must reject replace-current before Core");
+    let wrong_variant =
+        structured_tool_error(AgentToolId::UPDATE_SCOPE.wire_name(), &wrong_variant);
+    assert_eq!(wrong_variant["code"], "MCP_ACTION_FORM_STALE");
+    assert_eq!(wrong_variant["reached_core"], false);
+    assert_eq!(fixture.counts()?, wrong_variant_before);
+
+    let keep = adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        json!({
+            "action_form_ref": keep_form.form_ref,
+            "task_id": task_id,
+            "detail": "workflow",
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": INITIAL_BASELINE,
+            "change_unit": {"operation": "keep_current"},
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    assert_eq!(
+        keep.response_value["change_unit_ref"]["record_id"],
+        original_change_unit_id
+    );
+    let current_keep_form = action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+    )?;
+    let current_replace_form = action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+    )?;
+    let before_retarget_rejection = fixture.counts()?;
+    let retarget_rejection = adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        json!({
+            "action_form_ref": current_keep_form.form_ref,
+            "task_id": task_id,
+            "detail": "workflow",
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": RETARGETED_BASELINE,
+            "change_unit": {"operation": "keep_current"},
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    assert_eq!(
+        retarget_rejection.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert!(retarget_rejection.response_value["errors"]
+        .as_array()
+        .is_some_and(|errors| !errors.is_empty()));
+    assert_eq!(fixture.counts()?, before_retarget_rejection);
+
+    let replace = adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        json!({
+            "action_form_ref": current_replace_form.form_ref,
+            "task_id": task_id,
+            "detail": "workflow",
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": "Retarget the managed proof atomically.",
+            "non_goals": ["Retain the old baseline."],
+            "acceptance_criteria": null,
+            "autonomy_boundary": "Only the retargeted managed proof path may change.",
+            "baseline_ref": RETARGETED_BASELINE,
+            "change_unit": {
+                "operation": "replace_current",
+                "scope_summary": "Replace and rebaseline the managed scope proof.",
+                "affected_paths": ["implementation/managed-scope-proof.md"]
+            },
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    let replacement_change_unit_id = replace.response_value["change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("replacement Change Unit ref")?
+        .to_owned();
+    assert_ne!(replacement_change_unit_id, original_change_unit_id);
+    let status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "workflow"}),
+    )?;
+    assert_eq!(
+        status.response_value["active_task"]["workflow"],
+        replace.response_value["state"]["workflow"]
+    );
+    assert_eq!(
+        status.response_value["active_task"]["work_phase"],
+        "implementation"
+    );
+
+    let conn = fixture.conn()?;
+    let (task_baseline, current_change_unit_id): (String, String) = conn.query_row(
+        "SELECT json_extract(shaping_summary_json, '$.baseline_ref'), current_change_unit_id
+           FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        (fixture.project_id(), task_id.as_str()),
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(task_baseline, RETARGETED_BASELINE);
+    assert_eq!(current_change_unit_id, replacement_change_unit_id);
+    let (old_status, old_current): (String, bool) = conn.query_row(
+        "SELECT status, is_current FROM change_units
+          WHERE project_id = ?1 AND change_unit_id = ?2",
+        (fixture.project_id(), original_change_unit_id.as_str()),
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!((old_status.as_str(), old_current), ("replaced", false));
+    let (new_status, new_current, new_baseline, workspace_json): (String, bool, String, String) =
+        conn.query_row(
+            "SELECT status, is_current,
+                    json_extract(write_basis_json, '$.baseline_ref'),
+                    json_extract(write_basis_json, '$.git_workspace_context')
+               FROM change_units
+              WHERE project_id = ?1 AND change_unit_id = ?2",
+            (fixture.project_id(), replacement_change_unit_id.as_str()),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+    let workspace: Value = serde_json::from_str(&workspace_json)?;
+    assert_eq!((new_status.as_str(), new_current), ("active", true));
+    assert_eq!(new_baseline, RETARGETED_BASELINE);
+    assert!(workspace["git_common_dir"].is_string());
+    assert!(workspace["worktree_id"].is_string());
+    assert!(workspace["workspace_fingerprint"].is_string());
+    assert_eq!(managed.repository().status_bytes()?, repository_before);
+    Ok(())
+}
+
+#[test]
 fn keep_current_baseline_retarget_surfaces_replace_and_keep_forms_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-update-scope-baseline-retarget")?;
@@ -1920,20 +2126,12 @@ fn status_surfaces_constraint_bypassed_baseline_corruption_without_effects(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-corrupt-baseline")?;
     let (task_id, _, shaping_checkpoint_id, _) = create_ready_for_implementation_task(&fixture)?;
-    let conn = fixture.mutation_conn()?;
-    conn.pragma_update(None, "ignore_check_constraints", true)?;
-    conn.execute(
-        "UPDATE shaping_checkpoints
-            SET baseline_ref = ?3
-          WHERE project_id = ?1
-            AND shaping_checkpoint_id = ?2",
-        (
-            fixture.project_id(),
+    fixture.corrupt_persisted_baseline(
+        volicord_test_support::core_fixtures::PersistedBaselineOwner::ShapingCheckpoint(
             shaping_checkpoint_id.as_str(),
-            "baseline\n",
         ),
+        Some("baseline\n"),
     )?;
-    conn.pragma_update(None, "ignore_check_constraints", false)?;
     let before = fixture.counts()?;
     let adapter = adapter(&fixture)?;
 
