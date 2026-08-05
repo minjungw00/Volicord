@@ -596,13 +596,25 @@ WorkflowActionForm:
 WorkflowActionFormCatalog:
   required_method: string | null
   forms: WorkflowActionForm[]
+
+RetryContract:
+  method: string
+  selected_semantic_variant: string
+  action_form_ref: RequestHash | null
+  fixed_arguments: object
+  fixed_argument_paths: string[]
+  invalid_paths: string[]
+  required_inputs: WorkflowActionInput[]
+  action_form_catalog: WorkflowActionFormCatalog
+  corrected_retry_allowed: boolean
 ```
 
 `form_ref`는 프로젝트, Task, 메서드, 선택된 semantic variant, 예상 상태 버전, 정확한
 고정 권한 좌표, 완전한 `fixed_arguments` 객체와 `fixed_argument_paths`, 현재
 semantic-schema digest의 불투명 canonical digest입니다. 숫자 workflow 버전이 아닙니다.
-Form catalog는 Core catalog의 순서, 필수 메서드, 역할을
-보존합니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
+Form catalog는 Core catalog의 순서, 필수 메서드 그룹, 역할을 보존합니다. Core의 각
+메서드-variant intent마다 서로 다른 form과 form ref가 하나씩 있으며, 필수 메서드의 여러
+form은 서로 대안입니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
 인자 context, retry contract에 나타납니다. 활성 Task가 없는 status의 catalog는
 null입니다. 단일 form은 독립된 권한 계약이 아닙니다.
 
@@ -613,10 +625,14 @@ null입니다. 단일 form은 독립된 권한 계약이 아닙니다.
 현재 Task workflow와 form catalog를 불러옵니다.
 호출한 메서드의 catalog form이 없으면 adapter는 `WORKFLOW_ACTION_NOT_ALLOWED`,
 `reached_core=false`, `committed=false`를 반환하며 상태를 바꾸지 않습니다. 메서드가
-있으면 정확한 메서드별 `action_form_ref`를 보내야 합니다. 빠졌거나, 형식이 잘못됐거나,
+있으면 현재 폐쇄형 semantic variant를 선택하고 그 메서드-variant form의 정확한
+`action_form_ref`를 보내야 합니다. 빠졌거나, 형식이 잘못됐거나,
 stale이거나, 다른 Task·프로젝트·메서드에 속한 ref는 Core 전에
-`MCP_ACTION_FORM_STALE`과 현재 호출 메서드 form을 반환합니다. 한 메서드에 허용된 form은
-다른 메서드에 권한을 주지 않으며 생략 fallback이나 필수 form fallback은 없습니다.
+`MCP_ACTION_FORM_STALE`과 가능한 경우 정확히 선택된 현재 form을 반환합니다. 메서드가
+소유하는 유효한 variant가 현재 catalog에 없으면 `WORKFLOW_ACTION_VARIANT_NOT_ALLOWED`와
+호출 메서드·variant, 현재 유효 variant·form ref를 반환하며 `reached_core=false`,
+`committed=false`입니다. 허용된 form은 다른 메서드나 variant에 권한을 주지 않으며 생략
+fallback이나 필수 form fallback은 없습니다.
 읽기 전용 `volicord.status`는 catalog를 관찰할 뿐 mutation 권한을 만들지 않습니다.
 
 Form admission 뒤에는 descriptor 기반 binder 하나가 선택된 메서드와 semantic variant에서
@@ -630,21 +646,24 @@ null은 문자열 `"null"`이나 빈 문자열과 같지 않습니다. 프로젝
 ```schema
 McpWorkflowAdmissionRejection:
   called_method: string
+  called_semantic_variant: string | null
   current_workflow_kind: string
   required_method: string | null
   allowed_methods: string[]
+  valid_called_method_variants: string[]
+  valid_called_method_form_refs: RequestHash[]
   called_method_form: WorkflowActionForm | null
-  required_method_form: WorkflowActionForm | null
+  required_method_forms: WorkflowActionForm[]
   state_change_applied: false
   reached_core: false
 ```
 
 `allowed_methods`에는 읽기 전용 관찰 메서드가 아니라 현재 허용된 Task 상태 결속 메서드가
-들어갑니다. 비허용 메서드 거부는 필수 메서드가 Task 상태 결속일 때 현재 필수 form을
+들어갑니다. 비허용 메서드 거부는 필수 메서드가 Task 상태 결속일 때 현재 필수 form들을
 반환합니다. 따라서 User Channel 소유 필수 메서드에는 필수 MCP action form이 없을 수
 있습니다. 간결한 presentation은 시도한 메서드가 현재 행동이 아니고, Core에 도달하지
 않았으며, 상태가 바뀌지 않았음을 알리고 정확한 현재 필수 메서드와 사용할 수 있는 필수
-form을 식별합니다.
+form들을 식별합니다.
 
 첫 checkpoint form은 Task, `create_initial`, 범위 리비전, 실제 nullable 기준선을
 고정하고 summary, implementation boundary, gap만 typed 에이전트 입력으로 남깁니다.
@@ -656,8 +675,15 @@ checkpoint, 비쓰기 Change Unit,
 범위 리비전, 기준선, resolution ID를 고정하며 결과 내용, 증거, 위험, 복구
 제약만 에이전트가 작성합니다.
 반면 update-scope form에서 요청 `baseline_ref`는 에이전트가 작성하는 다음 기준선입니다.
-이 form은 scope 소유 resolution ref와 Change Unit operation을 정확히 고정하고, 현재 기준선과
-범위 리비전은 허용된 form과 주입된 예상 상태 버전이 포괄하는 Core 현재 권한으로 둡니다.
+이 form은 scope 소유 resolution ref와 메서드 소유 폐쇄형 동작 하나를 정확히 고정합니다.
+`keep_current_change_unit`은 `keep_current`를 고정하고 기준선과 선택적 scope edit만 작성
+입력으로 남깁니다. `create_current_change_unit`과 `replace_current_change_unit`은 각 동작을
+고정하고 작성하는 `scope_summary`, `affected_paths`, 기준선을 필수로 하며 선택적 Change
+Unit 필드와 effect contract를 유지합니다. 현재 Change Unit이 없으면 create만, 있으면
+keep과 Core 정책이 교체를 허용할 때의 replace만 만들고 create는 만들지 않습니다.
+현재 shaping application을 무효화할 implementation replacement는 form을 만들지 않습니다.
+Advisor create와 replace에는 Core의 정규 비쓰기 조건이 그대로 적용됩니다. 현재 기준선과
+범위 리비전은 각 허용 form과 주입된 예상 상태 버전이 포괄하는 Core 현재 권한으로 둡니다.
 
 호출자에게 보이는 고정 값을 하나라도 바꾸거나 생략하면 adapter는 결정적으로 정렬되고
 개수가 제한된 mismatch entry와 함께 `ACTION_FORM_ARGUMENT_MISMATCH`를 반환합니다. 각
@@ -725,7 +751,9 @@ McpActionFormArgumentMismatch:
   current_method_form: WorkflowActionForm
 
 McpToolErrorResponse:
-  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | ACTION_FORM_ARGUMENT_MISMATCH | MCP_ADAPTER_PRECONDITION_FAILED
+  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE |
+    ACTION_FORM_ARGUMENT_MISMATCH | WORKFLOW_ACTION_NOT_ALLOWED |
+    WORKFLOW_ACTION_VARIANT_NOT_ALLOWED | MCP_ADAPTER_PRECONDITION_FAILED
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -993,9 +1021,21 @@ capability는 carrier만 선택하며 범주를 따로 변환하거나 이 필�
 
 Schema 검증이 성공한 뒤 Core가 typed `AuthorityBasisMismatch`를 반환하면 MCP는 정확한
 `field`, `expected`, `received`, `state_change_applied=false`를 보존하고 현재 action
-form과 retry contract를 덧붙입니다. 예상 기준선이 null이고 받은 `BaselineRef`가
-non-null이면 Task는 유효하며 현재 form으로 재시도해야 한다고 명시합니다. Core가 영속
+form과 retry contract를 덧붙입니다. Keep-current 기준선 retargeting이면
+`current_baseline_valid=false`로 표시하고 현재 keep form과 replace form을 모두 붙이며,
+replace form을 재시도 대상으로 선택하고 기준선 retargeting에는 `replace_current`가
+필요하다고 명시합니다. Core가 영속
 데이터 손상이나 명시적 복구 workflow를 보고하지 않는 한 repair는 false입니다.
+
+```schema
+McpAuthorityBasisMismatch:
+  field: string
+  expected: string | integer | null
+  received: string | integer | null
+  state_change_applied: false
+  called_method_form: WorkflowActionForm | null
+  replacement_method_form: WorkflowActionForm | null
+```
 
 Core가 메서드 결과 없이 typed 운영 불가를 반환하면 MCP는 같은 선택 carrier를 통해 MCP
 소유 `MCP_UNAVAILABLE` 구조화 실패를 내보냅니다. 이 객체는 tool name, typed

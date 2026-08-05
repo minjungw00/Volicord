@@ -69,7 +69,9 @@ use volicord_types::methods::{AdvanceTaskRequest, RecordShapingCheckpointRequest
 use volicord_types::schema::{
     CloseAssessmentInput, RequiredNullable, ResidualRiskInput, StagedArtifactHandle,
 };
-use volicord_types::values::{AgentConnectionMode, ChangeUnitOperation, OperationCategory};
+use volicord_types::values::{
+    AgentConnectionMode, ChangeUnitOperation, OperationCategory, WorkflowActionSemanticVariant,
+};
 
 fn production_profiles(
 ) -> impl ExactSizeIterator<Item = &'static volicord_mcp_protocol::McpProtocolProfile> {

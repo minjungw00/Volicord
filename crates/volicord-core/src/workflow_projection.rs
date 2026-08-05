@@ -17,11 +17,12 @@ use volicord_types::schema::{
     WorkflowProjection, WorkflowRejectionUserAction,
 };
 use volicord_types::values::{
-    evaluate_shaping_decision_authority, ActorSource, AuthorityNextActor, MethodName, RunKind,
-    ShapingCheckpointReadiness, ShapingDecisionApplicationAuthorityStatus,
+    evaluate_shaping_decision_authority, ActorSource, AuthorityNextActor, ChangeUnitOperation,
+    MethodName, RunKind, ShapingCheckpointReadiness, ShapingDecisionApplicationAuthorityStatus,
     ShapingDecisionApplicationOwner, ShapingDecisionAuthorityFacts, ShapingDecisionAuthorityState,
     ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionRequiredFor,
-    UserActionStatus, UtcTimestamp, WorkPhase, WorkflowBlockingReason,
+    UserActionStatus, UtcTimestamp, WorkPhase, WorkflowActionSemanticVariant,
+    WorkflowBlockingReason,
 };
 
 use crate::pipeline::{CorePipelineError, CoreResult};
@@ -775,9 +776,13 @@ struct WorkflowActionIntentContext<'a> {
 
 fn workflow_action_intent(
     method: MethodName,
+    semantic_variant: WorkflowActionSemanticVariant,
     role: WorkflowActionRole,
     context: &WorkflowActionIntentContext<'_>,
 ) -> Option<WorkflowActionIntent> {
+    if semantic_variant.method() != method {
+        return None;
+    }
     let state_version = context.state_version;
     let task = context.task;
     let current_change_unit = context.current_change_unit;
@@ -826,16 +831,20 @@ fn workflow_action_intent(
                 baseline_ref,
             }
         }
-        MethodName::UpdateScope => WorkflowActionAuthorityCoordinates::UpdateScope {
-            task_id,
-            scope_revision: task.scope_revision,
-            baseline_ref,
-            current_change_unit_id: RequiredNullable::new(
-                current_change_unit
-                    .map(|change_unit| ChangeUnitId::new(&change_unit.change_unit_id)),
-            ),
-            related_scope_decision_refs: resolution_refs_for(MethodName::UpdateScope),
-        },
+        MethodName::UpdateScope => {
+            let selected_change_unit_operation = semantic_variant.change_unit_operation()?;
+            WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id,
+                scope_revision: task.scope_revision,
+                baseline_ref,
+                current_change_unit_id: RequiredNullable::new(
+                    current_change_unit
+                        .map(|change_unit| ChangeUnitId::new(&change_unit.change_unit_id)),
+                ),
+                related_scope_decision_refs: resolution_refs_for(MethodName::UpdateScope),
+                selected_change_unit_operation,
+            }
+        }
         MethodName::FinalizeAdvice => {
             let checkpoint = checkpoint?;
             let change_unit = current_change_unit?;
@@ -911,6 +920,7 @@ fn workflow_action_intent(
     };
     Some(WorkflowActionIntent {
         method,
+        semantic_variant,
         role,
         expected_state_version: state_version,
         fixed_authority_coordinates,
@@ -919,7 +929,7 @@ fn workflow_action_intent(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn workflow_action_catalog(
+pub(crate) fn workflow_action_catalog(
     required_action: Option<MethodName>,
     allowed_actions: &[MethodName],
     state_version: u64,
@@ -950,26 +960,67 @@ fn workflow_action_catalog(
         task_wide_authority,
         required_refs,
     };
-    let actions = methods
-        .into_iter()
-        .map(|method| {
-            workflow_action_intent(
-                method,
-                if Some(method) == required_method {
-                    WorkflowActionRole::Required
+    let mut actions = Vec::new();
+    for method in methods {
+        let role = if Some(method) == required_method {
+            WorkflowActionRole::Required
+        } else {
+            WorkflowActionRole::Allowed
+        };
+        let semantic_variants = match method {
+            MethodName::RecordShapingCheckpoint => vec![if checkpoint.is_some() {
+                WorkflowActionSemanticVariant::ReplaceCurrent
+            } else {
+                WorkflowActionSemanticVariant::CreateInitial
+            }],
+            MethodName::UpdateScope => {
+                if current_change_unit.is_none() {
+                    vec![WorkflowActionSemanticVariant::for_change_unit_operation(
+                        ChangeUnitOperation::CreateCurrent,
+                    )]
                 } else {
-                    WorkflowActionRole::Allowed
-                },
-                &intent_context,
-            )
-            .unwrap_or_else(|| {
-                panic!(
-                    "task-state-bound allowed action {} has no compatible authority coordinates",
-                    method.as_str()
-                )
+                    let mut variants =
+                        vec![WorkflowActionSemanticVariant::for_change_unit_operation(
+                            ChangeUnitOperation::KeepCurrent,
+                        )];
+                    let replacement_invalidates_current_implementation_authority = task.work_phase
+                        == WorkPhase::Implementation
+                        && !task_wide_authority.applied.is_empty();
+                    if !replacement_invalidates_current_implementation_authority {
+                        variants.push(WorkflowActionSemanticVariant::for_change_unit_operation(
+                            ChangeUnitOperation::ReplaceCurrent,
+                        ));
+                    }
+                    variants
+                }
+            }
+            _ => WorkflowActionSemanticVariant::for_single_variant_method(method)
+                .into_iter()
+                .collect(),
+        };
+        for semantic_variant in semantic_variants {
+            actions.push(
+                workflow_action_intent(method, semantic_variant, role, &intent_context)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "task-state-bound allowed action {} variant {} has no compatible authority coordinates",
+                            method.as_str(),
+                            semantic_variant.as_str()
+                        )
+                    }),
+            );
+        }
+    }
+    actions.sort_by(|left, right| {
+        left.method
+            .as_str()
+            .cmp(right.method.as_str())
+            .then_with(|| {
+                left.semantic_variant
+                    .as_str()
+                    .cmp(right.semantic_variant.as_str())
             })
-        })
-        .collect();
+    });
     WorkflowActionCatalog {
         required_method: RequiredNullable::new(required_method),
         actions,

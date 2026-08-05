@@ -59,6 +59,15 @@ operation별 Change Unit 필드도 에이전트 작성 slot입니다. 프로젝�
 adapter가 주입하며 일반 binder는 호출자에게 보이는 고정 값이 바뀌거나 빠지면 Core 전에
 거부합니다.
 
+Core는 폐쇄형 action variant `keep_current_change_unit`,
+`create_current_change_unit`, `replace_current_change_unit`을 게시하며 각각 대응하는
+`ChangeUnitOperation`에 정확히 매핑됩니다. 현재 Change Unit이 없으면 create만 현재
+variant입니다. 현재 Change Unit이 있으면 keep과 Core 정책에 호환되는 replace가 현재이고
+create는 아닙니다. 현재 shaping application을 stale로 만들 implementation replacement는
+게시하지 않습니다. Keep form은 `keep_current`를 고정합니다. Create와 replace form은 각
+동작을 고정하고 에이전트가 작성하는 `scope_summary`, `affected_paths`, 다음 기준선을
+필수로 하면서 선택적 Change Unit 필드와 effect contract를 유지합니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
@@ -266,6 +275,8 @@ gap과 resolution만 식별합니다. 제품·기술·민감 gap은 각자의 ap
 - 미해결 필수 판단
 - 자율성 경계 위반
 - 오래된 기준선
+- keep-current 기준선 retargeting. 효과 없는 typed `AuthorityBasisMismatch`로 반환하며
+  재시도 행동에는 `replace_current`가 필요합니다.
 - 행위자 출처 또는 작업 범주 불일치
 - 검증기 실패
 

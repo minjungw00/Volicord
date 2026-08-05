@@ -184,6 +184,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "required_method": "volicord.record_shaping_checkpoint",
             "actions": [{
                 "method": "volicord.record_shaping_checkpoint",
+                "semantic_variant": "create_initial",
                 "role": "required",
                 "expected_state_version": 7,
                 "fixed_authority_coordinates": {
@@ -211,7 +212,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
                 "forms": [{
                     "form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "method": "volicord.record_shaping_checkpoint",
-                    "selected_semantic_variant": "create",
+                    "selected_semantic_variant": "create_initial",
                     "role": "required",
                     "expected_state_version": 7,
                     "fixed_arguments": {"task_id": "task_current"},

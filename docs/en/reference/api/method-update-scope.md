@@ -63,6 +63,16 @@ operation-specific Change Unit fields are also Agent-authored slots. The
 adapter injects project and expected state version; the generic binder rejects
 any altered or omitted caller-visible fixed value before Core.
 
+Core publishes the closed action variants `keep_current_change_unit`,
+`create_current_change_unit`, and `replace_current_change_unit`; each maps
+exactly to the correspondingly named `ChangeUnitOperation`. With no current
+Change Unit, only create is current. With a current Change Unit, keep and a
+Core-policy-compatible replace are current, and create is not. An
+implementation replacement that would stale current shaping applications is
+not published. Keep fixes `keep_current`; create and replace fix their
+operation and require Agent-authored `scope_summary`, `affected_paths`, and
+next baseline while retaining optional Change Unit fields and effect contract.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
@@ -281,6 +291,8 @@ Returns `ToolRejectedResponse` for pre-commit failures such as:
 - unresolved required decision
 - autonomy-boundary violation
 - stale baseline
+- keep-current baseline retargeting, returned as a typed no-effect
+  `AuthorityBasisMismatch` whose retry action requires `replace_current`
 - actor-source or operation-category mismatch
 - validator failure
 

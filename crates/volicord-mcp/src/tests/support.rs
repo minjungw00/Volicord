@@ -1199,6 +1199,35 @@ pub(super) fn action_form_for_method(
     current_action_form(adapter, task_id, Some(method))
 }
 
+pub(super) fn action_form_for_variant(
+    adapter: &McpAdapter,
+    task_id: &str,
+    method: MethodName,
+    semantic_variant: WorkflowActionSemanticVariant,
+) -> Result<volicord_mcp_wire::WorkflowActionForm, Box<dyn Error>> {
+    let status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "workflow"}),
+    )?;
+    let workflow: volicord_types::schema::WorkflowProjection = serde_json::from_value(
+        status
+            .response_value
+            .pointer("/active_task/workflow")
+            .cloned()
+            .ok_or("status should expose the current workflow")?,
+    )?;
+    let project_id = &status
+        .verified_invocation
+        .as_ref()
+        .ok_or("status should retain verified invocation")?
+        .project_id;
+    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow);
+    Ok(catalog
+        .form(method, semantic_variant)
+        .ok_or("workflow should expose the requested current action variant")?
+        .clone())
+}
+
 pub(super) fn bind_action_form_arguments(
     adapter: &McpAdapter,
     task_id: &str,
@@ -1256,7 +1285,29 @@ fn current_action_form(
         .project_id;
     let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow);
     let form = method
-        .map_or_else(|| catalog.required_form(), |method| catalog.form(method))
+        .map_or_else(
+            || {
+                catalog.only_required_form().or_else(|| {
+                    if catalog.required_method.as_ref() == Some(&MethodName::UpdateScope) {
+                        catalog.form(
+                            MethodName::UpdateScope,
+                            WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+                        )
+                    } else {
+                        None
+                    }
+                })
+            },
+            |method| {
+                catalog.only_form_for_method(method).or_else(|| {
+                    if method == MethodName::UpdateScope {
+                        catalog.form(method, WorkflowActionSemanticVariant::KeepCurrentChangeUnit)
+                    } else {
+                        None
+                    }
+                })
+            },
+        )
         .ok_or("workflow should expose the requested current action form")?;
     Ok(form.clone())
 }

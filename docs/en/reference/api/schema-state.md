@@ -498,10 +498,20 @@ WorkflowActionCatalog:
 
 WorkflowActionIntent:
   method: string
+  semantic_variant: string
   role: required | allowed
   expected_state_version: integer
   fixed_authority_coordinates: WorkflowActionAuthorityCoordinates
   required_refs: StateRecordRef[]
+
+WorkflowActionAuthorityCoordinates.update_scope:
+  coordinate_kind: update_scope
+  task_id: TaskId
+  scope_revision: integer
+  baseline_ref: BaselineRef | null
+  current_change_unit_id: ChangeUnitId | null
+  related_scope_decision_refs: StateRecordRef[]
+  selected_change_unit_operation: keep_current | create_current | replace_current
 
 ShapingUserActionDraft:
   action: UserActionDraft
@@ -650,21 +660,27 @@ current checkpoint-backed close basis selects `close_review`.
 
 The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Progression consumes the Store-owned current effective shaping authority graph for `advance_task`, `finalize_advice`, shaping-owned scope update, write preparation, Run recording, close readiness, and mutation rejection. A compatible application carried from an ancestor remains `applied` without copying its source gap. A stale application grants no authority and appears only as a current recovery obligation: in `advisor|work` shaping it selects `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, `blocking_reason=application_authority_stale`, and its exact recovery refs. An implementation-phase update that would create this condition is rejected before mutation and names `volicord.close_task` as the close/supersede recovery instead of returning the Task to shaping. A contradiction inside the current graph uses `inconsistent_authority_state`. Superseded request, resolution, application, and checkpoint refs remain immutable audit history and never enter current `required_refs` or progression merely because they exist.
 
-`action_catalog` contains one neutral action intent for every Task-state-bound
-method in `allowed_actions` and no intent for any other method. Entries are
-ordered by canonical method name. `required_method` is the Task-state-bound
+`action_catalog` contains one method group for every Task-state-bound method in
+`allowed_actions` and no intent for any other method. Its flat intent sequence
+represents one group with repeated method values and distinct closed
+`semantic_variant` values. Entries are ordered by canonical method and then
+canonical variant name. `required_method` is the Task-state-bound
 `required_action`, or null when the required action is read-only or belongs to
-the User Channel. The required entry has `role=required`; all other entries
-have `role=allowed`. Duplicate methods, a missing required entry, a method and
-coordinate-kind mismatch, or noncanonical ordering are invalid. Every entry
+the User Channel. Every variant in the required group has `role=required`; all
+other groups have `role=allowed`, and required-group variants are alternatives.
+Duplicate method-and-variant keys, a missing required group, a method, variant,
+and coordinate mismatch, or noncanonical ordering are invalid. Every entry
 uses the workflow's state version and Core-owned fixed authority coordinates
 from the same current Task snapshot. Initial checkpoint coordinates preserve
 an actual null baseline; replacement coordinates carry the exact current and
 predecessor checkpoint refs, retirement refs, compatible application refs, and
 stale-application refs. Other coordinates bind the exact current Task,
 checkpoint, Change Unit, scope revision, baseline, resolution, and method-local
-authority facts that apply. MCP may project each neutral intent into an
-executable method-specific action form, but MCP forms and their input slots are
+authority facts that apply. Update-scope coordinates also carry the selected
+Change Unit operation. No current Change Unit admits only `create_current`;
+an existing current Change Unit admits `keep_current` and, when Core authority
+policy allows it, `replace_current`, never `create_current`. MCP may project
+each neutral intent into an executable method-and-variant action form, but MCP forms and their input slots are
 not Core state.
 
 For MCP checkpoint submission, the canonical compare-and-swap coordinate is

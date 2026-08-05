@@ -31,7 +31,7 @@ use volicord_types::values::{
     RequestedMode, ResumePolicy, RunKind, ShapingCheckpointReadiness,
     ShapingDecisionApplicationOwner, StatusDetailLevel, TaskMode, UserActionChannelKind,
     UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
-    WorkPhase, WorkflowStateKind, WriteTicketEffect,
+    WorkPhase, WorkflowActionSemanticVariant, WorkflowStateKind, WriteTicketEffect,
 };
 
 /// Compound MCP projection that keeps the agent-workflow transaction distinct
@@ -77,6 +77,8 @@ pub enum McpToolErrorCode {
     ActionFormArgumentMismatch,
     #[serde(rename = "WORKFLOW_ACTION_NOT_ALLOWED")]
     WorkflowActionNotAllowed,
+    #[serde(rename = "WORKFLOW_ACTION_VARIANT_NOT_ALLOWED")]
+    WorkflowActionVariantNotAllowed,
 }
 
 /// MCP wire-owned identity for operational unavailability.
@@ -143,6 +145,8 @@ pub enum McpToolIssueCode {
     ActionFormArgumentMismatch,
     #[serde(rename = "WORKFLOW_ACTION_NOT_ALLOWED")]
     WorkflowActionNotAllowed,
+    #[serde(rename = "WORKFLOW_ACTION_VARIANT_NOT_ALLOWED")]
+    WorkflowActionVariantNotAllowed,
 }
 
 /// One independently discoverable MCP tool error issue.
@@ -190,7 +194,7 @@ pub struct WorkflowActionInput {
 pub struct WorkflowActionForm {
     pub form_ref: RequestHash,
     pub method: MethodName,
-    pub selected_semantic_variant: String,
+    pub selected_semantic_variant: WorkflowActionSemanticVariant,
     pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_arguments: JsonObject,
@@ -209,14 +213,44 @@ pub struct WorkflowActionFormCatalog {
 }
 
 impl WorkflowActionFormCatalog {
-    pub fn form(&self, method: MethodName) -> Option<&WorkflowActionForm> {
-        self.forms.iter().find(|form| form.method == method)
+    pub fn forms_for_method(
+        &self,
+        method: MethodName,
+    ) -> impl Iterator<Item = &WorkflowActionForm> {
+        self.forms.iter().filter(move |form| form.method == method)
     }
 
-    pub fn required_form(&self) -> Option<&WorkflowActionForm> {
-        self.required_method
-            .as_ref()
-            .and_then(|method| self.form(*method))
+    pub fn form(
+        &self,
+        method: MethodName,
+        semantic_variant: WorkflowActionSemanticVariant,
+    ) -> Option<&WorkflowActionForm> {
+        self.forms.iter().find(|form| {
+            form.method == method && form.selected_semantic_variant == semantic_variant
+        })
+    }
+
+    pub fn form_by_ref(&self, form_ref: &RequestHash) -> Option<&WorkflowActionForm> {
+        self.forms.iter().find(|form| &form.form_ref == form_ref)
+    }
+
+    pub fn required_forms(&self) -> impl Iterator<Item = &WorkflowActionForm> {
+        let required_method = self.required_method.as_ref().copied();
+        self.forms
+            .iter()
+            .filter(move |form| Some(form.method) == required_method)
+    }
+
+    pub fn only_form_for_method(&self, method: MethodName) -> Option<&WorkflowActionForm> {
+        let mut forms = self.forms_for_method(method);
+        let form = forms.next()?;
+        forms.next().is_none().then_some(form)
+    }
+
+    pub fn only_required_form(&self) -> Option<&WorkflowActionForm> {
+        let mut forms = self.required_forms();
+        let form = forms.next()?;
+        forms.next().is_none().then_some(form)
     }
 }
 
@@ -241,6 +275,7 @@ pub struct AuthoritativeArgumentContext {
 #[serde(deny_unknown_fields)]
 pub struct RetryContract {
     pub method: MethodName,
+    pub selected_semantic_variant: WorkflowActionSemanticVariant,
     pub action_form_ref: RequiredNullable<RequestHash>,
     pub fixed_arguments: JsonObject,
     pub fixed_argument_paths: Vec<String>,
@@ -276,6 +311,7 @@ pub struct McpAuthorityBasisMismatch {
     pub received: volicord_types::schema::AuthorityBasisValue,
     pub state_change_applied: bool,
     pub called_method_form: RequiredNullable<WorkflowActionForm>,
+    pub replacement_method_form: RequiredNullable<WorkflowActionForm>,
 }
 
 /// Exact pre-Core workflow admission facts for a task-state-bound call.
@@ -283,11 +319,14 @@ pub struct McpAuthorityBasisMismatch {
 #[serde(deny_unknown_fields)]
 pub struct McpWorkflowAdmissionRejection {
     pub called_method: MethodName,
+    pub called_semantic_variant: RequiredNullable<WorkflowActionSemanticVariant>,
     pub current_workflow_kind: WorkflowStateKind,
     pub required_method: RequiredNullable<MethodName>,
     pub allowed_methods: Vec<MethodName>,
+    pub valid_called_method_variants: Vec<WorkflowActionSemanticVariant>,
+    pub valid_called_method_form_refs: Vec<RequestHash>,
     pub called_method_form: RequiredNullable<WorkflowActionForm>,
-    pub required_method_form: RequiredNullable<WorkflowActionForm>,
+    pub required_method_forms: Vec<WorkflowActionForm>,
     pub state_change_applied: bool,
     pub reached_core: bool,
 }

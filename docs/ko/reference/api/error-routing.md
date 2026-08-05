@@ -65,10 +65,11 @@ Known MCP tool의 descriptor 유래 인자 issue는 구조화된 MCP invalid-arg
 남습니다. Descriptor에는 유효하지만 정확한 Rust request type으로 decode할 수 없는 값은
 내부 schema contract 실패입니다. 이를 사용자 field나 다른 union branch로 다시 분류하지
 않습니다. 두 경로 모두 `ToolRejectedResponse`를 만들거나 Core에 도달하지 않습니다.
-Task 상태 결속 MCP 호출의 메서드 admission과 정확한 메서드별 action form 일치 검사도
+Task 상태 결속 MCP 호출의 메서드 admission과 정확한 메서드-variant action form 일치 검사도
 Core 실행 전 adapter 실패입니다. 현재 catalog에 없는 메서드는 typed
 `WORKFLOW_ACTION_NOT_ALLOWED` MCP 응답을 사용하고, 허용된 메서드에서 form이 없거나
-일치하지 않으면 `MCP_ACTION_FORM_STALE`을 사용합니다. 두 응답 모두
+일치하지 않으면 `MCP_ACTION_FORM_STALE`을 사용합니다. 메서드가 소유하는 유효한
+variant가 현재 상태가 아니면 `WORKFLOW_ACTION_VARIANT_NOT_ALLOWED`를 사용합니다. 모든 응답은
 `reached_core=false`, `committed=false`, 상태 변경 없음 상태를 보존하고 [MCP
 전송](../mcp-transport.md#public-argument-projection)이 담당하는 현재 workflow와 form 복구
 사실을 담습니다.
@@ -143,7 +144,8 @@ Descriptor 검증이 Core 전에 실패하면 이 공개 API branch가 아니라
 한도 있는 현재 권한 맥락, 정확한 retry contract를 반환합니다. Checkpoint, UserAction,
 Core event, 쓰기 권한, Product Repository 변경은 만들어지지 않습니다. Schema 검증은
 성공했지만 Core가 권한 좌표 불일치를 찾으면 이 거부 branch가 typed
-`AuthorityBasisMismatch`의 expected/received 값과 효과 없음 사실을 사용합니다. 두 조건
+`AuthorityBasisMismatch`의 expected/received 값과 효과 없음 사실을 사용합니다.
+Keep-current 기준선 retargeting은 이런 typed mismatch이며 현재 replace form을 가리킵니다. 두 조건
 모두 영속 데이터 손상으로 routing하지 않습니다.
 
 <a id="rejected-precondition-failure"></a>

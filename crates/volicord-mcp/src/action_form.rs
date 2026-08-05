@@ -14,7 +14,7 @@ use volicord_types::schema::{
     WorkflowCheckpointActionCoordinates, WorkflowProjection,
 };
 use volicord_types::tool_names::AgentToolId;
-use volicord_types::values::MethodName;
+use volicord_types::values::{ChangeUnitOperation, MethodName, WorkflowActionSemanticVariant};
 
 #[derive(Serialize)]
 struct WorkflowActionFormDigestBasis<'a> {
@@ -22,7 +22,7 @@ struct WorkflowActionFormDigestBasis<'a> {
     project_id: &'a ProjectId,
     task_id: &'a TaskId,
     method: MethodName,
-    selected_semantic_variant: &'a str,
+    selected_semantic_variant: WorkflowActionSemanticVariant,
     expected_state_version: u64,
     fixed_authority_coordinates: &'a WorkflowActionAuthorityCoordinates,
     fixed_arguments: &'a JsonObject,
@@ -77,32 +77,6 @@ fn descriptor_owned_inputs(
         }
     }
     Some((descriptor_required, descriptor_optional))
-}
-
-fn selected_variant(coordinates: &WorkflowActionAuthorityCoordinates) -> &'static str {
-    match coordinates {
-        WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
-            checkpoint_operation: WorkflowCheckpointActionCoordinates::CreateInitial,
-            ..
-        } => "create_initial",
-        WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
-            checkpoint_operation: WorkflowCheckpointActionCoordinates::ReplaceCurrent { .. },
-            ..
-        } => "replace_current",
-        WorkflowActionAuthorityCoordinates::UpdateScope { .. } => "update_scope",
-        WorkflowActionAuthorityCoordinates::FinalizeAdvice { .. } => "finalize_advice",
-        WorkflowActionAuthorityCoordinates::AdvanceTask { .. } => "advance_task",
-        WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture { .. } => {
-            "prepare_evidence_capture"
-        }
-        WorkflowActionAuthorityCoordinates::PrepareWrite { .. } => "prepare_write",
-        WorkflowActionAuthorityCoordinates::StageArtifact { .. } => "stage_artifact",
-        WorkflowActionAuthorityCoordinates::RecordRun { .. } => "record_run",
-        WorkflowActionAuthorityCoordinates::RequestUserAction { .. } => "request_user_action",
-        WorkflowActionAuthorityCoordinates::ReconcileChanges { .. } => "reconcile_changes",
-        WorkflowActionAuthorityCoordinates::CheckClose { .. } => "check_close",
-        WorkflowActionAuthorityCoordinates::CloseTask { .. } => "close_task",
-    }
 }
 
 fn checkpoint_operation(
@@ -203,8 +177,8 @@ fn project_fixed_arguments(
         }
         WorkflowActionAuthorityCoordinates::UpdateScope {
             task_id,
-            current_change_unit_id,
             related_scope_decision_refs,
+            selected_change_unit_operation,
             ..
         } => {
             fixed.insert("task_id".to_owned(), json!(task_id));
@@ -218,16 +192,14 @@ fn project_fixed_arguments(
                 ),
             );
             let mut required = vec![input("/baseline_ref", "string | null")];
-            if current_change_unit_id.as_ref().is_some() {
-                fixed.insert(
-                    "change_unit".to_owned(),
-                    json!({ "operation": "keep_current" }),
-                );
-            } else {
-                fixed.insert(
-                    "change_unit".to_owned(),
-                    json!({ "operation": "create_current" }),
-                );
+            fixed.insert(
+                "change_unit".to_owned(),
+                json!({ "operation": selected_change_unit_operation }),
+            );
+            if matches!(
+                selected_change_unit_operation,
+                ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
+            ) {
                 required.extend([
                     input("/change_unit/scope_summary", "string"),
                     input("/change_unit/affected_paths", "array<string>"),
@@ -479,7 +451,7 @@ pub(crate) fn workflow_action_form(
         required_inputs,
         optional_inputs,
     )?;
-    let selected_semantic_variant = selected_variant(&intent.fixed_authority_coordinates);
+    let selected_semantic_variant = intent.semantic_variant;
     let projection = action_form_request_projection(intent.method, selected_semantic_variant)?;
     let fixed_argument_paths = projection
         .concrete_fixed_argument_paths(&fixed_arguments)
@@ -510,7 +482,7 @@ pub(crate) fn workflow_action_form(
     Some(WorkflowActionForm {
         form_ref,
         method: intent.method,
-        selected_semantic_variant: selected_semantic_variant.to_owned(),
+        selected_semantic_variant,
         role: intent.role,
         expected_state_version: intent.expected_state_version,
         fixed_arguments,
@@ -531,15 +503,14 @@ pub(crate) fn bind_fixed_arguments(
     form: &WorkflowActionForm,
     submitted: &Value,
 ) -> Result<FixedArgumentBindingResult, String> {
-    let projection =
-        action_form_request_projection(form.method, form.selected_semantic_variant.as_str())
-            .ok_or_else(|| {
-                format!(
-                    "{} {} has no request projection descriptor",
-                    form.method.as_str(),
-                    form.selected_semantic_variant
-                )
-            })?;
+    let projection = action_form_request_projection(form.method, form.selected_semantic_variant)
+        .ok_or_else(|| {
+            format!(
+                "{} {} has no request projection descriptor",
+                form.method.as_str(),
+                form.selected_semantic_variant.as_str()
+            )
+        })?;
     let expected_paths = projection.concrete_fixed_argument_paths(&form.fixed_arguments)?;
     if expected_paths != form.fixed_argument_paths {
         return Err(format!(
@@ -614,8 +585,9 @@ pub(crate) fn workflow_action_form_catalog(
             .map(|intent| {
                 workflow_action_form(project_id, intent).unwrap_or_else(|| {
                     panic!(
-                        "workflow action {} has no canonical MCP form",
-                        intent.method.as_str()
+                        "workflow action {} {} has no canonical MCP form",
+                        intent.method.as_str(),
+                        intent.semantic_variant.as_str()
                     )
                 })
             })
@@ -630,6 +602,7 @@ pub(crate) fn retry_contract(
 ) -> RetryContract {
     RetryContract {
         method: form.method,
+        selected_semantic_variant: form.selected_semantic_variant,
         action_form_ref: RequiredNullable::some(form.form_ref.clone()),
         fixed_arguments: form.fixed_arguments.clone(),
         fixed_argument_paths: form.fixed_argument_paths.clone(),
@@ -673,6 +646,7 @@ mod tests {
         let task_id = TaskId::new("task_action_form");
         let intent = WorkflowActionIntent {
             method: MethodName::RecordShapingCheckpoint,
+            semantic_variant: WorkflowActionSemanticVariant::CreateInitial,
             role: WorkflowActionRole::Required,
             expected_state_version: 2,
             fixed_authority_coordinates:
@@ -723,6 +697,7 @@ mod tests {
         let project_id = ProjectId::new("prj_descriptor_inputs");
         let intent = WorkflowActionIntent {
             method: MethodName::UpdateScope,
+            semantic_variant: WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
             role: WorkflowActionRole::Allowed,
             expected_state_version: 3,
             fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::UpdateScope {
@@ -731,6 +706,7 @@ mod tests {
                 baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_current")),
                 current_change_unit_id: RequiredNullable::some(ChangeUnitId::new("cu_current")),
                 related_scope_decision_refs: Vec::new(),
+                selected_change_unit_operation: ChangeUnitOperation::KeepCurrent,
             },
             required_refs: Vec::new(),
         };
@@ -769,6 +745,7 @@ mod tests {
         let project_id = ProjectId::new("prj_create_change_unit_form");
         let intent = WorkflowActionIntent {
             method: MethodName::UpdateScope,
+            semantic_variant: WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
             role: WorkflowActionRole::Allowed,
             expected_state_version: 1,
             fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::UpdateScope {
@@ -777,6 +754,7 @@ mod tests {
                 baseline_ref: RequiredNullable::null(),
                 current_change_unit_id: RequiredNullable::null(),
                 related_scope_decision_refs: Vec::new(),
+                selected_change_unit_operation: ChangeUnitOperation::CreateCurrent,
             },
             required_refs: Vec::new(),
         };
@@ -792,6 +770,55 @@ mod tests {
             required.get("/change_unit/affected_paths"),
             Some(&"array<string>")
         );
+    }
+
+    #[test]
+    fn current_change_unit_projects_distinct_keep_and_replace_forms() {
+        let project_id = ProjectId::new("prj_current_change_unit_forms");
+        let coordinates = |operation| WorkflowActionAuthorityCoordinates::UpdateScope {
+            task_id: TaskId::new("task_current_change_unit_forms"),
+            scope_revision: 2,
+            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_current")),
+            current_change_unit_id: RequiredNullable::some(ChangeUnitId::new("cu_current")),
+            related_scope_decision_refs: Vec::new(),
+            selected_change_unit_operation: operation,
+        };
+        let form = |operation| {
+            workflow_action_form(
+                &project_id,
+                &WorkflowActionIntent {
+                    method: MethodName::UpdateScope,
+                    semantic_variant: WorkflowActionSemanticVariant::for_change_unit_operation(
+                        operation,
+                    ),
+                    role: WorkflowActionRole::Allowed,
+                    expected_state_version: 4,
+                    fixed_authority_coordinates: coordinates(operation),
+                    required_refs: Vec::new(),
+                },
+            )
+            .expect("current update-scope form")
+        };
+
+        let keep = form(ChangeUnitOperation::KeepCurrent);
+        let replace = form(ChangeUnitOperation::ReplaceCurrent);
+        assert_ne!(keep.form_ref, replace.form_ref);
+        assert_eq!(
+            keep.fixed_arguments["change_unit"]["operation"],
+            "keep_current"
+        );
+        assert_eq!(
+            replace.fixed_arguments["change_unit"]["operation"],
+            "replace_current"
+        );
+        assert!(replace
+            .required_inputs
+            .iter()
+            .any(|input| input.path == "/change_unit/scope_summary"));
+        assert!(replace
+            .required_inputs
+            .iter()
+            .any(|input| input.path == "/change_unit/affected_paths"));
     }
 
     #[test]
@@ -835,6 +862,7 @@ mod tests {
         );
         let intent = WorkflowActionIntent {
             method: MethodName::RecordShapingCheckpoint,
+            semantic_variant: WorkflowActionSemanticVariant::ReplaceCurrent,
             role: WorkflowActionRole::Required,
             expected_state_version: 9,
             fixed_authority_coordinates:
@@ -881,6 +909,7 @@ mod tests {
         let task_id = TaskId::new("task_advisor");
         let intent = WorkflowActionIntent {
             method: MethodName::FinalizeAdvice,
+            semantic_variant: WorkflowActionSemanticVariant::FinalizeAdvice,
             role: WorkflowActionRole::Required,
             expected_state_version: 12,
             fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::FinalizeAdvice {
@@ -996,6 +1025,7 @@ mod tests {
                 baseline_ref: RequiredNullable::some(baseline.clone()),
                 current_change_unit_id: RequiredNullable::some(change_unit.clone()),
                 related_scope_decision_refs: vec![resolution_ref],
+                selected_change_unit_operation: ChangeUnitOperation::KeepCurrent,
             },
             WorkflowActionAuthorityCoordinates::FinalizeAdvice {
                 task_id: task_id.clone(),
@@ -1049,10 +1079,12 @@ mod tests {
 
         for fixed_authority_coordinates in coordinates {
             let method = fixed_authority_coordinates.method();
+            let semantic_variant = fixed_authority_coordinates.semantic_variant();
             let form = workflow_action_form(
                 &project_id,
                 &WorkflowActionIntent {
                     method,
+                    semantic_variant,
                     role: WorkflowActionRole::Allowed,
                     expected_state_version: 21,
                     fixed_authority_coordinates,

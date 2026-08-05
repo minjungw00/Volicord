@@ -43,7 +43,9 @@ use volicord_types::schema::{
     StateRecordRef, ToolDryRunResponse, ToolRejectedResponse, WorkflowRejectionDetails,
 };
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
-use volicord_types::values::{EffectKind, MethodName, MutationDetailLevel, StateRecordKind};
+use volicord_types::values::{
+    EffectKind, MethodName, MutationDetailLevel, StateRecordKind, WorkflowActionSemanticVariant,
+};
 use volicord_user_action_presentation::canonical_user_channel_instructions;
 
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
@@ -225,9 +227,33 @@ where
         let called_method = AgentToolId::from_wire_name(tool_name)
             .ok()
             .and_then(AgentToolId::method);
-        let retry_form = called_method
-            .and_then(|method| presentation.action_form_catalog.form(method))
-            .or_else(|| presentation.action_form_catalog.required_form());
+        let baseline_retargeting_requires_replace = called_method == Some(MethodName::UpdateScope)
+            && authority_basis_mismatch
+                .as_ref()
+                .is_some_and(|mismatch| mismatch.field == "baseline_ref");
+        let called_method_form = if baseline_retargeting_requires_replace {
+            presentation.action_form_catalog.form(
+                MethodName::UpdateScope,
+                WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+            )
+        } else {
+            called_method.and_then(|method| {
+                presentation
+                    .action_form_catalog
+                    .only_form_for_method(method)
+            })
+        };
+        let replacement_method_form = if baseline_retargeting_requires_replace {
+            presentation.action_form_catalog.form(
+                MethodName::UpdateScope,
+                WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+            )
+        } else {
+            None
+        };
+        let retry_form = replacement_method_form
+            .or(called_method_form)
+            .or_else(|| presentation.action_form_catalog.only_required_form());
         output.primary_text = rejected_compatibility_text(tool_name, &presentation);
         output.structured_content =
             serde_json::to_value(McpWorkflowRejectedResponse {
@@ -240,9 +266,10 @@ where
                         expected: mismatch.expected,
                         received: mismatch.received,
                         state_change_applied: false,
-                        called_method_form: RequiredNullable::new(called_method.and_then(
-                            |method| presentation.action_form_catalog.form(method).cloned(),
-                        )),
+                        called_method_form: RequiredNullable::new(called_method_form.cloned()),
+                        replacement_method_form: RequiredNullable::new(
+                            replacement_method_form.cloned(),
+                        ),
                     },
                 )),
                 retry_contract: RequiredNullable::new(retry_form.map(|form| {
@@ -257,12 +284,18 @@ where
                     user_action_created: false,
                     product_repository_changed: false,
                     core_state_unchanged: true,
-                    current_baseline_valid: RequiredNullable::some(true),
+                    current_baseline_valid: RequiredNullable::some(
+                        !baseline_retargeting_requires_replace,
+                    ),
                     exact_retry_action: RequiredNullable::new(retry_form.map(|form| {
-                        format!(
-                            "retry {} with the current action form",
-                            form.method.as_str()
-                        )
+                        if baseline_retargeting_requires_replace {
+                            "baseline retargeting requires replace_current; retry volicord.update_scope with the current replace form".to_owned()
+                        } else {
+                            format!(
+                                "retry {} with the current action form",
+                                form.method.as_str()
+                            )
+                        }
                     })),
                     repair_required: false,
                 },

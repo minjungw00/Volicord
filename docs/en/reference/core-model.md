@@ -671,17 +671,22 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 Separate QA and external verification workflows are not separate baseline authority records unless [Scope](scope.md) and the affected owners define them as supported.
 
 Core selects every currently allowed Task-state-bound method in one neutral
-`WorkflowActionCatalog`. Each `WorkflowActionIntent` carries its method,
-`required` or `allowed` role, expected state version, exact fixed authority
-coordinates, and required refs. The catalog contains each allowed
-Task-state-bound method exactly once, contains no disallowed method, and names
-the required method when the required action is Task-state-bound. Its
+`WorkflowActionCatalog`. Each `WorkflowActionIntent` carries its method, closed
+method-owned semantic variant, `required` or `allowed` role, expected state
+version, exact fixed authority coordinates, and required refs. All intents for
+one method form one method group: the catalog contains each allowed method
+group, contains no disallowed method, rejects duplicate method-and-variant
+keys, and orders intents by canonical method then variant. When a required
+Task-state-bound method has multiple variants, those variants are alternative
+ways to perform that required action, not simultaneous requirements. Its
 coordinates all come from the same current authoritative Task snapshot. They
 include exact checkpoint succession and recovery sets for checkpoint
 recording, exact checkpoint and decision coordinates for shaping progression,
 and current Task, Change Unit, scope, baseline, and resolution coordinates for
 implementation and close actions. Core does not own MCP JSON input slots or
-action-form digests. An authority-coordinate mismatch after schema validation
+action-form digests. Update-scope coordinates additionally select the exact
+`ChangeUnitOperation` against the current Change Unit authority. An
+authority-coordinate mismatch after schema validation
 is a no-effect `AuthorityBasisMismatch` with typed `expected` and `received`
 values; it does not make an otherwise valid Task corrupt.
 

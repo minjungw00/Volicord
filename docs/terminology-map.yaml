@@ -29,7 +29,7 @@ canonical_for:
   - "Terminology separation between the Record integration profile and per-Task requested and effective control levels."
   - "Terminology routing for project-owned workflow policy, normalized write-authority fingerprints, state-bound Write Ticket validity, structured invalidation reasons, and ticket reuse."
   - "Terminology routing for invocation-scoped repository observations and Unrecorded Changes."
-  - "Terminology routing for compact MCP runtime schemas, tagged `WorkflowProjection` authority, workflow action catalogs, method-specific action forms, type-owned MCP semantic schemas, and blocker-local or display-only `next_action` projections."
+  - "Terminology routing for compact MCP runtime schemas, tagged `WorkflowProjection` authority, workflow action method groups and variants, method-and-variant action forms, type-owned MCP semantic schemas, and blocker-local or display-only `next_action` projections."
   - "Terminology routing for the current effective shaping authority graph, immutable history, shaping checkpoint and application lineage, stale retirement and reauthorization, structural readiness, exact decision outcomes and recovery, first-class decision applications, explicit compatible-application carry-forward, application ownership, explicit Task advance, and advisor finalization."
   - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and write ticket."
   - "Terminology routing for the canonical `ConnectionVerificationReport`, the selected-Connection schema-2 `DiagnosticReport`, the exact-read schema-1 `DiagnosticLookupReport`, their distinct statuses, and report-contained actions."
@@ -920,10 +920,13 @@ terms:
     preserve_as_identifier:
       - "WorkflowActionCatalog"
       - "WorkflowActionIntent"
+      - "WorkflowActionSemanticVariant"
       - "required_method"
       - "actions"
       - "role"
+      - "semantic_variant"
       - "fixed_authority_coordinates"
+      - "selected_change_unit_operation"
     primary_owner:
       en: "docs/en/reference/api/schema-state.md"
       ko: "docs/ko/reference/api/schema-state.md"
@@ -933,11 +936,12 @@ terms:
       - en: "docs/en/reference/mcp-transport.md"
         ko: "docs/ko/reference/mcp-transport.md"
     notes:
-      - "Use for the Core-owned current catalog of every allowed Task-state-bound mutation method and its `required` or `allowed` role."
+      - "Use for the Core-owned current catalog of every allowed Task-state-bound mutation method group, its closed method-owned variants, and its `required` or `allowed` role."
+      - "Variants in one required-method group are alternative actions; identity and canonical ordering use method plus semantic variant."
       - "The catalog admits mutations; read-only observations and methods absent from the current catalog grant no mutation authority."
   workflow_action_form:
     category: "api_concept"
-    en: "method-specific workflow action form"
+    en: "method-and-variant workflow action form"
     visibility: "public"
     allowed_document_layers:
       - "user_guide"
@@ -946,13 +950,14 @@ terms:
       - "maintain"
       - "api_schema"
       - "implementation_output"
-    ko_reference: "메서드별 workflow action form"
-    ko_user: "메서드별 현재 행동 form"
+    ko_reference: "메서드-variant workflow action form"
+    ko_user: "메서드와 variant별 현재 행동 form"
     preserve_as_identifier:
       - "WorkflowActionForm"
       - "WorkflowActionFormCatalog"
       - "form_ref"
       - "action_form_ref"
+      - "selected_semantic_variant"
       - "fixed_arguments"
       - "fixed_argument_paths"
       - "required_inputs"
@@ -968,9 +973,9 @@ terms:
       - en: "docs/en/reference/agent-connection.md"
         ko: "docs/ko/reference/agent-connection.md"
     notes:
-      - "Use for the single current adapter projection that authorizes its exact method only."
+      - "Use for one current adapter projection that authorizes its exact method and semantic variant only."
       - "Agent-authored inputs remain distinct from authority-owned fixed arguments, which callers copy without omission or alteration."
-      - "Authoritative argument context and retry contracts return current bounded authority; they do not make another method's form interchangeable."
+      - "Authoritative argument context and retry contracts return current bounded authority; they do not make another method or variant's form interchangeable."
   mcp_semantic_schema:
     category: "api_concept"
     en: "type-owned MCP semantic schema"

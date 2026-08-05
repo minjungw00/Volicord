@@ -26,15 +26,23 @@ fn assert_workflow_catalog_matches_allowed_actions(workflow: &Value) {
         })
         .collect::<BTreeSet<_>>();
     assert_eq!(catalog_methods, allowed_task_bound, "{workflow:#}");
-    assert_eq!(catalog_methods.len(), actions.len(), "{workflow:#}");
+    let catalog_keys = actions
+        .iter()
+        .map(|action| {
+            (
+                action["method"].as_str().expect("catalog method"),
+                action["semantic_variant"]
+                    .as_str()
+                    .expect("catalog semantic variant"),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(catalog_keys.len(), actions.len(), "{workflow:#}");
 
     let required_method = workflow["action_catalog"]["required_method"].as_str();
     assert_eq!(
-        actions
-            .iter()
-            .filter(|action| action["role"] == "required")
-            .count(),
-        usize::from(required_method.is_some()),
+        actions.iter().any(|action| action["role"] == "required"),
+        required_method.is_some(),
         "{workflow:#}"
     );
     for action in actions {
@@ -313,11 +321,11 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
         json!(["volicord.advance_task"])
     );
     assert_eq!(
-        rejected_checkpoint["workflow_admission"]["required_method_form"]["form_ref"],
+        rejected_checkpoint["workflow_admission"]["required_method_forms"][0]["form_ref"],
         advance_form_ref
     );
     assert_eq!(
-        rejected_checkpoint["workflow_admission"]["required_method_form"]
+        rejected_checkpoint["workflow_admission"]["required_method_forms"][0]
             ["selected_semantic_variant"],
         "advance_task"
     );
@@ -447,10 +455,21 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
                 error["workflow_admission"]["called_method"],
                 called_method.as_str()
             );
-            assert_eq!(
-                error["workflow_admission"]["called_method_form"]["form_ref"],
-                called_form_ref
-            );
+            if called_method == MethodName::UpdateScope {
+                assert!(error["workflow_admission"]["called_method_form"].is_null());
+                assert_eq!(
+                    error["workflow_admission"]["valid_called_method_form_refs"]
+                        .as_array()
+                        .expect("update-scope form refs")
+                        .len(),
+                    2
+                );
+            } else {
+                assert_eq!(
+                    error["workflow_admission"]["called_method_form"]["form_ref"],
+                    called_form_ref
+                );
+            }
             assert_ne!(provided_form_ref, called_form_ref);
             assert_eq!(fixture.counts()?, before);
         }
@@ -627,6 +646,194 @@ fn checkpoint_fixed_basis_mismatch_is_pre_core_and_reports_typed_null() -> Resul
         corrected,
     )?;
     assert_eq!(corrected.response_value["base"]["response_kind"], "result");
+    Ok(())
+}
+
+#[test]
+fn invalid_update_scope_variant_is_rejected_before_core_with_exact_current_variants(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-update-scope-invalid-variant")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
+    let keep_form = action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+    )?;
+    let before = fixture.counts()?;
+    let error = adapter
+        .call_tool(
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+            json!({
+                "action_form_ref": keep_form.form_ref,
+                "task_id": task_id,
+                "detail": "workflow",
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": null,
+                "non_goals": null,
+                "acceptance_criteria": null,
+                "autonomy_boundary": null,
+                "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                "change_unit": {
+                    "operation": "create_current",
+                    "scope_summary": "A second current Change Unit must not be created.",
+                    "affected_paths": ["src/current.rs"]
+                },
+                "related_scope_decision_refs": []
+            }),
+        )
+        .expect_err("create-current is not valid while a current Change Unit exists");
+    let error = structured_tool_error(AgentToolId::UPDATE_SCOPE.wire_name(), &error);
+
+    assert_eq!(error["code"], "WORKFLOW_ACTION_VARIANT_NOT_ALLOWED");
+    assert_eq!(error["reached_core"], false);
+    assert_eq!(error["committed"], false);
+    assert_eq!(
+        error["workflow_admission"]["called_semantic_variant"],
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit.as_str()
+    );
+    assert_eq!(
+        error["workflow_admission"]["valid_called_method_variants"],
+        json!([
+            WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+            WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+        ])
+    );
+    assert_eq!(
+        error["workflow_admission"]["valid_called_method_form_refs"]
+            .as_array()
+            .expect("current form refs")
+            .len(),
+        2
+    );
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn projected_replace_form_executes_one_atomic_change_unit_replacement() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-update-scope-replace-form")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, current_change_unit_id, _) = create_implementation_task(&fixture)?;
+    let replace_form = action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+    )?;
+    let before = fixture.counts()?;
+    let response = adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        json!({
+            "action_form_ref": replace_form.form_ref,
+            "task_id": task_id,
+            "detail": "summary",
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "change_unit": {
+                "operation": "replace_current",
+                "scope_summary": "Replace the current implementation Change Unit.",
+                "affected_paths": ["src/current.rs"]
+            },
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    let replacement_id = response.response_value["change_unit_ref"]["record_id"]
+        .as_str()
+        .expect("replacement Change Unit ref");
+
+    assert_ne!(replacement_id, current_change_unit_id);
+    let after = fixture.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.change_units, before.change_units + 1);
+    let store = CoreProjectStore::open_read_only(
+        fixture.runtime_home_path(),
+        &ProjectId::new(fixture.project_id()),
+    )?;
+    assert_eq!(
+        store
+            .current_change_unit(&TaskId::new(&task_id))?
+            .expect("one current replacement Change Unit")
+            .change_unit_id,
+        replacement_id
+    );
+    Ok(())
+}
+
+#[test]
+fn keep_current_baseline_retarget_surfaces_replace_and_keep_forms_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-update-scope-baseline-retarget")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
+    let keep_form = action_form_for_variant(
+        &setup_adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+    )?;
+    let before = fixture.counts()?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+            json!({
+                "action_form_ref": keep_form.form_ref,
+                "task_id": task_id,
+                "detail": "workflow",
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": null,
+                "non_goals": null,
+                "acceptance_criteria": null,
+                "autonomy_boundary": null,
+                "baseline_ref": "baseline_retargeted",
+                "change_unit": {"operation": "keep_current"},
+                "related_scope_decision_refs": []
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+    let responses = stdio_responses(&output)?;
+    let structured = &responses[1]["result"]["structuredContent"];
+
+    assert_eq!(structured["result_type"], "rejected");
+    assert_eq!(
+        structured["authority_basis_mismatch"]["field"],
+        "baseline_ref"
+    );
+    assert_eq!(
+        structured["authority_basis_mismatch"]["called_method_form"]["selected_semantic_variant"],
+        WorkflowActionSemanticVariant::KeepCurrentChangeUnit.as_str()
+    );
+    assert_eq!(
+        structured["authority_basis_mismatch"]["replacement_method_form"]
+            ["selected_semantic_variant"],
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str()
+    );
+    assert_eq!(
+        structured["retry_contract"]["selected_semantic_variant"],
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str()
+    );
+    assert_eq!(structured["failure"]["current_baseline_valid"], false);
+    assert_eq!(
+        structured["failure"]["exact_retry_action"],
+        "baseline retargeting requires replace_current; retry volicord.update_scope with the current replace form"
+    );
+    assert_eq!(structured["failure"]["reached_core"], true);
+    assert_eq!(structured["failure"]["method_committed"], false);
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -2112,7 +2319,10 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
         "volicord.resolve_user_action"
     );
     assert_eq!(blocked["workflow_admission"]["allowed_methods"], json!([]));
-    assert!(blocked["workflow_admission"]["required_method_form"].is_null());
+    assert_eq!(
+        blocked["workflow_admission"]["required_method_forms"],
+        json!([])
+    );
     assert_eq!(fixture.counts()?, before_blocked_mutation);
     Ok(())
 }
@@ -2241,7 +2451,7 @@ fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
         Value::Null
     );
     assert_eq!(
-        structured["workflow_admission"]["required_method_form"]["method"],
+        structured["workflow_admission"]["required_method_forms"][0]["method"],
         "volicord.record_shaping_checkpoint"
     );
     assert_eq!(fixture.counts()?, before_rejected_application);

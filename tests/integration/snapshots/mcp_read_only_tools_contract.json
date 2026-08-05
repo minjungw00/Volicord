@@ -72,6 +72,7 @@
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "ChangeUnitId",
+          "ChangeUnitOperation",
           "CloseReadinessBlocker",
           "CloseReadinessBlockerCategory",
           "CloseReason",
@@ -177,6 +178,7 @@
           "WorkflowActionInput",
           "WorkflowActionIntent",
           "WorkflowActionRole",
+          "WorkflowActionSemanticVariant",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -194,7 +196,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6ace1d408c5587750b07580e3d4563b6985ebefc269a05a2e11dbf92302c5c08"
+        "sha256": "sha256:c6dd8586a89e6f5d17365b3d7fb4296f458da6ada9b1d80ec81897d5f9dcd4f0"
       }
     },
     {
@@ -230,6 +232,7 @@
           "AuthorityNextActor",
           "BaselineRef",
           "ChangeUnitId",
+          "ChangeUnitOperation",
           "EmptyEventRefs",
           "ErrorCode",
           "EventId",
@@ -287,6 +290,7 @@
           "WorkflowActionInput",
           "WorkflowActionIntent",
           "WorkflowActionRole",
+          "WorkflowActionSemanticVariant",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -298,7 +302,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e23981265856a8e6e80d1b20f2c3cb3435d773f8ee005ac1cdaf2c6d8ea239f1"
+        "sha256": "sha256:6883583a7487b63d502b9aa7d7057d43f8e8a5915b46e28eddc6a14233a6ba80"
       }
     },
     {
@@ -349,6 +353,7 @@
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "ChangeUnitId",
+          "ChangeUnitOperation",
           "CheckCloseResult",
           "CheckCloseResultBase",
           "CloseReadinessBlocker",
@@ -448,6 +453,7 @@
           "WorkflowActionInput",
           "WorkflowActionIntent",
           "WorkflowActionRole",
+          "WorkflowActionSemanticVariant",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -465,7 +471,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f826c778ec902b39a9474cbdbdbdeb305d34e0e0ef04620df85087da447019d6"
+        "sha256": "sha256:4385b35b575594d3e54f085ff0cfa542a11a1d58755a0695fac06f3c652eab60"
       }
     },
     {
@@ -490,6 +496,7 @@
           "AuthorityNextActor",
           "BaselineRef",
           "ChangeUnitId",
+          "ChangeUnitOperation",
           "JsonValue",
           "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
@@ -528,6 +535,7 @@
           "WorkflowActionInput",
           "WorkflowActionIntent",
           "WorkflowActionRole",
+          "WorkflowActionSemanticVariant",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -535,7 +543,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:98af30fd878e0a1bb15a405f130f0fce9a0d2145a56f1ee68a5f8469e30e88dd"
+        "sha256": "sha256:bd8c3663d4d7370cded939fa527f3b9bbfc63203af9284e51c58e3f1decab881"
       }
     },
     {
@@ -561,6 +569,7 @@
           "AuthorityNextActor",
           "BaselineRef",
           "ChangeUnitId",
+          "ChangeUnitOperation",
           "GuardEventId",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationId",
@@ -607,6 +616,7 @@
           "WorkflowActionInput",
           "WorkflowActionIntent",
           "WorkflowActionRole",
+          "WorkflowActionSemanticVariant",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -614,7 +624,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0bb8f5b0dc1825ce3db0e537b9db6aafa9983b33fed82f97478db3f0064190f2"
+        "sha256": "sha256:918f7a14dcb6f0c2266a669907ac9dc5c3326d03b558187db6339f340341d678"
       }
     },
     {
@@ -644,6 +654,7 @@
           "AuthorityNextActor",
           "BaselineRef",
           "ChangeUnitId",
+          "ChangeUnitOperation",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationId",
           "GuardProbeToolReference",
@@ -689,6 +700,7 @@
           "WorkflowActionInput",
           "WorkflowActionIntent",
           "WorkflowActionRole",
+          "WorkflowActionSemanticVariant",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -696,7 +708,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3b33e211ddf3253da04c05fa1cdb2ce89b522038249be7f788867b1507067e50"
+        "sha256": "sha256:151ff6eaf4267a8285eae36687a4cf81b1fc5722a0fb5634f424c045bea29554"
       }
     },
     {
@@ -726,6 +738,7 @@
           "AuthorityNextActor",
           "BaselineRef",
           "ChangeUnitId",
+          "ChangeUnitOperation",
           "GuardEventId",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationId",
@@ -774,6 +787,7 @@
           "WorkflowActionInput",
           "WorkflowActionIntent",
           "WorkflowActionRole",
+          "WorkflowActionSemanticVariant",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowProjection",
@@ -781,7 +795,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7cc3b2fa56b49d7506dc2a2d5d028fab278911b366ee8499ab254de9e2e25162"
+        "sha256": "sha256:1fb7b244cded705cb51dd799e7fa82ebab37f193d30e1f9c1c7c3a78950f210b"
       }
     }
   ]

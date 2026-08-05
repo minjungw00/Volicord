@@ -180,6 +180,23 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
             status.response_value["active_task"]["workflow"]["kind"], "implementation",
             "{coordinate}"
         );
+        let update_scope_variants = status.response_value["active_task"]["workflow"]
+            ["action_catalog"]["actions"]
+            .as_array()
+            .expect("workflow action catalog")
+            .iter()
+            .filter(|action| action["method"] == MethodName::UpdateScope.as_str())
+            .map(|action| {
+                action["semantic_variant"]
+                    .as_str()
+                    .expect("update-scope semantic variant")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            update_scope_variants,
+            vec![WorkflowActionSemanticVariant::KeepCurrentChangeUnit.as_str()],
+            "{coordinate}"
+        );
     }
 
     let mut compatible_noop = update_scope_request(
@@ -296,6 +313,57 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
 }
 
 #[test]
+fn ready_without_change_unit_catalog_exposes_only_create_variant() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let intake = harness.service.intake(
+        intake_request(
+            "req_create_variant_task",
+            "idem_create_variant_task",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = response_record_id(&intake.response_value, "task_ref");
+    let store = harness.store()?;
+    let project_state = store.project_state()?;
+    let task = store
+        .task_record(&TaskId::new(&task_id))?
+        .expect("current Task");
+    let authority = crate::workflow_projection::task_wide_shaping_authority(
+        &store,
+        &ProjectId::new(PROJECT_ID),
+        project_state.state_version,
+        &task,
+        None,
+        None,
+        &project_state.updated_at,
+    )?;
+    let catalog = crate::workflow_projection::workflow_action_catalog(
+        Some(MethodName::UpdateScope),
+        &[MethodName::UpdateScope],
+        project_state.state_version,
+        &task,
+        None,
+        None,
+        &authority,
+        &[],
+    );
+    assert_eq!(catalog.actions.len(), 1);
+    assert_eq!(catalog.actions[0].method, MethodName::UpdateScope);
+    assert_eq!(
+        catalog.actions[0].semantic_variant,
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit
+    );
+    assert_eq!(
+        catalog.actions[0].semantic_variant.change_unit_operation(),
+        Some(ChangeUnitOperation::CreateCurrent)
+    );
+    Ok(())
+}
+
+#[test]
 fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(
@@ -345,6 +413,46 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
     assert_eq!(response.response_value["base"]["state_version"], 2);
     assert!(response.response_value["change_unit_ref"].is_object());
     assert_eq!(response.response_value["state"]["work_phase"], "shaping");
+    let store = harness.store()?;
+    let project_state = store.project_state()?;
+    let task = store
+        .task_record(&TaskId::new(&task_id))?
+        .expect("current Task");
+    let current_change_unit = store
+        .current_change_unit(&TaskId::new(&task_id))?
+        .expect("current Change Unit");
+    let authority = crate::workflow_projection::task_wide_shaping_authority(
+        &store,
+        &ProjectId::new(PROJECT_ID),
+        project_state.state_version,
+        &task,
+        Some(&current_change_unit),
+        None,
+        &project_state.updated_at,
+    )?;
+    let catalog = crate::workflow_projection::workflow_action_catalog(
+        Some(MethodName::UpdateScope),
+        &[MethodName::UpdateScope],
+        project_state.state_version,
+        &task,
+        Some(&current_change_unit),
+        None,
+        &authority,
+        &[],
+    );
+    let current_variants = catalog
+        .actions
+        .iter()
+        .filter(|action| action.method == MethodName::UpdateScope)
+        .map(|action| action.semantic_variant.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        current_variants,
+        vec![
+            WorkflowActionSemanticVariant::KeepCurrentChangeUnit.as_str(),
+            WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str(),
+        ]
+    );
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.change_units, before.change_units + 1);
     assert_eq!(after.authority_events, before.authority_events + 1);
@@ -586,6 +694,19 @@ fn keep_current_rejects_task_baseline_retarget_with_current_change_unit(
     assert_eq!(
         response.response_value["errors"][0]["code"],
         "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["message"],
+        "baseline retargeting requires replace_current"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"],
+        json!({
+            "field": "baseline_ref",
+            "expected": "baseline_test",
+            "received": "baseline_other",
+            "state_change_applied": false
+        })
     );
     assert_eq!(harness.counts()?, before);
     assert_eq!(task_revision(&harness, &task_id)?, before_revision);

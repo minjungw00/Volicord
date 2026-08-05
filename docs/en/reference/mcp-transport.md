@@ -680,13 +680,26 @@ WorkflowActionForm:
 WorkflowActionFormCatalog:
   required_method: string | null
   forms: WorkflowActionForm[]
+
+RetryContract:
+  method: string
+  selected_semantic_variant: string
+  action_form_ref: RequestHash | null
+  fixed_arguments: object
+  fixed_argument_paths: string[]
+  invalid_paths: string[]
+  required_inputs: WorkflowActionInput[]
+  action_form_catalog: WorkflowActionFormCatalog
+  corrected_retry_allowed: boolean
 ```
 
 `form_ref` is the opaque canonical digest of project, Task, method, selected
 semantic variant, expected state version, exact fixed authority coordinates,
 the complete `fixed_arguments` object and `fixed_argument_paths`, and the
 current semantic-schema digest. It is not a numeric workflow version.
-The form catalog preserves Core catalog ordering, required method, and role.
+The form catalog preserves Core catalog ordering, required method groups, and
+role. Every Core method-and-variant intent has one distinct form and form ref;
+multiple forms for one required method are alternative actions.
 It appears in normal Task status, mutation success and rejection presentation,
 authoritative argument context, and retry contracts. Status with no active Task
 has a null catalog. A singular form is not independently authoritative.
@@ -699,10 +712,14 @@ decoding and Core routing, the adapter loads the current Task workflow and form
 catalog for a Task-state-bound call. If the called method has no catalog form,
 the adapter returns `WORKFLOW_ACTION_NOT_ALLOWED` with
 `reached_core=false`, `committed=false`, and no state change. If the method is
-present, the call must carry its exact method-specific `action_form_ref`.
+present, the call must select a current closed semantic variant and carry that
+method-and-variant form's exact `action_form_ref`.
 Missing, malformed, stale, foreign-Task, foreign-project, or cross-method refs
-return `MCP_ACTION_FORM_STALE` before Core with the current called-method form.
-An allowed form for one method never authorizes another, and there is no
+return `MCP_ACTION_FORM_STALE` before Core with the exact selected form when
+one exists. A valid method-owned variant absent from the current catalog
+returns `WORKFLOW_ACTION_VARIANT_NOT_ALLOWED`, the called method and variant,
+and the current valid variants and form refs, with `reached_core=false` and
+`committed=false`. An allowed form never authorizes another method or variant, and there is no
 omission or required-form fallback. Read-only `volicord.status` observes the
 catalog but creates no mutation authority.
 
@@ -719,22 +736,25 @@ coordinates.
 ```schema
 McpWorkflowAdmissionRejection:
   called_method: string
+  called_semantic_variant: string | null
   current_workflow_kind: string
   required_method: string | null
   allowed_methods: string[]
+  valid_called_method_variants: string[]
+  valid_called_method_form_refs: RequestHash[]
   called_method_form: WorkflowActionForm | null
-  required_method_form: WorkflowActionForm | null
+  required_method_forms: WorkflowActionForm[]
   state_change_applied: false
   reached_core: false
 ```
 
 `allowed_methods` contains the currently admitted Task-state-bound methods,
 not read-only observations. A disallowed-method rejection returns the current
-required form when the required method is Task-state-bound; a User
+required forms when the required method is Task-state-bound; a User
 Channel-owned required method can therefore have no required MCP action form.
 The compact presentation states that the attempted method was not current,
 Core was not reached, state did not change, and identifies the exact current
-required method and available required form.
+required method and available required forms.
 
 Initial checkpoint forms fix Task, `create_initial`, scope revision, and the
 actual nullable baseline while leaving summary, implementation boundary, and
@@ -748,9 +768,18 @@ non-write Change Unit, scope revision, baseline, and resolution IDs; only
 result content, evidence, risks, and recovery constraints remain
 Agent-authored.
 Update-scope forms instead treat request `baseline_ref` as the Agent-authored
-next baseline. They fix the exact scope-owned resolution refs and Change Unit
-operation, while the current baseline and scope revision remain Core-current
-authority covered by the admitted form and injected expected state version.
+next baseline. They fix the exact scope-owned resolution refs and one of the
+closed method-owned operations. `keep_current_change_unit` fixes
+`keep_current` and leaves only baseline and optional scope edits authored.
+`create_current_change_unit` and `replace_current_change_unit` fix their exact
+operation and require authored `scope_summary`, `affected_paths`, and baseline,
+while preserving the optional Change Unit fields and effect contract. No
+current Change Unit produces only create; an existing current Change Unit
+produces keep and, when Core policy permits replacement, replace, never create.
+Implementation replacement is absent when it would invalidate current shaping
+applications. Advisor create and replace remain subject to Core's canonical
+non-write predicate. Current baseline and scope revision remain Core-current
+authority covered by each admitted form and injected expected state version.
 
 If any caller-visible fixed value is altered or omitted, the adapter returns
 `ACTION_FORM_ARGUMENT_MISMATCH` with deterministically ordered, bounded
@@ -826,7 +855,9 @@ McpActionFormArgumentMismatch:
   current_method_form: WorkflowActionForm
 
 McpToolErrorResponse:
-  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE | ACTION_FORM_ARGUMENT_MISMATCH | MCP_ADAPTER_PRECONDITION_FAILED
+  code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE |
+    ACTION_FORM_ARGUMENT_MISMATCH | WORKFLOW_ACTION_NOT_ALLOWED |
+    WORKFLOW_ACTION_VARIANT_NOT_ALLOWED | MCP_ADAPTER_PRECONDITION_FAILED
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -1115,10 +1146,21 @@ the carrier and do not map the category or remove or rewrite those fields.
 When schema validation succeeds and Core returns a typed
 `AuthorityBasisMismatch`, MCP preserves the exact `field`, `expected`,
 `received`, and `state_change_applied=false`, then enriches it with the current
-action form and retry contract. A null expected baseline and non-null received
-`BaselineRef` explicitly says the Task is valid and should be retried against
-the current form. Repair is false unless Core reports persisted-data corruption
+action form and retry contract. For keep-current baseline retargeting, MCP sets
+`current_baseline_valid=false`, attaches the current keep and replace forms,
+selects the replace form for retry, and states that baseline retargeting
+requires `replace_current`. Repair is false unless Core reports persisted-data corruption
 or an explicit repair workflow.
+
+```schema
+McpAuthorityBasisMismatch:
+  field: string
+  expected: string | integer | null
+  received: string | integer | null
+  state_change_applied: false
+  called_method_form: WorkflowActionForm | null
+  replacement_method_form: WorkflowActionForm | null
+```
 
 When Core returns typed operational unavailability without a method result,
 MCP emits the MCP-owned `MCP_UNAVAILABLE` structured failure through that same

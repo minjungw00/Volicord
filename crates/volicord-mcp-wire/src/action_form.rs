@@ -7,6 +7,7 @@ use volicord_types::methods::{WorkflowActionAdmissionClass, PUBLIC_METHOD_CONTRA
 use volicord_types::schema::JsonObject;
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::MethodName;
+use volicord_types::values::WorkflowActionSemanticVariant;
 
 use crate::tool_contracts::mcp_tool_contract;
 
@@ -34,7 +35,7 @@ pub struct ActionFormInjectedAuthorityDescriptor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionFormRequestProjectionDescriptor {
     pub method: MethodName,
-    pub selected_semantic_variant: &'static str,
+    pub selected_semantic_variant: WorkflowActionSemanticVariant,
     pub fixed_arguments: &'static [ActionFormFixedArgumentDescriptor],
     pub authored_inputs: &'static [ActionFormAuthoredInputDescriptor],
     pub injected_authorities: &'static [ActionFormInjectedAuthorityDescriptor],
@@ -387,7 +388,7 @@ const NO_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[];
 const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     ActionFormRequestProjectionDescriptor {
         method: MethodName::RecordShapingCheckpoint,
-        selected_semantic_variant: "create_initial",
+        selected_semantic_variant: WorkflowActionSemanticVariant::CreateInitial,
         fixed_arguments: CHECKPOINT_CREATE_FIXED,
         authored_inputs: CHECKPOINT_CREATE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -395,7 +396,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::RecordShapingCheckpoint,
-        selected_semantic_variant: "replace_current",
+        selected_semantic_variant: WorkflowActionSemanticVariant::ReplaceCurrent,
         fixed_arguments: CHECKPOINT_REPLACE_FIXED,
         authored_inputs: CHECKPOINT_REPLACE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -403,7 +404,23 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::UpdateScope,
-        selected_semantic_variant: "update_scope",
+        selected_semantic_variant: WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+        fixed_arguments: UPDATE_SCOPE_FIXED,
+        authored_inputs: UPDATE_SCOPE_AUTHORED,
+        injected_authorities: COMMON_INJECTED,
+        core_current_authorities: &["scope_revision", "current_change_unit", "current_baseline"],
+    },
+    ActionFormRequestProjectionDescriptor {
+        method: MethodName::UpdateScope,
+        selected_semantic_variant: WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+        fixed_arguments: UPDATE_SCOPE_FIXED,
+        authored_inputs: UPDATE_SCOPE_AUTHORED,
+        injected_authorities: COMMON_INJECTED,
+        core_current_authorities: &["scope_revision", "current_change_unit", "current_baseline"],
+    },
+    ActionFormRequestProjectionDescriptor {
+        method: MethodName::UpdateScope,
+        selected_semantic_variant: WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
         fixed_arguments: UPDATE_SCOPE_FIXED,
         authored_inputs: UPDATE_SCOPE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -411,7 +428,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::FinalizeAdvice,
-        selected_semantic_variant: "finalize_advice",
+        selected_semantic_variant: WorkflowActionSemanticVariant::FinalizeAdvice,
         fixed_arguments: FINALIZE_FIXED,
         authored_inputs: FINALIZE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -419,7 +436,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::AdvanceTask,
-        selected_semantic_variant: "advance_task",
+        selected_semantic_variant: WorkflowActionSemanticVariant::AdvanceTask,
         fixed_arguments: FINALIZE_FIXED,
         authored_inputs: ADVANCE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -427,7 +444,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::PrepareEvidenceCapture,
-        selected_semantic_variant: "prepare_evidence_capture",
+        selected_semantic_variant: WorkflowActionSemanticVariant::PrepareEvidenceCapture,
         fixed_arguments: IMPLEMENTATION_BASIS_FIXED,
         authored_inputs: PREPARE_EVIDENCE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -435,7 +452,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::PrepareWrite,
-        selected_semantic_variant: "prepare_write",
+        selected_semantic_variant: WorkflowActionSemanticVariant::PrepareWrite,
         fixed_arguments: IMPLEMENTATION_BASIS_FIXED,
         authored_inputs: PREPARE_WRITE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -443,7 +460,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::StageArtifact,
-        selected_semantic_variant: "stage_artifact",
+        selected_semantic_variant: WorkflowActionSemanticVariant::StageArtifact,
         fixed_arguments: TASK_FIXED,
         authored_inputs: STAGE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -451,7 +468,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::RecordRun,
-        selected_semantic_variant: "record_run",
+        selected_semantic_variant: WorkflowActionSemanticVariant::RecordRun,
         fixed_arguments: RECORD_RUN_FIXED,
         authored_inputs: RECORD_RUN_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -459,7 +476,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::RequestUserAction,
-        selected_semantic_variant: "request_user_action",
+        selected_semantic_variant: WorkflowActionSemanticVariant::RequestUserAction,
         fixed_arguments: REQUEST_USER_ACTION_FIXED,
         authored_inputs: REQUEST_USER_ACTION_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -467,7 +484,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::ReconcileChanges,
-        selected_semantic_variant: "reconcile_changes",
+        selected_semantic_variant: WorkflowActionSemanticVariant::ReconcileChanges,
         fixed_arguments: TASK_FIXED,
         authored_inputs: RECONCILE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -475,7 +492,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::CheckClose,
-        selected_semantic_variant: "check_close",
+        selected_semantic_variant: WorkflowActionSemanticVariant::CheckClose,
         fixed_arguments: TASK_FIXED,
         authored_inputs: NO_AUTHORED,
         injected_authorities: READ_INJECTED,
@@ -483,7 +500,7 @@ const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     },
     ActionFormRequestProjectionDescriptor {
         method: MethodName::CloseTask,
-        selected_semantic_variant: "close_task",
+        selected_semantic_variant: WorkflowActionSemanticVariant::CloseTask,
         fixed_arguments: TASK_FIXED,
         authored_inputs: CLOSE_AUTHORED,
         injected_authorities: COMMON_INJECTED,
@@ -498,7 +515,7 @@ pub fn action_form_request_projection_descriptors(
 
 pub fn action_form_request_projection(
     method: MethodName,
-    selected_semantic_variant: &str,
+    selected_semantic_variant: WorkflowActionSemanticVariant,
 ) -> Option<&'static ActionFormRequestProjectionDescriptor> {
     PROJECTIONS.iter().find(|descriptor| {
         descriptor.method == method
@@ -561,7 +578,7 @@ pub fn action_form_request_projection_integrity_errors() -> Vec<String> {
             errors.push(format!(
                 "duplicate action-form projection for {} {}",
                 projection.method.as_str(),
-                projection.selected_semantic_variant
+                projection.selected_semantic_variant.as_str()
             ));
         }
         projected_methods.insert(projection.method.as_str());

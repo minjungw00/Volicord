@@ -71,11 +71,12 @@ MCP invalid-arguments response. A descriptor-valid value that the exact Rust
 request type cannot decode is instead an internal schema-contract failure. It
 is not reassigned to a user field or another union branch. Neither path creates
 a `ToolRejectedResponse` or reaches Core.
-For a Task-state-bound MCP call, method admission and exact method-specific
+For a Task-state-bound MCP call, method admission and exact method-and-variant
 action-form matching are also adapter failures before Core execution. A method
 absent from the current catalog uses the typed
 `WORKFLOW_ACTION_NOT_ALLOWED` MCP response; an absent or mismatched form for an
-allowed method uses `MCP_ACTION_FORM_STALE`. Both preserve
+allowed method uses `MCP_ACTION_FORM_STALE`; a valid method-owned variant that
+is not current uses `WORKFLOW_ACTION_VARIANT_NOT_ALLOWED`. All preserve
 `reached_core=false`, `committed=false`, and no state change and carry current
 workflow and form recovery facts owned by [MCP Transport](../mcp-transport.md#public-argument-projection).
 Typed Core operational unavailability that prevents any method result is also
@@ -151,7 +152,8 @@ an exact retry contract. No checkpoint, UserAction, Core event, write
 authority, or Product Repository change is created. When schema validation
 succeeds but Core finds an authority-coordinate mismatch, this rejected branch
 uses typed `AuthorityBasisMismatch` expected/received values and no state
-effect. Neither condition is routed as persisted-data corruption.
+effect. Keep-current baseline retargeting is one such typed mismatch and points
+to the current replace form. Neither condition is routed as persisted-data corruption.
 
 <a id="rejected-precondition-failure"></a>
 ### Precondition failure

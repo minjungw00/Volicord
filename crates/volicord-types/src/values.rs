@@ -1635,6 +1635,108 @@ pub enum ChangeUnitOperation {
     ReplaceCurrent,
 }
 
+/// Closed semantic identity for one variant of a task-state-bound workflow action.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowActionSemanticVariant {
+    CreateInitial,
+    ReplaceCurrent,
+    KeepCurrentChangeUnit,
+    CreateCurrentChangeUnit,
+    ReplaceCurrentChangeUnit,
+    FinalizeAdvice,
+    AdvanceTask,
+    PrepareEvidenceCapture,
+    PrepareWrite,
+    StageArtifact,
+    RecordRun,
+    RequestUserAction,
+    ReconcileChanges,
+    CheckClose,
+    CloseTask,
+}
+
+impl WorkflowActionSemanticVariant {
+    /// Returns the canonical wire value owned by this closed variant set.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CreateInitial => "create_initial",
+            Self::ReplaceCurrent => "replace_current",
+            Self::KeepCurrentChangeUnit => "keep_current_change_unit",
+            Self::CreateCurrentChangeUnit => "create_current_change_unit",
+            Self::ReplaceCurrentChangeUnit => "replace_current_change_unit",
+            Self::FinalizeAdvice => "finalize_advice",
+            Self::AdvanceTask => "advance_task",
+            Self::PrepareEvidenceCapture => "prepare_evidence_capture",
+            Self::PrepareWrite => "prepare_write",
+            Self::StageArtifact => "stage_artifact",
+            Self::RecordRun => "record_run",
+            Self::RequestUserAction => "request_user_action",
+            Self::ReconcileChanges => "reconcile_changes",
+            Self::CheckClose => "check_close",
+            Self::CloseTask => "close_task",
+        }
+    }
+
+    /// Returns the public method that owns this semantic variant.
+    pub const fn method(self) -> MethodName {
+        match self {
+            Self::CreateInitial | Self::ReplaceCurrent => MethodName::RecordShapingCheckpoint,
+            Self::KeepCurrentChangeUnit
+            | Self::CreateCurrentChangeUnit
+            | Self::ReplaceCurrentChangeUnit => MethodName::UpdateScope,
+            Self::FinalizeAdvice => MethodName::FinalizeAdvice,
+            Self::AdvanceTask => MethodName::AdvanceTask,
+            Self::PrepareEvidenceCapture => MethodName::PrepareEvidenceCapture,
+            Self::PrepareWrite => MethodName::PrepareWrite,
+            Self::StageArtifact => MethodName::StageArtifact,
+            Self::RecordRun => MethodName::RecordRun,
+            Self::RequestUserAction => MethodName::RequestUserAction,
+            Self::ReconcileChanges => MethodName::ReconcileChanges,
+            Self::CheckClose => MethodName::CheckClose,
+            Self::CloseTask => MethodName::CloseTask,
+        }
+    }
+
+    /// Selects the exact update-scope variant for a Change Unit operation.
+    pub const fn for_change_unit_operation(operation: ChangeUnitOperation) -> Self {
+        match operation {
+            ChangeUnitOperation::KeepCurrent => Self::KeepCurrentChangeUnit,
+            ChangeUnitOperation::CreateCurrent => Self::CreateCurrentChangeUnit,
+            ChangeUnitOperation::ReplaceCurrent => Self::ReplaceCurrentChangeUnit,
+        }
+    }
+
+    /// Returns the Change Unit operation selected by an update-scope variant.
+    pub const fn change_unit_operation(self) -> Option<ChangeUnitOperation> {
+        match self {
+            Self::KeepCurrentChangeUnit => Some(ChangeUnitOperation::KeepCurrent),
+            Self::CreateCurrentChangeUnit => Some(ChangeUnitOperation::CreateCurrent),
+            Self::ReplaceCurrentChangeUnit => Some(ChangeUnitOperation::ReplaceCurrent),
+            _ => None,
+        }
+    }
+
+    /// Returns the sole semantic variant for a method without state-selected variants.
+    pub const fn for_single_variant_method(method: MethodName) -> Option<Self> {
+        match method {
+            MethodName::FinalizeAdvice => Some(Self::FinalizeAdvice),
+            MethodName::AdvanceTask => Some(Self::AdvanceTask),
+            MethodName::PrepareEvidenceCapture => Some(Self::PrepareEvidenceCapture),
+            MethodName::PrepareWrite => Some(Self::PrepareWrite),
+            MethodName::StageArtifact => Some(Self::StageArtifact),
+            MethodName::RecordRun => Some(Self::RecordRun),
+            MethodName::RequestUserAction => Some(Self::RequestUserAction),
+            MethodName::ReconcileChanges => Some(Self::ReconcileChanges),
+            MethodName::CheckClose => Some(Self::CheckClose),
+            MethodName::CloseTask => Some(Self::CloseTask),
+            _ => None,
+        }
+    }
+}
+
 /// Change Unit effect contract values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

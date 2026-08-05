@@ -78,45 +78,82 @@ mod tests {
     }
 
     #[test]
-    fn workflow_action_catalog_rejects_duplicate_or_incoherent_methods() {
-        let action = |method: &str, role: &str| {
+    fn workflow_action_catalog_accepts_variant_groups_and_rejects_incoherent_keys() {
+        let action = |variant: &str, operation: &str| {
             json!({
-                "method": method,
-                "role": role,
+                "method": "volicord.update_scope",
+                "semantic_variant": variant,
+                "role": "required",
                 "expected_state_version": 7,
                 "fixed_authority_coordinates": {
-                    "coordinate_kind": "check_close",
-                    "task_id": "task_catalog"
+                    "coordinate_kind": "update_scope",
+                    "task_id": "task_catalog",
+                    "scope_revision": 2,
+                    "baseline_ref": "baseline_catalog",
+                    "current_change_unit_id": "change_unit_catalog",
+                    "related_scope_decision_refs": [],
+                    "selected_change_unit_operation": operation
                 },
                 "required_refs": []
             })
         };
         let valid = json!({
-            "required_method": "volicord.check_close",
-            "actions": [action("volicord.check_close", "required")]
+            "required_method": "volicord.update_scope",
+            "actions": [
+                action("keep_current_change_unit", "keep_current"),
+                action("replace_current_change_unit", "replace_current")
+            ]
         });
         assert!(serde_json::from_value::<WorkflowActionCatalog>(valid).is_ok());
 
         let duplicate = json!({
-            "required_method": "volicord.check_close",
+            "required_method": "volicord.update_scope",
             "actions": [
-                action("volicord.check_close", "required"),
-                action("volicord.check_close", "required")
+                action("keep_current_change_unit", "keep_current"),
+                action("keep_current_change_unit", "keep_current")
             ]
         });
         assert!(serde_json::from_value::<WorkflowActionCatalog>(duplicate).is_err());
 
+        let variants_out_of_order = json!({
+            "required_method": "volicord.update_scope",
+            "actions": [
+                action("replace_current_change_unit", "replace_current"),
+                action("keep_current_change_unit", "keep_current")
+            ]
+        });
+        assert!(serde_json::from_value::<WorkflowActionCatalog>(variants_out_of_order).is_err());
+
+        let methods_out_of_order = json!({
+            "required_method": "volicord.update_scope",
+            "actions": [
+                action("keep_current_change_unit", "keep_current"),
+                {
+                    "method": "volicord.check_close",
+                    "semantic_variant": "check_close",
+                    "role": "allowed",
+                    "expected_state_version": 7,
+                    "fixed_authority_coordinates": {
+                        "coordinate_kind": "check_close",
+                        "task_id": "task_catalog"
+                    },
+                    "required_refs": []
+                }
+            ]
+        });
+        assert!(serde_json::from_value::<WorkflowActionCatalog>(methods_out_of_order).is_err());
+
         let missing_required = json!({
-            "required_method": "volicord.check_close",
+            "required_method": "volicord.update_scope",
             "actions": []
         });
         assert!(serde_json::from_value::<WorkflowActionCatalog>(missing_required).is_err());
 
-        let read_only = json!({
-            "required_method": null,
-            "actions": [action("volicord.status", "allowed")]
+        let wrong_variant_operation = json!({
+            "required_method": "volicord.update_scope",
+            "actions": [action("keep_current_change_unit", "replace_current")]
         });
-        assert!(serde_json::from_value::<WorkflowActionCatalog>(read_only).is_err());
+        assert!(serde_json::from_value::<WorkflowActionCatalog>(wrong_variant_operation).is_err());
     }
 
     #[test]
@@ -2876,6 +2913,7 @@ mod tests {
                     "required_method": "volicord.record_shaping_checkpoint",
                     "actions": [{
                         "method": "volicord.record_shaping_checkpoint",
+                        "semantic_variant": "create_initial",
                         "role": "required",
                         "expected_state_version": 4,
                         "fixed_authority_coordinates": {

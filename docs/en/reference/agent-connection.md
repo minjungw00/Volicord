@@ -778,9 +778,10 @@ effect-catalog digest. It also binds three current semantic digests: managed
 agent guidance, the workflow action contract, and the MCP semantic schema. The
 guidance digest covers the closed current workflow facts rendered into the
 managed `AGENTS.md` block and MCP server instructions; it is not a hash of
-project-specific prose. The action-contract digest covers catalog admission,
-method-specific form identity, exact fixed-argument binding, authoritative
-context, retry, and typed basis-mismatch semantics. The semantic-schema digest
+project-specific prose. The action-contract digest covers method groups,
+closed method-owned variants, catalog admission, exact method-and-variant form
+identity, fixed-argument binding, authoritative context, variant-aware retry,
+and typed basis-mismatch semantics. The semantic-schema digest
 covers type-owned constraints, generic required-nullable semantics, explicit
 discriminators, branch-local validation, and bounded runtime semantic
 projection. A change to any of these semantic digests changes the managed

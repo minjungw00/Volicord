@@ -2084,6 +2084,17 @@ pub enum ShapingCheckpointOperation {
     },
 }
 
+impl ShapingCheckpointOperation {
+    pub const fn semantic_variant(&self) -> crate::values::WorkflowActionSemanticVariant {
+        match self {
+            Self::CreateInitial => crate::values::WorkflowActionSemanticVariant::CreateInitial,
+            Self::ReplaceCurrent { .. } => {
+                crate::values::WorkflowActionSemanticVariant::ReplaceCurrent
+            }
+        }
+    }
+}
+
 /// Exact terminal action for one stale shaping-decision application.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -2223,6 +2234,17 @@ pub enum WorkflowCheckpointActionCoordinates {
     },
 }
 
+impl WorkflowCheckpointActionCoordinates {
+    pub const fn semantic_variant(&self) -> crate::values::WorkflowActionSemanticVariant {
+        match self {
+            Self::CreateInitial => crate::values::WorkflowActionSemanticVariant::CreateInitial,
+            Self::ReplaceCurrent { .. } => {
+                crate::values::WorkflowActionSemanticVariant::ReplaceCurrent
+            }
+        }
+    }
+}
+
 /// Adapter-neutral fixed coordinates for one currently selected workflow action.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
@@ -2243,6 +2265,7 @@ pub enum WorkflowActionAuthorityCoordinates {
         baseline_ref: RequiredNullable<BaselineRef>,
         current_change_unit_id: RequiredNullable<ChangeUnitId>,
         related_scope_decision_refs: Vec<StateRecordRef>,
+        selected_change_unit_operation: crate::values::ChangeUnitOperation,
     },
     FinalizeAdvice {
         task_id: TaskId,
@@ -2311,6 +2334,41 @@ impl WorkflowActionAuthorityCoordinates {
             Self::CloseTask { .. } => MethodName::CloseTask,
         }
     }
+
+    pub const fn semantic_variant(&self) -> crate::values::WorkflowActionSemanticVariant {
+        match self {
+            Self::RecordShapingCheckpoint {
+                checkpoint_operation,
+                ..
+            } => checkpoint_operation.semantic_variant(),
+            Self::UpdateScope {
+                selected_change_unit_operation,
+                ..
+            } => crate::values::WorkflowActionSemanticVariant::for_change_unit_operation(
+                *selected_change_unit_operation,
+            ),
+            Self::FinalizeAdvice { .. } => {
+                crate::values::WorkflowActionSemanticVariant::FinalizeAdvice
+            }
+            Self::AdvanceTask { .. } => crate::values::WorkflowActionSemanticVariant::AdvanceTask,
+            Self::PrepareEvidenceCapture { .. } => {
+                crate::values::WorkflowActionSemanticVariant::PrepareEvidenceCapture
+            }
+            Self::PrepareWrite { .. } => crate::values::WorkflowActionSemanticVariant::PrepareWrite,
+            Self::StageArtifact { .. } => {
+                crate::values::WorkflowActionSemanticVariant::StageArtifact
+            }
+            Self::RecordRun { .. } => crate::values::WorkflowActionSemanticVariant::RecordRun,
+            Self::RequestUserAction { .. } => {
+                crate::values::WorkflowActionSemanticVariant::RequestUserAction
+            }
+            Self::ReconcileChanges { .. } => {
+                crate::values::WorkflowActionSemanticVariant::ReconcileChanges
+            }
+            Self::CheckClose { .. } => crate::values::WorkflowActionSemanticVariant::CheckClose,
+            Self::CloseTask { .. } => crate::values::WorkflowActionSemanticVariant::CloseTask,
+        }
+    }
 }
 
 /// Relationship between one catalog action and the current required method.
@@ -2326,6 +2384,7 @@ pub enum WorkflowActionRole {
 #[serde(deny_unknown_fields)]
 pub struct WorkflowActionIntent {
     pub method: MethodName,
+    pub semantic_variant: crate::values::WorkflowActionSemanticVariant,
     pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_authority_coordinates: WorkflowActionAuthorityCoordinates,
@@ -2357,15 +2416,21 @@ impl<'de> Deserialize<'de> for WorkflowActionCatalog {
         let mut previous = None;
         let mut required_count = 0usize;
         for action in &wire.actions {
-            if seen.contains(&action.method) {
+            let key = (action.method, action.semantic_variant);
+            if seen.contains(&key) {
                 return Err(serde::de::Error::custom(
-                    "workflow action catalog contains a duplicate method",
+                    "workflow action catalog contains a duplicate method and semantic variant",
                 ));
             }
-            if previous.is_some_and(|method: MethodName| method.as_str() >= action.method.as_str())
-            {
+            if previous.is_some_and(
+                |(method, variant): (MethodName, crate::values::WorkflowActionSemanticVariant)| {
+                    method.as_str() > action.method.as_str()
+                        || (method == action.method
+                            && variant.as_str() >= action.semantic_variant.as_str())
+                },
+            ) {
                 return Err(serde::de::Error::custom(
-                    "workflow action catalog methods are not in canonical order",
+                    "workflow action catalog keys are not in canonical method and variant order",
                 ));
             }
             if crate::methods::public_method_contract(action.method).workflow_action_admission()
@@ -2380,6 +2445,37 @@ impl<'de> Deserialize<'de> for WorkflowActionCatalog {
                     "workflow action catalog method does not match its authority coordinates",
                 ));
             }
+            if action.semantic_variant.method() != action.method {
+                return Err(serde::de::Error::custom(
+                    "workflow action catalog semantic variant does not belong to its method",
+                ));
+            }
+            if action.semantic_variant != action.fixed_authority_coordinates.semantic_variant() {
+                return Err(serde::de::Error::custom(
+                    "workflow action semantic variant does not match its authority coordinates",
+                ));
+            }
+            if let WorkflowActionAuthorityCoordinates::UpdateScope {
+                current_change_unit_id,
+                selected_change_unit_operation,
+                ..
+            } = &action.fixed_authority_coordinates
+            {
+                let operation_matches_current = match selected_change_unit_operation {
+                    crate::values::ChangeUnitOperation::CreateCurrent => {
+                        current_change_unit_id.as_ref().is_none()
+                    }
+                    crate::values::ChangeUnitOperation::KeepCurrent
+                    | crate::values::ChangeUnitOperation::ReplaceCurrent => {
+                        current_change_unit_id.as_ref().is_some()
+                    }
+                };
+                if !operation_matches_current {
+                    return Err(serde::de::Error::custom(
+                        "workflow update-scope operation does not match current Change Unit authority",
+                    ));
+                }
+            }
             let is_required = wire.required_method.as_ref() == Some(&action.method);
             if (action.role == WorkflowActionRole::Required) != is_required {
                 return Err(serde::de::Error::custom(
@@ -2389,12 +2485,12 @@ impl<'de> Deserialize<'de> for WorkflowActionCatalog {
             if is_required {
                 required_count += 1;
             }
-            previous = Some(action.method);
-            seen.push(action.method);
+            previous = Some(key);
+            seen.push(key);
         }
-        if wire.required_method.as_ref().is_some() && required_count != 1 {
+        if wire.required_method.as_ref().is_some() && required_count == 0 {
             return Err(serde::de::Error::custom(
-                "workflow action catalog required_method must occur exactly once",
+                "workflow action catalog required_method must identify a nonempty variant group",
             ));
         }
         Ok(Self {

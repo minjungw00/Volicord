@@ -17,8 +17,9 @@ use crate::identity::{allocate_acceptance_criterion_id, allocate_change_unit_id}
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
-    decision_rejected_response, dry_run_summary, no_active_task_response,
-    rejected_pipeline_response, validation_rejected, workflow_rejection_plan_error,
+    authority_basis_mismatch_plan_error, decision_rejected_response, dry_run_summary,
+    no_active_task_response, rejected_pipeline_response, validation_rejected,
+    workflow_rejection_plan_error,
 };
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
@@ -60,7 +61,7 @@ use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
 };
 use volicord_types::schema::{
-    advisor_compatible_change_unit, AcceptanceCriterion, JsonObject,
+    advisor_compatible_change_unit, AcceptanceCriterion, AuthorityBasisValue, JsonObject,
     PersistedUserActionRequestMetadata, StateRecordRef, UserActionBasis,
 };
 use volicord_types::values::{
@@ -441,11 +442,18 @@ fn plan_update_scope_mutations(
         && current_change_unit.is_some()
         && current_scope.baseline_ref != next_scope.baseline_ref
     {
-        return scope_validation_rejection(
+        let authority_value = |value: Option<&str>| {
+            value.map_or(AuthorityBasisValue::Null(()), |value| {
+                AuthorityBasisValue::String(value.to_owned())
+            })
+        };
+        return authority_basis_mismatch_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "baseline_ref",
-            "changing the Task baseline while a current Change Unit exists requires replace_current",
+            authority_value(current_scope.baseline_ref.as_deref()),
+            authority_value(next_scope.baseline_ref.as_deref()),
+            "baseline retargeting requires replace_current",
         );
     }
     let (acceptance_criteria, acceptance_criteria_mutation, acceptance_criteria_changed) =

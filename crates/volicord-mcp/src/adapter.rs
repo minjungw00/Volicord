@@ -65,10 +65,13 @@ use volicord_types::methods::{
     RequestUserActionRequest, RequestUserActionResponse, StageArtifactRequest, StatusRequest,
     UpdateScopeRequest, WorkflowActionAdmissionClass,
 };
-use volicord_types::schema::{RequiredNullable, ToolEnvelope, WorkflowProjection};
+use volicord_types::schema::{
+    RequiredNullable, ShapingCheckpointOperation, ToolEnvelope, WorkflowProjection,
+};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
-    IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
+    ChangeUnitOperation, IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel,
+    UtcTimestamp, WorkflowActionSemanticVariant,
 };
 
 /// Invocation context derived for one tool call before entering Core.
@@ -469,7 +472,7 @@ impl McpAdapter {
                     tool_name: tool_name.to_owned(),
                     issues,
                     truncated: binding.truncated,
-                    selected_variant: Some(form.selected_semantic_variant.clone()),
+                    selected_variant: Some(form.selected_semantic_variant.as_str().to_owned()),
                     canonical_example: None,
                     authoritative_context: Some(Box::new(authoritative_context.clone())),
                     retry_contract: Some(Box::new(retry_contract(
@@ -587,8 +590,12 @@ impl McpAdapter {
             let catalog = authoritative_context.action_form_catalog.as_ref();
             *error_retry_contract = catalog.and_then(|catalog| {
                 tool.method()
-                    .and_then(|method| catalog.form(method))
-                    .or_else(|| catalog.required_form())
+                    .and_then(|method| {
+                        submitted_workflow_action_variant(method, params)
+                            .and_then(|variant| catalog.form(method, variant))
+                            .or_else(|| catalog.only_form_for_method(method))
+                    })
+                    .or_else(|| catalog.only_required_form())
                     .map(|form| Box::new(retry_contract(form, catalog, invalid_paths)))
             });
             *failure = Some(Box::new(argument_failure_presentation(
@@ -647,21 +654,56 @@ impl McpAdapter {
                 message: "current authoritative workflow is unavailable".to_owned(),
             }
         })?;
-        let called_method_form = catalog.form(method).cloned();
-        let required_method_form = catalog.required_form().cloned();
+        let supplied = params
+            .get("action_form_ref")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<RequestHash>(value).ok());
+        let called_semantic_variant =
+            submitted_workflow_action_variant(method, params).or_else(|| {
+                supplied
+                    .as_ref()
+                    .and_then(|form_ref| catalog.form_by_ref(form_ref))
+                    .filter(|form| form.method == method)
+                    .map(|form| form.selected_semantic_variant)
+            });
+        let method_forms = catalog
+            .forms_for_method(method)
+            .cloned()
+            .collect::<Vec<_>>();
+        let required_method_forms = catalog.required_forms().cloned().collect::<Vec<_>>();
         let required_method = workflow.required_action();
+        let mut allowed_methods = catalog
+            .forms
+            .iter()
+            .map(|form| form.method)
+            .collect::<Vec<_>>();
+        allowed_methods.dedup();
+        let valid_called_method_variants = method_forms
+            .iter()
+            .map(|form| form.selected_semantic_variant)
+            .collect::<Vec<_>>();
+        let valid_called_method_form_refs = method_forms
+            .iter()
+            .map(|form| form.form_ref.clone())
+            .collect::<Vec<_>>();
+        let called_method_form = called_semantic_variant
+            .and_then(|variant| catalog.form(method, variant))
+            .cloned();
         let admission = McpWorkflowAdmissionRejection {
             called_method: method,
+            called_semantic_variant: RequiredNullable::new(called_semantic_variant),
             current_workflow_kind: workflow.kind(),
             required_method: RequiredNullable::new(required_method),
-            allowed_methods: catalog.forms.iter().map(|form| form.method).collect(),
+            allowed_methods,
+            valid_called_method_variants,
+            valid_called_method_form_refs,
             called_method_form: RequiredNullable::new(called_method_form.clone()),
-            required_method_form: RequiredNullable::new(required_method_form.clone()),
+            required_method_forms,
             state_change_applied: false,
             reached_core: false,
         };
-        let Some(called_method_form) = called_method_form else {
-            let retry = required_method_form.as_ref().map(|form| {
+        if method_forms.is_empty() {
+            let retry = catalog.only_required_form().map(|form| {
                 Box::new(retry_contract(
                     form,
                     catalog,
@@ -695,12 +737,83 @@ impl McpAdapter {
                 workflow_admission: Some(Box::new(admission)),
                 action_form_argument_mismatches: Box::default(),
             });
+        }
+        if supplied
+            .as_ref()
+            .and_then(|form_ref| catalog.form_by_ref(form_ref))
+            .is_some_and(|form| form.method != method)
+        {
+            return Err(McpAdapterError::InvalidParams {
+                code: McpToolErrorCode::ActionFormStale,
+                tool_name: method.as_str().to_owned(),
+                issues: vec![McpToolErrorIssue::new(
+                    "/action_form_ref",
+                    McpToolIssueCode::ActionFormMismatch,
+                    "action_form_ref belongs to another method; Core was not reached and state did not change",
+                )],
+                truncated: false,
+                selected_variant: called_semantic_variant
+                    .map(|variant| variant.as_str().to_owned()),
+                canonical_example: None,
+                authoritative_context: Some(Box::new(authoritative_context.clone())),
+                retry_contract: called_method_form.as_ref().map(|form| {
+                    Box::new(retry_contract(
+                        form,
+                        catalog,
+                        vec!["/action_form_ref".to_owned()],
+                    ))
+                }),
+                failure: Some(Box::new(argument_failure_presentation(
+                    &authoritative_context,
+                    false,
+                ))),
+                workflow_admission: Some(Box::new(admission)),
+                action_form_argument_mismatches: Box::default(),
+            });
+        }
+        let Some(called_semantic_variant) = called_semantic_variant else {
+            return Err(McpAdapterError::ToolExecution {
+                tool_name: method.as_str().to_owned(),
+                message: "the submitted workflow action semantic variant could not be decoded"
+                    .to_owned(),
+            });
         };
-        let supplied = params
-            .get("action_form_ref")
-            .cloned()
-            .and_then(|value| serde_json::from_value::<RequestHash>(value).ok());
-        if supplied.as_ref() == Some(&called_method_form.form_ref) {
+        let Some(called_method_form) = called_method_form else {
+            let variant_path = if method == MethodName::RecordShapingCheckpoint {
+                "/checkpoint_operation/operation"
+            } else {
+                "/change_unit/operation"
+            };
+            return Err(McpAdapterError::InvalidParams {
+                code: McpToolErrorCode::WorkflowActionVariantNotAllowed,
+                tool_name: method.as_str().to_owned(),
+                issues: vec![McpToolErrorIssue::new(
+                    variant_path,
+                    McpToolIssueCode::WorkflowActionVariantNotAllowed,
+                    format!(
+                        "{} variant {} is not current; Core was not reached and state did not change",
+                        method.as_str(),
+                        called_semantic_variant.as_str()
+                    ),
+                )],
+                truncated: false,
+                selected_variant: Some(called_semantic_variant.as_str().to_owned()),
+                canonical_example: None,
+                authoritative_context: Some(Box::new(authoritative_context.clone())),
+                retry_contract: None,
+                failure: Some(Box::new(argument_failure_presentation(
+                    &authoritative_context,
+                    false,
+                ))),
+                workflow_admission: Some(Box::new(admission)),
+                action_form_argument_mismatches: Box::default(),
+            });
+        };
+        if supplied
+            .as_ref()
+            .and_then(|form_ref| catalog.form_by_ref(form_ref))
+            == Some(&called_method_form)
+        {
             return Ok(Some(called_method_form));
         }
         Err(McpAdapterError::InvalidParams {
@@ -709,7 +822,7 @@ impl McpAdapter {
             issues: vec![McpToolErrorIssue::new(
                 "/action_form_ref",
                 McpToolIssueCode::ActionFormMismatch,
-                "action_form_ref is missing, malformed, stale, foreign, or belongs to another method",
+                "action_form_ref is missing, malformed, stale, foreign, or does not belong to the called method and semantic variant",
             )],
             truncated: false,
             selected_variant: None,
@@ -2097,6 +2210,25 @@ fn admission_task_id(params: &Value) -> Option<TaskId> {
         .map(TaskId::new)
 }
 
+fn submitted_workflow_action_variant(
+    method: MethodName,
+    params: &Value,
+) -> Option<WorkflowActionSemanticVariant> {
+    match method {
+        MethodName::UpdateScope => params
+            .pointer("/change_unit/operation")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<ChangeUnitOperation>(value).ok())
+            .map(WorkflowActionSemanticVariant::for_change_unit_operation),
+        MethodName::RecordShapingCheckpoint => params
+            .get("checkpoint_operation")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<ShapingCheckpointOperation>(value).ok())
+            .map(|operation| operation.semantic_variant()),
+        _ => WorkflowActionSemanticVariant::for_single_variant_method(method),
+    }
+}
+
 fn unloaded_authoritative_argument_context() -> AuthoritativeArgumentContext {
     AuthoritativeArgumentContext {
         context_loaded: false,
@@ -2130,7 +2262,7 @@ fn argument_failure_presentation(
             context
                 .action_form_catalog
                 .as_ref()
-                .and_then(|catalog| catalog.required_form())
+                .and_then(|catalog| catalog.only_required_form())
                 .map(|form| {
                     format!(
                         "retry {} with the current action form",

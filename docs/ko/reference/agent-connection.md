@@ -694,9 +694,10 @@ fingerprint, 현재 Guard installation identity/policy hash 또는 Guard ownersh
 digest를 더합니다. 또한 managed agent guidance, workflow action contract, MCP semantic
 schema라는 세 가지 현재 semantic digest를 결속합니다. Guidance digest는 managed
 `AGENTS.md` block과 MCP server instruction에 rendering하는 폐쇄형 현재 workflow fact를
-포함하며 프로젝트별 prose의 hash가 아닙니다. Action-contract digest는 catalog admission,
-메서드별 form identity, 정확한 고정 인자 결속, 현재 권한 context, retry, typed basis
-mismatch 의미를 포함합니다. Semantic-schema digest는 타입 소유 제약, 일반
+포함하며 프로젝트별 prose의 hash가 아닙니다. Action-contract digest는 메서드 그룹,
+메서드 소유 폐쇄형 variant, catalog admission, 정확한 메서드-variant form identity,
+고정 인자 결속, 현재 권한 context, variant-aware retry, typed basis mismatch 의미를
+포함합니다. Semantic-schema digest는 타입 소유 제약, 일반
 required-nullable 의미, 명시적 discriminator, branch-local 검증, 한도 있는 runtime
 semantic projection을 포함합니다. Hook 명령 text가 같아도 이 semantic digest 중 하나가
 바뀌면 관리형

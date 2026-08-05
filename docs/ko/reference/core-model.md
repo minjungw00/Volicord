@@ -659,15 +659,19 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 별도 QA와 외부 검증 작업 흐름은 [범위](scope.md)와 영향을 받는 담당 문서가 지원한다고 정의하지 않는 한 별도의 기준 권한 기록이 아닙니다.
 
 Core는 현재 허용된 Task 상태 결속 메서드를 모두 하나의 중립적인
-`WorkflowActionCatalog`로 선택합니다. 각 `WorkflowActionIntent`에는 메서드,
-`required` 또는 `allowed` 역할, 예상 상태 버전, 정확한 고정 권한 좌표, 필수 참조가
-들어갑니다. Catalog에는 허용된 Task 상태 결속 메서드가 각각 정확히 한 번만 들어가고,
-허용되지 않은 메서드는 들어가지 않으며, 필수 행동이 Task 상태 결속이면 그 필수
-메서드를 지정합니다. 모든 좌표는 동일한 현재 권한 Task snapshot에서 나옵니다.
+`WorkflowActionCatalog`로 선택합니다. 각 `WorkflowActionIntent`에는 메서드, 메서드가
+소유하는 폐쇄형 semantic variant, `required` 또는 `allowed` 역할, 예상 상태 버전,
+정확한 고정 권한 좌표, 필수 참조가 들어갑니다. 한 메서드의 모든 intent는 하나의
+메서드 그룹을 이룹니다. Catalog에는 허용된 메서드 그룹만 들어가며 동일한
+메서드-variant key 중복을 거절하고, 메서드 다음 variant의 정규 순서로 정렬합니다.
+필수 Task 상태 결속 메서드에 variant가 여러 개면 이들은 필수 행동을 수행하는 대안이지
+동시에 수행해야 하는 요구가 아닙니다. 모든 좌표는 동일한 현재 권한 Task snapshot에서
+나옵니다.
 Checkpoint 기록에는 정확한 계승 관계와 복구 집합이, shaping 진행에는 정확한
 checkpoint와 결정 좌표가, implementation과 닫기 행동에는 현재 Task, Change Unit,
-범위, 기준선, resolution 좌표가 들어갑니다. Core는 MCP JSON 입력 slot이나 action-form
-digest를 소유하지 않습니다. Schema 검증 뒤 권한 좌표가 다르면 typed `expected`와
+범위, 기준선, resolution 좌표가 들어갑니다. Update-scope 좌표는 현재 Change Unit
+권한에 맞는 정확한 `ChangeUnitOperation`도 선택합니다. Core는 MCP JSON 입력 slot이나
+action-form digest를 소유하지 않습니다. Schema 검증 뒤 권한 좌표가 다르면 typed `expected`와
 `received`를 가진 효과 없는 `AuthorityBasisMismatch`이며, 그 사실만으로 유효한 Task가
 손상된 것은 아닙니다.
 
