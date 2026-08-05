@@ -151,7 +151,7 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
             shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_not_created"),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -251,7 +251,9 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
             task_id: TaskId::new(&task_id),
             checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+            ),
             summary: "The implementation boundary is ready.".to_owned(),
             implementation_boundary: RequiredNullable::some(
                 "Implement only the current export boundary.".to_owned(),
@@ -290,7 +292,7 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
             shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_superseded"),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -313,7 +315,7 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
             shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             change_unit_id: ChangeUnitId::new("change_unit_superseded"),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -337,7 +339,7 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
             shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -369,7 +371,7 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
             ),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -418,7 +420,9 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
             task_id: TaskId::new(&task_id),
             checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+            ),
             summary: "A technical decision is required.".to_owned(),
             implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
             gaps: vec![ShapingGapInput {
@@ -457,7 +461,9 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
             task_id: TaskId::new(&task_id),
             checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+            ),
             summary: "A technical decision is required.".to_owned(),
             implementation_boundary: RequiredNullable::some("Current boundary.".to_owned()),
             gaps: vec![ShapingGapInput {
@@ -505,7 +511,7 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
             shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -664,7 +670,8 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                     shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                     change_unit_id: ChangeUnitId::new(&change_unit_id),
                     scope_revision: 1,
-                    baseline_ref: BaselineRef::new("baseline_test"),
+                    baseline_ref: BaselineRef::parse("baseline_test")
+                        .expect("canonical test BaselineRef"),
                     user_action_resolution_ids: Vec::new(),
                     result_summary: "A non-authorizing outcome cannot finalize advice.".to_owned(),
                     result_refs: Vec::new(),
@@ -690,7 +697,8 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                     shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                     change_unit_id: ChangeUnitId::new(&change_unit_id),
                     scope_revision: 1,
-                    baseline_ref: BaselineRef::new("baseline_test"),
+                    baseline_ref: BaselineRef::parse("baseline_test")
+                        .expect("canonical test BaselineRef"),
                     user_action_resolution_ids: Vec::new(),
                 },
                 invocation(OperationCategory::AgentWorkflow),
@@ -917,7 +925,8 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                         )),
                         change_unit_id: ChangeUnitId::new(&change_unit_id),
                         scope_revision: 1,
-                        baseline_ref: BaselineRef::new("baseline_test"),
+                        baseline_ref: BaselineRef::parse("baseline_test")
+                            .expect("canonical test BaselineRef"),
                         user_action_resolution_ids: vec![UserActionResolutionId::new(
                             resolution_ref.record_id.as_str(),
                         )],
@@ -941,7 +950,8 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
                         )),
                         change_unit_id: ChangeUnitId::new(&change_unit_id),
                         scope_revision: 1,
-                        baseline_ref: BaselineRef::new("baseline_test"),
+                        baseline_ref: BaselineRef::parse("baseline_test")
+                            .expect("canonical test BaselineRef"),
                         user_action_resolution_ids: vec![UserActionResolutionId::new(
                             resolution_ref.record_id.as_str(),
                         )],
@@ -1121,7 +1131,8 @@ fn mixed_non_authorizing_outcomes_preserve_other_live_authority_without_effects(
                 shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
+                baseline_ref: BaselineRef::parse("baseline_test")
+                    .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: vec![UserActionResolutionId::new(
                     accepted_resolution_ref.record_id.as_str(),
                 )],
@@ -1488,7 +1499,8 @@ fn assert_expired_shaping_kind_recovery(
                 )),
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
+                baseline_ref: BaselineRef::parse("baseline_test")
+                    .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: vec![UserActionResolutionId::new(
                     resolution_ref.record_id.as_str(),
                 )],
@@ -1510,7 +1522,8 @@ fn assert_expired_shaping_kind_recovery(
                 )),
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
+                baseline_ref: BaselineRef::parse("baseline_test")
+                    .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: vec![UserActionResolutionId::new(
                     resolution_ref.record_id.as_str(),
                 )],
@@ -1894,7 +1907,9 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
             task_id: TaskId::new(&task_id),
             checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+            ),
             summary: "The advice is complete.".to_owned(),
             implementation_boundary: RequiredNullable::some(
                 "Advice is limited to the current export boundary.".to_owned(),
@@ -1980,7 +1995,7 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
         change_unit_id: ChangeUnitId::new(&change_unit_id),
         scope_revision: 1,
-        baseline_ref: BaselineRef::new("baseline_test"),
+        baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
         user_action_resolution_ids: Vec::new(),
         result_summary: "The requested advice is complete.".to_owned(),
         result_refs: Vec::new(),
@@ -2116,7 +2131,7 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
             shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
             result_summary: "Current bounded advice result.".to_owned(),
             result_refs: Vec::new(),
@@ -2190,7 +2205,7 @@ fn advisor_close_basis_is_invalidated_by_checkpoint_replacement() -> Result<(), 
             shaping_checkpoint_id: ShapingCheckpointId::new(&successor_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
             result_summary: "Revised bounded advice result.".to_owned(),
             result_refs: Vec::new(),
@@ -2278,7 +2293,7 @@ fn stale_advisor_resolution_blocks_finalization() -> Result<(), Box<dyn Error>> 
             shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: vec![UserActionResolutionId::new(&resolution_id)],
             result_summary: "Stale advice must not finalize.".to_owned(),
             result_refs: Vec::new(),
@@ -2455,7 +2470,8 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
                 shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                 change_unit_id: ChangeUnitId::new(&initial_change_unit_id),
                 scope_revision: 1,
-                baseline_ref: BaselineRef::new("baseline_test"),
+                baseline_ref: BaselineRef::parse("baseline_test")
+                    .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: Vec::new(),
                 result_summary: "Advice result.".to_owned(),
                 result_refs: Vec::new(),
@@ -2541,7 +2557,8 @@ fn advisor_decision_kinds_apply_exactly_at_finalization_and_close() -> Result<()
                 shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision,
-                baseline_ref: BaselineRef::new("baseline_test"),
+                baseline_ref: BaselineRef::parse("baseline_test")
+                    .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: resolution_refs
                     .iter()
                     .map(|reference| UserActionResolutionId::new(reference.record_id.as_str()))
@@ -3123,7 +3140,9 @@ fn direct_store_mutation_cannot_detach_live_shaping_authority() -> Result<(), Bo
                 },
                 task_id: task_id.clone(),
                 scope_revision: 1,
-                baseline_ref: Some(BaselineRef::new("baseline_test")),
+                baseline_ref: Some(
+                    BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+                ),
                 summary: "Direct Store successor attempt.".to_owned(),
                 implementation_boundary: Some("Exact current scope only.".to_owned()),
                 readiness: ShapingCheckpointReadiness::Ready,
@@ -3344,7 +3363,7 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
                 "change_unit_ref",
             )),
             scope_revision: 2,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: vec![UserActionResolutionId::new(
                 resolution_ref.record_id.as_str(),
             )],
@@ -3365,7 +3384,9 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         ChangeUnitOperation::ReplaceCurrent,
         "A revised scope, baseline, and Change Unit require new authority.",
     );
-    incompatible.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
+    incompatible.baseline_ref = RequiredNullable::some(
+        BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
+    );
     let invalidated = harness
         .service
         .update_scope(incompatible, invocation(OperationCategory::AgentWorkflow))?;
@@ -3451,7 +3472,9 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         "Reauthorize stale scope authority through a fresh UserAction request.",
     );
     set_shaping_scope_revision(&mut reauthorize, 3);
-    reauthorize.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
+    reauthorize.baseline_ref = RequiredNullable::some(
+        BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
+    );
     let reauthorized = harness
         .service
         .record_shaping_checkpoint(reauthorize, invocation(OperationCategory::AgentWorkflow))?;
@@ -3649,7 +3672,7 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
             shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: resolution_ids,
             result_summary: "Both advisor judgments are applied.".to_owned(),
             result_refs: Vec::new(),
@@ -3678,7 +3701,9 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
         ChangeUnitOperation::ReplaceCurrent,
         "The revised advisor boundary needs fresh authority.",
     );
-    incompatible.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
+    incompatible.baseline_ref = RequiredNullable::some(
+        BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
+    );
     let invalidated = harness
         .service
         .update_scope(incompatible, invocation(OperationCategory::AgentWorkflow))?;
@@ -3790,7 +3815,9 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
                 },
                 task_id: task_id.clone(),
                 scope_revision: 2,
-                baseline_ref: Some(BaselineRef::new("baseline_revised")),
+                baseline_ref: Some(
+                    BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
+                ),
                 summary: "A direct Store caller cannot omit stale authority.".to_owned(),
                 implementation_boundary: Some(
                     "Every stale application needs one exact action.".to_owned(),
@@ -3900,8 +3927,9 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
             "Invalid stale authority inventory must have no effect.",
         );
         set_shaping_scope_revision(&mut invalid_replacement, 2);
-        invalid_replacement.baseline_ref =
-            RequiredNullable::some(BaselineRef::new("baseline_revised"));
+        invalid_replacement.baseline_ref = RequiredNullable::some(
+            BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
+        );
         let rejected = harness.service.record_shaping_checkpoint(
             invalid_replacement,
             invocation(OperationCategory::AgentWorkflow),
@@ -3935,7 +3963,9 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
         "Consume every stale advisor application explicitly.",
     );
     set_shaping_scope_revision(&mut replacement, 2);
-    replacement.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
+    replacement.baseline_ref = RequiredNullable::some(
+        BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
+    );
     let replay_request = replacement.clone();
     let replaced = harness
         .service
@@ -4030,7 +4060,8 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
             shaping_checkpoint_id: ShapingCheckpointId::new(&successor_checkpoint_id),
             change_unit_id: ChangeUnitId::new(&new_change_unit_id),
             scope_revision: 2,
-            baseline_ref: BaselineRef::new("baseline_revised"),
+            baseline_ref: BaselineRef::parse("baseline_revised")
+                .expect("canonical test BaselineRef"),
             user_action_resolution_ids: vec![UserActionResolutionId::new(fresh_resolution_id)],
             result_summary: "Revised advice uses only fresh technical authority.".to_owned(),
             result_refs: Vec::new(),
@@ -4533,7 +4564,8 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                     shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                     change_unit_id: ChangeUnitId::new(&change_unit_id),
                     scope_revision,
-                    baseline_ref: BaselineRef::new("baseline_test"),
+                    baseline_ref: BaselineRef::parse("baseline_test")
+                        .expect("canonical test BaselineRef"),
                     user_action_resolution_ids: resolved
                         .iter()
                         .map(|(_, reference)| {
@@ -4628,7 +4660,8 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                     shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                     change_unit_id: ChangeUnitId::new(&change_unit_id),
                     scope_revision,
-                    baseline_ref: BaselineRef::new("baseline_test"),
+                    baseline_ref: BaselineRef::parse("baseline_test")
+                        .expect("canonical test BaselineRef"),
                     user_action_resolution_ids: Vec::new(),
                 },
                 invocation(OperationCategory::AgentWorkflow),
@@ -4662,7 +4695,7 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
             shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: advance_resolution_ids.clone(),
         };
         let advanced = harness.service.advance_task(
@@ -4716,7 +4749,8 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                 shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision,
-                baseline_ref: BaselineRef::new("baseline_test"),
+                baseline_ref: BaselineRef::parse("baseline_test")
+                    .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: advance_resolution_ids,
             },
             invocation(OperationCategory::AgentWorkflow),
@@ -5056,7 +5090,7 @@ fn detached_direct_request_does_not_enter_current_work_shaping_authority(
             shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -5165,7 +5199,7 @@ fn detached_direct_request_does_not_enter_current_advisor_shaping_authority(
             shaping_checkpoint_id: ShapingCheckpointId::new(&checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
             result_summary: "The current checkpoint advice is complete.".to_owned(),
             result_refs: Vec::new(),
@@ -5253,7 +5287,9 @@ fn ready_shaping_request(
         task_id: TaskId::new(task_id),
         checkpoint_operation,
         scope_revision: 1,
-        baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+        baseline_ref: RequiredNullable::some(
+            BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+        ),
         summary: summary.to_owned(),
         implementation_boundary: RequiredNullable::some(
             "Keep implementation inside the exact current scope.".to_owned(),

@@ -26,7 +26,7 @@ fn recording_input(
         ChangeUnitId::new(change_unit_id),
         RunKind::Implementation,
         None,
-        BaselineRef::new("baseline_test"),
+        BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
         None,
         Some("local_sensitive_step".to_owned()),
         summary.to_owned(),
@@ -34,7 +34,10 @@ fn recording_input(
             changed_paths: Vec::new(),
             product_file_write_observed: false,
             sensitive_categories: Vec::new(),
-            baseline_ref: Some(BaselineRef::new("baseline_test")).into(),
+            baseline_ref: Some(
+                BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+            )
+            .into(),
         },
         Vec::new(),
         Vec::new(),

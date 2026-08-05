@@ -2,7 +2,7 @@ use volicord_store::core_pipeline::{
     ChangeUnitRecord, StoredUserActionRecordSet, TaskRecord, UserActionStoreReader,
 };
 use volicord_types::ids::{
-    ChangeUnitId, IdempotencyKey, ProjectId, RiskId, TaskId, UserActionOptionId,
+    BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RiskId, TaskId, UserActionOptionId,
     UserActionRequestId, UserActionResolutionId,
 };
 use volicord_types::schema::{
@@ -72,7 +72,7 @@ pub(super) struct UserActionValidationInput {
     pub(super) project_id: ProjectId,
     pub(super) actual_task_id: String,
     pub(super) task_scope_revision: u64,
-    pub(super) baseline_ref: Option<String>,
+    pub(super) baseline_ref: Option<BaselineRef>,
     pub(super) current_change_unit_id: Option<ChangeUnitId>,
     pub(super) requested_change_unit_exists: bool,
     pub(super) state_version: u64,

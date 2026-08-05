@@ -53,7 +53,8 @@ fn selected_owner_updates_are_exact_and_failed_advance_rolls_back() -> Result<()
     let scope_request_id = "request_scope_exact_application";
     let product_resolution_id = "resolution_product_exact_application";
     let scope_resolution_id = "resolution_scope_exact_application";
-    let baseline = BaselineRef::new("baseline_shaping_exact_application");
+    let baseline = BaselineRef::parse("baseline_shaping_exact_application")
+        .expect("canonical test BaselineRef");
 
     let mut task = task_insert(task_id);
     task.shaping.baseline_ref = Some(baseline.clone());
@@ -651,7 +652,8 @@ fn outcome_specific_gap_resolution_is_atomic_and_only_accepted_can_apply(
     let gap_id = "gap_shaping_rejected_atomic";
     let request_id = "request_shaping_rejected_atomic";
     let resolution_id = "resolution_shaping_rejected_atomic";
-    let baseline = BaselineRef::new("baseline_shaping_rejected_atomic");
+    let baseline =
+        BaselineRef::parse("baseline_shaping_rejected_atomic").expect("canonical test BaselineRef");
     let mut task = task_insert(task_id);
     task.shaping.baseline_ref = Some(baseline.clone());
 
@@ -912,7 +914,8 @@ fn current_checkpoint_read_rejects_persisted_detached_user_action_authority(
     let change_unit_id = "cu_shaping_detached_authority";
     let gap_id = "gap_shaping_detached_authority";
     let request_id = "request_shaping_detached_authority";
-    let baseline = BaselineRef::new("baseline_shaping_detached_authority");
+    let baseline = BaselineRef::parse("baseline_shaping_detached_authority")
+        .expect("canonical test BaselineRef");
     let mut task = task_insert(task_id);
     task.shaping.baseline_ref = Some(baseline.clone());
 

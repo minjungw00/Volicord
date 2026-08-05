@@ -50,6 +50,14 @@ schema constants. Opaque identifier leaves carry
 `x-volicord-semantic-type` so runtime compaction retains their type identity
 even when a definition is inlined.
 
+All production `BaselineRef` construction is checked. Canonical descriptor
+examples, including values assembled deterministically from other example
+coordinates, pass through the same checked parser; a construction failure is a
+descriptor-integrity failure rather than a panic or an unchecked value. On the
+wire, required-nullable baseline members use JSON `null` for absence. The
+string `"null"`, empty strings, and strings with surrounding whitespace are
+invalid values and are never normalized into either a baseline or absence.
+
 `volicord-types` owns only adapter-neutral method facts, domain values, and
 public method schemas. `volicord-mcp` consumes those neutral outcomes and maps
 them into the wire-owned values. Core, Store, the UserAction service, the

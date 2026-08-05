@@ -275,9 +275,10 @@ pub(super) fn create_implementation_task(
             shaping_checkpoint_id: ShapingCheckpointId::new(&shaping_checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new(
+            baseline_ref: BaselineRef::parse(
                 volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-            ),
+            )
+            .expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(),
@@ -356,9 +357,10 @@ pub(super) fn create_ready_for_implementation_task(
             task_id: TaskId::new(&task_id),
             checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new(
-                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-            )),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF)
+                    .expect("canonical test BaselineRef"),
+            ),
             summary: "The workflow admission fixture is structurally ready.".to_owned(),
             implementation_boundary: RequiredNullable::some(
                 "Exercise only current catalog actions.".to_owned(),
@@ -751,9 +753,10 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
             task_id: TaskId::new(&task_id),
             checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new(
-                volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-            )),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF)
+                    .expect("canonical test BaselineRef"),
+            ),
             summary: "The UserAction adapter fixture boundary is ready.".to_owned(),
             implementation_boundary: RequiredNullable::some(
                 "Exercise only the current UserAction adapter boundary.".to_owned(),
@@ -785,9 +788,10 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
             shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new(
+            baseline_ref: BaselineRef::parse(
                 volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-            ),
+            )
+            .expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
         },
         invocation(),

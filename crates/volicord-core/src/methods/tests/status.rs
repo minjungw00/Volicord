@@ -44,6 +44,50 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn status_rejects_a_constraint_bypassed_baseline_ref_without_effects() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "status_corrupt_baseline")?;
+    let shaping_checkpoint_id = "shaping_checkpoint_fixture_status_corrupt_baseline";
+    let conn = harness.conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
+        "UPDATE shaping_checkpoints
+            SET baseline_ref = ?3
+          WHERE project_id = ?1
+            AND shaping_checkpoint_id = ?2",
+        rusqlite::params![PROJECT_ID, shaping_checkpoint_id, " baseline"],
+    )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
+    let before = harness.counts()?;
+
+    let response = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_corrupt_baseline",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            continuity_page: None,
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_owner_state_value_rejection(
+        &response,
+        "shaping_checkpoints",
+        shaping_checkpoint_id,
+        "baseline_ref",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn status_renders_idle_timeout_invalidation_without_mutating_row() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "status_auth_expired")?;

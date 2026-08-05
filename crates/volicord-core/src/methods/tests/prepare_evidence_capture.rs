@@ -67,7 +67,7 @@ pub(super) fn capture_request(
         ),
         task_id: TaskId::new(task_id),
         change_unit_id: ChangeUnitId::new(change_unit_id),
-        baseline_ref: BaselineRef::new("baseline_test"),
+        baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
         target: EvidenceTarget::AcceptanceCriterion {
             acceptance_criterion_id: AcceptanceCriterionId::new(criterion_id),
         },

@@ -210,7 +210,8 @@ mod tests {
     fn run_compatibility_matrix_reports_the_first_typed_ticket_mismatch() {
         let task_id = TaskId::new("task_current");
         let change_unit_id = ChangeUnitId::new("change_current");
-        let baseline_ref = BaselineRef::new("baseline_current");
+        let baseline_ref =
+            BaselineRef::parse("baseline_current").expect("canonical test BaselineRef");
         let scope = WriteTicketAttemptScope {
             task_id: task_id.clone(),
             change_unit_id: change_unit_id.clone(),
@@ -357,7 +358,7 @@ mod tests {
     ) -> Option<&'static str> {
         let task_id = TaskId::new(task_id);
         let change_unit_id = ChangeUnitId::new(change_unit_id);
-        let baseline_ref = BaselineRef::new(baseline_ref);
+        let baseline_ref = BaselineRef::parse(baseline_ref).expect("canonical test BaselineRef");
         let observed_changes = ObservedChanges {
             changed_paths: changed_paths
                 .iter()

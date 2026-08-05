@@ -549,6 +549,31 @@ mod tests {
                 ..
             })
         ));
+
+        for invalid in [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ] {
+            let mut record = valid();
+            record.write_basis_json = serde_json::json!({"baseline_ref": invalid}).to_string();
+            assert!(matches!(
+                validate_decoded_change_unit_record(record),
+                Err(StoreError::CorruptOwnerStateJson {
+                    table: "change_units",
+                    logical_column: "write_basis_json",
+                    ..
+                })
+            ));
+        }
+
+        let mut nullable_baseline = valid();
+        nullable_baseline.write_basis_json = r#"{"baseline_ref":null}"#.to_owned();
+        assert!(validate_decoded_change_unit_record(nullable_baseline).is_ok());
     }
 
     #[test]

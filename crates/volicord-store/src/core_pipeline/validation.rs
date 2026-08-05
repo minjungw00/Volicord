@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use volicord_types::canonical::{
     canonical_git_object_id, canonical_json_string, is_canonical_sha256_digest,
 };
+use volicord_types::ids::BaselineRef;
 use volicord_types::schema::{
     ArtifactRef, CurrentCloseBasis, EvidenceCoverageItem, PersistedArtifactProducer,
     PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
@@ -27,6 +28,28 @@ use volicord_types::values::{
 
 use super::{PendingTaskEvent, VerifiedReplayContext};
 use crate::{StoreError, StoreResult};
+
+pub(crate) fn decode_owner_baseline_ref(
+    table: &'static str,
+    record_ref: impl Into<String>,
+    logical_column: &'static str,
+    raw_value: String,
+) -> StoreResult<BaselineRef> {
+    BaselineRef::parse(raw_value)
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_ref, logical_column))
+}
+
+pub(crate) fn decode_optional_owner_baseline_ref(
+    table: &'static str,
+    record_ref: impl Into<String>,
+    logical_column: &'static str,
+    raw_value: Option<String>,
+) -> StoreResult<Option<BaselineRef>> {
+    let record_ref = record_ref.into();
+    raw_value
+        .map(|value| decode_owner_baseline_ref(table, record_ref, logical_column, value))
+        .transpose()
+}
 
 pub(super) fn validate_project_enforcement_profile(
     profile: &ProjectEnforcementProfile,
@@ -993,6 +1016,66 @@ pub(super) fn u64_to_i64(field: &'static str, value: u64) -> StoreResult<i64> {
 #[cfg(test)]
 mod source_ref_tests {
     use super::*;
+
+    #[test]
+    fn persisted_baseline_refs_use_one_strict_value_decoder() -> StoreResult<()> {
+        for (table, logical_column) in [
+            ("evidence_capture_intents", "baseline_ref"),
+            ("shaping_checkpoints", "baseline_ref"),
+            ("shaping_decision_applications", "applied_baseline_ref"),
+            ("evidence_producers", "baseline_ref"),
+        ] {
+            for invalid in [
+                "",
+                " ",
+                "null",
+                " baseline",
+                "baseline ",
+                "\tbaseline",
+                "baseline\n",
+            ] {
+                let error = decode_owner_baseline_ref(
+                    table,
+                    "owner_ref",
+                    logical_column,
+                    invalid.to_owned(),
+                )
+                .expect_err("non-canonical persisted BaselineRef must fail closed");
+                assert!(matches!(
+                    error,
+                    StoreError::CorruptOwnerStateValue {
+                        database_kind: "project_state",
+                        table: actual_table,
+                        ref record_ref,
+                        logical_column: actual_column,
+                    } if actual_table == table
+                        && record_ref == "owner_ref"
+                        && actual_column == logical_column
+                ));
+            }
+        }
+
+        assert_eq!(
+            decode_owner_baseline_ref(
+                "evidence_capture_intents",
+                "owner_ref",
+                "baseline_ref",
+                "baseline".to_owned(),
+            )?
+            .as_str(),
+            "baseline"
+        );
+        assert_eq!(
+            decode_optional_owner_baseline_ref(
+                "shaping_checkpoints",
+                "owner_ref",
+                "baseline_ref",
+                None,
+            )?,
+            None
+        );
+        Ok(())
+    }
 
     #[test]
     fn persisted_source_refs_require_a_strict_tagged_shape() {

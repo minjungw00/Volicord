@@ -1544,7 +1544,8 @@ mod tests {
     fn valid_input(write_ticket_id: WriteTicketId) -> PlannedWriteTicketInput {
         let task_id = TaskId::new("task_planned");
         let change_unit_id = ChangeUnitId::new("change_planned");
-        let baseline_ref = BaselineRef::new("baseline_planned");
+        let baseline_ref =
+            BaselineRef::parse("baseline_planned").expect("canonical test BaselineRef");
         let intended_path = ProductRelativePath::parse("src").expect("valid path");
         PlannedWriteTicketInput {
             project_id: ProjectId::new("project_planned"),

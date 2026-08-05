@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, sync::Mutex};
+use std::{error::Error, fmt, str::FromStr, sync::Mutex};
 
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -106,16 +106,6 @@ opaque_string_type!(RecordId, "Opaque state-record identifier.");
 pub struct BaselineRef(String);
 
 impl BaselineRef {
-    /// Creates a baseline identifier and rejects a non-canonical value.
-    pub fn new(value: impl Into<String>) -> Self {
-        let value = value.into();
-        assert!(
-            is_valid_baseline_ref(&value),
-            "BaselineRef must be non-empty, canonical, and different from `null`"
-        );
-        Self(value)
-    }
-
     /// Parses one canonical baseline identifier.
     pub fn parse(value: impl Into<String>) -> Result<Self, BaselineRefError> {
         let value = value.into();
@@ -174,7 +164,7 @@ impl JsonSchema for BaselineRef {
             "description": "Canonical non-empty baseline identifier; surrounding whitespace and the literal `null` are forbidden.",
             "type": "string",
             "minLength": 1,
-            "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
             "not": {"const": "null"},
             "examples": ["baseline_example_001"],
             "x-volicord-semantic-type": "BaselineRef"
@@ -201,6 +191,14 @@ impl TryFrom<&str> for BaselineRef {
     type Error = BaselineRefError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::parse(value)
+    }
+}
+
+impl FromStr for BaselineRef {
+    type Err = BaselineRefError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::parse(value)
     }
 }
@@ -765,7 +763,15 @@ mod tests {
         assert_eq!(value.as_str(), "baseline_owned_001");
         assert_eq!(serde_json::to_value(&value).unwrap(), "baseline_owned_001");
 
-        for invalid in ["", "null", " baseline", "baseline ", "\tbaseline"] {
+        for invalid in [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ] {
             assert_eq!(BaselineRef::parse(invalid), Err(BaselineRefError));
             assert!(serde_json::from_value::<BaselineRef>(serde_json::json!(invalid)).is_err());
         }

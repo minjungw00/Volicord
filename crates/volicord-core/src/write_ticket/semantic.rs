@@ -129,7 +129,7 @@ pub(crate) mod test_support {
     pub(crate) fn semantic_facts(basis_state_version: u64) -> WriteTicketSemanticFacts {
         let task_id = TaskId::new("task-test");
         let change_unit_id = ChangeUnitId::new("change-test");
-        let baseline_ref = BaselineRef::new("baseline-test");
+        let baseline_ref = BaselineRef::parse("baseline-test").expect("canonical test BaselineRef");
         let intended_path = ProductRelativePath::parse("src").expect("test path should be valid");
         WriteTicketSemanticFacts {
             project_id: ProjectId::new("project-test"),

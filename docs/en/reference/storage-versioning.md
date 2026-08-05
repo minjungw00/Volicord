@@ -276,6 +276,14 @@ variants, forbidden extra fields, and violated cross-field invariants are
 `Corrupt`; they do not become empty values, defaults, absent state, or a
 different storage contract.
 
+This strict boundary includes every persisted `BaselineRef`. Scalar owner
+columns are checked through one Store decoder, while baseline-bearing owner
+JSON is decoded through the same semantic type. Empty values, surrounding
+whitespace, and the string `"null"` are `Corrupt`; SQL `NULL` or JSON `null`
+means absence only at an owner-declared nullable position. Store does not trim
+or recover these values, and Core, MCP, and CLI surface the resulting
+persisted-data corruption without mutation effects.
+
 <a id="canonical-core-utc-clock"></a>
 ## Canonical Core UTC Clock
 

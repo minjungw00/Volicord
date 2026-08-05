@@ -1045,7 +1045,7 @@ fn plan_task_lineage(
                 "baseline carry-forward requires the exact current compatible Git workspace context",
             );
         }
-        Some(BaselineRef::new(baseline_ref.clone()))
+        Some(baseline_ref.clone())
     } else {
         None
     };
@@ -1163,8 +1163,8 @@ fn reference_only_carry_sources(
                 if !relevant_risks.is_empty() {
                     let compatible = close_basis.task_id.as_str() == predecessor.task_id
                         && close_basis.scope_revision == predecessor.scope_revision
-                        && close_basis.baseline_ref.as_ref().map(BaselineRef::as_str)
-                            == predecessor_scope.baseline_ref.as_deref()
+                        && close_basis.baseline_ref.as_ref()
+                            == predecessor_scope.baseline_ref.as_ref()
                         && current_change_unit.as_ref().is_some_and(|change_unit| {
                             change_unit.change_unit_id == close_basis.change_unit_id.as_str()
                         });

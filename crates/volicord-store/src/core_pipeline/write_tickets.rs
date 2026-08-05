@@ -1344,6 +1344,58 @@ mod tests {
     }
 
     #[test]
+    fn write_ticket_json_baselines_are_strict_and_nullable() {
+        for invalid in [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ] {
+            let mut validity_row = valid_raw_write_ticket();
+            let mut validity: Value = serde_json::from_str(&validity_row.validity_basis_json)
+                .expect("valid validity-basis fixture");
+            validity["baseline_ref"] = json!(invalid);
+            validity_row.validity_basis_json = validity.to_string();
+            assert!(matches!(
+                decode_write_ticket_record(validity_row),
+                Err(StoreError::CorruptOwnerStateJson {
+                    table: "write_tickets",
+                    logical_column: "validity_basis_json",
+                    ..
+                })
+            ));
+
+            let mut attempt_row = valid_raw_write_ticket();
+            let mut attempt: Value = serde_json::from_str(&attempt_row.attempt_scope_json)
+                .expect("valid attempt-scope fixture");
+            attempt["baseline_ref"] = json!(invalid);
+            attempt_row.attempt_scope_json = attempt.to_string();
+            assert!(matches!(
+                decode_write_ticket_record(attempt_row),
+                Err(StoreError::CorruptOwnerStateJson {
+                    table: "write_tickets",
+                    logical_column: "attempt_scope_json",
+                    ..
+                })
+            ));
+        }
+
+        let mut nullable_row = valid_raw_write_ticket();
+        let mut validity: Value = serde_json::from_str(&nullable_row.validity_basis_json)
+            .expect("valid validity-basis fixture");
+        validity["baseline_ref"] = Value::Null;
+        nullable_row.validity_basis_json = validity.to_string();
+        let mut attempt: Value = serde_json::from_str(&nullable_row.attempt_scope_json)
+            .expect("valid attempt-scope fixture");
+        attempt["baseline_ref"] = Value::Null;
+        nullable_row.attempt_scope_json = attempt.to_string();
+        assert!(decode_write_ticket_record(nullable_row).is_ok());
+    }
+
+    #[test]
     fn write_ticket_decoder_reports_precise_field_and_invariant_corruption() {
         type MutateRaw = Box<dyn Fn(&mut WriteTicketRecordRaw)>;
         let cases: Vec<(&str, MutateRaw, ExpectedCorruption)> = vec![

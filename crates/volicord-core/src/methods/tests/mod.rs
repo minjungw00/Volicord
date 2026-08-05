@@ -1056,7 +1056,10 @@ fn update_scope_request(
         ])
         .into(),
         autonomy_boundary: Some("Stay inside the scoped test behavior.".to_owned()).into(),
-        baseline_ref: Some(BaselineRef::new("baseline_test")).into(),
+        baseline_ref: Some(
+            BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+        )
+        .into(),
         change_unit: ChangeUnitUpdate {
             operation,
             effect_contract: None,
@@ -1131,7 +1134,7 @@ fn prepare_write_request(
         intended_paths: vec!["src/export.rs".to_owned()],
         product_file_write_intended: true,
         sensitive_categories: Vec::new(),
-        baseline_ref: BaselineRef::new("baseline_test"),
+        baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
     }
 }
 
@@ -1181,7 +1184,7 @@ fn record_run_request(
         change_unit_id: ChangeUnitId::new(change_unit_id),
         kind: volicord_types::values::RunKind::Implementation,
         run_id: None.into(),
-        baseline_ref: BaselineRef::new("baseline_test"),
+        baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
         write_ticket_id: None.into(),
         performed_operation: Some("local_sensitive_step".to_owned()).into(),
         summary: "Recorded implementation run.".to_owned(),
@@ -1189,7 +1192,10 @@ fn record_run_request(
             changed_paths: Vec::new(),
             product_file_write_observed: false,
             sensitive_categories: Vec::new(),
-            baseline_ref: Some(BaselineRef::new("baseline_test")).into(),
+            baseline_ref: Some(
+                BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+            )
+            .into(),
         },
         artifact_inputs: Vec::new(),
         evidence_updates: Vec::new(),
@@ -2413,7 +2419,9 @@ fn record_ready_advisor_shaping_for_test(
             task_id: TaskId::new(task_id),
             checkpoint_operation: volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
             scope_revision: 1,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_test")),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+            ),
             summary: "Advisor analysis is ready for close review.".to_owned(),
             implementation_boundary: RequiredNullable::some(
                 "Deliver the bounded advisory result without Product Repository writes.".to_owned(),
@@ -2450,7 +2458,7 @@ fn record_ready_advisor_shaping_for_test(
             shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: Vec::new(),
             result_summary: "Advisor analysis is complete.".to_owned(),
             result_refs: Vec::new(),
@@ -3079,7 +3087,9 @@ fn insert_active_write_ticket_with_scope(
                 task_id: TaskId::new(input.task_id),
                 change_unit_id: ChangeUnitId::new(input.change_unit_id),
                 scope_revision,
-                baseline_ref: Some(BaselineRef::new("baseline_test")),
+                baseline_ref: Some(
+                    BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+                ),
                 workspace_context_sha256: None,
                 write_authority_fingerprint,
                 approval_basis_refs: input.approval_basis_refs.clone(),
@@ -3096,7 +3106,9 @@ fn insert_active_write_ticket_with_scope(
                     .iter()
                     .map(|category| (*category).to_owned())
                     .collect(),
-                baseline_ref: Some(BaselineRef::new("baseline_test")),
+                baseline_ref: Some(
+                    BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
+                ),
             },
             created_by_actor_source: ActorSource::agent_connection(CONNECTION_ID),
             created_by_user_action_resolution_id: input

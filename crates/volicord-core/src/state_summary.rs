@@ -4,7 +4,7 @@ use crate::task_state::StoredScope;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, ProjectStateHeader, ShapingCheckpointRecord, TaskRecord,
 };
-use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
+use volicord_types::ids::{ProjectId, TaskId};
 use volicord_types::schema::{
     AcceptanceCriterion, CloseReadinessBlocker, EvidenceGateSummary, EvidenceSummary,
     GuaranteeDisplay, ProjectWorkflowPolicySummary, StateRecordRef, TaskLifecycleState,
@@ -156,7 +156,7 @@ pub(crate) fn state_summary(
         autonomy_boundary: scope.autonomy_boundary,
         active_change_unit_ref,
         effect_contract,
-        baseline_ref: scope.baseline_ref.map(BaselineRef::new),
+        baseline_ref: scope.baseline_ref,
         workspace_context,
         workflow,
         pending_user_action_summaries:

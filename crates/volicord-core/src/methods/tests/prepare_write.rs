@@ -1879,7 +1879,8 @@ fn prepare_write_baseline_mismatch_blocks_write_ticket() -> Result<(), Box<dyn E
         Some(&task_id),
         Some(&change_unit_id),
     );
-    request.baseline_ref = BaselineRef::new("baseline_other");
+    request.baseline_ref =
+        BaselineRef::parse("baseline_other").expect("canonical test BaselineRef");
     let response = harness
         .service
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;

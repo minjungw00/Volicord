@@ -6,6 +6,7 @@ use regex::Regex;
 use schemars::{schema_for, JsonSchema};
 use serde::Serialize;
 use serde_json::{Map, Value};
+use volicord_types::ids::BaselineRef;
 use volicord_types::values::UtcTimestamp;
 
 /// Type-owned entry point for an MCP semantic schema.
@@ -3410,6 +3411,18 @@ fn validate_primitive(
     }
     if primitive == "string" {
         if let Some(value) = instance.as_str() {
+            if matches!(
+                context.semantic_type.as_deref(),
+                Some("BaselineRef" | "BaselineRef | null")
+            ) && BaselineRef::parse(value).is_err()
+            {
+                result.push(type_issue(
+                    path,
+                    context,
+                    instance,
+                    "String is not a canonical BaselineRef.",
+                ));
+            }
             let length = value.chars().count() as u64;
             let minimum = metadata.validation.get("minLength").and_then(Value::as_u64);
             let maximum = metadata.validation.get("maxLength").and_then(Value::as_u64);
@@ -4298,11 +4311,8 @@ fn common_exact_semantic_string<'a>(
 mod tests {
     use super::*;
     use serde::Deserialize;
-    use volicord_types::{
-        ids::BaselineRef,
-        schema::{
-            RequiredNullable, UserActionBasis, UserActionRequestBody, UserActionResolutionForm,
-        },
+    use volicord_types::schema::{
+        RequiredNullable, UserActionBasis, UserActionRequestBody, UserActionResolutionForm,
     };
 
     #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -4611,23 +4621,31 @@ mod tests {
             assert!(serde_json::from_value::<TypeOwnedBaselineRoot>(valid).is_ok());
         }
 
-        for invalid in [
+        let mut invalid = [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ]
+        .into_iter()
+        .map(|value| {
             serde_json::json!({
-                "current_baseline": "null",
+                "current_baseline": value,
                 "nested": {"authority_baseline": null}
-            }),
-            serde_json::json!({
-                "current_baseline": "",
-                "nested": {"authority_baseline": null}
-            }),
-            serde_json::json!({
-                "current_baseline": null,
-                "nested": {"authority_baseline": "null"}
-            }),
-            serde_json::json!({
-                "nested": {"authority_baseline": null}
-            }),
-        ] {
+            })
+        })
+        .collect::<Vec<_>>();
+        invalid.push(serde_json::json!({
+            "current_baseline": null,
+            "nested": {"authority_baseline": "null"}
+        }));
+        invalid.push(serde_json::json!({
+            "nested": {"authority_baseline": null}
+        }));
+        for invalid in invalid {
             assert!(
                 !descriptor.validate(&invalid).issues.is_empty(),
                 "{invalid}"

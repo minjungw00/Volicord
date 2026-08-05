@@ -1459,7 +1459,10 @@ pub mod core_fixtures {
                 }])
                 .into(),
                 autonomy_boundary: Some("Stay inside the scoped test behavior.".to_owned()).into(),
-                baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
+                baseline_ref: Some(
+                    BaselineRef::parse(DEFAULT_BASELINE_REF).expect("canonical test BaselineRef"),
+                )
+                .into(),
                 change_unit: ChangeUnitUpdate {
                     operation: input.operation,
                     effect_contract: None,
@@ -1492,7 +1495,8 @@ pub mod core_fixtures {
                 intended_paths: vec![DEFAULT_PRODUCT_PATH.to_owned()],
                 product_file_write_intended: true,
                 sensitive_categories: Vec::new(),
-                baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
+                baseline_ref: BaselineRef::parse(DEFAULT_BASELINE_REF)
+                    .expect("canonical test BaselineRef"),
             }
         }
 
@@ -1546,7 +1550,8 @@ pub mod core_fixtures {
                 change_unit_id: ChangeUnitId::new(change_unit_id),
                 kind: RunKind::Implementation,
                 run_id: None.into(),
-                baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
+                baseline_ref: BaselineRef::parse(DEFAULT_BASELINE_REF)
+                    .expect("canonical test BaselineRef"),
                 write_ticket_id: None.into(),
                 performed_operation: None.into(),
                 summary: "Recorded implementation run.".to_owned(),
@@ -1554,7 +1559,11 @@ pub mod core_fixtures {
                     changed_paths: Vec::new(),
                     product_file_write_observed: false,
                     sensitive_categories: Vec::new(),
-                    baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
+                    baseline_ref: Some(
+                        BaselineRef::parse(DEFAULT_BASELINE_REF)
+                            .expect("canonical test BaselineRef"),
+                    )
+                    .into(),
                 },
                 artifact_inputs: Vec::new(),
                 evidence_updates: Vec::new(),

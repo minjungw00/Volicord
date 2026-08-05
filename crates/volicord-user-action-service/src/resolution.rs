@@ -36,7 +36,7 @@ pub fn validate_current_resolution_basis(
         || coordinates.task_id.as_str() != task.task_id
         || coordinates.scope_revision != task.scope_revision
         || coordinates.created_at_state_version > observed_state_version
-        || coordinates.baseline_ref.as_ref().map(BaselineRef::as_str) != baseline_ref.as_deref()
+        || coordinates.baseline_ref.as_ref() != baseline_ref.as_ref()
         || coordinates.change_unit_id.as_ref() != current_change_unit_id.as_ref()
     {
         return Err(UserActionServiceError::Unavailable(
@@ -299,12 +299,8 @@ fn current_artifact_refs_preserve_candidates(left: &[ArtifactRef], right: &[Arti
         })
 }
 
-fn task_baseline_ref(task: &TaskRecord) -> Result<Option<String>, UserActionServiceError> {
-    Ok(task
-        .shaping
-        .baseline_ref
-        .as_ref()
-        .map(|baseline_ref| baseline_ref.as_str().to_owned()))
+fn task_baseline_ref(task: &TaskRecord) -> Result<Option<BaselineRef>, UserActionServiceError> {
+    Ok(task.shaping.baseline_ref.clone())
 }
 
 fn validation(field: &'static str, message: &'static str) -> UserActionServiceError {

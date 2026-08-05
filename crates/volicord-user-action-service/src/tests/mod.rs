@@ -14,7 +14,7 @@ use crate::model::{
     UserActionBodyFacts, UserActionIntent, UserActionValidationInput, ValidatedUserAction,
     ValidatedUserActionIntent,
 };
-use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, UserActionOptionId};
+use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, TaskId, UserActionOptionId};
 use volicord_types::schema::{
     RequiredNullable, UserActionBasisCoordinates, UserActionChoiceDraft, UserActionContext,
     UserActionDraft, UserActionOptionInput,
@@ -62,7 +62,9 @@ pub(super) fn validation_input() -> UserActionValidationInput {
         project_id: ProjectId::new("project-test"),
         actual_task_id: "task-test".to_owned(),
         task_scope_revision: 3,
-        baseline_ref: Some("baseline-test".to_owned()),
+        baseline_ref: Some(
+            BaselineRef::parse("baseline-test").expect("canonical test BaselineRef"),
+        ),
         current_change_unit_id: Some(ChangeUnitId::new("change-test")),
         requested_change_unit_exists: true,
         state_version: 11,
@@ -88,7 +90,11 @@ pub(super) fn validated_choice_intent() -> ValidatedUserActionIntent {
             task_id: TaskId::new("task-test"),
             change_unit_id: Some(ChangeUnitId::new("change-test")).into(),
             scope_revision: 3,
-            baseline_ref: Some(volicord_types::ids::BaselineRef::new("baseline-test")).into(),
+            baseline_ref: Some(
+                volicord_types::ids::BaselineRef::parse("baseline-test")
+                    .expect("canonical test BaselineRef"),
+            )
+            .into(),
             created_at_state_version: 11,
             compatibility_status: UserActionBasisStatus::Current,
         },

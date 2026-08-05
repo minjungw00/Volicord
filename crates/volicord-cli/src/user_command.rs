@@ -1453,9 +1453,10 @@ mod tests {
                 task_id: TaskId::new(&task_id),
                 checkpoint_operation: ShapingCheckpointOperation::CreateInitial,
                 scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new(
-                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                )),
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF)
+                        .expect("canonical test BaselineRef"),
+                ),
                 summary: "The plan has one exact user-owned shaping boundary.".to_owned(),
                 implementation_boundary: RequiredNullable::some(
                     "Apply only the exact resolved decision before implementation.".to_owned(),
@@ -1681,9 +1682,10 @@ mod tests {
                 checkpoint_operation:
                     volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
                 scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new(
-                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                )),
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF)
+                        .expect("canonical test BaselineRef"),
+                ),
                 summary: "The CLI evidence-observation boundary is ready.".to_owned(),
                 implementation_boundary: RequiredNullable::some(
                     "Register only the scoped observation artifact.".to_owned(),
@@ -1714,9 +1716,10 @@ mod tests {
                 shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision: 1,
-                baseline_ref: BaselineRef::new(
+                baseline_ref: BaselineRef::parse(
                     volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                ),
+                )
+                .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: Vec::new(),
             },
             invocation.clone(),
@@ -1976,6 +1979,53 @@ mod tests {
         assert!(without_close.ends_with('\n'));
         assert!(!without_close.ends_with("\n\n"));
         assert!(!without_close.contains('\t'));
+        Ok(())
+    }
+
+    #[test]
+    fn status_command_reports_constraint_bypassed_baseline_corruption_without_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        let pending = pending_shaping_choice_fixture(
+            "cli-status-corrupt-baseline",
+            RequestedMode::Work,
+            JudgmentKind::ProductDecision,
+        )?;
+        let core_fixture = pending.fixture.core();
+        let conn = core_fixture.mutation_conn()?;
+        conn.pragma_update(None, "ignore_check_constraints", true)?;
+        conn.execute(
+            "UPDATE shaping_checkpoints
+                SET baseline_ref = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            (
+                core_fixture.project_id(),
+                pending.task_id.as_str(),
+                " baseline",
+            ),
+        )?;
+        conn.pragma_update(None, "ignore_check_constraints", false)?;
+        let before = core_fixture.counts()?;
+        let repository_before = pending.fixture.repository().status_bytes()?;
+
+        let output = command_status(
+            StatusArgs {
+                repo: Some(core_fixture.product_repo_path()),
+                task: pending.task_id.clone(),
+                json: false,
+            },
+            |name| {
+                (name == "VOLICORD_HOME").then(|| OsString::from(core_fixture.runtime_home_path()))
+            },
+            &core_fixture.product_repo_path(),
+        )?;
+
+        assert!(output.contains("PERSISTED_DATA_CORRUPT"), "{output}");
+        assert_eq!(core_fixture.counts()?, before);
+        assert_eq!(
+            pending.fixture.repository().status_bytes()?,
+            repository_before
+        );
         Ok(())
     }
 

@@ -1,6 +1,7 @@
 use crate::pipeline::CoreResult;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::TaskRecord;
+use volicord_types::ids::BaselineRef;
 use volicord_types::methods::UpdateScopeRequest;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,7 +10,7 @@ pub(crate) struct StoredScope {
     pub(crate) scope_summary: Option<String>,
     pub(crate) non_goals: Vec<String>,
     pub(crate) autonomy_boundary: Option<String>,
-    pub(crate) baseline_ref: Option<String>,
+    pub(crate) baseline_ref: Option<BaselineRef>,
 }
 
 impl StoredScope {
@@ -27,11 +28,7 @@ impl StoredScope {
                 .autonomy_boundary
                 .clone()
                 .or_else(|| task.shaping.autonomy_boundary.clone()),
-            baseline_ref: task
-                .shaping
-                .baseline_ref
-                .as_ref()
-                .map(|baseline_ref| baseline_ref.as_str().to_owned()),
+            baseline_ref: task.shaping.baseline_ref.clone(),
         }))
     }
 
@@ -56,7 +53,7 @@ impl StoredScope {
             baseline_ref: request
                 .baseline_ref
                 .as_ref()
-                .map(|value| value.as_str().to_owned())
+                .cloned()
                 .or_else(|| self.baseline_ref.clone()),
         }
         .normalized()
@@ -67,7 +64,6 @@ impl StoredScope {
         self.scope_summary = normalize_scope_text_option(self.scope_summary);
         self.non_goals = normalize_scope_string_list(self.non_goals);
         self.autonomy_boundary = normalize_scope_text_option(self.autonomy_boundary);
-        self.baseline_ref = normalize_scope_text_option(self.baseline_ref);
         self
     }
 }

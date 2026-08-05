@@ -67,7 +67,7 @@ pub(crate) fn baseline_matches(
         .as_ref()
         .map(BaselineRef::as_str)
         == Some(baseline_ref.as_str())
-        && task_baseline.as_deref() == Some(baseline_ref.as_str()))
+        && task_baseline.as_ref() == Some(baseline_ref))
 }
 
 pub(crate) fn workspace_context_matches(

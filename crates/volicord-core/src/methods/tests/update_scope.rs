@@ -46,7 +46,7 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
             shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
             change_unit_id: ChangeUnitId::new(&change_unit_id),
             scope_revision: 1,
-            baseline_ref: BaselineRef::new("baseline_test"),
+            baseline_ref: BaselineRef::parse("baseline_test").expect("canonical test BaselineRef"),
             user_action_resolution_ids: vec![UserActionResolutionId::new(resolution_id)],
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -87,7 +87,9 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
     baseline_update.non_goals = RequiredNullable::null();
     baseline_update.acceptance_criteria = RequiredNullable::null();
     baseline_update.autonomy_boundary = RequiredNullable::null();
-    baseline_update.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_revised"));
+    baseline_update.baseline_ref = RequiredNullable::some(
+        BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
+    );
     baseline_update.change_unit.operation = ChangeUnitOperation::ReplaceCurrent;
 
     let mut change_unit_update = update_scope_request(
@@ -550,7 +552,9 @@ fn update_scope_baseline_replacement_uses_baseline_invalidation_reason(
         ChangeUnitOperation::ReplaceCurrent,
         "Replace the current scope and baseline.",
     );
-    request.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_retargeted"));
+    request.baseline_ref = RequiredNullable::some(
+        BaselineRef::parse("baseline_retargeted").expect("canonical test BaselineRef"),
+    );
 
     let response = harness
         .service
@@ -684,7 +688,9 @@ fn keep_current_rejects_task_baseline_retarget_with_current_change_unit(
         ChangeUnitOperation::KeepCurrent,
         "Attempt to retarget only the Task baseline.",
     );
-    request.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_other"));
+    request.baseline_ref = RequiredNullable::some(
+        BaselineRef::parse("baseline_other").expect("canonical test BaselineRef"),
+    );
 
     let response = harness
         .service

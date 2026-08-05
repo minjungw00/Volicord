@@ -442,17 +442,17 @@ fn plan_update_scope_mutations(
         && current_change_unit.is_some()
         && current_scope.baseline_ref != next_scope.baseline_ref
     {
-        let authority_value = |value: Option<&str>| {
+        let authority_value = |value: Option<&volicord_types::ids::BaselineRef>| {
             value.map_or(AuthorityBasisValue::Null(()), |value| {
-                AuthorityBasisValue::String(value.to_owned())
+                AuthorityBasisValue::String(value.as_str().to_owned())
             })
         };
         return authority_basis_mismatch_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "baseline_ref",
-            authority_value(current_scope.baseline_ref.as_deref()),
-            authority_value(next_scope.baseline_ref.as_deref()),
+            authority_value(current_scope.baseline_ref.as_ref()),
+            authority_value(next_scope.baseline_ref.as_ref()),
             "baseline retargeting requires replace_current",
         );
     }
@@ -514,10 +514,7 @@ fn plan_update_scope_mutations(
         goal_summary: next_scope.goal_summary.clone(),
         scope_summary: next_scope.scope_summary.clone(),
         non_goals: next_scope.non_goals.clone(),
-        baseline_ref: next_scope
-            .baseline_ref
-            .as_ref()
-            .map(|value| volicord_types::ids::BaselineRef::new(value.clone())),
+        baseline_ref: next_scope.baseline_ref.clone(),
         autonomy_boundary: next_scope.autonomy_boundary.clone(),
         initial_context_refs: task.shaping.initial_context_refs.clone(),
         initial_source_refs: task.shaping.initial_source_refs.clone(),
@@ -692,7 +689,7 @@ fn plan_update_scope_mutations(
         if let Some(checkpoint) = current_checkpoint.as_ref() {
             let preserve_checkpoint = shaping_checkpoint_can_rebase(
                 checkpoint,
-                next_scope.baseline_ref.as_deref(),
+                next_scope.baseline_ref.as_ref(),
                 &scope_gap_applications,
                 authority_basis_changed,
             );
@@ -1159,7 +1156,7 @@ fn project_update_scope_response(
 
 fn shaping_checkpoint_can_rebase(
     checkpoint: &volicord_store::core_pipeline::ShapingCheckpointRecord,
-    next_baseline_ref: Option<&str>,
+    next_baseline_ref: Option<&volicord_types::ids::BaselineRef>,
     scope_gap_applications: &[ShapingGapApplication],
     authority_basis_changed: bool,
 ) -> bool {

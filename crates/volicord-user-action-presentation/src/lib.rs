@@ -697,7 +697,10 @@ mod tests {
                     task_id,
                     change_unit_id: RequiredNullable::null(),
                     scope_revision: 0,
-                    baseline_ref: RequiredNullable::some(BaselineRef::new("baseline-presentation")),
+                    baseline_ref: RequiredNullable::some(
+                        BaselineRef::parse("baseline-presentation")
+                            .expect("canonical test BaselineRef"),
+                    ),
                     created_at_state_version: 4,
                     compatibility_status: UserActionBasisStatus::Current,
                 },

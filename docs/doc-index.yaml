@@ -2979,8 +2979,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - storage implementers
   - maintainers
@@ -3018,8 +3018,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - storage implementers
   - API implementers
@@ -3108,8 +3108,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   primary_audience:
   - storage implementers
   - maintainers

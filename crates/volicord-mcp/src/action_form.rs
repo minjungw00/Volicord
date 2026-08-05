@@ -703,7 +703,9 @@ mod tests {
             fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: TaskId::new("task_descriptor_inputs"),
                 scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_current")),
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse("baseline_current").expect("canonical test BaselineRef"),
+                ),
                 current_change_unit_id: RequiredNullable::some(ChangeUnitId::new("cu_current")),
                 related_scope_decision_refs: Vec::new(),
                 selected_change_unit_operation: ChangeUnitOperation::KeepCurrent,
@@ -778,7 +780,9 @@ mod tests {
         let coordinates = |operation| WorkflowActionAuthorityCoordinates::UpdateScope {
             task_id: TaskId::new("task_current_change_unit_forms"),
             scope_revision: 2,
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_current")),
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_current").expect("canonical test BaselineRef"),
+            ),
             current_change_unit_id: RequiredNullable::some(ChangeUnitId::new("cu_current")),
             related_scope_decision_refs: Vec::new(),
             selected_change_unit_operation: operation,
@@ -876,7 +880,9 @@ mod tests {
                         stale_application_refs: vec![stale.clone()],
                     },
                     scope_revision: 3,
-                    baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_current")),
+                    baseline_ref: RequiredNullable::some(
+                        BaselineRef::parse("baseline_current").expect("canonical test BaselineRef"),
+                    ),
                 },
             required_refs: Vec::new(),
         };
@@ -917,7 +923,9 @@ mod tests {
                 shaping_checkpoint_id: ShapingCheckpointId::new("checkpoint_advisor"),
                 change_unit_id: ChangeUnitId::new("change_unit_advisor"),
                 scope_revision: 4,
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_advisor")),
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse("baseline_advisor").expect("canonical test BaselineRef"),
+                ),
                 user_action_resolution_ids: vec![UserActionResolutionId::new("resolution_advisor")],
             },
             required_refs: Vec::new(),
@@ -998,7 +1006,8 @@ mod tests {
             &task_id,
             20,
         );
-        let baseline = BaselineRef::new("baseline_binding_table");
+        let baseline =
+            BaselineRef::parse("baseline_binding_table").expect("canonical test BaselineRef");
         let change_unit = ChangeUnitId::new("change_unit_binding_table");
         let coordinates = vec![
             WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {

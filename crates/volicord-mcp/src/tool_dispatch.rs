@@ -1473,9 +1473,10 @@ mod mutation_projection_and_recovery_tests {
                 checkpoint_operation:
                     volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
                 scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new(
-                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                )),
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF)
+                        .expect("canonical test BaselineRef"),
+                ),
                 summary: "The evidence-producer recovery boundary is ready.".to_owned(),
                 implementation_boundary: RequiredNullable::some(
                     "Record only the scoped evidence producer.".to_owned(),
@@ -1504,9 +1505,10 @@ mod mutation_projection_and_recovery_tests {
                 shaping_checkpoint_id: ShapingCheckpointId::new(shaping_checkpoint_id),
                 change_unit_id: ChangeUnitId::new(change_unit_id),
                 scope_revision: 1,
-                baseline_ref: BaselineRef::new(
+                baseline_ref: BaselineRef::parse(
                     volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                ),
+                )
+                .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: Vec::new(),
             },
             workflow_invocation(),
@@ -1526,9 +1528,10 @@ mod mutation_projection_and_recovery_tests {
                 ),
                 task_id: task_id.clone(),
                 change_unit_id: ChangeUnitId::new(change_unit_id),
-                baseline_ref: BaselineRef::new(
+                baseline_ref: BaselineRef::parse(
                     volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                ),
+                )
+                .expect("canonical test BaselineRef"),
                 target: target.clone(),
                 capture: EvidenceCaptureSpec::VerifiedCommandExecution {
                     command_sha256: "4".repeat(64),

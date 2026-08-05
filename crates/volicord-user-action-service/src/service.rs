@@ -20,7 +20,7 @@ use volicord_store::{
     core_pipeline::{StoredArtifactRecord, UserActionStoreReader},
 };
 use volicord_types::{
-    ids::{ArtifactId, ChangeUnitId, RiskId, StorageRef, TaskId},
+    ids::{ArtifactId, BaselineRef, ChangeUnitId, RiskId, StorageRef, TaskId},
     schema::{ArtifactRef, EvidenceTarget, StateRecordRef, UserActionDraft},
     values::{
         ArtifactAvailability, ArtifactIntegrityStatus, JudgmentKind, StateRecordKind,
@@ -348,12 +348,8 @@ pub fn projected_pending_user_action_refs(
 
 fn task_baseline_ref(
     task: &volicord_store::core_pipeline::TaskRecord,
-) -> Result<Option<String>, UserActionServiceError> {
-    Ok(task
-        .shaping
-        .baseline_ref
-        .as_ref()
-        .map(|baseline_ref| baseline_ref.as_str().to_owned()))
+) -> Result<Option<BaselineRef>, UserActionServiceError> {
+    Ok(task.shaping.baseline_ref.clone())
 }
 
 fn normalize_display_text(value: &str) -> String {

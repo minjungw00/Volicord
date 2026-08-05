@@ -473,6 +473,33 @@ mod tests {
                 ..
             })
         ));
+
+        for invalid in [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ] {
+            let mut row = valid();
+            row.observed_changes_json = serde_json::json!({
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": invalid,
+            })
+            .to_string();
+            assert!(matches!(
+                decode_run_record(row),
+                Err(StoreError::CorruptOwnerStateJson {
+                    table: "runs",
+                    logical_column: "observed_changes_json",
+                    ..
+                })
+            ));
+        }
     }
 
     #[test]

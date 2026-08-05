@@ -79,6 +79,7 @@ pub struct McpToolContractDescriptor {
     input: SemanticSchemaDescriptor,
     output: SemanticSchemaDescriptor,
     decode_input: DecodeInput,
+    construction_errors: Vec<String>,
 }
 
 impl McpToolContractDescriptor {
@@ -141,18 +142,20 @@ impl McpToolContractDescriptor {
 
     /// Validates schema, example, decode, and deterministic-generation integrity.
     pub fn integrity_errors(&self) -> Vec<String> {
-        let mut errors = self
-            .input
-            .integrity_errors()
-            .into_iter()
-            .map(|error| format!("{} input: {error}", self.tool.wire_name()))
-            .chain(
-                self.output
-                    .integrity_errors()
-                    .into_iter()
-                    .map(|error| format!("{} output: {error}", self.tool.wire_name())),
-            )
-            .collect::<Vec<_>>();
+        let mut errors = self.construction_errors.clone();
+        errors.extend(
+            self.input
+                .integrity_errors()
+                .into_iter()
+                .map(|error| format!("{} input: {error}", self.tool.wire_name()))
+                .chain(
+                    self.output
+                        .integrity_errors()
+                        .into_iter()
+                        .map(|error| format!("{} output: {error}", self.tool.wire_name())),
+                )
+                .collect::<Vec<_>>(),
+        );
         for example in self.canonical_examples() {
             match self.decode_input(example.value()) {
                 Ok(round_trip) if round_trip == *example.value() => {}
@@ -276,7 +279,45 @@ where
         input: SemanticSchemaDescriptor::for_type::<I>(examples),
         output: SemanticSchemaDescriptor::for_object_output::<O>(Vec::new()),
         decode_input: decode_round_trip::<I>,
+        construction_errors: Vec::new(),
     }
+}
+
+fn checked_contract<I, O>(
+    tool: AgentToolId,
+    documentation_description: &'static str,
+    compact_description: &'static str,
+    examples: Result<Vec<CanonicalSchemaExample>, String>,
+) -> McpToolContractDescriptor
+where
+    I: McpSemanticSchema + Serialize + DeserializeOwned,
+    O: McpSemanticSchema,
+{
+    match examples {
+        Ok(examples) => contract::<I, O>(
+            tool,
+            documentation_description,
+            compact_description,
+            examples,
+        ),
+        Err(error) => {
+            let mut descriptor = contract::<I, O>(
+                tool,
+                documentation_description,
+                compact_description,
+                Vec::new(),
+            );
+            descriptor.construction_errors.push(format!(
+                "{} canonical example construction failed: {error}",
+                tool.wire_name()
+            ));
+            descriptor
+        }
+    }
+}
+
+fn example_baseline_ref(value: impl Into<String>) -> Result<BaselineRef, String> {
+    BaselineRef::parse(value).map_err(|error| error.to_string())
 }
 
 fn decode_round_trip<T: Serialize + DeserializeOwned>(value: &Value) -> Result<Value, String> {
@@ -295,7 +336,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
             "Start or resume work.",
             intake_examples(),
         ),
-        AgentToolId::UPDATE_SCOPE => contract::<
+        AgentToolId::UPDATE_SCOPE => checked_contract::<
             McpUpdateScopeArguments,
             McpMutationStructuredContent<UpdateScopeResponse, McpUpdateScopeCompactResult>,
         >(
@@ -304,7 +345,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
             "Update scope and Change Unit.",
             update_scope_examples(),
         ),
-        AgentToolId::RECORD_SHAPING_CHECKPOINT => contract::<
+        AgentToolId::RECORD_SHAPING_CHECKPOINT => checked_contract::<
             McpRecordShapingCheckpointArguments,
             McpMutationStructuredContent<
                 RecordShapingCheckpointResponse,
@@ -316,7 +357,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
             "Record shaping authority.",
             record_shaping_checkpoint_examples(),
         ),
-        AgentToolId::FINALIZE_ADVICE => contract::<
+        AgentToolId::FINALIZE_ADVICE => checked_contract::<
             McpFinalizeAdviceArguments,
             McpMutationStructuredContent<FinalizeAdviceResponse, McpFinalizeAdviceCompactResult>,
         >(
@@ -325,29 +366,14 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
             "Finalize advisor results.",
             finalize_advice_examples(),
         ),
-        AgentToolId::ADVANCE_TASK => contract::<
+        AgentToolId::ADVANCE_TASK => checked_contract::<
             McpAdvanceTaskArguments,
             McpMutationStructuredContent<AdvanceTaskResponse, McpAdvanceTaskCompactResult>,
         >(
             tool,
             "Advance an exact ready work Task checkpoint and current Change Unit into implementation.",
             "Advance work to implementation.",
-            vec![typed_example(
-                "enter_implementation",
-                "Advance one ready work Task into implementation.",
-                &McpAdvanceTaskArguments {
-                    project_selector: None,
-                    detail: MutationDetailLevel::Summary,
-                    action_form_ref: example_action_form_ref(),
-                    task_id: TaskId::new("task_shape_001"),
-                    shaping_checkpoint_id: ShapingCheckpointId::new("shaping_checkpoint_001"),
-                    change_unit_id: ChangeUnitId::new("change_unit_001"),
-                    scope_revision: 4,
-                    baseline_ref: BaselineRef::new("baseline_shape_001"),
-                    user_action_resolution_ids: Vec::new(),
-                },
-                Vec::new(),
-            )],
+            advance_task_examples(),
         ),
         AgentToolId::STATUS => contract::<
             McpStatusArguments,
@@ -367,7 +393,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
             "Read a mutation result page.",
             get_operation_result_examples(),
         ),
-        AgentToolId::PREPARE_EVIDENCE_CAPTURE => contract::<
+        AgentToolId::PREPARE_EVIDENCE_CAPTURE => checked_contract::<
             McpPrepareEvidenceCaptureArguments,
             McpMutationStructuredContent<
                 PrepareEvidenceCaptureResponse,
@@ -379,7 +405,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
             "Register evidence capture intent.",
             prepare_evidence_capture_examples(),
         ),
-        AgentToolId::PREPARE_WRITE => contract::<
+        AgentToolId::PREPARE_WRITE => checked_contract::<
             McpPrepareWriteArguments,
             McpMutationStructuredContent<PrepareWriteResponse, McpPrepareWriteCompactResult>,
         >(
@@ -397,7 +423,7 @@ fn build_tool_contract(tool: AgentToolId) -> McpToolContractDescriptor {
             "Stage an Evidence attachment.",
             stage_artifact_examples(),
         ),
-        AgentToolId::RECORD_RUN => contract::<
+        AgentToolId::RECORD_RUN => checked_contract::<
             McpRecordRunArguments,
             McpMutationStructuredContent<RecordRunResponse, McpRecordRunCompactResult>,
         >(
@@ -598,7 +624,26 @@ fn intake_examples() -> Vec<CanonicalSchemaExample> {
     .collect()
 }
 
-fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
+fn advance_task_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
+    Ok(vec![typed_example(
+        "enter_implementation",
+        "Advance one ready work Task into implementation.",
+        &McpAdvanceTaskArguments {
+            project_selector: None,
+            detail: MutationDetailLevel::Summary,
+            action_form_ref: example_action_form_ref(),
+            task_id: TaskId::new("task_shape_001"),
+            shaping_checkpoint_id: ShapingCheckpointId::new("shaping_checkpoint_001"),
+            change_unit_id: ChangeUnitId::new("change_unit_001"),
+            scope_revision: 4,
+            baseline_ref: example_baseline_ref("baseline_shape_001")?,
+            user_action_resolution_ids: Vec::new(),
+        },
+        Vec::new(),
+    )])
+}
+
+fn update_scope_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
     let keep = McpUpdateScopeArguments {
         project_selector: None,
         detail: MutationDetailLevel::Summary,
@@ -618,7 +663,11 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
         },
         related_scope_decision_refs: Vec::new(),
     };
-    let changed = |task: &str, operation, boundary: &str, path: &str| {
+    let changed = |task: &str,
+                   operation,
+                   boundary: &str,
+                   path: &str|
+     -> Result<McpUpdateScopeArguments, String> {
         let mut fields = Map::new();
         fields.insert(
             "scope_summary".to_owned(),
@@ -628,7 +677,7 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
             "affected_paths".to_owned(),
             Value::Array(vec![Value::String(path.to_owned())]),
         );
-        McpUpdateScopeArguments {
+        Ok(McpUpdateScopeArguments {
             action_form_ref: example_action_form_ref(),
             project_selector: None,
             detail: MutationDetailLevel::Summary,
@@ -646,16 +695,16 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
                 evidence_requirement: EvidenceRequirement::Required,
             }]),
             autonomy_boundary: RequiredNullable::null(),
-            baseline_ref: RequiredNullable::some(BaselineRef::new(format!("baseline_{task}"))),
+            baseline_ref: RequiredNullable::some(example_baseline_ref(format!("baseline_{task}"))?),
             change_unit: ChangeUnitUpdate {
                 operation,
                 effect_contract: None,
                 fields,
             },
             related_scope_decision_refs: Vec::new(),
-        }
+        })
     };
-    vec![
+    Ok(vec![
         typed_example(
             UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
             "Keep the current Change Unit and leave omitted scope fields unchanged.",
@@ -670,7 +719,7 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
                 ChangeUnitOperation::CreateCurrent,
                 "Saved-filter owner and label edits.",
                 "src/search/saved-filters.ts",
-            ),
+            )?,
             Vec::new(),
         ),
         typed_example(
@@ -681,13 +730,13 @@ fn update_scope_examples() -> Vec<CanonicalSchemaExample> {
                 ChangeUnitOperation::ReplaceCurrent,
                 "Saved-filter owner, label, and visibility edits.",
                 "src/search/saved-filters.ts",
-            ),
+            )?,
             Vec::new(),
         ),
-    ]
+    ])
 }
 
-fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
+fn record_shaping_checkpoint_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
     let base = |id: &str, baseline_ref, checkpoint_operation, gaps, source_refs| {
         McpRecordShapingCheckpointArguments {
             project_selector: None,
@@ -752,7 +801,7 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
             "Create the initial checkpoint with a current baseline.",
             &base(
                 "task_shape_001",
-                RequiredNullable::some(BaselineRef::new("baseline_shape_001")),
+                RequiredNullable::some(example_baseline_ref("baseline_shape_001")?),
                 ShapingCheckpointOperation::CreateInitial,
                 Vec::new(),
                 Vec::new(),
@@ -764,7 +813,7 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
             "Replace the exact current checkpoint without stale authority.",
             &base(
                 "task_shape_replace_001",
-                RequiredNullable::some(BaselineRef::new("baseline_shape_replace_001")),
+                RequiredNullable::some(example_baseline_ref("baseline_shape_replace_001")?),
                 ShapingCheckpointOperation::ReplaceCurrent {
                     expected_current_checkpoint_id: ShapingCheckpointId::new(
                         "shaping_checkpoint_current_001",
@@ -783,7 +832,7 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
             "Record one structural implementation-boundary gap.",
             &base(
                 "task_shape_structural_001",
-                RequiredNullable::some(BaselineRef::new("baseline_shape_structural_001")),
+                RequiredNullable::some(example_baseline_ref("baseline_shape_structural_001")?),
                 ShapingCheckpointOperation::CreateInitial,
                 vec![gap(
                     ShapingGapKind::ImplementationBoundaryMissing,
@@ -835,7 +884,7 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
             "Record one typed user-owned shaping decision gap.",
             &base(
                 &format!("task_{id}"),
-                RequiredNullable::some(BaselineRef::new(format!("baseline_{id}"))),
+                RequiredNullable::some(example_baseline_ref(format!("baseline_{id}"))?),
                 ShapingCheckpointOperation::CreateInitial,
                 vec![user_gap(kind, judgment, summary)],
                 Vec::new(),
@@ -848,7 +897,7 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
         "Record repository-file provenance with an exact nested source discriminator.",
         &base(
             "task_shape_source_001",
-            RequiredNullable::some(BaselineRef::new("baseline_shape_source_001")),
+            RequiredNullable::some(example_baseline_ref("baseline_shape_source_001")?),
             ShapingCheckpointOperation::CreateInitial,
             Vec::new(),
             vec![SourceRef::RepositoryFile(RepositoryFileSource {
@@ -877,7 +926,7 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
         "Replace the current checkpoint with exact retire and fresh-identity reauthorization actions.",
         &base(
             "task_shape_recovery_001",
-            RequiredNullable::some(BaselineRef::new("baseline_shape_recovery_001")),
+            RequiredNullable::some(example_baseline_ref("baseline_shape_recovery_001")?),
             ShapingCheckpointOperation::ReplaceCurrent {
                 expected_current_checkpoint_id: ShapingCheckpointId::new(
                     "shaping_checkpoint_stale_001",
@@ -935,33 +984,35 @@ fn record_shaping_checkpoint_examples() -> Vec<CanonicalSchemaExample> {
             },
         ],
     ));
-    examples
+    Ok(examples)
 }
 
-fn finalize_advice_examples() -> Vec<CanonicalSchemaExample> {
-    let base = |id: &str| McpFinalizeAdviceArguments {
-        project_selector: None,
-        detail: MutationDetailLevel::Summary,
-        action_form_ref: example_action_form_ref(),
-        task_id: TaskId::new(format!("task_{id}")),
-        shaping_checkpoint_id: ShapingCheckpointId::new(format!("shaping_checkpoint_{id}")),
-        change_unit_id: ChangeUnitId::new(format!("change_unit_{id}")),
-        scope_revision: 2,
-        baseline_ref: BaselineRef::new(format!("baseline_{id}")),
-        user_action_resolution_ids: Vec::new(),
-        result_summary: "The current advisory result is finalized.".to_owned(),
-        result_refs: Vec::new(),
-        evidence_refs: Vec::new(),
-        residual_risks: Vec::new(),
-        recovery_constraints: Vec::new(),
+fn finalize_advice_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
+    let base = |id: &str| -> Result<McpFinalizeAdviceArguments, String> {
+        Ok(McpFinalizeAdviceArguments {
+            project_selector: None,
+            detail: MutationDetailLevel::Summary,
+            action_form_ref: example_action_form_ref(),
+            task_id: TaskId::new(format!("task_{id}")),
+            shaping_checkpoint_id: ShapingCheckpointId::new(format!("shaping_checkpoint_{id}")),
+            change_unit_id: ChangeUnitId::new(format!("change_unit_{id}")),
+            scope_revision: 2,
+            baseline_ref: example_baseline_ref(format!("baseline_{id}"))?,
+            user_action_resolution_ids: Vec::new(),
+            result_summary: "The current advisory result is finalized.".to_owned(),
+            result_refs: Vec::new(),
+            evidence_refs: Vec::new(),
+            residual_risks: Vec::new(),
+            recovery_constraints: Vec::new(),
+        })
     };
-    let without_decisions = base("advice_001");
-    let mut with_decisions = base("advice_decisions_001");
+    let without_decisions = base("advice_001")?;
+    let mut with_decisions = base("advice_decisions_001")?;
     with_decisions.user_action_resolution_ids = vec![
         UserActionResolutionId::new("user_action_resolution_product_001"),
         UserActionResolutionId::new("user_action_resolution_technical_001"),
     ];
-    let mut with_evidence = base("advice_evidence_001");
+    let mut with_evidence = base("advice_evidence_001")?;
     with_evidence.result_refs = vec![state_ref(
         StateRecordKind::ProjectContinuityRecord,
         "advice_result_ref_001",
@@ -980,7 +1031,7 @@ fn finalize_advice_examples() -> Vec<CanonicalSchemaExample> {
     }];
     with_evidence.recovery_constraints =
         vec!["Revalidate provider behavior before implementation.".to_owned()];
-    vec![
+    Ok(vec![
         typed_example(
             "advisor_without_user_decisions",
             "Finalize advisor work that required no user decision.",
@@ -999,7 +1050,7 @@ fn finalize_advice_examples() -> Vec<CanonicalSchemaExample> {
             &with_evidence,
             Vec::new(),
         ),
-    ]
+    ])
 }
 
 fn status_examples() -> Vec<CanonicalSchemaExample> {
@@ -1059,20 +1110,22 @@ fn get_operation_result_examples() -> Vec<CanonicalSchemaExample> {
     )]
 }
 
-fn prepare_evidence_capture_examples() -> Vec<CanonicalSchemaExample> {
-    let common = |capture| McpPrepareEvidenceCaptureArguments {
-        project_selector: None,
-        detail: MutationDetailLevel::Summary,
-        action_form_ref: example_action_form_ref(),
-        task_id: TaskId::new("task_capture_001"),
-        change_unit_id: ChangeUnitId::new("cu_capture_001"),
-        baseline_ref: BaselineRef::new("baseline_capture_001"),
-        target: EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id: AcceptanceCriterionId::new("criterion_capture_001"),
-        },
-        capture,
+fn prepare_evidence_capture_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
+    let common = |capture| -> Result<McpPrepareEvidenceCaptureArguments, String> {
+        Ok(McpPrepareEvidenceCaptureArguments {
+            project_selector: None,
+            detail: MutationDetailLevel::Summary,
+            action_form_ref: example_action_form_ref(),
+            task_id: TaskId::new("task_capture_001"),
+            change_unit_id: ChangeUnitId::new("cu_capture_001"),
+            baseline_ref: example_baseline_ref("baseline_capture_001")?,
+            target: EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id: AcceptanceCriterionId::new("criterion_capture_001"),
+            },
+            capture,
+        })
     };
-    vec![
+    Ok(vec![
         typed_example(
             PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
             "Create an intent for a registered command evidence source.",
@@ -1081,7 +1134,7 @@ fn prepare_evidence_capture_examples() -> Vec<CanonicalSchemaExample> {
                     .to_owned(),
                 command_label: "Focused validation".to_owned(),
                 expected_exit_code: RequiredNullable::null(),
-            }),
+            })?,
             vec![
                 ExpectedTaggedVariant {
                     instance_path: "/target",
@@ -1105,7 +1158,7 @@ fn prepare_evidence_capture_examples() -> Vec<CanonicalSchemaExample> {
                 tool_input_sha256:
                     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned(),
                 expected_success: RequiredNullable::null(),
-            }),
+            })?,
             vec![
                 ExpectedTaggedVariant {
                     instance_path: "/target",
@@ -1121,11 +1174,11 @@ fn prepare_evidence_capture_examples() -> Vec<CanonicalSchemaExample> {
                 },
             ],
         ),
-    ]
+    ])
 }
 
-fn prepare_write_examples() -> Vec<CanonicalSchemaExample> {
-    vec![typed_example(
+fn prepare_write_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
+    Ok(vec![typed_example(
         PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
         "Check one Product Repository write intent.",
         &McpPrepareWriteArguments {
@@ -1138,10 +1191,10 @@ fn prepare_write_examples() -> Vec<CanonicalSchemaExample> {
             intended_paths: vec!["src/preferences/profile-save.ts".to_owned()],
             product_file_write_intended: true,
             sensitive_categories: Vec::new(),
-            baseline_ref: BaselineRef::new("baseline_pref_001"),
+            baseline_ref: example_baseline_ref("baseline_pref_001")?,
         },
         Vec::new(),
-    )]
+    )])
 }
 
 fn stage_artifact_examples() -> Vec<CanonicalSchemaExample> {
@@ -1165,8 +1218,9 @@ fn stage_artifact_examples() -> Vec<CanonicalSchemaExample> {
     )]
 }
 
-fn record_run_examples() -> Vec<CanonicalSchemaExample> {
-    vec![typed_example(
+fn record_run_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
+    let baseline_ref = example_baseline_ref("baseline_run_002")?;
+    Ok(vec![typed_example(
         RECORD_RUN_EVIDENCE_BEARING_EXAMPLE_ID,
         "Record target-scoped evidence and a close assessment.",
         &McpRecordRunArguments {
@@ -1177,7 +1231,7 @@ fn record_run_examples() -> Vec<CanonicalSchemaExample> {
             change_unit_id: ChangeUnitId::new("cu_run_002"),
             kind: RunKind::Implementation,
             run_id: RequiredNullable::null(),
-            baseline_ref: BaselineRef::new("baseline_run_002"),
+            baseline_ref: baseline_ref.clone(),
             write_ticket_id: RequiredNullable::null(),
             performed_operation: RequiredNullable::null(),
             summary: "Saved-filter validation reviewed.".to_owned(),
@@ -1185,7 +1239,7 @@ fn record_run_examples() -> Vec<CanonicalSchemaExample> {
                 changed_paths: Vec::new(),
                 product_file_write_observed: false,
                 sensitive_categories: Vec::new(),
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_run_002")),
+                baseline_ref: RequiredNullable::some(baseline_ref),
             },
             artifact_inputs: Vec::new(),
             evidence_updates: vec![McpEvidenceCoverageUpdate {
@@ -1242,7 +1296,7 @@ fn record_run_examples() -> Vec<CanonicalSchemaExample> {
                 semantic_type: "EvidenceTarget::acceptance_criterion",
             },
         ],
-    )]
+    )])
 }
 
 fn request_user_action_examples() -> Vec<CanonicalSchemaExample> {
@@ -1602,13 +1656,26 @@ mod tests {
             Some(&Value::String("null".to_owned()))
         );
 
-        let mut invalid = example.value().clone();
-        invalid["baseline_ref"] = Value::String("null".to_owned());
-        assert!(!contract
-            .input_descriptor()
-            .validate(&invalid)
-            .issues
-            .is_empty());
+        for invalid_baseline_ref in [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ] {
+            let mut invalid = example.value().clone();
+            invalid["baseline_ref"] = Value::String(invalid_baseline_ref.to_owned());
+            assert!(
+                !contract
+                    .input_descriptor()
+                    .validate(&invalid)
+                    .issues
+                    .is_empty(),
+                "record-shaping input accepted invalid BaselineRef {invalid_baseline_ref:?}"
+            );
+        }
 
         let mut omitted = example.value().clone();
         omitted

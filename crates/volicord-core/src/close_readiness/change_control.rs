@@ -301,7 +301,7 @@ fn current_close_basis_blocker(
         current_change_unit_id,
         context.task.scope_revision,
         context.task.close_basis_revision,
-        current_baseline.as_deref(),
+        current_baseline.as_ref().map(BaselineRef::as_str),
     ) {
         Ok(Some(close_blocker(
             CloseReadinessBlockerCategory::Scope,
@@ -325,7 +325,7 @@ fn current_close_basis_blocker(
                 project_state,
                 context,
                 basis,
-                current_baseline.as_deref(),
+                current_baseline.as_ref().map(BaselineRef::as_str),
             )? {
                 return Ok(Some(blocker));
             }
@@ -417,7 +417,7 @@ fn baseline_stale_for_close(context: &CloseReadinessFacts) -> CoreResult<bool> {
         return Ok(false);
     };
     let current_baseline = StoredScope::from_task(&context.task)?.baseline_ref;
-    Ok(basis.baseline_ref.as_ref().map(BaselineRef::as_str) != current_baseline.as_deref())
+    Ok(basis.baseline_ref.as_ref() != current_baseline.as_ref())
 }
 
 fn recovery_required(context: &CloseReadinessFacts) -> CoreResult<bool> {

@@ -1043,6 +1043,101 @@ mod tests {
     }
 
     #[test]
+    fn public_baseline_refs_reject_every_noncanonical_string() {
+        type BaselineRequestCase<'a> = (&'a str, fn() -> Value, &'a [&'a str]);
+
+        let cases: [BaselineRequestCase<'_>; 8] = [
+            (
+                "volicord.update_scope",
+                update_scope_request_json,
+                &["baseline_ref"],
+            ),
+            (
+                "volicord.record_shaping_checkpoint",
+                record_shaping_checkpoint_request_json,
+                &["baseline_ref"],
+            ),
+            (
+                "volicord.finalize_advice",
+                finalize_advice_request_json,
+                &["baseline_ref"],
+            ),
+            (
+                "volicord.advance_task",
+                advance_task_request_json,
+                &["baseline_ref"],
+            ),
+            (
+                "volicord.prepare_evidence_capture",
+                prepare_evidence_capture_request_json,
+                &["baseline_ref"],
+            ),
+            (
+                "volicord.prepare_write",
+                prepare_write_request_json,
+                &["baseline_ref"],
+            ),
+            (
+                "volicord.record_run",
+                record_run_request_json,
+                &["baseline_ref"],
+            ),
+            (
+                "volicord.record_run",
+                record_run_request_json,
+                &["observed_changes", "baseline_ref"],
+            ),
+        ];
+        for (method_name, sample, path) in cases {
+            for invalid in [
+                "",
+                " ",
+                "null",
+                " baseline",
+                "baseline ",
+                "\tbaseline",
+                "baseline\n",
+            ] {
+                let mut request = sample();
+                set_path(&mut request, path, json!(invalid));
+                assert!(
+                    deserialize_public_request(method_name, request).is_err(),
+                    "{method_name} must reject BaselineRef {invalid:?}"
+                );
+            }
+        }
+
+        let schema = public_request_schema("volicord.update_scope").expect("schema should exist");
+        let baseline_ref = definition(&schema, "BaselineRef");
+        assert_eq!(baseline_ref["type"], "string");
+        assert_eq!(baseline_ref["minLength"], 1);
+        assert_eq!(baseline_ref["pattern"], r"^\S(?:[\s\S]*\S)?(?![\s\S])");
+        assert_eq!(baseline_ref.pointer("/not/const"), Some(&json!("null")));
+
+        for (method_name, sample, path) in [
+            (
+                "volicord.update_scope",
+                update_scope_request_json as fn() -> Value,
+                &["baseline_ref"][..],
+            ),
+            (
+                "volicord.record_shaping_checkpoint",
+                record_shaping_checkpoint_request_json as fn() -> Value,
+                &["baseline_ref"][..],
+            ),
+            (
+                "volicord.record_run",
+                record_run_request_json as fn() -> Value,
+                &["observed_changes", "baseline_ref"][..],
+            ),
+        ] {
+            let mut request = sample();
+            set_path(&mut request, path, Value::Null);
+            assert_schema_and_serde(method_name, request, true);
+        }
+    }
+
+    #[test]
     fn public_timestamp_inputs_reject_invalid_strings() {
         for invalid in ["zzzz", "tomorrow", "9999"] {
             let mut request = request_user_action_request_json();

@@ -1341,6 +1341,78 @@ fn malformed_stored_user_action_basis_json_is_store_data_error() -> Result<(), B
 }
 
 #[test]
+fn stored_user_action_basis_rejects_every_noncanonical_baseline_without_effects(
+) -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let task_id = "task_invalid_basis_baseline";
+    let request_id = "action_invalid_basis_baseline";
+    store.commit_with(
+        commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RequestUserAction,
+            Some(&IdempotencyKey::new("idem_invalid_basis_baseline")),
+            &RequestHash::new("sha256:invalid-basis-baseline"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task("invalid_basis_baseline", task_id)],
+        ),
+        |mutation, facts| {
+            CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                user_action_request_insert(request_id, task_id, None),
+            ))
+            .apply(mutation, facts)
+            .map(|_| ())
+        },
+        response_json,
+    )?;
+    let original: String = store.conn.query_row(
+        "SELECT basis_json FROM user_action_requests
+          WHERE project_id = ?1 AND user_action_request_id = ?2",
+        params![PROJECT_ID, request_id],
+        |row| row.get(0),
+    )?;
+    assert!(store
+        .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
+        .is_some());
+    let before = store.effect_counts()?;
+
+    for invalid in [
+        "",
+        " ",
+        "null",
+        " baseline",
+        "baseline ",
+        "\tbaseline",
+        "baseline\n",
+    ] {
+        let mut basis: serde_json::Value = serde_json::from_str(&original)?;
+        basis["coordinates"]["baseline_ref"] = serde_json::json!(invalid);
+        store.conn.execute(
+            "UPDATE user_action_requests SET basis_json = ?3
+              WHERE project_id = ?1 AND user_action_request_id = ?2",
+            params![PROJECT_ID, request_id, basis.to_string()],
+        )?;
+        let error = store
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)
+            .expect_err("non-canonical stored basis BaselineRef must fail closed");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_requests",
+                logical_column: "basis_json",
+                ..
+            }
+        ));
+        assert_eq!(store.effect_counts()?, before);
+    }
+    Ok(())
+}
+
+#[test]
 fn stored_user_action_request_errors_preserve_request_and_required_for_columns(
 ) -> Result<(), Box<dyn Error>> {
     let harness = StoreHarness::new()?;

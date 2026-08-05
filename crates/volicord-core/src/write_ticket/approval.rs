@@ -301,7 +301,9 @@ mod tests {
             ],
             product_file_write_intended: true,
             sensitive_categories: vec!["network".to_owned()],
-            baseline_ref: Some(BaselineRef::new("baseline-test")),
+            baseline_ref: Some(
+                BaselineRef::parse("baseline-test").expect("canonical test BaselineRef"),
+            ),
         }
     }
 
@@ -337,7 +339,9 @@ mod tests {
                     task_id: TaskId::new(spec.task_id),
                     change_unit_id: RequiredNullable::some(ChangeUnitId::new(spec.change_unit_id)),
                     scope_revision: spec.scope_revision,
-                    baseline_ref: RequiredNullable::some(BaselineRef::new(spec.baseline_ref)),
+                    baseline_ref: RequiredNullable::some(
+                        BaselineRef::parse(spec.baseline_ref).expect("canonical test BaselineRef"),
+                    ),
                     created_at_state_version: 6,
                     compatibility_status: UserActionBasisStatus::Current,
                 },
@@ -579,7 +583,8 @@ mod tests {
         let mut changed_categories = scope();
         changed_categories.sensitive_categories = vec!["secrets".to_owned()];
         let mut changed_baseline = scope();
-        changed_baseline.baseline_ref = Some(BaselineRef::new("baseline-other"));
+        changed_baseline.baseline_ref =
+            Some(BaselineRef::parse("baseline-other").expect("canonical test BaselineRef"));
         let unchanged_scope = scope();
         let cases = [
             (&unchanged_scope, 4),

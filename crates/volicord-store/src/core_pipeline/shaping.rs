@@ -2446,7 +2446,12 @@ fn decode_checkpoint(
         predecessor_shaping_checkpoint_id: raw.predecessor_shaping_checkpoint_id,
         task_id: raw.task_id,
         scope_revision,
-        baseline_ref: raw.baseline_ref.map(BaselineRef::new),
+        baseline_ref: decode_optional_owner_baseline_ref(
+            "shaping_checkpoints",
+            record_ref.clone(),
+            "baseline_ref",
+            raw.baseline_ref,
+        )?,
         summary: raw.summary,
         implementation_boundary: raw.implementation_boundary,
         readiness,
@@ -3259,9 +3264,15 @@ fn decode_shaping_application(
         }
         ShapingDecisionApplicationAuthorityStatus::Superseded => superseded_at.is_some(),
     };
-    if !timestamps_match || raw.applied_baseline_ref.trim().is_empty() {
+    if !timestamps_match {
         return Err(corrupt("authority_status"));
     }
+    let applied_baseline_ref = decode_owner_baseline_ref(
+        "shaping_decision_applications",
+        &raw.application_id,
+        "applied_baseline_ref",
+        raw.applied_baseline_ref.clone(),
+    )?;
     let has_reauthorization_lineage: bool = conn.query_row(
         "SELECT EXISTS (
            SELECT 1 FROM shaping_authority_reauthorizations
@@ -3382,7 +3393,7 @@ fn decode_shaping_application(
         judgment_kind,
         application_owner,
         applied_scope_revision,
-        applied_baseline_ref: BaselineRef::new(raw.applied_baseline_ref),
+        applied_baseline_ref,
         applied_change_unit_id: raw.applied_change_unit_id.map(ChangeUnitId::new),
         applied_at,
         authority_status,

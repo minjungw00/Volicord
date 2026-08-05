@@ -20,7 +20,10 @@ use crate::{
         insert_artifact_staging_tx, validate_insert as validate_staging_insert,
         ArtifactStagingInsert, StagedPayloadKind,
     },
-    core_pipeline::{clock::advance_project_utc_floor_tx, CoreProjectStore},
+    core_pipeline::{
+        clock::advance_project_utc_floor_tx, validation::decode_owner_baseline_ref,
+        CoreProjectStore,
+    },
     sqlite::{begin_immediate_transaction, ARTIFACTS_DIR, ARTIFACTS_TMP_DIR},
     StoreError, StoreResult,
 };
@@ -736,7 +739,12 @@ fn decode_intent_record(
             "scope_revision",
             raw.scope_revision,
         )?,
-        baseline_ref: BaselineRef::new(raw.baseline_ref),
+        baseline_ref: decode_owner_baseline_ref(
+            "evidence_capture_intents",
+            &record_id,
+            "baseline_ref",
+            raw.baseline_ref,
+        )?,
         target: decode_owner_json(
             "evidence_capture_intents",
             &record_id,
@@ -1153,7 +1161,12 @@ fn decode_producer_record(raw: RawEvidenceProducerRecord) -> StoreResult<Evidenc
             "scope_revision",
             raw.scope_revision,
         )?,
-        baseline_ref: BaselineRef::new(raw.baseline_ref),
+        baseline_ref: decode_owner_baseline_ref(
+            "evidence_producers",
+            &record_id,
+            "baseline_ref",
+            raw.baseline_ref,
+        )?,
         producer_kind: decode_owner_value(
             "evidence_producers",
             &record_id,
@@ -1668,6 +1681,31 @@ mod tests {
                     logical_column: "capture_spec_json",
                     ..
                 })
+            ));
+        }
+    }
+
+    #[test]
+    fn capture_intent_decoder_rejects_every_noncanonical_scalar_baseline() {
+        for invalid in [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ] {
+            let mut row = valid_raw_intent();
+            row.baseline_ref = invalid.to_owned();
+            assert!(matches!(
+                decode_intent_record(row),
+                Err(StoreError::CorruptOwnerStateValue {
+                    table: "evidence_capture_intents",
+                    record_ref,
+                    logical_column: "baseline_ref",
+                    ..
+                }) if record_ref == "intent"
             ));
         }
     }

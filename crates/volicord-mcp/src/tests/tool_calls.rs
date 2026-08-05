@@ -1916,6 +1916,47 @@ fn adapter_auto_selects_single_project_and_injects_connection_invocation(
 }
 
 #[test]
+fn status_surfaces_constraint_bypassed_baseline_corruption_without_effects(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-corrupt-baseline")?;
+    let (task_id, _, shaping_checkpoint_id, _) = create_ready_for_implementation_task(&fixture)?;
+    let conn = fixture.mutation_conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
+        "UPDATE shaping_checkpoints
+            SET baseline_ref = ?3
+          WHERE project_id = ?1
+            AND shaping_checkpoint_id = ?2",
+        (
+            fixture.project_id(),
+            shaping_checkpoint_id.as_str(),
+            "baseline\n",
+        ),
+    )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
+    let before = fixture.counts()?;
+    let adapter = adapter(&fixture)?;
+
+    let response = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"detail": "full", "task_id": task_id}),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "PERSISTED_DATA_CORRUPT"
+    );
+    assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["owner_state_error"]["logical_column"],
+        "baseline_ref"
+    );
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-read-only")?;
     set_mode(&fixture, CONNECTION_MODE_READ_ONLY)?;

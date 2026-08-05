@@ -2,7 +2,6 @@ use super::model::{UserActionValidationInput, ValidatedUserActionIntent};
 use crate::error::UserActionValidationError as UserActionDomainError;
 use chrono::Duration;
 use std::collections::BTreeSet;
-use volicord_types::ids::BaselineRef;
 use volicord_types::product_path::parse_product_paths;
 use volicord_types::schema::{
     RequiredNullable, SensitiveActionScope, UserActionBasisCoordinates, UserActionDraft,
@@ -156,7 +155,7 @@ pub(super) fn validate_user_action(
         task_id: intent.task_id.clone(),
         change_unit_id: coordinate_change_unit_id.clone().into(),
         scope_revision: task_scope_revision,
-        baseline_ref: baseline_ref.map(BaselineRef::new).into(),
+        baseline_ref: baseline_ref.into(),
         created_at_state_version: state_version,
         compatibility_status: UserActionBasisStatus::Current,
     };

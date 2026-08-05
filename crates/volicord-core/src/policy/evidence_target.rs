@@ -292,7 +292,9 @@ mod tests {
             task_id: "task_target".to_owned(),
             change_unit_id: Some("change_target".to_owned()),
             scope_revision: 3,
-            baseline_ref: Some(BaselineRef::new("baseline_target")),
+            baseline_ref: Some(
+                BaselineRef::parse("baseline_target").expect("canonical test BaselineRef"),
+            ),
             status: RunStatus::Recorded,
         };
         assert_eq!(
@@ -323,7 +325,10 @@ mod tests {
             scope_revision: 3,
             task_id: TaskId::new("task_target"),
             change_unit_id: ChangeUnitId::new("change_target"),
-            baseline_ref: Some(BaselineRef::new("baseline_target")).into(),
+            baseline_ref: Some(
+                BaselineRef::parse("baseline_target").expect("canonical test BaselineRef"),
+            )
+            .into(),
             result_summary: "result".to_owned(),
             result_refs: Vec::new(),
             evidence_refs: Vec::new(),

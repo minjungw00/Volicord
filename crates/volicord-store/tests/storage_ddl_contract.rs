@@ -376,11 +376,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:90adbf18b2f3c709ee558873b41eb9db8bf96180c41c09bb6386f954547d3563"
+        "sha256:1f699b0baf9b2e51e1c0a9ae4361683daeb5ab49da3d08be1f4c3e129f6f41dd"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:499f087a43eef213a71dbf7b81fb4febd5f7da2af6e47ee8175359ae90fa71c0"
+        "sha256:92aebc3151cee07435284f793976b08c3c8666395d61bf6cb5a49346d25d6c2b"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -414,7 +414,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:90adbf18b2f3c709ee558873b41eb9db8bf96180c41c09bb6386f954547d3563\",",
+            "{\"canonical_ddl_digest\":\"sha256:1f699b0baf9b2e51e1c0a9ae4361683daeb5ab49da3d08be1f4c3e129f6f41dd\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"invocation_repository_observation\",\"managed_codex_connection\",",
@@ -422,7 +422,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
             "\"shaping_checkpoint_lineage\",",
             "\"shaping_decision_applications\",\"shaping_decision_recovery\",\"shaping_progression\",",
             "\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:499f087a43eef213a71dbf7b81fb4febd5f7da2af6e47ee8175359ae90fa71c0\"}"
+            "\"integrity_constraints_digest\":\"sha256:92aebc3151cee07435284f793976b08c3c8666395d61bf6cb5a49346d25d6c2b\"}"
         )
     );
     Ok(())
@@ -659,6 +659,90 @@ fn canonical_constraints_remain_executable() -> Result<(), Box<dyn Error>> {
         [],
     );
     assert!(duplicate.is_err());
+    Ok(())
+}
+
+#[test]
+fn baseline_scalar_constraints_are_canonical_and_readiness_uses_the_same_predicate(
+) -> Result<(), Box<dyn Error>> {
+    let project = canonical_project()?;
+    insert_project_owner(&project, current_storage_manifest_json()?)?;
+    insert_task(&project)?;
+
+    for (table, column, nullable) in [
+        ("evidence_capture_intents", "baseline_ref", false),
+        ("shaping_checkpoints", "baseline_ref", true),
+        (
+            "shaping_decision_applications",
+            "applied_baseline_ref",
+            false,
+        ),
+        ("evidence_producers", "baseline_ref", false),
+    ] {
+        let sql: String = project.query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [table],
+            |row| row.get(0),
+        )?;
+        let normalized_sql = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+        let required =
+            format!("length({column}) > 0 AND {column} = trim({column}) AND {column} <> 'null'");
+        assert!(
+            normalized_sql.contains(&required),
+            "{table}.{column}: {sql}"
+        );
+        if nullable {
+            assert!(
+                normalized_sql.contains(&format!("{column} IS NULL OR (")),
+                "{table}.{column} must preserve SQL NULL"
+            );
+        }
+    }
+
+    project.execute(
+        "INSERT INTO shaping_checkpoints (
+            project_id, shaping_checkpoint_id, task_id, scope_revision,
+            baseline_ref, summary, implementation_boundary, readiness,
+            source_refs_json, evidence_refs_json, created_at
+         ) VALUES (
+            'project_a', 'checkpoint_baseline', 'task_a', 0,
+            NULL, 'Current shaping authority.', 'Exact current boundary.', 'blocked',
+            '[]', '[]', 't0'
+         )",
+        [],
+    )?;
+    assert!(project
+        .execute(
+            "UPDATE shaping_checkpoints SET readiness = 'ready'
+              WHERE shaping_checkpoint_id = 'checkpoint_baseline'",
+            [],
+        )
+        .is_err());
+    for invalid in [
+        "",
+        " ",
+        "null",
+        " baseline",
+        "baseline ",
+        "\tbaseline",
+        "baseline\n",
+    ] {
+        assert!(project
+            .execute(
+                "UPDATE shaping_checkpoints SET baseline_ref = ?1
+                  WHERE shaping_checkpoint_id = 'checkpoint_baseline'",
+                [invalid],
+            )
+            .is_err());
+    }
+    assert_eq!(
+        project.execute(
+            "UPDATE shaping_checkpoints SET baseline_ref = 'baseline', readiness = 'ready'
+              WHERE shaping_checkpoint_id = 'checkpoint_baseline'",
+            [],
+        )?,
+        1
+    );
     Ok(())
 }
 

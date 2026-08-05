@@ -131,7 +131,12 @@ CREATE TABLE evidence_capture_intents (
   task_id TEXT NOT NULL,
   change_unit_id TEXT NOT NULL,
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
-  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
+  baseline_ref TEXT NOT NULL CHECK (
+    length(baseline_ref) > 0
+    AND baseline_ref = trim(baseline_ref)
+    AND baseline_ref <> 'null'
+    AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+  ),
   target_json TEXT NOT NULL,
   capture_kind TEXT NOT NULL CHECK (
     capture_kind IN (
@@ -281,12 +286,23 @@ CREATE TABLE shaping_checkpoints (
     readiness <> 'ready'
     OR (
       baseline_ref IS NOT NULL
-      AND length(trim(baseline_ref)) > 0
+      AND length(baseline_ref) > 0
+      AND baseline_ref = trim(baseline_ref)
+      AND baseline_ref <> 'null'
+      AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
       AND implementation_boundary IS NOT NULL
       AND length(trim(implementation_boundary)) > 0
     )
   ),
-  CHECK (baseline_ref IS NULL OR length(trim(baseline_ref)) > 0),
+  CHECK (
+    baseline_ref IS NULL
+    OR (
+      length(baseline_ref) > 0
+      AND baseline_ref = trim(baseline_ref)
+      AND baseline_ref <> 'null'
+      AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+    )
+  ),
   CHECK (
     implementation_boundary IS NULL
     OR length(trim(implementation_boundary)) > 0
@@ -500,7 +516,12 @@ CREATE TABLE shaping_decision_applications (
     )
   ),
   applied_scope_revision INTEGER NOT NULL CHECK (applied_scope_revision >= 0),
-  applied_baseline_ref TEXT NOT NULL CHECK (length(trim(applied_baseline_ref)) > 0),
+  applied_baseline_ref TEXT NOT NULL CHECK (
+    length(applied_baseline_ref) > 0
+    AND applied_baseline_ref = trim(applied_baseline_ref)
+    AND applied_baseline_ref <> 'null'
+    AND applied_baseline_ref = trim(applied_baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+  ),
   applied_change_unit_id TEXT,
   applied_at TEXT NOT NULL,
   authority_status TEXT NOT NULL CHECK (
@@ -1418,7 +1439,12 @@ CREATE TABLE evidence_producers (
   task_id TEXT NOT NULL,
   change_unit_id TEXT NOT NULL,
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
-  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
+  baseline_ref TEXT NOT NULL CHECK (
+    length(baseline_ref) > 0
+    AND baseline_ref = trim(baseline_ref)
+    AND baseline_ref <> 'null'
+    AND baseline_ref = trim(baseline_ref, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')
+  ),
   producer_kind TEXT NOT NULL CHECK (
     producer_kind IN (
       'verified_command_execution',

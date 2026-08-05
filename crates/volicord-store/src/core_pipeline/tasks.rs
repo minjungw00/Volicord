@@ -1552,6 +1552,32 @@ mod tests {
             })
         ));
 
+        for invalid in [
+            "",
+            " ",
+            "null",
+            " baseline",
+            "baseline ",
+            "\tbaseline",
+            "baseline\n",
+        ] {
+            let mut invalid_baseline = valid_record.clone();
+            invalid_baseline.shaping_summary_json =
+                serde_json::json!({"baseline_ref": invalid}).to_string();
+            assert!(matches!(
+                validate_decoded_task_record(invalid_baseline),
+                Err(StoreError::CorruptOwnerStateJson {
+                    table: "tasks",
+                    logical_column: "shaping_summary_json",
+                    ..
+                })
+            ));
+        }
+
+        let mut nullable_baseline = valid_record.clone();
+        nullable_baseline.shaping_summary_json = r#"{"baseline_ref":null}"#.to_owned();
+        assert!(validate_decoded_task_record(nullable_baseline).is_ok());
+
         let mut unknown_mode = valid_record;
         unknown_mode.mode = "legacy".to_owned();
         assert!(matches!(

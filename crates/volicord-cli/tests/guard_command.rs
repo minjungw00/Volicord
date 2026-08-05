@@ -315,9 +315,10 @@ impl GuardRepositoryFixture {
                 checkpoint_operation:
                     volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
                 scope_revision: 1,
-                baseline_ref: RequiredNullable::some(BaselineRef::new(
-                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                )),
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF)
+                        .expect("canonical test BaselineRef"),
+                ),
                 summary: "The exact write-attribution boundary is ready.".to_owned(),
                 implementation_boundary: RequiredNullable::some(
                     "Write only the intended fixture paths.".to_owned(),
@@ -345,9 +346,10 @@ impl GuardRepositoryFixture {
                 shaping_checkpoint_id: ShapingCheckpointId::new(checkpoint_id),
                 change_unit_id: ChangeUnitId::new(&change_unit_id),
                 scope_revision: 1,
-                baseline_ref: BaselineRef::new(
+                baseline_ref: BaselineRef::parse(
                     volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                ),
+                )
+                .expect("canonical test BaselineRef"),
                 user_action_resolution_ids: Vec::new(),
             },
             self.agent_invocation()?,

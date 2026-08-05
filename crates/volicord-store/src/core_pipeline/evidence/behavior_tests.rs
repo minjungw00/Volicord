@@ -175,7 +175,8 @@ fn evidence_capture_intent_insert_rejects_extended_ttl_without_effect() -> Resul
         task_id: task_id.to_owned(),
         change_unit_id: change_unit_id.to_owned(),
         scope_revision: 0,
-        baseline_ref: BaselineRef::new("baseline_capture_intent_extended_ttl"),
+        baseline_ref: BaselineRef::parse("baseline_capture_intent_extended_ttl")
+            .expect("canonical test BaselineRef"),
         target: EvidenceTarget::SupplementalClaim {
             evidence_claim_id: EvidenceClaimId::new("claim_capture_intent_extended_ttl"),
             statement: "A fixed capture-intent TTL is required.".to_owned(),
@@ -257,7 +258,9 @@ fn change_unit_insert(change_unit_id: &str, task_id: &str) -> ChangeUnitInsert {
         },
         bounded_paths: vec!["src/export.rs".to_owned()],
         write_basis: StoredChangeUnitWriteBasis {
-            baseline_ref: Some(BaselineRef::new("baseline_store")),
+            baseline_ref: Some(
+                BaselineRef::parse("baseline_store").expect("canonical test BaselineRef"),
+            ),
             git_workspace_context: None,
         },
         effect_contract: None,

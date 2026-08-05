@@ -46,6 +46,13 @@ decode합니다. Field 이름 등록이나 nullable 예외는 없습니다. Sche
 `x-volicord-semantic-type`을 포함하므로 runtime compaction이 definition을 inline해도 type
 identity가 유지됩니다.
 
+프로덕션의 모든 `BaselineRef` 구성은 checked 방식입니다. 다른 example 좌표에서
+결정적으로 조합한 값을 포함한 정규 descriptor example도 같은 checked parser를
+통과합니다. 구성 실패는 panic이나 unchecked 값이 아니라 descriptor 무결성 실패입니다.
+Wire에서 필수 nullable baseline member의 부재는 JSON `null`로 표현합니다. 문자열
+`"null"`, 빈 문자열, 앞뒤 공백이 있는 문자열은 유효하지 않으며 baseline이나 부재로
+정규화하지 않습니다.
+
 `volicord-types`는 adapter-neutral 메서드 fact, domain 값, 공개 메서드 schema만
 담당합니다. `volicord-mcp`는 이 neutral outcome을 소비해 wire 담당 값으로 변환합니다.
 Core, Store, UserAction 서비스, 관리 CLI, UserAction presentation은

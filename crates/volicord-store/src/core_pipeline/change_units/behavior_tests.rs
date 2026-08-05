@@ -222,7 +222,9 @@ fn change_unit_insert(
         },
         bounded_paths: vec!["src/export.rs".to_owned()],
         write_basis: StoredChangeUnitWriteBasis {
-            baseline_ref: Some(BaselineRef::new("baseline_store")),
+            baseline_ref: Some(
+                BaselineRef::parse("baseline_store").expect("canonical test BaselineRef"),
+            ),
             git_workspace_context: None,
         },
         effect_contract,
