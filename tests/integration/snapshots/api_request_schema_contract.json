@@ -61,7 +61,7 @@
         "task_id",
         "user_action_resolution_ids"
       ],
-      "sha256": "sha256:89ff54a07b35e4f45e516384ca7354fa688c08450e34bf1de8b06710bbed41f1"
+      "sha256": "sha256:fea53fdacd1882be74be509cdeb54647adaea0b1852c8bd56fc1be399aeaaa85"
     },
     "volicord.check_close": {
       "definitions": [
@@ -153,7 +153,7 @@
         "task_id",
         "user_action_resolution_ids"
       ],
-      "sha256": "sha256:3f6d9ed65e49f6e1e57dec76dba5e6731236c8667f27bc79b38b6e27d357df9c"
+      "sha256": "sha256:83ed795399f84988ce1bf4eb2662b6b9896ff98d2a3363ed6bea5421418a4a21"
     },
     "volicord.get_operation_result": {
       "definitions": [
@@ -269,7 +269,7 @@
         "target",
         "task_id"
       ],
-      "sha256": "sha256:5cd254149858f1aa721107ee2e43abd715966e8606f3a57c6dc6321e3aa803b6"
+      "sha256": "sha256:18627a4a2dcfbfaf639c3e7b280801eca1354eaacb8cca83eb0e4aca2d1575ed"
     },
     "volicord.prepare_write": {
       "definitions": [
@@ -301,7 +301,7 @@
         "sensitive_categories",
         "task_id"
       ],
-      "sha256": "sha256:61acaa516de6dec3929bc1459537b843b001acbf47c072eb532da550558e61ab"
+      "sha256": "sha256:77ab39aad7cca050e90ab7ecaf596f5f2e79ce033acc159ed4e07c037df01e6f"
     },
     "volicord.reconcile_changes": {
       "definitions": [
@@ -407,7 +407,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:38be1b2a7192dfb928db5bbf0aa31737157fd25c400dfcbe8762da67f9f0a3d8"
+      "sha256": "sha256:aa7aea5f8a33832e68fdf17778eabaad6dadd1c217e203ab0aeac7188aa9e99a"
     },
     "volicord.record_shaping_checkpoint": {
       "definitions": [
@@ -479,7 +479,7 @@
         "summary",
         "task_id"
       ],
-      "sha256": "sha256:29c65f4ec33939954dbd4874524ec1cceb5a415ffe6759ea5ea3cdeb41236805"
+      "sha256": "sha256:3e2d0b64ac3cb24851158422f2152aa48b32e2bc77bde26e40835be8b43a1df3"
     },
     "volicord.request_user_action": {
       "definitions": [
@@ -665,7 +665,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:e0895fcf20a62825ebd826e3f9cc927ad4a6c609a27e3b1cd324e535baa5f00b"
+      "sha256": "sha256:a8840dc53f2706dc71dc12b3308cde2e2d9034addd82ba9d965e0578de2194b4"
     }
   }
 }

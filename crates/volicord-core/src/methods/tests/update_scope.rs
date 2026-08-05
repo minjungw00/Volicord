@@ -793,7 +793,14 @@ fn keep_current_rejects_task_baseline_retarget_with_current_change_unit(
                 "semantic_variant": "replace_current_change_unit"
             },
             "blocking_refs": response.response_value["errors"][0]["details"]["blocking_refs"].clone(),
-            "current_workflow_kind": "implementation"
+            "current_workflow_kind": "implementation",
+            "incompatible_submitted_paths": ["/baseline_ref"],
+            "baseline_compatibility": {
+                "current_baseline_canonical": true,
+                "submitted_baseline_canonical": true,
+                "submitted_baseline_matches_current": false,
+                "submitted_baseline_compatible_with_transition": false
+            }
         })
     );
     assert_eq!(harness.counts()?, before);

@@ -48,6 +48,7 @@ fn valid_fixture() -> TempDir {
         "docs/ko/example.md",
         "<a id=\"overview\"></a>\n<a id=\"explicit-anchor\"></a>\n# 개요\n\n[자체](#overview), [앵커](#explicit-anchor), [README](README.md)를 참조합니다.\n",
     );
+    install_baseline_ref_contract_fixture(root);
 
     write(root, "docs/doc-index.yaml", &valid_doc_index());
     write(root, "docs/terminology-map.yaml", &valid_terminology_map());
@@ -60,6 +61,39 @@ fn write(root: &Path, path: &str, contents: &str) {
         fs::create_dir_all(parent).expect("create parent");
     }
     fs::write(root.join(path), contents).expect("write fixture file");
+}
+
+fn install_baseline_ref_contract_fixture(root: &Path) {
+    const PROJECT_SQL: &str = include_str!("../../crates/volicord-store/src/schema/project.sql");
+    const STATE_SCHEMA_EN: &str = include_str!("../../docs/en/reference/api/schema-state.md");
+    const STATE_SCHEMA_KO: &str = include_str!("../../docs/ko/reference/api/schema-state.md");
+    const BEGIN: &str = "<!-- BEGIN GENERATED: BaselineRef canonical scalar -->";
+    const END: &str = "<!-- END GENERATED: BaselineRef canonical scalar -->";
+
+    fn owner_fixture(title: &str, source: &str) -> String {
+        let begin = source.find(BEGIN).expect("canonical owner begin marker");
+        let end = source[begin..]
+            .find(END)
+            .map(|offset| begin + offset + END.len())
+            .expect("canonical owner end marker");
+        format!("# {title}\n\n{}\n", &source[begin..end])
+    }
+
+    write(
+        root,
+        "crates/volicord-store/src/schema/project.sql",
+        PROJECT_SQL,
+    );
+    write(
+        root,
+        "docs/en/reference/api/schema-state.md",
+        &owner_fixture("State schema", STATE_SCHEMA_EN),
+    );
+    write(
+        root,
+        "docs/ko/reference/api/schema-state.md",
+        &owner_fixture("상태 스키마", STATE_SCHEMA_KO),
+    );
 }
 
 fn valid_doc_index() -> String {
@@ -243,6 +277,17 @@ documents:
   last_verified_on: '2026-06-23'
   journeys:
   - learn
+- doc_id: reference.api.schema-state
+  path_en: docs/en/reference/api/schema-state.md
+  path_ko: docs/ko/reference/api/schema-state.md
+  kind: reference
+  summary: State schema contract.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
 "#
     .to_string()
 }

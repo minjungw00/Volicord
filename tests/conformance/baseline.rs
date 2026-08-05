@@ -1,6 +1,7 @@
 use std::{error::Error, fs, path::Path};
 
 use chrono::{DateTime, Duration, Utc};
+use jsonschema::{Draft, JSONSchema};
 use serde_json::{json, Value};
 use volicord_core::{
     rejected_response, tool_error, Clock, CoreOperationalOperation, CoreOperationalResource,
@@ -8,8 +9,8 @@ use volicord_core::{
     PipelineResponse,
 };
 use volicord_mcp_wire::{
-    mcp_tool_contract_integrity_errors, mcp_tool_contracts, McpInputContractValidation,
-    SemanticValidationIssueCode,
+    mcp_tool_contract, mcp_tool_contract_integrity_errors, mcp_tool_contracts,
+    McpInputContractValidation, SemanticValidationIssueCode,
 };
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, choice_user_action_resolution, observation_user_action_resolution,
@@ -31,6 +32,7 @@ use volicord_types::schema::{
     ShapingCheckpointOperation, ShapingGapInput, StagedArtifactHandle, StaleShapingAuthorityAction,
     StateRecordRef, UserActionBasis, UserActionRequestBody, UserActionResolutionBody,
 };
+use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
     ArtifactInputSourceKind, ChangeUnitEffectKind, ChangeUnitOperation, CloseIntent, CloseReason,
     EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind,
@@ -1666,15 +1668,90 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
 }
 
 #[test]
-fn persisted_task_and_change_unit_baseline_matrix_fails_closed_without_effects(
+fn baseline_ref_corpus_agrees_across_rust_schema_mcp_sqlite_and_store_decoding(
 ) -> Result<(), Box<dyn Error>> {
+    let spec = BaselineRef::spec();
+    let contract = mcp_tool_contract(AgentToolId::RECORD_SHAPING_CHECKPOINT)
+        .ok_or("record-shaping MCP contract")?;
+    let example = contract
+        .canonical_examples()
+        .iter()
+        .find(|example| example.id() == "create_initial_null_baseline")
+        .ok_or("nullable BaselineRef MCP example")?
+        .value()
+        .clone();
+    let schema = contract.input_schema();
+    let compiled_schema = JSONSchema::options()
+        .with_draft(Draft::Draft7)
+        .compile(&schema)
+        .map_err(|error| format!("generated MCP JSON Schema did not compile: {error}"))?;
+    let sqlite = rusqlite::Connection::open_in_memory()?;
+    sqlite.execute_batch(&format!(
+        "CREATE TABLE baseline_ref_corpus (
+            value TEXT NOT NULL CHECK ({})
+         );",
+        spec.sqlite_non_null_predicate("value")
+    ))?;
+    let normalized_project_ddl = volicord_store::schema::PROJECT_STATE_SCHEMA_SQL
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let normalized_baseline_predicate = spec
+        .sqlite_non_null_predicate("baseline_ref")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        normalized_project_ddl.contains(&normalized_baseline_predicate),
+        "the canonical project DDL must embed the generated BaselineRef predicate"
+    );
+
+    for valid in spec.examples {
+        let parsed = BaselineRef::parse(*valid)?;
+        assert_eq!(parsed.as_str(), *valid);
+        let mut candidate = example.clone();
+        candidate["baseline_ref"] = Value::String((*valid).to_owned());
+        assert!(compiled_schema.is_valid(&candidate));
+        assert_eq!(
+            contract.validate_and_decode_input(&candidate),
+            McpInputContractValidation::Valid
+        );
+        sqlite.execute(
+            "INSERT INTO baseline_ref_corpus (value) VALUES (?1)",
+            [*valid],
+        )?;
+    }
+
     let fixture = CoreFixture::new("corrupt-baseline-owner-matrix")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&fixture, &service, "corrupt_baseline_owner_matrix")?;
     let before = fixture.counts()?;
 
-    for invalid in BaselineRef::spec().generated_invalid_corpus() {
+    for invalid in spec.generated_invalid_corpus() {
+        assert!(BaselineRef::parse(&invalid).is_err());
+        let mut candidate = example.clone();
+        candidate["baseline_ref"] = Value::String(invalid.clone());
+        assert!(
+            !compiled_schema.is_valid(&candidate),
+            "JSON Schema accepted invalid BaselineRef {invalid:?}"
+        );
+        assert!(
+            matches!(
+                contract.validate_and_decode_input(&candidate),
+                McpInputContractValidation::Invalid(_)
+            ),
+            "MCP validation accepted invalid BaselineRef {invalid:?}"
+        );
+        assert!(
+            sqlite
+                .execute(
+                    "INSERT INTO baseline_ref_corpus (value) VALUES (?1)",
+                    [&invalid]
+                )
+                .is_err(),
+            "SQLite DDL accepted invalid BaselineRef {invalid:?}"
+        );
         fixture
             .corrupt_persisted_baseline(PersistedBaselineOwner::Task(&task_id), Some(&invalid))?;
         let status = service.status(

@@ -34,6 +34,122 @@ fn assert_transition_catalog_is_canonical(workflow: &Value) {
         );
     }
 }
+
+fn assert_action_forms_are_a_total_core_projection(
+    fixture: &CoreFixture,
+    workflow_value: &Value,
+) -> Result<(), Box<dyn Error>> {
+    let workflow: volicord_types::schema::WorkflowProjection =
+        serde_json::from_value(workflow_value.clone())?;
+    let catalog = crate::action_form::workflow_action_form_catalog(
+        &ProjectId::new(fixture.project_id()),
+        &workflow,
+    )
+    .map_err(std::io::Error::other)?;
+    let core_keys = workflow
+        .transition_catalog()
+        .transitions
+        .iter()
+        .filter(|transition| {
+            transition.actor == volicord_types::values::WorkflowTransitionActor::Agent
+        })
+        .map(|transition| {
+            (
+                transition.action_key.method.as_str().to_owned(),
+                transition.action_key.semantic_variant.as_str().to_owned(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let form_keys = catalog
+        .forms
+        .iter()
+        .map(|form| {
+            (
+                form.action_key.method.as_str().to_owned(),
+                form.action_key.semantic_variant.as_str().to_owned(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(form_keys, core_keys);
+
+    for transition in workflow
+        .transition_catalog()
+        .transitions
+        .iter()
+        .filter(|transition| {
+            transition.actor == volicord_types::values::WorkflowTransitionActor::Agent
+        })
+    {
+        volicord_core::model_check_current_transition(&workflow, transition)
+            .map_err(std::io::Error::other)?;
+        let form = catalog
+            .form(
+                transition.action_key.method,
+                transition.action_key.semantic_variant,
+            )
+            .ok_or("Agent transition omitted its exact MCP action form")?;
+        assert_eq!(form.action_key, transition.action_key);
+        assert_eq!(
+            form.expected_state_version,
+            transition.expected_state_version
+        );
+        let tool = AgentToolId::from_method(form.action_key.method)
+            .ok_or("Agent transition method omitted its MCP tool")?;
+        let contract = volicord_mcp_wire::mcp_tool_contract(tool)
+            .ok_or("Agent transition method omitted its MCP contract")?;
+        let minimal = Value::Object(form.canonical_minimal_request.clone());
+        assert_eq!(
+            contract.validate_and_decode_input(&minimal),
+            volicord_mcp_wire::McpInputContractValidation::Valid
+        );
+        assert!(crate::action_form::bind_fixed_arguments(form, &minimal)
+            .map_err(std::io::Error::other)?
+            .mismatches
+            .is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn reachable_action_form_catalogs_are_total_pure_core_projections() -> Result<(), Box<dyn Error>> {
+    let ready_fixture = CoreFixture::new("mcp-reachable-form-ready")?;
+    let ready_adapter = adapter(&ready_fixture)?;
+    let (ready_task_id, _, _, _) = create_ready_for_implementation_task(&ready_fixture)?;
+    let ready = ready_adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": ready_task_id, "detail": "workflow"}),
+    )?;
+    assert_action_forms_are_a_total_core_projection(
+        &ready_fixture,
+        &ready.response_value["active_task"]["workflow"],
+    )?;
+
+    let implementation_fixture = CoreFixture::new("mcp-reachable-form-implementation")?;
+    let implementation_adapter = adapter(&implementation_fixture)?;
+    let (implementation_task_id, _, _) = create_implementation_task(&implementation_fixture)?;
+    let implementation = implementation_adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": implementation_task_id, "detail": "workflow"}),
+    )?;
+    assert_action_forms_are_a_total_core_projection(
+        &implementation_fixture,
+        &implementation.response_value["active_task"]["workflow"],
+    )?;
+
+    let pending_fixture = CoreFixture::new("mcp-reachable-form-pending")?;
+    let (pending_task_id, _) = create_pending_product_action(&pending_fixture)?;
+    let pending_adapter = adapter(&pending_fixture)?;
+    let pending = pending_adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": pending_task_id, "detail": "workflow"}),
+    )?;
+    assert_action_forms_are_a_total_core_projection(
+        &pending_fixture,
+        &pending.response_value["active_task"]["workflow"],
+    )?;
+    Ok(())
+}
+
 use volicord_test_support::TestRuntimeHomeSetup;
 
 #[test]

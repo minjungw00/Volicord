@@ -66,6 +66,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -109,6 +110,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -200,7 +202,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:73805a4be07100c10e881aa95d981bed3ce8257946a2a7e0b4531a3260ad9149"
+        "sha256": "sha256:8ed5fe3a1b8755ab03c0a061e54428377e262055bcfe6f9402bdd0b72b270ae6"
       }
     },
     {
@@ -235,6 +237,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "EmptyEventRefs",
@@ -257,6 +260,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
@@ -310,7 +314,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:787299b93369aa36a7e072a9e5bd396a1ae871b377e41873bd387ead1adf904f"
+        "sha256": "sha256:488a155a8699cc6e6db63d697de5e827a43b5a53300132d47cf35f191f828bdd"
       }
     },
     {
@@ -355,6 +359,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -398,6 +403,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -483,7 +489,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3d57dbc859b6c1a1ace5c31fe9aee748f5c2a46860443b23cc963d16d1da4a53"
+        "sha256": "sha256:e034a32892092677946d39edc7bf3a897f062f2dbf9fe4e27b5f3aac7ddd9c80"
       }
     },
     {
@@ -507,6 +513,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "JsonValue",
@@ -517,6 +524,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -539,6 +547,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -562,7 +572,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9739c48cc7d837369b41ab6ddf178585c739099aa9f56bbf8c380df4409b70b6"
+        "sha256": "sha256:1dd6d079ec3b8da6f369167059b94c1df7d5f02d5643708eb032cedc3a746e4c"
       }
     },
     {
@@ -587,6 +597,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "GuardEventId",
@@ -604,6 +615,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -626,6 +638,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
@@ -650,7 +664,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6ce1224c0fb1824b68f336f4c7d09416edf2cb50e65679e770bb5888bad86e54"
+        "sha256": "sha256:3de1b6949f8114f7dcac65e86565a8351fbd55278ccca184fd309aff2be991f8"
       }
     },
     {
@@ -679,6 +693,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "GuardIntegrationVerificationFinding",
@@ -695,6 +710,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -717,6 +733,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
@@ -741,7 +759,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7ad33b83b93d24a484e35efcef1a0d0ce24abd1bcc9d21d49288cbfa894b5c66"
+        "sha256": "sha256:911094e7db65e3b9064bba2441ca07d09859e56cb5eab20d310f5e1f25cca168"
       }
     },
     {
@@ -770,6 +788,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "GuardEventId",
@@ -789,6 +808,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -811,6 +831,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
@@ -835,7 +857,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:91aab38779b33aabc0ddf9b461601d8beca39e9ebc4b5684aed6faa63cfbee79"
+        "sha256": "sha256:32510f4c6b99ea4214d1f90d7cfbe968fe575d48745d795090dc3144d6503bde"
       }
     }
   ]

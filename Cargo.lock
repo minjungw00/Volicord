@@ -1583,6 +1583,7 @@ name = "volicord-conformance-tests"
 version = "0.9.1"
 dependencies = [
  "chrono",
+ "jsonschema",
  "rusqlite",
  "serde_json",
  "volicord-core",

@@ -17,6 +17,12 @@ pub struct StorageEffectCounts {
     pub tool_invocations: u64,
     pub user_action_requests: u64,
     pub user_action_resolutions: u64,
+    pub shaping_checkpoints: u64,
+    pub shaping_checkpoint_gaps: u64,
+    pub shaping_checkpoint_user_actions: u64,
+    pub shaping_decision_applications: u64,
+    pub shaping_checkpoint_applications: u64,
+    pub shaping_authority_reauthorizations: u64,
     pub write_tickets: u64,
     pub runs: u64,
     pub evidence_capture_intents: u64,
@@ -30,6 +36,7 @@ pub struct StorageEffectCounts {
     pub evidence_producers: u64,
     pub blockers: u64,
     pub project_continuity_records: u64,
+    pub unrecorded_changes: u64,
 }
 
 impl CoreProjectStore<'_> {
@@ -64,6 +71,36 @@ impl CoreProjectStore<'_> {
             user_action_resolutions: table_count(
                 &self.conn,
                 "user_action_resolutions",
+                &self.project.project_id,
+            )?,
+            shaping_checkpoints: table_count(
+                &self.conn,
+                "shaping_checkpoints",
+                &self.project.project_id,
+            )?,
+            shaping_checkpoint_gaps: table_count(
+                &self.conn,
+                "shaping_checkpoint_gaps",
+                &self.project.project_id,
+            )?,
+            shaping_checkpoint_user_actions: table_count(
+                &self.conn,
+                "shaping_checkpoint_user_actions",
+                &self.project.project_id,
+            )?,
+            shaping_decision_applications: table_count(
+                &self.conn,
+                "shaping_decision_applications",
+                &self.project.project_id,
+            )?,
+            shaping_checkpoint_applications: table_count(
+                &self.conn,
+                "shaping_checkpoint_applications",
+                &self.project.project_id,
+            )?,
+            shaping_authority_reauthorizations: table_count(
+                &self.conn,
+                "shaping_authority_reauthorizations",
                 &self.project.project_id,
             )?,
             write_tickets: write_ticket_count(&self.conn, &self.project.project_id)?,
@@ -109,6 +146,11 @@ impl CoreProjectStore<'_> {
             project_continuity_records: table_count(
                 &self.conn,
                 "project_continuity_records",
+                &self.project.project_id,
+            )?,
+            unrecorded_changes: table_count(
+                &self.conn,
+                "unrecorded_changes",
                 &self.project.project_id,
             )?,
         })

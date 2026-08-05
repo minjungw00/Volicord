@@ -104,6 +104,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -158,6 +159,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -247,7 +249,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c8e3c997daac2767003f991244f06f65c48f58ced79650ccb995d29cbc10ba2a"
+        "sha256": "sha256:6701155e0c1baef05e5a9fd947335336783e58e907b9b5d97bc92e8eec9bbc35"
       }
     },
     {
@@ -304,7 +306,7 @@
           "scope_update",
           "task_id"
         ],
-        "sha256": "sha256:c418897442a05ad83c45e85751103cc3ae1407a4d5ef68ebac38904d3a4876ab"
+        "sha256": "sha256:cb24cd0d0d2d0eaa545c6ecad4d8b372842ecc774c103e55d906e29f56da4c34"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -324,6 +326,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -377,6 +380,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -468,7 +472,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0ed3fbd8220a37a28db34d7347aae98acb65cdc255444a44ae3e24f0143309e9"
+        "sha256": "sha256:f017a7fbb78162a5d0ce95e09b36b5da85414155f1985f400772a0e78c69df20"
       }
     },
     {
@@ -547,7 +551,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:30e421bf3c567700ed477ac4a89af7d8c7a9a3ad7c6daafa17d61da4dd0515ea"
+        "sha256": "sha256:c134d82218151895edab8d5f85f270bb2bd9f1373f116c70e9d43926acecdf82"
       },
       "name": "volicord.record_shaping_checkpoint",
       "output_schema": {
@@ -567,6 +571,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -624,6 +629,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -720,7 +726,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:24ac3ea41d5ade15c94d1dfb8fb97aceb109a52f59386af7b0028bfb0a27ef5c"
+        "sha256": "sha256:5e9f20a219b6e1c56af2c9fe3dbb9ab2380e08697b56e5a7266e49027b9f5cee"
       }
     },
     {
@@ -771,7 +777,7 @@
           "shaping_checkpoint_id",
           "task_id"
         ],
-        "sha256": "sha256:ab5c70f66718a37150e281a9b651a2414ecd2e923f566326ce511e1f9ac0a1a6"
+        "sha256": "sha256:bfa0c7ea998fc2c0e8c4275de92f43321352668af32ab85516db178756722fbc"
       },
       "name": "volicord.finalize_advice",
       "output_schema": {
@@ -791,6 +797,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -850,6 +857,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -944,7 +952,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a2661499bb91e8ad2b1d67a463c704294fef19426ed057a8a6eb79ccc49a1e06"
+        "sha256": "sha256:4247f939255f056fc54847fbeaea9a9f30b886f3df2aa02f71d783c1d736d93a"
       }
     },
     {
@@ -984,7 +992,7 @@
           "shaping_checkpoint_id",
           "task_id"
         ],
-        "sha256": "sha256:327266602e42bbdabd223f2a9711ea7e625e7bfd577826cff0d76574ad27aaf7"
+        "sha256": "sha256:2c627cb934e90eba4f2b0dad30c3ee04b94517b05e20c8a7f877b8778c6b4421"
       },
       "name": "volicord.advance_task",
       "output_schema": {
@@ -1006,6 +1014,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -1059,6 +1068,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -1148,7 +1158,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5228638629aa06bd249f9a3b281631509a8193b3c98daf4da70263a4fc11e206"
+        "sha256": "sha256:6a7d89faa0e574b3261e1dbe546e6172ab6a5e9169c669e06e5127c2dc26a03d"
       }
     },
     {
@@ -1197,6 +1207,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -1240,6 +1251,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -1331,7 +1343,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:73805a4be07100c10e881aa95d981bed3ce8257946a2a7e0b4531a3260ad9149"
+        "sha256": "sha256:8ed5fe3a1b8755ab03c0a061e54428377e262055bcfe6f9402bdd0b72b270ae6"
       }
     },
     {
@@ -1366,6 +1378,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "EmptyEventRefs",
@@ -1388,6 +1401,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
@@ -1441,7 +1455,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:787299b93369aa36a7e072a9e5bd396a1ae871b377e41873bd387ead1adf904f"
+        "sha256": "sha256:488a155a8699cc6e6db63d697de5e827a43b5a53300132d47cf35f191f828bdd"
       }
     },
     {
@@ -1482,7 +1496,7 @@
           "target",
           "task_id"
         ],
-        "sha256": "sha256:4994503f7f9d9500917e724333156803c9d7a276f90ed35838757a13c872fb2a"
+        "sha256": "sha256:726192d4b1ac23b9fec44403b7d7e7abd74ad703d1444f6bebc35823f2b67b67"
       },
       "name": "volicord.prepare_evidence_capture",
       "output_schema": {
@@ -1493,6 +1507,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "CloseReadinessBlocker",
@@ -1534,6 +1549,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -1605,7 +1621,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6f643264879c41e60df527166c06df424294e14879627c9951316e7cecff687e"
+        "sha256": "sha256:b49451a1601188b252fcff301d2a5a73f0f0e84219eeb492672eb209fab2a235"
       }
     },
     {
@@ -1645,7 +1661,7 @@
           "product_file_write_intended",
           "task_id"
         ],
-        "sha256": "sha256:fe4f3fb23e3acb41eb052c6b6aa85eadbb658fbdcb211080a0bcf8a0fa8c853a"
+        "sha256": "sha256:f0447742625e3446a39c5c81e566998d793e775c4f21a55639acdc99a8eb955e"
       },
       "name": "volicord.prepare_write",
       "output_schema": {
@@ -1666,6 +1682,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -1721,6 +1738,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -1827,7 +1845,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fd8e2291fabfd7e381c79a4b94600b01e3601d547b8724964b277d6585c5b496"
+        "sha256": "sha256:88aefd9b868aed83ce9fe9f6847439f91ccc6434569473402117bc970f4ec1b0"
       }
     },
     {
@@ -1879,6 +1897,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "CloseReadinessBlocker",
@@ -1915,6 +1934,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -1989,7 +2009,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:526a9970967bd91fdf632c0327c800eee4fb477b40dec9625dd11754b88a337b"
+        "sha256": "sha256:b62537eea4203428a6c58cc1dc73729b461695cd0a49b5a3066dfb6315f066a5"
       }
     },
     {
@@ -2079,7 +2099,7 @@
           "task_id",
           "write_ticket_id"
         ],
-        "sha256": "sha256:6564132f2056c4088c9c1e487fcd7e8087b68eb65d56d83bc0b50e18f0f764d5"
+        "sha256": "sha256:bd6539e57dc1ce800b097d5f0d13acaa5fa3c5860099bd5f1afe955edff2c17b"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -2100,6 +2120,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -2171,6 +2192,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -2271,7 +2293,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9f330d145baaa03cfe0baa31e89392a52013e181f483eac46a27ebef1ded6ac2"
+        "sha256": "sha256:475b43b90ab18eee0febcbae7a7ccfbccf9d9f5f1d3d8ccc57c8105061dd6851"
       }
     },
     {
@@ -2345,6 +2367,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -2403,6 +2426,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -2497,7 +2521,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d2cb64cb3e5996455ca45876c853b5d11b57cfed136035fc3d7262623183fbee"
+        "sha256": "sha256:f5ed865ba273ec72a105d09210b2cf651775726fd528f7d1fedefc7941924d65"
       }
     },
     {
@@ -2549,6 +2573,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -2602,6 +2627,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -2701,7 +2727,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8e8e222c61befb678170081b26fd9507b0194645e65c7278c88d1b0876a39eae"
+        "sha256": "sha256:208827eb260fab4c028a449a93f75816dd4cdc034f64e092c2ba23a5d53c2fd4"
       }
     },
     {
@@ -2746,6 +2772,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -2789,6 +2816,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -2874,7 +2902,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3d57dbc859b6c1a1ace5c31fe9aee748f5c2a46860443b23cc963d16d1da4a53"
+        "sha256": "sha256:e034a32892092677946d39edc7bf3a897f062f2dbf9fe4e27b5f3aac7ddd9c80"
       }
     },
     {
@@ -2931,6 +2959,7 @@
           "AuthorityNextActor",
           "AuthorityReceipt",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -2986,6 +3015,7 @@
           "McpUserChannelInstructions",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowBlockerSummary",
+          "McpWorkflowContractDiagnostics",
           "McpWorkflowPresentation",
           "MethodName",
           "MutationDetailLevel",
@@ -3084,7 +3114,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ed3c58016d1e02941a3587caa8c3e2270e7f5b8898f73dba54039e5139ada484"
+        "sha256": "sha256:eec70a6216b68234fe9785d5629f9f44ed0aaa2ca989b8bddf1a48e4e06b1bbc"
       }
     },
     {
@@ -3108,6 +3138,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "JsonValue",
@@ -3118,6 +3149,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -3140,6 +3172,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -3163,7 +3197,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9739c48cc7d837369b41ab6ddf178585c739099aa9f56bbf8c380df4409b70b6"
+        "sha256": "sha256:1dd6d079ec3b8da6f369167059b94c1df7d5f02d5643708eb032cedc3a746e4c"
       }
     },
     {
@@ -3188,6 +3222,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "GuardEventId",
@@ -3205,6 +3240,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -3227,6 +3263,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
@@ -3251,7 +3289,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6ce1224c0fb1824b68f336f4c7d09416edf2cb50e65679e770bb5888bad86e54"
+        "sha256": "sha256:3de1b6949f8114f7dcac65e86565a8351fbd55278ccca184fd309aff2be991f8"
       }
     },
     {
@@ -3280,6 +3318,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "GuardIntegrationVerificationFinding",
@@ -3296,6 +3335,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -3318,6 +3358,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
@@ -3342,7 +3384,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7ad33b83b93d24a484e35efcef1a0d0ce24abd1bcc9d21d49288cbfa894b5c66"
+        "sha256": "sha256:911094e7db65e3b9064bba2441ca07d09859e56cb5eab20d310f5e1f25cca168"
       }
     },
     {
@@ -3371,6 +3413,7 @@
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "BaselineRef",
+          "BaselineTransitionCompatibility",
           "ChangeUnitId",
           "ChangeUnitOperation",
           "GuardEventId",
@@ -3390,6 +3433,7 @@
           "McpToolErrorIssue",
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
+          "McpWorkflowContractDiagnostics",
           "MethodName",
           "ProjectId",
           "RecordId",
@@ -3412,6 +3456,8 @@
           "TaskId",
           "TaskMode",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
@@ -3436,7 +3482,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:91aab38779b33aabc0ddf9b461601d8beca39e9ebc4b5684aed6faa63cfbee79"
+        "sha256": "sha256:32510f4c6b99ea4214d1f90d7cfbe968fe575d48745d795090dc3144d6503bde"
       }
     }
   ]

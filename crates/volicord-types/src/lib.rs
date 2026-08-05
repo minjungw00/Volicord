@@ -3065,6 +3065,8 @@ mod tests {
                 "method": "volicord.record_shaping_checkpoint",
                 "semantic_variant": "create_initial"
             },
+            "incompatible_submitted_paths": [],
+            "baseline_compatibility": null,
             "blocking_refs": [],
             "current_workflow_kind": "shaping_required"
         })
