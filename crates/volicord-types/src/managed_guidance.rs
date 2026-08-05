@@ -7,9 +7,9 @@ use crate::ids::RequestHash;
 
 /// Closed semantic facts that every managed agent-guidance rendering preserves.
 pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
-    "follow_tagged_required_action",
-    "tagged_workflow_action_catalog_is_mutation_admission_authority",
-    "call_only_currently_allowed_task_bound_method",
+    "follow_tagged_required_transition",
+    "tagged_workflow_transition_catalog_is_mutation_admission_authority",
+    "call_only_currently_executable_agent_transition",
     "use_exact_method_and_semantic_variant_action_form",
     "copy_and_preserve_fixed_authority_arguments_exactly",
     "action_form_never_authorizes_different_method_or_semantic_variant",
@@ -72,11 +72,12 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
 
 /// Closed semantics whose change invalidates state-bound workflow action contracts.
 pub const WORKFLOW_ACTION_CONTRACT_FACTS: &[&str] = &[
-    "core_owns_workflow_action_catalog",
-    "catalog_contains_one_group_for_every_allowed_task_bound_method",
+    "core_owns_workflow_machine_and_transition_catalog",
+    "catalog_contains_every_current_executable_transition",
     "catalog_contains_every_current_method_owned_semantic_variant",
-    "required_method_variants_are_alternative_actions",
-    "catalog_contains_no_disallowed_task_bound_method",
+    "catalog_contains_zero_or_one_required_transition",
+    "required_transition_is_a_catalog_member",
+    "catalog_contains_no_non_executable_task_bound_transition",
     "mcp_projects_each_descriptor_bound_action_form",
     "form_ref_binds_project_task_method_variant_state_coordinates_and_schema",
     "task_bound_method_is_admitted_before_core",

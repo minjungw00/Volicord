@@ -1,9 +1,9 @@
 # Agent Connection Reference
 
 Workflow-mode connections may dispatch the supported Agent-owned methods. The
-returned tagged workflow action catalog admits Task-state-bound mutations, and
+returned tagged workflow transition catalog admits Task-state-bound mutations, and
 each admitted method variant requires its exact current method-and-variant form
-before Core. `required_action` is selected by progression state, while close
+before Core. The machine-selected required transition is progression state, while close
 blockers remain a separate close-readiness projection.
 
 This document defines the current `host_kind=codex` Agent Connection contract. It owns the
@@ -777,7 +777,7 @@ identity/policy hash or explicit absence of Guard ownership, the repository
 observer semantic contract digest, and the canonical Product Repository
 effect-catalog digest. It also binds the digest of the complete current
 `StorageManifest` and three current semantic digests: managed agent guidance,
-the workflow action contract, and the MCP semantic schema. The storage-manifest
+the workflow transition contract, and the MCP semantic schema. The storage-manifest
 digest covers its contract identity, canonical DDL and integrity-constraint
 digests, and complete capability set. The guidance digest covers the closed
 current workflow facts rendered into the managed `AGENTS.md` block and MCP

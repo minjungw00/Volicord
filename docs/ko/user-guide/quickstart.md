@@ -53,7 +53,7 @@ hook 또는 Codex 대화에서 얻어야 하는 Guard evidence를 대신하지 �
 
 ## 4. 작업 시작
 
-`volicord.status`로 시작합니다. 반환된 태그 기반 `workflow.required_action`과 정확한
+`volicord.status`로 시작합니다. 반환된 태그 기반 `workflow.transition_catalog`의 필수 transition과 정확한
 참조 및 상태 버전을 따릅니다. work Task는 shaping을 기록한 뒤 명시적으로
 implementation으로 진행합니다. 제품 파일 쓰기 전에 쓰기 티켓을 얻고, 작업과 증거를
 기록하며, 작업이 준비된 뒤 의도적인 close review 중에만 닫기 준비 상태를 사용합니다.

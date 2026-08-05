@@ -58,7 +58,7 @@ for its exact effects.
 ## 4. Start Work
 
 Begin with `volicord.status`. Follow the returned tagged
-`workflow.required_action` and its exact refs and state version. A work Task
+the required entry in `workflow.transition_catalog` and its exact refs and state version. A work Task
 records shaping before it advances explicitly to implementation; obtain a Write
 Ticket before product-file writes, record work and evidence, and use close
 readiness only during an intentional close review after the work is ready.

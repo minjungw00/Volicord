@@ -243,7 +243,7 @@ shared_documents:
 - doc_id: terminology.map
   path: docs/terminology-map.yaml
   kind: maintenance
-  summary: Structured terminology metadata for current shaping authority, workflow action catalogs,
+  summary: Structured terminology metadata for current shaping authority, workflow transition catalogs,
     method-and-variant forms, canonical BaselineRef integrity, type-owned MCP semantic schemas,
     immutable history, stale reauthorization, normalized write authority, shaping-decision lifecycle,
     and identifier presentation and preservation policy.
@@ -272,7 +272,7 @@ shared_documents:
     and verification-criteria terminology distinctions
   - shaping request status, exact decision outcome, recovery, first-class application,
     coordinate validity, checkpoint carry-forward, and authority invalidation distinctions
-  - workflow action catalog, method-and-semantic-variant action form, fixed authority argument, authoritative
+  - workflow transition catalog, method-and-semantic-variant action form, fixed authority argument, authoritative
     argument context, retry contract, and type-owned MCP semantic schema terminology
   - actor_source and operation_category terminology distinctions
   - natural Korean terminology guidance
@@ -720,7 +720,7 @@ documents:
   summary: Source path responsibility map for current Rust workspace modules, including the current
     effective shaping authority graph, immutable history, stale reauthorization, checkpoint
     succession, application carry-forward and ownership, advisor finalization, tagged workflow
-    action catalogs, managed-guidance, action-contract, and semantic-schema revision identities,
+    transition catalogs, managed-guidance, transition-contract, and semantic-schema revision identities,
     and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
@@ -1683,7 +1683,8 @@ documents:
   kind: reference
   summary: Reference contract for current effective shaping authority, immutable history, checkpoint
     and application lineage, stale reauthorization, owner-specific decision application, advisor
-    finalization, Task-wide tagged workflow action catalogs, implementation admission, and close review.
+    finalization, normalized workflow snapshots, the pure workflow machine, tagged transition catalogs,
+    implementation admission, and close review.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
@@ -1922,8 +1923,8 @@ documents:
   - selected-profile server capability and JSON-RPC batch behavior
   - canonical tool registry and capability-driven `tools/list` field projection
   - public MCP routing for `volicord.record_shaping_checkpoint`, `volicord.finalize_advice`, and `volicord.advance_task`
-  - Core-owned workflow action catalog admission with exact required versus allowed method groups
-    and one distinct action form for each currently allowed method-and-variant mutation
+  - Core-owned workflow transition catalog admission with exact required versus allowed descriptor roles
+    and one distinct action form for each currently executable Agent method-and-variant transition
   - exact fixed-authority-argument binding, Agent-authored input separation, and omission of redundant
     current or predecessor checkpoint mutation mirrors
   - type-owned MCP semantic constraints, generic required-nullable semantics, explicit discriminators,
@@ -2555,7 +2556,7 @@ documents:
   kind: reference
   summary: Reference contract for state API schema families, including checkpoint and reauthorization
     lineage, stale-authority actions, structural readiness, decision application owners, and the
-    tagged workflow action catalog.
+    normalized workflow snapshot, pure workflow machine, and tagged transition catalog.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -2589,8 +2590,9 @@ documents:
   - operate
   canonical_for:
   - state schemas
-  - tagged `WorkflowProjection.required_action` authority independent of top-level array ordering
-  - complete current Task-state-bound workflow action catalog and required-versus-allowed roles
+  - tagged `WorkflowProjection.transition_catalog` authority independent of top-level array ordering
+  - normalized `WorkflowSnapshot` and canonical pure `WorkflowMachine`
+  - complete current Task-state-bound transition catalog and required-versus-allowed roles
   - shaping checkpoint lineage, gap, structural readiness, application owner, and shaping-owned UserAction link shapes
   - exact replacement operation, stale-authority action, application timestamp, and immutable reauthorization shapes
   - Task-wide shaping decision gates and `ready_to_finalize_advice` projection
@@ -3224,7 +3226,7 @@ documents:
   path_en: docs/en/reference/template-bodies.md
   path_ko: docs/ko/reference/template-bodies.md
   kind: reference
-  summary: Reference contract for exact template body ownership, including workflow catalog admission,
+  summary: Reference contract for exact template body ownership, including workflow transition catalog admission,
     method-and-variant forms, exact fixed authority arguments, type-owned MCP schemas, current shaping
     authority, immutable history, stale retirement or reauthorization, UserAction,
     rejection/recovery surfacing, and close-review guidance.
@@ -3243,7 +3245,7 @@ documents:
   - implement
   canonical_for:
   - rendered template body guidance
-  - current workflow catalog, action-form, fixed-authority-argument, MCP schema, retry, and pre-Core reporting guidance
+  - current workflow transition catalog, action-form, fixed-authority-argument, MCP schema, retry, and pre-Core reporting guidance
   - user-facing label and display wording
   - public-error display labels
   - display wording versus Core authority and API error semantics

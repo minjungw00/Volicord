@@ -183,13 +183,15 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
             "{coordinate}"
         );
         let update_scope_variants = status.response_value["active_task"]["workflow"]
-            ["action_catalog"]["actions"]
+            ["transition_catalog"]["transitions"]
             .as_array()
-            .expect("workflow action catalog")
+            .expect("workflow transition catalog")
             .iter()
-            .filter(|action| action["method"] == MethodName::UpdateScope.as_str())
-            .map(|action| {
-                action["semantic_variant"]
+            .filter(|transition| {
+                transition["action_key"]["method"] == MethodName::UpdateScope.as_str()
+            })
+            .map(|transition| {
+                transition["action_key"]["semantic_variant"]
                     .as_str()
                     .expect("update-scope semantic variant")
             })
@@ -292,7 +294,8 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
         "shaping_required"
     );
     assert_eq!(
-        response.response_value["state"]["workflow"]["required_action"],
+        response.response_value["state"]["workflow"]["transition_catalog"]["transitions"][0]
+            ["action_key"]["method"],
         "volicord.record_shaping_checkpoint"
     );
 
@@ -308,7 +311,8 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
         invocation(OperationCategory::Read),
     )?;
     assert_eq!(
-        status.response_value["active_task"]["workflow"]["required_action"],
+        status.response_value["active_task"]["workflow"]["transition_catalog"]["transitions"][0]
+            ["action_key"]["method"],
         "volicord.record_shaping_checkpoint"
     );
     Ok(())
@@ -342,24 +346,42 @@ fn ready_without_change_unit_catalog_exposes_only_create_variant() -> Result<(),
         None,
         &project_state.updated_at,
     )?;
-    let catalog = crate::workflow_projection::workflow_action_catalog(
-        Some(MethodName::UpdateScope),
-        &[MethodName::UpdateScope],
+    let project_id = ProjectId::new(PROJECT_ID);
+    let snapshot = crate::workflow_projection::WorkflowSnapshot::new(
+        &project_id,
         project_state.state_version,
         &task,
         None,
         None,
         &authority,
-        &[],
-    );
-    assert_eq!(catalog.actions.len(), 1);
-    assert_eq!(catalog.actions[0].method, MethodName::UpdateScope);
+        None,
+        Vec::new(),
+    )?;
+    let catalog = crate::workflow_projection::workflow_transition_catalog(
+        Some(
+            volicord_types::schema::WorkflowActionKey::new(
+                MethodName::UpdateScope,
+                WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+            )
+            .expect("current update-scope transition key"),
+        ),
+        &[MethodName::UpdateScope],
+        &snapshot,
+    )?;
+    assert_eq!(catalog.transitions.len(), 1);
     assert_eq!(
-        catalog.actions[0].semantic_variant,
+        catalog.transitions[0].action_key.method,
+        MethodName::UpdateScope
+    );
+    assert_eq!(
+        catalog.transitions[0].action_key.semantic_variant,
         WorkflowActionSemanticVariant::CreateCurrentChangeUnit
     );
     assert_eq!(
-        catalog.actions[0].semantic_variant.change_unit_operation(),
+        catalog.transitions[0]
+            .action_key
+            .semantic_variant
+            .change_unit_operation(),
         Some(ChangeUnitOperation::CreateCurrent)
     );
     Ok(())
@@ -432,21 +454,33 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
         None,
         &project_state.updated_at,
     )?;
-    let catalog = crate::workflow_projection::workflow_action_catalog(
-        Some(MethodName::UpdateScope),
-        &[MethodName::UpdateScope],
+    let project_id = ProjectId::new(PROJECT_ID);
+    let snapshot = crate::workflow_projection::WorkflowSnapshot::new(
+        &project_id,
         project_state.state_version,
         &task,
         Some(&current_change_unit),
         None,
         &authority,
-        &[],
-    );
+        None,
+        Vec::new(),
+    )?;
+    let catalog = crate::workflow_projection::workflow_transition_catalog(
+        Some(
+            volicord_types::schema::WorkflowActionKey::new(
+                MethodName::UpdateScope,
+                WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+            )
+            .expect("current update-scope transition key"),
+        ),
+        &[MethodName::UpdateScope],
+        &snapshot,
+    )?;
     let current_variants = catalog
-        .actions
+        .transitions
         .iter()
-        .filter(|action| action.method == MethodName::UpdateScope)
-        .map(|action| action.semantic_variant.as_str())
+        .filter(|transition| transition.action_key.method == MethodName::UpdateScope)
+        .map(|transition| transition.action_key.semantic_variant.as_str())
         .collect::<Vec<_>>();
     assert_eq!(
         current_variants,

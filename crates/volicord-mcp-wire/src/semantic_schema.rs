@@ -185,6 +185,7 @@ pub const MCP_TAGGED_UNION_CONTRACTS: &[McpTaggedUnionContract] = &[
             "stage_artifact",
             "record_run",
             "request_user_action",
+            "resolve_user_action",
             "reconcile_changes",
             "check_close",
             "close_task"

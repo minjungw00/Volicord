@@ -353,7 +353,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         "shaping_required",
     );
     let task_id = required_string(&intake_result["task_ref"], "record_id")?;
-    let action_form_ref = required_action_form_ref(&intake)?;
+    let action_form_ref = required_transition_form_ref(&intake)?;
     let state_db = fixture.project_state_db_path();
     let before_invalid = rusqlite::Connection::open(&state_db)?;
     let invalid_counts = (
@@ -770,7 +770,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         method_result(&decisions_ready)["active_task"]["workflow"]["kind"],
         "ready_to_apply_decisions"
     );
-    let update_scope_form_ref = required_action_form_ref(&decisions_ready)?;
+    let update_scope_form_ref = required_transition_form_ref(&decisions_ready)?;
     assert_ne!(update_scope_form_ref, action_form_ref);
     let scope_arguments = bound_action_arguments(
         &decisions_ready,
@@ -856,7 +856,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     )?;
     call_id += 1;
     assert_eq!(scope["workflow"]["kind"], "ready_for_implementation");
-    let advance_form_ref = required_action_form_ref(&scope)?;
+    let advance_form_ref = required_transition_form_ref(&scope)?;
     assert_ne!(advance_form_ref, update_scope_form_ref);
     let ready_status = live_mcp_call(
         &mut child,
@@ -871,7 +871,10 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         method_result(&ready_status)["active_task"]["workflow"]["kind"],
         "ready_for_implementation"
     );
-    assert_eq!(required_action_form_ref(&ready_status)?, advance_form_ref);
+    assert_eq!(
+        required_transition_form_ref(&ready_status)?,
+        advance_form_ref
+    );
     let advance_arguments = bound_action_arguments(
         &ready_status,
         AgentToolId::ADVANCE_TASK,
@@ -1337,7 +1340,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         intake["presentation"]["task_phase"]["work_phase"],
         "shaping"
     );
-    let initial_checkpoint_action_form_ref = required_action_form_ref(&intake)?;
+    let initial_checkpoint_action_form_ref = required_transition_form_ref(&intake)?;
 
     let action = |kind: &str, question: &str, options: Value, produced_at_state_version: u64| {
         json!({
@@ -1560,8 +1563,8 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         "rejected"
     );
     assert_eq!(
-        rejected["state"]["workflow"]["required_action"],
-        "volicord.record_shaping_checkpoint"
+        required_transition_method(&rejected["state"]["workflow"]),
+        Some("volicord.record_shaping_checkpoint")
     );
     let recovery_status = live_mcp_call(
         &mut child,
@@ -1573,13 +1576,18 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     )?;
     call_id += 1;
     let recovery_status_workflow = &method_result(&recovery_status)["active_task"]["workflow"];
-    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+    for field in [
+        "kind",
+        "next_actor",
+        "transition_catalog",
+        "blocking_reason",
+    ] {
         assert_eq!(
             rejected["state"]["workflow"][field], recovery_status_workflow[field],
             "rejected result and subsequent status disagree on {field}"
         );
     }
-    let recovery_checkpoint_action_form_ref = required_action_form_ref(&recovery_status)?;
+    let recovery_checkpoint_action_form_ref = required_transition_form_ref(&recovery_status)?;
 
     let recovered_shaping = live_mcp_call(
         &mut child,
@@ -1650,7 +1658,12 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     )?;
     call_id += 1;
     let recovered_status_workflow = &method_result(&recovered_status)["active_task"]["workflow"];
-    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+    for field in [
+        "kind",
+        "next_actor",
+        "transition_catalog",
+        "blocking_reason",
+    ] {
         assert_eq!(
             recovered_shaping_result["workflow"][field], recovered_status_workflow[field],
             "recovery mutation and subsequent status disagree on {field}"
@@ -6568,7 +6581,15 @@ fn method_result(structured: &Value) -> &Value {
     structured.get("method_result").unwrap_or(structured)
 }
 
-fn required_action_form_ref(structured: &Value) -> Result<String, Box<dyn Error>> {
+fn required_transition_method(workflow: &Value) -> Option<&str> {
+    workflow["transition_catalog"]["transitions"]
+        .as_array()?
+        .iter()
+        .find(|transition| transition["role"] == "required")?["action_key"]["method"]
+        .as_str()
+}
+
+fn required_transition_form_ref(structured: &Value) -> Result<String, Box<dyn Error>> {
     ["/action_form_catalog", "/presentation/action_form_catalog"]
         .into_iter()
         .find_map(|pointer| {
@@ -6583,7 +6604,9 @@ fn required_action_form_ref(structured: &Value) -> Result<String, Box<dyn Error>
             })
         })
         .ok_or_else(|| {
-            format!("required action-form catalog entry should include a form_ref in {structured}")
+            format!(
+                "required transition action-form catalog entry should include a form_ref in {structured}"
+            )
                 .into()
         })
 }

@@ -200,8 +200,8 @@ typed-fact-to-view projections.
 ### Shaping progression ownership
 
 `volicord-types` owns the public `ShapingCheckpoint`, gap input/projection,
-closed shaping/workflow values and the canonical per-kind application-owner
-policy, `WorkflowProjection`, method requests/results,
+closed shaping/workflow and transition values, strict transition catalog,
+canonical per-kind application-owner policy, `WorkflowProjection`, method requests/results,
 and typed rejection details. `volicord-store::core_pipeline::shaping` owns the
 strict Task-scoped aggregate, exact stale-authority consumption, immutable
 reauthorization lineage, and checkpoint/gap/UserAction-link mutations.
@@ -210,8 +210,9 @@ Core's `methods/record_shaping.rs`, `methods/update_scope.rs`, and
 decision application, atomic plan composition, and the explicit phase transition;
 Store exposes one typed current effective shaping authority graph plus explicitly
 historical UserAction, application, and reauthorization reads.
-`workflow_projection.rs` derives
-current tagged progression only from that graph. The UserAction service constructs and validates linked authority, while
+`workflow_projection.rs` constructs a strict normalized `WorkflowSnapshot`
+from that graph and evaluates the pure `WorkflowMachine`, the sole owner of
+workflow kinds, blocking reasons, and executable transition variants. The UserAction service constructs and validates linked authority, while
 Core alone coordinates that service output into the checkpoint transaction.
 Store exact-ID mutations reject the wrong owner or resolution and bind
 advance-owned application to the phase transition in one transaction.
@@ -264,7 +265,8 @@ The Store remains independent of Core.
 `ChangeUnitUpdate` schema accessors own exact method-field extraction, and
 `change_unit_planning.rs` owns Change Unit mutation planning. `task_policy.rs`
 owns Task lifecycle interpretation and lifecycle mutation planning.
-`workflow_projection.rs` owns tagged progression authority. `guidance.rs` owns
+`workflow_projection.rs` owns normalized workflow snapshot construction and
+the pure tagged progression machine. `guidance.rs` owns
 blocker-local and display-summary remediation selection and normalization,
 while `summary_text.rs` owns adapter-neutral public summary wording. None of
 these owners emits CLI syntax, transport framing, Markdown, or terminal

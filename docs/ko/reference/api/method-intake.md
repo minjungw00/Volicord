@@ -362,7 +362,7 @@ state:
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null
-  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping_checkpoint, allowed_actions: [volicord.record_shaping_checkpoint, volicord.status], required_refs: [], expected_state_version: 18, blocking_reason: no_current_checkpoint, checkpoint: null}
+  # 현재의 완전한 WorkflowProjection은 이 축약 예시에서 생략했습니다.
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

@@ -174,17 +174,17 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
     let workflow = json!({
         "kind": "shaping_required",
         "next_actor": "agent",
-        "required_action": "volicord.record_shaping_checkpoint",
-        "allowed_actions": ["volicord.record_shaping_checkpoint", "volicord.status"],
         "required_refs": [task_ref],
         "expected_state_version": 7,
         "blocking_reason": "no_current_checkpoint",
         "checkpoint": null,
-        "action_catalog": {
-            "required_method": "volicord.record_shaping_checkpoint",
-            "actions": [{
-                "method": "volicord.record_shaping_checkpoint",
-                "semantic_variant": "create_initial",
+        "transition_catalog": {
+            "transitions": [{
+                "action_key": {
+                    "method": "volicord.record_shaping_checkpoint",
+                    "semantic_variant": "create_initial"
+                },
+                "actor": "agent",
                 "role": "required",
                 "expected_state_version": 7,
                 "fixed_authority_coordinates": {
@@ -194,8 +194,15 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
                     "scope_revision": 0,
                     "baseline_ref": null
                 },
+                "agent_input_requirements": ["shaping_checkpoint"],
+                "effect_class": "core_state_mutation",
+                "expected_result_state": "reevaluate_current_authority",
                 "required_refs": [task_ref]
             }]
+        },
+        "close_readiness": {
+            "assessment_required": false,
+            "current_close_basis_present": false
         }
     });
     let presentation = |state_change: &str| {

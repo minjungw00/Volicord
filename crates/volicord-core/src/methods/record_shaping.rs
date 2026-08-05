@@ -1040,7 +1040,7 @@ fn plan_record_shaping_checkpoint(
         current_change_unit.as_ref(),
         Some(&projected_checkpoint),
         &task_wide_shaping_authority,
-    );
+    )?;
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
@@ -1622,7 +1622,7 @@ fn plan_finalize_advice(
         Some(&change_unit),
         Some(&projected_checkpoint),
         &task_wide_authority,
-    );
+    )?;
     let projected_project_state = project_state_header(
         project_state,
         planned_state_version,

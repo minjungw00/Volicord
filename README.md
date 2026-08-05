@@ -100,9 +100,11 @@ Add idempotency-key support for payment creation, update the tests, and tell me 
 
 The agent should keep the task, scope, evidence, pending user decisions, and
 Close Status current. You do not need to drive the workflow from the terminal.
-Volicord returns a tagged `workflow` projection whose `required_action`,
-`allowed_actions`, `required_refs`, and `expected_state_version` identify the
-current safe progression. The agent should follow that authority instead of
+Volicord returns a tagged `workflow` projection whose deterministic
+`transition_catalog`, `required_refs`, and `expected_state_version` identify
+the current safe progression. At most one transition has the `required` role,
+and each transition carries its exact actor, method-owned semantic variant,
+and fixed authority coordinates. The agent should follow that authority instead of
 running a fixed status-then-intake-then-write-then-close ritual or probing
 workflow tools in case they might be needed. Work Tasks record shaping first;
 creating a Change Unit does not change phase, and only an explicit

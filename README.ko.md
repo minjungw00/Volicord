@@ -95,8 +95,10 @@ session 경계이며 binary, host, client, actor, 운영체제 사용자, human 
 
 에이전트는 작업, 범위, 증거, 대기 중인 사용자 행동, 닫기 상태를 최신으로 유지해야
 합니다. 사용자가 터미널에서 작업 흐름을 직접 조작할 필요는 없습니다. Volicord는
-`required_action`, `allowed_actions`, `required_refs`, `expected_state_version`으로 현재의
-안전한 진행을 식별하는 태그 기반 `workflow` projection을 반환합니다. 에이전트는 필요할
+결정적인 `transition_catalog`, `required_refs`, `expected_state_version`으로 현재의
+안전한 진행을 식별하는 태그 기반 `workflow` projection을 반환합니다. 최대 한
+transition만 `required` 역할을 가지며 각 transition은 정확한 actor, 메서드 소유 semantic
+variant, 고정 권한 좌표를 포함합니다. 에이전트는 필요할
 수 있다는 이유로 작업 흐름 도구를 시험하거나 status, intake, 쓰기, 닫기를 고정 순서로
 호출하지 않고 이 권한을 따라야 합니다. work Task는 shaping을 먼저 기록하고, Change
 Unit 생성은 단계를 바꾸지 않으며, 명시적 `volicord.advance_task`만 implementation에

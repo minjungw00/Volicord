@@ -78,12 +78,15 @@ mod tests {
     }
 
     #[test]
-    fn workflow_action_catalog_accepts_variant_groups_and_rejects_incoherent_keys() {
-        let action = |variant: &str, operation: &str| {
+    fn workflow_transition_catalog_rejects_duplicate_or_incoherent_keys() {
+        let transition = |variant: &str, operation: &str, role: &str| {
             json!({
-                "method": "volicord.update_scope",
-                "semantic_variant": variant,
-                "role": "required",
+                "action_key": {
+                    "method": "volicord.update_scope",
+                    "semantic_variant": variant
+                },
+                "actor": "agent",
+                "role": role,
                 "expected_state_version": 7,
                 "fixed_authority_coordinates": {
                     "coordinate_kind": "update_scope",
@@ -94,66 +97,100 @@ mod tests {
                     "related_scope_decision_refs": [],
                     "selected_change_unit_operation": operation
                 },
+                "agent_input_requirements": ["scope_and_change_unit"],
+                "effect_class": "core_state_mutation",
+                "expected_result_state": "reevaluate_current_authority",
                 "required_refs": []
             })
         };
         let valid = json!({
-            "required_method": "volicord.update_scope",
-            "actions": [
-                action("keep_current_change_unit", "keep_current"),
-                action("replace_current_change_unit", "replace_current")
+            "transitions": [
+                transition("keep_current_change_unit", "keep_current", "required"),
+                transition("replace_current_change_unit", "replace_current", "allowed")
             ]
         });
-        assert!(serde_json::from_value::<WorkflowActionCatalog>(valid).is_ok());
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(valid.clone()).is_ok());
 
         let duplicate = json!({
-            "required_method": "volicord.update_scope",
-            "actions": [
-                action("keep_current_change_unit", "keep_current"),
-                action("keep_current_change_unit", "keep_current")
+            "transitions": [
+                transition("keep_current_change_unit", "keep_current", "required"),
+                transition("keep_current_change_unit", "keep_current", "allowed")
             ]
         });
-        assert!(serde_json::from_value::<WorkflowActionCatalog>(duplicate).is_err());
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(duplicate).is_err());
 
         let variants_out_of_order = json!({
-            "required_method": "volicord.update_scope",
-            "actions": [
-                action("replace_current_change_unit", "replace_current"),
-                action("keep_current_change_unit", "keep_current")
+            "transitions": [
+                transition("replace_current_change_unit", "replace_current", "allowed"),
+                transition("keep_current_change_unit", "keep_current", "required")
             ]
         });
-        assert!(serde_json::from_value::<WorkflowActionCatalog>(variants_out_of_order).is_err());
+        assert!(
+            serde_json::from_value::<WorkflowTransitionCatalog>(variants_out_of_order).is_err()
+        );
 
-        let methods_out_of_order = json!({
-            "required_method": "volicord.update_scope",
-            "actions": [
-                action("keep_current_change_unit", "keep_current"),
-                {
-                    "method": "volicord.check_close",
-                    "semantic_variant": "check_close",
-                    "role": "allowed",
-                    "expected_state_version": 7,
-                    "fixed_authority_coordinates": {
-                        "coordinate_kind": "check_close",
-                        "task_id": "task_catalog"
-                    },
-                    "required_refs": []
-                }
+        let multiple_required = json!({
+            "transitions": [
+                transition("keep_current_change_unit", "keep_current", "required"),
+                transition("replace_current_change_unit", "replace_current", "required")
             ]
         });
-        assert!(serde_json::from_value::<WorkflowActionCatalog>(methods_out_of_order).is_err());
-
-        let missing_required = json!({
-            "required_method": "volicord.update_scope",
-            "actions": []
-        });
-        assert!(serde_json::from_value::<WorkflowActionCatalog>(missing_required).is_err());
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(multiple_required).is_err());
 
         let wrong_variant_operation = json!({
-            "required_method": "volicord.update_scope",
-            "actions": [action("keep_current_change_unit", "replace_current")]
+            "transitions": [transition(
+                "keep_current_change_unit",
+                "replace_current",
+                "required"
+            )]
         });
-        assert!(serde_json::from_value::<WorkflowActionCatalog>(wrong_variant_operation).is_err());
+        assert!(
+            serde_json::from_value::<WorkflowTransitionCatalog>(wrong_variant_operation).is_err()
+        );
+
+        for (field, wrong_value) in [
+            ("actor", json!("system")),
+            ("agent_input_requirements", json!([])),
+            ("effect_class", json!("terminal_mutation")),
+            ("expected_result_state", json!("terminal")),
+        ] {
+            let mut incoherent = valid.clone();
+            incoherent["transitions"][0][field] = wrong_value;
+            assert!(
+                serde_json::from_value::<WorkflowTransitionCatalog>(incoherent).is_err(),
+                "incoherent {field} must fail strict catalog decoding"
+            );
+        }
+
+        let mut mixed_state_versions = valid.clone();
+        mixed_state_versions["transitions"][1]["expected_state_version"] = json!(8);
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(mixed_state_versions).is_err());
+
+        let mut mixed_tasks = valid.clone();
+        mixed_tasks["transitions"][1]["fixed_authority_coordinates"]["task_id"] =
+            json!("task_other");
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(mixed_tasks).is_err());
+
+        let state_ref = |record_id: &str| {
+            json!({
+                "record_kind": "task",
+                "record_id": record_id,
+                "project_id": "prj_catalog",
+                "task_id": "task_catalog",
+                "produced_at_state_version": 7
+            })
+        };
+        let mut noncanonical_refs = valid;
+        for transition in noncanonical_refs["transitions"]
+            .as_array_mut()
+            .expect("catalog transitions")
+        {
+            transition["required_refs"] = json!([state_ref("task_z"), state_ref("task_a")]);
+        }
+        assert!(
+            serde_json::from_value::<WorkflowTransitionCatalog>(noncanonical_refs).is_err(),
+            "required refs must use canonical deterministic order"
+        );
     }
 
     #[test]
@@ -2998,17 +3035,17 @@ mod tests {
             "workflow": {
                 "kind": "shaping_required",
                 "next_actor": "agent",
-                "required_action": "volicord.record_shaping_checkpoint",
-                "allowed_actions": ["volicord.record_shaping_checkpoint"],
                 "required_refs": [],
                 "expected_state_version": 4,
                 "blocking_reason": "no_current_checkpoint",
                 "checkpoint": null,
-                "action_catalog": {
-                    "required_method": "volicord.record_shaping_checkpoint",
-                    "actions": [{
-                        "method": "volicord.record_shaping_checkpoint",
-                        "semantic_variant": "create_initial",
+                "transition_catalog": {
+                    "transitions": [{
+                        "action_key": {
+                            "method": "volicord.record_shaping_checkpoint",
+                            "semantic_variant": "create_initial"
+                        },
+                        "actor": "agent",
                         "role": "required",
                         "expected_state_version": 4,
                         "fixed_authority_coordinates": {
@@ -3018,8 +3055,15 @@ mod tests {
                             "scope_revision": 1,
                             "baseline_ref": null
                         },
+                        "agent_input_requirements": ["shaping_checkpoint"],
+                        "effect_class": "core_state_mutation",
+                        "expected_result_state": "reevaluate_current_authority",
                         "required_refs": []
                     }]
+                },
+                "close_readiness": {
+                    "assessment_required": false,
+                    "current_close_basis_present": false
                 }
             },
             "corrected_retry_allowed": true,

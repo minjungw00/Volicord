@@ -1,58 +1,35 @@
 use super::*;
-use volicord_types::methods::{public_method_contract, WorkflowActionAdmissionClass};
 
-fn assert_workflow_catalog_matches_allowed_actions(workflow: &Value) {
-    let allowed_task_bound = workflow["allowed_actions"]
+fn assert_transition_catalog_is_canonical(workflow: &Value) {
+    let transitions = workflow["transition_catalog"]["transitions"]
         .as_array()
-        .expect("allowed_actions")
+        .expect("transition catalog transitions");
+    let catalog_keys = transitions
         .iter()
-        .filter_map(|method| {
-            let method = serde_json::from_value::<MethodName>(method.clone()).expect("method");
-            (public_method_contract(method).workflow_action_admission()
-                == WorkflowActionAdmissionClass::TaskStateBound)
-                .then(|| method.as_str().to_owned())
-        })
-        .collect::<BTreeSet<_>>();
-    let actions = workflow["action_catalog"]["actions"]
-        .as_array()
-        .expect("action catalog actions");
-    let catalog_methods = actions
-        .iter()
-        .map(|action| {
-            action["method"]
-                .as_str()
-                .expect("catalog method")
-                .to_owned()
-        })
-        .collect::<BTreeSet<_>>();
-    assert_eq!(catalog_methods, allowed_task_bound, "{workflow:#}");
-    let catalog_keys = actions
-        .iter()
-        .map(|action| {
+        .map(|transition| {
             (
-                action["method"].as_str().expect("catalog method"),
-                action["semantic_variant"]
+                transition["action_key"]["method"]
+                    .as_str()
+                    .expect("catalog method"),
+                transition["action_key"]["semantic_variant"]
                     .as_str()
                     .expect("catalog semantic variant"),
             )
         })
         .collect::<BTreeSet<_>>();
-    assert_eq!(catalog_keys.len(), actions.len(), "{workflow:#}");
+    assert_eq!(catalog_keys.len(), transitions.len(), "{workflow:#}");
 
-    let required_method = workflow["action_catalog"]["required_method"].as_str();
-    assert_eq!(
-        actions.iter().any(|action| action["role"] == "required"),
-        required_method.is_some(),
+    assert!(
+        transitions
+            .iter()
+            .filter(|transition| transition["role"] == "required")
+            .count()
+            <= 1,
         "{workflow:#}"
     );
-    for action in actions {
+    for transition in transitions {
         assert_eq!(
-            action["role"] == "required",
-            action["method"].as_str() == required_method,
-            "{workflow:#}"
-        );
-        assert_eq!(
-            action["expected_state_version"], workflow["expected_state_version"],
+            transition["expected_state_version"], workflow["expected_state_version"],
             "{workflow:#}"
         );
     }
@@ -367,9 +344,7 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
         status.response_value["active_task"]["workflow"]["kind"],
         "ready_for_implementation"
     );
-    assert_workflow_catalog_matches_allowed_actions(
-        &status.response_value["active_task"]["workflow"],
-    );
+    assert_transition_catalog_is_canonical(&status.response_value["active_task"]["workflow"]);
 
     adapter.call_tool(
         AgentToolId::ADVANCE_TASK.wire_name(),
@@ -387,7 +362,7 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
         AgentToolId::STATUS.wire_name(),
         json!({"task_id": task_id, "detail": "workflow"}),
     )?;
-    assert_workflow_catalog_matches_allowed_actions(
+    assert_transition_catalog_is_canonical(
         &implementation_status.response_value["active_task"]["workflow"],
     );
     let update_form_ref = action_form_ref_for_method(&adapter, &task_id, MethodName::UpdateScope)?;
@@ -2501,7 +2476,7 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
         structured["workflow"]["kind"], "awaiting_user_action",
         "unexpected shaping projection: {structured:#}"
     );
-    assert_workflow_catalog_matches_allowed_actions(&structured["workflow"]);
+    assert_transition_catalog_is_canonical(&structured["workflow"]);
     let presentation = &structured["presentation"];
     assert_eq!(presentation["state_change"], "core_committed");
     assert_eq!(presentation["next_actor"], "user");
@@ -2888,7 +2863,7 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         }),
     )?;
     assert_eq!(finalized.response_value["workflow"]["kind"], "close_review");
-    assert_workflow_catalog_matches_allowed_actions(&finalized.response_value["workflow"]);
+    assert_transition_catalog_is_canonical(&finalized.response_value["workflow"]);
 
     let before_disallowed = fixture.counts()?;
     let disallowed = adapter

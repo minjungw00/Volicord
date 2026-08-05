@@ -474,7 +474,9 @@ fn workflow_presentation(
         } else {
             let owner_method = authority
                 .workflow
-                .required_action()
+                .transition_catalog()
+                .required_transition()
+                .map(|transition| transition.action_key.method)
                 .unwrap_or(MethodName::Status);
             must_surface.push(McpMustSurfaceFact::RecoveryMethod { owner_method });
             blocker_summary.extend(rejected.errors().iter().map(|error| {

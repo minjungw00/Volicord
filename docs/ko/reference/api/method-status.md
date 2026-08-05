@@ -2,7 +2,7 @@
 
 # `volicord.status` 참조
 
-현재 진행은 태그 기반 `workflow` projection으로 반환됩니다. 진행에 행동이 필요하면 정확히 하나의 `required_action`을 포함하며 `close_state`, `close_blockers`와 독립적입니다. 현재 checkpoint readiness, typed gap, boundary, pending decision ref는 `workflow.checkpoint`에 나타납니다. 닫기 준비 상태는 검토 데이터이지 진행 선택자가 아닙니다.
+현재 진행은 태그 기반 `workflow` projection으로 반환됩니다. Transition catalog에는 정확히 0개 또는 1개의 필수 descriptor가 있으며 `close_state`, `close_blockers`와 독립적입니다. 현재 checkpoint readiness, typed gap, boundary, pending decision ref는 `workflow.checkpoint`에 나타납니다. 닫기 준비 상태는 검토 데이터이지 진행 선택자가 아닙니다.
 
 ## 담당하는 것
 
@@ -359,7 +359,7 @@ active_task:
     task_id: task_export_001
     produced_at_state_version: 42
   baseline_ref: baseline_export_001
-  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 42, blocking_reason: null, checkpoint: null}
+  # 현재의 완전한 WorkflowProjection은 이 축약 예시에서 생략했습니다.
   pending_user_action_summaries:
     - user_action_request_id: ua_export_columns_001
       status: pending

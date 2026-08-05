@@ -747,7 +747,9 @@ impl UnrecordedChangeResolutionBasis {
 }
 
 /// State reference discriminator values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum StateRecordKind {
     ProjectState,
@@ -1653,6 +1655,7 @@ pub enum WorkflowActionSemanticVariant {
     StageArtifact,
     RecordRun,
     RequestUserAction,
+    ResolveUserAction,
     ReconcileChanges,
     CheckClose,
     CloseTask,
@@ -1674,6 +1677,7 @@ impl WorkflowActionSemanticVariant {
             Self::StageArtifact => "stage_artifact",
             Self::RecordRun => "record_run",
             Self::RequestUserAction => "request_user_action",
+            Self::ResolveUserAction => "resolve_user_action",
             Self::ReconcileChanges => "reconcile_changes",
             Self::CheckClose => "check_close",
             Self::CloseTask => "close_task",
@@ -1694,6 +1698,7 @@ impl WorkflowActionSemanticVariant {
             Self::StageArtifact => MethodName::StageArtifact,
             Self::RecordRun => MethodName::RecordRun,
             Self::RequestUserAction => MethodName::RequestUserAction,
+            Self::ResolveUserAction => MethodName::ResolveUserAction,
             Self::ReconcileChanges => MethodName::ReconcileChanges,
             Self::CheckClose => MethodName::CheckClose,
             Self::CloseTask => MethodName::CloseTask,
@@ -1729,12 +1734,65 @@ impl WorkflowActionSemanticVariant {
             MethodName::StageArtifact => Some(Self::StageArtifact),
             MethodName::RecordRun => Some(Self::RecordRun),
             MethodName::RequestUserAction => Some(Self::RequestUserAction),
+            MethodName::ResolveUserAction => Some(Self::ResolveUserAction),
             MethodName::ReconcileChanges => Some(Self::ReconcileChanges),
             MethodName::CheckClose => Some(Self::CheckClose),
             MethodName::CloseTask => Some(Self::CloseTask),
             _ => None,
         }
     }
+}
+
+/// Actor that can execute one transition selected by the workflow machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowTransitionActor {
+    Agent,
+    User,
+    System,
+}
+
+/// Closed Agent-authored input family for one workflow transition.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowAgentInputRequirement {
+    ShapingCheckpoint,
+    ScopeAndChangeUnit,
+    AdviceResult,
+    EvidenceCapture,
+    ProposedWrite,
+    Artifact,
+    RunObservation,
+    UserActionDraft,
+    ChangeReconciliation,
+    CloseIntent,
+}
+
+/// Observable effect family for one workflow transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowTransitionEffectClass {
+    CoreStateMutation,
+    UserChannelMutation,
+    WriteAuthorization,
+    ArtifactStaging,
+    EvidenceCapture,
+    ExecutionRecording,
+    ReadOnlyAssessment,
+    TerminalMutation,
+}
+
+/// Expected state family after a transition is evaluated and committed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExpectedResultState {
+    ReevaluateCurrentAuthority,
+    AwaitingUserAction,
+    Implementation,
+    CloseReview,
+    Terminal,
 }
 
 /// Change Unit effect contract values.

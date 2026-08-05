@@ -187,15 +187,16 @@ identity, artifact policy, continuity planning, Write Ticket planning, 닫기 �
 ### Shaping 진행 소유권
 
 `volicord-types`는 공개 `ShapingCheckpoint`, gap input/projection, 폐쇄형
-shaping/workflow 값과 kind별 정규 application-owner 정책, `WorkflowProjection`, 메서드 요청과 결과, typed rejection detail을
+shaping/workflow/transition 값, 엄격한 transition catalog, kind별 정규 application-owner 정책, `WorkflowProjection`, 메서드 요청과 결과, typed rejection detail을
 담당합니다. `volicord-store::core_pipeline::shaping`은 엄격한 Task 범위 aggregate,
 정확한 stale 권한 소비, 불변 reauthorization lineage,
 checkpoint/gap/UserAction-link mutation을 담당합니다. Core의
 `methods/record_shaping.rs`, `methods/update_scope.rs`, `methods/advance_task.rs`는 이
 정책을 사용해 의미 검증, 정확한 결정 적용, 원자적 plan 조립, 명시적 단계 전이를
 담당합니다. Store는 타입이 정해진 현재 유효 shaping 권한 graph 하나와 명시적 UserAction,
-application 및 reauthorization 이력 조회를 제공합니다. `workflow_projection.rs`는 이 graph만 사용해 현재
-태그 기반 진행을 도출합니다. UserAction service는 연결 권한을 구성하고 검증하지만 그
+application 및 reauthorization 이력 조회를 제공합니다. `workflow_projection.rs`는 이 graph로
+엄격한 정규화 `WorkflowSnapshot`을 만들고 workflow kind, blocking reason, 실행 가능한
+transition variant를 유일하게 소유하는 순수 `WorkflowMachine`을 평가합니다. UserAction service는 연결 권한을 구성하고 검증하지만 그
 출력을 checkpoint transaction으로 조율하는 곳은 Core뿐입니다. Store exact-ID mutation은
 잘못된 owner나 resolution을 거부하고 advance owner 적용을 단계 전이와 한 transaction에
 결속합니다.
@@ -243,7 +244,8 @@ active record를 나누고, active partition을 평가하고, stored 결과를 �
 `ChangeUnitUpdate` schema accessor는 정확한 메서드 field 추출을 담당하고,
 `change_unit_planning.rs`는 Change Unit mutation 계획을 담당합니다.
 `task_policy.rs`는 Task lifecycle 해석과 lifecycle mutation 계획을 담당합니다.
-`workflow_projection.rs`는 태그 기반 진행 권한을 담당합니다. `guidance.rs`는 차단
+`workflow_projection.rs`는 정규화 workflow snapshot 구성과 순수 태그 기반 진행
+machine을 담당합니다. `guidance.rs`는 차단
 사유 전용 및 표시 summary 해결 행동 선택과 정규화를 담당하고, `summary_text.rs`는
 adapter-neutral 공개 summary 문구를 담당합니다. 이 담당 모듈은 CLI 문법, transport
 framing, Markdown, terminal rendering을 만들지

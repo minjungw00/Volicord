@@ -584,8 +584,8 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 전에 거부합니다. 간결한 검색 schema는 담당 문서의 완전한 요청 검증을 느슨하게 하지
 않습니다.
 
-현재 허용된 에이전트 소유 Task 상태 결속 행동마다 adapter는 해당하는 Core의 중립
-`WorkflowActionIntent`와 그 도구의 정규 semantic descriptor를 결합합니다.
+현재 Agent 소유 Task 상태 결속 transition마다 adapter는 해당하는 Core의 중립
+`TransitionDescriptor`와 그 도구의 정규 semantic descriptor를 결합합니다.
 
 ```schema
 WorkflowActionForm:
@@ -619,9 +619,9 @@ RetryContract:
 `form_ref`는 프로젝트, Task, 메서드, 선택된 semantic variant, 예상 상태 버전, 정확한
 고정 권한 좌표, 완전한 `fixed_arguments` 객체와 `fixed_argument_paths`, 현재
 semantic-schema digest의 불투명 canonical digest입니다. 숫자 workflow 버전이 아닙니다.
-Form catalog는 Core catalog의 순서, 필수 메서드 그룹, 역할을 보존합니다. Core의 각
-메서드-variant intent마다 서로 다른 form과 form ref가 하나씩 있으며, 필수 메서드의 여러
-form은 서로 대안입니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
+Form catalog는 Core transition catalog의 순서와 descriptor 역할을 보존합니다. 각 Agent
+`TransitionDescriptor`마다 서로 다른 form과 form ref가 하나씩 있으며, required method는
+필수 Agent descriptor에서만 도출합니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
 인자 context, retry contract에 나타납니다. 활성 Task가 없는 status의 catalog는
 null입니다. 단일 form은 독립된 권한 계약이 아닙니다.
 
@@ -1098,7 +1098,7 @@ disposition, 권한 부여 여부를 `shaping_decision_outcome`으로 제공합�
 정해진 decision recovery requirement를 유지합니다. Stale shaping application은 어떤
 권한도 부여하지 않습니다. 해당 blocker fact는 정확한 stale application과 요청 ref,
 현재 recovery owner를 지정합니다. Advisor 또는 work shaping에서 `workflow`는
-`shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`,
+`shaping_required`, `next_actor=agent`, 필수 `volicord.record_shaping_checkpoint` transition,
 `blocking_reason=application_authority_stale`를 선택하고,
 `volicord.record_shaping_checkpoint`는 완전하고 정확한 tagged 폐기 또는 재권한 action
 집합을 요구합니다. 재발급은 새 unresolved
@@ -1108,7 +1108,7 @@ operation-result 조회와 authority export는 이 현재 workflow 권한과 분
 진입, write ticket을 만들지 않았다는 사실, Product Repository write에는 여전히
 `volicord.prepare_write`가 필요하다는 사실을 추가합니다.
 
-태그가 있는 `workflow.required_action`만 진행을 선택합니다. 최상위 배열, blocker 배열,
+태그가 있는 `workflow.transition_catalog` entry의 role만 진행을 선택합니다. 최상위 배열, blocker 배열,
 compact text, presentation 순서는 다음 메서드를 선택하지 않습니다. Shaping 결정의
 presentation은 현재 checkpoint와 request ref를 보존하고 정확한 application owner를
 표면화합니다. Resolution을 application으로 바꾸거나 제품 전용·기술 전용 진행을 위해

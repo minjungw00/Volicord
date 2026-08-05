@@ -52,8 +52,8 @@ The method's entry in the current MCP action-form catalog exposes Task,
 checkpoint, non-write Change Unit, scope revision, baseline, and complete
 current resolution IDs as caller-visible fixed arguments. Project and expected
 state version are adapter-injected. The generic binder requires every fixed
-value to match exactly before Core. MCP admits this method only when it is present in the current
-workflow catalog and requires this method-and-variant form's exact
+value to match exactly before Core. MCP admits this method only when its Agent descriptor is present in the current
+workflow transition catalog and requires this method-and-variant form's exact
 `action_form_ref` before Core invocation.
 Only result summary, result refs, evidence refs, residual risks, and recovery
 constraints remain Agent-authored; the Agent does not reconstruct authority
@@ -129,7 +129,7 @@ replay rows, or state changes.
 
 Before finalization, the ready advisor state selects
 `ready_to_finalize_advice`, `next_actor=agent`, and
-`required_action=volicord.finalize_advice`. A successful call selects
+a required `volicord.finalize_advice` transition. A successful call selects
 `close_review`. Rejected, deferred, or expired authority selects
 `decision_recovery_required` and recovery through
 `volicord.record_shaping_checkpoint`; stale application authority selects

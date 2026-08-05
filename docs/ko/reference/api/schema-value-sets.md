@@ -404,12 +404,43 @@ inconsistent_authority_state
 ```
 
 이 값은 현재 진행만 설명합니다. 닫기 준비 차단 사유는 자체 로컬 범주와 해결 행동을
-유지하며 workflow kind나 required action을 선택하지 않습니다.
+유지하며 workflow kind나 required transition을 선택하지 않습니다.
 `application_authority_stale`은 advisor 또는 work shaping에서 `shaping_required`,
-`next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`을 선택합니다. Work
+`next_actor=agent`, 필수 `volicord.record_shaping_checkpoint` transition을 선택합니다. Work
 implementation 중 stale shaping 권한을 만들 update는 mutation 전에 거부되고
 close/supersede 복구로 `volicord.close_task`를 지정합니다. `status`를 복구로 선택하거나
 Task를 shaping으로 되돌리지 않습니다.
+
+`WorkflowActionKey.semantic_variant`는 메서드가 소유하는 다음 폐쇄형 값을 사용합니다.
+
+```text
+create_initial
+replace_current
+keep_current_change_unit
+create_current_change_unit
+replace_current_change_unit
+finalize_advice
+advance_task
+prepare_evidence_capture
+prepare_write
+stage_artifact
+record_run
+request_user_action
+resolve_user_action
+reconcile_changes
+check_close
+close_task
+```
+
+`TransitionDescriptor.actor`는 `agent`, `user`, `system`을 사용하고 `role`은
+`required`, `allowed`를 사용합니다. Agent 입력 요구사항은 `shaping_checkpoint`,
+`scope_and_change_unit`, `advice_result`, `evidence_capture`, `proposed_write`, `artifact`,
+`run_observation`, `user_action_draft`, `change_reconciliation`, `close_intent`를 사용합니다.
+`effect_class`는 `core_state_mutation`, `user_channel_mutation`, `write_authorization`,
+`artifact_staging`, `evidence_capture`, `execution_recording`, `read_only_assessment`,
+`terminal_mutation`을 사용합니다. `expected_result_state`는
+`reevaluate_current_authority`, `awaiting_user_action`, `implementation`, `close_review`,
+`terminal`을 사용합니다.
 
 `StateSummary.acceptance_policy`는 아래 값을 사용합니다.
 

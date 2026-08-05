@@ -2,7 +2,7 @@
 
 # `volicord.status` reference
 
-Current progression is returned as the tagged `workflow` projection. It contains exactly one `required_action` when progression requires one and remains independent of `close_state` and `close_blockers`. Current checkpoint readiness, typed gaps, boundary, and pending decision refs appear inside `workflow.checkpoint`. Close readiness is review data, not a progression selector.
+Current progression is returned as the tagged `workflow` projection. Its transition catalog contains exactly zero or one required descriptor and remains independent of `close_state` and `close_blockers`. Current checkpoint readiness, typed gaps, boundary, and pending decision refs appear inside `workflow.checkpoint`. Close readiness is review data, not a progression selector.
 
 ## What this document owns
 
@@ -373,7 +373,7 @@ active_task:
     task_id: task_export_001
     produced_at_state_version: 42
   baseline_ref: baseline_export_001
-  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 42, blocking_reason: null, checkpoint: null}
+  # The current complete WorkflowProjection is omitted from this abbreviated example.
   pending_user_action_summaries:
     - user_action_request_id: ua_export_columns_001
       status: pending

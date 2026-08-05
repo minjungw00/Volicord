@@ -48,7 +48,7 @@ non-null `baseline_ref`, 완전한 `user_action_resolution_ids`, `result_summary
 현재 MCP action-form catalog의 이 메서드 entry는 Task, checkpoint, 비쓰기 Change Unit,
 범위 리비전, 기준선, 완전한 현재 resolution ID를 호출자에게 보이는 고정 인자로
 제공합니다. 프로젝트와 예상 상태 버전은 adapter가 주입하며 일반 binder는 Core 전에
-모든 고정 값의 정확한 일치를 요구합니다. MCP는 현재 workflow catalog에 이 메서드가 있을 때만 허용하며 Core 호출
+모든 고정 값의 정확한 일치를 요구합니다. MCP는 현재 workflow transition catalog에 이 메서드의 Agent descriptor가 있을 때만 허용하며 Core 호출
 전에 이 메서드-variant form의 정확한 `action_form_ref`가 필요합니다. 결과 summary, 결과 ref, evidence ref, residual risk,
 recovery constraint만 에이전트가 작성하며 권한 좌표를 다시 조립하지 않습니다.
 
@@ -118,7 +118,7 @@ close state를 반환합니다. Preview는 application, close basis, replay row,
 ## Workflow 복구
 
 Finalization 전의 준비된 advisor 상태는 `ready_to_finalize_advice`, `next_actor=agent`,
-`required_action=volicord.finalize_advice`를 선택합니다. 성공하면 `close_review`를
+필수 `volicord.finalize_advice` transition을 선택합니다. 성공하면 `close_review`를
 선택합니다. Rejected, deferred, expired 권한은 `decision_recovery_required`와
 `volicord.record_shaping_checkpoint` 복구를 선택하고, stale application 권한도 같은
 메서드의 checkpoint 교체로 복구합니다. Pending 권한은 `volicord.resolve_user_action`,

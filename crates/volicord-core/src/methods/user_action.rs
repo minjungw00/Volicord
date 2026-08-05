@@ -1161,7 +1161,7 @@ fn plan_resolve_user_action(
             current_change_unit.as_ref(),
             Some(checkpoint),
             &task_wide_authority,
-        );
+        )?;
     }
     let result_fields = ResolveUserActionResultFields {
         user_action_request_ref: request_ref,

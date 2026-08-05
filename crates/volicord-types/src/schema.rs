@@ -1344,7 +1344,9 @@ pub struct PlannedBlocker {
 }
 
 /// Common public reference for Core-owned state records.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(deny_unknown_fields)]
 pub struct StateRecordRef {
     pub record_kind: StateRecordKind,
@@ -2306,6 +2308,10 @@ pub enum WorkflowActionAuthorityCoordinates {
         task_id: TaskId,
         change_unit_id: RequiredNullable<ChangeUnitId>,
     },
+    ResolveUserAction {
+        task_id: TaskId,
+        user_action_request_refs: Vec<StateRecordRef>,
+    },
     ReconcileChanges {
         task_id: TaskId,
     },
@@ -2318,6 +2324,24 @@ pub enum WorkflowActionAuthorityCoordinates {
 }
 
 impl WorkflowActionAuthorityCoordinates {
+    pub const fn task_id(&self) -> &TaskId {
+        match self {
+            Self::RecordShapingCheckpoint { task_id, .. }
+            | Self::UpdateScope { task_id, .. }
+            | Self::FinalizeAdvice { task_id, .. }
+            | Self::AdvanceTask { task_id, .. }
+            | Self::PrepareEvidenceCapture { task_id, .. }
+            | Self::PrepareWrite { task_id, .. }
+            | Self::StageArtifact { task_id }
+            | Self::RecordRun { task_id, .. }
+            | Self::RequestUserAction { task_id, .. }
+            | Self::ResolveUserAction { task_id, .. }
+            | Self::ReconcileChanges { task_id }
+            | Self::CheckClose { task_id }
+            | Self::CloseTask { task_id } => task_id,
+        }
+    }
+
     pub const fn method(&self) -> MethodName {
         match self {
             Self::RecordShapingCheckpoint { .. } => MethodName::RecordShapingCheckpoint,
@@ -2329,6 +2353,7 @@ impl WorkflowActionAuthorityCoordinates {
             Self::StageArtifact { .. } => MethodName::StageArtifact,
             Self::RecordRun { .. } => MethodName::RecordRun,
             Self::RequestUserAction { .. } => MethodName::RequestUserAction,
+            Self::ResolveUserAction { .. } => MethodName::ResolveUserAction,
             Self::ReconcileChanges { .. } => MethodName::ReconcileChanges,
             Self::CheckClose { .. } => MethodName::CheckClose,
             Self::CloseTask { .. } => MethodName::CloseTask,
@@ -2362,6 +2387,9 @@ impl WorkflowActionAuthorityCoordinates {
             Self::RequestUserAction { .. } => {
                 crate::values::WorkflowActionSemanticVariant::RequestUserAction
             }
+            Self::ResolveUserAction { .. } => {
+                crate::values::WorkflowActionSemanticVariant::ResolveUserAction
+            }
             Self::ReconcileChanges { .. } => {
                 crate::values::WorkflowActionSemanticVariant::ReconcileChanges
             }
@@ -2371,7 +2399,7 @@ impl WorkflowActionAuthorityCoordinates {
     }
 }
 
-/// Relationship between one catalog action and the current required method.
+/// Relationship between one transition and the current required transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowActionRole {
@@ -2379,87 +2407,212 @@ pub enum WorkflowActionRole {
     Allowed,
 }
 
-/// Core-owned current action plus the authority coordinates an adapter may project.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+/// Closed method-and-variant identity for one workflow transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct WorkflowActionIntent {
+pub struct WorkflowActionKey {
     pub method: MethodName,
     pub semantic_variant: crate::values::WorkflowActionSemanticVariant,
+}
+
+impl WorkflowActionKey {
+    /// Constructs a key only when the variant belongs to the method.
+    pub fn new(
+        method: MethodName,
+        semantic_variant: crate::values::WorkflowActionSemanticVariant,
+    ) -> Result<Self, &'static str> {
+        if semantic_variant.method() != method {
+            return Err("workflow semantic variant does not belong to its method");
+        }
+        Ok(Self {
+            method,
+            semantic_variant,
+        })
+    }
+}
+
+/// Core-owned transition plus fixed authority an adapter may project.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TransitionDescriptor {
+    pub action_key: WorkflowActionKey,
+    pub actor: crate::values::WorkflowTransitionActor,
     pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_authority_coordinates: WorkflowActionAuthorityCoordinates,
+    pub agent_input_requirements: Vec<crate::values::WorkflowAgentInputRequirement>,
+    pub effect_class: crate::values::WorkflowTransitionEffectClass,
+    pub expected_result_state: crate::values::WorkflowExpectedResultState,
     pub required_refs: Vec<StateRecordRef>,
 }
 
-/// Complete neutral action catalog for the current tagged Task workflow.
+/// Complete neutral transition catalog for the current tagged Task workflow.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct WorkflowActionCatalog {
-    pub required_method: RequiredNullable<MethodName>,
-    pub actions: Vec<WorkflowActionIntent>,
+pub struct WorkflowTransitionCatalog {
+    pub transitions: Vec<TransitionDescriptor>,
 }
 
-impl<'de> Deserialize<'de> for WorkflowActionCatalog {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Wire {
-            required_method: RequiredNullable<MethodName>,
-            actions: Vec<WorkflowActionIntent>,
-        }
-
-        let wire = Wire::deserialize(deserializer)?;
-        let mut seen = Vec::new();
-        let mut previous = None;
+impl WorkflowTransitionCatalog {
+    /// Strictly constructs a deterministic catalog with zero or one required transition.
+    pub fn new(transitions: Vec<TransitionDescriptor>) -> Result<Self, String> {
+        let mut previous: Option<(MethodName, crate::values::WorkflowActionSemanticVariant)> = None;
         let mut required_count = 0usize;
-        for action in &wire.actions {
-            let key = (action.method, action.semantic_variant);
-            if seen.contains(&key) {
-                return Err(serde::de::Error::custom(
-                    "workflow action catalog contains a duplicate method and semantic variant",
-                ));
+        let mut catalog_state_version = None;
+        let mut catalog_task_id: Option<&TaskId> = None;
+        let mut catalog_required_refs: Option<&[StateRecordRef]> = None;
+        for transition in &transitions {
+            let key = (
+                transition.action_key.method,
+                transition.action_key.semantic_variant,
+            );
+            if previous.is_some_and(|(method, variant)| {
+                method.as_str() > key.0.as_str()
+                    || (method == key.0 && variant.as_str() >= key.1.as_str())
+            }) {
+                return Err(
+                    "workflow transition catalog keys are duplicated or not in canonical order"
+                        .to_owned(),
+                );
             }
-            if previous.is_some_and(
-                |(method, variant): (MethodName, crate::values::WorkflowActionSemanticVariant)| {
-                    method.as_str() > action.method.as_str()
-                        || (method == action.method
-                            && variant.as_str() >= action.semantic_variant.as_str())
-                },
-            ) {
-                return Err(serde::de::Error::custom(
-                    "workflow action catalog keys are not in canonical method and variant order",
-                ));
+            if transition.action_key.semantic_variant.method() != transition.action_key.method {
+                return Err(
+                    "workflow transition semantic variant does not belong to its method".to_owned(),
+                );
             }
-            if crate::methods::public_method_contract(action.method).workflow_action_admission()
-                != crate::methods::WorkflowActionAdmissionClass::TaskStateBound
+            let method = transition.action_key.method;
+            let expected_actor = if method == MethodName::ResolveUserAction {
+                crate::values::WorkflowTransitionActor::User
+            } else {
+                crate::values::WorkflowTransitionActor::Agent
+            };
+            if transition.actor != expected_actor {
+                return Err(
+                    "workflow transition actor does not match its method authority".to_owned(),
+                );
+            }
+            if transition.fixed_authority_coordinates.method() != transition.action_key.method {
+                return Err(
+                    "workflow transition method does not match its authority coordinates"
+                        .to_owned(),
+                );
+            }
+            if transition.action_key.semantic_variant
+                != transition.fixed_authority_coordinates.semantic_variant()
             {
-                return Err(serde::de::Error::custom(
-                    "workflow action catalog contains a method that is not task-state-bound",
-                ));
+                return Err(
+                    "workflow transition variant does not match its authority coordinates"
+                        .to_owned(),
+                );
             }
-            if action.fixed_authority_coordinates.method() != action.method {
-                return Err(serde::de::Error::custom(
-                    "workflow action catalog method does not match its authority coordinates",
-                ));
+            if transition.actor != crate::values::WorkflowTransitionActor::Agent
+                && !transition.agent_input_requirements.is_empty()
+            {
+                return Err(
+                    "non-Agent workflow transition cannot require Agent-authored input".to_owned(),
+                );
             }
-            if action.semantic_variant.method() != action.method {
-                return Err(serde::de::Error::custom(
-                    "workflow action catalog semantic variant does not belong to its method",
-                ));
+            if transition
+                .agent_input_requirements
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1])
+            {
+                return Err(
+                    "workflow Agent input requirements are duplicated or not in canonical order"
+                        .to_owned(),
+                );
             }
-            if action.semantic_variant != action.fixed_authority_coordinates.semantic_variant() {
-                return Err(serde::de::Error::custom(
-                    "workflow action semantic variant does not match its authority coordinates",
-                ));
+            if transition
+                .required_refs
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1])
+            {
+                return Err(
+                    "workflow transition required refs are duplicated or not in canonical order"
+                        .to_owned(),
+                );
+            }
+            use crate::values::{
+                WorkflowAgentInputRequirement as Input, WorkflowExpectedResultState as ResultState,
+                WorkflowTransitionEffectClass as Effect,
+            };
+            let inputs = transition.agent_input_requirements.as_slice();
+            let inputs_match = match method {
+                MethodName::RecordShapingCheckpoint => inputs == [Input::ShapingCheckpoint],
+                MethodName::UpdateScope => inputs == [Input::ScopeAndChangeUnit],
+                MethodName::FinalizeAdvice => inputs == [Input::AdviceResult],
+                MethodName::AdvanceTask
+                | MethodName::CheckClose
+                | MethodName::ResolveUserAction => inputs.is_empty(),
+                MethodName::PrepareEvidenceCapture => inputs == [Input::EvidenceCapture],
+                MethodName::PrepareWrite => inputs == [Input::ProposedWrite],
+                MethodName::StageArtifact => inputs == [Input::Artifact],
+                MethodName::RecordRun => inputs == [Input::RunObservation],
+                MethodName::RequestUserAction => inputs == [Input::UserActionDraft],
+                MethodName::ReconcileChanges => inputs == [Input::ChangeReconciliation],
+                MethodName::CloseTask => inputs == [Input::CloseIntent],
+                MethodName::Intake | MethodName::Status | MethodName::GetOperationResult => false,
+            };
+            if !inputs_match {
+                return Err(
+                    "workflow transition Agent input requirements do not match its method"
+                        .to_owned(),
+                );
+            }
+            let expected_effect = match method {
+                MethodName::ResolveUserAction => Effect::UserChannelMutation,
+                MethodName::PrepareEvidenceCapture => Effect::EvidenceCapture,
+                MethodName::PrepareWrite => Effect::WriteAuthorization,
+                MethodName::StageArtifact => Effect::ArtifactStaging,
+                MethodName::RecordRun => Effect::ExecutionRecording,
+                MethodName::CheckClose => Effect::ReadOnlyAssessment,
+                MethodName::CloseTask => Effect::TerminalMutation,
+                _ => Effect::CoreStateMutation,
+            };
+            if transition.effect_class != expected_effect {
+                return Err("workflow transition effect class does not match its method".to_owned());
+            }
+            let expected_result_state = match method {
+                MethodName::AdvanceTask => ResultState::Implementation,
+                MethodName::FinalizeAdvice | MethodName::CheckClose => ResultState::CloseReview,
+                MethodName::RequestUserAction => ResultState::AwaitingUserAction,
+                MethodName::CloseTask => ResultState::Terminal,
+                MethodName::PrepareEvidenceCapture
+                | MethodName::PrepareWrite
+                | MethodName::StageArtifact
+                | MethodName::RecordRun
+                | MethodName::ReconcileChanges => ResultState::Implementation,
+                _ => ResultState::ReevaluateCurrentAuthority,
+            };
+            if transition.expected_result_state != expected_result_state {
+                return Err(
+                    "workflow transition expected result state does not match its method"
+                        .to_owned(),
+                );
+            }
+            if catalog_state_version
+                .replace(transition.expected_state_version)
+                .is_some_and(|version| version != transition.expected_state_version)
+            {
+                return Err("workflow transition catalog mixes expected state versions".to_owned());
+            }
+            if catalog_task_id
+                .replace(transition.fixed_authority_coordinates.task_id())
+                .is_some_and(|task_id| task_id != transition.fixed_authority_coordinates.task_id())
+            {
+                return Err("workflow transition catalog mixes Task identities".to_owned());
+            }
+            if catalog_required_refs
+                .replace(transition.required_refs.as_slice())
+                .is_some_and(|refs| refs != transition.required_refs)
+            {
+                return Err("workflow transition catalog mixes required references".to_owned());
             }
             if let WorkflowActionAuthorityCoordinates::UpdateScope {
                 current_change_unit_id,
                 selected_change_unit_operation,
                 ..
-            } = &action.fixed_authority_coordinates
+            } = &transition.fixed_authority_coordinates
             {
                 let operation_matches_current = match selected_change_unit_operation {
                     crate::values::ChangeUnitOperation::CreateCurrent => {
@@ -2471,33 +2624,103 @@ impl<'de> Deserialize<'de> for WorkflowActionCatalog {
                     }
                 };
                 if !operation_matches_current {
-                    return Err(serde::de::Error::custom(
-                        "workflow update-scope operation does not match current Change Unit authority",
-                    ));
+                    return Err(
+                        "workflow update-scope operation does not match current Change Unit authority"
+                            .to_owned(),
+                    );
                 }
             }
-            let is_required = wire.required_method.as_ref() == Some(&action.method);
-            if (action.role == WorkflowActionRole::Required) != is_required {
-                return Err(serde::de::Error::custom(
-                    "workflow action catalog role does not match required_method",
-                ));
+            if let WorkflowActionAuthorityCoordinates::ResolveUserAction {
+                user_action_request_refs,
+                ..
+            } = &transition.fixed_authority_coordinates
+            {
+                if user_action_request_refs.is_empty() {
+                    return Err(
+                        "workflow user transition requires exact current UserAction refs"
+                            .to_owned(),
+                    );
+                }
+                if user_action_request_refs
+                    .windows(2)
+                    .any(|pair| pair[0] >= pair[1])
+                {
+                    return Err(
+                        "workflow UserAction refs are duplicated or not in canonical order"
+                            .to_owned(),
+                    );
+                }
+                if user_action_request_refs
+                    .iter()
+                    .any(|reference| !transition.required_refs.contains(reference))
+                {
+                    return Err(
+                        "workflow UserAction transition refs are absent from required refs"
+                            .to_owned(),
+                    );
+                }
             }
-            if is_required {
+            if transition.role == WorkflowActionRole::Required {
                 required_count += 1;
             }
             previous = Some(key);
-            seen.push(key);
         }
-        if wire.required_method.as_ref().is_some() && required_count == 0 {
-            return Err(serde::de::Error::custom(
-                "workflow action catalog required_method must identify a nonempty variant group",
-            ));
+        if required_count > 1 {
+            return Err(
+                "workflow transition catalog contains more than one required transition".to_owned(),
+            );
         }
-        Ok(Self {
-            required_method: wire.required_method,
-            actions: wire.actions,
-        })
+        Ok(Self { transitions })
     }
+
+    /// Returns the sole required transition, when current state requires one.
+    pub fn required_transition(&self) -> Option<&TransitionDescriptor> {
+        self.transitions
+            .iter()
+            .find(|transition| transition.role == WorkflowActionRole::Required)
+    }
+
+    /// Returns whether the catalog currently admits one method.
+    pub fn admits_method(&self, method: MethodName) -> bool {
+        self.transitions
+            .iter()
+            .any(|transition| transition.action_key.method == method)
+    }
+
+    /// Returns admitted methods in canonical transition order without duplicates.
+    pub fn admitted_methods(&self) -> Vec<MethodName> {
+        let mut methods = Vec::new();
+        for transition in &self.transitions {
+            if !methods.contains(&transition.action_key.method) {
+                methods.push(transition.action_key.method);
+            }
+        }
+        methods
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkflowTransitionCatalog {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            transitions: Vec<TransitionDescriptor>,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.transitions).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Workflow-machine close-review routing kept separate from close blockers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowCloseReadiness {
+    pub assessment_required: bool,
+    pub current_close_basis_present: bool,
 }
 
 macro_rules! workflow_projection_variants {
@@ -2509,13 +2732,12 @@ macro_rules! workflow_projection_variants {
             $(
                 $variant {
                     next_actor: AuthorityNextActor,
-                    required_action: RequiredNullable<MethodName>,
-                    allowed_actions: Vec<MethodName>,
                     required_refs: Vec<StateRecordRef>,
                     expected_state_version: u64,
                     blocking_reason: RequiredNullable<crate::values::WorkflowBlockingReason>,
                     checkpoint: RequiredNullable<ShapingCheckpointSummary>,
-                    action_catalog: WorkflowActionCatalog,
+                    transition_catalog: WorkflowTransitionCatalog,
+                    close_readiness: WorkflowCloseReadiness,
                 },
             )+
         }
@@ -2572,84 +2794,6 @@ impl WorkflowProjection {
         }
     }
 
-    /// Returns the one required owner method selected by current workflow state.
-    pub fn required_action(&self) -> Option<MethodName> {
-        match self {
-            Self::NoActiveTask {
-                required_action, ..
-            }
-            | Self::ShapingRequired {
-                required_action, ..
-            }
-            | Self::AwaitingUserAction {
-                required_action, ..
-            }
-            | Self::DecisionRecoveryRequired {
-                required_action, ..
-            }
-            | Self::ReadyToApplyDecisions {
-                required_action, ..
-            }
-            | Self::ReadyForChangeUnit {
-                required_action, ..
-            }
-            | Self::ReadyToFinalizeAdvice {
-                required_action, ..
-            }
-            | Self::ReadyForImplementation {
-                required_action, ..
-            }
-            | Self::Implementation {
-                required_action, ..
-            }
-            | Self::CloseReview {
-                required_action, ..
-            }
-            | Self::Terminal {
-                required_action, ..
-            } => required_action.as_ref().copied(),
-        }
-    }
-
-    /// Returns the methods currently admitted by the workflow projection.
-    pub fn allowed_actions(&self) -> &[MethodName] {
-        match self {
-            Self::NoActiveTask {
-                allowed_actions, ..
-            }
-            | Self::ShapingRequired {
-                allowed_actions, ..
-            }
-            | Self::AwaitingUserAction {
-                allowed_actions, ..
-            }
-            | Self::DecisionRecoveryRequired {
-                allowed_actions, ..
-            }
-            | Self::ReadyToApplyDecisions {
-                allowed_actions, ..
-            }
-            | Self::ReadyForChangeUnit {
-                allowed_actions, ..
-            }
-            | Self::ReadyToFinalizeAdvice {
-                allowed_actions, ..
-            }
-            | Self::ReadyForImplementation {
-                allowed_actions, ..
-            }
-            | Self::Implementation {
-                allowed_actions, ..
-            }
-            | Self::CloseReview {
-                allowed_actions, ..
-            }
-            | Self::Terminal {
-                allowed_actions, ..
-            } => allowed_actions,
-        }
-    }
-
     /// Returns the authority refs required by the current workflow state.
     pub fn required_refs(&self) -> &[StateRecordRef] {
         match self {
@@ -2667,20 +2811,42 @@ impl WorkflowProjection {
         }
     }
 
-    /// Returns the complete neutral current task-state-bound action catalog.
-    pub fn action_catalog(&self) -> &WorkflowActionCatalog {
+    /// Returns the complete neutral current workflow transition catalog.
+    pub fn transition_catalog(&self) -> &WorkflowTransitionCatalog {
         match self {
-            Self::NoActiveTask { action_catalog, .. }
-            | Self::ShapingRequired { action_catalog, .. }
-            | Self::AwaitingUserAction { action_catalog, .. }
-            | Self::DecisionRecoveryRequired { action_catalog, .. }
-            | Self::ReadyToApplyDecisions { action_catalog, .. }
-            | Self::ReadyForChangeUnit { action_catalog, .. }
-            | Self::ReadyToFinalizeAdvice { action_catalog, .. }
-            | Self::ReadyForImplementation { action_catalog, .. }
-            | Self::Implementation { action_catalog, .. }
-            | Self::CloseReview { action_catalog, .. }
-            | Self::Terminal { action_catalog, .. } => action_catalog,
+            Self::NoActiveTask {
+                transition_catalog, ..
+            }
+            | Self::ShapingRequired {
+                transition_catalog, ..
+            }
+            | Self::AwaitingUserAction {
+                transition_catalog, ..
+            }
+            | Self::DecisionRecoveryRequired {
+                transition_catalog, ..
+            }
+            | Self::ReadyToApplyDecisions {
+                transition_catalog, ..
+            }
+            | Self::ReadyForChangeUnit {
+                transition_catalog, ..
+            }
+            | Self::ReadyToFinalizeAdvice {
+                transition_catalog, ..
+            }
+            | Self::ReadyForImplementation {
+                transition_catalog, ..
+            }
+            | Self::Implementation {
+                transition_catalog, ..
+            }
+            | Self::CloseReview {
+                transition_catalog, ..
+            }
+            | Self::Terminal {
+                transition_catalog, ..
+            } => transition_catalog,
         }
     }
 

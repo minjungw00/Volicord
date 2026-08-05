@@ -478,25 +478,34 @@ TaskLifecycleState:
 WorkflowProjection:
   kind: string
   next_actor: string
-  required_action: string | null
-  allowed_actions: string[]
   required_refs: StateRecordRef[]
   expected_state_version: integer
   blocking_reason: string | null
   checkpoint: ShapingCheckpointSummary | null
-  action_catalog: WorkflowActionCatalog
+  transition_catalog: WorkflowTransitionCatalog
+  close_readiness: WorkflowCloseReadiness
 
-WorkflowActionCatalog:
-  required_method: string | null
-  actions: WorkflowActionIntent[]
+WorkflowTransitionCatalog:
+  transitions: TransitionDescriptor[]
 
-WorkflowActionIntent:
-  method: string
-  semantic_variant: string
+TransitionDescriptor:
+  action_key: WorkflowActionKey
+  actor: agent | user | system
   role: required | allowed
   expected_state_version: integer
   fixed_authority_coordinates: WorkflowActionAuthorityCoordinates
+  agent_input_requirements: string[]
+  effect_class: string
+  expected_result_state: string
   required_refs: StateRecordRef[]
+
+WorkflowActionKey:
+  method: string
+  semantic_variant: string
+
+WorkflowCloseReadiness:
+  assessment_required: boolean
+  current_close_basis_present: boolean
 
 WorkflowActionAuthorityCoordinates.update_scope:
   coordinate_kind: update_scope
@@ -643,32 +652,46 @@ Checkpoint readiness는 구조적이며 decision application과 독립적입니�
 `volicord.update_scope`가 있을 때만 `ready_to_apply_decisions`를 선택합니다.
 `decision_recovery_requirements`는 정확한 각 거부·보류·만료 요청, 존재하는 변경 불가능한
 resolution, authority disposition, 타입이 정해진 reason을 식별합니다. 이 값이 있으면 구조적
-readiness가 `ready`여도 `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`인
+readiness가 `ready`여도 `next_actor=agent`, 필수 `volicord.record_shaping_checkpoint`
+transition이 있는
 `decision_recovery_required`를 선택합니다. Work의
 advance owner 결정은 Change Unit 또는 `ready_for_implementation` 방향으로 진행합니다.
 Advisor finalization owner 결정은 비쓰기 Change Unit과 `ready_to_finalize_advice` 방향으로
 진행하며 현재 checkpoint 기반 close basis가 있어야만 `close_review`를 선택합니다.
 
-workflow projection은 현재 진행 상태에서 최대 하나의 필수 메서드를 선택합니다. 진행 권한은 태그가 있는 `required_action`이며 최상위 action 또는 blocker 배열 항목의 위치가 아닙니다. 닫기 차단 사유는 자체 해결 행동을 유지하지만 이 필수 행동을 선택하지 않습니다. 사용자 소유 current gap은 정확한 현재 UserAction 요청 참조를 항상 포함하며 대화 presentation은 그 요청을 해결하지 않습니다. 진행은 `advance_task`, `finalize_advice`, shaping 소유 scope update, write preparation, Run 기록, 닫기 준비 상태, mutation 거부에 Store 소유 현재 유효 shaping 권한 graph를 사용합니다. Ancestor에서 호환되게 carry-forward된 application은 source gap을 복사하지 않아도 `applied`로 유지됩니다. Stale application은 권한을 부여하지 않고 현재 복구 의무로만 나타납니다. `advisor|work` shaping에서는 `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, `blocking_reason=application_authority_stale`, 정확한 복구 ref를 선택합니다. 이 상태를 만들 implementation 단계 update는 mutation 전에 거부되고 Task를 shaping으로 돌리는 대신 close/supersede 복구로 `volicord.close_task`를 지정합니다. 현재 graph 내부의 모순은 `inconsistent_authority_state`를 사용합니다. Superseded 요청, resolution, application, checkpoint ref는 변경 불가능한 감사 이력으로 남으며 존재한다는 이유만으로 현재 `required_refs`나 진행에 들어가지 않습니다.
+Core는 Store가 소유하는 현재 유효 권한 graph와 현재 Task, scope, baseline, Change Unit,
+checkpoint, UserAction, write ticket, close basis, evidence, final acceptance, recovery,
+workspace fact로 엄격한 `WorkflowSnapshot` 하나를 만듭니다. 현재 좌표가 모순되면 닫힌
+방식으로 실패합니다. Store가 보존하는 superseded 이력은 진행 입력이 아닙니다. 순수
+`WorkflowMachine`이 이 snapshot을 이 projection으로 평가합니다. 최대 한 transition만
+`required` 역할을 가집니다. 최상위 action 배열이나 close blocker 순서가 아니라 catalog
+소속과 역할이 진행 권한입니다. Close blocker는 로컬 remediation fact를 유지하지만
+transition을 선택하거나 재정렬하지 않습니다. `close_readiness`는 별도 완료 평가입니다.
 
-`action_catalog`에는 `allowed_actions`의 Task 상태 결속 메서드마다 메서드 그룹이 하나씩
-있고 그 밖의 메서드 intent는 없습니다. Flat intent sequence에서는 같은 메서드 값과
-서로 다른 폐쇄형 `semantic_variant` 값으로 한 그룹을 나타냅니다. Entry는 정규 메서드,
-그다음 정규 variant 이름순입니다. `required_method`는 Task 상태 결속
-`required_action`이며, 필수 행동이 읽기 전용이거나 User Channel 소유이면 null입니다.
-필수 그룹의 모든 variant는 `role=required`이고 다른 그룹은 모두 `role=allowed`입니다.
-필수 그룹의 variant는 서로 대안입니다. 메서드-variant key 중복, 필수 그룹 누락,
-메서드, variant, 좌표 불일치, 비정규 순서는 유효하지 않습니다. 모든 entry는 동일한 현재 Task
-snapshot에서 나온 workflow 상태 버전과 Core 소유 고정 권한 좌표를 사용합니다. 첫
-checkpoint 좌표는 실제 null 기준선을 보존하고, 교체 좌표는 정확한 현재·선행 checkpoint
-참조, retirement 참조, 호환 application 참조, stale application 참조를 담습니다. 다른
-좌표는 해당 메서드에 적용되는 정확한 현재 Task, checkpoint, Change Unit, 범위 리비전,
-기준선, resolution, 메서드 내부 권한 사실에 결속됩니다. Update-scope 좌표는 선택된
-Change Unit 동작도 포함합니다. 현재 Change Unit이 없으면 `create_current`만 허용하고,
-현재 Change Unit이 있으면 `keep_current`와 Core 권한 정책이 허용할 때의
-`replace_current`만 허용하며 `create_current`는 허용하지 않습니다. MCP는 각 중립
-intent를 실행 가능한 메서드-variant action form으로 투영할 수 있지만 MCP form과 입력 slot은 Core 상태가
-아닙니다.
+`transition_catalog.transitions`는 정규 메서드와 메서드 소유 폐쇄형 semantic variant
+순서로 결정적으로 정렬됩니다. 각 `WorkflowActionKey`는 최대 한 번 나타나며 정확히 0개
+또는 1개의 descriptor가 `role=required`입니다. 필수 descriptor는 반드시 catalog에
+포함됩니다. 각 descriptor는 하나의 폐쇄형 actor, 정확한 state version, Core 고정 권한
+좌표, actor가 `agent`일 때의 Agent 입력 요구사항 묶음, effect class, 예상 결과 상태,
+필수 ref를 결속합니다. User 대기 상태에는 정확한 현재 `volicord.resolve_user_action`
+transition과 요청 ref가 들어갑니다. 종료되지 않은 Agent 소유 상태는 적어도 하나의 실행
+가능한 Agent transition 또는 명시적인 close, cancellation, supersession 경로를 제공합니다.
+
+첫 checkpoint 좌표는 실제 null 기준선을 보존합니다. 교체 좌표는 정확한 현재·선행
+checkpoint 참조, retirement 참조, 호환 application 참조, stale application 참조를
+담습니다. 다른 좌표는 현재 Task, checkpoint, Change Unit, 범위 리비전, 기준선,
+resolution, 메서드 내부 권한 사실에 결속됩니다. 같은 machine 결정이 update-scope
+가용성도 소유합니다. 현재 Change Unit이 없으면 `create_current_change_unit`만 허용하고,
+현재 Change Unit이 있으면 `keep_current_change_unit`와 현재 권한이 허용할 때의
+`replace_current_change_unit`만 허용하며 `create_current_change_unit`는 허용하지
+않습니다. MCP는 Agent descriptor를 실행 가능한 action form으로 투영하지만 MCP form과
+입력 slot은 Core 상태가 아닙니다.
+
+Ancestor에서 호환되게 carry-forward된 shaping application은 source gap을 복사하지 않아도
+`applied`로 유지됩니다. Stale 권한은 permission을 부여하지 않고 정확한 ref를 가진 명시적
+복구 의무로 남습니다. Stale shaping 권한을 만들 implementation update는 mutation 전에
+거부되며 Task를 shaping으로 돌리는 대신 `volicord.close_task` close 또는 supersession
+경로를 제공합니다. 현재 권한 내부의 모순은 `inconsistent_authority_state`를 사용합니다.
 
 MCP checkpoint 제출의 정규 compare-and-swap 좌표는
 `checkpoint_operation.expected_current_checkpoint_id`입니다. 이 workflow projection의

@@ -1,5 +1,23 @@
 use super::*;
 
+fn required_transition_method(workflow: &Value) -> Option<&str> {
+    workflow["transition_catalog"]["transitions"]
+        .as_array()?
+        .iter()
+        .find(|transition| transition["role"] == "required")?["action_key"]["method"]
+        .as_str()
+}
+
+fn workflow_admits_method(workflow: &Value, method: MethodName) -> bool {
+    workflow["transition_catalog"]["transitions"]
+        .as_array()
+        .is_some_and(|transitions| {
+            transitions
+                .iter()
+                .any(|transition| transition["action_key"]["method"] == method.as_str())
+        })
+}
+
 #[test]
 fn every_workflow_rejection_code_preserves_authority_without_an_effect(
 ) -> Result<(), Box<dyn Error>> {
@@ -638,8 +656,8 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
         assert_eq!(workflow["kind"], "decision_recovery_required", "{label}");
         assert_eq!(workflow["next_actor"], "agent", "{label}");
         assert_eq!(
-            workflow["required_action"],
-            "volicord.record_shaping_checkpoint"
+            required_transition_method(workflow),
+            Some("volicord.record_shaping_checkpoint")
         );
         assert_eq!(
             workflow["checkpoint"]["decision_recovery_requirements"][0]["disposition"],
@@ -873,7 +891,12 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
             invocation(OperationCategory::Read),
         )?;
         let status_workflow = &status.response_value["active_task"]["workflow"];
-        for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+        for field in [
+            "kind",
+            "next_actor",
+            "transition_catalog",
+            "blocking_reason",
+        ] {
             assert_eq!(
                 accepted_workflow[field], status_workflow[field],
                 "{label} {field}"
@@ -995,7 +1018,12 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
             invocation(OperationCategory::Read),
         )?;
         let status_workflow = &application_status.response_value["active_task"]["workflow"];
-        for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+        for field in [
+            "kind",
+            "next_actor",
+            "transition_catalog",
+            "blocking_reason",
+        ] {
             assert_eq!(
                 application_workflow[field], status_workflow[field],
                 "{label} application result and status {field}"
@@ -1093,8 +1121,8 @@ fn mixed_non_authorizing_outcomes_preserve_other_live_authority_without_effects(
         assert_eq!(workflow["kind"], "decision_recovery_required", "{label}");
         assert_eq!(workflow["next_actor"], "agent", "{label}");
         assert_eq!(
-            workflow["required_action"],
-            "volicord.record_shaping_checkpoint"
+            required_transition_method(workflow),
+            Some("volicord.record_shaping_checkpoint")
         );
         assert_eq!(
             workflow["checkpoint"]["current_application_refs"],
@@ -1300,8 +1328,8 @@ fn assert_expired_shaping_kind_recovery(
     assert_eq!(workflow["kind"], "decision_recovery_required");
     assert_eq!(workflow["next_actor"], "agent");
     assert_eq!(
-        workflow["required_action"],
-        "volicord.record_shaping_checkpoint"
+        required_transition_method(workflow),
+        Some("volicord.record_shaping_checkpoint")
     );
     assert_eq!(
         workflow["checkpoint"]["decision_recovery_requirements"][0]["reason"],
@@ -1453,7 +1481,12 @@ fn assert_expired_shaping_kind_recovery(
         invocation(OperationCategory::Read),
     )?;
     let status_workflow = &status.response_value["active_task"]["workflow"];
-    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+    for field in [
+        "kind",
+        "next_actor",
+        "transition_catalog",
+        "blocking_reason",
+    ] {
         assert_eq!(accepted_workflow[field], status_workflow[field], "{field}");
     }
 
@@ -1585,7 +1618,12 @@ fn assert_expired_shaping_kind_recovery(
         invocation(OperationCategory::Read),
     )?;
     let status_workflow = &application_status.response_value["active_task"]["workflow"];
-    for field in ["kind", "next_actor", "required_action", "blocking_reason"] {
+    for field in [
+        "kind",
+        "next_actor",
+        "transition_catalog",
+        "blocking_reason",
+    ] {
         assert_eq!(
             application_workflow[field], status_workflow[field],
             "application result and status {field}"
@@ -1738,8 +1776,8 @@ fn applied_scope_authority_survives_sibling_expiration_recovery() -> Result<(), 
     assert_eq!(workflow["kind"], "decision_recovery_required");
     assert_eq!(workflow["next_actor"], "agent");
     assert_eq!(
-        workflow["required_action"],
-        "volicord.record_shaping_checkpoint"
+        required_transition_method(workflow),
+        Some("volicord.record_shaping_checkpoint")
     );
     assert_eq!(
         workflow["checkpoint"]["current_application_refs"],
@@ -2014,11 +2052,10 @@ fn ready_advisor_checkpoint_establishes_advice_close_basis() -> Result<(), Box<d
         |row| row.get(0),
     )?;
     assert_eq!(finalization_event, "advisor_advice_finalized");
-    assert!(finalized.response_value["workflow"]["allowed_actions"]
-        .as_array()
-        .is_some_and(|actions| actions
-            .iter()
-            .any(|action| action == "volicord.finalize_advice")));
+    assert!(workflow_admits_method(
+        &finalized.response_value["workflow"],
+        MethodName::FinalizeAdvice
+    ));
     let finalized_task = task_revision(&harness, &task_id)?;
     let finalized_basis = finalized_task
         .current_close_basis
@@ -3403,8 +3440,8 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         "agent"
     );
     assert_eq!(
-        invalidated.response_value["state"]["workflow"]["required_action"],
-        "volicord.record_shaping_checkpoint"
+        required_transition_method(&invalidated.response_value["state"]["workflow"]),
+        Some("volicord.record_shaping_checkpoint")
     );
     let application = harness
         .store()?
@@ -3721,8 +3758,8 @@ fn advisor_replacement_retires_and_reissues_the_exact_stale_authority_set(
         "agent"
     );
     assert_eq!(
-        invalidated.response_value["state"]["workflow"]["required_action"],
-        "volicord.record_shaping_checkpoint"
+        required_transition_method(&invalidated.response_value["state"]["workflow"]),
+        Some("volicord.record_shaping_checkpoint")
     );
     let invalidated_version = harness.counts()?.state_version;
     let store = harness.store()?;
@@ -4472,12 +4509,12 @@ fn shaping_decision_owner_matrix_routes_and_applies_only_exact_gaps() -> Result<
                 "{label} all resolved"
             );
             assert_eq!(
-                status.response_value["active_task"]["workflow"]["required_action"],
-                if has_scope {
+                required_transition_method(&status.response_value["active_task"]["workflow"]),
+                Some(if has_scope {
                     "volicord.update_scope"
                 } else {
                     "volicord.advance_task"
-                },
+                }),
                 "{label} owner"
             );
             assert_eq!(
@@ -4962,8 +4999,8 @@ fn product_and_technical_resolutions_need_no_scope_ref_before_change_unit_creati
             "ready_for_change_unit"
         );
         assert_eq!(
-            resolved.response_value["state"]["workflow"]["required_action"],
-            "volicord.update_scope"
+            required_transition_method(&resolved.response_value["state"]["workflow"]),
+            Some("volicord.update_scope")
         );
         let before = harness.counts()?;
         let mut create_change_unit = update_scope_request(

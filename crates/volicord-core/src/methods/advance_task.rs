@@ -495,7 +495,7 @@ fn plan_advance_task(
         Some(&change_unit),
         Some(&projected_checkpoint),
         &task_wide_authority,
-    );
+    )?;
     let state = state_summary(StateSummaryInput {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,

@@ -1194,18 +1194,19 @@ fn render_resolve_result(result: &ResolveUserActionResult) -> String {
         ),
     };
     let workflow = &result.state.workflow;
-    let required_action = workflow
-        .required_action()
-        .map(|method| method.as_str())
+    let required_transition = workflow
+        .transition_catalog()
+        .required_transition()
+        .map(|transition| transition.action_key.method.as_str())
         .unwrap_or("none");
     format!(
-        "User action resolution recorded\nRequest status: {}\n{}\nAuthority effect: {}\nShaping application: none (`volicord.resolve_user_action` does not apply shaping decisions)\nWorkflow: {}\nNext actor: {}\nRequired action: {}\n",
+        "User action resolution recorded\nRequest status: {}\n{}\nAuthority effect: {}\nShaping application: none (`volicord.resolve_user_action` does not apply shaping decisions)\nWorkflow: {}\nNext actor: {}\nRequired transition: {}\n",
         result.user_action_request.status.as_str(),
         resolution_line,
         authority_effect,
         workflow_kind(workflow),
         workflow.next_actor().as_str(),
-        required_action,
+        required_transition,
     )
 }
 
@@ -1342,6 +1343,14 @@ mod tests {
         fixture: ManagedPlanningFixture,
         task_id: String,
         request_id: String,
+    }
+
+    fn required_transition_method(workflow: &Value) -> Option<&str> {
+        workflow["transition_catalog"]["transitions"]
+            .as_array()?
+            .iter()
+            .find(|transition| transition["role"] == "required")?["action_key"]["method"]
+            .as_str()
     }
 
     fn pending_shaping_choice_fixture(
@@ -2165,7 +2174,7 @@ mod tests {
             "unexpected CLI resolution output: {output}"
         );
         assert!(output.contains("Next actor: agent"));
-        assert!(output.contains("Required action: volicord.record_shaping_checkpoint"));
+        assert!(output.contains("Required transition: volicord.record_shaping_checkpoint"));
         Ok(())
     }
 
@@ -2186,7 +2195,7 @@ mod tests {
         assert!(output.contains("Shaping application: none"));
         assert!(output.contains("Workflow: decision_recovery_required"));
         assert!(output.contains("Next actor: agent"));
-        assert!(output.contains("Required action: volicord.record_shaping_checkpoint"));
+        assert!(output.contains("Required transition: volicord.record_shaping_checkpoint"));
         Ok(())
     }
 
@@ -2219,7 +2228,7 @@ mod tests {
                 let (status, _) = status_response(&resolved_project, Some(&pending.task_id))?;
                 let returned_workflow = &response["state"]["workflow"];
                 let status_workflow = &status.response_value["active_task"]["workflow"];
-                for field in ["kind", "next_actor", "required_action", "checkpoint"] {
+                for field in ["kind", "next_actor", "transition_catalog", "checkpoint"] {
                     assert_eq!(
                         returned_workflow[field], status_workflow[field],
                         "{label}: {field}"
@@ -2239,7 +2248,8 @@ mod tests {
                     _ => "volicord.advance_task",
                 };
                 assert_eq!(
-                    status_workflow["required_action"], expected_owner,
+                    required_transition_method(status_workflow),
+                    Some(expected_owner),
                     "{label}"
                 );
                 assert_eq!(
@@ -2284,7 +2294,7 @@ mod tests {
                         response["user_action_resolution"]["body"]["resolution_outcome"], outcome,
                         "{label}"
                     );
-                    for field in ["kind", "next_actor", "required_action", "checkpoint"] {
+                    for field in ["kind", "next_actor", "transition_catalog", "checkpoint"] {
                         assert_eq!(
                             returned_workflow[field], status_workflow[field],
                             "{label}: {field}"
@@ -2293,8 +2303,8 @@ mod tests {
                     assert_eq!(status_workflow["kind"], "decision_recovery_required");
                     assert_eq!(status_workflow["next_actor"], "agent");
                     assert_eq!(
-                        status_workflow["required_action"],
-                        "volicord.record_shaping_checkpoint"
+                        required_transition_method(status_workflow),
+                        Some("volicord.record_shaping_checkpoint")
                     );
                     assert_eq!(
                         status_workflow["checkpoint"]["decision_recovery_requirements"][0]
@@ -2578,7 +2588,7 @@ mod tests {
         assert!(output.contains("Shaping application: none"));
         assert!(output.contains("Workflow:"));
         assert!(output.contains("Next actor:"));
-        assert!(output.contains("Required action:"));
+        assert!(output.contains("Required transition:"));
         assert_eq!(
             pending.fixture.user_action_status(&pending.request_id)?,
             "resolved"

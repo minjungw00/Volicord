@@ -119,7 +119,7 @@ pub(crate) fn state_summary(
         current_change_unit,
         shaping_checkpoint,
         task_wide_shaping_authority,
-    );
+    )?;
     let lifecycle_phase = if task.lifecycle_phase == TaskLifecyclePhase::WaitingUser
         && matches!(
             &workflow,

@@ -426,7 +426,7 @@ fn status_result_fields(
                 current_change_unit.as_ref(),
                 current_shaping_checkpoint.as_ref(),
                 &task_wide_shaping_authority,
-            )
+            )?
             .next_actor(),
         });
     }

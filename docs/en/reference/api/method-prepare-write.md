@@ -84,7 +84,7 @@ not cross that boundary. Final acceptance is a post-work judgment, not the
 required pre-write sensitive-action approval, and cannot retroactively
 authorize a write.
 
-`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not project this method as an allowed advisor workflow action, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. Shaping analysis is recorded with `volicord.record_shaping_checkpoint`, and only a successful explicit `volicord.advance_task` admits work-mode write preparation or an implementation Run.
+`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not project an advisor workflow transition for this method, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. Shaping analysis is recorded with `volicord.record_shaping_checkpoint`, and only a successful explicit `volicord.advance_task` admits work-mode write preparation or an implementation Run.
 
 Security non-claims belong to [Security](../security.md).
 
@@ -568,7 +568,7 @@ state:
   effect_contract: null
   baseline_ref: baseline_pref_001
   workspace_context: null
-  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 20, blocking_reason: null, checkpoint: null}
+  # The current complete WorkflowProjection is omitted from this abbreviated example.
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary:

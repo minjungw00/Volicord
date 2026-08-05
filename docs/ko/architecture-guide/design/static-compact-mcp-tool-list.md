@@ -27,7 +27,7 @@ recovery를 사용합니다. Tool ownership은 protocol revision별로 갈라지
   바꾸지 않습니다.
 - Runtime schema는 documentation-only material을 생략하면서 required validation과
   authority field를 보존합니다.
-- Compact mutation result는 태그 기반 workflow의 required action, allowed action,
+- Compact mutation result는 태그 기반 workflow의 transition catalog,
   정확한 ref와 동시성 좌표, typed rejection recovery를 유지합니다.
 - Generated contract snapshot은 derived check이며 다른 tool owner가 아닙니다.
 

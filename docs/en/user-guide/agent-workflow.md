@@ -24,11 +24,12 @@ and close contracts stay in the [Reference Index](../reference/README.md).
 ## Operating Loop
 
 Do not memorize one universal method sequence. Start from the latest
-authoritative tagged `workflow`. Call its non-null `required_action` with the
-exact `required_refs` and `expected_state_version`, and treat `allowed_actions`
-and its action catalog as the closed mutation-admission boundary rather than
-probing other workflow tools. Call only a Task-state-bound method that has a
-current catalog entry. Read-only status can refresh authority but does not make
+authoritative tagged `workflow`. Follow its single `required` transition when
+present, using the exact `required_refs`, `expected_state_version`, action key,
+and fixed authority coordinates. Treat `transition_catalog` as the closed
+mutation-admission boundary rather than probing other workflow tools. Call only
+an Agent transition that has a current catalog entry. A User transition must be
+completed through its named User Channel. Read-only status can refresh authority but does not make
 another mutation allowable. If there is no current Volicord result, the Task is
 unknown, or an authoritative refresh is required, obtain current state first.
 Do not poll status between steps merely for reassurance.
@@ -260,7 +261,7 @@ exact command behavior belongs to
 
 Before a product-file write, make the intended paths and effect specific enough
 to evaluate. Only `direct/implementation` or `work/implementation` can prepare
-a write. When `workflow.required_action` routes to write preparation, obtain or
+a write. When a required workflow transition routes to write preparation, obtain or
 reuse a compatible current Write Ticket, then show:
 
 - the intended change

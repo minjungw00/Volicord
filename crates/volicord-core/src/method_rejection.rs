@@ -91,7 +91,7 @@ fn workflow_rejected_response_with_user_actions(
         current_change_unit.as_ref(),
         checkpoint.as_ref(),
         &task_wide_authority,
-    );
+    )?;
     let mut user_actions = task_wide_authority.blocking_user_actions();
     for user_action in additional_user_actions {
         if !user_actions
@@ -107,7 +107,11 @@ fn workflow_rejected_response_with_user_actions(
             required_refs.push(user_action.user_action_request_ref.clone());
         }
     }
-    let recovery_owner = workflow.required_action().unwrap_or(fallback_recovery);
+    let recovery_owner = workflow
+        .transition_catalog()
+        .required_transition()
+        .map(|transition| transition.action_key.method)
+        .unwrap_or(fallback_recovery);
     let details = WorkflowRejectionDetails {
         state_change_applied: FalseValue,
         current_task_mode: task.mode,
@@ -115,7 +119,7 @@ fn workflow_rejected_response_with_user_actions(
         received_action,
         received_run_kind: RequiredNullable::new(received_run_kind),
         allowed_run_kinds,
-        allowed_actions: workflow.allowed_actions().to_vec(),
+        allowed_actions: workflow.transition_catalog().admitted_methods(),
         blockers: vec![WorkflowRejectionBlocker {
             code,
             owner_method: recovery_owner,

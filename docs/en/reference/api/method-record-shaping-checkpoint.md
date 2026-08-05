@@ -54,7 +54,7 @@ carry-forward refs, and stale-application refs. Current and predecessor
 checkpoint refs remain contextual lineage and are not top-level mutation
 arguments. The generic binder requires every fixed path to be present and
 deeply equal before Core. MCP admits this method only
-when it is present in the current workflow catalog and requires this
+when its Agent descriptor is present in the current workflow transition catalog and requires this
 method-and-variant form's exact `action_form_ref` before Core invocation.
 
 `checkpoint_operation.operation=create_initial` requires no current checkpoint.
@@ -146,14 +146,14 @@ durable identity or effects.
 Calling the method outside `advisor|work` plus `work_phase=shaping` returns the
 common typed no-effect workflow rejection. A current stale application selects
 `shaping_required`, `next_actor=agent`,
-`required_action=volicord.record_shaping_checkpoint`, and
+a required `volicord.record_shaping_checkpoint` transition, and
 `blocking_reason=application_authority_stale`. Rejected, deferred, or expired
 authority selects `decision_recovery_required` with the same recovery method.
 
 A committed checkpoint with a current user-owned gap selects
 `awaiting_user_action`. Once an advisor checkpoint, its non-write Change Unit,
 and all required decisions are ready, workflow selects
-`ready_to_finalize_advice` with `required_action=volicord.finalize_advice`.
+`ready_to_finalize_advice` with a required `volicord.finalize_advice` transition.
 Work Tasks instead select `ready_for_implementation` and
 `volicord.advance_task`.
 

@@ -484,25 +484,34 @@ Owner links:
 WorkflowProjection:
   kind: string
   next_actor: string
-  required_action: string | null
-  allowed_actions: string[]
   required_refs: StateRecordRef[]
   expected_state_version: integer
   blocking_reason: string | null
   checkpoint: ShapingCheckpointSummary | null
-  action_catalog: WorkflowActionCatalog
+  transition_catalog: WorkflowTransitionCatalog
+  close_readiness: WorkflowCloseReadiness
 
-WorkflowActionCatalog:
-  required_method: string | null
-  actions: WorkflowActionIntent[]
+WorkflowTransitionCatalog:
+  transitions: TransitionDescriptor[]
 
-WorkflowActionIntent:
-  method: string
-  semantic_variant: string
+TransitionDescriptor:
+  action_key: WorkflowActionKey
+  actor: agent | user | system
   role: required | allowed
   expected_state_version: integer
   fixed_authority_coordinates: WorkflowActionAuthorityCoordinates
+  agent_input_requirements: string[]
+  effect_class: string
+  expected_result_state: string
   required_refs: StateRecordRef[]
+
+WorkflowActionKey:
+  method: string
+  semantic_variant: string
+
+WorkflowCloseReadiness:
+  assessment_required: boolean
+  current_close_basis_present: boolean
 
 WorkflowActionAuthorityCoordinates.update_scope:
   coordinate_kind: update_scope
@@ -650,7 +659,7 @@ decisions not yet applied. It can be non-empty while `readiness=ready`.
 `decision_recovery_requirements` identifies each exact rejected, deferred, or
 expired request, available immutable resolution, authority disposition, and
 typed reason. Its presence selects `decision_recovery_required` with
-`next_actor=agent` and `required_action=volicord.record_shaping_checkpoint` even when
+`next_actor=agent` and a required `volicord.record_shaping_checkpoint` transition even when
 structural readiness is `ready`.
 `ready_to_apply_decisions` is selected only when that set includes
 `volicord.update_scope`. Work advance-owned decisions proceed toward a Change
@@ -658,30 +667,47 @@ Unit or `ready_for_implementation`. Advisor finalization-owned decisions
 proceed toward a non-write Change Unit and `ready_to_finalize_advice`; only a
 current checkpoint-backed close basis selects `close_review`.
 
-The workflow projection selects at most one required method from current progression state. Its tagged `required_action`, not the position of a top-level action or blocker array entry, is progression authority. Close blockers retain their local remediation actions but never choose this required action. User-owned current gaps always carry an exact current UserAction request ref; their chat presentation never resolves it. Progression consumes the Store-owned current effective shaping authority graph for `advance_task`, `finalize_advice`, shaping-owned scope update, write preparation, Run recording, close readiness, and mutation rejection. A compatible application carried from an ancestor remains `applied` without copying its source gap. A stale application grants no authority and appears only as a current recovery obligation: in `advisor|work` shaping it selects `shaping_required`, `next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, `blocking_reason=application_authority_stale`, and its exact recovery refs. An implementation-phase update that would create this condition is rejected before mutation and names `volicord.close_task` as the close/supersede recovery instead of returning the Task to shaping. A contradiction inside the current graph uses `inconsistent_authority_state`. Superseded request, resolution, application, and checkpoint refs remain immutable audit history and never enter current `required_refs` or progression merely because they exist.
+Core constructs one strict `WorkflowSnapshot` from the Store-owned current
+effective authority graph and current Task, scope, baseline, Change Unit,
+checkpoint, UserAction, write-ticket, close-basis, evidence, final-acceptance,
+recovery, and workspace facts. Contradictory current coordinates fail closed;
+superseded history is retained by Store but is not progression input. The pure
+`WorkflowMachine` evaluates that snapshot into this projection. It selects at
+most one `required` transition. Catalog membership and role, rather than a
+top-level action array or close-blocker order, are progression authority.
+Close blockers retain local remediation facts but never select or reorder a
+transition. `close_readiness` is a separate completion assessment.
 
-`action_catalog` contains one method group for every Task-state-bound method in
-`allowed_actions` and no intent for any other method. Its flat intent sequence
-represents one group with repeated method values and distinct closed
-`semantic_variant` values. Entries are ordered by canonical method and then
-canonical variant name. `required_method` is the Task-state-bound
-`required_action`, or null when the required action is read-only or belongs to
-the User Channel. Every variant in the required group has `role=required`; all
-other groups have `role=allowed`, and required-group variants are alternatives.
-Duplicate method-and-variant keys, a missing required group, a method, variant,
-and coordinate mismatch, or noncanonical ordering are invalid. Every entry
-uses the workflow's state version and Core-owned fixed authority coordinates
-from the same current Task snapshot. Initial checkpoint coordinates preserve
-an actual null baseline; replacement coordinates carry the exact current and
-predecessor checkpoint refs, retirement refs, compatible application refs, and
-stale-application refs. Other coordinates bind the exact current Task,
-checkpoint, Change Unit, scope revision, baseline, resolution, and method-local
-authority facts that apply. Update-scope coordinates also carry the selected
-Change Unit operation. No current Change Unit admits only `create_current`;
-an existing current Change Unit admits `keep_current` and, when Core authority
-policy allows it, `replace_current`, never `create_current`. MCP may project
-each neutral intent into an executable method-and-variant action form, but MCP forms and their input slots are
+`transition_catalog.transitions` is deterministically ordered by canonical
+method and closed method-owned semantic variant. Each `WorkflowActionKey`
+appears at most once and exactly zero or one descriptor has `role=required`.
+Every required descriptor is a catalog member. Each descriptor binds one
+closed actor, exact state version, fixed Core authority coordinates, Agent
+input requirement families when the actor is `agent`, effect class, expected
+result state, and required refs. A User wait contains the exact current
+`volicord.resolve_user_action` transition and request refs. Every nonterminal
+Agent-owned state exposes at least one executable Agent transition or an
+explicit close, cancellation, or supersession path.
+
+Initial checkpoint coordinates preserve an actual null baseline; replacement
+coordinates carry the exact current and predecessor checkpoint refs,
+retirement refs, compatible application refs, and stale-application refs.
+Other coordinates bind the exact current Task, checkpoint, Change Unit, scope
+revision, baseline, resolution, and method-local authority facts. The same
+machine decision owns update-scope availability: no current Change Unit admits
+only `create_current_change_unit`; a current Change Unit admits
+`keep_current_change_unit` and, when current authority permits it,
+`replace_current_change_unit`, never `create_current_change_unit`. MCP projects
+Agent descriptors into executable action forms; MCP forms and input slots are
 not Core state.
+
+A compatible shaping application carried from an ancestor remains `applied`
+without copying its source gap. Stale authority grants no permission and
+remains an explicit recovery obligation with exact refs. An implementation
+update that would create stale shaping authority is rejected before mutation
+and exposes the `volicord.close_task` close or supersession path instead of
+returning the Task to shaping. A contradiction inside current authority uses
+`inconsistent_authority_state`.
 
 For MCP checkpoint submission, the canonical compare-and-swap coordinate is
 `checkpoint_operation.expected_current_checkpoint_id`. The current and

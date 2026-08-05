@@ -336,8 +336,8 @@ identity, and records immutable lineage among them. The old request,
 resolution, application, and both transition timestamps remain audit history.
 
 For both advisor and work Tasks in shaping, `application_authority_stale`
-selects `next_actor=agent` and
-`required_action=volicord.record_shaping_checkpoint`; `volicord.status` may observe that
+selects `next_actor=agent` and a required
+`volicord.record_shaping_checkpoint` transition; `volicord.status` may observe that
 state but is not its recovery transition. During `work/implementation`, a
 scope, baseline, or Change Unit update that would invalidate current shaping
 authority is rejected before mutation. Its typed recovery requires the Task to
@@ -371,7 +371,7 @@ has established a current close basis.
 
 A rejected, deferred, or expired checkpoint decision selects
 `decision_recovery_required` with `next_actor=agent` and
-`required_action=volicord.record_shaping_checkpoint`. The state carries the exact
+a required `volicord.record_shaping_checkpoint` transition. The state carries the exact
 checkpoint, request and available resolution refs, disposition, typed recovery
 reason, and expected state version. An expired request remains unresolved in
 audit history and cannot route to `volicord.resolve_user_action`. Pending
@@ -670,23 +670,31 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 
 Separate QA and external verification workflows are not separate baseline authority records unless [Scope](scope.md) and the affected owners define them as supported.
 
-Core selects every currently allowed Task-state-bound method in one neutral
-`WorkflowActionCatalog`. Each `WorkflowActionIntent` carries its method, closed
-method-owned semantic variant, `required` or `allowed` role, expected state
-version, exact fixed authority coordinates, and required refs. All intents for
-one method constitute one method group: the catalog contains each allowed method
-group, contains no disallowed method, rejects duplicate method-and-variant
-keys, and orders intents by canonical method then variant. When a required
-Task-state-bound method has multiple variants, those variants are alternative
-ways to perform that required action, not simultaneous requirements. Its
-coordinates all come from the same current authoritative Task snapshot. They
-include exact checkpoint succession and recovery sets for checkpoint
-recording, exact checkpoint and decision coordinates for shaping progression,
-and current Task, Change Unit, scope, baseline, and resolution coordinates for
-implementation and close actions. Core does not own MCP JSON input slots or
-action-form digests. Update-scope coordinates additionally select the exact
-`ChangeUnitOperation` against the current Change Unit authority. An
-authority-coordinate mismatch after schema validation
+Core derives one strict adapter-independent `WorkflowSnapshot` from the
+Store-validated current Task authority. It contains the current Task, scope,
+baseline, Change Unit, checkpoint, effective shaping graph, UserAction state,
+write-ticket state, close basis, evidence state, final-acceptance state,
+recovery constraints, and workspace context. Superseded records remain
+immutable Store history and are not progression inputs. Contradictory current
+coordinates fail closed.
+
+The pure `WorkflowMachine` is the sole owner of current progression. It maps
+that snapshot to a workflow kind, next actor, typed blocking reason, exact
+required refs, separate close-readiness facts, and one deterministic
+`WorkflowTransitionCatalog`. Every `TransitionDescriptor` carries a unique
+`WorkflowActionKey` of method plus closed method-owned semantic variant, a
+closed `agent`, `user`, or `system` actor, `required` or `allowed` role, exact
+fixed authority coordinates, Agent input requirement families, effect class,
+and expected result state. Exactly zero or one descriptor is required, and a
+required descriptor is always a catalog member. Every nonterminal state waits
+for an exact current UserAction, exposes an executable Agent transition, or
+exposes an explicit close, cancellation, or supersession path.
+
+The machine also owns all `volicord.update_scope` variant availability. Its
+coordinates select the exact `ChangeUnitOperation` against current Change Unit
+authority; no adapter or projection recalculates create, keep, or replace
+availability. Core does not own MCP JSON input slots or action-form digests.
+An authority-coordinate mismatch after schema validation
 is a no-effect `AuthorityBasisMismatch` with typed `expected` and `received`
 values; it does not make an otherwise valid Task corrupt.
 

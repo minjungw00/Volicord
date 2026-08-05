@@ -50,8 +50,8 @@ implementation boundary, typed gap만 필수 에이전트 입력으로 남깁니
 `replace_current`에서는 `checkpoint_operation.expected_current_checkpoint_id`, retirement
 참조, carry-forward 참조, stale application 참조도 고정합니다. 현재·선행 checkpoint
 참조는 문맥 계보로 남으며 최상위 mutation 인자가 아닙니다. 일반 binder는 Core 전에
-모든 고정 경로가 존재하고 깊은 동등성을 만족하도록 요구합니다. MCP는 현재 workflow catalog에
-이 메서드가 있을 때만 허용하며 Core 호출 전에 이 메서드-variant form의 정확한
+모든 고정 경로가 존재하고 깊은 동등성을 만족하도록 요구합니다. MCP는 현재 workflow transition catalog에
+이 메서드의 Agent descriptor가 있을 때만 허용하며 Core 호출 전에 이 메서드-variant form의 정확한
 `action_form_ref`를 요구합니다.
 
 `checkpoint_operation.operation=create_initial`은 현재 checkpoint가 없어야 합니다.
@@ -136,13 +136,13 @@ reauthorization ref, workflow, 현재 state를 반환합니다. Preview는 durab
 
 `advisor|work` 및 `work_phase=shaping` 밖에서 호출하면 공통 typed no-effect workflow
 거부를 반환합니다. 현재 stale application은 `shaping_required`, `next_actor=agent`,
-`required_action=volicord.record_shaping_checkpoint`,
+필수 `volicord.record_shaping_checkpoint` transition,
 `blocking_reason=application_authority_stale`를 선택합니다. Rejected, deferred, expired
 권한은 같은 복구 메서드를 가진 `decision_recovery_required`를 선택합니다.
 
 현재 사용자 소유 gap이 있는 커밋 checkpoint는 `awaiting_user_action`을 선택합니다.
 Advisor checkpoint, 비쓰기 Change Unit, 필요한 모든 결정이 준비되면 workflow는
-`ready_to_finalize_advice`와 `required_action=volicord.finalize_advice`를 선택합니다. Work
+`ready_to_finalize_advice`와 필수 `volicord.finalize_advice` transition을 선택합니다. Work
 Task는 대신 `ready_for_implementation`과 `volicord.advance_task`를 선택합니다.
 
 ## 관련 담당 문서

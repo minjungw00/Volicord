@@ -155,7 +155,7 @@ workspace basis required by the mutation.
 ### `WORKFLOW_ACTION_NOT_ALLOWED`
 
 The called Task-state-bound method is absent from the current tagged workflow
-action catalog. At the MCP adapter boundary this is a typed pre-Core rejection:
+transition catalog. At the MCP adapter boundary this is a typed pre-Core rejection:
 `reached_core=false`, `committed=false`, and no state change. Its structured
 facts report the called method, workflow kind, current required method, allowed
 Task-state-bound methods, and the available called-method and required-method

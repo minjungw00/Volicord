@@ -671,7 +671,10 @@ impl McpAdapter {
             .cloned()
             .collect::<Vec<_>>();
         let required_method_forms = catalog.required_forms().cloned().collect::<Vec<_>>();
-        let required_method = workflow.required_action();
+        let required_method = workflow
+            .transition_catalog()
+            .required_transition()
+            .map(|transition| transition.action_key.method);
         let mut allowed_methods = catalog
             .forms
             .iter()

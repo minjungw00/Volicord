@@ -23,10 +23,11 @@ Volicord에 연결된 세션에서 에이전트를 운영하거나 검토할 때
 ## 운영 순서
 
 모든 작업에 적용할 메서드 순서를 외우지 않습니다. 최신 권한 상태인 태그 기반
-`workflow`에서 시작합니다. null이 아닌 `required_action`을 정확한 `required_refs`와
-`expected_state_version`으로 호출하고, `allowed_actions`와 action catalog를 닫힌 mutation
-admission 경계로 취급해 다른 workflow 도구를 시험하지 않습니다. 현재 catalog entry가
-있는 Task 상태 결속 메서드만 호출합니다. 읽기 전용 status는 권한 상태를 새로고칠 수
+`workflow`에서 시작합니다. `required` transition이 있으면 정확한 `required_refs`,
+`expected_state_version`, action key, 고정 권한 좌표로 그 transition을 따릅니다.
+`transition_catalog`를 닫힌 mutation admission 경계로 취급해 다른 workflow 도구를
+시험하지 않습니다. 현재 catalog entry가 있는 Agent transition만 호출합니다. User
+transition은 지정된 User Channel에서 완료해야 합니다. 읽기 전용 status는 권한 상태를 새로고칠 수
 있지만 다른 mutation을 허용하지 않습니다. 현재 Volicord 결과가 없거나 Task를 알 수
 없거나 권한 상태를 새로고쳐야 할 때 먼저 현재 상태를 확인합니다. 안심하기 위해 단계
 사이마다 status를 반복 조회하지 않습니다.
@@ -234,7 +235,7 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 
 제품 파일을 쓰기 전에 의도한 경로와 효과를 평가할 수 있을 만큼 구체화합니다.
 `direct/implementation` 또는 `work/implementation`만 쓰기를 준비할 수 있습니다.
-`workflow.required_action`이 쓰기 준비를 가리키면 호환되는 현재 쓰기 티켓을 발급받거나
+필수 workflow transition이 쓰기 준비를 가리키면 호환되는 현재 쓰기 티켓을 발급받거나
 재사용한 뒤 다음을 보여 줍니다.
 
 - 의도한 변경

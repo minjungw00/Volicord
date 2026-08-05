@@ -127,7 +127,7 @@ accepted resolution만 정확히 한 번 적용할 수 있습니다.
 
 Stale shaping application도 진행 권한을 부여하지 않습니다. Work Task가 shaping에 있는
 동안에는 `shaping_required`, `next_actor=agent`,
-`required_action=volicord.record_shaping_checkpoint`,
+필수 `volicord.record_shaping_checkpoint` transition,
 `blocking_reason=application_authority_stale`를 선택하며, 호출자는 advance를 허용받기 전에
 정확한 stale application을 폐기하거나 재권한해야 합니다. 재권한은 새 unresolved
 UserAction 요청을 사용하므로 stale accepted resolution은 `advance_task` 입력이 될 수

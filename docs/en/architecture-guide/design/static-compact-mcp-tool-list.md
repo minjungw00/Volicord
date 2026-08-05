@@ -30,8 +30,8 @@ revision.
   tool.
 - Runtime schemas preserve required validation and authority fields while
   omitting documentation-only material.
-- Compact mutation results retain the tagged workflow's required action,
-  allowed actions, exact refs and concurrency coordinate, plus typed rejection
+- Compact mutation results retain the tagged workflow's transition catalog,
+  exact refs and concurrency coordinate, plus typed rejection
   recovery.
 - Generated contract snapshots are derived checks, not alternate tool owners.
 

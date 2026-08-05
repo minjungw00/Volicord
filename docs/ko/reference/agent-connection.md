@@ -1,9 +1,9 @@
 # Agent Connection 참조
 
 workflow 모드 connection은 지원되는 에이전트 소유 메서드를 dispatch할 수 있습니다.
-반환된 태그형 workflow action catalog가 Task 상태 결속 mutation을 허용하며, 허용된 각
+반환된 태그형 workflow transition catalog가 Task 상태 결속 mutation을 허용하며, 허용된 각
 메서드 variant에는 Core 진입 전에 정확한 현재 메서드-variant form이 필요합니다.
-`required_action`은 진행 상태가 선택하며 닫기 차단 사유는 별도 close-readiness
+Machine이 선택한 필수 transition은 진행 상태이며 닫기 차단 사유는 별도 close-readiness
 projection으로 유지됩니다.
 
 이 문서는 현재 `host_kind=codex` Agent Connection 계약을 정의합니다. 정확한
@@ -694,7 +694,7 @@ Connection report context는 finding correlation뿐 아니라 check evidence에�
 fingerprint, 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
 부재, 저장소 관찰자 semantic contract digest, 정규 Product Repository effect-catalog
 digest를 더합니다. 또한 완전한 현재 `StorageManifest`의 digest와 managed agent
-guidance, workflow action contract, MCP semantic schema라는 세 가지 현재 semantic
+guidance, workflow transition contract, MCP semantic schema라는 세 가지 현재 semantic
 digest를 결속합니다. Storage-manifest digest는 contract identity, 정규 DDL 및 무결성
 제약 digest, 완전한 capability 집합을 포함합니다. Guidance digest는 managed
 `AGENTS.md` block과 MCP server instruction에 rendering하는 폐쇄형 현재 workflow fact를

@@ -399,13 +399,45 @@ inconsistent_authority_state
 
 These values describe current progression only. Close-readiness blockers keep
 their own local categories and remediation and do not select a workflow kind
-or required action.
+or required transition.
 `application_authority_stale` selects `shaping_required`, `next_actor=agent`,
-and `required_action=volicord.record_shaping_checkpoint` for advisor or work shaping.
+and a required `volicord.record_shaping_checkpoint` transition for advisor or work shaping.
 During work implementation, an update that would create stale shaping
 authority is rejected before mutation and names `volicord.close_task` as the
 close/supersede recovery; it does not select `status` as the recovery or return
 the Task to shaping.
+
+`WorkflowActionKey.semantic_variant` uses the closed method-owned values:
+
+```text
+create_initial
+replace_current
+keep_current_change_unit
+create_current_change_unit
+replace_current_change_unit
+finalize_advice
+advance_task
+prepare_evidence_capture
+prepare_write
+stage_artifact
+record_run
+request_user_action
+resolve_user_action
+reconcile_changes
+check_close
+close_task
+```
+
+`TransitionDescriptor.actor` uses `agent`, `user`, or `system`, and `role`
+uses `required` or `allowed`. Agent input requirements use
+`shaping_checkpoint`, `scope_and_change_unit`, `advice_result`,
+`evidence_capture`, `proposed_write`, `artifact`, `run_observation`,
+`user_action_draft`, `change_reconciliation`, or `close_intent`.
+`effect_class` uses `core_state_mutation`, `user_channel_mutation`,
+`write_authorization`, `artifact_staging`, `evidence_capture`,
+`execution_recording`, `read_only_assessment`, or `terminal_mutation`.
+`expected_result_state` uses `reevaluate_current_authority`,
+`awaiting_user_action`, `implementation`, `close_review`, or `terminal`.
 
 `StateSummary.acceptance_policy` uses:
 

@@ -411,7 +411,7 @@ state:
     branch_ref: "refs/heads/filter-scope"
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-  workflow: {kind: shaping_required, next_actor: agent, required_action: volicord.record_shaping_checkpoint, allowed_actions: [volicord.record_shaping_checkpoint, volicord.status], required_refs: [], expected_state_version: 19, blocking_reason: no_current_checkpoint, checkpoint: null}
+  # 현재의 완전한 WorkflowProjection은 이 축약 예시에서 생략했습니다.
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

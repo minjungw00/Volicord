@@ -553,7 +553,7 @@ state:
   autonomy_boundary: "온보딩 체크리스트 완료만 다룹니다."
   active_change_unit_ref: null
   baseline_ref: baseline_close_001
-  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 72, blocking_reason: null, checkpoint: null}
+  # 현재의 완전한 WorkflowProjection은 이 축약 예시에서 생략했습니다.
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

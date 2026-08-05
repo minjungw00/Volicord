@@ -911,7 +911,7 @@ state:
     task_id: task_runprobe_001
     produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
-  workflow: {kind: implementation, next_actor: agent, required_action: null, allowed_actions: [volicord.update_scope, volicord.prepare_write, volicord.record_run, volicord.check_close], required_refs: [], expected_state_version: 32, blocking_reason: null, checkpoint: null}
+  # The current complete WorkflowProjection is omitted from this abbreviated example.
   pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null

@@ -668,8 +668,8 @@ metadata, idempotency fields, actor source, operation category, and verification
 basis. Hidden fields are rejected before Core. Compact discovery schemas never
 relax the complete owner-defined request validation.
 
-For every currently allowed Agent-owned Task-state-bound action, the adapter
-combines the corresponding neutral Core `WorkflowActionIntent` with that
+For every current Agent-owned Task-state-bound transition, the adapter
+combines the corresponding neutral Core `TransitionDescriptor` with that
 tool's canonical semantic descriptor:
 
 ```schema
@@ -705,9 +705,9 @@ RetryContract:
 semantic variant, expected state version, exact fixed authority coordinates,
 the complete `fixed_arguments` object and `fixed_argument_paths`, and the
 current semantic-schema digest. It is not a numeric workflow version.
-The form catalog preserves Core catalog ordering, required method groups, and
-role. Every Core method-and-variant intent has one distinct form and form ref;
-multiple forms for one required method are alternative actions.
+The form catalog preserves Core transition-catalog ordering and descriptor
+role. Every Agent `TransitionDescriptor` has one distinct form and form ref;
+the required method is derived only from a required Agent descriptor.
 It appears in normal Task status, mutation success and rejection presentation,
 authoritative argument context, and retry contracts. Status with no active Task
 has a null catalog. A singular form is not independently authoritative.
@@ -1231,7 +1231,7 @@ requirements.
 A stale shaping application grants no permission. Its blocker fact names the
 exact stale application and request refs and the current recovery owner. In
 advisor or work shaping, `workflow` selects `shaping_required`,
-`next_actor=agent`, `required_action=volicord.record_shaping_checkpoint`, and
+`next_actor=agent`, a required `volicord.record_shaping_checkpoint` transition, and
 `blocking_reason=application_authority_stale`;
 `volicord.record_shaping_checkpoint` then requires the complete exact tagged
 retirement or reauthorization action set. A reissue
@@ -1242,9 +1242,9 @@ A successful `advance_task` adds that implementation was entered, no write
 ticket was created, and Product Repository writes still require
 `volicord.prepare_write`.
 
-The tagged `workflow.required_action` is the only progression selector.
-Top-level arrays, blocker arrays, compact text, and presentation ordering do
-not select a next method. For shaping decisions, presentation preserves the
+The role on entries in the tagged `workflow.transition_catalog` is the only
+progression selector. Top-level arrays, blocker arrays, compact text, and
+presentation ordering do not select a next method. For shaping decisions, presentation preserves the
 current checkpoint and request refs and surfaces the exact application owner;
 it does not turn resolution into application or synthesize a scope-decision
 ref for product-only or technical-only progression.
