@@ -14,6 +14,13 @@ request records an immutable User Channel outcome and changes the linked gap to
 or advances the Task. Only the accepted disposition grants application
 eligibility.
 
+Before validating the draft action, Core builds the normalized current
+`WorkflowSnapshot` and requires the exact
+`volicord.request_user_action/request_user_action` transition from its
+canonical `WorkflowMachine`. The transition owns current availability and its
+fixed coordinates. Its absence returns a no-effect `TransitionRejection`, and
+recovery is present only as another transition in the same current catalog.
+
 ## Request
 
 <!-- BEGIN GENERATED: contract-structures api.method.request_user_action.request[params] -->
@@ -168,6 +175,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

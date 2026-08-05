@@ -46,6 +46,15 @@ The methods can:
 
 Close is a Core state transition, not a report. `volicord.close_task` evaluates the current close basis for `intent=complete`; it does not infer close from chat, status text, a terminal close summary, final acceptance alone, residual-risk acceptance alone, evidence alone, a write ticket, or a rendered view.
 
+Before method-specific request validation, Core builds the normalized current
+`WorkflowSnapshot` and requires the exact `volicord.check_close/check_close` or
+`volicord.close_task/close_task` transition from its canonical
+`WorkflowMachine`. The admitted descriptor fixes the current authority
+coordinates. Its absence returns a no-effect `TransitionRejection`; any
+`recovery_action_key` is another transition in that same current catalog.
+`check_close` remains read-only, while only an admitted `close_task` can reach a
+terminal commit.
+
 ## Owner boundary
 
 Method-owned block:
@@ -323,6 +332,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `Result Metadata: no_effect` fields
 

@@ -66,6 +66,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::PrepareEvidenceCapture,
+            Some(volicord_types::values::WorkflowActionSemanticVariant::PrepareEvidenceCapture),
             request.envelope.clone(),
             request_json,
             invocation,

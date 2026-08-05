@@ -7,10 +7,16 @@ fn content_type_for_serialized_stage_result_size(
     task_id: &str,
     handle_suffix: &str,
     target_bytes: usize,
+    transition: TransitionDescriptor,
 ) -> Result<String, Box<dyn Error>> {
     let content_type_prefix = "text/plain;";
+    let base = match StageArtifactRequest::staging_created_result_base(2) {
+        StageArtifactResultBase::StagingCreated(base) => {
+            StageArtifactResultBase::StagingCreated(base.with_transition(transition))
+        }
+    };
     let result = StageArtifactResult {
-        base: StageArtifactRequest::staging_created_result_base(2),
+        base,
         evidence_state: EvidenceDisplayState::Prepared,
         staged_artifact_handle: StagedArtifactHandle {
             handle_id: StagedArtifactHandleId::new(prefixed_durable_id(
@@ -38,6 +44,28 @@ fn content_type_for_serialized_stage_result_size(
         "{content_type_prefix}{}",
         "a".repeat(target_bytes - base_bytes)
     ))
+}
+
+fn current_stage_transition(
+    harness: &MethodHarness,
+    task_id: &str,
+) -> Result<TransitionDescriptor, Box<dyn Error>> {
+    let store = harness.store()?;
+    let project_state = store.project_state()?;
+    let action_key = WorkflowActionKey::new(
+        MethodName::StageArtifact,
+        WorkflowActionSemanticVariant::StageArtifact,
+    )
+    .expect("stage-artifact key must be canonical");
+    crate::workflow_projection::current_transition_admission(
+        &store,
+        &project_state,
+        &TaskId::new(task_id),
+        action_key,
+        &project_state.updated_at,
+    )?
+    .descriptor
+    .ok_or_else(|| "stage-artifact transition should be current".into())
 }
 
 fn stage_artifact_tmp_dir(harness: &MethodHarness) -> PathBuf {
@@ -398,6 +426,7 @@ fn stage_artifact_accepts_complete_result_at_serialized_boundary() -> Result<(),
         &task_id,
         handle_suffix,
         crate::methods::stage_artifact::MAX_STAGE_ARTIFACT_RESULT_BYTES,
+        current_stage_transition(&harness, &task_id)?,
     )?;
 
     let response = harness
@@ -472,6 +501,7 @@ fn stage_artifact_rejects_oversized_complete_result_before_staging_effect(
         &task_id,
         handle_suffix,
         crate::methods::stage_artifact::MAX_STAGE_ARTIFACT_RESULT_BYTES + 1,
+        current_stage_transition(&harness, &task_id)?,
     )?;
 
     let response = harness

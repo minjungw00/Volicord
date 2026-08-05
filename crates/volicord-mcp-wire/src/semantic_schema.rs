@@ -236,7 +236,7 @@ pub const MCP_TAGGED_UNION_CONTRACTS: &[McpTaggedUnionContract] = &[
         variants: semantic_variants!(
             "method_rejected",
             "current_task_phase",
-            "recovery_method",
+            "recovery_action",
             "shaping_decision_outcome",
             "non_authorizing_shaping_decision",
             "user_action_request_exists",

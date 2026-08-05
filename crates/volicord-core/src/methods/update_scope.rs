@@ -17,14 +17,15 @@ use crate::identity::{allocate_acceptance_criterion_id, allocate_change_unit_id}
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
-    authority_basis_mismatch_plan_error, decision_rejected_response, dry_run_summary,
-    no_active_task_response, rejected_pipeline_response, validation_rejected,
+    decision_rejected_response, dry_run_summary, no_active_task_response,
+    rejected_pipeline_response, transition_rejected_response, validation_rejected,
     workflow_rejection_plan_error,
 };
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
-    commit_mutation_branch, dry_run_preview_branch, tool_error, CorePipelineError, CoreResult,
-    CoreService, InvocationContext, PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, AdmittedTransition,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
+    TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::close_readiness::{
     accepted_current_scope_decision_authority, ScopeDecisionAuthorityRequirement,
@@ -61,13 +62,14 @@ use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
 };
 use volicord_types::schema::{
-    advisor_compatible_change_unit, AcceptanceCriterion, AuthorityBasisValue, JsonObject,
-    PersistedUserActionRequestMetadata, StateRecordRef, UserActionBasis,
+    advisor_compatible_change_unit, AcceptanceCriterion, JsonObject,
+    PersistedUserActionRequestMetadata, StateRecordRef, UserActionBasis, WorkflowActionKey,
 };
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
     ShapingDecisionApplicationOwner, ShapingGapStatus, StateRecordKind, TaskControlLevel, TaskMode,
-    UserActionBasisStatus, UtcTimestamp, WorkPhase, WriteTicketInvalidationReason,
+    TransitionRejectionReason, UserActionBasisStatus, UtcTimestamp, WorkflowActionSemanticVariant,
+    WorkflowAuthorityInvalidationPolicy, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
     pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
@@ -103,6 +105,11 @@ impl CoreService {
             self,
             Some(context),
             MethodName::UpdateScope,
+            Some(
+                volicord_types::values::WorkflowActionSemanticVariant::for_change_unit_operation(
+                    request.change_unit.operation,
+                ),
+            ),
             request.envelope.clone(),
             request_json,
             invocation,
@@ -111,6 +118,13 @@ impl CoreService {
             Ok(prepared) => prepared,
             Err(response) => return Ok(response),
         };
+        let admitted_transition =
+            prepared
+                .admitted_transition
+                .clone()
+                .ok_or_else(|| CorePipelineError::Invariant {
+                    detail: "update-scope planning requires its admitted transition".to_owned(),
+                })?;
         let plan = match plan_update_scope(
             self,
             &prepared.store,
@@ -118,6 +132,7 @@ impl CoreService {
             request.clone(),
             &prepared.context.verified_invocation,
             &prepared.operation_now,
+            &admitted_transition,
         ) {
             Ok(plan) => plan,
             Err(error) => {
@@ -311,6 +326,11 @@ fn decide_update_scope_policy(
         &plan_now,
     )?;
     if !shaping_authority.recovery_required.is_empty() {
+        let attempted_action_key = WorkflowActionKey::new(
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::for_change_unit_operation(request.change_unit.operation),
+        )
+        .expect("Change Unit operations have a canonical UpdateScope action key");
         return workflow_rejection_plan_error(
             store,
             project_state,
@@ -318,11 +338,10 @@ fn decide_update_scope_policy(
             &request.task_id,
             ErrorCode::UserDecisionUnresolved,
             "scope updates cannot apply a rejected, deferred, or expired shaping decision",
-            MethodName::UpdateScope,
+            attempted_action_key,
             None,
             Vec::new(),
             false,
-            MethodName::RecordShapingCheckpoint,
         );
     }
     let validated_scope_decisions = validate_related_scope_decisions(
@@ -420,6 +439,7 @@ fn plan_update_scope_mutations(
     project_state: &ProjectStateHeader,
     verified_invocation: &VerifiedInvocationContext,
     policy: ScopePolicyDecision,
+    admitted_transition: &AdmittedTransition,
 ) -> Result<PlannedScopeMutations, PlanError> {
     let ScopePolicyDecision {
         request,
@@ -438,23 +458,62 @@ fn plan_update_scope_mutations(
     } = policy;
     let current_scope = StoredScope::from_task(&task)?;
     let next_scope = current_scope.apply_request(&request);
+    let submitted_authority_invalidation = current_scope != next_scope
+        || request.change_unit.operation == ChangeUnitOperation::ReplaceCurrent;
+    if submitted_authority_invalidation
+        && admitted_transition.descriptor.authority_invalidation
+            == WorkflowAuthorityInvalidationPolicy::Forbidden
+    {
+        let recovery_action_key = admitted_transition
+            .workflow
+            .transition_catalog()
+            .transitions
+            .iter()
+            .find(|transition| transition.action_key.method == MethodName::CloseTask)
+            .map(|transition| transition.action_key);
+        let response = transition_rejected_response(
+            &request.envelope,
+            project_state,
+            &admitted_transition.workflow,
+            ErrorCode::TaskPhaseTransitionRequired,
+            "the submitted update would invalidate current implementation authority",
+            admitted_transition.descriptor.action_key,
+            TransitionRejectionReason::ImplementationAuthorityWouldBeInvalidated,
+            false,
+            recovery_action_key,
+        )
+        .map_err(PlanError::Core)?;
+        return Err(PlanError::Response(Box::new(response)));
+    }
     if request.change_unit.operation == ChangeUnitOperation::KeepCurrent
         && current_change_unit.is_some()
         && current_scope.baseline_ref != next_scope.baseline_ref
     {
-        let authority_value = |value: Option<&volicord_types::ids::BaselineRef>| {
-            value.map_or(AuthorityBasisValue::Null(()), |value| {
-                AuthorityBasisValue::String(value.as_str().to_owned())
-            })
-        };
-        return authority_basis_mismatch_plan_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "baseline_ref",
-            authority_value(current_scope.baseline_ref.as_ref()),
-            authority_value(next_scope.baseline_ref.as_ref()),
-            "baseline retargeting requires replace_current",
-        );
+        let replace_key = WorkflowActionKey::new(
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+        )
+        .map_err(|detail| CorePipelineError::Invariant {
+            detail: detail.to_owned(),
+        })?;
+        let recovery_action_key = admitted_transition
+            .workflow
+            .transition_catalog()
+            .transition(&replace_key)
+            .map(|transition| transition.action_key);
+        let response = transition_rejected_response(
+            &request.envelope,
+            project_state,
+            &admitted_transition.workflow,
+            ErrorCode::ChangeUnitStale,
+            "baseline retargeting requires the current replace transition",
+            admitted_transition.descriptor.action_key,
+            TransitionRejectionReason::AuthorityBasisMismatch,
+            recovery_action_key.is_some(),
+            recovery_action_key,
+        )
+        .map_err(PlanError::Core)?;
+        return Err(PlanError::Response(Box::new(response)));
     }
     let (acceptance_criteria, acceptance_criteria_mutation, acceptance_criteria_changed) =
         plan_acceptance_criteria_replacement(service, store, project_state, &request)?;
@@ -476,27 +535,6 @@ fn plan_update_scope_mutations(
     } else {
         task.close_basis_revision
     };
-
-    if scope_changed && task.work_phase == WorkPhase::Implementation {
-        let authority_graph = store
-            .current_shaping_authority_graph(&request.task_id, &plan_now)
-            .map_err(CorePipelineError::from)?;
-        if !authority_graph.current_applications.is_empty() {
-            return workflow_rejection_plan_error(
-                store,
-                project_state,
-                &request.envelope,
-                &request.task_id,
-                ErrorCode::TaskPhaseTransitionRequired,
-                "an implementation-phase scope update cannot stale current shaping authority; close or supersede the Task first",
-                MethodName::UpdateScope,
-                None,
-                Vec::new(),
-                false,
-                MethodName::CloseTask,
-            );
-        }
-    }
 
     let active_write_tickets = store
         .active_write_tickets(&request.task_id)
@@ -862,6 +900,7 @@ fn plan_update_scope(
     request: UpdateScopeRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
+    admitted_transition: &AdmittedTransition,
 ) -> Result<UpdateScopePlan, PlanError> {
     let policy = decide_update_scope_policy(
         store,
@@ -873,8 +912,14 @@ fn plan_update_scope(
             normalize_update_scope_request(request),
         )?,
     )?;
-    let mutations =
-        plan_update_scope_mutations(service, store, project_state, verified_invocation, policy)?;
+    let mutations = plan_update_scope_mutations(
+        service,
+        store,
+        project_state,
+        verified_invocation,
+        policy,
+        admitted_transition,
+    )?;
     let projection =
         project_update_scope_response(store, project_state, verified_invocation, mutations)?;
     Ok(projection.into_plan())

@@ -92,12 +92,13 @@ pub(crate) fn record_current_session_finding(
     )
     .map_err(McpAdapterError::Store)?
     .ok_or_else(|| McpAdapterError::Protocol("MCP runtime session disappeared".to_owned()))?;
+    let observed_at = runtime.next_observation_timestamp();
     let data = data_for_diagnostic(
         diagnostic,
         &McpDiagnosticContext {
-            observed_at: UtcTimestamp::parse(&authoritative_observation_timestamp()).map_err(
-                |_| McpAdapterError::Protocol("diagnostic timestamp is invalid".to_owned()),
-            )?,
+            observed_at: UtcTimestamp::parse(&observed_at).map_err(|_| {
+                McpAdapterError::Protocol("diagnostic timestamp is invalid".to_owned())
+            })?,
             connection_id: Some(persisted.connection_internal_id),
             integration_revision: Some(persisted.connection_integration_revision),
             runtime_session_id: Some(runtime.runtime_session_id.clone()),

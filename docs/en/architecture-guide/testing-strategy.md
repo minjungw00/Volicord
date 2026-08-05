@@ -321,7 +321,7 @@ Durable tests should cover, as applicable:
 - MCP rejection of hidden context and CLI-only UserAction resolution;
 - every closed workflow-rejection code, typed current mode/phase and received
   request, allowed alternatives, authoritative workflow, retryability,
-  recovery owner, unchanged effect counts/state version, pending User Channel
+  exact recovery action key, unchanged effect counts/state version, pending User Channel
   presentation, exact command construction, and phase-transition no-write-
   ticket facts;
 - agent-evaluation observation totals for workflow rejections and final-answer

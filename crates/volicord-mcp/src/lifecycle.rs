@@ -45,6 +45,7 @@ use volicord_store::operational_sessions::{
 use volicord_types::integration_revision::McpRuntimeSessionSource;
 use volicord_types::managed_mcp_client_info::ManagedMcpClientInfo;
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId};
+use volicord_types::values::UtcTimestamp;
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +91,7 @@ pub(crate) struct ClosedSession {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SessionRuntime {
     pub(crate) runtime_session_id: String,
+    observation_floor: Option<UtcTimestamp>,
     pub(crate) launch_origin: &'static str,
     pub(crate) status_method_call_count: u64,
     pub(crate) terminal_finding_recorded: bool,
@@ -102,6 +104,7 @@ impl SessionRuntime {
     pub(crate) fn for_session_source(session_source: McpRuntimeSessionSource) -> Self {
         Self {
             runtime_session_id: String::new(),
+            observation_floor: None,
             launch_origin: session_source.as_str(),
             status_method_call_count: 0,
             terminal_finding_recorded: false,
@@ -109,6 +112,26 @@ impl SessionRuntime {
             codex_binding: CodexManagedBinding::for_session_source(session_source),
             deferred_tools_list_serialized_bytes: None,
         }
+    }
+
+    pub(crate) fn next_observation_timestamp(&mut self) -> String {
+        let sampled = UtcTimestamp::parse(&authoritative_observation_timestamp())
+            .expect("the adapter clock always produces a canonical UTC timestamp");
+        self.advance_observation_floor(sampled)
+    }
+
+    fn advance_observation_floor(&mut self, sampled: UtcTimestamp) -> String {
+        if self
+            .observation_floor
+            .as_ref()
+            .is_none_or(|floor| sampled > *floor)
+        {
+            self.observation_floor = Some(sampled);
+        }
+        self.observation_floor
+            .as_ref()
+            .expect("an observation sample always establishes the runtime clock floor")
+            .to_canonical_string()
     }
 }
 
@@ -241,6 +264,13 @@ pub(crate) fn start_session(
     )?;
     let mut state = SessionState::new(start.session_source);
     state.runtime_mut().runtime_session_id = runtime_session.runtime_session_id;
+    state.runtime_mut().observation_floor = Some(
+        UtcTimestamp::parse(&runtime_session.last_observed_at).map_err(|_| {
+            McpAdapterError::Protocol(
+                "new MCP runtime session returned an invalid observation timestamp".to_owned(),
+            )
+        })?,
+    );
     if let Err(error) =
         validate_managed_stdio_session_ownership(adapter, &state.runtime().codex_binding)
     {
@@ -489,11 +519,12 @@ fn handle_json_rpc_notification(
                 ) =>
         {
             if !runtime.runtime_session_id.is_empty() {
+                let observed_at = runtime.next_observation_timestamp();
                 record_mcp_initialized_notification(
                     context,
                     &runtime.runtime_session_id,
                     selection.selected_profile.revision().as_str(),
-                    &authoritative_observation_timestamp(),
+                    &observed_at,
                 )
                 .map_err(McpAdapterError::Store)?;
             }
@@ -745,12 +776,13 @@ fn handle_initialize(
         parsed_initialize_attempt(params.as_ref())
     {
         if !state.runtime().runtime_session_id.is_empty() {
+            let observed_at = state.runtime_mut().next_observation_timestamp();
             record_mcp_initialize_attempt(
                 context,
                 &state.runtime().runtime_session_id,
                 &client_info,
                 &requested_protocol_version,
-                &authoritative_observation_timestamp(),
+                &observed_at,
             )
             .map_err(McpAdapterError::Store)?;
         }
@@ -763,11 +795,12 @@ fn handle_initialize(
         }
     };
     if !state.runtime().runtime_session_id.is_empty() {
+        let observed_at = state.runtime_mut().next_observation_timestamp();
         record_mcp_initialize_completion(
             context,
             &state.runtime().runtime_session_id,
             selection.selected_profile.revision().as_str(),
-            &authoritative_observation_timestamp(),
+            &observed_at,
         )
         .map_err(McpAdapterError::Store)?;
     }
@@ -962,12 +995,9 @@ pub(crate) fn close_session(
             &adapter.runtime_home,
             "mcp.runtime_session.close",
             |context| {
-                record_mcp_graceful_close(
-                    context,
-                    &runtime.runtime_session_id,
-                    &authoritative_observation_timestamp(),
-                )
-                .map_err(McpAdapterError::Store)
+                let observed_at = runtime.next_observation_timestamp();
+                record_mcp_graceful_close(context, &runtime.runtime_session_id, &observed_at)
+                    .map_err(McpAdapterError::Store)
             },
         ) {
             let failed = SessionState::Closed(ClosedSession {
@@ -1010,4 +1040,25 @@ pub(crate) fn terminate_session(
         runtime: state.runtime().clone(),
         termination: SessionTermination::TerminalFailure,
     })
+}
+
+#[cfg(test)]
+mod observation_clock_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_observation_floor_never_moves_backward() {
+        let mut runtime = SessionRuntime::for_session_source(McpRuntimeSessionSource::ManagedHost);
+        let later = UtcTimestamp::parse("2026-08-06T01:02:03.500Z").expect("valid timestamp");
+        let earlier = UtcTimestamp::parse("2026-08-06T01:02:03.499Z").expect("valid timestamp");
+
+        assert_eq!(
+            runtime.advance_observation_floor(later.clone()),
+            later.to_canonical_string()
+        );
+        assert_eq!(
+            runtime.advance_observation_floor(earlier),
+            later.to_canonical_string()
+        );
+    }
 }

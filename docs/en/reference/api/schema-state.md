@@ -684,7 +684,7 @@ appears at most once and exactly zero or one descriptor has `role=required`.
 Every required descriptor is a catalog member. Each descriptor binds one
 closed actor, exact state version, fixed Core authority coordinates, Agent
 input requirement families when the actor is `agent`, effect class, expected
-result state, and required refs. A User wait contains the exact current
+result state, authority-invalidation policy, and required refs. A User wait contains the exact current
 `volicord.resolve_user_action` transition and request refs. Every nonterminal
 Agent-owned state exposes at least one executable Agent transition or an
 explicit close, cancellation, or supersession path.
@@ -714,13 +714,13 @@ For MCP checkpoint submission, the canonical compare-and-swap coordinate is
 predecessor checkpoint refs in this workflow projection describe contextual
 lineage; they are not duplicated as top-level mutation arguments.
 
-Workflow mutation rejection details embed this same complete tagged
-`WorkflowProjection`; they do not reconstruct progression from the received
-payload. `allowed_actions`, blocker refs, exact Task mode/work phase, and the
-single recovery owner are read from current authority. A rejected request does
-not make its embedded `expected_state_version` a committed replay result: a
-later replay is evaluated against then-current authority and returns its then-
-current workflow.
+Workflow mutation rejection uses `TransitionRejection` with the exact attempted
+action key, closed reason, canonical blocking refs, and current workflow kind.
+A non-null `recovery_action_key` is valid only when it exists in this same
+catalog. Recovery is never reconstructed from the received payload, an error
+field, or display text. A rejected request creates no replay row; action-key
+identity and fixed authority coordinates distinguish exact replay from a
+conflicting semantic variant.
 
 Owner links:
 - Method behavior and durable effects: method owner documents routed from [API Methods](methods.md) and [Storage Effects](../storage-effects.md)

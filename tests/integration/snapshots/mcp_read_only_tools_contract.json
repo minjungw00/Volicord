@@ -165,11 +165,12 @@
           "ToolRejectedResponse",
           "ToolResultOrRejected_for_StatusResult",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionRequestId",
           "UserActionResolutionId",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
-          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -180,15 +181,12 @@
           "WorkflowActionRole",
           "WorkflowActionSemanticVariant",
           "WorkflowAgentInputRequirement",
+          "WorkflowAuthorityInvalidationPolicy",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowExpectedResultState",
           "WorkflowProjection",
-          "WorkflowRecovery",
-          "WorkflowRejectionBlocker",
-          "WorkflowRejectionDetails",
-          "WorkflowRejectionUserAction",
           "WorkflowStateKind",
           "WorkflowTransitionActor",
           "WorkflowTransitionCatalog",
@@ -202,7 +200,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5ced3bb53065cf34141bc243d036bc711b1ce38242852adec16e87c89bf5ebbe"
+        "sha256": "sha256:73805a4be07100c10e881aa95d981bed3ce8257946a2a7e0b4531a3260ad9149"
       }
     },
     {
@@ -287,8 +285,9 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionResolutionId",
-          "UserActionStatus",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
           "WorkflowActionForm",
@@ -298,15 +297,12 @@
           "WorkflowActionRole",
           "WorkflowActionSemanticVariant",
           "WorkflowAgentInputRequirement",
+          "WorkflowAuthorityInvalidationPolicy",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowExpectedResultState",
           "WorkflowProjection",
-          "WorkflowRecovery",
-          "WorkflowRejectionBlocker",
-          "WorkflowRejectionDetails",
-          "WorkflowRejectionUserAction",
           "WorkflowStateKind",
           "WorkflowTransitionActor",
           "WorkflowTransitionCatalog",
@@ -314,7 +310,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a93601e9711829ee7507c1bcd01e9c687c76aec87444b4cc432d9b628632b6cf"
+        "sha256": "sha256:787299b93369aa36a7e072a9e5bd396a1ae871b377e41873bd387ead1adf904f"
       }
     },
     {
@@ -452,11 +448,12 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "TransitionDescriptor",
+          "TransitionRejection",
+          "TransitionRejectionReason",
           "UserActionRequestId",
           "UserActionResolutionId",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
-          "UserActionStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -467,15 +464,12 @@
           "WorkflowActionRole",
           "WorkflowActionSemanticVariant",
           "WorkflowAgentInputRequirement",
+          "WorkflowAuthorityInvalidationPolicy",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowExpectedResultState",
           "WorkflowProjection",
-          "WorkflowRecovery",
-          "WorkflowRejectionBlocker",
-          "WorkflowRejectionDetails",
-          "WorkflowRejectionUserAction",
           "WorkflowStateKind",
           "WorkflowTransitionActor",
           "WorkflowTransitionCatalog",
@@ -489,7 +483,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:afc14b3096873b6917dc0f7118c1f5da62cc0d2fcc1cd985e84232e4329784f7"
+        "sha256": "sha256:3d57dbc859b6c1a1ace5c31fe9aee748f5c2a46860443b23cc963d16d1da4a53"
       }
     },
     {
@@ -555,6 +549,7 @@
           "WorkflowActionRole",
           "WorkflowActionSemanticVariant",
           "WorkflowAgentInputRequirement",
+          "WorkflowAuthorityInvalidationPolicy",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
@@ -567,7 +562,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:29a4bdcb6e167bd753a56242c56f15afe9698393f892c714175256d2a3f2c537"
+        "sha256": "sha256:9739c48cc7d837369b41ab6ddf178585c739099aa9f56bbf8c380df4409b70b6"
       }
     },
     {
@@ -642,6 +637,7 @@
           "WorkflowActionRole",
           "WorkflowActionSemanticVariant",
           "WorkflowAgentInputRequirement",
+          "WorkflowAuthorityInvalidationPolicy",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
@@ -654,7 +650,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:897139086238a7b1c6d6cea704ed26754c5725a32ae3e8a1da9b4a2143f65be6"
+        "sha256": "sha256:6ce1224c0fb1824b68f336f4c7d09416edf2cb50e65679e770bb5888bad86e54"
       }
     },
     {
@@ -732,6 +728,7 @@
           "WorkflowActionRole",
           "WorkflowActionSemanticVariant",
           "WorkflowAgentInputRequirement",
+          "WorkflowAuthorityInvalidationPolicy",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
@@ -744,7 +741,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:071558ad7fcd2956c9f8bb7a91ced10e5661fd8701801661a6405bd270cae8f3"
+        "sha256": "sha256:7ad33b83b93d24a484e35efcef1a0d0ce24abd1bcc9d21d49288cbfa894b5c66"
       }
     },
     {
@@ -825,6 +822,7 @@
           "WorkflowActionRole",
           "WorkflowActionSemanticVariant",
           "WorkflowAgentInputRequirement",
+          "WorkflowAuthorityInvalidationPolicy",
           "WorkflowBlockingReason",
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
@@ -837,7 +835,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:854d7b855434fda736947d86d64ea3b95fea5e44f9f2333aeb4adb6569bbf85a"
+        "sha256": "sha256:91aab38779b33aabc0ddf9b461601d8beca39e9ebc4b5684aed6faa63cfbee79"
       }
     }
   ]

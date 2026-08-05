@@ -253,31 +253,21 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
         .collect::<Result<BTreeSet<_>, _>>()?;
     let rejected_checkpoint = adapter
         .call_tool(
-            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            AgentToolId::PREPARE_WRITE.wire_name(),
             json!({
                 "action_form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "task_id": task_id,
-                "checkpoint_operation": {
-                    "operation": "replace_current",
-                    "expected_current_checkpoint_id": checkpoint_id,
-                    "retired_non_authorizing_request_refs": [],
-                    "carry_forward_application_refs": [],
-                    "stale_authority_actions": []
-                },
-                "scope_revision": 1,
+                "change_unit_id": change_unit_id,
+                "intended_operation": "Attempt a write before explicit advance.",
+                "intended_paths": ["src/current.rs"],
+                "product_file_write_intended": true,
+                "sensitive_categories": [],
                 "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
-                "summary": "This otherwise valid replacement is not current.",
-                "implementation_boundary": "Keep the current bounded implementation.",
-                "gaps": [],
-                "source_refs": [],
-                "evidence_refs": []
             }),
         )
-        .expect_err("ready_for_implementation must reject checkpoint replacement before Core");
-    let rejected_checkpoint = structured_tool_error(
-        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
-        &rejected_checkpoint,
-    );
+        .expect_err("ready_for_implementation must reject prepare_write before Core");
+    let rejected_checkpoint =
+        structured_tool_error(AgentToolId::PREPARE_WRITE.wire_name(), &rejected_checkpoint);
     assert_eq!(rejected_checkpoint["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
     assert_eq!(rejected_checkpoint["reached_core"], false);
     assert_eq!(rejected_checkpoint["committed"], false);
@@ -287,16 +277,17 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
     );
     assert_eq!(
         rejected_checkpoint["workflow_admission"]["called_method"],
-        "volicord.record_shaping_checkpoint"
+        "volicord.prepare_write"
     );
     assert_eq!(
         rejected_checkpoint["workflow_admission"]["required_method"],
         "volicord.advance_task"
     );
-    assert_eq!(
-        rejected_checkpoint["workflow_admission"]["allowed_methods"],
-        json!(["volicord.advance_task"])
-    );
+    let allowed_methods = rejected_checkpoint["workflow_admission"]["allowed_methods"]
+        .as_array()
+        .expect("workflow admission should expose the current method catalog");
+    assert!(allowed_methods.contains(&json!("volicord.advance_task")));
+    assert!(!allowed_methods.contains(&json!("volicord.prepare_write")));
     assert_eq!(
         rejected_checkpoint["workflow_admission"]["required_method_forms"][0]["form_ref"],
         advance_form_ref
@@ -574,7 +565,7 @@ fn checkpoint_fixed_basis_mismatch_is_pre_core_and_reports_typed_null() -> Resul
     assert_eq!(structured["failure"]["checkpoint_recorded"], false);
     assert_eq!(structured["failure"]["user_action_created"], false);
     assert_eq!(structured["failure"]["core_state_unchanged"], true);
-    assert_eq!(structured["failure"]["current_baseline_valid"], true);
+    assert_eq!(structured["failure"]["current_baseline_canonical"], true);
     assert_eq!(structured["failure"]["repair_required"], false);
     assert_eq!(
         structured["action_form_argument_mismatches"][0]["current_method_form"]["form_ref"],
@@ -991,23 +982,27 @@ fn keep_current_baseline_retarget_surfaces_replace_and_keep_forms_without_effect
 
     assert_eq!(structured["result_type"], "rejected");
     assert_eq!(
-        structured["authority_basis_mismatch"]["field"],
-        "baseline_ref"
-    );
-    assert_eq!(
-        structured["authority_basis_mismatch"]["called_method_form"]["selected_semantic_variant"],
+        structured["transition_rejection"]["attempted_action_key"]["semantic_variant"],
         WorkflowActionSemanticVariant::KeepCurrentChangeUnit.as_str()
     );
     assert_eq!(
-        structured["authority_basis_mismatch"]["replacement_method_form"]
-            ["selected_semantic_variant"],
+        structured["transition_rejection"]["recovery_action_key"]["semantic_variant"],
         WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str()
     );
     assert_eq!(
         structured["retry_contract"]["selected_semantic_variant"],
         WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str()
     );
-    assert_eq!(structured["failure"]["current_baseline_valid"], false);
+    assert_eq!(structured["failure"]["current_baseline_canonical"], true);
+    assert_eq!(structured["failure"]["submitted_baseline_canonical"], true);
+    assert_eq!(
+        structured["failure"]["submitted_baseline_matches_current"],
+        false
+    );
+    assert_eq!(
+        structured["failure"]["submitted_baseline_compatible_with_transition"],
+        false
+    );
     assert_eq!(
         structured["failure"]["exact_retry_action"],
         "baseline retargeting requires replace_current; retry volicord.update_scope with the current replace form"
@@ -2521,7 +2516,7 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
         )
         .expect_err("awaiting_user_action must reject Agent-owned Task mutations");
     let blocked = structured_tool_error(AgentToolId::STAGE_ARTIFACT.wire_name(), &blocked);
-    assert_eq!(blocked["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(blocked["code"], "MCP_ACTION_FORM_STALE");
     assert_eq!(blocked["reached_core"], false);
     assert_eq!(blocked["committed"], false);
     assert_eq!(
@@ -2532,7 +2527,9 @@ fn awaiting_user_action_presentation_uses_the_canonical_user_channel() -> Result
         blocked["workflow_admission"]["required_method"],
         "volicord.resolve_user_action"
     );
-    assert_eq!(blocked["workflow_admission"]["allowed_methods"], json!([]));
+    assert!(blocked["workflow_admission"]["allowed_methods"]
+        .as_array()
+        .is_some_and(|methods| methods.contains(&json!("volicord.stage_artifact"))));
     assert_eq!(
         blocked["workflow_admission"]["required_method_forms"],
         json!([])
@@ -2880,7 +2877,7 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         )
         .expect_err("close_review must reject a method absent from its action catalog");
     let disallowed = structured_tool_error(AgentToolId::STAGE_ARTIFACT.wire_name(), &disallowed);
-    assert_eq!(disallowed["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(disallowed["code"], "MCP_ACTION_FORM_STALE");
     assert_eq!(disallowed["reached_core"], false);
     assert_eq!(disallowed["committed"], false);
     assert_eq!(

@@ -673,7 +673,7 @@ transition을 선택하거나 재정렬하지 않습니다. `close_readiness`는
 또는 1개의 descriptor가 `role=required`입니다. 필수 descriptor는 반드시 catalog에
 포함됩니다. 각 descriptor는 하나의 폐쇄형 actor, 정확한 state version, Core 고정 권한
 좌표, actor가 `agent`일 때의 Agent 입력 요구사항 묶음, effect class, 예상 결과 상태,
-필수 ref를 결속합니다. User 대기 상태에는 정확한 현재 `volicord.resolve_user_action`
+권한 무효화 정책, 필수 ref를 결속합니다. User 대기 상태에는 정확한 현재 `volicord.resolve_user_action`
 transition과 요청 ref가 들어갑니다. 종료되지 않은 Agent 소유 상태는 적어도 하나의 실행
 가능한 Agent transition 또는 명시적인 close, cancellation, supersession 경로를 제공합니다.
 
@@ -698,11 +698,12 @@ MCP checkpoint 제출의 정규 compare-and-swap 좌표는
 현재·선행 checkpoint 참조는 문맥 계보를 설명하며 최상위 mutation 인자로 중복되지
 않습니다.
 
-Workflow mutation 거부 상세는 수신 payload에서 progression을 재구성하지 않고 동일한 완전한
-tagged `WorkflowProjection`을 포함합니다. `allowed_actions`, blocker ref, 정확한 Task
-mode/work phase, 단일 recovery owner는 현재 authority에서 읽습니다. 거부된 요청의 내장
-`expected_state_version`은 커밋된 replay 결과가 아닙니다. 나중 replay는 그 시점의 현재
-authority에 대해 다시 평가되고 그 시점의 current workflow를 반환합니다.
+Workflow mutation 거부는 정확한 시도 action key, 폐쇄형 reason, 정규 blocking ref, 현재
+workflow kind를 담은 `TransitionRejection`을 사용합니다. Non-null
+`recovery_action_key`는 같은 catalog 안에 실제로 있을 때만 유효합니다. 수신 payload, 오류
+field, 표시 문구에서 복구 동작을 재구성하지 않습니다. 거부된 요청은 replay row를 만들지
+않으며 action-key identity와 고정 권한 좌표가 exact replay와 충돌 semantic variant를
+구분합니다.
 
 담당 문서 링크:
 - 메서드 동작과 지속 효과: [API 메서드](methods.md)가 안내하는 메서드 담당 문서와 [저장 효과](../storage-effects.md)

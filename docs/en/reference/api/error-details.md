@@ -69,46 +69,29 @@ error.
 closed non-null detail shape:
 
 ```schema
-WorkflowRejectionDetails:
+TransitionRejection:
+  attempted_action_key: WorkflowActionKey
+  reason: TransitionRejectionReason
   state_change_applied: false
-  current_task_mode: TaskMode
-  current_work_phase: WorkPhase
-  received_action: MethodName
-  received_run_kind: RunKind | null
-  allowed_run_kinds: RunKind[]
-  allowed_actions: MethodName[]
-  blockers: WorkflowRejectionBlocker[]
-  workflow: WorkflowProjection
-  corrected_retry_allowed: boolean
-  recovery: WorkflowRecovery
-
-WorkflowRejectionBlocker:
-  code: ErrorCode
-  owner_method: MethodName
-  required_refs: StateRecordRef[]
-  user_actions: WorkflowRejectionUserAction[]
-
-WorkflowRejectionUserAction:
-  user_action_request_ref: StateRecordRef
-  effective_status: UserActionStatus
-  required_owner_method: MethodName
-
-WorkflowRecovery:
-  owner_method: MethodName
+  retryable: boolean
+  recovery_action_key: WorkflowActionKey | null
+  blocking_refs: StateRecordRef[]
+  current_workflow_kind: WorkflowStateKind
 ```
 
-`received_action` is the rejected semantic method. Run recording additionally
-uses `received_run_kind` and `allowed_run_kinds`; other methods preserve the
-nullable member and an empty run-kind list. `allowed_actions`, `blockers`, and
-`workflow` are derived from the same current Store authority. `recovery`
-contains exactly one current owner method, never a generic next-action array.
-`corrected_retry_allowed` and `ToolError.retryable` describe semantic retry of
-a corrected request against current authority; neither permits replaying an
-applied mutation. The enclosing rejection remains `no_effect` even when a
-corrected retry is allowed.
+`attempted_action_key` preserves the exact method and semantic variant that
+failed admission. `reason` is one of `action_not_current`,
+`variant_not_current`, `authority_basis_mismatch`,
+`implementation_authority_would_be_invalidated`, `user_authority_missing`,
+`checkpoint_stale`, `change_unit_stale`, `workspace_basis_stale`, or
+`close_precondition_missing`. `blocking_refs` is canonical, duplicate-free
+current authority context.
 
-`user_actions` identifies each effective UserAction that contributes to the
-blocker. An empty array means the blocker is not UserAction-specific.
+`recovery_action_key` is non-null only when that exact key is a member of the
+same current `WorkflowTransitionCatalog`; Core never fabricates a method-only
+or message-derived recovery. `retryable` repeats the semantic retry fact used
+by `ToolError.retryable`; neither permits replaying an applied mutation. The
+enclosing rejection remains `no_effect`.
 
 <a id="platform-diagnostic-detail-field"></a>
 

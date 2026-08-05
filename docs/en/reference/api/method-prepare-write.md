@@ -9,6 +9,14 @@ by `volicord.advance_task`, but its exact current User Channel authority remains
 required here and in the existing sensitive-effect policy. Applied shaping
 status is not a write ticket and does not waive sensitive approval checks.
 
+Before validating proposed-write content, Core builds the normalized current
+`WorkflowSnapshot` and requires the exact
+`volicord.prepare_write/prepare_write` transition from its canonical
+`WorkflowMachine`. The transition owns current implementation availability and
+the fixed Task, Change Unit, and baseline coordinates. Its absence produces a
+no-effect `TransitionRejection`, with recovery only through another transition
+in the same current catalog.
+
 ## What this document owns
 
 This document owns baseline method behavior for `volicord.prepare_write`:
@@ -309,6 +317,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

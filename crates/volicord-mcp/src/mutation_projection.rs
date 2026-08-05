@@ -21,15 +21,14 @@ use volicord_mcp_protocol::McpProtocolCapabilities;
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
     McpAdvanceTaskCompactResult, McpAgentStateChange, McpArgumentFailurePresentation,
-    McpAuthorityBasisMismatch, McpFinalizeAdviceCompactResult, McpMustSurfaceFact,
-    McpMutationEffectSummary, McpMutationFullResponse, McpMutationSummaryResponse,
-    McpMutationWorkflowResponse, McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult,
-    McpPrepareWriteCompactResult, McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor,
-    McpRecordRunCompactResult, McpRecordShapingCheckpointCompactResult,
-    McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
-    McpTaskPhasePresentation, McpUpdateScopeCompactResult, McpUserChannelInstructions,
-    McpWorkflowBlockerSummary, McpWorkflowDryRunResponse, McpWorkflowPresentation,
-    McpWorkflowRejectedResponse,
+    McpFinalizeAdviceCompactResult, McpMustSurfaceFact, McpMutationEffectSummary,
+    McpMutationFullResponse, McpMutationSummaryResponse, McpMutationWorkflowResponse,
+    McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
+    McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
+    McpRecordShapingCheckpointCompactResult, McpRequestUserActionCompactResult,
+    McpRequestUserActionResponse, McpStageArtifactCompactResult, McpTaskPhasePresentation,
+    McpUpdateScopeCompactResult, McpUserChannelInstructions, McpWorkflowBlockerSummary,
+    McpWorkflowDryRunResponse, McpWorkflowPresentation, McpWorkflowRejectedResponse,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::RecordId;
@@ -39,12 +38,13 @@ use volicord_types::methods::{
     RecordRunResult, RecordShapingCheckpointResult, StageArtifactResult, UpdateScopeResult,
 };
 use volicord_types::schema::{
-    AuthorityBasisMismatch, AuthorityReceipt, PreviewableToolResponse, RequiredNullable,
-    StateRecordRef, ToolDryRunResponse, ToolRejectedResponse, WorkflowRejectionDetails,
+    AuthorityReceipt, PreviewableToolResponse, RequiredNullable, StateRecordRef,
+    ToolDryRunResponse, ToolRejectedResponse, TransitionRejection,
 };
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{
-    EffectKind, MethodName, MutationDetailLevel, StateRecordKind, WorkflowActionSemanticVariant,
+    EffectKind, MethodName, MutationDetailLevel, StateRecordKind, TransitionRejectionReason,
+    WorkflowActionSemanticVariant,
 };
 use volicord_user_action_presentation::canonical_user_channel_instructions;
 
@@ -218,60 +218,39 @@ where
                 .expect("rejected mutation requires an exact result"),
         )
         .map_err(McpAdapterError::Json)?;
-        let authority_basis_mismatch = method_result.errors().iter().find_map(|error| {
+        let transition_rejection = method_result.errors().iter().find_map(|error| {
             error.details().and_then(|details| {
-                serde_json::from_value::<AuthorityBasisMismatch>(Value::Object(details.clone()))
-                    .ok()
+                serde_json::from_value::<TransitionRejection>(Value::Object(details.clone())).ok()
             })
         });
         let called_method = AgentToolId::from_wire_name(tool_name)
             .ok()
             .and_then(AgentToolId::method);
         let baseline_retargeting_requires_replace = called_method == Some(MethodName::UpdateScope)
-            && authority_basis_mismatch
-                .as_ref()
-                .is_some_and(|mismatch| mismatch.field == "baseline_ref");
-        let called_method_form = if baseline_retargeting_requires_replace {
-            presentation.action_form_catalog.form(
-                MethodName::UpdateScope,
-                WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
-            )
-        } else {
-            called_method.and_then(|method| {
+            && transition_rejection.as_ref().is_some_and(|rejection| {
+                rejection.reason == TransitionRejectionReason::AuthorityBasisMismatch
+                    && rejection.attempted_action_key.semantic_variant
+                        == WorkflowActionSemanticVariant::KeepCurrentChangeUnit
+                    && rejection.recovery_action_key.as_ref().is_some_and(|key| {
+                        key.semantic_variant
+                            == WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit
+                    })
+            });
+        let recovery_action_form = transition_rejection.as_ref().and_then(|rejection| {
+            rejection.recovery_action_key.as_ref().and_then(|key| {
                 presentation
                     .action_form_catalog
-                    .only_form_for_method(method)
+                    .form(key.method, key.semantic_variant)
             })
-        };
-        let replacement_method_form = if baseline_retargeting_requires_replace {
-            presentation.action_form_catalog.form(
-                MethodName::UpdateScope,
-                WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
-            )
-        } else {
-            None
-        };
-        let retry_form = replacement_method_form
-            .or(called_method_form)
-            .or_else(|| presentation.action_form_catalog.only_required_form());
+        });
+        let retry_form = recovery_action_form;
         output.primary_text = rejected_compatibility_text(tool_name, &presentation);
         output.structured_content =
             serde_json::to_value(McpWorkflowRejectedResponse {
                 method_result,
                 authority_receipt: authority.receipt.clone(),
                 workflow: authority.workflow.clone(),
-                authority_basis_mismatch: RequiredNullable::new(authority_basis_mismatch.map(
-                    |mismatch| McpAuthorityBasisMismatch {
-                        field: mismatch.field,
-                        expected: mismatch.expected,
-                        received: mismatch.received,
-                        state_change_applied: false,
-                        called_method_form: RequiredNullable::new(called_method_form.cloned()),
-                        replacement_method_form: RequiredNullable::new(
-                            replacement_method_form.cloned(),
-                        ),
-                    },
-                )),
+                transition_rejection: RequiredNullable::new(transition_rejection),
                 retry_contract: RequiredNullable::new(retry_form.map(|form| {
                     retry_contract(form, &presentation.action_form_catalog, Vec::new())
                 })),
@@ -284,8 +263,15 @@ where
                     user_action_created: false,
                     product_repository_changed: false,
                     core_state_unchanged: true,
-                    current_baseline_valid: RequiredNullable::some(
-                        !baseline_retargeting_requires_replace,
+                    current_baseline_canonical: RequiredNullable::some(true),
+                    submitted_baseline_canonical: RequiredNullable::new(
+                        baseline_retargeting_requires_replace.then_some(true),
+                    ),
+                    submitted_baseline_matches_current: RequiredNullable::new(
+                        baseline_retargeting_requires_replace.then_some(false),
+                    ),
+                    submitted_baseline_compatible_with_transition: RequiredNullable::new(
+                        baseline_retargeting_requires_replace.then_some(false),
                     ),
                     exact_retry_action: RequiredNullable::new(retry_form.map(|form| {
                         if baseline_retargeting_requires_replace {
@@ -456,33 +442,32 @@ fn workflow_presentation(
             serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
         if let Some(details) = rejected.errors().iter().find_map(|error| {
             error.details().and_then(|details| {
-                serde_json::from_value::<WorkflowRejectionDetails>(Value::Object(details.clone()))
-                    .ok()
+                serde_json::from_value::<TransitionRejection>(Value::Object(details.clone())).ok()
             })
         }) {
-            must_surface.push(McpMustSurfaceFact::RecoveryMethod {
-                owner_method: details.recovery.owner_method,
+            if let Some(recovery) = details.recovery_action_key.as_ref() {
+                must_surface.push(McpMustSurfaceFact::RecoveryAction {
+                    action_key: *recovery,
+                });
+            }
+            blocker_summary.push(McpWorkflowBlockerSummary {
+                code: rejected
+                    .errors()
+                    .first()
+                    .map(|error| RequiredNullable::some(error.code()))
+                    .unwrap_or_else(RequiredNullable::null),
+                owner_method: details
+                    .recovery_action_key
+                    .as_ref()
+                    .map_or(details.attempted_action_key.method, |key| key.method),
+                required_refs: details.blocking_refs,
+                user_actions: Vec::new(),
             });
-            blocker_summary.extend(details.blockers.into_iter().map(|blocker| {
-                McpWorkflowBlockerSummary {
-                    code: RequiredNullable::some(blocker.code),
-                    owner_method: blocker.owner_method,
-                    required_refs: blocker.required_refs,
-                    user_actions: blocker.user_actions,
-                }
-            }));
         } else {
-            let owner_method = authority
-                .workflow
-                .transition_catalog()
-                .required_transition()
-                .map(|transition| transition.action_key.method)
-                .unwrap_or(MethodName::Status);
-            must_surface.push(McpMustSurfaceFact::RecoveryMethod { owner_method });
             blocker_summary.extend(rejected.errors().iter().map(|error| {
                 McpWorkflowBlockerSummary {
                     code: RequiredNullable::some(error.code()),
-                    owner_method,
+                    owner_method: method,
                     required_refs: authority.workflow.required_refs().to_vec(),
                     user_actions: Vec::new(),
                 }
@@ -529,7 +514,13 @@ fn workflow_presentation(
                     request_ref,
                     resolution_ref: gap.user_action_resolution_ref.clone(),
                     disposition,
-                    recovery_owner: MethodName::RecordShapingCheckpoint,
+                    recovery_action_key: RequiredNullable::new(
+                        authority
+                            .workflow
+                            .transition_catalog()
+                            .required_transition()
+                            .map(|transition| transition.action_key),
+                    ),
                     authority_granted: volicord_types::schema::FalseValue,
                     terminal_request_cannot_be_retried: volicord_types::schema::TrueValue,
                     successor_request_required_if_still_needed: volicord_types::schema::TrueValue,
@@ -659,12 +650,22 @@ fn rejected_compatibility_text(tool_name: &str, presentation: &McpWorkflowPresen
         .must_surface
         .iter()
         .find_map(|fact| match fact {
-            McpMustSurfaceFact::RecoveryMethod { owner_method } => Some(owner_method.as_str()),
+            McpMustSurfaceFact::RecoveryAction { action_key } => Some(format!(
+                "{}/{}",
+                action_key.method.as_str(),
+                serde_json::to_value(action_key.semantic_variant)
+                    .ok()
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .unwrap_or_else(|| "unknown_variant".to_owned())
+            )),
             _ => None,
-        })
-        .unwrap_or(MethodName::Status.as_str());
+        });
+    let recovery_text = recovery.map_or_else(
+        || "no current recovery transition is cataloged".to_owned(),
+        |action_key| format!("recover with {action_key}"),
+    );
     bounded_mutation_compatibility_text(format!(
-        "Volicord {tool_name} rejected the mutation; Core state is unchanged; current Task phase={}/{}; recover with {recovery}.",
+        "Volicord {tool_name} rejected the mutation; Core state is unchanged; current Task phase={}/{}; {recovery_text}.",
         serde_json::to_value(presentation.task_phase.mode)
             .ok()
             .and_then(|value| value.as_str().map(str::to_owned))

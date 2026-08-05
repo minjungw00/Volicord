@@ -8,7 +8,7 @@ use super::{
     clock::project_current_utc_timestamp_for_conn, project_state::read_project_state_tx,
     replay::tool_invocation_tx, validation::*, CommitMutationInput, CommittedEventRef,
     CommittedMutationFacts, CoreProjectStore, CoreStorageMutation, MutationCommitOutcome,
-    PendingTaskEvent, VerifiedReplayContext,
+    PendingTaskEvent, TransitionCommitExpectation, VerifiedReplayContext,
 };
 use crate::{sqlite::begin_immediate_transaction, StoreError, StoreResult};
 
@@ -30,6 +30,7 @@ impl CoreProjectStore<'_> {
         mutations: &[CoreStorageMutation],
         build_response_json: impl FnOnce(CommittedMutationFacts) -> StoreResult<String>,
     ) -> StoreResult<(MutationCommitOutcome, Vec<AggregateMutationResult>)> {
+        validate_transition_expectation(&input, mutations)?;
         let mut mutation_results = Vec::with_capacity(mutations.len());
         let outcome = self.commit_with(
             input,
@@ -246,6 +247,9 @@ impl CoreProjectStore<'_> {
             &tx,
         );
         apply_mutation(&mut mutation, &facts)?;
+        if let Some(expectation) = input.transition_expectation.as_ref() {
+            validate_transition_result_state(&tx, expectation)?;
+        }
 
         let first_event_seq = next_event_seq(&tx, &self.project.project_id)?;
         let mut previous_event_hash = previous_event_hash_tx(&tx, &self.project.project_id)?;
@@ -401,10 +405,106 @@ pub fn commit_input(
         request_hash: request_hash.as_str().to_owned(),
         replay_context,
         expected_state_version,
+        transition_expectation: None,
         clock_floor: None,
         include_live_storage_time: true,
         events,
     }
+}
+
+fn validate_transition_expectation(
+    input: &CommitMutationInput,
+    mutations: &[CoreStorageMutation],
+) -> StoreResult<()> {
+    let Some(expectation) = input.transition_expectation.as_ref() else {
+        return Ok(());
+    };
+    if expectation.project_id != input.project_id
+        || expectation.action_key.method.as_str() != input.tool_name
+        || input.expected_state_version != Some(expectation.basis_state_version)
+        || !input
+            .events
+            .iter()
+            .all(|event| event.task_id.as_deref() == Some(expectation.task_id.as_str()))
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "transition expectation contradicts commit authority coordinates".to_owned(),
+        });
+    }
+    if !super::transition_effect_matches_mutations(
+        expectation.action_key,
+        expectation.effect_class,
+        mutations,
+    ) {
+        return Err(StoreError::InvalidInput {
+            detail: "Store aggregate mutations contradict the admitted transition effect"
+                .to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_transition_result_state(
+    tx: &Transaction<'_>,
+    expectation: &TransitionCommitExpectation,
+) -> StoreResult<()> {
+    let (work_phase, lifecycle_phase, close_basis_present): (String, String, bool) = tx.query_row(
+        "SELECT work_phase, lifecycle_phase, close_basis_json IS NOT NULL
+               FROM tasks
+              WHERE project_id = ?1 AND task_id = ?2",
+        params![expectation.project_id, expectation.task_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    let terminal = matches!(
+        lifecycle_phase.as_str(),
+        "completed" | "cancelled" | "superseded"
+    );
+    let compatible = match expectation.expected_result_state {
+        volicord_types::values::WorkflowExpectedResultState::ReevaluateCurrentAuthority => {
+            !terminal
+        }
+        volicord_types::values::WorkflowExpectedResultState::AwaitingUserAction => {
+            !terminal && pending_user_action_exists(tx, expectation)?
+        }
+        volicord_types::values::WorkflowExpectedResultState::Implementation => {
+            !terminal && work_phase == "implementation"
+        }
+        volicord_types::values::WorkflowExpectedResultState::CloseReview => {
+            !terminal && close_basis_present
+        }
+        volicord_types::values::WorkflowExpectedResultState::Terminal => terminal,
+    };
+    if !compatible {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+            detail: "post-mutation Task state contradicts admitted transition result family"
+                .to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn pending_user_action_exists(
+    tx: &Transaction<'_>,
+    expectation: &TransitionCommitExpectation,
+) -> StoreResult<bool> {
+    tx.query_row(
+        "SELECT EXISTS(
+             SELECT 1
+               FROM user_action_requests request
+              WHERE request.project_id = ?1
+                AND request.task_id = ?2
+                AND request.basis_status = 'current'
+                AND NOT EXISTS (
+                    SELECT 1 FROM user_action_resolutions resolution
+                     WHERE resolution.project_id = request.project_id
+                       AND resolution.user_action_request_id = request.user_action_request_id
+                )
+         )",
+        params![expectation.project_id, expectation.task_id],
+        |row| row.get(0),
+    )
+    .map_err(StoreError::from)
 }
 
 fn next_event_seq(tx: &Transaction<'_>, project_id: &str) -> StoreResult<i64> {

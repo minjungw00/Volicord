@@ -13,6 +13,12 @@ Resolution과 의미 application은 구분됩니다. Shaping에서 만든 요청
 중 하나로 바꿉니다. 범위를 바꾸거나 gap을 적용하거나 Task를 advance하지 않습니다.
 Accepted disposition만 application 대상이 될 수 있습니다.
 
+draft action을 검증하기 전에 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고 정규
+`WorkflowMachine`에서 정확한
+`volicord.request_user_action/request_user_action` 전이를 요구합니다. 이 전이가 현재
+가용성과 고정 좌표를 담당합니다. 전이가 없으면 효과 없는 `TransitionRejection`을
+반환하며, 복구는 같은 현재 catalog의 다른 전이로만 존재합니다.
+
 ## 요청
 
 <!-- BEGIN GENERATED: contract-structures api.method.request_user_action.request[params] -->
@@ -155,6 +161,7 @@ projection을 읽었다는 이유만으로 영속화하지 않습니다.
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

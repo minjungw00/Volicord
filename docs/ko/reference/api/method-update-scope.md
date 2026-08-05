@@ -68,6 +68,14 @@ create는 아닙니다. 현재 shaping application을 stale로 만들 implementa
 동작을 고정하고 에이전트가 작성하는 `scope_summary`, `affected_paths`, 다음 기준선을
 필수로 하면서 선택적 Change Unit 필드와 effect contract를 유지합니다.
 
+제출된 범위 내용을 검증하기 전에 Core는 정규화된 `WorkflowSnapshot`을 평가하고 선택한
+`ChangeUnitOperation`의 정확한 `WorkflowActionKey`를 소비합니다. 메서드 이름만 일치해서는
+이 mutation을 admit하지 않습니다. 메서드 의미를 검증하기 전에 descriptor의 고정 권한
+좌표와 요청을 대조합니다. 현재 variant가 없으면 효과 없이 `TransitionRejection`을 반환하며,
+`recovery_action_key`가 있으면 같은 현재 catalog에도 반드시 있어야 합니다. Implementation
+중에는 일반 baseline-operation 불일치보다 권한 무효화를 먼저 거부하고, replace variant가
+현재 상태가 아니면 replacement를 제안하지 않습니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
@@ -187,9 +195,10 @@ application ref를 제시하고 Task가 소유된 close/supersede 전이를 통�
 벗어나도록 요구합니다. 이 메서드는 Task를 shaping으로 조용히 되돌리지 않습니다.
 
 거부, 보류, 만료, 불일치 상태의 shaping 결정은 scope 권한을 부여하지 않습니다. 이
-메서드는 현재 workflow가 `decision_recovery_required`이고 recovery owner가
-`volicord.record_shaping_checkpoint`인 no-effect workflow 거부를 반환합니다. 의미상 no-op인 scope
-요청도 이 gate를 우회할 수 없습니다.
+상태에서는 정규 machine이 시도한 Update Scope action을 생략하고 효과 없는
+`TransitionRejection`을 반환합니다. 현재 catalog가 복구를 제공하면
+`recovery_action_key`가 정확한 `volicord.record_shaping_checkpoint` semantic variant를
+식별합니다. 의미상 no-op인 scope 요청도 이 gate를 우회할 수 없습니다.
 
 ## 성공 결과
 
@@ -229,6 +238,7 @@ application ref를 제시하고 Task가 소유된 close/supersede 전이를 통�
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

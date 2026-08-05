@@ -37,9 +37,7 @@ use crate::schema_validation::validate_mcp_tool_output;
 use crate::session_metrics::{
     record_tools_list_metric_best_effort, start_transport_diagnostic_session,
 };
-use crate::telemetry::{
-    authoritative_observation_timestamp, record_tool_diagnostic_best_effort, ToolDiagnosticFacts,
-};
+use crate::telemetry::{record_tool_diagnostic_best_effort, ToolDiagnosticFacts};
 use crate::tool_registry::{CanonicalContent, CanonicalToolResult};
 use crate::user_action_projection::{user_action_tool_output, UserActionFallback};
 use serde_json::{json, Value};
@@ -108,12 +106,13 @@ pub(crate) fn list_tools_result(
         .collect::<Vec<_>>();
     let result = json!({ "tools": tools });
     if !runtime.runtime_session_id.is_empty() {
+        let observed_at = runtime.next_observation_timestamp();
         record_mcp_tools_list(
             context,
             &runtime.runtime_session_id,
             &returned_tool_identities,
             required_tools_present,
-            &authoritative_observation_timestamp(),
+            &observed_at,
         )
         .map_err(McpAdapterError::Store)?;
     }
@@ -565,12 +564,9 @@ pub(crate) fn call_tool_result(
         && !state.runtime_session_id.is_empty()
     {
         validate_managed_stdio_session_ownership_admitted(context, adapter, &state.codex_binding)?;
-        record_mcp_verification_tool_observation(
-            context,
-            &state.runtime_session_id,
-            &authoritative_observation_timestamp(),
-        )
-        .map_err(McpAdapterError::Store)?;
+        let observed_at = state.next_observation_timestamp();
+        record_mcp_verification_tool_observation(context, &state.runtime_session_id, &observed_at)
+            .map_err(McpAdapterError::Store)?;
     }
     let response = tool_call_result_from_output_for_capabilities(tool_name, output, capabilities)?;
     record_tool_diagnostic_best_effort(
@@ -1909,7 +1905,7 @@ mod mutation_projection_and_recovery_tests {
                 dry_run: false,
                 expected_state_version: Some(1),
                 task_id: task_id.as_str(),
-                operation: ChangeUnitOperation::KeepCurrent,
+                operation: ChangeUnitOperation::CreateCurrent,
                 scope_summary: "Advance authority after the original method result.",
             }),
             workflow_invocation(),
@@ -2160,7 +2156,7 @@ mod mutation_projection_and_recovery_tests {
                 dry_run: false,
                 expected_state_version: Some(2),
                 task_id: task_id.as_str(),
-                operation: ChangeUnitOperation::KeepCurrent,
+                operation: ChangeUnitOperation::CreateCurrent,
                 scope_summary: "Advance state while the user action remains pending.",
             }),
             workflow_invocation(),

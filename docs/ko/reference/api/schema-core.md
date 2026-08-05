@@ -286,6 +286,7 @@ MCP wrapper는 메서드 결과 본문 바깥에 필수 `result_type` discrimina
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `StagingCreatedResultBase` 필드
 
@@ -297,6 +298,7 @@ MCP wrapper는 메서드 결과 본문 바깥에 필수 `result_type` discrimina
 | `events` | 예 | 아니요 | `EmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `NoEffectResultBase` 필드
 
@@ -347,7 +349,7 @@ MCP wrapper는 메서드 결과 본문 바깥에 필수 `result_type` discrimina
 <!-- END GENERATED: contract-structures api.schema.core[schema_object.ToolError] api.schema.core[schema_object.RequestedIntentReadOnlyResultBase] api.schema.core[schema_object.NotRequestedReadOnlyResultBase] api.schema.core[schema_object.CoreCommittedResultBase] api.schema.core[schema_object.StagingCreatedResultBase] api.schema.core[schema_object.NoEffectResultBase] api.schema.core[schema_object.ToolRejectedBase] api.schema.core[schema_object.ToolDryRunBase] api.schema.core[schema_object.ToolRejectedResponse] api.schema.core[schema_object.ToolDryRunResponse] -->
 
 9개 workflow 거부 코드에는 추가 schema relation이 있습니다. 이 코드의 `details` 값은
-non-null이며 `WorkflowRejectionDetails`로 검증됩니다. 다른 코드는 공통 nullable object
+non-null이며 `TransitionRejection`으로 검증됩니다. 다른 코드는 공통 nullable object
 계약을 유지합니다. Serde decoding과 공개 JSON Schema는 같은 code/category/details
 관계를 강제합니다. Workflow 코드에 `details=null`, 알 수 없는 상세 member 또는 불투명한
 대체 문자열을 사용하면 유효하지 않습니다. 필드 의미는 [API 오류

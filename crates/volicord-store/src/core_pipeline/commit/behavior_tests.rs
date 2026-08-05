@@ -5,11 +5,12 @@ use volicord_types::ids::{
 };
 use volicord_types::schema::{
     EvidenceProducerAnchor, EvidenceRelevanceAssessment, JsonObject, ObservedChanges,
-    PersistedEvidenceObservationAuthority, SourceRef, UserContextSource,
+    PersistedEvidenceObservationAuthority, SourceRef, UserContextSource, WorkflowActionKey,
 };
 use volicord_types::values::{
     ActorSource, EvidenceAssuranceLevel, EvidenceProducerKind, EvidenceRelevanceStatus,
-    EvidenceSourceKind, MethodName, RunKind, UtcTimestamp,
+    EvidenceSourceKind, MethodName, RunKind, UtcTimestamp, WorkflowActionSemanticVariant,
+    WorkflowExpectedResultState, WorkflowTransitionEffectClass,
 };
 
 use crate::core_pipeline::test_support::{
@@ -20,8 +21,94 @@ use crate::core_pipeline::{
     commit_input, CoreStorageMutation, EvidenceClaimInsert, EvidenceMutation,
     EvidenceObservationInsert, MutationCommitOutcome, RunInsert, RunMutation, RunStatus,
     StoredRunMetadata, StoredRunSummary, StoredRunWriteTicketEffect,
-    StoredRunWriteTicketEffectKind, TaskMutation,
+    StoredRunWriteTicketEffectKind, TaskMutation, TransitionCommitExpectation,
 };
+
+#[test]
+fn transition_effect_mismatch_rejects_before_any_aggregate_mutation() -> Result<(), Box<dyn Error>>
+{
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let before = store.effect_counts()?;
+    let task_id = "task_transition_effect_mismatch";
+    let mut input = commit_input(
+        &ProjectId::new(PROJECT_ID),
+        MethodName::UpdateScope,
+        Some(&IdempotencyKey::new("idem_transition_effect_mismatch")),
+        &RequestHash::new("sha256:transition-effect-mismatch"),
+        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+        Some(0),
+        vec![pending_event_for_task(
+            "transition_effect_mismatch",
+            task_id,
+        )],
+    );
+    input.transition_expectation = Some(TransitionCommitExpectation {
+        project_id: PROJECT_ID.to_owned(),
+        task_id: task_id.to_owned(),
+        action_key: WorkflowActionKey::new(
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+        )?,
+        effect_class: WorkflowTransitionEffectClass::CoreStateMutation,
+        expected_result_state: WorkflowExpectedResultState::ReevaluateCurrentAuthority,
+        basis_state_version: 0,
+    });
+    let mutations = [CoreStorageMutation::Task(TaskMutation::insert(
+        task_insert(task_id),
+    ))];
+
+    let error = store
+        .commit_mutation(input, &mutations, response_json)
+        .expect_err("CreateCurrentChangeUnit must include its Change Unit aggregate effect");
+    assert!(error
+        .to_string()
+        .contains("contradict the admitted transition effect"));
+    assert_eq!(store.effect_counts()?, before);
+    assert!(store.task_record(&TaskId::new(task_id))?.is_none());
+    Ok(())
+}
+
+#[test]
+fn incompatible_transition_result_rolls_back_every_commit_effect() -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let before = store.effect_counts()?;
+    let task_id = "task_transition_result_rollback";
+    let mut input = commit_input(
+        &ProjectId::new(PROJECT_ID),
+        MethodName::CloseTask,
+        Some(&IdempotencyKey::new("idem_transition_result_rollback")),
+        &RequestHash::new("sha256:transition-result-rollback"),
+        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+        Some(0),
+        vec![pending_event_for_task(
+            "transition_result_rollback",
+            task_id,
+        )],
+    );
+    input.transition_expectation = Some(TransitionCommitExpectation {
+        project_id: PROJECT_ID.to_owned(),
+        task_id: task_id.to_owned(),
+        action_key: WorkflowActionKey::new(
+            MethodName::CloseTask,
+            WorkflowActionSemanticVariant::CloseTask,
+        )?,
+        effect_class: WorkflowTransitionEffectClass::TerminalMutation,
+        expected_result_state: WorkflowExpectedResultState::Terminal,
+        basis_state_version: 0,
+    });
+    let mutations = [CoreStorageMutation::Task(TaskMutation::insert(
+        task_insert(task_id),
+    ))];
+
+    store
+        .commit_mutation(input, &mutations, response_json)
+        .expect_err("nonterminal post-state must fail the terminal transition contract");
+    assert_eq!(store.effect_counts()?, before);
+    assert!(store.task_record(&TaskId::new(task_id))?.is_none());
+    Ok(())
+}
 
 #[test]
 fn ordered_multi_aggregate_commit_is_versioned_replayable_and_durable() -> Result<(), Box<dyn Error>>

@@ -59,6 +59,7 @@ impl CoreService {
             self,
             None,
             MethodName::Status,
+            None,
             request.envelope.clone(),
             request_json,
             invocation,

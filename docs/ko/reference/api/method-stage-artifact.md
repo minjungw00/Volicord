@@ -25,6 +25,12 @@
 
 스테이징은 입력 준비일 뿐입니다. 스테이징 핸들은 기록된 증거가 아니며, 관련 주장을 증명하거나 그 자체로 닫기 준비 상태를 만족하지 않습니다. 증거 기록, 영속 아티팩트 연결, 수락, 잔여 위험, 닫기 준비 상태 효과는 관련 메서드와 저장소 담당 문서가 담당합니다.
 
+아티팩트 내용을 검증하기 전에 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고 정규
+`WorkflowMachine`에서 정확한 `volicord.stage_artifact/stage_artifact` 전이를
+요구합니다. 스테이징이 Core 상태를 변경하지 않아도 이 허용 검사를 적용합니다. 전이가
+없으면 효과 없는 `TransitionRejection`을 반환하고 핸들을 만들지 않으며, 복구가 있다면
+같은 현재 catalog의 전이입니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. `idempotency_key`와 `expected_state_version`은 `null`일 수 있습니다.
@@ -134,6 +140,7 @@ Core는 staging 행, handle, 임시 디렉터리, staged byte 또는 알림을 �
 | `events` | 예 | 아니요 | `EmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

@@ -29,8 +29,8 @@ use volicord_store::core_pipeline::{
 };
 use volicord_types::schema::{PersistedEvidenceMetadata, StateRecordRef, StateSummary};
 use volicord_types::values::{
-    AcceptancePolicy, MethodName, StateRecordKind, TaskControlLevel, UserActionKind,
-    UserActionRequiredFor, UtcTimestamp,
+    AcceptancePolicy, StateRecordKind, TaskControlLevel, UserActionKind, UserActionRequiredFor,
+    UtcTimestamp,
 };
 use volicord_user_action_service::{
     pending_user_action_authorities, pending_user_action_refs_for_operation,
@@ -82,23 +82,15 @@ pub(crate) fn plan_record_run(
         checkpoint.as_ref(),
         operation_now,
     )?;
-    let shaping_recovery_owner = if !shaping_authority.recovery_required.is_empty() {
-        Some(MethodName::RecordShapingCheckpoint)
-    } else if !shaping_authority.awaiting_user.is_empty() {
-        Some(MethodName::ResolveUserAction)
-    } else if !shaping_authority.accepted_unapplied.is_empty()
+    let shaping_authority_blocks_recording = !shaping_authority.recovery_required.is_empty()
+        || !shaping_authority.awaiting_user.is_empty()
+        || !shaping_authority.accepted_unapplied.is_empty()
         || !shaping_authority.stale.is_empty()
-        || !shaping_authority.inconsistent.is_empty()
-    {
-        Some(MethodName::Status)
-    } else {
-        None
-    };
-    if let Some(recovery_owner) = shaping_recovery_owner {
+        || !shaping_authority.inconsistent.is_empty();
+    if shaping_authority_blocks_recording {
         return Err(RecordingError::Rejected(
             RecordingRejection::DecisionRejected {
                 message: "current shaping authority blocks Run recording",
-                recovery_owner,
             },
         ));
     }
@@ -297,7 +289,6 @@ pub(super) fn decide_record_run_policy(
             RecordingRejection::DecisionRejected {
                 message:
                     "a current pending user action must be resolved before this Run can be recorded",
-                recovery_owner: MethodName::ResolveUserAction,
             },
         ));
     }

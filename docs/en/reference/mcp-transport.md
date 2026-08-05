@@ -1155,19 +1155,30 @@ When schema validation succeeds and Core returns a typed
 `AuthorityBasisMismatch`, MCP preserves the exact `field`, `expected`,
 `received`, and `state_change_applied=false`, then enriches it with the current
 action form and retry contract. For keep-current baseline retargeting, MCP sets
-`current_baseline_valid=false`, attaches the current keep and replace forms,
-selects the replace form for retry, and states that baseline retargeting
-requires `replace_current`. Repair is false unless Core reports persisted-data corruption
-or an explicit repair workflow.
+`current_baseline_canonical=true`, `submitted_baseline_canonical=true`,
+`submitted_baseline_matches_current=false`, and
+`submitted_baseline_compatible_with_transition=false`. It selects the exact
+current replace form only when `replace_current_change_unit` exists in the
+current catalog. A canonical current baseline is never described as invalid
+because the submitted transition is incompatible. Repair is false unless Core
+reports persisted-data corruption or an explicit repair workflow.
 
 ```schema
-McpAuthorityBasisMismatch:
-  field: string
-  expected: string | integer | null
-  received: string | integer | null
-  state_change_applied: false
-  called_method_form: WorkflowActionForm | null
-  replacement_method_form: WorkflowActionForm | null
+McpArgumentFailurePresentation:
+  method_committed: boolean
+  reached_core: boolean
+  current_task_phase: WorkPhase | null
+  current_state_version: integer | null
+  checkpoint_recorded: boolean
+  user_action_created: boolean
+  product_repository_changed: boolean
+  core_state_unchanged: boolean
+  current_baseline_canonical: boolean | null
+  submitted_baseline_canonical: boolean | null
+  submitted_baseline_matches_current: boolean | null
+  submitted_baseline_compatible_with_transition: boolean | null
+  exact_retry_action: string | null
+  repair_required: boolean
 ```
 
 When Core returns typed operational unavailability without a method result,
@@ -1213,7 +1224,7 @@ McpWorkflowPresentation:
 
 `must_surface` is a tagged fact set, not free-form prompting. Rejection facts
 identify the rejected method, unchanged Core state, current Task phase, and
-exact recovery owner. A blocker summary carries its effective UserAction facts,
+exact recovery action key. A blocker summary carries its effective UserAction facts,
 including request ref, status, and required owner method. Unsatisfied
 implementation-gating UserAction authority adds
 `implementation_blocked_until_user_action_authority_satisfied` with the exact
@@ -1229,7 +1240,7 @@ needs the judgment, the chat boundary, and unavailable Product Repository
 mutation. Compact record-shaping results retain the typed decision recovery
 requirements.
 A stale shaping application grants no permission. Its blocker fact names the
-exact stale application and request refs and the current recovery owner. In
+exact stale application and request refs and the current recovery action. In
 advisor or work shaping, `workflow` selects `shaping_required`,
 `next_actor=agent`, a required `volicord.record_shaping_checkpoint` transition, and
 `blocking_reason=application_authority_stale`;

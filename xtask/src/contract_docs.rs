@@ -2148,7 +2148,7 @@ mod tests {
                     ResultEventContract::NonEmpty => vec![event.clone()],
                 };
                 for dry_run in [false, true] {
-                    let instance = json!({
+                    let mut instance = json!({
                         "response_kind": "result",
                         "effect_kind": effect.as_str(),
                         "dry_run": dry_run,
@@ -2156,6 +2156,15 @@ mod tests {
                         "disclosure": disclosure,
                         "events": valid_events,
                     });
+                    if matches!(
+                        effect,
+                        ResultEffectContract::CoreCommitted | ResultEffectContract::StagingCreated
+                    ) {
+                        instance
+                            .as_object_mut()
+                            .expect("result metadata fixture")
+                            .insert("transition".to_owned(), Value::Null);
+                    }
                     let accepted = contract.supports_result_effect(effect)
                         && (!dry_run
                             || contract.result_dry_run_contract(effect)
@@ -2181,7 +2190,7 @@ mod tests {
                         ResultEventContract::Empty => vec![event.clone()],
                         ResultEventContract::NonEmpty => Vec::new(),
                     };
-                    let invalid = json!({
+                    let mut invalid = json!({
                         "response_kind": "result",
                         "effect_kind": effect.as_str(),
                         "dry_run": false,
@@ -2189,6 +2198,15 @@ mod tests {
                         "disclosure": disclosure,
                         "events": invalid_events,
                     });
+                    if matches!(
+                        effect,
+                        ResultEffectContract::CoreCommitted | ResultEffectContract::StagingCreated
+                    ) {
+                        invalid
+                            .as_object_mut()
+                            .expect("result metadata fixture")
+                            .insert("transition".to_owned(), Value::Null);
+                    }
                     assert!(!compiled.is_valid(&invalid));
                     assert!(!contract.accepts_result_base(&invalid));
                 }

@@ -100,6 +100,7 @@ mod tests {
                 "agent_input_requirements": ["scope_and_change_unit"],
                 "effect_class": "core_state_mutation",
                 "expected_result_state": "reevaluate_current_authority",
+                "authority_invalidation": "permitted",
                 "required_refs": []
             })
         };
@@ -109,7 +110,44 @@ mod tests {
                 transition("replace_current_change_unit", "replace_current", "allowed")
             ]
         });
-        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(valid.clone()).is_ok());
+        let catalog = serde_json::from_value::<WorkflowTransitionCatalog>(valid.clone())
+            .expect("valid transition catalog");
+        let keep_key = WorkflowActionKey::new(
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+        )
+        .expect("valid keep key");
+        let replace_key = WorkflowActionKey::new(
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+        )
+        .expect("valid replace key");
+        assert!(catalog.transition(&keep_key).is_some());
+        assert!(TransitionRejection::new(
+            keep_key,
+            TransitionRejectionReason::AuthorityBasisMismatch,
+            true,
+            Some(replace_key),
+            Vec::new(),
+            WorkflowStateKind::ReadyForImplementation,
+            &catalog,
+        )
+        .is_ok());
+        let absent_key = WorkflowActionKey::new(
+            MethodName::CloseTask,
+            WorkflowActionSemanticVariant::CloseTask,
+        )
+        .expect("valid close key");
+        assert!(TransitionRejection::new(
+            keep_key,
+            TransitionRejectionReason::AuthorityBasisMismatch,
+            true,
+            Some(absent_key),
+            Vec::new(),
+            WorkflowStateKind::ReadyForImplementation,
+            &catalog,
+        )
+        .is_err());
 
         let duplicate = json!({
             "transitions": [
@@ -1590,7 +1628,7 @@ mod tests {
         );
 
         for contract in PUBLIC_ERROR_CODE_CONTRACTS {
-            let details = if WorkflowRejectionDetails::is_required_for(contract.code()) {
+            let details = if TransitionRejection::is_required_for(contract.code()) {
                 workflow_rejection_details_json()
             } else {
                 Value::Null
@@ -1610,7 +1648,7 @@ mod tests {
             assert!(!decoded.retryable());
             assert_eq!(
                 decoded.details().is_some(),
-                WorkflowRejectionDetails::is_required_for(contract.code())
+                TransitionRejection::is_required_for(contract.code())
             );
             assert_eq!(
                 serde_json::to_value(decoded).expect("ToolError should serialize"),
@@ -1643,7 +1681,7 @@ mod tests {
                 );
             }
 
-            if WorkflowRejectionDetails::is_required_for(contract.code()) {
+            if TransitionRejection::is_required_for(contract.code()) {
                 let mut missing_details = canonical.clone();
                 missing_details["details"] = Value::Null;
                 assert!(serde_json::from_value::<ToolError>(missing_details.clone()).is_err());
@@ -3019,55 +3057,19 @@ mod tests {
 
     fn workflow_rejection_details_json() -> Value {
         json!({
-            "state_change_applied": false,
-            "current_task_mode": "work",
-            "current_work_phase": "shaping",
-            "received_action": "volicord.advance_task",
-            "received_run_kind": null,
-            "allowed_run_kinds": [],
-            "allowed_actions": ["volicord.record_shaping_checkpoint"],
-            "blockers": [{
-                "code": "SHAPING_CHECKPOINT_REQUIRED",
-                "owner_method": "volicord.record_shaping_checkpoint",
-                "required_refs": [],
-                "user_actions": []
-            }],
-            "workflow": {
-                "kind": "shaping_required",
-                "next_actor": "agent",
-                "required_refs": [],
-                "expected_state_version": 4,
-                "blocking_reason": "no_current_checkpoint",
-                "checkpoint": null,
-                "transition_catalog": {
-                    "transitions": [{
-                        "action_key": {
-                            "method": "volicord.record_shaping_checkpoint",
-                            "semantic_variant": "create_initial"
-                        },
-                        "actor": "agent",
-                        "role": "required",
-                        "expected_state_version": 4,
-                        "fixed_authority_coordinates": {
-                            "coordinate_kind": "record_shaping_checkpoint",
-                            "task_id": "task_fixture",
-                            "checkpoint_operation": {"operation": "create_initial"},
-                            "scope_revision": 1,
-                            "baseline_ref": null
-                        },
-                        "agent_input_requirements": ["shaping_checkpoint"],
-                        "effect_class": "core_state_mutation",
-                        "expected_result_state": "reevaluate_current_authority",
-                        "required_refs": []
-                    }]
-                },
-                "close_readiness": {
-                    "assessment_required": false,
-                    "current_close_basis_present": false
-                }
+            "attempted_action_key": {
+                "method": "volicord.advance_task",
+                "semantic_variant": "advance_task"
             },
-            "corrected_retry_allowed": true,
-            "recovery": {"owner_method": "volicord.record_shaping_checkpoint"}
+            "reason": "action_not_current",
+            "state_change_applied": false,
+            "retryable": true,
+            "recovery_action_key": {
+                "method": "volicord.record_shaping_checkpoint",
+                "semantic_variant": "create_initial"
+            },
+            "blocking_refs": [],
+            "current_workflow_kind": "shaping_required"
         })
     }
 

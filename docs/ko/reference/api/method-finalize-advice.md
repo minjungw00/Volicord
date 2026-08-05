@@ -13,6 +13,12 @@
 메서드 이름, 직접 request와 response schema, 정확한 decision application 의미,
 aggregate close-basis transaction은 `stable`입니다.
 
+결과 내용을 검증하기 전에 Core는 정규화된 `WorkflowSnapshot`을 평가하고 정확한
+`volicord.finalize_advice/finalize_advice` descriptor를 요구합니다. Advisor finalization이
+현재 가능한지와 고정 checkpoint, Change Unit, scope, baseline, resolution 좌표는 machine만
+결정합니다. Descriptor가 없으면 효과 없는 `TransitionRejection`을 반환하며, 복구 key가
+있으면 같은 catalog에 포함되어야 합니다.
+
 ## 요청
 
 <!-- BEGIN GENERATED: contract-structures api.method.finalize_advice.request[params] -->
@@ -100,6 +106,7 @@ application owner가 아닙니다.
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

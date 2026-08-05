@@ -610,12 +610,20 @@ No-effect branches:
 During `work/implementation`, a scope, baseline, or Change Unit update that
 would mark any current shaping application stale is one of those rejected
 attempts. It changes no scope, Change Unit, application status, timestamp,
-Task phase, event, replay row, or state version; the typed recovery owner is
-`volicord.close_task`.
+Task phase, event, replay row, or state version. Core rejects the
+authority-invalidating transition before baseline-operation mismatch handling;
+its `recovery_action_key` is an exact current close or supersession transition,
+never `replace_current_change_unit` when replacement is absent from the catalog.
 
 Valid dry-run previews only describe scope, Change Unit, blocker, and stale write-ticket effects.
 
 Semantically identical normalized updates do not increment `tasks.scope_revision` or invalidate the current close basis.
+
+Every committed state-bound mutation carries its admitted transition effect
+class and expected result-state family into Store. Store validates the primary
+aggregate operation before mutation and the persisted workflow-relevant result
+family after applying the batch but before event, replay-row, and transaction
+commit. A mismatch rolls back the entire transaction.
 
 Owner links:
 

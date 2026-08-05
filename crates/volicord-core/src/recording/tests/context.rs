@@ -88,10 +88,12 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
             assert_eq!(after.runs, before.runs + 1);
         } else {
             assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-            assert_eq!(
-                response.response_value["errors"][0]["code"],
+            let expected_code = if task_mode == "advisor" {
+                "WORKFLOW_ACTION_NOT_ALLOWED"
+            } else {
                 "RUN_KIND_INCOMPATIBLE"
-            );
+            };
+            assert_eq!(response.response_value["errors"][0]["code"], expected_code);
             assert_eq!(after, before, "{suffix} must have no storage effect");
         }
     }
@@ -106,7 +108,7 @@ fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<()
         changed_paths,
         write_ticket_id,
         sensitive_categories,
-        expected_code,
+        _expected_code,
     ) in [
         (
             "advisor_observed_write",
@@ -165,7 +167,7 @@ fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<()
             .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
         assert_eq!(response.response_value["base"]["response_kind"], "rejected");
         assert_eq!(
-            response.response_value["errors"][0]["code"], expected_code,
+            response.response_value["errors"][0]["code"], "WORKFLOW_ACTION_NOT_ALLOWED",
             "{suffix}"
         );
         assert_eq!(

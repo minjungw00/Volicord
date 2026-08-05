@@ -366,6 +366,7 @@ impl CoreProjectStore<'_> {
                 git_workspace_context: None,
             }),
             expected_state_version: None,
+            transition_expectation: None,
             clock_floor,
             include_live_storage_time: true,
             events: vec![PendingTaskEvent {
@@ -1544,6 +1545,7 @@ mod tests {
                 git_workspace_context: None,
             }),
             expected_state_version: Some(3),
+            transition_expectation: None,
             clock_floor: None,
             include_live_storage_time: true,
             events: vec![PendingTaskEvent {

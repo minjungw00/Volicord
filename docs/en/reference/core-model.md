@@ -698,6 +698,20 @@ An authority-coordinate mismatch after schema validation
 is a no-effect `AuthorityBasisMismatch` with typed `expected` and `received`
 values; it does not make an otherwise valid Task corrupt.
 
+Every state-bound mutation consumes the exact advertised `TransitionDescriptor`
+before method-owned request validation. Core requires the descriptor's complete
+`WorkflowActionKey`, validates its fixed authority coordinates, and carries its
+effect class and expected result state into the Store commit. Method-name-only
+admission is never sufficient. A missing key produces the closed
+`TransitionRejection`; a non-null `recovery_action_key` must name a transition
+in that same current catalog.
+
+The admitted action key and authority coordinates participate in replay
+identity. Store checks that the planned aggregate operation matches the
+descriptor before mutation and checks the workflow-relevant result family
+inside the same transaction after applying the batch. Any contradiction rolls
+back the event, replay row, state version, and every aggregate effect.
+
 ## 8. Write ticket
 
 A write ticket is a durable Core authority record for authorized write intent for one proposed product-file change or one exact approval-bound non-product action under effective `sensitive` control.

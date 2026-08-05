@@ -25,6 +25,14 @@ This document does not own:
 
 Staging is input preparation only. A staged handle is not recorded Evidence, does not prove the related claim, and does not satisfy close readiness by itself. Evidence recording, persistent artifact links, acceptance, residual-risk, and close-readiness effects are owned by the relevant method and storage owners.
 
+Before validating artifact content, Core builds the normalized current
+`WorkflowSnapshot` and requires the exact
+`volicord.stage_artifact/stage_artifact` transition from its canonical
+`WorkflowMachine`. This admission applies even though staging does not mutate
+Core state. An absent transition returns a no-effect `TransitionRejection` and
+creates no handle; recovery, when present, is a transition in the same current
+catalog.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; `idempotency_key` and `expected_state_version` may be `null`.
@@ -136,6 +144,7 @@ Contract: `dry_run` is `false`; `events` must be empty (`maxItems: 0`).
 | `events` | yes | no | `EmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

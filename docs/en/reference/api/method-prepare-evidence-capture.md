@@ -40,6 +40,14 @@ intent and receipt, promote the receipt artifact, create the immutable
 `EvidenceProducer`, and create its one-to-one `EvidenceObservation` in one Core
 commit.
 
+Before validating capture content, Core builds the normalized current
+`WorkflowSnapshot` and requires the exact
+`volicord.prepare_evidence_capture/prepare_evidence_capture` transition from
+its canonical `WorkflowMachine`. The transition fixes the Task, Change Unit,
+and baseline coordinates. If it is absent, Core returns a no-effect
+`TransitionRejection`; any `recovery_action_key` is another transition in that
+same current catalog.
+
 ## Request
 
 <!-- BEGIN GENERATED: contract-structures api.method.prepare_evidence_capture.request[params] -->
@@ -114,6 +122,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

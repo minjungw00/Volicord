@@ -2415,7 +2415,11 @@ fn user_action_compatibility_is_exact_for_close_and_write_requirements(
         "submission_compat_risk_text_record",
         "accept",
     )?;
-    assert_rejected_code(&wrong_risk.response_value, "DECISION_UNRESOLVED");
+    assert_rejected_code(&wrong_risk.response_value, "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(
+        wrong_risk.response_value["errors"][0]["details"]["reason"],
+        "action_not_current"
+    );
     assert_eq!(text_fixture.counts()?, before_wrong);
     assert_eq!(
         text_fixture.user_action_status(&risk_user_action_request_id)?,
@@ -2472,7 +2476,11 @@ fn user_action_compatibility_is_exact_for_close_and_write_requirements(
         "submission_compat_pending_answer",
         "accept",
     )?;
-    assert_rejected_code(&stale_answer.response_value, "DECISION_UNRESOLVED");
+    assert_rejected_code(&stale_answer.response_value, "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(
+        stale_answer.response_value["errors"][0]["details"]["reason"],
+        "action_not_current"
+    );
     assert_eq!(pending_fixture.counts()?, before_answer);
 
     Ok(())
@@ -4132,7 +4140,11 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         "submission_timestamp_boundary_record",
         "accept",
     )?;
-    assert_rejected_code(&expired.response_value, "DECISION_UNRESOLVED");
+    assert_rejected_code(&expired.response_value, "WORKFLOW_ACTION_NOT_ALLOWED");
+    assert_eq!(
+        expired.response_value["errors"][0]["details"]["reason"],
+        "action_not_current"
+    );
     assert_eq!(boundary_fixture.counts()?, before);
 
     let stage_before = CoreFixture::new("timestamp_stage_before")?;

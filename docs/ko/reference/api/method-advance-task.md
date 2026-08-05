@@ -10,6 +10,12 @@
 
 메서드 이름, 전환 대상, 정확한 권한 좌표, 원자적 효과는 `stable`입니다.
 
+메서드 소유 검증 전에 Core는 정규화된 `WorkflowSnapshot`을 평가하고 정확한
+`volicord.advance_task/advance_task` descriptor를 요구합니다. Advance 가능 여부와 고정
+checkpoint, Change Unit, scope, baseline, resolution 좌표는 machine이 결정합니다. Descriptor가
+없으면 효과 없는 `TransitionRejection`을 반환하며, 복구 key가 있으면 같은 현재 catalog에서
+실행 가능한 member여야 합니다.
+
 ## 요청
 
 <!-- BEGIN GENERATED: contract-structures api.method.advance_task.request[params] -->
@@ -82,6 +88,7 @@ baseline은 효과 없이 거부됩니다.
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 
@@ -121,9 +128,10 @@ Task를 닫지 않습니다. `implementation`에서 `shaping`으로 자동 전�
 authority가 충족되지 않은 동안 workflow는 `ready_for_implementation`을 보고할 수 없습니다.
 
 거부, 보류, 만료 상태의 shaping 결정은 application 입력이 될 수 없습니다. 이 상태는
-`decision_recovery_required`를 선택하고 recovery owner를 `volicord.record_shaping_checkpoint`으로
-지정하며 phase 전이, Run 생성, Product Repository 효과를 차단합니다. 현재 호환되는
-accepted resolution만 정확히 한 번 적용할 수 있습니다.
+`decision_recovery_required`를 선택합니다. 정확한 현재 catalog는 Advance Task를
+생략하고 Record Shaping Checkpoint action을 복구로 제공합니다. 이 상태는 phase 전이,
+Run 생성, Product Repository 효과를 차단합니다. 현재 호환되는 accepted resolution만
+정확히 한 번 적용할 수 있습니다.
 
 Stale shaping application도 진행 권한을 부여하지 않습니다. Work Task가 shaping에 있는
 동안에는 `shaping_required`, `next_actor=agent`,

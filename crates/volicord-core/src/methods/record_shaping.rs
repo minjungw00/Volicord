@@ -20,7 +20,7 @@ use volicord_types::methods::{
 use volicord_types::schema::{
     advisor_compatible_change_unit, CurrentCloseBasis, PersistedUserActionRequestMetadata,
     RequiredNullable, ResidualRisk, ShapingCheckpoint, ShapingCheckpointOperation, ShapingGapInput,
-    StaleShapingAuthorityAction, StateRecordRef, WorkflowRejectionUserAction,
+    StaleShapingAuthorityAction, StateRecordRef, WorkflowActionKey,
 };
 use volicord_types::values::{
     ErrorCode, MethodName, ShapingAuthorityReauthorizationOutcome, ShapingCheckpointReadiness,
@@ -47,7 +47,6 @@ use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
     dry_run_summary, no_active_task_response, validation_rejected, workflow_rejection_plan_error,
-    workflow_rejection_plan_error_with_user_actions,
 };
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
@@ -83,6 +82,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::RecordShapingCheckpoint,
+            Some(request.checkpoint_operation.semantic_variant()),
             request.envelope.clone(),
             request_json,
             invocation,
@@ -159,6 +159,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::FinalizeAdvice,
+            Some(volicord_types::values::WorkflowActionSemanticVariant::FinalizeAdvice),
             request.envelope.clone(),
             request_json,
             invocation,
@@ -235,6 +236,11 @@ fn plan_record_shaping_checkpoint(
     operation_now: &volicord_types::values::UtcTimestamp,
 ) -> Result<RecordShapingCheckpointPlan, PlanError> {
     let checkpoint_operation = &request.checkpoint_operation;
+    let attempted_action_key = WorkflowActionKey::new(
+        MethodName::RecordShapingCheckpoint,
+        checkpoint_operation.semantic_variant(),
+    )
+    .expect("checkpoint operations have a canonical RecordShapingCheckpoint action key");
     let scope_revision = &request.scope_revision;
     let baseline_ref = &request.baseline_ref;
     let summary = &request.summary;
@@ -261,11 +267,10 @@ fn plan_record_shaping_checkpoint(
             &request.task_id,
             ErrorCode::WorkflowActionNotAllowed,
             "record_shaping_checkpoint is not allowed for the current Task mode and work phase",
-            MethodName::RecordShapingCheckpoint,
+            attempted_action_key,
             None,
             Vec::new(),
             false,
-            MethodName::Status,
         );
     }
     if task.scope_revision != *scope_revision {
@@ -294,11 +299,10 @@ fn plan_record_shaping_checkpoint(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "create_initial requires that the Task have no current shaping checkpoint",
-                    MethodName::RecordShapingCheckpoint,
+                    attempted_action_key,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShapingCheckpoint,
                 );
             }
             if !authority_graph.stale_recovery_obligations.is_empty() {
@@ -309,11 +313,10 @@ fn plan_record_shaping_checkpoint(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "stale shaping authority requires exact checkpoint replacement",
-                    MethodName::RecordShapingCheckpoint,
+                    attempted_action_key,
                     None,
                     Vec::new(),
                     false,
-                    MethodName::Status,
                 );
             }
             None
@@ -332,11 +335,10 @@ fn plan_record_shaping_checkpoint(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "replace_current requires an exact current shaping checkpoint",
-                    MethodName::RecordShapingCheckpoint,
+                    attempted_action_key,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShapingCheckpoint,
                 );
             };
             if current.shaping_checkpoint_id != expected_current_checkpoint_id.as_str() {
@@ -347,11 +349,10 @@ fn plan_record_shaping_checkpoint(
                     &request.task_id,
                     ErrorCode::ShapingCheckpointStale,
                     "expected_current_checkpoint_id is not the exact current checkpoint",
-                    MethodName::RecordShapingCheckpoint,
+                    attempted_action_key,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShapingCheckpoint,
                 );
             }
             let expected_application_ids = current
@@ -391,11 +392,10 @@ fn plan_record_shaping_checkpoint(
                     &request.task_id,
                     ErrorCode::UserDecisionUnresolved,
                     "carry-forward refs must exactly match every current compatible shaping decision application",
-                    MethodName::RecordShapingCheckpoint,
+                    attempted_action_key,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::Status,
                 );
             }
             if current.applications.iter().any(|application| {
@@ -510,14 +510,13 @@ fn plan_record_shaping_checkpoint(
                     &request.task_id,
                     ErrorCode::UserDecisionUnresolved,
                     "stale authority actions must exactly consume every stale shaping application",
-                    MethodName::RecordShapingCheckpoint,
+                    attempted_action_key,
                     None,
                     Vec::new(),
                     true,
-                    MethodName::RecordShapingCheckpoint,
                 );
             }
-            let mut live_linked_decisions = Vec::new();
+            let mut has_live_linked_decision = false;
             let mut recoverable_request_ids = BTreeSet::new();
             for gap in current
                 .gaps
@@ -545,11 +544,10 @@ fn plan_record_shaping_checkpoint(
                         &request.task_id,
                         ErrorCode::UserDecisionUnresolved,
                         "the current checkpoint contains stale or superseded shaping authority",
-                        MethodName::RecordShapingCheckpoint,
+                        attempted_action_key,
                         None,
                         Vec::new(),
                         false,
-                        MethodName::Status,
                     );
                 }
                 let recoverable = matches!(
@@ -561,48 +559,21 @@ fn plan_record_shaping_checkpoint(
                 if recoverable {
                     recoverable_request_ids.insert(link.user_action_request_id.clone());
                 } else {
-                    live_linked_decisions.push(WorkflowRejectionUserAction {
-                        user_action_request_ref: crate::record_refs::state_ref(
-                            StateRecordKind::UserActionRequest,
-                            &link.user_action_request_id,
-                            &request.envelope.project_id,
-                            Some(&request.task_id),
-                            Some(project_state.state_version),
-                        ),
-                        effective_status: record.status(),
-                        required_owner_method: match (gap.status, record.status()) {
-                            (ShapingGapStatus::Current, UserActionStatus::Pending) => {
-                                MethodName::ResolveUserAction
-                            }
-                            (ShapingGapStatus::Accepted, UserActionStatus::Resolved) => gap
-                                .gap_kind
-                                .decision_policy_for_mode(task.mode)
-                                .map_or(MethodName::Status, |policy| {
-                                    policy.application_owner.method()
-                                }),
-                            _ => MethodName::Status,
-                        },
-                    });
+                    has_live_linked_decision = true;
                 }
             }
-            if !live_linked_decisions.is_empty() {
-                return workflow_rejection_plan_error_with_user_actions(
+            if has_live_linked_decision {
+                return workflow_rejection_plan_error(
                     store,
                     project_state,
                     &request.envelope,
                     &request.task_id,
                     ErrorCode::UserDecisionUnresolved,
                     "the current shaping checkpoint has live linked UserAction authority",
-                    MethodName::RecordShapingCheckpoint,
+                    attempted_action_key,
                     None,
                     Vec::new(),
                     false,
-                    live_linked_decisions
-                        .first()
-                        .map_or(MethodName::Status, |decision| {
-                            decision.required_owner_method
-                        }),
-                    live_linked_decisions,
                 );
             }
             let mut supplied_request_ids = BTreeSet::new();
@@ -630,11 +601,10 @@ fn plan_record_shaping_checkpoint(
                         &request.task_id,
                         ErrorCode::UserDecisionUnresolved,
                         "retired request refs must exactly match every rejected, deferred, or expired predecessor decision",
-                        MethodName::RecordShapingCheckpoint,
+                        attempted_action_key,
                         None,
                         Vec::new(),
                         true,
-                        MethodName::RecordShapingCheckpoint,
                     );
             }
             Some(expected_current_checkpoint_id.clone())
@@ -1210,7 +1180,6 @@ fn plan_finalize_advice(
             None,
             Vec::new(),
             false,
-            MethodName::Status,
         );
     }
     if task.scope_revision != *scope_revision
@@ -1268,7 +1237,6 @@ fn plan_finalize_advice(
             None,
             Vec::new(),
             true,
-            MethodName::Status,
         );
     }
     let change_unit = store
@@ -1296,7 +1264,6 @@ fn plan_finalize_advice(
             None,
             Vec::new(),
             true,
-            MethodName::UpdateScope,
         );
     }
     let task_wide_authority = crate::workflow_projection::task_wide_shaping_authority(
@@ -1309,13 +1276,6 @@ fn plan_finalize_advice(
         operation_now,
     )?;
     if task_wide_authority.blocks_advance_application() {
-        let recovery_owner = if !task_wide_authority.recovery_required.is_empty() {
-            MethodName::RecordShapingCheckpoint
-        } else if !task_wide_authority.awaiting_user.is_empty() {
-            MethodName::ResolveUserAction
-        } else {
-            MethodName::Status
-        };
         return workflow_rejection_plan_error(
             store,
             project_state,
@@ -1327,7 +1287,6 @@ fn plan_finalize_advice(
             None,
             Vec::new(),
             false,
-            recovery_owner,
         );
     }
 
@@ -1387,7 +1346,6 @@ fn plan_finalize_advice(
                 None,
                 Vec::new(),
                 true,
-                MethodName::UpdateScope,
             );
         }
         if policy.application_owner == ShapingDecisionApplicationOwner::FinalizeAdvice
@@ -1407,14 +1365,6 @@ fn plan_finalize_advice(
                 None,
                 Vec::new(),
                 true,
-                if matches!(
-                    gap.status,
-                    ShapingGapStatus::Rejected | ShapingGapStatus::Deferred
-                ) {
-                    MethodName::RecordShapingCheckpoint
-                } else {
-                    MethodName::ResolveUserAction
-                },
             );
         }
         let link = gap
@@ -1472,7 +1422,6 @@ fn plan_finalize_advice(
                 None,
                 Vec::new(),
                 false,
-                MethodName::Status,
             );
         }
         expected_resolution_ids.insert(resolution_id.clone());

@@ -249,6 +249,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

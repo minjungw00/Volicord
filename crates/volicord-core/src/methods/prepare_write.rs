@@ -196,6 +196,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::PrepareWrite,
+            Some(volicord_types::values::WorkflowActionSemanticVariant::PrepareWrite),
             request.envelope.clone(),
             request_json,
             invocation,
@@ -357,20 +358,12 @@ fn plan_prepare_write(
             checkpoint.as_ref(),
             operation_now,
         )?;
-        let shaping_recovery_owner = if !shaping_authority.recovery_required.is_empty() {
-            Some(MethodName::RecordShapingCheckpoint)
-        } else if !shaping_authority.stale.is_empty() || !shaping_authority.inconsistent.is_empty()
+        if !shaping_authority.recovery_required.is_empty()
+            || !shaping_authority.stale.is_empty()
+            || !shaping_authority.inconsistent.is_empty()
+            || !shaping_authority.awaiting_user.is_empty()
+            || !shaping_authority.accepted_unapplied.is_empty()
         {
-            Some(MethodName::Status)
-        } else if !shaping_authority.awaiting_user.is_empty() {
-            Some(MethodName::ResolveUserAction)
-        } else {
-            shaping_authority
-                .accepted_unapplied
-                .first()
-                .map(|fact| fact.required_owner_method)
-        };
-        if let Some(recovery_owner) = shaping_recovery_owner {
             let response = workflow_rejected_response(
                 store,
                 project_state,
@@ -382,7 +375,6 @@ fn plan_prepare_write(
                 None,
                 Vec::new(),
                 false,
-                recovery_owner,
             )
             .map_err(PlanError::Core)?;
             return Err(PlanError::Response(Box::new(response)));
@@ -442,7 +434,6 @@ fn prepare_write_planning_error(
                 None,
                 Vec::new(),
                 true,
-                MethodName::UpdateScope,
             ) {
                 Ok(response) => PlanError::Response(Box::new(response)),
                 Err(error) => PlanError::Core(error),
@@ -460,7 +451,6 @@ fn prepare_write_planning_error(
                 None,
                 Vec::new(),
                 true,
-                MethodName::AdvanceTask,
             ) {
                 Ok(response) => PlanError::Response(Box::new(response)),
                 Err(error) => PlanError::Core(error),
@@ -478,7 +468,6 @@ fn prepare_write_planning_error(
                 None,
                 Vec::new(),
                 false,
-                MethodName::Status,
             ) {
                 Ok(response) => PlanError::Response(Box::new(response)),
                 Err(error) => PlanError::Core(error),

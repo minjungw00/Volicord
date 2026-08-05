@@ -5,6 +5,12 @@
 이 문서는 대기 `UserActionRequest`를 해결하는 유일한 공개 전이를 담당합니다. 직접
 `User Channel` 메서드이며 Agent Connection MCP tool로 노출되지 않습니다.
 
+대상 요청으로 Task를 식별한 뒤 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고 정규
+`WorkflowMachine`에서 정확한
+`volicord.resolve_user_action/resolve_user_action` 전이를 요구합니다. 이 전이가 요청
+권한 좌표를 고정합니다. 전이가 없으면 효과 없는 `TransitionRejection`을 반환하며,
+복구가 있다면 같은 현재 catalog의 다른 전이입니다.
+
 ## 요청
 
 <!-- BEGIN GENERATED: contract-structures api.method.resolve_user_action.request[params] -->
@@ -99,6 +105,7 @@ Core transaction은 더 늦은 정규 커밋 timestamp를 선택할 수 있지�
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

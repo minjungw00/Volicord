@@ -19,13 +19,14 @@ use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
     decision_rejected_response, dry_run_summary, no_active_task_response,
-    rejected_pipeline_response, validation_plan_error, validation_rejected,
+    rejected_pipeline_response, transition_rejected_response, validation_plan_error,
+    validation_rejected,
 };
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
-    commit_mutation_branch, dry_run_preview_branch, tool_error, CorePipelineError, CoreResult,
-    CoreService, InvocationContext, PipelineResponse, TaskRequirement, VerifiedActorContext,
-    VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, AdmittedTransition,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
+    TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
 };
 use crate::policy::close_readiness_evidence::project_close_evidence_summary;
 use crate::policy::workflow::project_workflow_policy;
@@ -50,13 +51,15 @@ use volicord_types::methods::{
 };
 use volicord_types::schema::{
     validate_channel_submission_id, AgentSafeUserActionRequestSummary, StateRecordRef,
-    StateSummary, ToolEnvelope, UserActionResolutionBody,
+    StateSummary, ToolEnvelope, UserActionResolutionBody, WorkflowActionAuthorityCoordinates,
+    WorkflowActionKey,
 };
 use volicord_types::values::{
     evaluate_shaping_decision_authority, ActorSource, ErrorCode, JudgmentResolutionOutcome,
     MethodName, ShapingDecisionAuthorityFacts, ShapingDecisionAuthorityState, ShapingGapStatus,
-    StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionOptionAction,
-    UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis, UtcTimestamp, WorkPhase,
+    StateRecordKind, TransitionRejectionReason, UserActionBasisStatus, UserActionChannelKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis,
+    UtcTimestamp, WorkPhase, WorkflowActionSemanticVariant,
 };
 
 fn shaping_disposition(resolution: &UserActionResolutionBody) -> Option<ShapingGapStatus> {
@@ -185,6 +188,7 @@ fn execute_request_user_action(
         service,
         Some(context),
         MethodName::RequestUserAction,
+        Some(volicord_types::values::WorkflowActionSemanticVariant::RequestUserAction),
         request.envelope.clone(),
         request_json,
         invocation,
@@ -550,6 +554,9 @@ fn projected_user_action_state(
         shaping_checkpoint.as_ref(),
         now,
     )?;
+    pending_refs.sort();
+    pending_refs.dedup();
+    task_wide_shaping_authority.pending_request_refs = pending_refs.clone();
     if let Some(authority) = projected_authority.as_ref().filter(|authority| {
         authority
             .required_for
@@ -717,10 +724,11 @@ fn execute_resolve_user_action(
             "idempotency_key must exactly match channel_submission_id",
         );
     }
-    let prepared = match prepare_or_response(
+    let mut prepared = match prepare_or_response(
         service,
         Some(context),
         MethodName::ResolveUserAction,
+        Some(volicord_types::values::WorkflowActionSemanticVariant::ResolveUserAction),
         request.envelope.clone(),
         serde_json::to_value(&request)?,
         invocation,
@@ -784,6 +792,7 @@ fn execute_resolve_user_action(
             return Ok(response.with_prepared_context(&prepared));
         }
     };
+    prepared.admitted_transition = Some(plan.admitted_transition.clone());
     if request.envelope.dry_run.is_requested() {
         return service.execute_prepared_request(
             prepared,
@@ -820,6 +829,7 @@ fn execute_resolve_user_action(
 
 struct ResolveUserActionPlan {
     method: ResolveUserActionMethodPlan,
+    admitted_transition: AdmittedTransition,
 }
 
 struct ResolveUserActionMethodPlan {
@@ -877,6 +887,73 @@ fn plan_resolve_user_action(
                 "user_action_request_id does not identify a current user action",
             )))
         })?;
+    let task_id = TaskId::new(effective.request().task_id());
+    let attempted_action_key = WorkflowActionKey::new(
+        MethodName::ResolveUserAction,
+        WorkflowActionSemanticVariant::ResolveUserAction,
+    )
+    .map_err(|detail| CorePipelineError::Invariant {
+        detail: detail.to_owned(),
+    })?;
+    let admission = crate::workflow_projection::current_transition_admission(
+        store,
+        project_state,
+        &task_id,
+        attempted_action_key,
+        &now,
+    )?;
+    let descriptor = match admission.descriptor {
+        Some(descriptor) => descriptor,
+        None => {
+            let reason = admission
+                .rejection_reason
+                .unwrap_or(TransitionRejectionReason::UserAuthorityMissing);
+            let code = admission
+                .rejection_code
+                .unwrap_or(ErrorCode::UserDecisionUnresolved);
+            let response = transition_rejected_response(
+                &request.envelope,
+                project_state,
+                &admission.workflow,
+                code,
+                "the addressed UserAction is not a current workflow transition",
+                attempted_action_key,
+                reason,
+                admission.retryable,
+                admission.recovery_action_key,
+            )
+            .map_err(PlanError::Core)?;
+            return Err(PlanError::Response(Box::new(response)));
+        }
+    };
+    let exact_request_is_current = matches!(
+        &descriptor.fixed_authority_coordinates,
+        WorkflowActionAuthorityCoordinates::ResolveUserAction {
+            user_action_request_refs,
+            ..
+        } if user_action_request_refs.iter().any(|reference| {
+            reference.record_id.as_str() == request.user_action_request_id.as_str()
+        })
+    );
+    if !exact_request_is_current {
+        let response = transition_rejected_response(
+            &request.envelope,
+            project_state,
+            &admission.workflow,
+            ErrorCode::UserDecisionUnresolved,
+            "the addressed UserAction is absent from current transition authority",
+            attempted_action_key,
+            TransitionRejectionReason::UserAuthorityMissing,
+            false,
+            admission.recovery_action_key,
+        )
+        .map_err(PlanError::Core)?;
+        return Err(PlanError::Response(Box::new(response)));
+    }
+    let admitted_transition = AdmittedTransition {
+        descriptor,
+        workflow: admission.workflow,
+    };
     if effective.status() != UserActionStatus::Pending {
         return Err(PlanError::Response(Box::new(decision_rejected_response(
             &request.envelope,
@@ -903,7 +980,6 @@ fn plan_resolve_user_action(
             "envelope.task_id must match the addressed user action Task",
         );
     }
-    let task_id = TaskId::new(effective.request().task_id());
     let task = store
         .task_record(&task_id)
         .map_err(CorePipelineError::from)?
@@ -1101,6 +1177,11 @@ fn plan_resolve_user_action(
                 fact.request_ref.record_id.as_str() != request.user_action_request_id.as_str()
             });
         }
+        task_wide_authority
+            .pending_request_refs
+            .retain(|reference| {
+                reference.record_id.as_str() != request.user_action_request_id.as_str()
+            });
         let resolved_gap = checkpoint
             .gaps
             .iter()
@@ -1208,5 +1289,6 @@ fn plan_resolve_user_action(
             ),
             result_fields,
         },
+        admitted_transition,
     })
 }

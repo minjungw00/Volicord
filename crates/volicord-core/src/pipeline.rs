@@ -20,27 +20,32 @@ use volicord_store::{
     core_pipeline::{
         commit_input, CommitMutationInput, CommittedEventRef, CoreProjectStore,
         CoreStorageMutation, MutationCommitOutcome, PendingTaskEvent, ProjectStateHeader,
+        TransitionCommitExpectation,
     },
     CanonicalRuntimeHomePath, RuntimeHomeMutationContext, StoreCorruptionLocation, StoreError,
     StoreFailureRoute, StoreResult,
 };
 use volicord_types::canonical::canonical_request_hash;
 use volicord_types::ids::{
-    ChangeUnitId, DurableIdError, DurableIdGenerator, DurableIdKind, EventId, IdempotencyKey,
-    ProjectId, RandomDurableIdGenerator, RequestHash, TaskId,
+    BaselineRef, ChangeUnitId, DurableIdError, DurableIdGenerator, DurableIdKind, EventId,
+    IdempotencyKey, ProjectId, RandomDurableIdGenerator, RequestHash, ShapingCheckpointId, TaskId,
+    UserActionRequestId, UserActionResolutionId,
 };
 use volicord_types::methods::{
     public_method_contract, AssembleMethodResult, DryRunRequestRoute, MethodResponseBranch,
     MethodResponseContract, OperationResultRef, ResultBaseConstructionError, ResultEffectContract,
     SupportsCoreCommittedResult, SupportsNoEffectResult, SupportsReadOnlyResult,
+    WorkflowActionAdmissionClass,
 };
 use volicord_types::schema::{
-    DryRunIntent, DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, ToolDryRunResponse,
-    ToolEnvelope, ToolError, ToolRejectedResponse,
+    DryRunIntent, DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, RequiredNullable,
+    StateRecordRef, ToolDryRunResponse, ToolEnvelope, ToolError, ToolRejectedResponse,
+    TransitionDescriptor, WorkflowActionAuthorityCoordinates, WorkflowActionKey,
+    WorkflowCheckpointActionCoordinates, WorkflowProjection,
 };
 use volicord_types::values::{
-    ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, UserActionChannelKind,
-    UtcTimestamp,
+    ActorSource, ChangeUnitOperation, EffectKind, ErrorCode, MethodName, OperationCategory,
+    RunKind, UserActionChannelKind, UtcTimestamp,
 };
 
 use crate::policy::{
@@ -670,10 +675,18 @@ pub(crate) struct PipelineRequest<F, B> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PipelinePreflightRequest {
     pub method_name: MethodName,
+    pub attempted_action_key: Option<WorkflowActionKey>,
     pub envelope: ToolEnvelope,
     pub request_json: Value,
     pub invocation: InvocationContext,
     pub policy: MethodPolicy,
+}
+
+/// Exact current machine transition consumed by a state-bound request.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct AdmittedTransition {
+    pub descriptor: TransitionDescriptor,
+    pub workflow: WorkflowProjection,
 }
 
 /// Verified request context produced by the shared preflight boundary.
@@ -693,6 +706,7 @@ pub(crate) struct PreparedRequest<'mutation> {
     pub store: CoreProjectStore<'mutation>,
     pub context: VerifiedRequestContext,
     pub operation_now: UtcTimestamp,
+    pub admitted_transition: Option<AdmittedTransition>,
 }
 
 /// Preflight may either prepare a request or return an authoritative response.
@@ -942,8 +956,20 @@ impl CoreService {
             request.task_requirement,
             &request.branch,
         );
+        let semantic_variant = match request.method_name {
+            MethodName::UpdateScope => {
+                Some(volicord_types::values::WorkflowActionSemanticVariant::CreateCurrentChangeUnit)
+            }
+            method => {
+                volicord_types::values::WorkflowActionSemanticVariant::for_single_variant_method(
+                    method,
+                )
+            }
+        };
         let preflight = PipelinePreflightRequest {
             method_name: request.method_name,
+            attempted_action_key: semantic_variant
+                .and_then(|variant| WorkflowActionKey::new(request.method_name, variant).ok()),
             envelope: request.envelope,
             request_json: request.request_json,
             invocation: request.invocation,
@@ -988,7 +1014,10 @@ impl CoreService {
             );
         }
 
-        let request_hash = canonical_request_hash(&request.request_json)?;
+        let request_hash = match request.attempted_action_key.as_ref() {
+            Some(action_key) => canonical_request_hash(&(action_key, &request.request_json))?,
+            None => canonical_request_hash(&request.request_json)?,
+        };
 
         let store = match open_store_for_policy(
             self,
@@ -1134,6 +1163,130 @@ impl CoreService {
             }
             Err(error) => return Err(error),
         };
+
+        let admitted_transition =
+            match public_method_contract(request.method_name).workflow_action_admission() {
+                WorkflowActionAdmissionClass::TaskStateBound => {
+                    let attempted_action_key = request.attempted_action_key.ok_or_else(|| {
+                        CorePipelineError::InvalidDispatch {
+                            detail: format!(
+                                "{} requires an exact workflow action key",
+                                request.method_name.as_str()
+                            ),
+                        }
+                    })?;
+                    let task_id =
+                        resolved_task_id
+                            .as_ref()
+                            .ok_or_else(|| CorePipelineError::Invariant {
+                                detail: "task-state-bound admission requires a resolved Task"
+                                    .to_owned(),
+                            })?;
+                    let admission = match crate::workflow_projection::current_transition_admission(
+                        &store,
+                        &project_state,
+                        task_id,
+                        attempted_action_key,
+                        &operation_now,
+                    ) {
+                        Ok(admission) => admission,
+                        Err(CorePipelineError::Store(error)) => {
+                            return response_outcome_from_rejected(
+                                rejected_response(
+                                    prepared_envelope.dry_run,
+                                    Some(project_state.state_version),
+                                    vec![store_failure_error(error)],
+                                ),
+                                Some(verified_invocation),
+                                resolved_task_id,
+                            )
+                        }
+                        Err(error) => return Err(error),
+                    };
+                    let Some(descriptor) = admission.descriptor else {
+                        let reason = admission.rejection_reason.ok_or_else(|| {
+                            CorePipelineError::Invariant {
+                                detail: "rejected transition admission has no typed reason"
+                                    .to_owned(),
+                            }
+                        })?;
+                        let code = admission.rejection_code.ok_or_else(|| {
+                            CorePipelineError::Invariant {
+                                detail: "rejected transition admission has no public error code"
+                                    .to_owned(),
+                            }
+                        })?;
+                        let mut response = crate::method_rejection::transition_rejected_response(
+                            &prepared_envelope,
+                            &project_state,
+                            &admission.workflow,
+                            code,
+                            "exact workflow action is not current",
+                            attempted_action_key,
+                            reason,
+                            admission.retryable,
+                            admission.recovery_action_key,
+                        )?;
+                        response.verified_invocation = Some(verified_invocation);
+                        response.resolved_task_id = resolved_task_id;
+                        return Ok(PipelinePreflightOutcome::Response(Box::new(response)));
+                    };
+                    if descriptor.expected_state_version != project_state.state_version
+                        || descriptor.fixed_authority_coordinates.task_id() != task_id
+                    {
+                        return Err(CorePipelineError::Invariant {
+                            detail:
+                                "admitted transition coordinates contradict preflight authority"
+                                    .to_owned(),
+                        });
+                    }
+                    if !request_authority_coordinates_match(
+                        request.method_name,
+                        &request.request_json,
+                        &descriptor.fixed_authority_coordinates,
+                    )? {
+                        let (code, reason) = request_coordinate_mismatch_rejection(
+                            request.method_name,
+                            &request.request_json,
+                            &descriptor.fixed_authority_coordinates,
+                        )?;
+                        let mut response = crate::method_rejection::transition_rejected_response(
+                            &prepared_envelope,
+                            &project_state,
+                            &admission.workflow,
+                            code,
+                            "request authority coordinates do not match the current transition",
+                            attempted_action_key,
+                            reason,
+                            true,
+                            Some(descriptor.action_key),
+                        )?;
+                        response.verified_invocation = Some(verified_invocation);
+                        response.resolved_task_id = resolved_task_id;
+                        return Ok(PipelinePreflightOutcome::Response(Box::new(response)));
+                    }
+                    Some(AdmittedTransition {
+                        descriptor,
+                        workflow: admission.workflow,
+                    })
+                }
+                WorkflowActionAdmissionClass::ReadOnly
+                | WorkflowActionAdmissionClass::NotTaskStateBound
+                | WorkflowActionAdmissionClass::UserChannelAuthority => {
+                    if request.attempted_action_key.is_some()
+                        && public_method_contract(request.method_name).workflow_action_admission()
+                            != WorkflowActionAdmissionClass::UserChannelAuthority
+                    {
+                        return Err(CorePipelineError::InvalidDispatch {
+                            detail: format!(
+                                "{} is not admitted by a task workflow transition",
+                                request.method_name.as_str()
+                            ),
+                        });
+                    }
+                    None
+                }
+            };
         Ok(PipelinePreflightOutcome::Prepared(Box::new(
             PreparedRequest {
                 method_name: request.method_name,
@@ -1147,6 +1300,7 @@ impl CoreService {
                     resolved_task_id,
                 },
                 operation_now,
+                admitted_transition,
             },
         )))
     }
@@ -1163,6 +1317,7 @@ impl CoreService {
     {
         validate_branch_shape(&branch, prepared.envelope.dry_run)?;
         validate_method_response_branch(prepared.method_name, prepared.envelope.dry_run, &branch)?;
+        validate_admitted_transition_branch(&prepared, &branch)?;
         let project_state = prepared.context.project_state.clone();
         let verified_invocation = prepared.context.verified_invocation.clone();
         let resolved_task_id = prepared.context.resolved_task_id.clone();
@@ -1201,12 +1356,24 @@ impl CoreService {
             OwnerPipelineBranchKind::CommitMutation {
                 result_fields,
                 event_kind,
-                event_payload,
+                mut event_payload,
                 task_id: branch_task_id,
                 change_unit_id,
                 storage_mutations,
                 build_base,
             } => {
+                if let Some(admission) = prepared.admitted_transition.as_ref() {
+                    if event_payload.contains_key("transition") {
+                        return Err(CorePipelineError::Invariant {
+                            detail: "method event payload shadows the admitted transition"
+                                .to_owned(),
+                        });
+                    }
+                    event_payload.insert(
+                        "transition".to_owned(),
+                        serde_json::to_value(&admission.descriptor)?,
+                    );
+                }
                 let task_id = match branch_task_id.or(resolved_task_id) {
                     Some(task_id) => task_id,
                     None => {
@@ -1262,6 +1429,10 @@ impl CoreService {
                         verified_invocation: verified_invocation.clone(),
                         clock_floor: &prepared.operation_now,
                         include_live_storage_time: self.clock.include_live_storage_time_at_commit(),
+                        transition_descriptor: prepared
+                            .admitted_transition
+                            .as_ref()
+                            .map(|admission| admission.descriptor.clone()),
                     },
                 ) {
                     Ok(response) => Ok(response),
@@ -1540,6 +1711,509 @@ fn validate_method_response_branch<F, B>(
             dry_run.as_wire_bool()
         ),
     })
+}
+
+fn validate_admitted_transition_branch<F, B>(
+    prepared: &PreparedRequest<'_>,
+    branch: &OwnerPipelineBranch<F, B>,
+) -> CoreResult<()> {
+    let Some(admission) = prepared.admitted_transition.as_ref() else {
+        return Ok(());
+    };
+    if admission.descriptor.action_key.method != prepared.method_name {
+        return Err(CorePipelineError::Invariant {
+            detail: "prepared method does not consume its admitted transition".to_owned(),
+        });
+    }
+    match &branch.kind {
+        OwnerPipelineBranchKind::ReadOnly { .. } => Ok(()),
+        OwnerPipelineBranchKind::DryRunPreview { .. }
+        | OwnerPipelineBranchKind::NoEffectResult { .. } => Ok(()),
+        OwnerPipelineBranchKind::CommitMutation {
+            storage_mutations, ..
+        } if volicord_store::core_pipeline::transition_effect_matches_mutations(
+            admission.descriptor.action_key,
+            admission.descriptor.effect_class,
+            storage_mutations,
+        ) =>
+        {
+            Ok(())
+        }
+        _ => Err(CorePipelineError::Invariant {
+            detail: "method effect branch contradicts its admitted transition descriptor"
+                .to_owned(),
+        }),
+    }
+}
+
+#[derive(Deserialize)]
+struct SubmittedTaskCoordinates {
+    task_id: TaskId,
+}
+
+#[derive(Deserialize)]
+struct SubmittedRecordShapingCoordinates {
+    task_id: TaskId,
+    checkpoint_operation: SubmittedCheckpointOperation,
+    scope_revision: u64,
+    baseline_ref: RequiredNullable<BaselineRef>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+enum SubmittedCheckpointOperation {
+    CreateInitial,
+    ReplaceCurrent {
+        expected_current_checkpoint_id: ShapingCheckpointId,
+        retired_non_authorizing_request_refs: Vec<StateRecordRef>,
+        carry_forward_application_refs: Vec<StateRecordRef>,
+        stale_authority_actions: Vec<SubmittedStaleAuthorityAction>,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+enum SubmittedStaleAuthorityAction {
+    Retire {
+        stale_application_ref: StateRecordRef,
+    },
+    Reauthorize {
+        stale_application_ref: StateRecordRef,
+    },
+}
+
+#[derive(Deserialize)]
+struct SubmittedUpdateScopeCoordinates {
+    task_id: TaskId,
+    change_unit: SubmittedChangeUnitCoordinates,
+}
+
+#[derive(Deserialize)]
+struct SubmittedChangeUnitCoordinates {
+    operation: ChangeUnitOperation,
+}
+
+#[derive(Deserialize)]
+struct SubmittedCheckpointApplicationCoordinates {
+    task_id: TaskId,
+    shaping_checkpoint_id: ShapingCheckpointId,
+    change_unit_id: ChangeUnitId,
+    scope_revision: u64,
+    baseline_ref: BaselineRef,
+    user_action_resolution_ids: Vec<UserActionResolutionId>,
+}
+
+#[derive(Deserialize)]
+struct SubmittedExecutionCoordinates {
+    task_id: TaskId,
+    change_unit_id: ChangeUnitId,
+    baseline_ref: BaselineRef,
+}
+
+#[derive(Deserialize)]
+struct SubmittedPrepareWriteCoordinates {
+    task_id: RequiredNullable<TaskId>,
+    change_unit_id: RequiredNullable<ChangeUnitId>,
+}
+
+#[derive(Deserialize)]
+struct SubmittedRecordRunCoordinates {
+    task_id: TaskId,
+    change_unit_id: ChangeUnitId,
+    baseline_ref: BaselineRef,
+    kind: RunKind,
+}
+
+#[derive(Deserialize)]
+struct SubmittedRequestUserActionCoordinates {
+    task_id: TaskId,
+    change_unit_id: RequiredNullable<ChangeUnitId>,
+}
+
+#[derive(Deserialize)]
+struct SubmittedResolveUserActionCoordinates {
+    user_action_request_id: UserActionRequestId,
+}
+
+fn request_authority_coordinates_match(
+    method: MethodName,
+    request_json: &Value,
+    coordinates: &WorkflowActionAuthorityCoordinates,
+) -> CoreResult<bool> {
+    fn decode<T: serde::de::DeserializeOwned>(request_json: &Value) -> CoreResult<T> {
+        serde_json::from_value(request_json.clone()).map_err(|error| CorePipelineError::Invariant {
+            detail: format!("typed method request failed transition-coordinate decoding: {error}"),
+        })
+    }
+
+    fn normalized_refs(refs: &[StateRecordRef]) -> Vec<StateRecordRef> {
+        let mut refs = refs.to_vec();
+        refs.sort();
+        refs.dedup();
+        refs
+    }
+
+    fn normalized_ids<T: Ord + Clone>(ids: &[T]) -> Vec<T> {
+        let mut ids = ids.to_vec();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
+    let matches = match (method, coordinates) {
+        (
+            MethodName::RecordShapingCheckpoint,
+            WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                task_id,
+                checkpoint_operation,
+                scope_revision,
+                baseline_ref,
+            },
+        ) => {
+            let request: SubmittedRecordShapingCoordinates = decode(request_json)?;
+            let operation_matches = match (&request.checkpoint_operation, checkpoint_operation) {
+                (
+                    SubmittedCheckpointOperation::CreateInitial,
+                    WorkflowCheckpointActionCoordinates::CreateInitial,
+                ) => true,
+                (
+                    SubmittedCheckpointOperation::ReplaceCurrent {
+                        expected_current_checkpoint_id,
+                        retired_non_authorizing_request_refs,
+                        carry_forward_application_refs,
+                        stale_authority_actions,
+                    },
+                    WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                        current_checkpoint_ref,
+                        retired_non_authorizing_request_refs: current_retired_refs,
+                        carry_forward_application_refs: current_carry_refs,
+                        stale_application_refs,
+                        ..
+                    },
+                ) => {
+                    let requested_stale_refs = stale_authority_actions
+                        .iter()
+                        .map(|action| match action {
+                            SubmittedStaleAuthorityAction::Retire {
+                                stale_application_ref,
+                            }
+                            | SubmittedStaleAuthorityAction::Reauthorize {
+                                stale_application_ref,
+                            } => stale_application_ref.clone(),
+                        })
+                        .collect::<Vec<_>>();
+                    expected_current_checkpoint_id.as_str()
+                        == current_checkpoint_ref.record_id.as_str()
+                        && normalized_refs(retired_non_authorizing_request_refs)
+                            == normalized_refs(current_retired_refs)
+                        && normalized_refs(carry_forward_application_refs)
+                            == normalized_refs(current_carry_refs)
+                        && normalized_refs(&requested_stale_refs)
+                            == normalized_refs(stale_application_refs)
+                }
+                _ => false,
+            };
+            request.task_id == *task_id
+                && request.scope_revision == *scope_revision
+                && request.baseline_ref == *baseline_ref
+                && operation_matches
+        }
+        (
+            MethodName::UpdateScope,
+            WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id,
+                selected_change_unit_operation,
+                ..
+            },
+        ) => {
+            let request: SubmittedUpdateScopeCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+                && request.change_unit.operation == *selected_change_unit_operation
+        }
+        (
+            MethodName::FinalizeAdvice,
+            WorkflowActionAuthorityCoordinates::FinalizeAdvice {
+                task_id,
+                shaping_checkpoint_id,
+                change_unit_id,
+                scope_revision,
+                baseline_ref,
+                user_action_resolution_ids,
+            },
+        ) => {
+            let request: SubmittedCheckpointApplicationCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+                && request.shaping_checkpoint_id == *shaping_checkpoint_id
+                && request.change_unit_id == *change_unit_id
+                && request.scope_revision == *scope_revision
+                && baseline_ref.as_ref() == Some(&request.baseline_ref)
+                && normalized_ids(&request.user_action_resolution_ids)
+                    == normalized_ids(user_action_resolution_ids)
+        }
+        (
+            MethodName::AdvanceTask,
+            WorkflowActionAuthorityCoordinates::AdvanceTask {
+                task_id,
+                shaping_checkpoint_id,
+                change_unit_id,
+                scope_revision,
+                baseline_ref,
+                user_action_resolution_ids,
+            },
+        ) => {
+            let request: SubmittedCheckpointApplicationCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+                && request.shaping_checkpoint_id == *shaping_checkpoint_id
+                && request.change_unit_id == *change_unit_id
+                && request.scope_revision == *scope_revision
+                && baseline_ref.as_ref() == Some(&request.baseline_ref)
+                && normalized_ids(&request.user_action_resolution_ids)
+                    == normalized_ids(user_action_resolution_ids)
+        }
+        (
+            MethodName::PrepareEvidenceCapture,
+            WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture {
+                task_id,
+                change_unit_id,
+                baseline_ref,
+            },
+        ) => {
+            let request: SubmittedExecutionCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+                && request.change_unit_id == *change_unit_id
+                && request.baseline_ref == *baseline_ref
+        }
+        (
+            MethodName::PrepareWrite,
+            WorkflowActionAuthorityCoordinates::PrepareWrite {
+                task_id,
+                change_unit_id,
+                ..
+            },
+        ) => {
+            let request: SubmittedPrepareWriteCoordinates = decode(request_json)?;
+            request
+                .task_id
+                .as_ref()
+                .is_none_or(|value| value == task_id)
+                && request
+                    .change_unit_id
+                    .as_ref()
+                    .is_none_or(|value| value == change_unit_id)
+        }
+        (
+            MethodName::StageArtifact,
+            WorkflowActionAuthorityCoordinates::StageArtifact { task_id },
+        ) => {
+            let request: SubmittedTaskCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+        }
+        (
+            MethodName::RecordRun,
+            WorkflowActionAuthorityCoordinates::RecordRun {
+                task_id,
+                change_unit_id,
+                baseline_ref,
+                run_kind,
+            },
+        ) => {
+            let request: SubmittedRecordRunCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+                && request.change_unit_id == *change_unit_id
+                && request.baseline_ref == *baseline_ref
+                && request.kind == *run_kind
+        }
+        (
+            MethodName::RequestUserAction,
+            WorkflowActionAuthorityCoordinates::RequestUserAction {
+                task_id,
+                change_unit_id,
+            },
+        ) => {
+            let request: SubmittedRequestUserActionCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+                && request
+                    .change_unit_id
+                    .as_ref()
+                    .is_none_or(|value| change_unit_id.as_ref() == Some(value))
+        }
+        (
+            MethodName::ResolveUserAction,
+            WorkflowActionAuthorityCoordinates::ResolveUserAction {
+                user_action_request_refs,
+                ..
+            },
+        ) => {
+            let request: SubmittedResolveUserActionCoordinates = decode(request_json)?;
+            user_action_request_refs.iter().any(|reference| {
+                reference.record_kind == volicord_types::values::StateRecordKind::UserActionRequest
+                    && reference.record_id.as_str() == request.user_action_request_id.as_str()
+            })
+        }
+        (
+            MethodName::ReconcileChanges,
+            WorkflowActionAuthorityCoordinates::ReconcileChanges { task_id },
+        ) => {
+            let request: SubmittedTaskCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+        }
+        (MethodName::CheckClose, WorkflowActionAuthorityCoordinates::CheckClose { task_id }) => {
+            let request: SubmittedTaskCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+        }
+        (MethodName::CloseTask, WorkflowActionAuthorityCoordinates::CloseTask { task_id }) => {
+            let request: SubmittedTaskCoordinates = decode(request_json)?;
+            request.task_id == *task_id
+        }
+        _ => false,
+    };
+    Ok(matches)
+}
+
+fn request_coordinate_mismatch_rejection(
+    method: MethodName,
+    request_json: &Value,
+    coordinates: &WorkflowActionAuthorityCoordinates,
+) -> CoreResult<(ErrorCode, volicord_types::values::TransitionRejectionReason)> {
+    use volicord_types::values::TransitionRejectionReason;
+
+    fn decode<T: serde::de::DeserializeOwned>(request_json: &Value) -> CoreResult<T> {
+        serde_json::from_value(request_json.clone()).map_err(|error| CorePipelineError::Invariant {
+            detail: format!("typed method request failed mismatch classification: {error}"),
+        })
+    }
+
+    let rejection = match (method, coordinates) {
+        (
+            MethodName::RecordShapingCheckpoint,
+            WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                checkpoint_operation:
+                    WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                        current_checkpoint_ref,
+                        ..
+                    },
+                ..
+            },
+        ) => {
+            let request: SubmittedRecordShapingCoordinates = decode(request_json)?;
+            if matches!(
+                request.checkpoint_operation,
+                SubmittedCheckpointOperation::ReplaceCurrent {
+                    expected_current_checkpoint_id,
+                    ..
+                } if expected_current_checkpoint_id.as_str()
+                    != current_checkpoint_ref.record_id.as_str()
+            ) {
+                (
+                    ErrorCode::ShapingCheckpointStale,
+                    TransitionRejectionReason::CheckpointStale,
+                )
+            } else {
+                (
+                    ErrorCode::WorkflowActionNotAllowed,
+                    TransitionRejectionReason::AuthorityBasisMismatch,
+                )
+            }
+        }
+        (
+            MethodName::FinalizeAdvice,
+            WorkflowActionAuthorityCoordinates::FinalizeAdvice {
+                shaping_checkpoint_id,
+                change_unit_id,
+                baseline_ref,
+                ..
+            },
+        )
+        | (
+            MethodName::AdvanceTask,
+            WorkflowActionAuthorityCoordinates::AdvanceTask {
+                shaping_checkpoint_id,
+                change_unit_id,
+                baseline_ref,
+                ..
+            },
+        ) => {
+            let request: SubmittedCheckpointApplicationCoordinates = decode(request_json)?;
+            if request.shaping_checkpoint_id != *shaping_checkpoint_id {
+                (
+                    ErrorCode::ShapingCheckpointStale,
+                    TransitionRejectionReason::CheckpointStale,
+                )
+            } else if request.change_unit_id != *change_unit_id {
+                (
+                    ErrorCode::ChangeUnitStale,
+                    TransitionRejectionReason::ChangeUnitStale,
+                )
+            } else if baseline_ref.as_ref() != Some(&request.baseline_ref) {
+                (
+                    ErrorCode::WorkspaceBasisStale,
+                    TransitionRejectionReason::WorkspaceBasisStale,
+                )
+            } else {
+                (
+                    ErrorCode::WorkflowActionNotAllowed,
+                    TransitionRejectionReason::AuthorityBasisMismatch,
+                )
+            }
+        }
+        (
+            MethodName::PrepareEvidenceCapture,
+            WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture {
+                change_unit_id,
+                baseline_ref,
+                ..
+            },
+        ) => {
+            let request: SubmittedExecutionCoordinates = decode(request_json)?;
+            if request.change_unit_id != *change_unit_id {
+                (
+                    ErrorCode::ChangeUnitStale,
+                    TransitionRejectionReason::ChangeUnitStale,
+                )
+            } else if request.baseline_ref != *baseline_ref {
+                (
+                    ErrorCode::WorkspaceBasisStale,
+                    TransitionRejectionReason::WorkspaceBasisStale,
+                )
+            } else {
+                (
+                    ErrorCode::WorkflowActionNotAllowed,
+                    TransitionRejectionReason::AuthorityBasisMismatch,
+                )
+            }
+        }
+        (
+            MethodName::RecordRun,
+            WorkflowActionAuthorityCoordinates::RecordRun {
+                change_unit_id,
+                baseline_ref,
+                ..
+            },
+        ) => {
+            let request: SubmittedRecordRunCoordinates = decode(request_json)?;
+            if request.change_unit_id != *change_unit_id {
+                (
+                    ErrorCode::ChangeUnitStale,
+                    TransitionRejectionReason::ChangeUnitStale,
+                )
+            } else if request.baseline_ref != *baseline_ref {
+                (
+                    ErrorCode::WorkspaceBasisStale,
+                    TransitionRejectionReason::WorkspaceBasisStale,
+                )
+            } else {
+                (
+                    ErrorCode::RunKindIncompatible,
+                    TransitionRejectionReason::AuthorityBasisMismatch,
+                )
+            }
+        }
+        _ => (
+            ErrorCode::WorkflowActionNotAllowed,
+            TransitionRejectionReason::AuthorityBasisMismatch,
+        ),
+    };
+    Ok(rejection)
 }
 
 fn replay_preflight_response(
@@ -1877,6 +2551,7 @@ struct CommitPipelineArgs<'a, F, B> {
     verified_invocation: VerifiedInvocationContext,
     clock_floor: &'a UtcTimestamp,
     include_live_storage_time: bool,
+    transition_descriptor: Option<TransitionDescriptor>,
 }
 
 fn commit_mutation<F, B>(
@@ -1902,6 +2577,7 @@ where
         verified_invocation,
         clock_floor,
         include_live_storage_time,
+        transition_descriptor,
     } = args;
 
     let replay_context = replay_context_from_verified_invocation(&verified_invocation)?;
@@ -1922,6 +2598,17 @@ where
     );
     input.clock_floor = Some(clock_floor.clone());
     input.include_live_storage_time = include_live_storage_time;
+    input.transition_expectation =
+        transition_descriptor
+            .clone()
+            .map(|descriptor| TransitionCommitExpectation {
+                project_id: envelope.project_id.as_str().to_owned(),
+                task_id: task_id.as_str().to_owned(),
+                action_key: descriptor.action_key,
+                effect_class: descriptor.effect_class,
+                expected_result_state: descriptor.expected_result_state,
+                basis_state_version: descriptor.expected_state_version,
+            });
 
     let outcome = store.commit_mutation(input, &storage_mutations, |facts| {
         committed_response_json(
@@ -1929,6 +2616,7 @@ where
             build_base,
             facts.committed_state_version,
             facts.events,
+            transition_descriptor.as_ref(),
         )
         .map_err(store_invalid_input)
     })?;
@@ -2069,6 +2757,7 @@ fn committed_response_json<F, B>(
     build_base: fn(u64, Vec<EventRef>) -> Result<B, ResultBaseConstructionError>,
     committed_state_version: u64,
     events: Vec<CommittedEventRef>,
+    transition_descriptor: Option<&TransitionDescriptor>,
 ) -> CoreResult<String>
 where
     F: AssembleMethodResult<B>,
@@ -2083,7 +2772,17 @@ where
         .collect();
     let base =
         build_base(committed_state_version, event_refs).map_err(result_base_construction_error)?;
-    let response = serde_json::to_value(result_fields.assemble(base))?;
+    let mut response = serde_json::to_value(result_fields.assemble(base))?;
+    if let Some(descriptor) = transition_descriptor {
+        let transition = response
+            .get_mut("base")
+            .and_then(Value::as_object_mut)
+            .and_then(|base| base.get_mut("transition"))
+            .ok_or_else(|| CorePipelineError::Invariant {
+                detail: "committed result base has no transition projection".to_owned(),
+            })?;
+        *transition = serde_json::to_value(descriptor)?;
+    }
     serde_json::to_string(&response).map_err(CorePipelineError::from)
 }
 
@@ -2398,7 +3097,8 @@ mod tests {
         },
         core_pipeline::{
             ChangeUnitInsert, CoreProjectStore, StorageEffectCounts, StoredChangeUnitLifecycle,
-            StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis,
+            StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis, TaskMutation,
+            TaskScopeUpdate,
         },
         sqlite::registry_db_path,
         StoreAggregateInvariant, WriteTicketInvariant,
@@ -2879,6 +3579,38 @@ mod tests {
             self.service.execute_pipeline(Some(&context), request)
         }
 
+        fn execute_with_action<B>(
+            &self,
+            request: PipelineRequest<PipelineTestResultFields, B>,
+            semantic_variant: volicord_types::values::WorkflowActionSemanticVariant,
+        ) -> CoreResult<PipelineResponse>
+        where
+            PipelineTestResultFields: AssembleMethodResult<B>,
+            <PipelineTestResultFields as AssembleMethodResult<B>>::Result: Serialize,
+        {
+            let context = self.mutation.context().map_err(CorePipelineError::from)?;
+            let policy = MethodPolicy::for_branch(
+                request.operation_category,
+                request.task_requirement,
+                &request.branch,
+            );
+            let preflight = PipelinePreflightRequest {
+                method_name: request.method_name,
+                attempted_action_key: WorkflowActionKey::new(request.method_name, semantic_variant)
+                    .ok(),
+                envelope: request.envelope,
+                request_json: request.request_json,
+                invocation: request.invocation,
+                policy,
+            };
+            match self.service.prepare_request(Some(&context), preflight)? {
+                PipelinePreflightOutcome::Prepared(prepared) => self
+                    .service
+                    .execute_prepared_request(*prepared, request.branch),
+                PipelinePreflightOutcome::Response(response) => Ok(*response),
+            }
+        }
+
         fn state_db_path(&self) -> PathBuf {
             self.runtime_home_path
                 .join("projects")
@@ -2894,6 +3626,175 @@ mod tests {
             )?;
             Ok(())
         }
+    }
+
+    #[test]
+    fn every_task_state_bound_method_requires_an_exact_action_key() -> Result<(), Box<dyn Error>> {
+        use volicord_types::methods::{WorkflowActionAdmissionClass, PUBLIC_METHOD_CONTRACTS};
+
+        let harness = PipelineHarness::new()?;
+        let context = harness.mutation.context()?;
+        for contract in PUBLIC_METHOD_CONTRACTS.iter().filter(|contract| {
+            contract.workflow_action_admission() == WorkflowActionAdmissionClass::TaskStateBound
+        }) {
+            let method = contract.method();
+            let request_id = format!("req_missing_action_{}", method.as_str().replace('.', "_"));
+            let idempotency_key =
+                format!("idem_missing_action_{}", method.as_str().replace('.', "_"));
+            let envelope = envelope(
+                &request_id,
+                Some(&idempotency_key),
+                false,
+                Some(0),
+                Some(TASK_ID),
+            );
+            let outcome = harness.service.prepare_request(
+                Some(&context),
+                PipelinePreflightRequest {
+                    method_name: method,
+                    attempted_action_key: None,
+                    request_json: request_json(method, &envelope, "missing-action-key"),
+                    envelope,
+                    invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
+                    policy: MethodPolicy::exact(
+                        OperationCategory::AgentWorkflow,
+                        TaskRequirement::Required,
+                        ReplayPolicy::Committed,
+                        FreshnessPolicy::IfPresent,
+                        MethodEffectPolicy::CoreMutation,
+                    ),
+                },
+            );
+            match outcome {
+                Err(CorePipelineError::InvalidDispatch { detail })
+                    if detail.contains(method.as_str())
+                        && detail.contains("exact workflow action key") => {}
+                Ok(PipelinePreflightOutcome::Response(response)) => panic!(
+                    "{} returned a response before exact-key admission: {}",
+                    method.as_str(),
+                    response.response_json
+                ),
+                Ok(PipelinePreflightOutcome::Prepared(_)) => {
+                    panic!("{} prepared without its exact action key", method.as_str())
+                }
+                Err(error) => panic!(
+                    "{} returned the wrong exact-key failure: {error}",
+                    method.as_str()
+                ),
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn exact_method_with_noncurrent_variant_rejects_before_method_semantics(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = PipelineHarness::new()?;
+        let before = harness.counts()?;
+        let envelope = envelope(
+            "req_wrong_transition_variant",
+            Some("idem_wrong_transition_variant"),
+            false,
+            Some(0),
+            Some(TASK_ID),
+        );
+        let context = harness.mutation.context()?;
+        let outcome = harness.service.prepare_request(
+            Some(&context),
+            PipelinePreflightRequest {
+                method_name: MethodName::UpdateScope,
+                attempted_action_key: WorkflowActionKey::new(
+                    MethodName::UpdateScope,
+                    volicord_types::values::WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+                )
+                .ok(),
+                request_json: update_scope_request_json(
+                    &envelope,
+                    "wrong transition variant",
+                    "keep_current",
+                ),
+                envelope,
+                invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
+                policy: MethodPolicy::exact(
+                    OperationCategory::AgentWorkflow,
+                    TaskRequirement::Required,
+                    ReplayPolicy::Committed,
+                    FreshnessPolicy::IfPresent,
+                    MethodEffectPolicy::CoreMutation,
+                ),
+            },
+        )?;
+        let PipelinePreflightOutcome::Response(response) = outcome else {
+            panic!("a noncurrent exact variant must not prepare");
+        };
+        assert_eq!(
+            response.response_value["errors"][0]["code"],
+            "WORKFLOW_ACTION_NOT_ALLOWED"
+        );
+        assert_eq!(
+            response.response_value["errors"][0]["details"]["reason"],
+            "variant_not_current"
+        );
+        assert_eq!(harness.counts()?, before);
+        Ok(())
+    }
+
+    #[test]
+    fn submitted_authority_coordinates_must_match_the_admitted_transition(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = PipelineHarness::new()?;
+        let before = harness.counts()?;
+        let envelope = envelope(
+            "req_transition_coordinate_mismatch",
+            Some("idem_transition_coordinate_mismatch"),
+            false,
+            Some(0),
+            Some(TASK_ID),
+        );
+        let mut request_json = update_scope_request_json(
+            &envelope,
+            "transition coordinate mismatch",
+            "create_current",
+        );
+        request_json["task_id"] = Value::String("task_other".to_owned());
+        let context = harness.mutation.context()?;
+        let outcome = harness.service.prepare_request(
+            Some(&context),
+            PipelinePreflightRequest {
+                method_name: MethodName::UpdateScope,
+                attempted_action_key: WorkflowActionKey::new(
+                    MethodName::UpdateScope,
+                    volicord_types::values::WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+                )
+                .ok(),
+                request_json,
+                envelope,
+                invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
+                policy: MethodPolicy::exact(
+                    OperationCategory::AgentWorkflow,
+                    TaskRequirement::Required,
+                    ReplayPolicy::Committed,
+                    FreshnessPolicy::IfPresent,
+                    MethodEffectPolicy::CoreMutation,
+                ),
+            },
+        )?;
+        let PipelinePreflightOutcome::Response(response) = outcome else {
+            panic!("mismatched transition coordinates must not prepare");
+        };
+        assert_eq!(
+            response.response_value["errors"][0]["details"]["reason"],
+            "authority_basis_mismatch"
+        );
+        assert_eq!(
+            response.response_value["errors"][0]["details"]["recovery_action_key"],
+            json!({
+                "method": "volicord.update_scope",
+                "semantic_variant": "create_current_change_unit"
+            })
+        );
+        assert_eq!(harness.counts()?, before);
+        Ok(())
     }
 
     #[test]
@@ -3162,6 +4063,11 @@ mod tests {
             Some(&context),
             PipelinePreflightRequest {
                 method_name: MethodName::ResolveUserAction,
+                attempted_action_key: WorkflowActionKey::new(
+                    MethodName::ResolveUserAction,
+                    volicord_types::values::WorkflowActionSemanticVariant::ResolveUserAction,
+                )
+                .ok(),
                 envelope,
                 request_json,
                 invocation: invocation_with_actor(
@@ -3260,6 +4166,11 @@ mod tests {
             Some(&context),
             PipelinePreflightRequest {
                 method_name: MethodName::UpdateScope,
+                attempted_action_key: WorkflowActionKey::new(
+                    MethodName::UpdateScope,
+                    volicord_types::values::WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+                )
+                .ok(),
                 envelope: envelope.clone(),
                 request_json: request_json.clone(),
                 invocation: invocation.clone(),
@@ -3549,19 +4460,22 @@ mod tests {
             Some(TASK_ID),
         );
         let error = harness
-            .execute(PipelineRequest {
-                method_name: MethodName::UpdateScope,
-                request_json: request_json(
-                    MethodName::UpdateScope,
-                    &second_envelope,
-                    "unique-second",
-                ),
-                envelope: second_envelope,
-                invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
-                operation_category: OperationCategory::AgentWorkflow,
-                task_requirement: TaskRequirement::Required,
-                branch: change_unit_commit_branch("change_unit_unique_second", "unique_second"),
-            })
+            .execute_with_action(
+                PipelineRequest {
+                    method_name: MethodName::UpdateScope,
+                    request_json: update_scope_request_json(
+                        &second_envelope,
+                        "unique-second",
+                        "keep_current",
+                    ),
+                    envelope: second_envelope,
+                    invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
+                    operation_category: OperationCategory::AgentWorkflow,
+                    task_requirement: TaskRequirement::Required,
+                    branch: change_unit_commit_branch("change_unit_unique_second", "unique_second"),
+                },
+                volicord_types::values::WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+            )
             .expect_err("Store constraint failure must not produce a method response");
 
         assert_operational_unavailable(error, CoreOperationalResource::Store, false);
@@ -3681,10 +4595,39 @@ mod tests {
     }
 
     fn request_json(method_name: MethodName, envelope: &ToolEnvelope, marker: &str) -> Value {
+        match method_name {
+            MethodName::UpdateScope => {
+                update_scope_request_json(envelope, marker, "create_current")
+            }
+            MethodName::CloseTask => json!({
+                "envelope": envelope,
+                "task_id": TASK_ID,
+                "intent": "cancel",
+                "close_reason": "cancelled",
+                "superseding_task_id": null,
+                "user_note": marker,
+            }),
+            _ => json!({
+                "method": method_name.as_str(),
+                "envelope": envelope,
+                "pipeline_marker": marker
+            }),
+        }
+    }
+
+    fn update_scope_request_json(envelope: &ToolEnvelope, marker: &str, operation: &str) -> Value {
         json!({
-            "method": method_name.as_str(),
             "envelope": envelope,
-            "pipeline_marker": marker
+            "task_id": TASK_ID,
+            "goal_summary": marker,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": null,
+            "change_unit": { "operation": operation },
+            "related_scope_decision_refs": [],
         })
     }
 
@@ -3737,17 +4680,7 @@ mod tests {
     fn commit_branch(
         marker: &str,
     ) -> OwnerPipelineBranch<PipelineTestResultFields, IntakeResultBase> {
-        OwnerPipelineBranch {
-            kind: OwnerPipelineBranchKind::CommitMutation {
-                result_fields: result_fields(marker),
-                event_kind: "core.pipeline_test_commit".to_owned(),
-                event_payload: event_payload(marker),
-                task_id: None,
-                change_unit_id: None,
-                storage_mutations: Vec::new(),
-                build_base: IntakeRequest::core_committed_result_base,
-            },
-        }
+        change_unit_commit_branch(&format!("change_unit_{marker}"), marker)
     }
 
     fn change_unit_commit_branch(
@@ -3761,28 +4694,42 @@ mod tests {
                 event_payload: event_payload(marker),
                 task_id: None,
                 change_unit_id: None,
-                storage_mutations: vec![CoreStorageMutation::ChangeUnit(
-                    volicord_store::core_pipeline::ChangeUnitMutation::InsertCurrent(
-                        ChangeUnitInsert {
-                            change_unit_id: change_unit_id.to_owned(),
-                            task_id: TASK_ID.to_owned(),
-                            scope_summary: StoredChangeUnitScopeSummary {
-                                scope_summary: Some(marker.to_owned()),
-                                affected_areas: Vec::new(),
-                                constraints: Vec::new(),
+                storage_mutations: vec![
+                    CoreStorageMutation::Task(TaskMutation::UpdateScope(TaskScopeUpdate {
+                        task_id: TASK_ID.to_owned(),
+                        work_phase: None,
+                        lifecycle_phase: None,
+                        result: None,
+                        title: None,
+                        summary: None,
+                        shaping: None,
+                        bounded_context: None,
+                        autonomy_boundary: None,
+                        close_summary: None,
+                    })),
+                    CoreStorageMutation::ChangeUnit(
+                        volicord_store::core_pipeline::ChangeUnitMutation::InsertCurrent(
+                            ChangeUnitInsert {
+                                change_unit_id: change_unit_id.to_owned(),
+                                task_id: TASK_ID.to_owned(),
+                                scope_summary: StoredChangeUnitScopeSummary {
+                                    scope_summary: Some(marker.to_owned()),
+                                    affected_areas: Vec::new(),
+                                    constraints: Vec::new(),
+                                },
+                                bounded_paths: Vec::new(),
+                                write_basis: StoredChangeUnitWriteBasis {
+                                    baseline_ref: None,
+                                    git_workspace_context: None,
+                                },
+                                effect_contract: None,
+                                lifecycle: StoredChangeUnitLifecycle {
+                                    recovery_required: false,
+                                },
                             },
-                            bounded_paths: Vec::new(),
-                            write_basis: StoredChangeUnitWriteBasis {
-                                baseline_ref: None,
-                                git_workspace_context: None,
-                            },
-                            effect_contract: None,
-                            lifecycle: StoredChangeUnitLifecycle {
-                                recovery_required: false,
-                            },
-                        },
+                        ),
                     ),
-                )],
+                ],
                 build_base: IntakeRequest::core_committed_result_base,
             },
         }

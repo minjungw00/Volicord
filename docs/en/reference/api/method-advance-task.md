@@ -11,6 +11,13 @@ This document owns the explicit Core transition from `work/shaping` to
 The method name, transition target, exact authority coordinates, and atomic
 effect are `stable`.
 
+Before method-owned validation, Core evaluates the normalized
+`WorkflowSnapshot` and requires the exact
+`volicord.advance_task/advance_task` descriptor. The machine owns advance
+availability and its fixed checkpoint, Change Unit, scope, baseline, and
+resolution coordinates. Absence returns a no-effect `TransitionRejection`, and
+any recovery key is an executable member of the same current catalog.
+
 ## Request
 
 <!-- BEGIN GENERATED: contract-structures api.method.advance_task.request[params] -->
@@ -88,6 +95,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 
@@ -129,10 +137,10 @@ decision produces `inconsistent_authority_state`; workflow cannot report
 `ready_for_implementation` while Task-wide advance authority is unsatisfied.
 
 Rejected, deferred, and expired shaping decisions are never application
-inputs. They select `decision_recovery_required`, name
-`volicord.record_shaping_checkpoint` as the recovery owner, and prevent phase transition,
-Run creation, and Product Repository effects. Only accepted current compatible
-resolutions may be applied, exactly once.
+inputs. They select `decision_recovery_required`; the exact current catalog
+omits Advance Task and exposes a Record Shaping Checkpoint action as recovery.
+They prevent phase transition, Run creation, and Product Repository effects.
+Only accepted current compatible resolutions may be applied, exactly once.
 
 A stale shaping application likewise grants no progression authority. While
 the work Task remains in shaping, it selects `shaping_required` with

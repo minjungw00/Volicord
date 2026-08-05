@@ -128,21 +128,21 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
             "{coordinate}: {}",
             rejected.response_value
         );
-        let details: WorkflowRejectionDetails =
+        let details: TransitionRejection =
             serde_json::from_value(rejected.response_value["errors"][0]["details"].clone())?;
         assert_eq!(
-            details.current_work_phase,
-            WorkPhase::Implementation,
+            details.current_workflow_kind,
+            WorkflowStateKind::Implementation,
             "{coordinate}"
         );
         assert_eq!(
-            details.recovery.owner_method,
-            MethodName::CloseTask,
+            details.recovery_action_key.as_ref().map(|key| key.method),
+            Some(MethodName::CloseTask),
             "{coordinate}"
         );
-        assert!(!details.corrected_retry_allowed, "{coordinate}");
+        assert!(!details.retryable, "{coordinate}");
         assert!(
-            details.blockers[0].required_refs.contains(&application_ref),
+            details.blocking_refs.contains(&application_ref),
             "{coordinate}"
         );
         assert_eq!(harness.counts()?, before_rejection, "{coordinate}");
@@ -293,10 +293,15 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
         response.response_value["state"]["workflow"]["kind"],
         "shaping_required"
     );
-    assert_eq!(
-        response.response_value["state"]["workflow"]["transition_catalog"]["transitions"][0]
-            ["action_key"]["method"],
-        "volicord.record_shaping_checkpoint"
+    assert!(
+        response.response_value["state"]["workflow"]["transition_catalog"]["transitions"]
+            .as_array()
+            .expect("transition catalog")
+            .iter()
+            .any(|transition| {
+                transition["role"] == "required"
+                    && transition["action_key"]["method"] == "volicord.record_shaping_checkpoint"
+            })
     );
 
     let status = harness.service.status(
@@ -310,10 +315,15 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
         },
         invocation(OperationCategory::Read),
     )?;
-    assert_eq!(
-        status.response_value["active_task"]["workflow"]["transition_catalog"]["transitions"][0]
-            ["action_key"]["method"],
-        "volicord.record_shaping_checkpoint"
+    assert!(
+        status.response_value["active_task"]["workflow"]["transition_catalog"]["transitions"]
+            .as_array()
+            .expect("transition catalog")
+            .iter()
+            .any(|transition| {
+                transition["role"] == "required"
+                    && transition["action_key"]["method"] == "volicord.record_shaping_checkpoint"
+            })
     );
     Ok(())
 }
@@ -414,20 +424,49 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
     );
     let before = harness.counts()?;
 
+    let create_request = update_scope_request(
+        "req_scope_create",
+        "idem_scope_create",
+        false,
+        Some(next_action_state_version),
+        &task_id,
+        ChangeUnitOperation::CreateCurrent,
+        "Create current export scope.",
+    );
     let response = harness.service.update_scope(
+        create_request.clone(),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_typed_result_contract::<UpdateScopeResult>(&response);
+    let after = harness.counts()?;
+    let replay = harness
+        .service
+        .update_scope(create_request, invocation(OperationCategory::AgentWorkflow))?;
+    assert!(replay.replayed);
+    assert_eq!(replay.response_json, response.response_json);
+    assert_eq!(harness.counts()?, after);
+
+    let conflicting_variant = harness.service.update_scope(
         update_scope_request(
             "req_scope_create",
             "idem_scope_create",
             false,
             Some(next_action_state_version),
             &task_id,
-            ChangeUnitOperation::CreateCurrent,
+            ChangeUnitOperation::KeepCurrent,
             "Create current export scope.",
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    assert_typed_result_contract::<UpdateScopeResult>(&response);
-    let after = harness.counts()?;
+    assert_eq!(
+        conflicting_variant.response_value["errors"][0]["code"],
+        "STATE_VERSION_CONFLICT"
+    );
+    assert_ne!(
+        conflicting_variant.response_value["errors"][0]["details"]["stored_request_hash"],
+        conflicting_variant.response_value["errors"][0]["details"]["attempted_request_hash"]
+    );
+    assert_eq!(harness.counts()?, after);
 
     assert_eq!(
         response.response_value["base"]["response_kind"], "result",
@@ -733,19 +772,28 @@ fn keep_current_rejects_task_baseline_retarget_with_current_change_unit(
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "VALIDATION_FAILED"
+        "CHANGE_UNIT_STALE"
     );
     assert_eq!(
         response.response_value["errors"][0]["message"],
-        "baseline retargeting requires replace_current"
+        "baseline retargeting requires the current replace transition"
     );
     assert_eq!(
         response.response_value["errors"][0]["details"],
         json!({
-            "field": "baseline_ref",
-            "expected": "baseline_test",
-            "received": "baseline_other",
-            "state_change_applied": false
+            "attempted_action_key": {
+                "method": "volicord.update_scope",
+                "semantic_variant": "keep_current_change_unit"
+            },
+            "reason": "authority_basis_mismatch",
+            "state_change_applied": false,
+            "retryable": true,
+            "recovery_action_key": {
+                "method": "volicord.update_scope",
+                "semantic_variant": "replace_current_change_unit"
+            },
+            "blocking_refs": response.response_value["errors"][0]["details"]["blocking_refs"].clone(),
+            "current_workflow_kind": "implementation"
         })
     );
     assert_eq!(harness.counts()?, before);

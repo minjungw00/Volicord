@@ -67,45 +67,27 @@ contract 실패를 공개 API 오류로 바꾸지 않습니다.
 형태를 필수로 사용합니다.
 
 ```schema
-WorkflowRejectionDetails:
+TransitionRejection:
+  attempted_action_key: WorkflowActionKey
+  reason: TransitionRejectionReason
   state_change_applied: false
-  current_task_mode: TaskMode
-  current_work_phase: WorkPhase
-  received_action: MethodName
-  received_run_kind: RunKind | null
-  allowed_run_kinds: RunKind[]
-  allowed_actions: MethodName[]
-  blockers: WorkflowRejectionBlocker[]
-  workflow: WorkflowProjection
-  corrected_retry_allowed: boolean
-  recovery: WorkflowRecovery
-
-WorkflowRejectionBlocker:
-  code: ErrorCode
-  owner_method: MethodName
-  required_refs: StateRecordRef[]
-  user_actions: WorkflowRejectionUserAction[]
-
-WorkflowRejectionUserAction:
-  user_action_request_ref: StateRecordRef
-  effective_status: UserActionStatus
-  required_owner_method: MethodName
-
-WorkflowRecovery:
-  owner_method: MethodName
+  retryable: boolean
+  recovery_action_key: WorkflowActionKey | null
+  blocking_refs: StateRecordRef[]
+  current_workflow_kind: WorkflowStateKind
 ```
 
-`received_action`은 거부된 semantic method입니다. Run 기록은 추가로
-`received_run_kind`와 `allowed_run_kinds`를 사용하고 다른 method는 nullable member와 빈
-run-kind 목록을 보존합니다. `allowed_actions`, `blockers`, `workflow`는 같은 현재 Store
-authority에서 파생됩니다. `recovery`에는 generic next-action 배열이 아니라 현재 owner
-method 하나만 들어갑니다. `corrected_retry_allowed`와 `ToolError.retryable`은 현재
-authority에 대해 수정한 요청을 semantic하게 다시 시도할 수 있는지를 나타냅니다. 둘 다
-적용된 mutation의 replay를 허가하지 않습니다. 수정 재시도가 허용되어도 바깥 거부는 계속
-`no_effect`입니다.
+`attempted_action_key`는 admission에 실패한 정확한 메서드와 semantic variant를
+보존합니다. `reason`은 `action_not_current`, `variant_not_current`,
+`authority_basis_mismatch`, `implementation_authority_would_be_invalidated`,
+`user_authority_missing`, `checkpoint_stale`, `change_unit_stale`,
+`workspace_basis_stale`, `close_precondition_missing` 중 하나입니다.
+`blocking_refs`는 중복 없이 정규화된 현재 권한 맥락입니다.
 
-`user_actions`는 blocker에 기여하는 각 effective UserAction을 식별합니다. 빈 배열은 해당
-blocker가 UserAction 전용이 아님을 뜻합니다.
+`recovery_action_key`는 그 정확한 key가 같은 현재 `WorkflowTransitionCatalog`에 있을 때만
+non-null입니다. Core는 메서드 이름이나 표시 문구에서 복구 동작을 만들어 내지 않습니다.
+`retryable`은 `ToolError.retryable`과 같은 의미 기반 재시도 사실을 반복하며, 어느 쪽도
+적용된 mutation의 replay를 허가하지 않습니다. 바깥 거부는 계속 `no_effect`입니다.
 
 <a id="platform-diagnostic-detail-field"></a>
 

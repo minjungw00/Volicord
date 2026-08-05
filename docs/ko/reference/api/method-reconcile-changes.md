@@ -41,6 +41,13 @@
 전에 조정해야 합니다. 관찰 불가 진단은 finding이 아니며 합성 경로로 이 메서드에
 들어오지 않습니다.
 
+조정 내용을 검증하기 전에 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고 정규
+`WorkflowMachine`에서 정확한
+`volicord.reconcile_changes/reconcile_changes` 전이를 요구합니다. 이 전이가 Agent
+Connection과 local-recovery 호출 경로 모두의 현재 가용성과 고정 좌표를 담당합니다.
+전이가 없으면 효과 없는 `TransitionRejection`을 반환하며, 복구가 있다면 같은 현재
+catalog의 다른 전이입니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 상태를 변경하는 커밋된 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
@@ -166,6 +173,7 @@ JSON이나 저장된 폐쇄형 값의 철자를 해석하지 않으며 새 관�
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

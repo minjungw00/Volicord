@@ -13,6 +13,15 @@ basis, advance a Task phase, record a Run, or write Product Repository files.
 The method name, direct request and response schemas, aggregate transaction,
 and checkpoint-readiness semantics are `stable`.
 
+Core evaluates the normalized `WorkflowSnapshot` before request-content
+validation and consumes exactly
+`volicord.record_shaping_checkpoint/create_initial` or
+`volicord.record_shaping_checkpoint/replace_current` as selected by current
+checkpoint authority. A method match with the other variant is not admission.
+An absent action returns `TransitionRejection` without checkpoint, UserAction,
+event, replay-row, or state-version effects; any recovery key is a real member
+of the same current transition catalog.
+
 ## Request
 
 <!-- BEGIN GENERATED: contract-structures api.method.record_shaping_checkpoint.request[params] -->
@@ -125,6 +134,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

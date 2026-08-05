@@ -685,6 +685,8 @@ mod tests {
             effect_class: volicord_types::values::WorkflowTransitionEffectClass::CoreStateMutation,
             expected_result_state:
                 volicord_types::values::WorkflowExpectedResultState::ReevaluateCurrentAuthority,
+            authority_invalidation:
+                volicord_types::values::WorkflowAuthorityInvalidationPolicy::Permitted,
             required_refs,
         }
     }

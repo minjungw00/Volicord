@@ -14,6 +14,13 @@ ticket, or write Product Repository files.
 The method name, direct request and response schemas, exact decision
 application semantics, and aggregate close-basis transaction are `stable`.
 
+Before result-content validation, Core evaluates the normalized
+`WorkflowSnapshot` and requires the exact
+`volicord.finalize_advice/finalize_advice` descriptor. The machine alone owns
+whether advisor finalization is current and the fixed checkpoint, Change Unit,
+scope, baseline, and resolution coordinates. Absence returns a no-effect
+`TransitionRejection`; any recovery key is a member of the same catalog.
+
 ## Request
 
 <!-- BEGIN GENERATED: contract-structures api.method.finalize_advice.request[params] -->
@@ -109,6 +116,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

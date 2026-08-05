@@ -69,7 +69,6 @@ fn every_workflow_rejection_code_preserves_authority_without_an_effect(
             Some(RunKind::Direct),
             vec![RunKind::Implementation],
             code != ErrorCode::WorkflowActionNotAllowed,
-            MethodName::Status,
         )?;
 
         assert_eq!(response.response_value["base"]["response_kind"], "rejected");
@@ -84,30 +83,25 @@ fn every_workflow_rejection_code_preserves_authority_without_an_effect(
             response.response_value["errors"][0]["retryable"],
             code != ErrorCode::WorkflowActionNotAllowed
         );
-        let details: WorkflowRejectionDetails =
+        let details: TransitionRejection =
             serde_json::from_value(response.response_value["errors"][0]["details"].clone())?;
-        assert_eq!(details.current_task_mode, TaskMode::Work);
-        assert_eq!(details.current_work_phase, WorkPhase::Shaping);
-        assert_eq!(details.received_action, MethodName::RecordRun);
-        assert_eq!(details.received_run_kind.as_ref(), Some(&RunKind::Direct));
-        assert_eq!(details.allowed_run_kinds, vec![RunKind::Implementation]);
-        assert!(!details.allowed_actions.is_empty());
+        assert_eq!(details.attempted_action_key.method, MethodName::RecordRun);
         assert_eq!(
-            details.workflow,
-            serde_json::from_value::<WorkflowProjection>(
-                response.response_value["errors"][0]["details"]["workflow"].clone()
-            )?
+            details.current_workflow_kind,
+            WorkflowStateKind::ShapingRequired
         );
         assert_eq!(
-            details.corrected_retry_allowed,
+            details.retryable,
             code != ErrorCode::WorkflowActionNotAllowed
         );
-        assert_eq!(details.blockers.len(), 1);
-        assert_eq!(details.blockers[0].code, code);
-        assert_eq!(
-            details.blockers[0].owner_method,
-            details.recovery.owner_method
-        );
+        assert!(details.recovery_action_key.as_ref().is_some());
+        assert!(!details.blocking_refs.is_empty());
+        if let Some(recovery) = details.recovery_action_key.as_ref() {
+            assert!(
+                response.response_value["errors"][0]["details"]["recovery_action_key"].is_object()
+            );
+            assert!(recovery.method != MethodName::Status);
+        }
     }
 
     assert_eq!(harness.counts()?, before);
@@ -176,10 +170,10 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
     )?;
     assert_eq!(
         premature_advance.response_value["errors"][0]["code"],
-        "SHAPING_CHECKPOINT_REQUIRED"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
     );
     assert_eq!(
-        premature_advance.response_value["errors"][0]["details"]["recovery"]["owner_method"],
+        premature_advance.response_value["errors"][0]["details"]["recovery_action_key"]["method"],
         "volicord.record_shaping_checkpoint"
     );
 
@@ -196,10 +190,10 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
     )?;
     assert_eq!(
         premature_run.response_value["errors"][0]["code"],
-        "TASK_PHASE_TRANSITION_REQUIRED"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
     );
     assert_eq!(
-        premature_run.response_value["errors"][0]["details"]["recovery"]["owner_method"],
+        premature_run.response_value["errors"][0]["details"]["recovery_action_key"]["method"],
         "volicord.record_shaping_checkpoint"
     );
 
@@ -238,22 +232,18 @@ fn work_requires_ready_checkpoint_and_explicit_advance_before_write() -> Result<
     assert_eq!(denied.response_value["base"]["state_version"], 2);
     assert_eq!(
         denied.response_value["errors"][0]["code"],
-        "TASK_PHASE_TRANSITION_REQUIRED"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
     );
     assert_eq!(
-        denied.response_value["errors"][0]["details"]["current_task_mode"],
-        "work"
+        denied.response_value["errors"][0]["details"]["attempted_action_key"]["method"],
+        "volicord.prepare_write"
     );
     assert_eq!(
-        denied.response_value["errors"][0]["details"]["current_work_phase"],
-        "shaping"
-    );
-    assert_eq!(
-        denied.response_value["errors"][0]["details"]["workflow"]["kind"],
+        denied.response_value["errors"][0]["details"]["current_workflow_kind"],
         "shaping_required"
     );
     assert_eq!(
-        denied.response_value["errors"][0]["details"]["recovery"]["owner_method"],
+        denied.response_value["errors"][0]["details"]["recovery_action_key"]["method"],
         "volicord.record_shaping_checkpoint"
     );
 
@@ -536,10 +526,10 @@ fn user_owned_shaping_gap_is_atomic_and_requires_an_exact_request() -> Result<()
     )?;
     assert_eq!(
         unresolved.response_value["errors"][0]["code"],
-        "USER_DECISION_UNRESOLVED"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
     );
     assert_eq!(
-        unresolved.response_value["errors"][0]["details"]["recovery"]["owner_method"],
+        unresolved.response_value["errors"][0]["details"]["recovery_action_key"]["method"],
         "volicord.resolve_user_action"
     );
     assert_eq!(harness.counts()?, after);
@@ -740,7 +730,7 @@ fn non_authorizing_shaping_decisions_require_exact_recovery_and_successor_identi
             "rejected"
         );
         assert_eq!(
-            application.response_value["errors"][0]["details"]["workflow"]["kind"],
+            application.response_value["errors"][0]["details"]["current_workflow_kind"],
             "decision_recovery_required"
         );
         assert_eq!(harness.counts()?, before_application);
@@ -1172,7 +1162,7 @@ fn mixed_non_authorizing_outcomes_preserve_other_live_authority_without_effects(
             "{label}"
         );
         assert_eq!(
-            application.response_value["errors"][0]["details"]["workflow"]["kind"],
+            application.response_value["errors"][0]["details"]["current_workflow_kind"],
             "decision_recovery_required",
             "{label}"
         );
@@ -2842,7 +2832,7 @@ fn shaping_checkpoint_succession_is_explicit_linear_and_replayable() -> Result<(
     )?;
     assert_eq!(
         duplicate_initial.response_value["errors"][0]["code"],
-        "SHAPING_CHECKPOINT_STALE"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
     );
 
     let stale_replacement = harness.service.record_shaping_checkpoint(
@@ -3103,13 +3093,28 @@ fn every_live_user_owned_shaping_decision_blocks_replacement() -> Result<(), Box
             invocation(OperationCategory::AgentWorkflow),
         )?;
         assert_eq!(
-            replacement.response_value["errors"][0]["code"], "USER_DECISION_UNRESOLVED",
+            replacement.response_value["errors"][0]["code"], "WORKFLOW_ACTION_NOT_ALLOWED",
             "{label}: {}",
             replacement.response_value
         );
         let details = &replacement.response_value["errors"][0]["details"];
         assert_eq!(details["state_change_applied"], false);
-        assert!(details["blockers"][0]["required_refs"]
+        assert_eq!(details["reason"], "action_not_current");
+        assert_eq!(
+            details["attempted_action_key"],
+            json!({
+                "method": "volicord.record_shaping_checkpoint",
+                "semantic_variant": "replace_current"
+            })
+        );
+        assert_eq!(
+            details["recovery_action_key"],
+            json!({
+                "method": "volicord.resolve_user_action",
+                "semantic_variant": "resolve_user_action"
+            })
+        );
+        assert!(details["blocking_refs"]
             .as_array()
             .expect("required refs")
             .iter()
@@ -3117,14 +3122,10 @@ fn every_live_user_owned_shaping_decision_blocks_replacement() -> Result<(), Box
                 record["record_kind"] == "shaping_checkpoint"
                     && record["record_id"] == checkpoint_id
             }));
-        assert_eq!(
-            details["blockers"][0]["user_actions"],
-            json!([{
-                "user_action_request_ref": request_ref,
-                "effective_status": "pending",
-                "required_owner_method": "volicord.resolve_user_action"
-            }])
-        );
+        assert!(details["blocking_refs"]
+            .as_array()
+            .expect("blocking refs")
+            .contains(&serde_json::to_value(request_ref)?));
         assert_eq!(harness.counts()?, before, "{label}");
     }
     Ok(())
@@ -3267,9 +3268,8 @@ fn resolved_decision_blocks_until_scope_authority_applies_and_invalidates_it(
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
-        rejected.response_value["errors"][0]["details"]["blockers"][0]["user_actions"][0]
-            ["effective_status"],
-        "resolved"
+        rejected.response_value["errors"][0]["details"]["current_workflow_kind"],
+        "ready_to_apply_decisions"
     );
     assert_eq!(harness.counts()?, before_rejected);
 
@@ -4966,20 +4966,47 @@ fn product_and_technical_resolutions_need_no_scope_ref_before_change_unit_creati
             invocation(OperationCategory::AgentWorkflow),
         )?;
         let task_id = response_record_id(&intake.response_value, "task_ref");
-        let scoped = harness.service.update_scope(
-            update_scope_request(
-                &format!("req_{label}_scope"),
-                &format!("idem_{label}_scope"),
-                false,
-                Some(1),
-                &task_id,
-                ChangeUnitOperation::KeepCurrent,
-                "Current scope without a Change Unit.",
-            ),
+        let mut shaping_request = ready_shaping_request(
+            &format!("req_{label}_matrix_shaping"),
+            &format!("idem_{label}_matrix_shaping"),
+            1,
+            &task_id,
+            ShapingCheckpointOperation::CreateInitial,
+            "The pre-Change-Unit decision has one semantic application owner.",
+        );
+        let task = harness
+            .store()?
+            .task_record(&TaskId::new(&task_id))?
+            .expect("current pre-Change-Unit task");
+        shaping_request.scope_revision = task.scope_revision;
+        shaping_request.baseline_ref = RequiredNullable::new(task.shaping.baseline_ref);
+        shaping_request.gaps = vec![ShapingGapInput {
+            gap_kind: decision.0,
+            summary: format!("Apply {:?} only through its semantic owner.", decision.0),
+            affected_refs: Vec::new(),
+            user_action: RequiredNullable::some(ShapingUserActionDraft {
+                action: user_action_request(
+                    "unused",
+                    "unused",
+                    false,
+                    Some(1),
+                    &task_id,
+                    None,
+                    decision.1,
+                )
+                .action,
+                expires_at: RequiredNullable::null(),
+            }),
+        }];
+        let shaped = harness.service.record_shaping_checkpoint(
+            shaping_request,
             invocation(OperationCategory::AgentWorkflow),
         )?;
-        assert!(scoped.response_value["change_unit_ref"].is_null());
-        let shaped = record_user_owned_gaps(&harness, label, &task_id, None, &[decision])?;
+        assert_eq!(
+            shaped.response_value["base"]["response_kind"], "result",
+            "{label}: {}",
+            shaped.response_value
+        );
         let request_id = shaped.response_value["created_user_action_request_refs"][0]["record_id"]
             .as_str()
             .expect("request id");
@@ -5034,7 +5061,11 @@ fn product_and_technical_resolutions_need_no_scope_ref_before_change_unit_creati
         );
         assert_eq!(
             created.response_value["state"]["workflow"]["kind"],
-            "ready_for_implementation"
+            "shaping_required"
+        );
+        assert_eq!(
+            required_transition_method(&created.response_value["state"]["workflow"]),
+            Some("volicord.record_shaping_checkpoint")
         );
     }
     Ok(())

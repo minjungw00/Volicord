@@ -682,6 +682,18 @@ action-form digest를 소유하지 않습니다. Schema 검증 뒤 권한 좌표
 `received`를 가진 효과 없는 `AuthorityBasisMismatch`이며, 그 사실만으로 유효한 Task가
 손상된 것은 아닙니다.
 
+상태에 결속된 모든 mutation은 메서드 소유 요청 검증 전에 광고된 정확한
+`TransitionDescriptor`를 소비합니다. Core는 descriptor의 완전한 `WorkflowActionKey`를
+요구하고 고정 권한 좌표를 검증한 뒤 effect class와 예상 결과 상태를 Store commit으로
+전달합니다. 메서드 이름만 일치해서는 admission을 통과할 수 없습니다. Key가 없으면
+폐쇄형 `TransitionRejection`을 반환하며, non-null `recovery_action_key`는 반드시 같은 현재
+catalog에 있는 transition을 가리켜야 합니다.
+
+Admit된 action key와 권한 좌표는 replay identity에 참여합니다. Store는 mutation 전에
+계획한 aggregate 동작이 descriptor와 일치하는지 확인하고, batch를 적용한 뒤 같은
+transaction 안에서 workflow 관련 결과 상태 계열을 확인합니다. 모순이 있으면 event,
+replay row, state version, 모든 aggregate 효과를 함께 rollback합니다.
+
 ## 8. 쓰기 티켓
 
 쓰기 티켓은 제안된 제품 파일 변경 하나 또는 유효 `sensitive` 통제 아래의 정확한

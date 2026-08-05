@@ -4,7 +4,8 @@ use volicord_store::RuntimeHomeMutationContext;
 use volicord_types::{
     methods::{public_method_contract, DryRunRequestRoute},
     schema::ToolEnvelope,
-    values::{MethodName, UtcTimestamp},
+    schema::WorkflowActionKey,
+    values::{MethodName, UtcTimestamp, WorkflowActionSemanticVariant},
 };
 
 use crate::pipeline::{
@@ -30,19 +31,28 @@ impl From<serde_json::Error> for PlanError {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_or_response<'mutation>(
     service: &CoreService,
     context: Option<&'mutation RuntimeHomeMutationContext<'mutation>>,
     method_name: MethodName,
+    semantic_variant: Option<WorkflowActionSemanticVariant>,
     envelope: ToolEnvelope,
     request_json: Value,
     invocation: InvocationContext,
     policy: MethodPolicy,
 ) -> CoreResult<Result<PreparedRequest<'mutation>, PipelineResponse>> {
+    let attempted_action_key = semantic_variant
+        .map(|variant| WorkflowActionKey::new(method_name, variant))
+        .transpose()
+        .map_err(|detail| CorePipelineError::InvalidDispatch {
+            detail: detail.to_owned(),
+        })?;
     match service.prepare_request(
         context,
         PipelinePreflightRequest {
             method_name,
+            attempted_action_key,
             envelope,
             request_json,
             invocation,

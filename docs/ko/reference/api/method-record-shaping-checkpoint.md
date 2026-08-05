@@ -13,6 +13,13 @@
 메서드 이름, 직접 request와 response schema, aggregate transaction, checkpoint readiness
 의미는 `stable`입니다.
 
+Core는 요청 내용을 검증하기 전에 정규화된 `WorkflowSnapshot`을 평가하고 현재 checkpoint
+권한이 선택한 `volicord.record_shaping_checkpoint/create_initial` 또는
+`volicord.record_shaping_checkpoint/replace_current`를 정확히 소비합니다. 다른 variant의
+메서드 일치는 admission이 아닙니다. 현재 action이 없으면 checkpoint, UserAction, event,
+replay row, state version 효과 없이 `TransitionRejection`을 반환하며, 복구 key가 있으면 같은
+현재 transition catalog에 실제로 포함되어야 합니다.
+
 ## 요청
 
 <!-- BEGIN GENERATED: contract-structures api.method.record_shaping_checkpoint.request[params] -->
@@ -117,6 +124,7 @@ write ticket, Product Repository 파일 효과, Task 단계 전환을 만들지 
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

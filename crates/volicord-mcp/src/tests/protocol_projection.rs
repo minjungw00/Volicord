@@ -1097,10 +1097,14 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     assert_eq!(response["code"], "ACTION_FORM_ARGUMENT_MISMATCH");
     assert_eq!(response["selected_variant"], "create_initial");
     assert_eq!(response["authoritative_context"]["context_loaded"], true);
-    assert_eq!(
-        response["authoritative_context"]["action_form_catalog"]["forms"][0]["method"],
-        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name()
-    );
+    let current_form = response["authoritative_context"]["action_form_catalog"]["forms"]
+        .as_array()
+        .and_then(|forms| {
+            forms
+                .iter()
+                .find(|form| form["method"] == AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
+        })
+        .expect("current action-form catalog should contain record_shaping_checkpoint");
     assert!(response["retry_contract"]["invalid_paths"]
         .as_array()
         .is_some_and(|paths| paths.contains(&json!("/checkpoint_operation/operation"))));
@@ -1145,7 +1149,6 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     assert_eq!(fixture.counts()?, before);
 
     let retry = &response["retry_contract"];
-    let current_form = &response["authoritative_context"]["action_form_catalog"]["forms"][0];
     assert_eq!(retry["action_form_ref"], current_form["form_ref"]);
     assert_eq!(
         retry["fixed_arguments"]["checkpoint_operation"]["operation"],

@@ -197,6 +197,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
                 "agent_input_requirements": ["shaping_checkpoint"],
                 "effect_class": "core_state_mutation",
                 "expected_result_state": "reevaluate_current_authority",
+                "authority_invalidation": "permitted",
                 "required_refs": [task_ref]
             }]
         },
@@ -237,7 +238,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
         "authority_receipt": authority_receipt,
         "workflow": workflow,
         "presentation": presentation("rejected"),
-        "authority_basis_mismatch": null,
+        "transition_rejection": null,
         "retry_contract": null,
         "failure": {
             "method_committed": false,
@@ -248,7 +249,10 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "user_action_created": false,
             "product_repository_changed": false,
             "core_state_unchanged": true,
-            "current_baseline_valid": true,
+            "current_baseline_canonical": true,
+            "submitted_baseline_canonical": null,
+            "submitted_baseline_matches_current": null,
+            "submitted_baseline_compatible_with_transition": null,
             "exact_retry_action": null,
             "repair_required": false
         }

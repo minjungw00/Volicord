@@ -62,6 +62,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::AdvanceTask,
+            Some(volicord_types::values::WorkflowActionSemanticVariant::AdvanceTask),
             request.envelope.clone(),
             request_json,
             invocation,
@@ -143,7 +144,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             false,
-            MethodName::Status,
         );
     }
     if task.scope_revision != request.scope_revision {
@@ -158,7 +158,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             true,
-            MethodName::Status,
         );
     }
     if task.shaping.baseline_ref.as_ref() != Some(&request.baseline_ref) {
@@ -173,7 +172,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             true,
-            MethodName::Status,
         );
     }
     let current_change_unit = store
@@ -192,13 +190,6 @@ fn plan_advance_task(
         operation_now,
     )?;
     if task_wide_authority.blocks_advance_application() {
-        let recovery_owner = if !task_wide_authority.recovery_required.is_empty() {
-            MethodName::RecordShapingCheckpoint
-        } else if !task_wide_authority.awaiting_user.is_empty() {
-            MethodName::ResolveUserAction
-        } else {
-            MethodName::Status
-        };
         return workflow_rejection_plan_error(
             store,
             project_state,
@@ -210,7 +201,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             false,
-            recovery_owner,
         );
     }
     let checkpoint = match current_checkpoint {
@@ -227,7 +217,6 @@ fn plan_advance_task(
                 None,
                 Vec::new(),
                 true,
-                MethodName::RecordShapingCheckpoint,
             )
         }
     };
@@ -247,7 +236,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             true,
-            MethodName::ResolveUserAction,
         );
     }
     if checkpoint.shaping_checkpoint_id != request.shaping_checkpoint_id.as_str()
@@ -272,7 +260,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             true,
-            MethodName::Status,
         );
     }
     let change_unit = match current_change_unit {
@@ -289,7 +276,6 @@ fn plan_advance_task(
                 None,
                 Vec::new(),
                 true,
-                MethodName::UpdateScope,
             )
         }
     };
@@ -308,7 +294,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             true,
-            MethodName::Status,
         );
     }
     let mut applications = Vec::new();
@@ -330,7 +315,6 @@ fn plan_advance_task(
                 None,
                 Vec::new(),
                 true,
-                MethodName::Status,
             );
         }
         let Some(link) = gap.user_action.as_ref() else {
@@ -351,7 +335,6 @@ fn plan_advance_task(
                 None,
                 Vec::new(),
                 true,
-                MethodName::ResolveUserAction,
             );
         };
         let record = store
@@ -404,7 +387,6 @@ fn plan_advance_task(
                 None,
                 Vec::new(),
                 false,
-                MethodName::Status,
             );
         }
         expected_resolution_ids.insert(resolution_id.clone());
@@ -438,7 +420,6 @@ fn plan_advance_task(
             None,
             Vec::new(),
             true,
-            MethodName::Status,
         );
     }
     let planned_state_version = project_state.state_version + 1;

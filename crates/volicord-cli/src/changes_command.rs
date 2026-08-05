@@ -453,7 +453,16 @@ mod tests {
         )?;
         let response: serde_json::Value = serde_json::from_str(&output)?;
 
-        assert_eq!(response["base"]["response_kind"], "dry_run");
+        assert_eq!(response["base"]["response_kind"], "rejected");
+        assert_eq!(response["errors"][0]["code"], "WORKFLOW_ACTION_NOT_ALLOWED");
+        assert_eq!(
+            response["errors"][0]["details"]["attempted_action_key"]["method"],
+            "volicord.reconcile_changes"
+        );
+        assert_eq!(
+            response["errors"][0]["details"]["recovery_action_key"]["method"],
+            "volicord.record_shaping_checkpoint"
+        );
         Ok(())
     }
 }

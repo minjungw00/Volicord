@@ -89,6 +89,7 @@ impl CoreService {
             None,
             PipelinePreflightRequest {
                 method_name: MethodName::GetOperationResult,
+                attempted_action_key: None,
                 envelope: request.envelope.clone(),
                 request_json,
                 invocation,

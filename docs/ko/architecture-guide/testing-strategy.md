@@ -280,7 +280,7 @@ matrix를 정합니다.
   `OPERATION_RESULT_UNAVAILABLE`
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
 - 모든 폐쇄형 workflow 거부 코드, typed 현재 mode/phase와 수신 요청, allowed 대안,
-  authoritative workflow, retryability, recovery owner, 변경되지 않은 effect count와 state
+  authoritative workflow, retryability, 정확한 recovery action key, 변경되지 않은 effect count와 state
   version, pending User Channel presentation, 정확한 command 생성, phase 전환의 no-write-
   ticket fact
 - workflow rejection 관찰 총수와 final-answer surface 총수를 비교하는 agent evaluation

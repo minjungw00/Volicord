@@ -619,6 +619,7 @@ pub struct CoreCommittedResultBase {
     state_version: u64,
     disclosure: GuaranteeDisclosure,
     events: NonEmptyEventRefs,
+    transition: RequiredNullable<TransitionDescriptor>,
 }
 
 impl CoreCommittedResultBase {
@@ -634,6 +635,7 @@ impl CoreCommittedResultBase {
             state_version,
             disclosure,
             events,
+            transition: RequiredNullable::null(),
         }
     }
 }
@@ -648,6 +650,7 @@ pub struct StagingCreatedResultBase {
     state_version: u64,
     disclosure: GuaranteeDisclosure,
     events: EmptyEventRefs,
+    transition: RequiredNullable<TransitionDescriptor>,
 }
 
 impl StagingCreatedResultBase {
@@ -659,7 +662,14 @@ impl StagingCreatedResultBase {
             state_version,
             disclosure,
             events: EmptyEventRefs::new(),
+            transition: RequiredNullable::null(),
         }
+    }
+
+    /// Installs the exact canonical transition consumed by this staging result.
+    pub fn with_transition(mut self, transition: TransitionDescriptor) -> Self {
+        self.transition = RequiredNullable::some(transition);
+        self
     }
 }
 
@@ -952,23 +962,6 @@ pub struct ToolError {
     details: RequiredNullable<JsonObject>,
 }
 
-/// The single method that owns recovery from a workflow rejection.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct WorkflowRecovery {
-    pub owner_method: MethodName,
-}
-
-/// One typed blocker carried by a workflow rejection.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct WorkflowRejectionBlocker {
-    pub code: ErrorCode,
-    pub owner_method: MethodName,
-    pub required_refs: Vec<StateRecordRef>,
-    pub user_actions: Vec<WorkflowRejectionUserAction>,
-}
-
 /// One effective UserAction that blocks a workflow transition.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -978,27 +971,50 @@ pub struct WorkflowRejectionUserAction {
     pub required_owner_method: MethodName,
 }
 
-/// Closed semantic context shared by the workflow-rejection error codes.
-///
-/// Nullable request members remain present so every code has one exact wire
-/// shape while still distinguishing method actions from run-kind requests.
+/// Core-owned rejection of one exact workflow action.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct WorkflowRejectionDetails {
+pub struct TransitionRejection {
+    pub attempted_action_key: WorkflowActionKey,
+    pub reason: crate::values::TransitionRejectionReason,
     pub state_change_applied: FalseValue,
-    pub current_task_mode: crate::values::TaskMode,
-    pub current_work_phase: crate::values::WorkPhase,
-    pub received_action: MethodName,
-    pub received_run_kind: RequiredNullable<crate::values::RunKind>,
-    pub allowed_run_kinds: Vec<crate::values::RunKind>,
-    pub allowed_actions: Vec<MethodName>,
-    pub blockers: Vec<WorkflowRejectionBlocker>,
-    pub workflow: WorkflowProjection,
-    pub corrected_retry_allowed: bool,
-    pub recovery: WorkflowRecovery,
+    pub retryable: bool,
+    pub recovery_action_key: RequiredNullable<WorkflowActionKey>,
+    pub blocking_refs: Vec<StateRecordRef>,
+    pub current_workflow_kind: crate::values::WorkflowStateKind,
 }
 
-impl WorkflowRejectionDetails {
+impl TransitionRejection {
+    /// Constructs a rejection only when any recovery action is currently executable.
+    pub fn new(
+        attempted_action_key: WorkflowActionKey,
+        reason: crate::values::TransitionRejectionReason,
+        retryable: bool,
+        recovery_action_key: Option<WorkflowActionKey>,
+        blocking_refs: Vec<StateRecordRef>,
+        current_workflow_kind: crate::values::WorkflowStateKind,
+        current_catalog: &WorkflowTransitionCatalog,
+    ) -> Result<Self, &'static str> {
+        if recovery_action_key
+            .as_ref()
+            .is_some_and(|key| current_catalog.transition(key).is_none())
+        {
+            return Err("transition recovery action is absent from the current catalog");
+        }
+        if blocking_refs.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err("transition rejection blocking refs are duplicated or not canonical");
+        }
+        Ok(Self {
+            attempted_action_key,
+            reason,
+            state_change_applied: FalseValue,
+            retryable,
+            recovery_action_key: RequiredNullable::new(recovery_action_key),
+            blocking_refs,
+            current_workflow_kind,
+        })
+    }
+
     /// Confirms whether an error code requires this closed details object.
     pub const fn is_required_for(code: ErrorCode) -> bool {
         matches!(
@@ -1025,14 +1041,12 @@ impl ToolError {
         retryable: bool,
         details: Option<JsonObject>,
     ) -> Self {
-        if WorkflowRejectionDetails::is_required_for(code) {
+        if TransitionRejection::is_required_for(code) {
             let workflow_details = details
                 .as_ref()
                 .expect("workflow rejection ToolError requires typed details");
-            serde_json::from_value::<WorkflowRejectionDetails>(Value::Object(
-                workflow_details.clone(),
-            ))
-            .expect("workflow rejection ToolError details must use the closed typed shape");
+            serde_json::from_value::<TransitionRejection>(Value::Object(workflow_details.clone()))
+                .expect("workflow rejection ToolError details must use the closed typed shape");
         }
         Self {
             code,
@@ -1141,13 +1155,13 @@ impl<'de> Deserialize<'de> for ToolError {
                 "ToolError category does not match its public error code",
             ));
         }
-        if WorkflowRejectionDetails::is_required_for(wire.code) {
+        if TransitionRejection::is_required_for(wire.code) {
             let details = wire.details.as_ref().ok_or_else(|| {
                 serde::de::Error::custom(
                     "workflow rejection ToolError requires typed non-null details",
                 )
             })?;
-            serde_json::from_value::<WorkflowRejectionDetails>(Value::Object(details.clone()))
+            serde_json::from_value::<TransitionRejection>(Value::Object(details.clone()))
                 .map_err(serde::de::Error::custom)?;
         }
         Ok(Self {
@@ -1177,10 +1191,10 @@ impl JsonSchema for ToolError {
                 ]
                 .into_iter()
                 .collect::<schemars::Map<_, _>>();
-                if WorkflowRejectionDetails::is_required_for(contract.code()) {
+                if TransitionRejection::is_required_for(contract.code()) {
                     properties.insert(
                         "details".to_owned(),
-                        generator.subschema_for::<WorkflowRejectionDetails>(),
+                        generator.subschema_for::<TransitionRejection>(),
                     );
                 }
                 Schema::Object(SchemaObject {
@@ -2443,6 +2457,7 @@ pub struct TransitionDescriptor {
     pub agent_input_requirements: Vec<crate::values::WorkflowAgentInputRequirement>,
     pub effect_class: crate::values::WorkflowTransitionEffectClass,
     pub expected_result_state: crate::values::WorkflowExpectedResultState,
+    pub authority_invalidation: crate::values::WorkflowAuthorityInvalidationPolicy,
     pub required_refs: Vec<StateRecordRef>,
 }
 
@@ -2460,7 +2475,6 @@ impl WorkflowTransitionCatalog {
         let mut required_count = 0usize;
         let mut catalog_state_version = None;
         let mut catalog_task_id: Option<&TaskId> = None;
-        let mut catalog_required_refs: Option<&[StateRecordRef]> = None;
         for transition in &transitions {
             let key = (
                 transition.action_key.method,
@@ -2572,21 +2586,47 @@ impl WorkflowTransitionCatalog {
             if transition.effect_class != expected_effect {
                 return Err("workflow transition effect class does not match its method".to_owned());
             }
-            let expected_result_state = match method {
-                MethodName::AdvanceTask => ResultState::Implementation,
-                MethodName::FinalizeAdvice | MethodName::CheckClose => ResultState::CloseReview,
-                MethodName::RequestUserAction => ResultState::AwaitingUserAction,
-                MethodName::CloseTask => ResultState::Terminal,
+            let result_state_matches = match method {
+                MethodName::AdvanceTask => {
+                    transition.expected_result_state == ResultState::Implementation
+                }
+                MethodName::FinalizeAdvice => {
+                    transition.expected_result_state == ResultState::CloseReview
+                }
+                MethodName::CheckClose => matches!(
+                    transition.expected_result_state,
+                    ResultState::CloseReview | ResultState::ReevaluateCurrentAuthority
+                ),
+                MethodName::RequestUserAction => {
+                    transition.expected_result_state == ResultState::AwaitingUserAction
+                }
+                MethodName::CloseTask => transition.expected_result_state == ResultState::Terminal,
                 MethodName::PrepareEvidenceCapture
                 | MethodName::PrepareWrite
-                | MethodName::StageArtifact
                 | MethodName::RecordRun
-                | MethodName::ReconcileChanges => ResultState::Implementation,
-                _ => ResultState::ReevaluateCurrentAuthority,
+                | MethodName::ReconcileChanges => {
+                    transition.expected_result_state == ResultState::Implementation
+                }
+                MethodName::StageArtifact => matches!(
+                    transition.expected_result_state,
+                    ResultState::Implementation | ResultState::ReevaluateCurrentAuthority
+                ),
+                _ => transition.expected_result_state == ResultState::ReevaluateCurrentAuthority,
             };
-            if transition.expected_result_state != expected_result_state {
+            if !result_state_matches {
                 return Err(
                     "workflow transition expected result state does not match its method"
+                        .to_owned(),
+                );
+            }
+            if transition.authority_invalidation
+                == crate::values::WorkflowAuthorityInvalidationPolicy::Forbidden
+                && (method != MethodName::UpdateScope
+                    || transition.action_key.semantic_variant
+                        != crate::values::WorkflowActionSemanticVariant::KeepCurrentChangeUnit)
+            {
+                return Err(
+                    "workflow authority invalidation may be forbidden only for keep-current scope updates"
                         .to_owned(),
                 );
             }
@@ -2602,12 +2642,6 @@ impl WorkflowTransitionCatalog {
             {
                 return Err("workflow transition catalog mixes Task identities".to_owned());
             }
-            if catalog_required_refs
-                .replace(transition.required_refs.as_slice())
-                .is_some_and(|refs| refs != transition.required_refs)
-            {
-                return Err("workflow transition catalog mixes required references".to_owned());
-            }
             if let WorkflowActionAuthorityCoordinates::UpdateScope {
                 current_change_unit_id,
                 selected_change_unit_operation,
@@ -2618,8 +2652,8 @@ impl WorkflowTransitionCatalog {
                     crate::values::ChangeUnitOperation::CreateCurrent => {
                         current_change_unit_id.as_ref().is_none()
                     }
-                    crate::values::ChangeUnitOperation::KeepCurrent
-                    | crate::values::ChangeUnitOperation::ReplaceCurrent => {
+                    crate::values::ChangeUnitOperation::KeepCurrent => true,
+                    crate::values::ChangeUnitOperation::ReplaceCurrent => {
                         current_change_unit_id.as_ref().is_some()
                     }
                 };
@@ -2678,6 +2712,13 @@ impl WorkflowTransitionCatalog {
         self.transitions
             .iter()
             .find(|transition| transition.role == WorkflowActionRole::Required)
+    }
+
+    /// Returns the descriptor for one exact method-and-variant identity.
+    pub fn transition(&self, key: &WorkflowActionKey) -> Option<&TransitionDescriptor> {
+        self.transitions
+            .iter()
+            .find(|transition| transition.action_key == *key)
     }
 
     /// Returns whether the catalog currently admits one method.

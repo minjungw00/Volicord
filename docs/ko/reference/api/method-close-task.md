@@ -45,6 +45,13 @@ finalization을 선택할 뿐 그 자체가 자문 결과 근거는 아닙니다
 
 닫기는 보고서가 아니라 Core 상태 전이입니다. `volicord.close_task`는 `intent=complete`에서 현재 닫기 근거를 평가합니다. 대화, 상태 텍스트, 종료 닫기 요약, 최종 수락만, 잔여 위험 수락만, 증거만, 쓰기 티켓, 렌더링된 보기에서 닫기를 추론하지 않습니다.
 
+메서드별 요청 검증 전에 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고 정규
+`WorkflowMachine`에서 정확한 `volicord.check_close/check_close` 또는
+`volicord.close_task/close_task` 전이를 요구합니다. 허용된 descriptor가 현재 권한
+좌표를 고정합니다. 전이가 없으면 효과 없는 `TransitionRejection`을 반환하며,
+`recovery_action_key`가 있다면 같은 현재 catalog의 다른 전이입니다. `check_close`는
+계속 읽기 전용이고 허용된 `close_task`만 종료 커밋에 도달할 수 있습니다.
+
 ## 담당 경계
 
 메서드 담당 블록:
@@ -326,6 +333,7 @@ API 경계 블록:
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `결과 Metadata: no_effect` 필드
 

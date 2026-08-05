@@ -295,6 +295,7 @@ Does not imply:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `StagingCreatedResultBase` fields
 
@@ -306,6 +307,7 @@ Does not imply:
 | `events` | yes | no | `EmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `NoEffectResultBase` fields
 
@@ -356,7 +358,7 @@ Does not imply:
 <!-- END GENERATED: contract-structures api.schema.core[schema_object.ToolError] api.schema.core[schema_object.RequestedIntentReadOnlyResultBase] api.schema.core[schema_object.NotRequestedReadOnlyResultBase] api.schema.core[schema_object.CoreCommittedResultBase] api.schema.core[schema_object.StagingCreatedResultBase] api.schema.core[schema_object.NoEffectResultBase] api.schema.core[schema_object.ToolRejectedBase] api.schema.core[schema_object.ToolDryRunBase] api.schema.core[schema_object.ToolRejectedResponse] api.schema.core[schema_object.ToolDryRunResponse] -->
 
 The nine workflow-rejection codes have an additional schema relation: their
-`details` value is non-null and validates as `WorkflowRejectionDetails`.
+`details` value is non-null and validates as `TransitionRejection`.
 Other codes retain the common nullable object contract. Serde decoding and the
 public JSON Schema enforce the same code/category/details relation; a workflow
 code with `details=null`, an unknown detail member, or an opaque replacement

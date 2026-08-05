@@ -6,6 +6,13 @@ This document owns the only public transition that resolves a pending
 `UserActionRequest`. It is a direct `User Channel` method and is never an Agent
 Connection MCP tool.
 
+After the addressed request identifies its Task, Core builds the normalized
+current `WorkflowSnapshot` and requires the exact
+`volicord.resolve_user_action/resolve_user_action` transition from its
+canonical `WorkflowMachine`. The transition fixes the request authority
+coordinates. Its absence returns a no-effect `TransitionRejection`; recovery,
+when present, is another transition in that same current catalog.
+
 ## Request
 
 <!-- BEGIN GENERATED: contract-structures api.method.resolve_user_action.request[params] -->
@@ -111,6 +118,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

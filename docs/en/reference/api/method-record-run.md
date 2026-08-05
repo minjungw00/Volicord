@@ -70,6 +70,13 @@ The exact dependency and transaction boundaries are described in the
 
 `volicord.record_run` records execution and its Evidence. Shaping analysis is recorded with `volicord.record_shaping_checkpoint`.
 
+Before validating Run content or kind, Core builds the normalized current
+`WorkflowSnapshot` and requires the exact `volicord.record_run/record_run`
+transition from its canonical `WorkflowMachine`. That transition owns current
+mode and phase availability and fixes the Task, Change Unit, and baseline
+coordinates. Its absence produces a no-effect `TransitionRejection`; any
+`recovery_action_key` is a transition in the same current catalog.
+
 The current persisted `Task.mode`, `work_phase`, and requested `kind` must match
 this exhaustive matrix:
 
@@ -83,12 +90,10 @@ are finalized only by `volicord.finalize_advice` from
 the exact durable shaping checkpoint; work shaping results remain checkpoint
 authority until `volicord.advance_task`. There is no advisor Run fallback.
 
-A work Task still in shaping receives `TASK_PHASE_TRANSITION_REQUIRED` with
-typed `WorkflowRejectionDetails` and recovery owner
-`volicord.advance_task`. Other mode/phase/kind mismatches receive
-`RUN_KIND_INCOMPATIBLE` with the received kind, the closed allowed-kind set,
-the current tagged workflow, and the exact recovery owner. These are workflow
-rejections with current typed recovery data.
+A Task whose current workflow catalog does not contain that exact transition
+receives the typed `TransitionRejection` before Run planning. Once admitted, a
+requested `kind` incompatible with the admitted transition receives
+`RUN_KIND_INCOMPATIBLE` with the received kind and the closed allowed-kind set.
 
 Every Run also requires the verified current Git workspace context to match the
 current Change Unit write basis. This applies to non-write evidence and close
@@ -459,6 +464,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

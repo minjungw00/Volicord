@@ -551,7 +551,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         mismatch["action_form_argument_mismatches"][0]["state_change_applied"],
         false
     );
-    assert_eq!(mismatch["failure"]["current_baseline_valid"], true);
+    assert_eq!(mismatch["failure"]["current_baseline_canonical"], true);
     assert_eq!(mismatch["failure"]["repair_required"], false);
     assert_eq!(
         mismatch["retry_contract"]["action_form_ref"],
@@ -652,17 +652,17 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     assert_eq!(successful_response["result"]["isError"], false);
     let successful = &successful_response["result"]["structuredContent"];
     let successful_result = method_result(successful);
-    assert_typed_mutation_state(
-        successful_result,
+    assert_compact_mutation_state(
+        successful,
         invalid_counts.0 + 1,
         "work",
         Some("shaping"),
         "awaiting_user_action",
     );
-    assert_eq!(
-        successful_result["shaping_checkpoint"]["readiness"],
-        "blocked"
-    );
+    let successful_checkpoint = successful_result
+        .get("shaping_checkpoint")
+        .unwrap_or(successful_result);
+    assert_eq!(successful_checkpoint["readiness"], "blocked");
     let request_refs = successful_result["created_user_action_request_refs"]
         .as_array()
         .ok_or("atomic shaping UserAction refs")?;
@@ -1630,17 +1630,17 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     )?;
     call_id += 1;
     let recovered_shaping_result = method_result(&recovered_shaping);
-    assert_typed_mutation_state(
-        recovered_shaping_result,
+    assert_compact_mutation_state(
+        &recovered_shaping,
         initial_state_version + 4,
         "work",
         Some("shaping"),
         "awaiting_user_action",
     );
-    let checkpoint_id = required_string(
-        &recovered_shaping_result["shaping_checkpoint"],
-        "shaping_checkpoint_id",
-    )?;
+    let recovered_checkpoint = recovered_shaping_result
+        .get("shaping_checkpoint")
+        .unwrap_or(recovered_shaping_result);
+    let checkpoint_id = required_string(recovered_checkpoint, "shaping_checkpoint_id")?;
     let request_refs = recovered_shaping_result["created_user_action_request_refs"]
         .as_array()
         .ok_or("recovered shaping UserAction request refs")?;
@@ -6698,6 +6698,10 @@ fn assert_compact_mutation_state(
     workflow: &str,
 ) {
     let compact = method_result(structured);
+    if compact.get("base").is_some() {
+        assert_typed_mutation_state(compact, state_version, mode, work_phase, workflow);
+        return;
+    }
     let effect = compact.get("effect").unwrap_or(compact);
     assert_eq!(effect["effect_kind"], "core_committed", "{structured:#}");
     assert_eq!(effect["state_version"], state_version, "{structured:#}");

@@ -38,6 +38,13 @@ Fulfillment는 불변 영속 `EvidenceCaptureReceipt` source-fact record와 크�
 승격하고, 불변 `EvidenceProducer`와 그 1:1 `EvidenceObservation`을 Core 커밋 하나로
 만들 수 있습니다.
 
+캡처 내용을 검증하기 전에 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고 정규
+`WorkflowMachine`에서 정확한
+`volicord.prepare_evidence_capture/prepare_evidence_capture` 전이를 요구합니다. 이
+전이가 Task, Change Unit, baseline 좌표를 고정합니다. 전이가 없으면 Core는 효과 없는
+`TransitionRejection`을 반환하며, `recovery_action_key`가 있다면 같은 현재 catalog의
+다른 전이입니다.
+
 ## 요청
 
 <!-- BEGIN GENERATED: contract-structures api.method.prepare_evidence_capture.request[params] -->
@@ -108,6 +115,7 @@ capture kind, canonical input digest, 예상 결과, 생성 시각,
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

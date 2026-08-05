@@ -13,21 +13,21 @@ use volicord_types::schema::{
     ShapingCheckpointSummary, ShapingDecisionRecoveryRequirement, StateRecordRef,
     TransitionDescriptor, UserActionResolutionBody, WorkflowActionAuthorityCoordinates,
     WorkflowActionKey, WorkflowActionRole, WorkflowCheckpointActionCoordinates,
-    WorkflowCloseReadiness, WorkflowProjection, WorkflowRejectionUserAction,
-    WorkflowTransitionCatalog,
+    WorkflowCloseReadiness, WorkflowProjection, WorkflowTransitionCatalog,
 };
 use volicord_types::values::{
     evaluate_shaping_decision_authority, ActorSource, AuthorityNextActor, ChangeUnitOperation,
     MethodName, RunKind, ShapingCheckpointReadiness, ShapingDecisionApplicationAuthorityStatus,
     ShapingDecisionApplicationOwner, ShapingDecisionAuthorityFacts, ShapingDecisionAuthorityState,
-    ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionRequiredFor,
-    UserActionStatus, UtcTimestamp, WorkPhase, WorkflowActionSemanticVariant,
-    WorkflowAgentInputRequirement, WorkflowBlockingReason, WorkflowExpectedResultState,
+    ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, TransitionRejectionReason,
+    UserActionRequiredFor, UserActionStatus, UtcTimestamp, WorkPhase,
+    WorkflowActionSemanticVariant, WorkflowAgentInputRequirement,
+    WorkflowAuthorityInvalidationPolicy, WorkflowBlockingReason, WorkflowExpectedResultState,
     WorkflowStateKind, WorkflowTransitionActor, WorkflowTransitionEffectClass,
 };
 
 use crate::pipeline::{CorePipelineError, CoreResult};
-use crate::record_refs::state_ref;
+use crate::record_refs::{state_ref, stored_refs_to_state_refs};
 
 pub(crate) fn apply_projected_shaping_applications(
     checkpoint: &mut ShapingCheckpointRecord,
@@ -137,6 +137,7 @@ pub(crate) struct TaskWideShapingAuthority {
     pub(crate) inconsistent: Vec<WorkflowUserActionFact>,
     pub(crate) current_resolution_ids: BTreeSet<String>,
     pub(crate) stale_application_refs: Vec<StateRecordRef>,
+    pub(crate) pending_request_refs: Vec<StateRecordRef>,
 }
 
 impl TaskWideShapingAuthority {
@@ -177,25 +178,15 @@ impl TaskWideShapingAuthority {
             || !self.inconsistent.is_empty()
     }
 
-    pub(crate) fn blocking_user_actions(&self) -> Vec<WorkflowRejectionUserAction> {
-        let mut seen = BTreeSet::new();
-        let mut actions = self
-            .blocking_facts()
-            .filter(|fact| seen.insert(fact.request_ref.record_id.as_str().to_owned()))
-            .map(|fact| WorkflowRejectionUserAction {
-                user_action_request_ref: fact.request_ref.clone(),
-                effective_status: fact.status,
-                required_owner_method: fact.required_owner_method,
-            })
-            .collect::<Vec<_>>();
-        actions.sort_by(|left, right| {
-            left.user_action_request_ref
-                .cmp(&right.user_action_request_ref)
-        });
-        actions
+    fn resolvable_user_action_refs(&self) -> Vec<StateRecordRef> {
+        let mut refs = self.pending_request_refs.clone();
+        refs.extend(self.progression_user_action_refs());
+        refs.sort();
+        refs.dedup();
+        refs
     }
 
-    fn resolvable_user_action_refs(&self) -> Vec<StateRecordRef> {
+    fn progression_user_action_refs(&self) -> Vec<StateRecordRef> {
         let mut seen = BTreeSet::new();
         let mut refs = self
             .all_facts()
@@ -218,6 +209,13 @@ pub(crate) fn task_wide_shaping_authority(
     now: &UtcTimestamp,
 ) -> CoreResult<TaskWideShapingAuthority> {
     let task_id = TaskId::new(task.task_id.clone());
+    let mut pending_request_refs = stored_refs_to_state_refs(
+        store
+            .pending_user_action_refs(&task_id, state_version, now)
+            .map_err(CorePipelineError::from)?,
+    );
+    pending_request_refs.sort();
+    pending_request_refs.dedup();
     let graph = store
         .current_shaping_authority_graph(&task_id, now)
         .map_err(CorePipelineError::from)?;
@@ -345,6 +343,7 @@ pub(crate) fn task_wide_shaping_authority(
     let records = records_by_request_id.into_values().collect::<Vec<_>>();
     let mut assessment = TaskWideShapingAuthority {
         stale_application_refs,
+        pending_request_refs,
         ..TaskWideShapingAuthority::default()
     };
     for record in records {
@@ -947,7 +946,7 @@ impl<'a> WorkflowSnapshot<'a> {
             checkpoint_summary,
             shaping_authority_graph,
             user_action_state: WorkflowUserActionState {
-                awaiting_user: shaping_authority_graph.resolvable_user_action_refs().len(),
+                awaiting_user: shaping_authority_graph.progression_user_action_refs().len(),
                 accepted_unapplied: shaping_authority_graph.accepted_unapplied.len(),
                 recovery_required: shaping_authority_graph.recovery_required.len(),
                 inconsistent: shaping_authority_graph.inconsistent.len(),
@@ -996,7 +995,7 @@ impl<'a> WorkflowSnapshot<'a> {
 }
 
 /// Complete result of evaluating one normalized snapshot.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct WorkflowEvaluation {
     pub(crate) workflow_kind: WorkflowStateKind,
     pub(crate) next_actor: AuthorityNextActor,
@@ -1009,6 +1008,23 @@ pub(crate) struct WorkflowEvaluation {
 
 /// Pure owner of current Task progression and transition admission.
 pub(crate) struct WorkflowMachine;
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CurrentTransitionAdmission {
+    pub(crate) workflow: WorkflowProjection,
+    pub(crate) descriptor: Option<TransitionDescriptor>,
+    pub(crate) rejection_reason: Option<TransitionRejectionReason>,
+    pub(crate) recovery_action_key: Option<WorkflowActionKey>,
+    pub(crate) rejection_code: Option<volicord_types::values::ErrorCode>,
+    pub(crate) retryable: bool,
+}
+
+fn implementation_authority_allows_change_unit_replacement(
+    snapshot: &WorkflowSnapshot<'_>,
+) -> bool {
+    snapshot.task.work_phase != WorkPhase::Implementation
+        || snapshot.shaping_authority_graph.applied.is_empty()
+}
 
 fn transition_descriptor(
     method: MethodName,
@@ -1047,6 +1063,23 @@ fn transition_descriptor(
             .filter(|fact| fact.required_owner_method == owner)
             .filter_map(|fact| fact.resolution_ref.as_ref())
             .map(|reference| UserActionResolutionId::new(reference.record_id.as_str()))
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.dedup();
+        ids
+    };
+    let finalize_resolution_ids = || {
+        let mut ids = task_wide_authority
+            .accepted_unapplied
+            .iter()
+            .filter_map(|fact| fact.resolution_ref.as_ref())
+            .map(|reference| UserActionResolutionId::new(reference.record_id.as_str()))
+            .chain(
+                task_wide_authority
+                    .current_resolution_ids
+                    .iter()
+                    .map(UserActionResolutionId::new),
+            )
             .collect::<Vec<_>>();
         ids.sort();
         ids.dedup();
@@ -1108,7 +1141,7 @@ fn transition_descriptor(
                 change_unit_id: ChangeUnitId::new(&change_unit.change_unit_id),
                 scope_revision: task.scope_revision,
                 baseline_ref,
-                user_action_resolution_ids: resolution_ids_for(MethodName::FinalizeAdvice),
+                user_action_resolution_ids: finalize_resolution_ids(),
             }
         }
         MethodName::AdvanceTask => {
@@ -1249,18 +1282,35 @@ fn transition_descriptor(
     };
     let expected_result_state = match method {
         MethodName::AdvanceTask => WorkflowExpectedResultState::Implementation,
-        MethodName::FinalizeAdvice | MethodName::CheckClose => {
+        MethodName::FinalizeAdvice => WorkflowExpectedResultState::CloseReview,
+        MethodName::CheckClose if snapshot.close_basis.is_some() => {
             WorkflowExpectedResultState::CloseReview
         }
         MethodName::RequestUserAction => WorkflowExpectedResultState::AwaitingUserAction,
         MethodName::CloseTask => WorkflowExpectedResultState::Terminal,
         MethodName::PrepareEvidenceCapture
         | MethodName::PrepareWrite
-        | MethodName::StageArtifact
         | MethodName::RecordRun
         | MethodName::ReconcileChanges => WorkflowExpectedResultState::Implementation,
+        MethodName::StageArtifact if task.work_phase == WorkPhase::Implementation => {
+            WorkflowExpectedResultState::Implementation
+        }
         _ => WorkflowExpectedResultState::ReevaluateCurrentAuthority,
     };
+    let authority_invalidation = if method == MethodName::UpdateScope
+        && semantic_variant == WorkflowActionSemanticVariant::KeepCurrentChangeUnit
+        && !implementation_authority_allows_change_unit_replacement(snapshot)
+    {
+        WorkflowAuthorityInvalidationPolicy::Forbidden
+    } else {
+        WorkflowAuthorityInvalidationPolicy::Permitted
+    };
+    let mut required_refs = required_refs.to_vec();
+    if method == MethodName::ResolveUserAction {
+        required_refs.extend(task_wide_authority.resolvable_user_action_refs());
+        required_refs.sort();
+        required_refs.dedup();
+    }
     Ok(TransitionDescriptor {
         action_key,
         actor,
@@ -1270,7 +1320,8 @@ fn transition_descriptor(
         agent_input_requirements,
         effect_class,
         expected_result_state,
-        required_refs: required_refs.to_vec(),
+        authority_invalidation,
+        required_refs,
     })
 }
 
@@ -1300,10 +1351,7 @@ pub(crate) fn workflow_transition_catalog(
                         vec![WorkflowActionSemanticVariant::for_change_unit_operation(
                             ChangeUnitOperation::KeepCurrent,
                         )];
-                    let replacement_invalidates_current_implementation_authority =
-                        snapshot.task.work_phase == WorkPhase::Implementation
-                            && !snapshot.shaping_authority_graph.applied.is_empty();
-                    if !replacement_invalidates_current_implementation_authority {
+                    if implementation_authority_allows_change_unit_replacement(snapshot) {
                         variants.push(WorkflowActionSemanticVariant::for_change_unit_operation(
                             ChangeUnitOperation::ReplaceCurrent,
                         ));
@@ -1426,13 +1474,18 @@ impl WorkflowMachine {
         }
         if task.work_phase == WorkPhase::Implementation {
             let execution_coordinates_available =
-                snapshot.current_change_unit.is_some() && snapshot.baseline.is_some();
+                snapshot.current_change_unit.is_some_and(|change_unit| {
+                    change_unit.write_basis.baseline_ref.as_ref() == snapshot.baseline
+                }) && snapshot.baseline.is_some();
             let mut methods = vec![MethodName::UpdateScope, MethodName::StageArtifact];
             if execution_coordinates_available {
                 methods.extend([MethodName::PrepareEvidenceCapture, MethodName::PrepareWrite]);
             }
             if execution_coordinates_available && task.mode != TaskMode::Advisor {
                 methods.push(MethodName::RecordRun);
+            }
+            if snapshot.user_action_state.awaiting_user > 0 {
+                methods.push(MethodName::ResolveUserAction);
             }
             methods.extend([
                 MethodName::RequestUserAction,
@@ -1450,6 +1503,10 @@ impl WorkflowMachine {
             );
         }
         if snapshot.user_action_state.awaiting_user > 0 {
+            let mut methods = vec![MethodName::ResolveUserAction];
+            if !authority.accepted_unapplied.is_empty() {
+                methods.push(MethodName::UpdateScope);
+            }
             return Self::evaluation(
                 snapshot,
                 WorkflowStateKind::AwaitingUserAction,
@@ -1458,7 +1515,7 @@ impl WorkflowMachine {
                     MethodName::ResolveUserAction,
                     WorkflowActionSemanticVariant::ResolveUserAction,
                 )?),
-                &[MethodName::ResolveUserAction],
+                &methods,
                 Some(if snapshot.user_action_state.inconsistent > 0 {
                     WorkflowBlockingReason::InconsistentAuthorityState
                 } else {
@@ -1475,7 +1532,7 @@ impl WorkflowMachine {
                     MethodName::RecordShapingCheckpoint,
                     record_shaping_variant,
                 )?),
-                &[MethodName::RecordShapingCheckpoint],
+                &[MethodName::RecordShapingCheckpoint, MethodName::UpdateScope],
                 Some(WorkflowBlockingReason::NoCurrentCheckpoint),
             );
         };
@@ -1559,6 +1616,8 @@ impl WorkflowMachine {
                         MethodName::CheckClose,
                         MethodName::CloseTask,
                         MethodName::FinalizeAdvice,
+                        MethodName::RecordShapingCheckpoint,
+                        MethodName::UpdateScope,
                     ],
                     None,
                 );
@@ -1569,7 +1628,7 @@ impl WorkflowMachine {
                     WorkflowStateKind::ReadyForChangeUnit,
                     AuthorityNextActor::Agent,
                     Some(required(MethodName::UpdateScope, update_scope_variant)?),
-                    &[MethodName::UpdateScope],
+                    &[MethodName::RecordShapingCheckpoint, MethodName::UpdateScope],
                     Some(WorkflowBlockingReason::ChangeUnitRequired),
                 );
             }
@@ -1581,7 +1640,11 @@ impl WorkflowMachine {
                     MethodName::FinalizeAdvice,
                     WorkflowActionSemanticVariant::FinalizeAdvice,
                 )?),
-                &[MethodName::FinalizeAdvice],
+                &[
+                    MethodName::FinalizeAdvice,
+                    MethodName::RecordShapingCheckpoint,
+                    MethodName::UpdateScope,
+                ],
                 Some(WorkflowBlockingReason::AdvisorFinalizationRequired),
             );
         }
@@ -1591,7 +1654,7 @@ impl WorkflowMachine {
                 WorkflowStateKind::ReadyForChangeUnit,
                 AuthorityNextActor::Agent,
                 Some(required(MethodName::UpdateScope, update_scope_variant)?),
-                &[MethodName::UpdateScope],
+                &[MethodName::RecordShapingCheckpoint, MethodName::UpdateScope],
                 Some(WorkflowBlockingReason::ChangeUnitRequired),
             );
         }
@@ -1603,9 +1666,72 @@ impl WorkflowMachine {
                 MethodName::AdvanceTask,
                 WorkflowActionSemanticVariant::AdvanceTask,
             )?),
-            &[MethodName::AdvanceTask],
+            &[
+                MethodName::AdvanceTask,
+                MethodName::RecordShapingCheckpoint,
+                MethodName::UpdateScope,
+            ],
             Some(WorkflowBlockingReason::ExplicitAdvanceRequired),
         )
+    }
+
+    fn transition_admission(
+        snapshot: &WorkflowSnapshot<'_>,
+        evaluation: &WorkflowEvaluation,
+        attempted_action_key: WorkflowActionKey,
+    ) -> CurrentTransitionAdmission {
+        let descriptor = evaluation
+            .transition_catalog
+            .transition(&attempted_action_key)
+            .cloned();
+        let replacement_would_invalidate_implementation_authority = attempted_action_key.method
+            == MethodName::UpdateScope
+            && attempted_action_key.semantic_variant
+                == WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit
+            && !implementation_authority_allows_change_unit_replacement(snapshot);
+        let (rejection_reason, rejection_code, retryable, recovery_action_key) =
+            if descriptor.is_some() {
+                (None, None, false, None)
+            } else if replacement_would_invalidate_implementation_authority {
+                (
+                    Some(TransitionRejectionReason::ImplementationAuthorityWouldBeInvalidated),
+                    Some(volicord_types::values::ErrorCode::TaskPhaseTransitionRequired),
+                    false,
+                    evaluation
+                        .transition_catalog
+                        .transitions
+                        .iter()
+                        .find(|transition| transition.action_key.method == MethodName::CloseTask)
+                        .map(|transition| transition.action_key),
+                )
+            } else {
+                (
+                    Some(
+                        if evaluation
+                            .transition_catalog
+                            .admits_method(attempted_action_key.method)
+                        {
+                            TransitionRejectionReason::VariantNotCurrent
+                        } else {
+                            TransitionRejectionReason::ActionNotCurrent
+                        },
+                    ),
+                    Some(volicord_types::values::ErrorCode::WorkflowActionNotAllowed),
+                    true,
+                    evaluation
+                        .transition_catalog
+                        .required_transition()
+                        .map(|transition| transition.action_key),
+                )
+            };
+        CurrentTransitionAdmission {
+            workflow: evaluation.clone().into_projection(snapshot.state_version),
+            descriptor,
+            rejection_reason,
+            recovery_action_key,
+            rejection_code,
+            retryable,
+        }
     }
 
     fn evaluation(
@@ -1616,8 +1742,25 @@ impl WorkflowMachine {
         allowed_methods: &[MethodName],
         typed_blocking_reason: Option<WorkflowBlockingReason>,
     ) -> CoreResult<WorkflowEvaluation> {
+        let mut admitted_methods = allowed_methods.to_vec();
+        if workflow_kind != WorkflowStateKind::Terminal {
+            admitted_methods.extend([
+                MethodName::CheckClose,
+                MethodName::CloseTask,
+                MethodName::RequestUserAction,
+                MethodName::StageArtifact,
+            ]);
+        }
+        if workflow_kind != WorkflowStateKind::Terminal
+            && !snapshot
+                .shaping_authority_graph
+                .pending_request_refs
+                .is_empty()
+        {
+            admitted_methods.push(MethodName::ResolveUserAction);
+        }
         let transition_catalog =
-            workflow_transition_catalog(required_key, allowed_methods, snapshot)?;
+            workflow_transition_catalog(required_key, &admitted_methods, snapshot)?;
         let required_transition = transition_catalog.required_transition();
         if required_key.is_some() != required_transition.is_some() {
             return Err(CorePipelineError::Invariant {
@@ -1714,15 +1857,15 @@ impl WorkflowEvaluation {
     }
 }
 
-/// Builds the normalized snapshot and projects the pure machine evaluation.
-pub(crate) fn workflow_projection(
+fn with_workflow_snapshot<T>(
     project_id: &ProjectId,
     state_version: u64,
     task: &TaskRecord,
     current_change_unit: Option<&ChangeUnitRecord>,
     checkpoint: Option<&ShapingCheckpointRecord>,
     task_wide_authority: &TaskWideShapingAuthority,
-) -> CoreResult<WorkflowProjection> {
+    evaluate: impl FnOnce(&WorkflowSnapshot<'_>) -> CoreResult<T>,
+) -> CoreResult<T> {
     let task_id = TaskId::new(task.task_id.clone());
     let task_ref = state_ref(
         StateRecordKind::Task,
@@ -1784,5 +1927,124 @@ pub(crate) fn workflow_projection(
         checkpoint_summary,
         required_refs,
     )?;
-    WorkflowMachine::evaluate(&snapshot).map(|evaluation| evaluation.into_projection(state_version))
+    evaluate(&snapshot)
+}
+
+/// Builds the normalized snapshot and projects the pure machine evaluation.
+pub(crate) fn workflow_projection(
+    project_id: &ProjectId,
+    state_version: u64,
+    task: &TaskRecord,
+    current_change_unit: Option<&ChangeUnitRecord>,
+    checkpoint: Option<&ShapingCheckpointRecord>,
+    task_wide_authority: &TaskWideShapingAuthority,
+) -> CoreResult<WorkflowProjection> {
+    with_workflow_snapshot(
+        project_id,
+        state_version,
+        task,
+        current_change_unit,
+        checkpoint,
+        task_wide_authority,
+        |snapshot| {
+            WorkflowMachine::evaluate(snapshot)
+                .map(|evaluation| evaluation.into_projection(state_version))
+        },
+    )
+}
+
+fn with_current_workflow_records<T>(
+    store: &CoreProjectStore,
+    project_state: &volicord_store::core_pipeline::ProjectStateHeader,
+    task_id: &TaskId,
+    now: &UtcTimestamp,
+    evaluate: impl FnOnce(
+        &ProjectId,
+        &TaskRecord,
+        Option<&ChangeUnitRecord>,
+        Option<&ShapingCheckpointRecord>,
+        &TaskWideShapingAuthority,
+    ) -> CoreResult<T>,
+) -> CoreResult<T> {
+    let project_id = ProjectId::new(project_state.project_id.clone());
+    let task = store
+        .task_record(task_id)?
+        .ok_or_else(|| CorePipelineError::Invariant {
+            detail: "workflow admission requires an existing Task".to_owned(),
+        })?;
+    let current_change_unit = store.current_change_unit(task_id)?;
+    let checkpoint = store.current_shaping_checkpoint(task_id)?;
+    let task_wide_authority = task_wide_shaping_authority(
+        store,
+        &project_id,
+        project_state.state_version,
+        &task,
+        current_change_unit.as_ref(),
+        checkpoint.as_ref(),
+        now,
+    )?;
+    evaluate(
+        &project_id,
+        &task,
+        current_change_unit.as_ref(),
+        checkpoint.as_ref(),
+        &task_wide_authority,
+    )
+}
+
+/// Loads current task authority once and evaluates the canonical workflow machine.
+pub(crate) fn current_workflow_projection(
+    store: &CoreProjectStore,
+    project_state: &volicord_store::core_pipeline::ProjectStateHeader,
+    task_id: &TaskId,
+) -> CoreResult<WorkflowProjection> {
+    with_current_workflow_records(
+        store,
+        project_state,
+        task_id,
+        &project_state.updated_at,
+        |project_id, task, current_change_unit, checkpoint, task_wide_authority| {
+            workflow_projection(
+                project_id,
+                project_state.state_version,
+                task,
+                current_change_unit,
+                checkpoint,
+                task_wide_authority,
+            )
+        },
+    )
+}
+
+pub(crate) fn current_transition_admission(
+    store: &CoreProjectStore,
+    project_state: &volicord_store::core_pipeline::ProjectStateHeader,
+    task_id: &TaskId,
+    attempted_action_key: WorkflowActionKey,
+    now: &UtcTimestamp,
+) -> CoreResult<CurrentTransitionAdmission> {
+    with_current_workflow_records(
+        store,
+        project_state,
+        task_id,
+        now,
+        |project_id, task, current_change_unit, checkpoint, task_wide_authority| {
+            with_workflow_snapshot(
+                project_id,
+                project_state.state_version,
+                task,
+                current_change_unit,
+                checkpoint,
+                task_wide_authority,
+                |snapshot| {
+                    let evaluation = WorkflowMachine::evaluate(snapshot)?;
+                    Ok(WorkflowMachine::transition_admission(
+                        snapshot,
+                        &evaluation,
+                        attempted_action_key,
+                    ))
+                },
+            )
+        },
+    )
 }

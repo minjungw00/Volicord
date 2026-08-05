@@ -68,6 +68,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::StageArtifact,
+            Some(volicord_types::values::WorkflowActionSemanticVariant::StageArtifact),
             request.envelope.clone(),
             request_json,
             invocation,
@@ -78,6 +79,18 @@ impl CoreService {
         };
         let project_state = prepared.context.project_state.clone();
         let verified_invocation = prepared.context.verified_invocation.clone();
+        if prepared
+            .admitted_transition
+            .as_ref()
+            .is_none_or(|admission| {
+                admission.descriptor.effect_class
+                    != volicord_types::values::WorkflowTransitionEffectClass::ArtifactStaging
+            })
+        {
+            return Err(CorePipelineError::Invariant {
+                detail: "artifact staging requires its exact staging transition".to_owned(),
+            });
+        }
 
         let stage_input = match validate_stage_artifact_input(&request) {
             Ok(input) => input,
@@ -156,7 +169,23 @@ impl CoreService {
             },
             expires_at: expires_at.clone(),
         };
-        let response_value = serde_json::to_value(result)?;
+        let mut response_value = serde_json::to_value(result)?;
+        let transition = response_value
+            .get_mut("base")
+            .and_then(Value::as_object_mut)
+            .and_then(|base| base.get_mut("transition"))
+            .ok_or_else(|| CorePipelineError::Invariant {
+                detail: "staging result base has no transition projection".to_owned(),
+            })?;
+        *transition = serde_json::to_value(
+            &prepared
+                .admitted_transition
+                .as_ref()
+                .ok_or_else(|| CorePipelineError::Invariant {
+                    detail: "artifact staging lost its admitted transition".to_owned(),
+                })?
+                .descriptor,
+        )?;
         let response_json = serde_json::to_string(&response_value)?;
         if response_json.len() > MAX_STAGE_ARTIFACT_RESULT_BYTES {
             return rejected_pipeline_response(

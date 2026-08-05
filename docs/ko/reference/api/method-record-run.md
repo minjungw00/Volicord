@@ -67,6 +67,12 @@ typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응�
 
 `volicord.record_run`은 실행과 그 증거를 기록합니다. shaping 분석은 `volicord.record_shaping_checkpoint`으로 기록합니다.
 
+Run 내용이나 종류를 검증하기 전에 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고
+정규 `WorkflowMachine`에서 정확한 `volicord.record_run/record_run` 전이를
+요구합니다. 이 전이가 현재 mode와 phase 가용성을 담당하고 Task, Change Unit,
+baseline 좌표를 고정합니다. 전이가 없으면 효과 없는 `TransitionRejection`을 반환하며,
+`recovery_action_key`가 있다면 같은 현재 catalog의 전이입니다.
+
 현재 저장된 `Task.mode`, `work_phase`, 요청한 `kind`는 아래 완전한 행렬과
 일치해야 합니다.
 
@@ -80,11 +86,9 @@ Core는 그 밖의 모드, 단계, 종류 조합을 커밋 전에 거절합니�
 최종화합니다. work shaping 결과는 `volicord.advance_task` 전까지 checkpoint 권한으로
 남습니다. advisor Run fallback은 없습니다.
 
-아직 shaping인 work Task에는 typed `WorkflowRejectionDetails`와 recovery owner
-`volicord.advance_task`를 포함한 `TASK_PHASE_TRANSITION_REQUIRED`를 반환합니다. 그 밖의
-mode/phase/kind 불일치에는 수신한 kind, 폐쇄형 허용 kind 집합, 현재 태그 기반 workflow,
-정확한 recovery owner를 포함한 `RUN_KIND_INCOMPATIBLE`를 반환합니다. 두 거절 모두
-현재 typed recovery data를 포함합니다.
+현재 workflow catalog에 그 정확한 전이가 없는 Task는 Run planning 전에 typed
+`TransitionRejection`을 받습니다. 허용된 뒤 요청 `kind`가 허용된 전이와 호환되지 않으면
+수신한 kind와 폐쇄형 허용 kind 집합을 포함한 `RUN_KIND_INCOMPATIBLE`를 반환합니다.
 
 모든 Run은 확인된 현재 Git 작업 공간 맥락이 현재 Change Unit 쓰기 근거와 일치해야
 합니다. 이 규칙은 제품 쓰기 Run뿐 아니라 쓰기가 없는 증거와 닫기 평가 Run에도
@@ -430,6 +434,7 @@ policy까지 도달할 수 없습니다. 평가는 승인이 새로 필요한 �
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

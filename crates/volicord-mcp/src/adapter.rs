@@ -2260,7 +2260,10 @@ fn argument_failure_presentation(
         user_action_created: false,
         product_repository_changed: false,
         core_state_unchanged: true,
-        current_baseline_valid: RequiredNullable::new(context.context_loaded.then_some(true)),
+        current_baseline_canonical: RequiredNullable::new(context.context_loaded.then_some(true)),
+        submitted_baseline_canonical: RequiredNullable::null(),
+        submitted_baseline_matches_current: RequiredNullable::null(),
+        submitted_baseline_compatible_with_transition: RequiredNullable::null(),
         exact_retry_action: RequiredNullable::new(
             context
                 .action_form_catalog

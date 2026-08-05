@@ -27,11 +27,11 @@ fn advisor_prepare_write_rejects_without_ticket_or_state_effect() -> Result<(), 
         "WORKFLOW_ACTION_NOT_ALLOWED"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["current_task_mode"],
-        "advisor"
+        response.response_value["errors"][0]["details"]["current_workflow_kind"],
+        "shaping_required"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["received_action"],
+        response.response_value["errors"][0]["details"]["attempted_action_key"]["method"],
         "volicord.prepare_write"
     );
     assert_eq!(harness.counts()?, before);
@@ -1452,19 +1452,19 @@ fn prepare_write_without_current_change_unit_rejects_before_policy_or_effects(
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "CHANGE_UNIT_REQUIRED"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
     );
     assert_eq!(
         response.response_value["errors"][0]["details"]["state_change_applied"],
         false
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["received_action"],
+        response.response_value["errors"][0]["details"]["attempted_action_key"]["method"],
         "volicord.prepare_write"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["blockers"][0]["code"],
-        "CHANGE_UNIT_REQUIRED"
+        response.response_value["errors"][0]["details"]["reason"],
+        "action_not_current"
     );
     assert!(response.response_value.get("decision").is_none());
     assert_eq!(after, before);
@@ -1474,13 +1474,6 @@ fn prepare_write_without_current_change_unit_rejects_before_policy_or_effects(
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(repeated.response_value, response.response_value);
     assert_eq!(harness.counts()?, before);
-    let diagnostics = read_core_rejection_diagnostics(&harness.runtime_home_path)?;
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(diagnostics[0].project_id, PROJECT_ID);
-    assert_eq!(diagnostics[0].task_id, task_id);
-    assert_eq!(diagnostics[0].method_name, "volicord.prepare_write");
-    assert_eq!(diagnostics[0].reason, "current_change_unit_required");
-    assert_eq!(diagnostics[0].occurred_at, diagnostic_time);
     Ok(())
 }
 
@@ -1520,7 +1513,7 @@ fn prepare_write_dry_run_without_current_change_unit_has_no_effects() -> Result<
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "CHANGE_UNIT_REQUIRED"
+        "WORKFLOW_ACTION_NOT_ALLOWED"
     );
     assert_eq!(
         response.response_value["errors"][0]["details"]["state_change_applied"],
@@ -1896,7 +1889,8 @@ fn prepare_write_baseline_mismatch_blocks_write_ticket() -> Result<(), Box<dyn E
 }
 
 #[test]
-fn prepare_write_rejects_divergent_task_and_change_unit_baselines() -> Result<(), Box<dyn Error>> {
+fn prepare_write_is_not_admitted_for_divergent_task_and_change_unit_baselines(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "prepare_divergent_baseline")?;
@@ -1915,10 +1909,20 @@ fn prepare_write_rejects_divergent_task_and_change_unit_baselines() -> Result<()
     )?;
     let after = harness.counts()?;
 
-    assert_eq!(response.response_value["decision"], "blocked");
-    assert_prepare_reason(&response.response_value, "baseline_mismatch");
-    assert!(response.response_value["write_ticket"].is_null());
-    assert_eq!(after.write_tickets, before.write_tickets);
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "WORKFLOW_ACTION_NOT_ALLOWED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["reason"],
+        "action_not_current"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["attempted_action_key"]["method"],
+        "volicord.prepare_write"
+    );
+    assert_eq!(after, before);
     Ok(())
 }
 

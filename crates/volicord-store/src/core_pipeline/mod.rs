@@ -41,10 +41,22 @@ pub struct CommitMutationInput {
     pub request_hash: String,
     pub replay_context: Option<VerifiedReplayContext>,
     pub expected_state_version: Option<u64>,
+    pub transition_expectation: Option<TransitionCommitExpectation>,
     pub clock_floor: Option<volicord_types::values::UtcTimestamp>,
     /// Whether commit time must also sample SQLite's live UTC clock.
     pub include_live_storage_time: bool,
     pub events: Vec<PendingTaskEvent>,
+}
+
+/// Exact workflow contract checked inside the same transaction as its mutations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransitionCommitExpectation {
+    pub project_id: String,
+    pub task_id: String,
+    pub action_key: volicord_types::schema::WorkflowActionKey,
+    pub effect_class: volicord_types::values::WorkflowTransitionEffectClass,
+    pub expected_result_state: volicord_types::values::WorkflowExpectedResultState,
+    pub basis_state_version: u64,
 }
 
 /// Result of attempting a mutating commit through the replay/freshness gate.
@@ -131,7 +143,7 @@ pub use evidence::{
 };
 pub use facade::CoreProjectStore;
 pub use inspection::StorageEffectCounts;
-pub use mutations::CoreStorageMutation;
+pub use mutations::{transition_effect_matches_mutations, CoreStorageMutation};
 pub use project_state::ProjectStateHeader;
 pub use reconciliation::{ProductWriteObservationCandidate, ProductWriteObservationSource};
 pub use record_refs::StoredRecordRef;

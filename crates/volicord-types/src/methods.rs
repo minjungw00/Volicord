@@ -314,6 +314,7 @@ macro_rules! result_metadata_type {
 macro_rules! declare_result_base {
     ($base:ident, $dry_run_policy:ident, [$($effect:ident),+ $(,)?]) => {
         #[doc = concat!("Exact result metadata permitted by `", stringify!($base), "`.")]
+        #[allow(clippy::large_enum_variant)]
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
         #[serde(untagged)]
         pub enum $base {
@@ -1900,14 +1901,24 @@ mod tests {
     };
 
     fn result_base_value(effect: ResultEffectContract, dry_run: bool, events: Vec<Value>) -> Value {
-        serde_json::json!({
+        let mut value = serde_json::json!({
             "response_kind": "result",
             "effect_kind": effect.as_str(),
             "dry_run": dry_run,
             "state_version": 7,
             "disclosure": GuaranteeDisclosure::authority_record(),
             "events": events,
-        })
+        });
+        if matches!(
+            effect,
+            ResultEffectContract::CoreCommitted | ResultEffectContract::StagingCreated
+        ) {
+            value
+                .as_object_mut()
+                .expect("result base fixture")
+                .insert("transition".to_owned(), Value::Null);
+        }
+        value
     }
 
     fn event_value() -> Value {

@@ -19,8 +19,9 @@ use volicord_types::schema::{
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceObservationInput, EvidenceTarget,
     EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, ResidualRiskInput,
     ShapingCheckpointOperation, ShapingGapInput, SourceRef, StagedArtifactHandle, StateRecordRef,
-    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowActionRole,
-    WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
+    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowActionKey,
+    WorkflowActionRole, WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason,
+    WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -297,21 +298,12 @@ pub struct McpArgumentFailurePresentation {
     pub user_action_created: bool,
     pub product_repository_changed: bool,
     pub core_state_unchanged: bool,
-    pub current_baseline_valid: RequiredNullable<bool>,
+    pub current_baseline_canonical: RequiredNullable<bool>,
+    pub submitted_baseline_canonical: RequiredNullable<bool>,
+    pub submitted_baseline_matches_current: RequiredNullable<bool>,
+    pub submitted_baseline_compatible_with_transition: RequiredNullable<bool>,
     pub exact_retry_action: RequiredNullable<String>,
     pub repair_required: bool,
-}
-
-/// Typed Core authority-coordinate mismatch enriched with the current MCP form.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpAuthorityBasisMismatch {
-    pub field: String,
-    pub expected: volicord_types::schema::AuthorityBasisValue,
-    pub received: volicord_types::schema::AuthorityBasisValue,
-    pub state_change_applied: bool,
-    pub called_method_form: RequiredNullable<WorkflowActionForm>,
-    pub replacement_method_form: RequiredNullable<WorkflowActionForm>,
 }
 
 /// Exact pre-Core workflow admission facts for a task-state-bound call.
@@ -634,8 +626,8 @@ pub enum McpMustSurfaceFact {
         mode: TaskMode,
         work_phase: WorkPhase,
     },
-    RecoveryMethod {
-        owner_method: MethodName,
+    RecoveryAction {
+        action_key: WorkflowActionKey,
     },
     ShapingDecisionOutcome {
         request_ref: StateRecordRef,
@@ -647,7 +639,7 @@ pub enum McpMustSurfaceFact {
         request_ref: StateRecordRef,
         resolution_ref: RequiredNullable<StateRecordRef>,
         disposition: volicord_types::values::ShapingDecisionAuthorityState,
-        recovery_owner: MethodName,
+        recovery_action_key: RequiredNullable<WorkflowActionKey>,
         authority_granted: volicord_types::schema::FalseValue,
         terminal_request_cannot_be_retried: volicord_types::schema::TrueValue,
         successor_request_required_if_still_needed: volicord_types::schema::TrueValue,
@@ -692,7 +684,7 @@ pub struct McpWorkflowRejectedResponse {
     pub authority_receipt: AuthorityReceipt,
     pub workflow: WorkflowProjection,
     pub presentation: McpWorkflowPresentation,
-    pub authority_basis_mismatch: RequiredNullable<McpAuthorityBasisMismatch>,
+    pub transition_rejection: RequiredNullable<volicord_types::schema::TransitionRejection>,
     pub retry_contract: RequiredNullable<RetryContract>,
     pub failure: McpArgumentFailurePresentation,
 }

@@ -250,8 +250,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   applies_to:
   - terminology_map_schema
   primary_audience:
@@ -902,8 +902,8 @@ documents:
   - diagnostic.process
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1689,8 +1689,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - agents
   - implementers
@@ -1901,8 +1901,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -2044,8 +2044,8 @@ documents:
   - api.schema.state
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2070,8 +2070,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2099,8 +2099,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-08-02'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2131,8 +2131,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-08-04'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2158,8 +2158,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-08-02'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2261,8 +2261,8 @@ documents:
   - cli.command.evidence.capture_tool
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2302,8 +2302,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2335,8 +2335,8 @@ documents:
   - api.schema.state
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2363,8 +2363,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2393,8 +2393,8 @@ documents:
   - cli.command.inbox
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2421,8 +2421,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2449,8 +2449,8 @@ documents:
   - cli.command.inbox
   owner_area: core_api
   created_on: '2026-07-01'
-  last_updated_on: '2026-07-30'
-  last_verified_on: '2026-07-30'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2490,8 +2490,8 @@ documents:
   - api.method.close_task.response
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2529,8 +2529,8 @@ documents:
   - mcp.wire
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2579,8 +2579,8 @@ documents:
   - cli.command.connection.mode
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2758,8 +2758,8 @@ documents:
   - api.schema.core
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2931,8 +2931,8 @@ documents:
   - api.schema.state
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - API implementers
   - agent integrators
@@ -3059,8 +3059,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - storage implementers
   - API implementers

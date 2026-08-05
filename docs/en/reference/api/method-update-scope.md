@@ -73,6 +73,16 @@ not published. Keep fixes `keep_current`; create and replace fix their
 operation and require Agent-authored `scope_summary`, `affected_paths`, and
 next baseline while retaining optional Change Unit fields and effect contract.
 
+Before validating submitted scope content, Core evaluates the normalized
+`WorkflowSnapshot` and consumes the exact `WorkflowActionKey` for the selected
+`ChangeUnitOperation`. Method-name-only matches do not admit this mutation.
+Fixed authority coordinates are checked against that descriptor before method
+semantics. An absent variant returns `TransitionRejection` without effects,
+and any `recovery_action_key` must be present in the same current catalog.
+During implementation, authority invalidation is rejected before a generic
+baseline-operation mismatch and never suggests replacement when the replace
+variant is not current.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
@@ -202,10 +212,11 @@ the Task to leave implementation through its owned close/supersede transition;
 the method never silently returns the Task to shaping.
 
 A rejected, deferred, expired, or inconsistent shaping decision grants no
-scope authority. The method returns a no-effect workflow rejection whose
-current workflow is `decision_recovery_required` and whose recovery owner is
-`volicord.record_shaping_checkpoint`; a semantic no-op scope request cannot bypass this
-gate.
+scope authority. The canonical machine omits the attempted Update Scope action
+and returns a no-effect `TransitionRejection`; when the current catalog offers
+recovery, `recovery_action_key` identifies its exact
+`volicord.record_shaping_checkpoint` semantic variant. A semantic no-op scope
+request cannot bypass this gate.
 
 ## Success result
 
@@ -245,6 +256,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

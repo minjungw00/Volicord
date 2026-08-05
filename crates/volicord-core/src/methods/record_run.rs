@@ -101,7 +101,6 @@ fn record_run_rejection_response(
                 Some(request.kind),
                 allowed_run_kinds,
                 true,
-                MethodName::Status,
             )
         }
         RecordingRejection::TaskPhaseTransitionRequired => workflow_rejected_response(
@@ -115,7 +114,6 @@ fn record_run_rejection_response(
             Some(request.kind),
             vec![RunKind::Implementation],
             true,
-            MethodName::AdvanceTask,
         ),
         RecordingRejection::ChangeUnitRequired => workflow_rejected_response(
             store,
@@ -128,7 +126,6 @@ fn record_run_rejection_response(
             Some(request.kind),
             Vec::new(),
             true,
-            MethodName::UpdateScope,
         ),
         RecordingRejection::ChangeUnitStale | RecordingRejection::BaselineStale => {
             workflow_rejected_response(
@@ -142,7 +139,6 @@ fn record_run_rejection_response(
                 Some(request.kind),
                 Vec::new(),
                 true,
-                MethodName::Status,
             )
         }
         RecordingRejection::WorkspaceStale => workflow_rejected_response(
@@ -156,7 +152,6 @@ fn record_run_rejection_response(
             Some(request.kind),
             Vec::new(),
             true,
-            MethodName::Status,
         ),
         RecordingRejection::ProductPathContainment { message } => rejected_pipeline_response(
             request.envelope.dry_run,
@@ -168,10 +163,7 @@ fn record_run_rejection_response(
                 None,
             )],
         ),
-        RecordingRejection::DecisionRejected {
-            message,
-            recovery_owner,
-        } => workflow_rejected_response(
+        RecordingRejection::DecisionRejected { message } => workflow_rejected_response(
             store,
             project_state,
             &request.envelope,
@@ -182,7 +174,6 @@ fn record_run_rejection_response(
             Some(request.kind),
             Vec::new(),
             true,
-            recovery_owner,
         ),
         RecordingRejection::WriteTicketRequired => Ok(write_ticket_required_response(
             &request.envelope,
@@ -343,6 +334,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::RecordRun,
+            Some(volicord_types::values::WorkflowActionSemanticVariant::RecordRun),
             request.envelope.clone(),
             request_json,
             invocation,

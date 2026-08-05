@@ -42,6 +42,14 @@ invocation-scoped Repository Observation. Every unresolved finding contributes
 Observation-unavailable diagnostics are not findings and do not enter this
 method as synthetic paths.
 
+Before validating reconciliation content, Core builds the normalized current
+`WorkflowSnapshot` and requires the exact
+`volicord.reconcile_changes/reconcile_changes` transition from its canonical
+`WorkflowMachine`. The transition owns current availability and fixed
+coordinates for both Agent Connection and local-recovery invocation paths. Its
+absence returns a no-effect `TransitionRejection`; recovery, when present, is
+another transition in that same current catalog.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed `dry_run=false` requests that mutate state require non-null `idempotency_key` and current `expected_state_version`.
@@ -170,6 +178,7 @@ Contract: `dry_run` is `false`; `events` contains at least one event (`minItems:
 | `events` | yes | no | `NonEmptyEventRefs` |
 | `response_kind` | yes | no | `string enum("result")` |
 | `state_version` | yes | no | `integer` |
+| `transition` | yes | yes | `TransitionDescriptor` |
 
 ### `dry_run` request policy
 

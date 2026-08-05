@@ -9,6 +9,12 @@ Shaping `sensitive_approval_required` resolution은 진행을 위해
 민감 효과 정책에서도 계속 필요합니다. Applied shaping 상태는 쓰기 티켓이 아니며 민감
 승인 검사를 면제하지 않습니다.
 
+제안된 쓰기 내용을 검증하기 전에 Core는 정규화된 현재 `WorkflowSnapshot`을 만들고
+정규 `WorkflowMachine`에서 정확한 `volicord.prepare_write/prepare_write` 전이를
+요구합니다. 이 전이가 현재 implementation 가용성과 고정된 Task, Change Unit,
+baseline 좌표를 담당합니다. 전이가 없으면 효과 없는 `TransitionRejection`을 반환하며,
+복구는 같은 현재 catalog의 다른 전이로만 안내합니다.
+
 ## 담당하는 것
 
 이 문서는 기준 범위의 `volicord.prepare_write` 메서드 동작을 담당합니다.
@@ -288,6 +294,7 @@ ticket을 stored 상태로 표현하지 않습니다.
 | `events` | 예 | 아니요 | `NonEmptyEventRefs` |
 | `response_kind` | 예 | 아니요 | `string enum("result")` |
 | `state_version` | 예 | 아니요 | `integer` |
+| `transition` | 예 | 예 | `TransitionDescriptor` |
 
 ### `dry_run` 요청 정책
 

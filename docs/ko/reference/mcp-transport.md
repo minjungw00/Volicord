@@ -1029,19 +1029,30 @@ capability는 carrier만 선택하며 범주를 따로 변환하거나 이 필�
 Schema 검증이 성공한 뒤 Core가 typed `AuthorityBasisMismatch`를 반환하면 MCP는 정확한
 `field`, `expected`, `received`, `state_change_applied=false`를 보존하고 현재 action
 form과 retry contract를 덧붙입니다. Keep-current 기준선 retargeting이면
-`current_baseline_valid=false`로 표시하고 현재 keep form과 replace form을 모두 붙이며,
-replace form을 재시도 대상으로 선택하고 기준선 retargeting에는 `replace_current`가
-필요하다고 명시합니다. Core가 영속
-데이터 손상이나 명시적 복구 workflow를 보고하지 않는 한 repair는 false입니다.
+`current_baseline_canonical=true`, `submitted_baseline_canonical=true`,
+`submitted_baseline_matches_current=false`,
+`submitted_baseline_compatible_with_transition=false`로 표시합니다. 현재 catalog에
+`replace_current_change_unit`가 실제로 있을 때만 정확한 현재 replace form을 재시도 대상으로
+선택합니다. 제출한 transition이 호환되지 않는다는 이유로 정규 현재 기준선을 유효하지 않다고
+표현하지 않습니다. Core가 영속 데이터 손상이나 명시적 복구 workflow를 보고하지 않는 한
+repair는 false입니다.
 
 ```schema
-McpAuthorityBasisMismatch:
-  field: string
-  expected: string | integer | null
-  received: string | integer | null
-  state_change_applied: false
-  called_method_form: WorkflowActionForm | null
-  replacement_method_form: WorkflowActionForm | null
+McpArgumentFailurePresentation:
+  method_committed: boolean
+  reached_core: boolean
+  current_task_phase: WorkPhase | null
+  current_state_version: integer | null
+  checkpoint_recorded: boolean
+  user_action_created: boolean
+  product_repository_changed: boolean
+  core_state_unchanged: boolean
+  current_baseline_canonical: boolean | null
+  submitted_baseline_canonical: boolean | null
+  submitted_baseline_matches_current: boolean | null
+  submitted_baseline_compatible_with_transition: boolean | null
+  exact_retry_action: string | null
+  repair_required: boolean
 ```
 
 Core가 메서드 결과 없이 typed 운영 불가를 반환하면 MCP는 같은 선택 carrier를 통해 MCP
@@ -1084,7 +1095,7 @@ McpWorkflowPresentation:
 ```
 
 `must_surface`는 free-form prompting이 아니라 tagged fact 집합입니다. 거부 fact는 거부된
-method, 변경되지 않은 Core state, 현재 Task phase, 정확한 recovery owner를 식별합니다.
+method, 변경되지 않은 Core state, 현재 Task phase, 정확한 recovery action key를 식별합니다.
 Blocker summary는 request ref, status, 필요한 owner method를 포함한 effective UserAction
 fact를 담습니다. 충족되지 않은 implementation-gating UserAction authority는 정확한 request
 ref와 함께 `implementation_blocked_until_user_action_authority_satisfied`를 추가합니다.
@@ -1097,7 +1108,7 @@ disposition, 권한 부여 여부를 `shaping_decision_outcome`으로 제공합�
 담은 `non_authorizing_shaping_decision`도 추가합니다. Compact record-shaping 결과는 타입이
 정해진 decision recovery requirement를 유지합니다. Stale shaping application은 어떤
 권한도 부여하지 않습니다. 해당 blocker fact는 정확한 stale application과 요청 ref,
-현재 recovery owner를 지정합니다. Advisor 또는 work shaping에서 `workflow`는
+현재 recovery action을 지정합니다. Advisor 또는 work shaping에서 `workflow`는
 `shaping_required`, `next_actor=agent`, 필수 `volicord.record_shaping_checkpoint` transition,
 `blocking_reason=application_authority_stale`를 선택하고,
 `volicord.record_shaping_checkpoint`는 완전하고 정확한 tagged 폐기 또는 재권한 action

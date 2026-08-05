@@ -20,7 +20,6 @@ use volicord_store::{
         initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts, TaskRevisionRecord},
-    diagnostics::read_core_rejection_diagnostics,
     evidence_capture::MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
     guards::{
         repository_observation_id, unrecorded_change, upsert_guard_installation,

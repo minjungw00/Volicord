@@ -145,6 +145,7 @@ impl CoreService {
             self,
             Some(context),
             MethodName::ReconcileChanges,
+            Some(volicord_types::values::WorkflowActionSemanticVariant::ReconcileChanges),
             request.envelope.clone(),
             request_json,
             invocation,

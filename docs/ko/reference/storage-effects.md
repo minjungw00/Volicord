@@ -577,12 +577,19 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 
 `work/implementation` 중 현재 shaping application을 stale로 만들 scope, baseline, Change
 Unit update는 이 거절 시도에 해당합니다. Scope, Change Unit, application 상태나 timestamp,
-Task phase, event, replay row, state version을 바꾸지 않으며 typed recovery owner는
-`volicord.close_task`입니다.
+Task phase, event, replay row, state version을 바꾸지 않습니다. Core는 baseline-operation
+불일치를 처리하기 전에 권한을 무효화할 transition을 거부합니다. 이때
+`recovery_action_key`는 정확한 현재 close 또는 supersession transition이며 replacement가
+catalog에 없으면 `replace_current_change_unit`가 될 수 없습니다.
 
 유효한 `dry_run` 미리보기는 범위, Change Unit, 차단 사유, 오래된 쓰기 티켓 효과만 미리 설명합니다.
 
 의미가 같은 정규화된 갱신은 `tasks.scope_revision`을 증가시키거나 현재 닫기 근거를 무효화하지 않습니다.
+
+커밋되는 상태 결속 mutation은 admit된 transition effect class와 예상 결과 상태 계열을
+Store로 전달합니다. Store는 mutation 전에 주 aggregate 동작을 확인하고, batch를 적용한
+뒤 event와 replay row를 기록하고 transaction을 commit하기 전에 영속 workflow 관련 결과
+상태 계열을 확인합니다. 불일치하면 transaction 전체를 rollback합니다.
 
 담당 문서:
 

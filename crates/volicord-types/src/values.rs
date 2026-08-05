@@ -1795,6 +1795,29 @@ pub enum WorkflowExpectedResultState {
     Terminal,
 }
 
+/// Whether submitted content may invalidate current workflow authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowAuthorityInvalidationPolicy {
+    Permitted,
+    Forbidden,
+}
+
+/// Closed reason that an exact workflow transition was not admitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TransitionRejectionReason {
+    ActionNotCurrent,
+    VariantNotCurrent,
+    AuthorityBasisMismatch,
+    ImplementationAuthorityWouldBeInvalidated,
+    UserAuthorityMissing,
+    CheckpointStale,
+    ChangeUnitStale,
+    WorkspaceBasisStale,
+    ClosePreconditionMissing,
+}
+
 /// Change Unit effect contract values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
