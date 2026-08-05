@@ -698,12 +698,12 @@ guidance, workflow transition contract, MCP semantic schema라는 세 가지 현
 digest를 결속합니다. Storage-manifest digest는 contract identity, 정규 DDL 및 무결성
 제약 digest, 완전한 capability 집합을 포함합니다. Guidance digest는 managed
 `AGENTS.md` block과 MCP server instruction에 rendering하는 폐쇄형 현재 workflow fact를
-포함합니다. 여기에는 정확한 update-scope variant 선택, replace-current 대상 변경 또는
-재기준 설정 복구, nullable baseline JSON 처리, 영속 baseline 손상 시 중단 동작이
-포함되며 프로젝트별 prose의 hash가 아닙니다. Action-contract digest는 메서드 그룹,
-메서드 소유 폐쇄형 variant, catalog admission, 정확한 메서드-variant form identity,
-update-scope의 고정 인자와 에이전트 작성 인자 구분, 현재 권한 context,
-variant-aware retry, typed basis mismatch 의미를 포함합니다. Semantic-schema digest는
+포함합니다. 여기에는 정확한 transition과 action form 사용, Core 소유 recovery, form 격리,
+MCP schema 탐색 경계, Core 전·Core 거부·영속 손상 결과의 구분된 보고가 포함되며 프로젝트별
+prose의 hash가 아닙니다. Action-contract digest는 완전한 Agent transition projection,
+정확한 action-key form identity, 고정 인자와 Agent 작성 인자 구분, canonical minimal request
+무결성, 현재 권한 context, 정확한 typed recovery, canonicality와 compatibility 사실의 분리를
+포함합니다. Semantic-schema digest는
 checked 정규 `BaselineRef` 제약, 일반 required-nullable 의미, 명시적 discriminator,
 branch-local 검증, 한도 있는 runtime semantic projection을 포함합니다. Hook 명령 text가
 같아도 storage manifest나 이 semantic digest 중 하나가 바뀌면 관리형 통합 revision이

@@ -1225,7 +1225,8 @@ pub(super) fn action_form_for_variant(
         .as_ref()
         .ok_or("status should retain verified invocation")?
         .project_id;
-    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow);
+    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow)
+        .map_err(std::io::Error::other)?;
     Ok(catalog
         .form(method, semantic_variant)
         .ok_or("workflow should expose the requested current action variant")?
@@ -1249,7 +1250,9 @@ pub(super) fn bind_action_form_arguments(
         }
     }
 
-    let form = action_form_for_method(adapter, task_id, method)?;
+    let semantic_variant = crate::adapter::submitted_workflow_action_variant(method, &arguments)
+        .ok_or("arguments do not identify one exact semantic variant")?;
+    let form = action_form_for_variant(adapter, task_id, method, semantic_variant)?;
     arguments["action_form_ref"] = json!(form.form_ref);
     merge(&mut arguments, &Value::Object(form.fixed_arguments));
     Ok(arguments)
@@ -1287,32 +1290,25 @@ fn current_action_form(
         .as_ref()
         .ok_or("status should retain verified invocation")?
         .project_id;
-    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow);
-    let form = method
-        .map_or_else(
-            || {
-                catalog.only_required_form().or_else(|| {
-                    if catalog.required_method.as_ref() == Some(&MethodName::UpdateScope) {
-                        catalog.form(
-                            MethodName::UpdateScope,
-                            WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
-                        )
-                    } else {
-                        None
-                    }
-                })
-            },
-            |method| {
-                catalog.only_form_for_method(method).or_else(|| {
-                    if method == MethodName::UpdateScope {
-                        catalog.form(method, WorkflowActionSemanticVariant::KeepCurrentChangeUnit)
-                    } else {
-                        None
-                    }
-                })
-            },
-        )
-        .ok_or("workflow should expose the requested current action form")?;
+    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow)
+        .map_err(std::io::Error::other)?;
+    let form = if let Some(method) = method {
+        let forms = catalog.forms_for_method(method).collect::<Vec<_>>();
+        match forms.as_slice() {
+            [form] => Some(*form),
+            _ => catalog
+                .required_action_key
+                .as_ref()
+                .filter(|key| key.method == method)
+                .and_then(|key| catalog.form(key.method, key.semantic_variant)),
+        }
+    } else {
+        catalog
+            .required_action_key
+            .as_ref()
+            .and_then(|key| catalog.form(key.method, key.semantic_variant))
+    }
+    .ok_or("workflow does not identify one exact requested current action form")?;
     Ok(form.clone())
 }
 

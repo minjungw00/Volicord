@@ -698,8 +698,11 @@ machine decision owns update-scope availability: no current Change Unit admits
 only `create_current_change_unit`; a current Change Unit admits
 `keep_current_change_unit` and, when current authority permits it,
 `replace_current_change_unit`, never `create_current_change_unit`. MCP projects
-Agent descriptors into executable action forms; MCP forms and input slots are
-not Core state.
+each Agent descriptor into exactly one executable, variant-specific action form
+and projects no form without a descriptor. Form generation checks schema paths,
+semantic values, required Agent inputs, exact binding, a validating canonical
+minimal request, and no-commit admission against this same snapshot. MCP forms
+and input slots are not Core state.
 
 A compatible shaping application carried from an ancestor remains `applied`
 without copying its source gap. Stale authority grants no permission and
@@ -715,10 +718,15 @@ predecessor checkpoint refs in this workflow projection describe contextual
 lineage; they are not duplicated as top-level mutation arguments.
 
 Workflow mutation rejection uses `TransitionRejection` with the exact attempted
-action key, closed reason, canonical blocking refs, and current workflow kind.
+action key, closed reason, canonical blocking refs, current workflow kind,
+Core-identified incompatible submitted paths, and any typed baseline
+compatibility assessment. Current-value canonicality, submitted-value
+canonicality, equality with current authority, and transition compatibility are
+separate facts.
 A non-null `recovery_action_key` is valid only when it exists in this same
 catalog. Recovery is never reconstructed from the received payload, an error
-field, or display text. A rejected request creates no replay row; action-key
+field, or display text, and MCP looks up only that exact current action form. A
+rejected request creates no replay row; action-key
 identity and fixed authority coordinates distinguish exact replay from a
 conflicting semantic variant.
 

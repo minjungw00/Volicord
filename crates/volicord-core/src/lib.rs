@@ -53,3 +53,23 @@ pub use pipeline::{
 };
 pub use write_ticket::current_validity::StoredWriteTicketEvaluation;
 pub use write_ticket::service::load_evaluated_stored_write_tickets;
+
+/// Performs a no-commit model check against the exact current Core transition catalog.
+pub fn model_check_current_transition(
+    workflow: &volicord_types::schema::WorkflowProjection,
+    descriptor: &volicord_types::schema::TransitionDescriptor,
+) -> Result<(), &'static str> {
+    let Some(current) = workflow
+        .transition_catalog()
+        .transition(&descriptor.action_key)
+    else {
+        return Err("action-form transition is absent from the current Core catalog");
+    };
+    if current != descriptor {
+        return Err("action-form transition differs from the current Core descriptor");
+    }
+    if current.actor != volicord_types::values::WorkflowTransitionActor::Agent {
+        return Err("action-form transition is not Agent-owned");
+    }
+    Ok(())
+}

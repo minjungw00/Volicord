@@ -206,6 +206,28 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "current_close_basis_present": false
         }
     });
+    let action_form_catalog = json!({
+        "required_action_key": {
+            "method": "volicord.record_shaping_checkpoint",
+            "semantic_variant": "create_initial"
+        },
+        "workflow_contract_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "semantic_schema_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "forms": [{
+            "action_key": {
+                "method": "volicord.record_shaping_checkpoint",
+                "semantic_variant": "create_initial"
+            },
+            "form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expected_state_version": 7,
+            "fixed_arguments": {"task_id": "task_current"},
+            "agent_authored_inputs": [],
+            "canonical_minimal_request": {
+                "action_form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "task_id": "task_current"
+            }
+        }]
+    });
     let presentation = |state_change: &str| {
         json!({
             "headline": "Current workflow result",
@@ -215,21 +237,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "blocker_summary": [],
             "required_user_action": null,
             "must_surface": [],
-            "action_form_catalog": {
-                "required_method": "volicord.record_shaping_checkpoint",
-                "forms": [{
-                    "form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "method": "volicord.record_shaping_checkpoint",
-                    "selected_semantic_variant": "create_initial",
-                    "role": "required",
-                    "expected_state_version": 7,
-                    "fixed_arguments": {"task_id": "task_current"},
-                    "fixed_argument_paths": ["/task_id"],
-                    "suggested_arguments": {},
-                    "required_inputs": [],
-                    "optional_inputs": []
-                }]
-            }
+            "action_form_catalog": action_form_catalog
         })
     };
     let rejection = json!({
@@ -255,6 +263,16 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "submitted_baseline_compatible_with_transition": null,
             "exact_retry_action": null,
             "repair_required": false
+        },
+        "contract_diagnostics": {
+            "normalized_workflow_snapshot": workflow,
+            "current_transition_catalog": workflow["transition_catalog"],
+            "current_action_forms": action_form_catalog,
+            "attempted_action_key": null,
+            "typed_rejection_reason": null,
+            "recovery_action_key": null,
+            "workflow_contract_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "semantic_schema_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         }
     });
     let preview = json!({

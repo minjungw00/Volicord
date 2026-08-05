@@ -98,6 +98,7 @@
         "mcp.protocol.schema_projection_failed",
         "mcp.protocol.unsupported_version",
         "mcp.tool_call.adapter_execution_failed",
+        "mcp.tool_call.contract_inconsistent",
         "mcp.tool_call.core_execution_failed",
         "mcp.tool_call.invalid_arguments",
         "mcp.tool_call.output_schema_failed",

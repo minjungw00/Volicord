@@ -589,41 +589,42 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 
 ```schema
 WorkflowActionForm:
-  form_ref: string
-  method: string
-  selected_semantic_variant: string
-  role: required | allowed
+  action_key: WorkflowActionKey
+  form_ref: RequestHash
   expected_state_version: integer
   fixed_arguments: object
-  fixed_argument_paths: string[]
-  suggested_arguments: object
-  required_inputs: WorkflowActionInput[]
-  optional_inputs: WorkflowActionInput[]
+  agent_authored_inputs: WorkflowActionInput[]
+  canonical_minimal_request: object
 
 WorkflowActionFormCatalog:
-  required_method: string | null
+  required_action_key: WorkflowActionKey | null
+  workflow_contract_digest: RequestHash
+  semantic_schema_digest: RequestHash
   forms: WorkflowActionForm[]
 
 RetryContract:
-  method: string
-  selected_semantic_variant: string
-  action_form_ref: RequestHash | null
-  fixed_arguments: object
-  fixed_argument_paths: string[]
-  invalid_paths: string[]
-  required_inputs: WorkflowActionInput[]
-  action_form_catalog: WorkflowActionFormCatalog
-  corrected_retry_allowed: boolean
+  recovery_action_key: WorkflowActionKey | null
+  recovery_form: WorkflowActionForm | null
+  invalid_or_incompatible_submitted_paths: string[]
+  retry_possible_in_current_task: boolean
 ```
 
-`form_ref`는 프로젝트, Task, 메서드, 선택된 semantic variant, 예상 상태 버전, 정확한
-고정 권한 좌표, 완전한 `fixed_arguments` 객체와 `fixed_argument_paths`, 현재
-semantic-schema digest의 불투명 canonical digest입니다. 숫자 workflow 버전이 아닙니다.
-Form catalog는 Core transition catalog의 순서와 descriptor 역할을 보존합니다. 각 Agent
-`TransitionDescriptor`마다 서로 다른 form과 form ref가 하나씩 있으며, required method는
-필수 Agent descriptor에서만 도출합니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
-인자 context, retry contract에 나타납니다. 활성 Task가 없는 status의 catalog는
-null입니다. 단일 form은 독립된 권한 계약이 아닙니다.
+`form_ref`는 프로젝트, Task, 완전한 `action_key`, 예상 상태 버전, 정확한 고정 권한 좌표,
+완전한 `fixed_arguments` 객체와 descriptor 소유 고정 경로, 현재 semantic-schema digest,
+workflow-contract digest의 불투명 canonical digest입니다. 숫자 workflow 버전이 아닙니다.
+Form catalog는 Core transition catalog의 순서를 보존합니다. 각 Agent
+`TransitionDescriptor`마다 서로 다른 실행 가능한 form과 form ref가 정확히 하나씩 있으며,
+`required_action_key`는 필수 Agent descriptor에서만 복사합니다. Core transition이 없으면
+form도 없습니다. 현재 Task가 있는 일반 status, mutation 성공과 거부 presentation, 현재 권한
+인자 context에 나타납니다. 활성 Task가 없는 status의 catalog는 null입니다. 단일 form은
+독립된 권한 계약이 아닙니다.
+
+Adapter는 form을 노출하기 전에 모든 고정 경로가 선택한 메서드-variant schema에 존재하는지,
+각 고정 값이 선언된 semantic type과 일치하는지, 필수 Agent 작성 입력을 식별했는지, 고정
+값이 하나도 무시되지 않는지 확인합니다. 또한 `canonical_minimal_request`가 같은 workflow
+snapshot에서 semantic 검증, 정확한 Rust decode, 고정 값 binding, 정확한 variant 선택,
+commit 없는 Core transition admission 검사를 모두 통과해야 합니다. 실패하면 form을 노출하지
+않고 `INTERNAL_CONTRACT_INCONSISTENT`를 반환하거나 기록하며 가까운 form을 선택하지 않습니다.
 
 정규 공개 메서드·도구 registry는 모든 호출 대상을 `read_only`,
 `not_task_state_bound`, `user_channel_authority`, `task_state_bound` 중 하나로 분류합니다.
@@ -643,7 +644,7 @@ fallback이나 필수 form fallback은 없습니다.
 읽기 전용 `volicord.status`는 catalog를 관찰할 뿐 mutation 권한을 만들지 않습니다.
 
 Form admission 뒤에는 descriptor 기반 binder 하나가 선택된 메서드와 semantic variant에서
-모든 `fixed_argument_paths` entry를 해석합니다. 호출자에게 보이는 고정 값은 메서드
+모든 고정 경로를 해석합니다. 호출자에게 보이는 고정 값은 메서드
 decode나 Core 진입 전에 모두 존재하고 form 값과 깊은 동등성을 만족해야 합니다. JSON
 원시 타입과 배열 순서는 정확히 일치해야 하며 객체 member 순서는 무관합니다. JSON
 null은 문자열 `"null"`이나 빈 문자열과 같지 않습니다. 프로젝트와 예상 상태 버전은
@@ -760,7 +761,8 @@ McpActionFormArgumentMismatch:
 McpToolErrorResponse:
   code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE |
     ACTION_FORM_ARGUMENT_MISMATCH | WORKFLOW_ACTION_NOT_ALLOWED |
-    WORKFLOW_ACTION_VARIANT_NOT_ALLOWED | MCP_ADAPTER_PRECONDITION_FAILED
+    WORKFLOW_ACTION_VARIANT_NOT_ALLOWED | MCP_ADAPTER_PRECONDITION_FAILED |
+    INTERNAL_CONTRACT_INCONSISTENT
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -775,6 +777,8 @@ McpToolErrorResponse:
   failure: McpArgumentFailurePresentation | null
   workflow_admission: McpWorkflowAdmissionRejection | null
   action_form_argument_mismatches: McpActionFormArgumentMismatch[]
+  transition_rejection: TransitionRejection | null
+  contract_diagnostics: McpWorkflowContractDiagnostics | null
 ```
 
 유효하지 않은 인자에서는 독립적으로 유효한 `project_selector`, `task_id`, 제공된
@@ -1026,16 +1030,40 @@ Core가 공개 `ToolRejectedResponse`를 반환하면 MCP는 그 정확한 닫�
 capability는 carrier만 선택하며 범주를 따로 변환하거나 이 필드들을 제거하거나
 다시 쓰지 않습니다.
 
-Schema 검증이 성공한 뒤 Core가 typed `AuthorityBasisMismatch`를 반환하면 MCP는 정확한
-`field`, `expected`, `received`, `state_change_applied=false`를 보존하고 현재 action
-form과 retry contract를 덧붙입니다. Keep-current 기준선 retargeting이면
+Schema 검증이 성공한 뒤 Core가 typed transition rejection을 반환하면 MCP는 정확한 거부와
+typed compatibility assessment를 보존합니다. Keep-current 기준선 retargeting에서는 Core가
 `current_baseline_canonical=true`, `submitted_baseline_canonical=true`,
 `submitted_baseline_matches_current=false`,
-`submitted_baseline_compatible_with_transition=false`로 표시합니다. 현재 catalog에
-`replace_current_change_unit`가 실제로 있을 때만 정확한 현재 replace form을 재시도 대상으로
-선택합니다. 제출한 transition이 호환되지 않는다는 이유로 정규 현재 기준선을 유효하지 않다고
-표현하지 않습니다. Core가 영속 데이터 손상이나 명시적 복구 workflow를 보고하지 않는 한
-repair는 false입니다.
+`submitted_baseline_compatible_with_transition=false`를 제공합니다. MCP는 이 네 사실을 서로
+구분해 복사하며 field 이름, 오류 문구, 메서드 특례에서 도출하지 않습니다. 제출한 transition이
+호환되지 않는다는 이유로 정규 현재 기준선을 유효하지 않다고 표현하지 않습니다. Core가 영속
+데이터 손상이나 명시적 복구 workflow를 보고하지 않는 한 repair는 false입니다.
+
+Core가 `recovery_action_key`를 제공하면 MCP는 같은 현재 catalog에서 그 정확한 key만
+조회합니다. Retry contract는 그 key, 정확히 대응하는 현재 form, Core가 제공한 비호환 경로,
+현재 Task에서의 retry 가능 여부를 담습니다. User 소유 recovery 또는 시도한 action 밖의 close,
+cancellation, supersession은 recovery form이 없고 시도한 action을 통해 retry할 수 없습니다.
+Agent 소유 recovery key에 정확한 현재 form이 없으면 MCP는
+`INTERNAL_CONTRACT_INCONSISTENT`, `committed=false`, 추측 retry 없음, 원래 typed rejection,
+한도 있는 contract diagnostics를 반환합니다. 호환용 text는 이 structured fact에 없는 action을
+이름 붙이지 않습니다.
+
+```schema
+McpWorkflowContractDiagnostics:
+  normalized_workflow_snapshot: WorkflowProjection
+  current_transition_catalog: WorkflowTransitionCatalog
+  current_action_forms: WorkflowActionFormCatalog | null
+  attempted_action_key: WorkflowActionKey | null
+  typed_rejection_reason: TransitionRejectionReason | null
+  recovery_action_key: WorkflowActionKey | null
+  workflow_contract_digest: RequestHash
+  semantic_schema_digest: RequestHash
+```
+
+한도와 redaction을 적용한 이 fact는 workflow 거부와 contract inconsistency, 기존 session
+diagnostics 경로에서 사용하는 읽기 전용 projection입니다. 권한을 변경하거나 두 번째 workflow
+API를 만들지 않으며 일반 status에 추가하지 않습니다. 현재 권한은 변경 불가능한 diagnostic
+이력과 계속 분리됩니다.
 
 ```schema
 McpArgumentFailurePresentation:

@@ -103,18 +103,20 @@ pub(crate) enum McpToolCallDiagnostic {
     ResponseBudgetFailure,
     CoreExecutionError,
     AdapterExecutionError,
+    ContractInconsistent,
     SafeReadOnlyToolFailure,
     SessionCorrelationInvalid,
 }
 
 impl McpToolCallDiagnostic {
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 9] = [
         Self::UnknownTool,
         Self::InvalidArguments,
         Self::OutputSchemaFailure,
         Self::ResponseBudgetFailure,
         Self::CoreExecutionError,
         Self::AdapterExecutionError,
+        Self::ContractInconsistent,
         Self::SafeReadOnlyToolFailure,
         Self::SessionCorrelationInvalid,
     ];
@@ -152,6 +154,9 @@ impl From<&McpAdapterError> for McpDiagnostic {
             }
             McpAdapterError::SchemaContractFailure { .. } => {
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
+            }
+            McpAdapterError::InternalContractInconsistent { .. } => {
+                Self::ToolCall(McpToolCallDiagnostic::ContractInconsistent)
             }
             McpAdapterError::ToolExecution { .. } => {
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
@@ -263,6 +268,9 @@ impl McpDiagnostic {
             }
             Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError) => {
                 "mcp.tool_call.adapter_execution_failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::ContractInconsistent) => {
+                "mcp.tool_call.contract_inconsistent"
             }
             Self::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure) => {
                 "mcp.tool_call.safe_read_only_failed"
@@ -384,6 +392,9 @@ impl McpDiagnostic {
             }
             Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError) => {
                 "adapter tool execution failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::ContractInconsistent) => {
+                "Core workflow facts and the current MCP action-form projection were inconsistent"
             }
             Self::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure) => {
                 "the designated read-only verification tool call failed"
@@ -701,6 +712,7 @@ mod tests {
             McpDiagnostic::ToolCall(McpToolCallDiagnostic::ResponseBudgetFailure),
             McpDiagnostic::ToolCall(McpToolCallDiagnostic::CoreExecutionError),
             McpDiagnostic::ToolCall(McpToolCallDiagnostic::AdapterExecutionError),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::ContractInconsistent),
             McpDiagnostic::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure),
             McpDiagnostic::ToolCall(McpToolCallDiagnostic::SessionCorrelationInvalid),
             McpDiagnostic::Host(McpHostError::MalformedNativeMetadata),

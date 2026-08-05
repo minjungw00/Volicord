@@ -674,43 +674,46 @@ tool's canonical semantic descriptor:
 
 ```schema
 WorkflowActionForm:
-  form_ref: string
-  method: string
-  selected_semantic_variant: string
-  role: required | allowed
+  action_key: WorkflowActionKey
+  form_ref: RequestHash
   expected_state_version: integer
   fixed_arguments: object
-  fixed_argument_paths: string[]
-  suggested_arguments: object
-  required_inputs: WorkflowActionInput[]
-  optional_inputs: WorkflowActionInput[]
+  agent_authored_inputs: WorkflowActionInput[]
+  canonical_minimal_request: object
 
 WorkflowActionFormCatalog:
-  required_method: string | null
+  required_action_key: WorkflowActionKey | null
+  workflow_contract_digest: RequestHash
+  semantic_schema_digest: RequestHash
   forms: WorkflowActionForm[]
 
 RetryContract:
-  method: string
-  selected_semantic_variant: string
-  action_form_ref: RequestHash | null
-  fixed_arguments: object
-  fixed_argument_paths: string[]
-  invalid_paths: string[]
-  required_inputs: WorkflowActionInput[]
-  action_form_catalog: WorkflowActionFormCatalog
-  corrected_retry_allowed: boolean
+  recovery_action_key: WorkflowActionKey | null
+  recovery_form: WorkflowActionForm | null
+  invalid_or_incompatible_submitted_paths: string[]
+  retry_possible_in_current_task: boolean
 ```
 
-`form_ref` is the opaque canonical digest of project, Task, method, selected
-semantic variant, expected state version, exact fixed authority coordinates,
-the complete `fixed_arguments` object and `fixed_argument_paths`, and the
-current semantic-schema digest. It is not a numeric workflow version.
-The form catalog preserves Core transition-catalog ordering and descriptor
-role. Every Agent `TransitionDescriptor` has one distinct form and form ref;
-the required method is derived only from a required Agent descriptor.
+`form_ref` is the opaque canonical digest of project, Task, complete
+`action_key`, expected state version, exact fixed authority coordinates, the
+complete `fixed_arguments` object and descriptor-owned fixed paths, the current
+semantic-schema digest, and the workflow-contract digest. It is not a numeric
+workflow version. The form catalog preserves Core transition-catalog ordering.
+Every Agent `TransitionDescriptor` has exactly one distinct executable form and
+form ref; `required_action_key` is copied only from a required Agent descriptor.
+No Core transition means no form.
 It appears in normal Task status, mutation success and rejection presentation,
-authoritative argument context, and retry contracts. Status with no active Task
-has a null catalog. A singular form is not independently authoritative.
+and authoritative argument context. Status with no active Task has a null
+catalog. A singular form is not independently authoritative.
+
+Before exposing a form, the adapter confirms that every fixed path exists in
+the selected method-and-variant schema, every fixed value has the declared
+semantic type, required Agent-authored inputs are identified, no fixed value is
+ignored, and `canonical_minimal_request` passes semantic validation, exact Rust
+decoding, fixed-value binding, exact variant selection, and a no-commit Core
+transition admission check against the same workflow snapshot. Failure exposes
+no form and returns or records `INTERNAL_CONTRACT_INCONSISTENT`; it never chooses
+a nearby form.
 
 The canonical public method/tool registries classify every callable as
 `read_only`, `not_task_state_bound`, `user_channel_authority`, or
@@ -731,8 +734,8 @@ and the current valid variants and form refs, with `reached_core=false` and
 omission or required-form fallback. Read-only `volicord.status` observes the
 catalog but creates no mutation authority.
 
-After form admission, one descriptor-driven binder resolves every
-`fixed_argument_paths` entry through the selected method and semantic variant.
+After form admission, one descriptor-driven binder resolves every fixed path
+through the selected method and semantic variant.
 Every caller-visible fixed value must be present and deeply equal to the form
 value before method decoding or Core entry. JSON primitive types and array
 order are exact; object member order is irrelevant. JSON null does not equal
@@ -865,7 +868,8 @@ McpActionFormArgumentMismatch:
 McpToolErrorResponse:
   code: MCP_INVALID_ARGUMENTS | MCP_ACTION_FORM_STALE |
     ACTION_FORM_ARGUMENT_MISMATCH | WORKFLOW_ACTION_NOT_ALLOWED |
-    WORKFLOW_ACTION_VARIANT_NOT_ALLOWED | MCP_ADAPTER_PRECONDITION_FAILED
+    WORKFLOW_ACTION_VARIANT_NOT_ALLOWED | MCP_ADAPTER_PRECONDITION_FAILED |
+    INTERNAL_CONTRACT_INCONSISTENT
   tool_name: string
   selected_variant: string | null
   canonical_example: object | null
@@ -880,6 +884,8 @@ McpToolErrorResponse:
   failure: McpArgumentFailurePresentation | null
   workflow_admission: McpWorkflowAdmissionRejection | null
   action_form_argument_mismatches: McpActionFormArgumentMismatch[]
+  transition_rejection: TransitionRejection | null
+  contract_diagnostics: McpWorkflowContractDiagnostics | null
 ```
 
 Invalid arguments bootstrap only independently valid `project_selector`,
@@ -1151,17 +1157,44 @@ closed response object in the selected authoritative carrier. Every nested
 otherwise remains the Core-produced object. Protocol capabilities select only
 the carrier and do not map the category or remove or rewrite those fields.
 
-When schema validation succeeds and Core returns a typed
-`AuthorityBasisMismatch`, MCP preserves the exact `field`, `expected`,
-`received`, and `state_change_applied=false`, then enriches it with the current
-action form and retry contract. For keep-current baseline retargeting, MCP sets
+When schema validation succeeds and Core returns a typed transition rejection,
+MCP preserves the exact rejection and any typed compatibility assessment. For
+keep-current baseline retargeting, Core supplies
 `current_baseline_canonical=true`, `submitted_baseline_canonical=true`,
 `submitted_baseline_matches_current=false`, and
-`submitted_baseline_compatible_with_transition=false`. It selects the exact
-current replace form only when `replace_current_change_unit` exists in the
-current catalog. A canonical current baseline is never described as invalid
+`submitted_baseline_compatible_with_transition=false`. MCP copies these four
+facts separately; it does not derive them from a field name, error message, or
+method special case. A canonical current baseline is never described as invalid
 because the submitted transition is incompatible. Repair is false unless Core
 reports persisted-data corruption or an explicit repair workflow.
+
+If Core supplies `recovery_action_key`, MCP looks up only that exact key in the
+same current catalog. The retry contract carries that key, its exact current
+form, Core-supplied incompatible paths, and the current-Task retry fact. A
+User-owned recovery, or a close, cancellation, or supersession outside the
+attempted action, has no recovery form and is not retryable through the attempted
+action. If an Agent-owned recovery key has no exact current form, MCP returns
+`INTERNAL_CONTRACT_INCONSISTENT`, `committed=false`, no speculative retry, the
+original typed rejection, and bounded contract diagnostics. Compatibility text
+never names an action absent from those structured facts.
+
+```schema
+McpWorkflowContractDiagnostics:
+  normalized_workflow_snapshot: WorkflowProjection
+  current_transition_catalog: WorkflowTransitionCatalog
+  current_action_forms: WorkflowActionFormCatalog | null
+  attempted_action_key: WorkflowActionKey | null
+  typed_rejection_reason: TransitionRejectionReason | null
+  recovery_action_key: WorkflowActionKey | null
+  workflow_contract_digest: RequestHash
+  semantic_schema_digest: RequestHash
+```
+
+These bounded, redacted facts are a read-only projection used on workflow
+rejections and contract inconsistencies and by the existing session-diagnostic
+path. They do not mutate authority, do not add a second workflow API, and are not
+added to ordinary status. Current authority remains separate from immutable
+diagnostic history.
 
 ```schema
 McpArgumentFailurePresentation:

@@ -2,6 +2,10 @@
 
 When shaping needs a product, technical, scope, or sensitive decision, Core creates an exact UserAction request linked to the current shaping gap. Chat text cannot resolve that request; submit the decision through the supported User Channel. A pending request uses `awaiting_user_action`. Acceptance lets the responsible method apply the decision. Rejection, deferral, or expiration grants no authority and asks the agent to revise the shaping plan through `decision_recovery_required`; a successor request is required if the revised plan still needs the judgment.
 
+When Core names a User-owned recovery, MCP preserves that exact action key but
+does not provide an Agent action form or claim that the attempted Agent action
+can complete it. The User Channel remains the only authority path.
+
 Volicord lets you work with an agent in ordinary language while keeping scope,
 Evidence, user-owned decisions, and Close Status separate. This page explains
 the user workflow. Exact contracts stay in the

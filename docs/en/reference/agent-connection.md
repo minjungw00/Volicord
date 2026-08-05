@@ -781,13 +781,14 @@ the workflow transition contract, and the MCP semantic schema. The storage-manif
 digest covers its contract identity, canonical DDL and integrity-constraint
 digests, and complete capability set. The guidance digest covers the closed
 current workflow facts rendered into the managed `AGENTS.md` block and MCP
-server instructions, including exact update-scope variant selection,
-replace-current retarget or rebaseline recovery, nullable-baseline JSON
-handling, and persisted-baseline corruption stop behavior; it is not a hash of
-project-specific prose. The action-contract digest covers method groups,
-closed method-owned variants, catalog admission, exact method-and-variant form
-identity, update-scope fixed versus Agent-authored arguments, authoritative
-context, variant-aware retry, and typed basis-mismatch semantics. The
+server instructions, including exact transition and action-form use, Core-owned
+recovery, form isolation, MCP schema discovery boundaries, and distinct
+pre-Core, Core-rejected, and persisted-corruption reporting; it is not a hash
+of project-specific prose. The action-contract digest covers complete Agent
+transition projection, exact action-key form identity, fixed versus
+Agent-authored arguments, canonical-minimal-request integrity, authoritative
+context, exact typed recovery, and separate canonicality and compatibility
+facts. The
 semantic-schema digest covers checked canonical `BaselineRef` constraints,
 generic required-nullable semantics, explicit discriminators, branch-local
 validation, and bounded runtime semantic projection. A change to the storage

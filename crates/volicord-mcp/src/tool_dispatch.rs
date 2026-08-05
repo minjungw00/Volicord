@@ -52,8 +52,8 @@ use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
     McpOperationalErrorCode, McpOperationalFailure, McpOperationalOperation,
     McpOperationalResource, McpPostEffectFailureCode, McpStatusResponse, McpToolErrorCode,
-    McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
-    MAX_VALIDATION_ISSUES,
+    McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode, McpWorkflowContractDiagnostics,
+    MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
 };
 use volicord_store::agent_connections::{
     agent_connection_record_read_only, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
@@ -417,6 +417,24 @@ pub(crate) fn call_tool_result(
                 );
                 return Ok(Ok(response));
             }
+            Err(error @ McpAdapterError::InternalContractInconsistent { .. }) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
+                let response =
+                    tool_execution_error_result_for_capabilities(tool_name, &error, capabilities);
+                record_tool_diagnostic_best_effort(
+                    context,
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    false,
+                    DiagnosticOutcome::ToolError,
+                );
+                return Ok(Ok(response));
+            }
             Err(error @ McpAdapterError::ToolExecution { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
@@ -477,6 +495,24 @@ pub(crate) fn call_tool_result(
                     ToolDiagnosticFacts::default(),
                     true,
                     DiagnosticOutcome::ValidationFailure,
+                );
+                return Ok(Ok(response));
+            }
+            Err(error @ McpAdapterError::InternalContractInconsistent { .. }) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
+                let response =
+                    tool_execution_error_result_for_capabilities(tool_name, &error, capabilities);
+                record_tool_diagnostic_best_effort(
+                    context,
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    false,
+                    DiagnosticOutcome::ToolError,
                 );
                 return Ok(Ok(response));
             }
@@ -547,6 +583,16 @@ pub(crate) fn call_tool_result(
         mutation_detail,
         output,
     )?;
+    if output
+        .structured_content
+        .get("code")
+        .and_then(Value::as_str)
+        == Some("INTERNAL_CONTRACT_INCONSISTENT")
+    {
+        state.pending_finding = Some(McpDiagnostic::ToolCall(
+            McpToolCallDiagnostic::ContractInconsistent,
+        ));
+    }
 
     let diagnostic_facts = output.diagnostic_facts();
     let diagnostic_outcome =
@@ -676,16 +722,35 @@ impl ToolCallOutput {
     fn from_status_pipeline_response(response: &PipelineResponse) -> Result<Self, McpAdapterError> {
         let method_result = serde_json::from_value(response.response_value.clone())
             .map_err(McpAdapterError::Json)?;
-        let action_form_catalog = response
-            .verified_invocation
-            .as_ref()
-            .and_then(|invocation| {
-                response
-                    .response_value
-                    .pointer("/active_task/workflow")
-                    .and_then(|value| serde_json::from_value(value.clone()).ok())
-                    .map(|workflow| workflow_action_form_catalog(&invocation.project_id, &workflow))
-            });
+        let workflow = response
+            .response_value
+            .pointer("/active_task/workflow")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(McpAdapterError::Json)?;
+        let action_form_catalog = match (response.verified_invocation.as_ref(), workflow) {
+            (Some(invocation), Some(workflow)) => Some(
+                workflow_action_form_catalog(&invocation.project_id, &workflow).map_err(|_| {
+                    McpAdapterError::InternalContractInconsistent {
+                        tool_name: AgentToolId::STATUS.wire_name().to_owned(),
+                        reached_core: true,
+                        transition_rejection: None,
+                        diagnostics: Box::new(McpWorkflowContractDiagnostics {
+                            normalized_workflow_snapshot: workflow.clone(),
+                            current_transition_catalog: workflow.transition_catalog().clone(),
+                            current_action_forms: RequiredNullable::null(),
+                            attempted_action_key: RequiredNullable::null(),
+                            typed_rejection_reason: RequiredNullable::null(),
+                            recovery_action_key: RequiredNullable::null(),
+                            workflow_contract_digest: volicord_types::managed_guidance::workflow_action_contract_semantic_digest(),
+                            semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
+                        }),
+                    }
+                })?,
+            ),
+            _ => None,
+        };
         let mut output = Self::success(
             serde_json::to_string(&McpStatusResponse {
                 method_result,
@@ -1021,6 +1086,44 @@ fn tool_execution_error_result_for_capabilities(
             failure: RequiredNullable::new(failure.as_deref().cloned()),
             workflow_admission: RequiredNullable::new(workflow_admission.as_deref().cloned()),
             action_form_argument_mismatches: action_form_argument_mismatches.as_ref().clone(),
+            transition_rejection: RequiredNullable::null(),
+            contract_diagnostics: RequiredNullable::null(),
+        },
+        McpAdapterError::InternalContractInconsistent {
+            reached_core,
+            transition_rejection,
+            diagnostics,
+            ..
+        } => McpToolErrorResponse {
+            code: McpToolErrorCode::InternalContractInconsistent,
+            tool_name: requested_tool_name.to_owned(),
+            selected_variant: RequiredNullable::new(transition_rejection.as_ref().map(|rejection| {
+                rejection
+                    .attempted_action_key
+                    .semantic_variant
+                    .as_str()
+                    .to_owned()
+            })),
+            canonical_example: RequiredNullable::null(),
+            retryable: false,
+            reached_core: *reached_core,
+            committed: false,
+            reported_issue_count: 1,
+            truncated: false,
+            issues: vec![McpToolErrorIssue::new(
+                String::new(),
+                McpToolIssueCode::InternalContractInconsistent,
+                "The current Core workflow contract could not be projected exactly; no speculative action form or retry was returned.",
+            )],
+            authoritative_context: RequiredNullable::null(),
+            retry_contract: RequiredNullable::null(),
+            failure: RequiredNullable::null(),
+            workflow_admission: RequiredNullable::null(),
+            action_form_argument_mismatches: Vec::new(),
+            transition_rejection: RequiredNullable::new(
+                transition_rejection.as_deref().cloned(),
+            ),
+            contract_diagnostics: RequiredNullable::some(diagnostics.as_ref().clone()),
         },
         McpAdapterError::ToolExecution { tool_name, message } => {
             let (path, message) = if tool_name == "project routing" {
@@ -1057,6 +1160,8 @@ fn tool_execution_error_result_for_capabilities(
                 failure: RequiredNullable::null(),
                 workflow_admission: RequiredNullable::null(),
                 action_form_argument_mismatches: Vec::new(),
+                transition_rejection: RequiredNullable::null(),
+                contract_diagnostics: RequiredNullable::null(),
             }
         }
         McpAdapterError::MutationAdmission(condition) => McpToolErrorResponse {
@@ -1079,6 +1184,8 @@ fn tool_execution_error_result_for_capabilities(
             failure: RequiredNullable::null(),
             workflow_admission: RequiredNullable::null(),
             action_form_argument_mismatches: Vec::new(),
+            transition_rejection: RequiredNullable::null(),
+            contract_diagnostics: RequiredNullable::null(),
         },
         _ => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
@@ -1100,6 +1207,8 @@ fn tool_execution_error_result_for_capabilities(
             failure: RequiredNullable::null(),
             workflow_admission: RequiredNullable::null(),
             action_form_argument_mismatches: Vec::new(),
+            transition_rejection: RequiredNullable::null(),
+            contract_diagnostics: RequiredNullable::null(),
         },
     };
     bounded_tool_error_result(structured, capabilities)

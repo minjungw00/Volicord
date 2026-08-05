@@ -51,24 +51,22 @@ implementation 작업, close review 중 하나를 요구할 수 있습니다. �
 다음 응답이 다른 경로를 선택할 수 있습니다. 닫기 차단 사유의 해결 행동은 해당 차단
 사유에만 속하며 현재 workflow 진행을 대신하지 않습니다.
 
-선택한 Task 상태 결속 메서드와 semantic variant에 대해서는 태그가 있는 action form
-catalog의 정확한 entry를 사용합니다. 한 필수 메서드 그룹의 여러 variant는 동시에 해야
-하는 요구가 아니라 대안입니다. `fixed_arguments`를 정확히 복사하고 표시된 에이전트 작성
-입력만 채운 뒤 그 메서드-variant form의 정확한 `form_ref`를 `action_form_ref`로 보냅니다.
-Form은 다른 메서드나 variant에 권한을 주지 않으므로 다른 shaping 또는 implementation 메서드를 추측해 호출하지
-않습니다. 고정 값으로 표시된 checkpoint 계보, 범위 리비전, 기준선, Change Unit,
-resolution 좌표를 다시 조립하지 않습니다. 예외적으로 `volicord.update_scope`에서 에이전트
-작성 입력으로 표시된 `baseline_ref`는 현재 값을 복사하는 필드가 아니라 다음 기준선을
-제공하는 필드입니다. 현재 create, keep, replace form만 선택하며 현재 Change Unit의 기준선
-retargeting에는 replace form이 필요합니다. 일반 MCP binder는 Core 전에 표시된 모든 `fixed_argument_paths` 값을
-깊은 동등성으로 확인하므로 JSON 타입과 배열 순서를 그대로 보존합니다. 프로젝트와 예상
-상태 버전은 호출자가 보내는 필드가 아니라 현재 권한에서 adapter가 주입합니다. 고정 값이
-바뀌거나 빠지면 `ACTION_FORM_ARGUMENT_MISMATCH`와 함께 반환된 현재 form의 정확한 고정
-인자로 재시도합니다. 그 밖의 검증이나 Core 전 메서드/variant admission에 실패하면 MCP schema, 현재 권한 인자
-맥락, retry contract를 사용하고 Core에 도달하지 않았으며 상태가 바뀌지 않았다고 정확히
-보고합니다. JSON 원시 타입과 선택된 union branch를 보존하며, 인자 오류를 Task 손상으로
-해석하지 않습니다. 필요한 권한 mutation이 성공하기 전에 Product Repository 파일을
-수정하지 않고, checkpoint 또는 UserAction 생성 실패는 생성되지 않았고 Core 상태도
+Task 상태 결속 action에는 선택한 Core transition과 `action_key`가 일치하는 catalog entry를
+정확히 사용합니다. `fixed_arguments`를 그대로 복사하고 표시된 `agent_authored_inputs`만 채운
+뒤 form의 정확한 `form_ref`를 `action_form_ref`로 보냅니다. 같은 action의
+`canonical_minimal_request`는 schema 검증을 통과하는 실행 가능한 시작점입니다. Form은 다른
+메서드나 variant에 권한을 주지 않습니다. JSON 타입과 배열 순서를 보존하고 고정 좌표를 다시
+조립하지 않습니다. 프로젝트와 예상 상태 버전은 호출자가 보내는 field가 아니라 현재 권한에서
+adapter가 주입합니다.
+
+고정 값이 바뀌거나 빠지면 같은 action에 대해 반환된 정확한 현재 form만 사용합니다. Core
+거부에서는 typed retry contract로 Core가 반환한 정확한 recovery action과
+`recovery_form`만 사용하며 field 이름, 오류 문구, 가까운 form에서 recovery를 추론하지
+않습니다. Recovery form이 null이면 시도한 action으로 현재 recovery를 수행할 수 없습니다.
+MCP schema를 찾기 위해 CLI help, binary string, source code를 검색하지 않습니다. Core 전
+실패, Core 거부, 영속 데이터 손상을 서로 다른 결과로 보고합니다. Transition 비호환만으로
+Task 손상을 진단하지 않습니다. 필요한 권한 mutation이 성공하기 전에 Product Repository
+파일을 수정하지 않고, checkpoint 또는 UserAction 생성 실패는 생성되지 않았고 Core 상태도
 바뀌지 않았다고 보고합니다.
 
 ## 에이전트 작업과 사용자 판단 분리

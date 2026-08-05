@@ -1935,6 +1935,14 @@ JSON은 현재 diagnostics SQL에서 파생한 정확한 `canonical_schema_diges
 바꾸거나 UserAction을 해결하거나 저장소 관찰을 terminalize하거나 Product Repository를
 scan하지 않습니다.
 
+MCP workflow projection inconsistency는 기존 runtime-session diagnostic 경로를 통해 한도 있는
+발생 code `mcp.tool_call.contract_inconsistent`를 기록합니다. 즉시 반환하는 structured tool
+error는 정규화된 workflow snapshot, 현재 transition catalog, 생성할 수 있었던 경우의 현재
+action form, 시도 action key, typed rejection reason, recovery action key,
+workflow-contract digest, semantic-schema digest를 담습니다. CLI session 조회는 이 발생 기록을
+현재 권한과 분리해 유지하며 요청 본문을 replay하거나 Task를 변경하거나 변경 불가능한
+diagnostic 이력을 workflow 권한으로 바꾸지 않습니다.
+
 활성 Connection 검증은 관리 구성, Guard 파일과 관찰, 저장소 신뢰, revision freshness에
 대한 CLI 소유 finding을 영속화합니다. 현재 안정 code는
 `trust.repository.not_trusted`, `revision.integration.stale`,

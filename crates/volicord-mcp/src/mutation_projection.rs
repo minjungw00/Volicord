@@ -22,13 +22,15 @@ use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
     McpAdvanceTaskCompactResult, McpAgentStateChange, McpArgumentFailurePresentation,
     McpFinalizeAdviceCompactResult, McpMustSurfaceFact, McpMutationEffectSummary,
-    McpMutationFullResponse, McpMutationSummaryResponse, McpMutationWorkflowResponse,
-    McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
-    McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
-    McpRecordShapingCheckpointCompactResult, McpRequestUserActionCompactResult,
-    McpRequestUserActionResponse, McpStageArtifactCompactResult, McpTaskPhasePresentation,
-    McpUpdateScopeCompactResult, McpUserChannelInstructions, McpWorkflowBlockerSummary,
-    McpWorkflowDryRunResponse, McpWorkflowPresentation, McpWorkflowRejectedResponse,
+    McpMutationFullResponse, McpMutationStructuredContent, McpMutationSummaryResponse,
+    McpMutationWorkflowResponse, McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult,
+    McpPrepareWriteCompactResult, McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor,
+    McpRecordRunCompactResult, McpRecordShapingCheckpointCompactResult,
+    McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
+    McpTaskPhasePresentation, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
+    McpToolIssueCode, McpUpdateScopeCompactResult, McpUserChannelInstructions,
+    McpWorkflowBlockerSummary, McpWorkflowContractDiagnostics, McpWorkflowDryRunResponse,
+    McpWorkflowPresentation, McpWorkflowRejectedResponse, RetryContract,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::RecordId;
@@ -42,10 +44,7 @@ use volicord_types::schema::{
     ToolDryRunResponse, ToolRejectedResponse, TransitionRejection,
 };
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
-use volicord_types::values::{
-    EffectKind, MethodName, MutationDetailLevel, StateRecordKind, TransitionRejectionReason,
-    WorkflowActionSemanticVariant,
-};
+use volicord_types::values::{EffectKind, MethodName, MutationDetailLevel, StateRecordKind};
 use volicord_user_action_presentation::canonical_user_channel_instructions;
 
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
@@ -191,26 +190,7 @@ where
         return mutation_post_effect_failure_output(&outcome, code);
     }
 
-    let presentation = match workflow_presentation(
-        tool_name,
-        &response_kind,
-        outcome.facts.replayed,
-        outcome
-            .exact_method_result
-            .as_ref()
-            .expect("canonical mutation outcome requires an exact result"),
-        &authority,
-    ) {
-        Ok(presentation) => presentation,
-        Err(_) => {
-            return mutation_post_effect_failure_output(
-                &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
-            )
-        }
-    };
-
-    if response_kind == "rejected" {
+    let rejected_method_result = if response_kind == "rejected" {
         let method_result: ToolRejectedResponse = serde_json::from_value(
             outcome
                 .exact_method_result
@@ -223,71 +203,116 @@ where
                 serde_json::from_value::<TransitionRejection>(Value::Object(details.clone())).ok()
             })
         });
-        let called_method = AgentToolId::from_wire_name(tool_name)
-            .ok()
-            .and_then(AgentToolId::method);
-        let baseline_retargeting_requires_replace = called_method == Some(MethodName::UpdateScope)
-            && transition_rejection.as_ref().is_some_and(|rejection| {
-                rejection.reason == TransitionRejectionReason::AuthorityBasisMismatch
-                    && rejection.attempted_action_key.semantic_variant
-                        == WorkflowActionSemanticVariant::KeepCurrentChangeUnit
-                    && rejection.recovery_action_key.as_ref().is_some_and(|key| {
-                        key.semantic_variant
-                            == WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit
-                    })
-            });
-        let recovery_action_form = transition_rejection.as_ref().and_then(|rejection| {
-            rejection.recovery_action_key.as_ref().and_then(|key| {
-                presentation
-                    .action_form_catalog
-                    .form(key.method, key.semantic_variant)
-            })
-        });
-        let retry_form = recovery_action_form;
-        output.primary_text = rejected_compatibility_text(tool_name, &presentation);
-        output.structured_content =
-            serde_json::to_value(McpWorkflowRejectedResponse {
-                method_result,
-                authority_receipt: authority.receipt.clone(),
-                workflow: authority.workflow.clone(),
-                transition_rejection: RequiredNullable::new(transition_rejection),
-                retry_contract: RequiredNullable::new(retry_form.map(|form| {
-                    retry_contract(form, &presentation.action_form_catalog, Vec::new())
-                })),
-                failure: McpArgumentFailurePresentation {
-                    method_committed: false,
-                    reached_core: true,
-                    current_task_phase: RequiredNullable::some(authority.work_phase),
-                    current_state_version: RequiredNullable::some(authority.receipt.state_version),
-                    checkpoint_recorded: false,
-                    user_action_created: false,
-                    product_repository_changed: false,
-                    core_state_unchanged: true,
-                    current_baseline_canonical: RequiredNullable::some(true),
-                    submitted_baseline_canonical: RequiredNullable::new(
-                        baseline_retargeting_requires_replace.then_some(true),
-                    ),
-                    submitted_baseline_matches_current: RequiredNullable::new(
-                        baseline_retargeting_requires_replace.then_some(false),
-                    ),
-                    submitted_baseline_compatible_with_transition: RequiredNullable::new(
-                        baseline_retargeting_requires_replace.then_some(false),
-                    ),
-                    exact_retry_action: RequiredNullable::new(retry_form.map(|form| {
-                        if baseline_retargeting_requires_replace {
-                            "baseline retargeting requires replace_current; retry volicord.update_scope with the current replace form".to_owned()
-                        } else {
-                            format!(
-                                "retry {} with the current action form",
-                                form.method.as_str()
-                            )
-                        }
-                    })),
-                    repair_required: false,
-                },
-                presentation,
-            })
-            .map_err(McpAdapterError::Json)?;
+        Some((method_result, transition_rejection))
+    } else {
+        None
+    };
+
+    let presentation = match workflow_presentation(
+        tool_name,
+        &response_kind,
+        outcome.facts.replayed,
+        outcome
+            .exact_method_result
+            .as_ref()
+            .expect("canonical mutation outcome requires an exact result"),
+        &authority,
+    ) {
+        Ok(presentation) => presentation,
+        Err(McpAdapterError::SchemaContractFailure { .. }) if rejected_method_result.is_some() => {
+            let transition_rejection = rejected_method_result
+                .as_ref()
+                .and_then(|(_, rejection)| rejection.clone());
+            let diagnostics = workflow_contract_diagnostics(
+                &authority.workflow,
+                None,
+                transition_rejection.as_ref(),
+            );
+            return internal_contract_inconsistent_rejection(
+                output,
+                tool_name,
+                transition_rejection,
+                diagnostics,
+            );
+        }
+        Err(_) => {
+            return mutation_post_effect_failure_output(
+                &outcome,
+                McpPostEffectFailureCode::McpResponseProjectionFailed,
+            )
+        }
+    };
+
+    if let Some((method_result, transition_rejection)) = rejected_method_result {
+        let diagnostics = workflow_contract_diagnostics(
+            &authority.workflow,
+            Some(&presentation.action_form_catalog),
+            transition_rejection.as_ref(),
+        );
+        let retry = match transition_rejection.as_ref().and_then(|rejection| {
+            rejection
+                .recovery_action_key
+                .as_ref()
+                .map(|recovery_action_key| {
+                    retry_contract(
+                        rejection.attempted_action_key,
+                        *recovery_action_key,
+                        &authority.workflow,
+                        &presentation.action_form_catalog,
+                        rejection.incompatible_submitted_paths.clone(),
+                    )
+                })
+        }) {
+            Some(Ok(retry)) => Some(retry),
+            Some(Err(_)) => {
+                return internal_contract_inconsistent_rejection(
+                    output,
+                    tool_name,
+                    transition_rejection,
+                    diagnostics,
+                )
+            }
+            None => None,
+        };
+        let baseline_compatibility = transition_rejection
+            .as_ref()
+            .and_then(|rejection| rejection.baseline_compatibility.as_ref());
+        output.primary_text = rejected_compatibility_text(tool_name, &presentation, retry.as_ref());
+        output.structured_content = serde_json::to_value(McpWorkflowRejectedResponse {
+            method_result,
+            authority_receipt: authority.receipt.clone(),
+            workflow: authority.workflow.clone(),
+            transition_rejection: RequiredNullable::new(transition_rejection.clone()),
+            retry_contract: RequiredNullable::new(retry),
+            failure: McpArgumentFailurePresentation {
+                method_committed: false,
+                reached_core: true,
+                current_task_phase: RequiredNullable::some(authority.work_phase),
+                current_state_version: RequiredNullable::some(authority.receipt.state_version),
+                checkpoint_recorded: false,
+                user_action_created: false,
+                product_repository_changed: false,
+                core_state_unchanged: true,
+                current_baseline_canonical: RequiredNullable::new(
+                    baseline_compatibility.map(|facts| facts.current_baseline_canonical),
+                ),
+                submitted_baseline_canonical: RequiredNullable::new(
+                    baseline_compatibility.map(|facts| facts.submitted_baseline_canonical),
+                ),
+                submitted_baseline_matches_current: RequiredNullable::new(
+                    baseline_compatibility.map(|facts| facts.submitted_baseline_matches_current),
+                ),
+                submitted_baseline_compatible_with_transition: RequiredNullable::new(
+                    baseline_compatibility
+                        .map(|facts| facts.submitted_baseline_compatible_with_transition),
+                ),
+                exact_retry_action: RequiredNullable::null(),
+                repair_required: false,
+            },
+            contract_diagnostics: diagnostics,
+            presentation,
+        })
+        .map_err(McpAdapterError::Json)?;
         output.mutation_refresh_context = None;
         return Ok(output);
     }
@@ -607,7 +632,10 @@ fn workflow_presentation(
         action_form_catalog: workflow_action_form_catalog(
             &authority.receipt.project_id,
             &authority.workflow,
-        ),
+        )
+        .map_err(|_| McpAdapterError::SchemaContractFailure {
+            tool_name: tool_name.to_owned(),
+        })?,
     })
 }
 
@@ -645,7 +673,80 @@ fn mutation_state_change(
     }
 }
 
-fn rejected_compatibility_text(tool_name: &str, presentation: &McpWorkflowPresentation) -> String {
+fn workflow_contract_diagnostics(
+    workflow: &volicord_types::schema::WorkflowProjection,
+    action_forms: Option<&volicord_mcp_wire::WorkflowActionFormCatalog>,
+    rejection: Option<&TransitionRejection>,
+) -> McpWorkflowContractDiagnostics {
+    McpWorkflowContractDiagnostics {
+        normalized_workflow_snapshot: workflow.clone(),
+        current_transition_catalog: workflow.transition_catalog().clone(),
+        current_action_forms: RequiredNullable::new(action_forms.cloned()),
+        attempted_action_key: RequiredNullable::new(
+            rejection.map(|rejection| rejection.attempted_action_key),
+        ),
+        typed_rejection_reason: RequiredNullable::new(rejection.map(|rejection| rejection.reason)),
+        recovery_action_key: RequiredNullable::new(
+            rejection.and_then(|rejection| rejection.recovery_action_key.as_ref().copied()),
+        ),
+        workflow_contract_digest: action_forms.map_or_else(
+            volicord_types::managed_guidance::workflow_action_contract_semantic_digest,
+            |forms| forms.workflow_contract_digest.clone(),
+        ),
+        semantic_schema_digest: action_forms.map_or_else(
+            volicord_types::managed_guidance::mcp_semantic_schema_digest,
+            |forms| forms.semantic_schema_digest.clone(),
+        ),
+    }
+}
+
+fn internal_contract_inconsistent_rejection(
+    mut output: ToolCallOutput,
+    tool_name: &str,
+    transition_rejection: Option<TransitionRejection>,
+    diagnostics: McpWorkflowContractDiagnostics,
+) -> Result<ToolCallOutput, McpAdapterError> {
+    let structured = McpToolErrorResponse {
+        code: McpToolErrorCode::InternalContractInconsistent,
+        tool_name: tool_name.to_owned(),
+        selected_variant: RequiredNullable::null(),
+        canonical_example: RequiredNullable::null(),
+        retryable: false,
+        reached_core: true,
+        committed: false,
+        reported_issue_count: 1,
+        truncated: false,
+        issues: vec![McpToolErrorIssue::new(
+            String::new(),
+            McpToolIssueCode::InternalContractInconsistent,
+            "Core named a recovery action that has no exact executable form in the current MCP projection.",
+        )],
+        authoritative_context: RequiredNullable::null(),
+        retry_contract: RequiredNullable::null(),
+        failure: RequiredNullable::null(),
+        workflow_admission: RequiredNullable::null(),
+        action_form_argument_mismatches: Vec::new(),
+        transition_rejection: RequiredNullable::new(transition_rejection),
+        contract_diagnostics: RequiredNullable::some(diagnostics),
+    };
+    output.primary_text = "Volicord rejected the mutation and found an internal workflow-contract inconsistency; Core state is unchanged and no retry is suggested.".to_owned();
+    output.structured_content = serde_json::to_value(
+        McpMutationStructuredContent::<Value, Value>::AdapterError(Box::new(structured)),
+    )
+    .map_err(McpAdapterError::Json)?;
+    output.is_error = true;
+    output.diagnostic_facts.core_reached = true;
+    output.diagnostic_facts.core_committed = false;
+    output.diagnostic_facts.effect_applied = false;
+    output.mutation_refresh_context = None;
+    Ok(output)
+}
+
+fn rejected_compatibility_text(
+    tool_name: &str,
+    presentation: &McpWorkflowPresentation,
+    retry: Option<&RetryContract>,
+) -> String {
     let recovery = presentation
         .must_surface
         .iter()
@@ -662,7 +763,15 @@ fn rejected_compatibility_text(tool_name: &str, presentation: &McpWorkflowPresen
         });
     let recovery_text = recovery.map_or_else(
         || "no current recovery transition is cataloged".to_owned(),
-        |action_key| format!("recover with {action_key}"),
+        |action_key| {
+            if retry.is_some_and(|contract| contract.retry_possible_in_current_task) {
+                format!("retry with the exact current form for {action_key}")
+            } else {
+                format!(
+                    "current recovery {action_key} is not retryable through this attempted action"
+                )
+            }
+        },
     );
     bounded_mutation_compatibility_text(format!(
         "Volicord {tool_name} rejected the mutation; Core state is unchanged; current Task phase={}/{}; {recovery_text}.",
@@ -1009,9 +1118,24 @@ fn authority_receipt_compatibility_text(
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{json, Value};
+    use volicord_types::ids::TaskId;
+    use volicord_types::schema::{
+        RequiredNullable, TransitionDescriptor, TransitionRejection,
+        WorkflowActionAuthorityCoordinates, WorkflowActionKey, WorkflowActionRole,
+        WorkflowCloseReadiness, WorkflowProjection, WorkflowTransitionCatalog,
+    };
+    use volicord_types::values::{
+        AuthorityNextActor, MethodName, TransitionRejectionReason, WorkflowActionSemanticVariant,
+        WorkflowAgentInputRequirement, WorkflowAuthorityInvalidationPolicy,
+        WorkflowExpectedResultState, WorkflowTransitionActor, WorkflowTransitionEffectClass,
+    };
 
-    use super::response_kind_from_structured_content;
+    use super::{
+        internal_contract_inconsistent_rejection, response_kind_from_structured_content,
+        workflow_contract_diagnostics,
+    };
+    use crate::tool_dispatch::ToolCallOutput;
 
     #[test]
     fn response_branch_projection_uses_response_kind_not_dry_run_metadata() {
@@ -1038,5 +1162,77 @@ mod tests {
             response_kind_from_structured_content(&compound_result_with_requested_intent),
             Some("result")
         );
+    }
+
+    #[test]
+    fn missing_recovery_form_projects_bounded_internal_error_and_preserves_rejection() {
+        let task_id = TaskId::new("task_contract_inconsistent");
+        let action_key = WorkflowActionKey {
+            method: MethodName::CloseTask,
+            semantic_variant: WorkflowActionSemanticVariant::CloseTask,
+        };
+        let transition_catalog = WorkflowTransitionCatalog::new(vec![TransitionDescriptor {
+            action_key,
+            actor: WorkflowTransitionActor::Agent,
+            role: WorkflowActionRole::Required,
+            expected_state_version: 7,
+            fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::CloseTask { task_id },
+            agent_input_requirements: vec![WorkflowAgentInputRequirement::CloseIntent],
+            effect_class: WorkflowTransitionEffectClass::TerminalMutation,
+            expected_result_state: WorkflowExpectedResultState::Terminal,
+            authority_invalidation: WorkflowAuthorityInvalidationPolicy::Permitted,
+            required_refs: Vec::new(),
+        }])
+        .expect("valid test transition catalog");
+        let workflow = WorkflowProjection::ShapingRequired {
+            next_actor: AuthorityNextActor::Agent,
+            required_refs: Vec::new(),
+            expected_state_version: 7,
+            blocking_reason: RequiredNullable::null(),
+            checkpoint: RequiredNullable::null(),
+            transition_catalog: transition_catalog.clone(),
+            close_readiness: WorkflowCloseReadiness {
+                assessment_required: false,
+                current_close_basis_present: false,
+            },
+        };
+        let rejection = TransitionRejection::new(
+            action_key,
+            TransitionRejectionReason::ClosePreconditionMissing,
+            true,
+            Some(action_key),
+            Vec::new(),
+            workflow.kind(),
+            &transition_catalog,
+        )
+        .expect("valid typed rejection");
+        let diagnostics = workflow_contract_diagnostics(&workflow, None, Some(&rejection));
+        let output = internal_contract_inconsistent_rejection(
+            ToolCallOutput::success("{}".to_owned()).expect("empty test output"),
+            MethodName::CloseTask.as_str(),
+            Some(rejection.clone()),
+            diagnostics,
+        )
+        .expect("bounded internal error projection");
+
+        assert!(output.is_error);
+        assert_eq!(
+            output.structured_content["code"],
+            "INTERNAL_CONTRACT_INCONSISTENT"
+        );
+        assert_eq!(output.structured_content["committed"], false);
+        assert_eq!(output.structured_content["retry_contract"], Value::Null);
+        assert_eq!(
+            serde_json::from_value::<TransitionRejection>(
+                output.structured_content["transition_rejection"].clone()
+            )
+            .expect("preserved transition rejection"),
+            rejection
+        );
+        assert_eq!(
+            output.structured_content["contract_diagnostics"]["current_action_forms"],
+            Value::Null
+        );
+        assert!(output.primary_text.len() <= 512);
     }
 }

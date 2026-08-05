@@ -56,28 +56,23 @@ close review. A later response can choose a different route when the recorded
 facts change. Close blockers remain blocker-local remediation data and never
 replace current workflow progression.
 
-For the selected Task-state-bound method and semantic variant, use its exact
-entry in the tagged action-form catalog. Several variants in one required
-method group are alternatives, not simultaneous requirements. Copy
-`fixed_arguments` exactly, supply only the listed Agent-authored inputs, and
-send that method-and-variant form's exact `form_ref` as `action_form_ref`. A
-form never authorizes another method or variant; do
-not speculate with a different shaping or implementation method. Never
-reconstruct checkpoint lineage, scope revision, baseline, Change Unit, or
-resolution coordinates advertised as fixed. `volicord.update_scope` is the
-exception where the listed Agent-authored `baseline_ref` supplies the next
-baseline rather than copying the current one. Choose only a current create,
-keep, or replace form; baseline retargeting with a current Change Unit requires
-the replace form. The generic MCP binder checks every advertised
-`fixed_argument_paths` value for exact deep equality before Core; preserve JSON
-types and array order. Project and expected state version are adapter-injected
-from current authority rather than copied into caller-controlled fields. If a
-fixed value is altered or omitted, use the current form returned with
-`ACTION_FORM_ARGUMENT_MISMATCH` and retry its exact fixed arguments. If other
-validation or pre-Core method/variant admission fails, use the MCP
-schema, authoritative argument context, and retry contract. Report accurately
-that Core was not reached and state did not change. Preserve JSON primitive
-types and the selected union branch; an argument error does not imply Task
+For a Task-state-bound action, use the exact catalog entry whose `action_key`
+matches the selected Core transition. Copy `fixed_arguments` exactly, supply
+only the listed `agent_authored_inputs`, and send that form's exact `form_ref` as
+`action_form_ref`; `canonical_minimal_request` is a schema-valid executable
+starting point for the same action. A form never authorizes another method or
+variant. Preserve JSON types and array order, and never reconstruct coordinates
+listed as fixed. Project and expected state version are adapter-injected from
+current authority rather than copied into caller-controlled fields.
+
+If a fixed value is altered or omitted, use only the exact current form returned
+for that same action. For a Core rejection, use only the exact
+recovery action and `recovery_form` Core returned through the typed retry
+contract; never infer recovery from a field name, message text, or a nearby
+form. A null recovery form means the attempted action cannot perform the current
+recovery. Do not search CLI help, binary strings, or source code for MCP schemas.
+Report pre-Core failure, Core rejection, and persisted-data corruption as
+distinct outcomes. Transition incompatibility alone does not diagnose Task
 corruption. Do not edit Product Repository files before the required authority
 mutation succeeds, and report failed checkpoint or UserAction creation as no
 creation and no Core state change.

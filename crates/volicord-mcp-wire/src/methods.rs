@@ -20,8 +20,7 @@ use volicord_types::schema::{
     EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, ResidualRiskInput,
     ShapingCheckpointOperation, ShapingGapInput, SourceRef, StagedArtifactHandle, StateRecordRef,
     ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowActionKey,
-    WorkflowActionRole, WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason,
-    WriteTicket,
+    WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -80,6 +79,8 @@ pub enum McpToolErrorCode {
     WorkflowActionNotAllowed,
     #[serde(rename = "WORKFLOW_ACTION_VARIANT_NOT_ALLOWED")]
     WorkflowActionVariantNotAllowed,
+    #[serde(rename = "INTERNAL_CONTRACT_INCONSISTENT")]
+    InternalContractInconsistent,
 }
 
 /// MCP wire-owned identity for operational unavailability.
@@ -148,6 +149,8 @@ pub enum McpToolIssueCode {
     WorkflowActionNotAllowed,
     #[serde(rename = "WORKFLOW_ACTION_VARIANT_NOT_ALLOWED")]
     WorkflowActionVariantNotAllowed,
+    #[serde(rename = "INTERNAL_CONTRACT_INCONSISTENT")]
+    InternalContractInconsistent,
 }
 
 /// One independently discoverable MCP tool error issue.
@@ -187,29 +190,28 @@ impl McpToolErrorIssue {
 pub struct WorkflowActionInput {
     pub path: String,
     pub semantic_type: String,
+    pub required: bool,
 }
 
 /// MCP executable projection of one Core-owned current workflow action intent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowActionForm {
+    pub action_key: volicord_types::schema::WorkflowActionKey,
     pub form_ref: RequestHash,
-    pub method: MethodName,
-    pub selected_semantic_variant: WorkflowActionSemanticVariant,
-    pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_arguments: JsonObject,
-    pub fixed_argument_paths: Vec<String>,
-    pub suggested_arguments: JsonObject,
-    pub required_inputs: Vec<WorkflowActionInput>,
-    pub optional_inputs: Vec<WorkflowActionInput>,
+    pub agent_authored_inputs: Vec<WorkflowActionInput>,
+    pub canonical_minimal_request: JsonObject,
 }
 
 /// Complete MCP form catalog derived from one neutral Core action catalog.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowActionFormCatalog {
-    pub required_method: RequiredNullable<MethodName>,
+    pub required_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub workflow_contract_digest: RequestHash,
+    pub semantic_schema_digest: RequestHash,
     pub forms: Vec<WorkflowActionForm>,
 }
 
@@ -218,7 +220,9 @@ impl WorkflowActionFormCatalog {
         &self,
         method: MethodName,
     ) -> impl Iterator<Item = &WorkflowActionForm> {
-        self.forms.iter().filter(move |form| form.method == method)
+        self.forms
+            .iter()
+            .filter(move |form| form.action_key.method == method)
     }
 
     pub fn form(
@@ -227,7 +231,7 @@ impl WorkflowActionFormCatalog {
         semantic_variant: WorkflowActionSemanticVariant,
     ) -> Option<&WorkflowActionForm> {
         self.forms.iter().find(|form| {
-            form.method == method && form.selected_semantic_variant == semantic_variant
+            form.action_key.method == method && form.action_key.semantic_variant == semantic_variant
         })
     }
 
@@ -236,22 +240,10 @@ impl WorkflowActionFormCatalog {
     }
 
     pub fn required_forms(&self) -> impl Iterator<Item = &WorkflowActionForm> {
-        let required_method = self.required_method.as_ref().copied();
+        let required_action_key = self.required_action_key.as_ref().copied();
         self.forms
             .iter()
-            .filter(move |form| Some(form.method) == required_method)
-    }
-
-    pub fn only_form_for_method(&self, method: MethodName) -> Option<&WorkflowActionForm> {
-        let mut forms = self.forms_for_method(method);
-        let form = forms.next()?;
-        forms.next().is_none().then_some(form)
-    }
-
-    pub fn only_required_form(&self) -> Option<&WorkflowActionForm> {
-        let mut forms = self.required_forms();
-        let form = forms.next()?;
-        forms.next().is_none().then_some(form)
+            .filter(move |form| Some(form.action_key) == required_action_key)
     }
 }
 
@@ -275,15 +267,24 @@ pub struct AuthoritativeArgumentContext {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RetryContract {
-    pub method: MethodName,
-    pub selected_semantic_variant: WorkflowActionSemanticVariant,
-    pub action_form_ref: RequiredNullable<RequestHash>,
-    pub fixed_arguments: JsonObject,
-    pub fixed_argument_paths: Vec<String>,
-    pub invalid_paths: Vec<String>,
-    pub required_inputs: Vec<WorkflowActionInput>,
-    pub action_form_catalog: WorkflowActionFormCatalog,
-    pub corrected_retry_allowed: bool,
+    pub recovery_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub recovery_form: RequiredNullable<WorkflowActionForm>,
+    pub invalid_or_incompatible_submitted_paths: Vec<String>,
+    pub retry_possible_in_current_task: bool,
+}
+
+/// Bounded current workflow-contract facts used by rejection and session diagnostics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpWorkflowContractDiagnostics {
+    pub normalized_workflow_snapshot: WorkflowProjection,
+    pub current_transition_catalog: volicord_types::schema::WorkflowTransitionCatalog,
+    pub current_action_forms: RequiredNullable<WorkflowActionFormCatalog>,
+    pub attempted_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub typed_rejection_reason: RequiredNullable<volicord_types::values::TransitionRejectionReason>,
+    pub recovery_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub workflow_contract_digest: RequestHash,
+    pub semantic_schema_digest: RequestHash,
 }
 
 /// Compact truth about a failed workflow-action attempt.
@@ -375,6 +376,8 @@ pub struct McpToolErrorResponse {
     pub failure: RequiredNullable<McpArgumentFailurePresentation>,
     pub workflow_admission: RequiredNullable<McpWorkflowAdmissionRejection>,
     pub action_form_argument_mismatches: Vec<McpActionFormArgumentMismatch>,
+    pub transition_rejection: RequiredNullable<volicord_types::schema::TransitionRejection>,
+    pub contract_diagnostics: RequiredNullable<McpWorkflowContractDiagnostics>,
 }
 
 /// Structured MCP failure when an operational dependency cannot produce a tool result.
@@ -687,6 +690,7 @@ pub struct McpWorkflowRejectedResponse {
     pub transition_rejection: RequiredNullable<volicord_types::schema::TransitionRejection>,
     pub retry_contract: RequiredNullable<RetryContract>,
     pub failure: McpArgumentFailurePresentation,
+    pub contract_diagnostics: McpWorkflowContractDiagnostics,
 }
 
 /// MCP status projection with the executable current action form.

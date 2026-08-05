@@ -73,8 +73,16 @@ TransitionRejection:
   state_change_applied: false
   retryable: boolean
   recovery_action_key: WorkflowActionKey | null
+  incompatible_submitted_paths: string[]
+  baseline_compatibility: BaselineTransitionCompatibility | null
   blocking_refs: StateRecordRef[]
   current_workflow_kind: WorkflowStateKind
+
+BaselineTransitionCompatibility:
+  current_baseline_canonical: boolean
+  submitted_baseline_canonical: boolean
+  submitted_baseline_matches_current: boolean
+  submitted_baseline_compatible_with_transition: boolean
 ```
 
 `attempted_action_key`는 admission에 실패한 정확한 메서드와 semantic variant를
@@ -88,6 +96,12 @@ TransitionRejection:
 non-null입니다. Core는 메서드 이름이나 표시 문구에서 복구 동작을 만들어 내지 않습니다.
 `retryable`은 `ToolError.retryable`과 같은 의미 기반 재시도 사실을 반복하며, 어느 쪽도
 적용된 mutation의 replay를 허가하지 않습니다. 바깥 거부는 계속 `no_effect`입니다.
+
+`incompatible_submitted_paths`에는 Core가 식별한 요청 경로만 들어갑니다.
+`baseline_compatibility`는 Core가 이 정확한 transition의 기준선 호환성을 평가했을 때만
+non-null입니다. 현재 값의 canonicality, 제출 값의 canonicality, 현재 권한과의 일치,
+선택한 transition과의 호환성은 서로 독립된 네 사실입니다. MCP와 다른 renderer는 이를
+복사할 뿐 `field`, 오류 문구, 메서드 이름에서 추론하지 않습니다.
 
 <a id="platform-diagnostic-detail-field"></a>
 

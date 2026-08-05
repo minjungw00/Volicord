@@ -4,8 +4,9 @@ use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::{
     ids::{BaselineRef, TaskId},
     schema::{
-        AuthorityBasisMismatch, AuthorityBasisValue, DryRunSummary, FalseValue, NextActionSummary,
-        PlannedEffect, ToolEnvelope, TransitionRejection, WorkflowActionKey, WorkflowProjection,
+        AuthorityBasisMismatch, AuthorityBasisValue, BaselineTransitionCompatibility,
+        DryRunSummary, FalseValue, NextActionSummary, PlannedEffect, ToolEnvelope,
+        TransitionRejection, WorkflowActionKey, WorkflowProjection,
     },
     values::{
         ErrorCode, MethodName, RunKind, TransitionRejectionReason, UtcTimestamp,
@@ -91,7 +92,35 @@ pub(crate) fn transition_rejected_response(
     retryable: bool,
     recovery_action_key: Option<WorkflowActionKey>,
 ) -> CoreResult<PipelineResponse> {
-    let details = TransitionRejection::new(
+    transition_rejected_response_with_compatibility(
+        envelope,
+        project_state,
+        workflow,
+        code,
+        message,
+        attempted_action_key,
+        reason,
+        retryable,
+        recovery_action_key,
+        None,
+    )
+}
+
+/// Builds a rejection whose transition compatibility assessment is supplied by Core.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transition_rejected_response_with_compatibility(
+    envelope: &ToolEnvelope,
+    project_state: &ProjectStateHeader,
+    workflow: &WorkflowProjection,
+    code: ErrorCode,
+    message: &'static str,
+    attempted_action_key: WorkflowActionKey,
+    reason: TransitionRejectionReason,
+    retryable: bool,
+    recovery_action_key: Option<WorkflowActionKey>,
+    baseline_compatibility: Option<BaselineTransitionCompatibility>,
+) -> CoreResult<PipelineResponse> {
+    let mut details = TransitionRejection::new(
         attempted_action_key,
         reason,
         retryable,
@@ -103,6 +132,13 @@ pub(crate) fn transition_rejected_response(
     .map_err(|detail| crate::pipeline::CorePipelineError::Invariant {
         detail: detail.to_owned(),
     })?;
+    if let Some(compatibility) = baseline_compatibility {
+        details = details
+            .with_baseline_compatibility(compatibility)
+            .map_err(|detail| crate::pipeline::CorePipelineError::Invariant {
+                detail: detail.to_owned(),
+            })?;
+    }
     let details = object_from_value(serde_json::to_value(details)?)?;
     rejected_pipeline_response(
         envelope.dry_run,

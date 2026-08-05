@@ -2082,6 +2082,16 @@ storage, advance project authority state, change evidence or assurance, change
 close readiness, resolve a UserAction, terminalize a Repository Observation,
 or scan the Product Repository.
 
+An MCP workflow projection inconsistency records the bounded occurrence code
+`mcp.tool_call.contract_inconsistent` through the existing runtime-session
+diagnostic path. The immediate structured tool error carries the normalized
+workflow snapshot, current transition catalog, current action forms when they
+could be generated, attempted action key, typed rejection reason, recovery
+action key, workflow-contract digest, and semantic-schema digest. The CLI
+session lookup retains the occurrence separately from current authority; it does
+not replay request bodies, mutate the Task, or turn immutable diagnostic history
+into workflow authority.
+
 Active Connection verification persists CLI-owned findings for managed
 configuration, Guard files and observations, repository trust, and revision
 freshness. `trust.repository.not_trusted`, `revision.integration.stale`, and

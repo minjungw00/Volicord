@@ -2,6 +2,10 @@
 
 shaping에 제품, 기술, 범위, 민감 승인이 필요하면 Core는 현재 shaping gap에 연결된 정확한 UserAction 요청을 생성합니다. 채팅 내용은 이 요청을 해결할 수 없습니다. 지원되는 User Channel에서 결정을 제출해야 합니다. Pending 요청은 `awaiting_user_action`을 사용하고, 수락되면 담당 메서드가 결정을 적용할 수 있습니다. 거부, 보류, 만료는 권한을 부여하지 않으며 `decision_recovery_required`를 통해 agent에게 shaping 계획 수정을 요구합니다. 수정된 계획에도 같은 판단이 필요하면 successor 요청이 필요합니다.
 
+Core가 User 소유 recovery를 지정하면 MCP는 그 정확한 action key를 보존하지만 Agent action
+form을 제공하거나 시도한 Agent action으로 해결할 수 있다고 주장하지 않습니다. User
+Channel만이 계속 권한 경로입니다.
+
 Volicord를 사용하면 평소 말로 에이전트와 일하면서도 범위, 증거, 사용자 소유 판단,
 닫기 상태를 구분할 수 있습니다. 이 문서는 사용자 작업 흐름을 설명합니다. 정확한
 계약은 [참조 색인](../reference/README.md)에 있습니다.

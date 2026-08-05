@@ -75,8 +75,16 @@ TransitionRejection:
   state_change_applied: false
   retryable: boolean
   recovery_action_key: WorkflowActionKey | null
+  incompatible_submitted_paths: string[]
+  baseline_compatibility: BaselineTransitionCompatibility | null
   blocking_refs: StateRecordRef[]
   current_workflow_kind: WorkflowStateKind
+
+BaselineTransitionCompatibility:
+  current_baseline_canonical: boolean
+  submitted_baseline_canonical: boolean
+  submitted_baseline_matches_current: boolean
+  submitted_baseline_compatible_with_transition: boolean
 ```
 
 `attempted_action_key` preserves the exact method and semantic variant that
@@ -92,6 +100,13 @@ same current `WorkflowTransitionCatalog`; Core never fabricates a method-only
 or message-derived recovery. `retryable` repeats the semantic retry fact used
 by `ToolError.retryable`; neither permits replaying an applied mutation. The
 enclosing rejection remains `no_effect`.
+
+`incompatible_submitted_paths` contains only Core-identified request paths.
+`baseline_compatibility` is non-null only when Core assessed baseline
+compatibility for this exact transition. Canonicality of the current and
+submitted values, equality with current authority, and compatibility with the
+selected transition remain four independent facts. MCP and other renderers copy
+them and do not infer them from `field`, message text, or a method name.
 
 <a id="platform-diagnostic-detail-field"></a>
 

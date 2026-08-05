@@ -1100,14 +1100,16 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     let current_form = response["authoritative_context"]["action_form_catalog"]["forms"]
         .as_array()
         .and_then(|forms| {
-            forms
-                .iter()
-                .find(|form| form["method"] == AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
+            forms.iter().find(|form| {
+                form["action_key"]["method"] == AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name()
+            })
         })
         .expect("current action-form catalog should contain record_shaping_checkpoint");
-    assert!(response["retry_contract"]["invalid_paths"]
-        .as_array()
-        .is_some_and(|paths| paths.contains(&json!("/checkpoint_operation/operation"))));
+    assert!(
+        response["retry_contract"]["invalid_or_incompatible_submitted_paths"]
+            .as_array()
+            .is_some_and(|paths| paths.contains(&json!("/checkpoint_operation/operation")))
+    );
     assert_eq!(response["failure"]["reached_core"], false);
     assert_eq!(response["failure"]["core_state_unchanged"], true);
     assert!(response["canonical_example"].is_null());
@@ -1149,19 +1151,25 @@ fn checkpoint_discriminator_errors_are_branch_local_and_project_one_summary(
     assert_eq!(fixture.counts()?, before);
 
     let retry = &response["retry_contract"];
-    assert_eq!(retry["action_form_ref"], current_form["form_ref"]);
+    assert_eq!(retry["recovery_form"]["form_ref"], current_form["form_ref"]);
     assert_eq!(
-        retry["fixed_arguments"]["checkpoint_operation"]["operation"],
+        retry["recovery_form"]["fixed_arguments"]["checkpoint_operation"]["operation"],
         "create_initial"
     );
-    assert_eq!(retry["fixed_arguments"]["scope_revision"], 0);
-    assert_eq!(retry["fixed_arguments"]["baseline_ref"], Value::Null);
-    assert_eq!(retry["corrected_retry_allowed"], true);
+    assert_eq!(
+        retry["recovery_form"]["fixed_arguments"]["scope_revision"],
+        0
+    );
+    assert_eq!(
+        retry["recovery_form"]["fixed_arguments"]["baseline_ref"],
+        Value::Null
+    );
+    assert_eq!(retry["retry_possible_in_current_task"], true);
 
     let corrected = adapter.call_tool(
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         json!({
-            "action_form_ref": retry["action_form_ref"],
+            "action_form_ref": retry["recovery_form"]["form_ref"],
             "task_id": task_id,
             "checkpoint_operation": {"operation": "create_initial"},
             "scope_revision": 0,

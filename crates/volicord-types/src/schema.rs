@@ -971,6 +971,16 @@ pub struct WorkflowRejectionUserAction {
     pub required_owner_method: MethodName,
 }
 
+/// Core-owned assessment of submitted and current transition baselines.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BaselineTransitionCompatibility {
+    pub current_baseline_canonical: bool,
+    pub submitted_baseline_canonical: bool,
+    pub submitted_baseline_matches_current: bool,
+    pub submitted_baseline_compatible_with_transition: bool,
+}
+
 /// Core-owned rejection of one exact workflow action.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -980,6 +990,8 @@ pub struct TransitionRejection {
     pub state_change_applied: FalseValue,
     pub retryable: bool,
     pub recovery_action_key: RequiredNullable<WorkflowActionKey>,
+    pub incompatible_submitted_paths: Vec<String>,
+    pub baseline_compatibility: RequiredNullable<BaselineTransitionCompatibility>,
     pub blocking_refs: Vec<StateRecordRef>,
     pub current_workflow_kind: crate::values::WorkflowStateKind,
 }
@@ -1010,9 +1022,27 @@ impl TransitionRejection {
             state_change_applied: FalseValue,
             retryable,
             recovery_action_key: RequiredNullable::new(recovery_action_key),
+            incompatible_submitted_paths: Vec::new(),
+            baseline_compatibility: RequiredNullable::null(),
             blocking_refs,
             current_workflow_kind,
         })
+    }
+
+    /// Attaches the exact Core-owned baseline assessment for a compatibility rejection.
+    pub fn with_baseline_compatibility(
+        mut self,
+        compatibility: BaselineTransitionCompatibility,
+    ) -> Result<Self, &'static str> {
+        if self.reason != crate::values::TransitionRejectionReason::AuthorityBasisMismatch {
+            return Err("baseline compatibility requires an authority-basis mismatch");
+        }
+        if compatibility.submitted_baseline_compatible_with_transition {
+            return Err("a rejected baseline assessment cannot be transition-compatible");
+        }
+        self.incompatible_submitted_paths = vec!["/baseline_ref".to_owned()];
+        self.baseline_compatibility = RequiredNullable::some(compatibility);
+        Ok(self)
     }
 
     /// Confirms whether an error code requires this closed details object.

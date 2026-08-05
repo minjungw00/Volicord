@@ -416,19 +416,20 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     assert_eq!(invalid["failure"]["product_repository_changed"], false);
     assert_eq!(invalid["failure"]["repair_required"], false);
     assert_eq!(
-        invalid["retry_contract"]["fixed_arguments"]["checkpoint_operation"]["operation"],
+        invalid["retry_contract"]["recovery_form"]["fixed_arguments"]["checkpoint_operation"]
+            ["operation"],
         "create_initial"
     );
     assert_eq!(
-        invalid["retry_contract"]["fixed_arguments"]["scope_revision"],
+        invalid["retry_contract"]["recovery_form"]["fixed_arguments"]["scope_revision"],
         0
     );
     assert_eq!(
-        invalid["retry_contract"]["fixed_arguments"]["baseline_ref"],
+        invalid["retry_contract"]["recovery_form"]["fixed_arguments"]["baseline_ref"],
         Value::Null
     );
     assert_eq!(
-        invalid["retry_contract"]["action_form_ref"],
+        invalid["retry_contract"]["recovery_form"]["form_ref"],
         action_form_ref
     );
     for forbidden_field in [
@@ -554,7 +555,7 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     assert_eq!(mismatch["failure"]["current_baseline_canonical"], true);
     assert_eq!(mismatch["failure"]["repair_required"], false);
     assert_eq!(
-        mismatch["retry_contract"]["action_form_ref"],
+        mismatch["retry_contract"]["recovery_form"]["form_ref"],
         action_form_ref
     );
     for forbidden_field in [
@@ -6594,9 +6595,9 @@ fn required_transition_form_ref(structured: &Value) -> Result<String, Box<dyn Er
         .into_iter()
         .find_map(|pointer| {
             let catalog = structured.pointer(pointer)?;
-            let required_method = catalog["required_method"].as_str()?;
+            let required_action_key = catalog.get("required_action_key")?;
             catalog["forms"].as_array()?.iter().find_map(|form| {
-                if form["method"].as_str() == Some(required_method) {
+                if &form["action_key"] == required_action_key {
                     form["form_ref"].as_str().map(str::to_owned)
                 } else {
                     None
@@ -6615,12 +6616,23 @@ fn method_action_form(structured: &Value, tool: AgentToolId) -> Result<&Value, B
     ["/action_form_catalog", "/presentation/action_form_catalog"]
         .into_iter()
         .find_map(|pointer| {
-            structured
-                .pointer(pointer)?
-                .get("forms")?
-                .as_array()?
-                .iter()
-                .find(|form| form["method"].as_str() == Some(tool.wire_name()))
+            let catalog = structured.pointer(pointer)?;
+            let forms = catalog.get("forms")?.as_array()?;
+            if catalog
+                .pointer("/required_action_key/method")
+                .and_then(Value::as_str)
+                == Some(tool.wire_name())
+            {
+                let required_action_key = catalog.get("required_action_key")?;
+                return forms
+                    .iter()
+                    .find(|form| &form["action_key"] == required_action_key);
+            }
+            let mut method_forms = forms.iter().filter(|form| {
+                form.pointer("/action_key/method").and_then(Value::as_str) == Some(tool.wire_name())
+            });
+            let form = method_forms.next()?;
+            method_forms.next().is_none().then_some(form)
         })
         .ok_or_else(|| {
             format!(

@@ -501,7 +501,7 @@ fn plan_update_scope_mutations(
             .transition_catalog()
             .transition(&replace_key)
             .map(|transition| transition.action_key);
-        let response = transition_rejected_response(
+        let response = crate::method_rejection::transition_rejected_response_with_compatibility(
             &request.envelope,
             project_state,
             &admitted_transition.workflow,
@@ -511,6 +511,12 @@ fn plan_update_scope_mutations(
             TransitionRejectionReason::AuthorityBasisMismatch,
             recovery_action_key.is_some(),
             recovery_action_key,
+            Some(volicord_types::schema::BaselineTransitionCompatibility {
+                current_baseline_canonical: true,
+                submitted_baseline_canonical: true,
+                submitted_baseline_matches_current: false,
+                submitted_baseline_compatible_with_transition: false,
+            }),
         )
         .map_err(PlanError::Core)?;
         return Err(PlanError::Response(Box::new(response)));

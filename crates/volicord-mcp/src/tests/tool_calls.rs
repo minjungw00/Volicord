@@ -293,8 +293,8 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
         advance_form_ref
     );
     assert_eq!(
-        rejected_checkpoint["workflow_admission"]["required_method_forms"][0]
-            ["selected_semantic_variant"],
+        rejected_checkpoint["workflow_admission"]["required_method_forms"][0]["action_key"]
+            ["semantic_variant"],
         "advance_task"
     );
     for advisor_field in [
@@ -356,7 +356,15 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
     assert_transition_catalog_is_canonical(
         &implementation_status.response_value["active_task"]["workflow"],
     );
-    let update_form_ref = action_form_ref_for_method(&adapter, &task_id, MethodName::UpdateScope)?;
+    let update_form_ref = action_form_for_variant(
+        &adapter,
+        &task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+    )?
+    .form_ref
+    .as_str()
+    .to_owned();
     let prepare_evidence_form_ref =
         action_form_ref_for_method(&adapter, &task_id, MethodName::PrepareEvidenceCapture)?;
     let prepare_form_ref =
@@ -502,8 +510,15 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
     let foreign_fixture = CoreFixture::new("mcp-workflow-catalog-foreign-form")?;
     let foreign_adapter = super::support::adapter(&foreign_fixture)?;
     let (foreign_task_id, _, _) = create_implementation_task(&foreign_fixture)?;
-    let foreign_form_ref =
-        action_form_ref_for_method(&foreign_adapter, &foreign_task_id, MethodName::UpdateScope)?;
+    let foreign_form_ref = action_form_for_variant(
+        &foreign_adapter,
+        &foreign_task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+    )?
+    .form_ref
+    .as_str()
+    .to_owned();
     assert_stale_without_effect(json!({
         "action_form_ref": foreign_form_ref,
         "task_id": task_id,
@@ -572,15 +587,16 @@ fn checkpoint_fixed_basis_mismatch_is_pre_core_and_reports_typed_null() -> Resul
         action_form_ref
     );
     assert_eq!(
-        structured["retry_contract"]["action_form_ref"],
+        structured["retry_contract"]["recovery_form"]["form_ref"],
         action_form_ref
     );
     assert_eq!(
-        structured["retry_contract"]["fixed_arguments"]["baseline_ref"],
+        structured["retry_contract"]["recovery_form"]["fixed_arguments"]["baseline_ref"],
         Value::Null
     );
     assert_eq!(
-        structured["retry_contract"]["fixed_arguments"]["checkpoint_operation"]["operation"],
+        structured["retry_contract"]["recovery_form"]["fixed_arguments"]["checkpoint_operation"]
+            ["operation"],
         "create_initial"
     );
     assert_eq!(structured["failure"]["current_task_phase"], "shaping");
@@ -595,6 +611,7 @@ fn checkpoint_fixed_basis_mismatch_is_pre_core_and_reports_typed_null() -> Resul
         &task_id,
         MethodName::RecordShapingCheckpoint,
         json!({
+            "checkpoint_operation": {"operation": "create_initial"},
             "summary": "The exact current authority basis is accepted.",
             "implementation_boundary": "Only the current bounded implementation.",
             "gaps": [{
@@ -990,8 +1007,20 @@ fn keep_current_baseline_retarget_surfaces_replace_and_keep_forms_without_effect
         WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str()
     );
     assert_eq!(
-        structured["retry_contract"]["selected_semantic_variant"],
+        structured["retry_contract"]["recovery_action_key"]["semantic_variant"],
         WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str()
+    );
+    assert_eq!(
+        structured["retry_contract"]["recovery_form"]["action_key"]["semantic_variant"],
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit.as_str()
+    );
+    assert_eq!(
+        structured["retry_contract"]["invalid_or_incompatible_submitted_paths"],
+        json!(["/baseline_ref"])
+    );
+    assert_eq!(
+        structured["retry_contract"]["retry_possible_in_current_task"],
+        true
     );
     assert_eq!(structured["failure"]["current_baseline_canonical"], true);
     assert_eq!(structured["failure"]["submitted_baseline_canonical"], true);
@@ -1003,10 +1032,27 @@ fn keep_current_baseline_retarget_surfaces_replace_and_keep_forms_without_effect
         structured["failure"]["submitted_baseline_compatible_with_transition"],
         false
     );
+    assert_eq!(structured["failure"]["exact_retry_action"], Value::Null);
     assert_eq!(
-        structured["failure"]["exact_retry_action"],
-        "baseline retargeting requires replace_current; retry volicord.update_scope with the current replace form"
+        structured["contract_diagnostics"]["attempted_action_key"],
+        structured["transition_rejection"]["attempted_action_key"]
     );
+    assert_eq!(
+        structured["contract_diagnostics"]["recovery_action_key"],
+        structured["transition_rejection"]["recovery_action_key"]
+    );
+    assert_eq!(
+        structured["contract_diagnostics"]["typed_rejection_reason"],
+        structured["transition_rejection"]["reason"]
+    );
+    assert!(
+        structured["contract_diagnostics"]["workflow_contract_digest"]
+            .as_str()
+            .is_some_and(volicord_types::canonical::is_canonical_sha256_digest)
+    );
+    assert!(structured["contract_diagnostics"]["semantic_schema_digest"]
+        .as_str()
+        .is_some_and(volicord_types::canonical::is_canonical_sha256_digest));
     assert_eq!(structured["failure"]["reached_core"], true);
     assert_eq!(structured["failure"]["method_committed"], false);
     assert_eq!(fixture.counts()?, before);
@@ -1048,9 +1094,25 @@ fn implementation_forms_reject_every_tampered_fixed_coordinate_before_core(
         let adapter = adapter(&fixture)?;
         let (task_id, _, _) = create_implementation_task(&fixture)?;
         let tool = AgentToolId::from_method(method).expect("state-bound method tool");
-        let form = action_form_for_method(&adapter, &task_id, method)?;
+        let form = if method == MethodName::UpdateScope {
+            action_form_for_variant(
+                &adapter,
+                &task_id,
+                method,
+                WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
+            )?
+        } else {
+            action_form_for_method(&adapter, &task_id, method)?
+        };
+        let fixed_argument_paths = volicord_mcp_wire::action_form_request_projection(
+            form.action_key.method,
+            form.action_key.semantic_variant,
+        )
+        .ok_or("action form request projection")?
+        .concrete_fixed_argument_paths(&form.fixed_arguments)
+        .map_err(std::io::Error::other)?;
         assert_eq!(form.expected_state_version, fixture.counts()?.state_version);
-        assert!(!form.fixed_argument_paths.is_empty());
+        assert!(!fixed_argument_paths.is_empty());
 
         let authored = match method {
             MethodName::ReconcileChanges => json!({"resolution_requests": []}),
@@ -1063,7 +1125,7 @@ fn implementation_forms_reject_every_tampered_fixed_coordinate_before_core(
         };
         let exact = bind_action_form_arguments(&adapter, &task_id, method, authored)?;
 
-        for path in &form.fixed_argument_paths {
+        for path in &fixed_argument_paths {
             let expected = exact
                 .pointer(path)
                 .ok_or_else(|| format!("{} missing fixed path {path}", method.as_str()))?
@@ -1097,7 +1159,7 @@ fn implementation_forms_reject_every_tampered_fixed_coordinate_before_core(
                 form.form_ref.as_str()
             );
             assert_eq!(
-                error["retry_contract"]["action_form_ref"],
+                error["retry_contract"]["recovery_form"]["form_ref"],
                 form.form_ref.as_str()
             );
             assert_eq!(fixture.counts()?, before);
@@ -1127,6 +1189,7 @@ fn removed_checkpoint_mirror_fields_are_branch_local_unknown_arguments(
             &task_id,
             MethodName::RecordShapingCheckpoint,
             json!({
+                "checkpoint_operation": {"operation": "create_initial"},
                 "summary": "Removed checkpoint mirrors are not mutation inputs.",
                 "implementation_boundary": null,
                 "gaps": [],
@@ -2662,7 +2725,7 @@ fn rejected_shaping_decision_presentation_denies_authority_and_names_recovery(
         Value::Null
     );
     assert_eq!(
-        structured["workflow_admission"]["required_method_forms"][0]["method"],
+        structured["workflow_admission"]["required_method_forms"][0]["action_key"]["method"],
         "volicord.record_shaping_checkpoint"
     );
     assert_eq!(fixture.counts()?, before_rejected_application);
@@ -3155,6 +3218,13 @@ fn request_user_action_agent_projection_is_only_the_exact_pending_user_summary(
         "structuredContent": tool_result["structuredContent"].clone()
     });
     let model_visible_text = serde_json::to_string(&model_visible)?;
+    let mut user_action_projection = model_visible.clone();
+    if let Some(presentation) = user_action_projection
+        .pointer_mut("/structuredContent/presentation")
+        .and_then(Value::as_object_mut)
+    {
+        presentation.remove("action_form_catalog");
+    }
     let mut violations = Vec::new();
 
     for marker in [QUESTION_MARKER, OPTION_MARKER, CONTEXT_MARKER] {
@@ -3167,15 +3237,12 @@ fn request_user_action_agent_projection_is_only_the_exact_pending_user_summary(
         "user_action_request_ref",
         "inbox_item",
         "request_ref",
-        "question",
-        "options",
-        "form",
         "preferred_capture_path",
         "command",
         "url",
         "token",
     ] {
-        if !json_values_for_key(&model_visible, forbidden_key).is_empty() {
+        if !json_values_for_key(&user_action_projection, forbidden_key).is_empty() {
             violations.push(format!(
                 "agent projection exposed forbidden field {forbidden_key}"
             ));
@@ -3326,16 +3393,18 @@ fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), B
             "content": tool_result["content"].clone(),
             "structuredContent": tool_result["structuredContent"].clone(),
         });
+        let mut user_action_projection = model_visible.clone();
+        if let Some(presentation) = user_action_projection
+            .pointer_mut("/structuredContent/presentation")
+            .and_then(Value::as_object_mut)
+        {
+            presentation.remove("action_form_catalog");
+        }
         for forbidden_key in [
             "user_action_request",
             "user_action_request_ref",
             "request_ref",
             "inbox_item",
-            "question",
-            "options",
-            "context",
-            "context_summary",
-            "form",
             "preferred_capture_path",
             "answer_path_availability",
             "user_channel_availability",
@@ -3347,7 +3416,7 @@ fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), B
             "sensitive_action_scope",
         ] {
             assert!(
-                json_values_for_key(&model_visible, forbidden_key).is_empty(),
+                json_values_for_key(&user_action_projection, forbidden_key).is_empty(),
                 "{}: model-visible result exposed forbidden key {forbidden_key}",
                 case.name
             );

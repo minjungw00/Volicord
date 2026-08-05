@@ -2,8 +2,9 @@ use std::{error::Error, fmt, io};
 use volicord_core::pipeline::CorePipelineError;
 use volicord_mcp_wire::{
     AuthoritativeArgumentContext, McpActionFormArgumentMismatch, McpArgumentFailurePresentation,
-    McpToolErrorCode, McpToolErrorIssue, McpWorkflowAdmissionRejection, RetryContract,
-    MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES,
+    McpToolErrorCode, McpToolErrorIssue, McpWorkflowAdmissionRejection,
+    McpWorkflowContractDiagnostics, RetryContract, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
+    MAX_MCP_TOOL_ISSUE_PATH_BYTES,
 };
 use volicord_platform_fs::RuntimeHomeMutationLeaseError;
 use volicord_store::error::StoreError;
@@ -57,6 +58,12 @@ pub enum McpAdapterError {
     SchemaContractFailure {
         tool_name: String,
     },
+    InternalContractInconsistent {
+        tool_name: String,
+        reached_core: bool,
+        transition_rejection: Option<Box<volicord_types::schema::TransitionRejection>>,
+        diagnostics: Box<McpWorkflowContractDiagnostics>,
+    },
     ToolExecution {
         tool_name: String,
         message: String,
@@ -109,6 +116,10 @@ impl fmt::Display for McpAdapterError {
                 formatter,
                 "MCP semantic descriptor and exact Rust decoder disagree for {tool_name}"
             ),
+            Self::InternalContractInconsistent { tool_name, .. } => write!(
+                formatter,
+                "MCP workflow contract is internally inconsistent for {tool_name}"
+            ),
             Self::ToolExecution { tool_name, message } => {
                 write!(formatter, "{tool_name}: {message}")
             }
@@ -151,6 +162,7 @@ impl Error for McpAdapterError {
             Self::UnknownTool(_)
             | Self::InvalidParams { .. }
             | Self::SchemaContractFailure { .. }
+            | Self::InternalContractInconsistent { .. }
             | Self::ToolExecution { .. }
             | Self::ToolOutputSchema { .. }
             | Self::OperationalUnavailable { .. }

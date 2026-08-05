@@ -684,8 +684,11 @@ resolution, 메서드 내부 권한 사실에 결속됩니다. 같은 machine �
 가용성도 소유합니다. 현재 Change Unit이 없으면 `create_current_change_unit`만 허용하고,
 현재 Change Unit이 있으면 `keep_current_change_unit`와 현재 권한이 허용할 때의
 `replace_current_change_unit`만 허용하며 `create_current_change_unit`는 허용하지
-않습니다. MCP는 Agent descriptor를 실행 가능한 action form으로 투영하지만 MCP form과
-입력 slot은 Core 상태가 아닙니다.
+않습니다. MCP는 각 Agent descriptor를 정확히 하나의 실행 가능한 variant별 action form으로
+투영하며 descriptor가 없으면 form도 투영하지 않습니다. Form 생성은 schema 경로, semantic
+값, 필수 Agent 입력, 정확한 binding, 검증을 통과하는 canonical minimal request, 같은
+snapshot에 대한 commit 없는 admission을 확인합니다. MCP form과 입력 slot은 Core 상태가
+아닙니다.
 
 Ancestor에서 호환되게 carry-forward된 shaping application은 source gap을 복사하지 않아도
 `applied`로 유지됩니다. Stale 권한은 permission을 부여하지 않고 정확한 ref를 가진 명시적
@@ -699,9 +702,12 @@ MCP checkpoint 제출의 정규 compare-and-swap 좌표는
 않습니다.
 
 Workflow mutation 거부는 정확한 시도 action key, 폐쇄형 reason, 정규 blocking ref, 현재
-workflow kind를 담은 `TransitionRejection`을 사용합니다. Non-null
+workflow kind, Core가 식별한 비호환 제출 경로, typed 기준선 compatibility assessment를 담은
+`TransitionRejection`을 사용합니다. 현재 값의 canonicality, 제출 값의 canonicality, 현재
+권한과의 일치, transition 호환성은 서로 다른 사실입니다. Non-null
 `recovery_action_key`는 같은 catalog 안에 실제로 있을 때만 유효합니다. 수신 payload, 오류
-field, 표시 문구에서 복구 동작을 재구성하지 않습니다. 거부된 요청은 replay row를 만들지
+field, 표시 문구에서 복구 동작을 재구성하지 않으며 MCP는 그 정확한 현재 action form만
+조회합니다. 거부된 요청은 replay row를 만들지
 않으며 action-key identity와 고정 권한 좌표가 exact replay와 충돌 semantic variant를
 구분합니다.
 
