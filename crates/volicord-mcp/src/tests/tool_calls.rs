@@ -812,8 +812,10 @@ fn mcp_and_direct_core_status_produce_the_same_domain_outcome() -> Result<(), Bo
         test_agent_invocation(&fixture, OperationCategory::Read),
     )?;
     let adapter = adapter(&fixture)?;
-    let through_mcp =
-        adapter.call_tool(AgentToolId::STATUS.wire_name(), json!({ "detail": "full" }))?;
+    let through_mcp = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({ "detail": "full", "task_id": null }),
+    )?;
 
     let mut direct_domain = direct.response_value;
     direct_domain
@@ -839,7 +841,7 @@ fn mcp_status_succeeds_with_readonly_storage() -> Result<(), Box<dyn Error>> {
 
     let response = adapter.call_tool(
         AgentToolId::STATUS.wire_name(),
-        json!({ "detail": "workflow" }),
+        json!({ "detail": "workflow", "task_id": null }),
     )?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
@@ -861,8 +863,10 @@ fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     let before_sessions = read_only_table_count(&fixture, "host_sessions")?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response =
-        adapter.call_tool(AgentToolId::STATUS.wire_name(), json!({ "detail": "full" }))?;
+    let response = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({ "detail": "full", "task_id": null }),
+    )?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(read_only_state_version(&fixture)?, before_version);
@@ -897,7 +901,7 @@ fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
         tools_call(
             2,
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
-            json!({ "operation_result_ref": operation_result_ref.clone() }),
+            json!({ "operation_result_ref": operation_result_ref.clone(), "cursor": null }),
         ),
     ])?);
     let mut output = Vec::new();
@@ -937,7 +941,7 @@ fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
     let disabled = stale_adapter
         .call_tool(
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
-            json!({ "operation_result_ref": operation_result_ref }),
+            json!({ "operation_result_ref": operation_result_ref, "cursor": null }),
         )
         .expect_err("every result page should recheck current connection access");
     assert!(
@@ -994,7 +998,9 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
         MethodName::UpdateScope,
         json!({
             "detail": "full",
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
             "goal_summary": goal_summary,
+            "scope_update": null,
             "scope_boundary": scope_boundary,
             "non_goals": non_goals,
             "acceptance_criteria": acceptance_criteria,
@@ -1049,7 +1055,16 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
         &setup_adapter,
         &task_id,
         MethodName::UpdateScope,
-        json!({"change_unit": {"operation": "keep_current"}}),
+        json!({
+            "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "change_unit": {"operation": "keep_current"}
+        }),
     )?;
     let advanced = call_stdio(AgentToolId::UPDATE_SCOPE.wire_name(), advanced_arguments)?;
     let advanced_structured = &advanced["result"]["structuredContent"];
@@ -1066,7 +1081,8 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     let mut pages = 0_usize;
     loop {
         let mut arguments = json!({
-            "operation_result_ref": operation_result_ref_value.clone()
+            "operation_result_ref": operation_result_ref_value.clone(),
+            "cursor": null
         });
         if let Some(next_cursor) = cursor.take() {
             arguments["cursor"] = Value::String(next_cursor);
@@ -1241,7 +1257,10 @@ fn artifact_staging_is_no_effect_while_setup_is_exclusive() -> Result<(), Box<dy
         "display_name": "setup-busy.txt",
         "content_type": "text/plain",
         "redaction_state": "redacted",
-        "safe_bytes_or_notice": "must not be staged while setup is exclusive"
+        "safe_bytes_or_notice": "must not be staged while setup is exclusive",
+        "expected_sha256": null,
+        "expected_size_bytes": null,
+        "relation_hint": null
     });
 
     let error = adapter
@@ -1521,7 +1540,7 @@ fn adapter_auto_selects_single_project_and_injects_connection_invocation(
     let fixture = CoreFixture::new("mcp-auto-select")?;
     let adapter = adapter(&fixture)?;
 
-    let response = adapter.call_tool("volicord.status", json!({}))?;
+    let response = adapter.call_tool("volicord.status", json!({"task_id": null}))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     let verified = response
@@ -1682,7 +1701,7 @@ fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
-        tools_call(2, AgentToolId::STATUS.wire_name(), json!({})),
+        tools_call(2, AgentToolId::STATUS.wire_name(), json!({"task_id": null})),
     ])?);
     let mut output = Vec::new();
 
@@ -1718,6 +1737,7 @@ fn project_bound_stdio_rejects_a_guessed_repository_name_as_project_selector(
             AgentToolId::STATUS.wire_name(),
             json!({
                 "detail": "workflow",
+                "task_id": null,
                 "project_selector": "product-repo"
             }),
         ),
@@ -3017,7 +3037,7 @@ fn project_tool_rejects_missing_managed_session_coordinates() -> Result<(), Box<
     let error = adapter
         .call_tool(
             AgentToolId::STATUS.wire_name(),
-            json!({"detail": "workflow"}),
+            json!({"detail": "workflow", "task_id": null}),
         )
         .expect_err("project tools require current managed session coordinates");
     assert!(error.to_string().contains("agent_session_missing"));
@@ -3037,7 +3057,7 @@ fn invented_session_coordinates_do_not_authorize_or_insert_a_project_session(
         .call_tool_for_session(
             &fixture.mutation_context()?,
             AgentToolId::STATUS,
-            json!({"detail": "workflow"}),
+            json!({"detail": "workflow", "task_id": null}),
             Some(AgentSessionCoordinates {
                 runtime_session_id: "mcp_invented_runtime",
                 project_session_id: "agent_invented_session",

@@ -17,7 +17,7 @@
 | `channel_submission_id` | 예 | 아니요 | `string` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `resolution` | 예 | 아니요 | `UserActionResolutionInput` |
-| `user_action_request_id` | 예 | 아니요 | `string` |
+| `user_action_request_id` | 예 | 아니요 | `UserActionRequestId` |
 <!-- END GENERATED: contract-structures api.method.resolve_user_action.request[params] -->
 
 

@@ -179,7 +179,7 @@ API 경계 블록:
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
-| `task_id` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 
 ### `CloseTaskRequest` 필드
 
@@ -188,8 +188,8 @@ API 경계 블록:
 | `close_reason` | 예 | 예 | `CloseReason` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `intent` | 예 | 아니요 | `CloseMutationIntent` |
-| `superseding_task_id` | 예 | 예 | `string` |
-| `task_id` | 예 | 아니요 | `string` |
+| `superseding_task_id` | 예 | 예 | `TaskId` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 | `user_note` | 예 | 예 | `string` |
 <!-- END GENERATED: contract-structures api.method.check_close.request[params] api.method.close_task.request[params] -->
 

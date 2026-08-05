@@ -33,7 +33,15 @@
   "schemas": {
     "volicord.advance_task": {
       "definitions": [
-        "ToolEnvelope"
+        "BaselineRef",
+        "ChangeUnitId",
+        "IdempotencyKey",
+        "ProjectId",
+        "RequestId",
+        "ShapingCheckpointId",
+        "TaskId",
+        "ToolEnvelope",
+        "UserActionResolutionId"
       ],
       "root_properties": [
         "baseline_ref",
@@ -53,10 +61,14 @@
         "task_id",
         "user_action_resolution_ids"
       ],
-      "sha256": "sha256:7a902dade407cbb43c986681c134ed07e7178ed518f843237565ee9ab53c14e0"
+      "sha256": "sha256:132d87ee870c0c281696f1d4f61909845f9ad52e7d3a49850c99f5eae257315f"
     },
     "volicord.check_close": {
       "definitions": [
+        "IdempotencyKey",
+        "ProjectId",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope"
       ],
       "root_properties": [
@@ -67,12 +79,16 @@
         "envelope",
         "task_id"
       ],
-      "sha256": "sha256:348144463704b6716aee23c953e4026ee24ad69bf1514f30d8bcd44f11b8538a"
+      "sha256": "sha256:8854bdc0adad8d60003ad62d0c4e424b13bfed96159a48b754ed04364d1d035d"
     },
     "volicord.close_task": {
       "definitions": [
         "CloseMutationIntent",
         "CloseReason",
+        "IdempotencyKey",
+        "ProjectId",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope"
       ],
       "root_properties": [
@@ -91,14 +107,23 @@
         "task_id",
         "user_note"
       ],
-      "sha256": "sha256:86152021876ab5fe92ec36c4ba4f53bd70ad4b5e1371ddbb682f7adda17a24f5"
+      "sha256": "sha256:71d5ac3ebb7b47e6b50ba07e1f5681d846a7bb4ccbf9f430c4738c5bf444e806"
     },
     "volicord.finalize_advice": {
       "definitions": [
+        "BaselineRef",
+        "ChangeUnitId",
+        "IdempotencyKey",
+        "ProjectId",
+        "RecordId",
+        "RequestId",
         "ResidualRiskInput",
+        "ShapingCheckpointId",
         "StateRecordKind",
         "StateRecordRef",
-        "ToolEnvelope"
+        "TaskId",
+        "ToolEnvelope",
+        "UserActionResolutionId"
       ],
       "root_properties": [
         "baseline_ref",
@@ -128,12 +153,16 @@
         "task_id",
         "user_action_resolution_ids"
       ],
-      "sha256": "sha256:18dfc9f1bd87c762970b85766f89800ef206ef693221761811169ed24ad3c210"
+      "sha256": "sha256:15282a4d2fd502b096c954f0dc88f0a9470213caf7f4c7fe6f74c09402f6d5ce"
     },
     "volicord.get_operation_result": {
       "definitions": [
+        "IdempotencyKey",
         "MethodName",
         "OperationResultRef",
+        "ProjectId",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope"
       ],
       "root_properties": [
@@ -146,7 +175,7 @@
         "envelope",
         "operation_result_ref"
       ],
-      "sha256": "sha256:9d6b37672409d907dcca2121770863ab99b169b0a4ff7d173146cb9acb412a17"
+      "sha256": "sha256:deaf4c2abcf05e24ef581ecda7c8666da078d98157ef1db1c5f252ef3d76428f"
     },
     "volicord.intake": {
       "definitions": [
@@ -154,6 +183,7 @@
         "AcceptancePolicy",
         "ActorSource",
         "ArtifactAvailability",
+        "ArtifactId",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
         "CarryForwardKind",
@@ -162,9 +192,13 @@
         "ExternalUriSource",
         "GitCommitSource",
         "GitDiffSource",
+        "IdempotencyKey",
         "InitialScope",
+        "ProjectId",
+        "RecordId",
         "RedactionState",
         "RepositoryFileSource",
+        "RequestId",
         "RequestedControlLevel",
         "RequestedMode",
         "ResumePolicy",
@@ -172,6 +206,8 @@
         "SourceRef",
         "StateRecordKind",
         "StateRecordRef",
+        "StorageRef",
+        "TaskId",
         "TaskLineageInput",
         "TaskLineageRelation",
         "ToolEnvelope",
@@ -201,12 +237,20 @@
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:3f3141a7f8f2d4cb8ba2794b5c301499b8976754c2b97dc0c643eb8916b16b7b"
+      "sha256": "sha256:82a37a292469f025ee679d50e724c37e859ff1adc5c2b35f70d9a60213b44618"
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
+        "AcceptanceCriterionId",
+        "BaselineRef",
+        "ChangeUnitId",
         "EvidenceCaptureSpec",
+        "EvidenceClaimId",
         "EvidenceTarget",
+        "IdempotencyKey",
+        "ProjectId",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope"
       ],
       "root_properties": [
@@ -225,10 +269,16 @@
         "target",
         "task_id"
       ],
-      "sha256": "sha256:e84b41bfb69fc407b7ac618ed265a1a9d3940dd0e41f9ec53ae146b11cdf0506"
+      "sha256": "sha256:0af99aed9e917a492775b02624dea44fb9a0b2c8945e7a8267691e25b54e6989"
     },
     "volicord.prepare_write": {
       "definitions": [
+        "BaselineRef",
+        "ChangeUnitId",
+        "IdempotencyKey",
+        "ProjectId",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope"
       ],
       "root_properties": [
@@ -251,13 +301,19 @@
         "sensitive_categories",
         "task_id"
       ],
-      "sha256": "sha256:7b745f74337352540e6b1cd5f0a6ebbe1e22bd368659820bc3820f718a70cf93"
+      "sha256": "sha256:1cfbef276e5add9c310a3cc52debc43faacc49eb69ee74fa6d577ec6d8f54d93"
     },
     "volicord.reconcile_changes": {
       "definitions": [
+        "IdempotencyKey",
+        "ProjectId",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope",
+        "UnrecordedChangeId",
         "UnrecordedChangeResolutionBasis",
-        "UnrecordedChangeResolutionRequest"
+        "UnrecordedChangeResolutionRequest",
+        "UserActionResolutionId"
       ],
       "root_properties": [
         "envelope",
@@ -268,19 +324,25 @@
         "envelope",
         "task_id"
       ],
-      "sha256": "sha256:8812dcc7f38c487c309cd0d90ac539d75a4604ab64e8b883e50895d972152573"
+      "sha256": "sha256:bedba241b582444ac437a065fcf256c8020645232b39518dcd3d983327332fff"
     },
     "volicord.record_run": {
       "definitions": [
+        "AcceptanceCriterionId",
         "ActorSource",
         "ArtifactAvailability",
+        "ArtifactId",
         "ArtifactInput",
+        "ArtifactInputId",
         "ArtifactInputSourceKind",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
+        "BaselineRef",
+        "ChangeUnitId",
         "CloseAssessmentInput",
         "CommandSource",
         "EvidenceAssuranceLevel",
+        "EvidenceClaimId",
         "EvidenceCoverageUpdate",
         "EvidenceCoverageUpdateState",
         "EvidenceObservationInput",
@@ -290,19 +352,28 @@
         "ExternalUriSource",
         "GitCommitSource",
         "GitDiffSource",
+        "IdempotencyKey",
         "ObservedChanges",
+        "ProjectId",
+        "RecordId",
         "RedactionState",
         "RepositoryFileSource",
+        "RequestId",
         "ResidualRiskInput",
+        "RunId",
         "RunKind",
         "SourceLineRange",
         "SourceRef",
         "StagedArtifactHandle",
+        "StagedArtifactHandleId",
         "StateRecordKind",
         "StateRecordRef",
+        "StorageRef",
+        "TaskId",
         "ToolEnvelope",
         "UserContextSource",
-        "UtcTimestamp"
+        "UtcTimestamp",
+        "WriteTicketId"
       ],
       "root_properties": [
         "artifact_inputs",
@@ -330,30 +401,41 @@
         "evidence_updates",
         "kind",
         "observed_changes",
+        "performed_operation",
         "run_id",
         "summary",
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:8ef288f75d94b65748d051914032586b80fd081546fc282ac3331ba100841683"
+      "sha256": "sha256:ea01c5ace5ca744402f254bedac6d7a2568b25b6a01ff48af4eb7211ef60a676"
     },
     "volicord.record_shaping_checkpoint": {
       "definitions": [
+        "AcceptanceCriterionId",
         "AcceptedRiskInput",
         "ActorSource",
         "ArtifactAvailability",
+        "ArtifactId",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
+        "BaselineRef",
         "CommandSource",
+        "EvidenceClaimId",
         "EvidenceTarget",
         "ExternalUriSource",
         "GitCommitSource",
         "GitDiffSource",
+        "IdempotencyKey",
         "JudgmentKind",
         "JudgmentPresentation",
+        "ProjectId",
+        "RecordId",
         "RedactionState",
         "RepositoryFileSource",
+        "RequestId",
+        "RiskId",
         "SensitiveActionScope",
+        "ShapingCheckpointId",
         "ShapingCheckpointOperation",
         "ShapingGapInput",
         "ShapingGapKind",
@@ -363,9 +445,12 @@
         "StaleShapingAuthorityAction",
         "StateRecordKind",
         "StateRecordRef",
+        "StorageRef",
+        "TaskId",
         "ToolEnvelope",
         "UserActionContext",
         "UserActionDraft",
+        "UserActionOptionId",
         "UserActionOptionInput",
         "UserContextSource",
         "UtcTimestamp"
@@ -394,25 +479,37 @@
         "summary",
         "task_id"
       ],
-      "sha256": "sha256:c090d18d8034866cb3135d2f96e8269533f8a120f8203992b30a59fa14869b40"
+      "sha256": "sha256:e67535fd1f6d3686bf17fd5d0a4b24cd1f289a5e7c5ed5124eb977d4040531c4"
     },
     "volicord.request_user_action": {
       "definitions": [
+        "AcceptanceCriterionId",
         "AcceptedRiskInput",
         "ActorSource",
         "ArtifactAvailability",
+        "ArtifactId",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
+        "ChangeUnitId",
+        "EvidenceClaimId",
         "EvidenceTarget",
+        "IdempotencyKey",
         "JudgmentKind",
         "JudgmentPresentation",
+        "ProjectId",
+        "RecordId",
         "RedactionState",
+        "RequestId",
+        "RiskId",
         "SensitiveActionScope",
         "StateRecordKind",
         "StateRecordRef",
+        "StorageRef",
+        "TaskId",
         "ToolEnvelope",
         "UserActionContext",
         "UserActionDraft",
+        "UserActionOptionId",
         "UserActionOptionInput",
         "UserActionRequiredFor",
         "UtcTimestamp"
@@ -433,13 +530,22 @@
         "required_for",
         "task_id"
       ],
-      "sha256": "sha256:46f3761d41bf32bd2b14a485296103eaca8ab05d24a0560634da8567488a7b40"
+      "sha256": "sha256:52a26e22206ea7984f0293b5478b605c8238f6bb1cde84959c8812089f120659"
     },
     "volicord.resolve_user_action": {
       "definitions": [
+        "AcceptanceCriterionId",
+        "ArtifactId",
+        "EvidenceClaimId",
         "EvidenceRelevanceStatus",
         "EvidenceTarget",
+        "IdempotencyKey",
+        "ProjectId",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope",
+        "UserActionOptionId",
+        "UserActionRequestId",
         "UserActionResolutionInput"
       ],
       "root_properties": [
@@ -454,11 +560,15 @@
         "resolution",
         "user_action_request_id"
       ],
-      "sha256": "sha256:3fff921c3aa805186dd49b281c644798534cccb7d7769b5d9db1bdbc23b863f6"
+      "sha256": "sha256:c4e0082cada16d6f965ecc23e0930a8e15d5830d7e614672580b76b37f970b3c"
     },
     "volicord.stage_artifact": {
       "definitions": [
+        "IdempotencyKey",
+        "ProjectId",
         "RedactionState",
+        "RequestId",
+        "TaskId",
         "ToolEnvelope"
       ],
       "root_properties": [
@@ -483,13 +593,18 @@
         "safe_bytes_or_notice",
         "task_id"
       ],
-      "sha256": "sha256:76be3bfbbb7e1f245fcc0da07efa68b7bad3ea168c5e5d1efe532de6987a6153"
+      "sha256": "sha256:19f57392f6a0ce3d55574832218464abe6335d36f254d2caa97dd11798a8bf9f"
     },
     "volicord.status": {
       "definitions": [
         "ContinuityCursor",
         "ContinuityPageRequest",
+        "IdempotencyKey",
+        "ProjectContinuityRecordId",
+        "ProjectId",
+        "RequestId",
         "StatusInclude",
+        "TaskId",
         "ToolEnvelope",
         "UtcTimestamp"
       ],
@@ -502,19 +617,26 @@
         "envelope",
         "include"
       ],
-      "sha256": "sha256:92b4f3ce355d6f65a8ab84689a3a8bdc53a084bdd3ce853d119550677d31cb82"
+      "sha256": "sha256:588cd8b54b50151ce14814ce180a3999592393dec2b86619cde425102059c28c"
     },
     "volicord.update_scope": {
       "definitions": [
+        "AcceptanceCriterionId",
         "AcceptanceCriterionReplacement",
+        "BaselineRef",
         "ChangeUnitEffectContract",
         "ChangeUnitEffectKind",
         "ChangeUnitOperation",
         "ChangeUnitUpdate",
         "EvidenceRequirement",
+        "IdempotencyKey",
+        "ProjectId",
+        "RecordId",
+        "RequestId",
         "ScopeUpdate",
         "StateRecordKind",
         "StateRecordRef",
+        "TaskId",
         "ToolEnvelope"
       ],
       "root_properties": [
@@ -543,7 +665,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:36acb3e4e14d7e4482e85a24ab2391bba0419cd0924899b4dba7786d261dc994"
+      "sha256": "sha256:5deff04a56ab2744f861f1186f34cc58664375608a2f76945ae2129701016922"
     }
   }
 }

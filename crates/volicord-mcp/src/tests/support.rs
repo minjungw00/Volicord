@@ -1484,10 +1484,6 @@ pub(super) fn assert_schema_value_refs_resolve(
     }
 }
 
-pub(super) fn strip_schema_presentation_for_test(value: &mut Value) {
-    compact_runtime_schema(value);
-}
-
 pub(super) fn root_properties(schema: &Value) -> Vec<String> {
     schema
         .get("properties")

@@ -66,7 +66,7 @@ come directly from the semantic request descriptor.
 |---|---|---|---|
 | `envelope` | yes | no | `ToolEnvelope` |
 | `resolution_requests` | no | no | `UnrecordedChangeResolutionRequest[]` |
-| `task_id` | yes | no | `string` |
+| `task_id` | yes | no | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.reconcile_changes.request[params] -->
 
 
@@ -74,7 +74,7 @@ come directly from the semantic request descriptor.
 Request field notes:
 
 - `resolution_requests` may be omitted and defaults to `[]`.
-- `user_action_resolution_id` may be omitted or set to `null`; both forms mean that no user-action resolution was supplied for that entry.
+- `user_action_resolution_id` is required-nullable. `null` means that no user-action resolution was supplied for that entry; omission is invalid.
 - `basis=accepted_by_user` requires `user_action_resolution_id` for an existing resolved, current `product_decision` user action for the same `Task`, linked to the unrecorded-change ref and recorded through a compatible User Channel with `actor_source=local_user`, `machine_action=accept`, and `resolution_outcome=accepted`.
 - Caller-supplied `reverted`, `covered_by_write_ticket`, or `recorded_as_expected_write` requests reject as agent-supplied system resolution bases. Core may still apply those bases itself when it can verify them deterministically.
 

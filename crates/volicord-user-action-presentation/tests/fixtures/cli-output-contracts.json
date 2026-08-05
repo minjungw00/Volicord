@@ -11,6 +11,12 @@
           "$schema": "http://json-schema.org/draft-07/schema#",
           "additionalProperties": false,
           "definitions": {
+            "AcceptanceCriterionId": {
+              "description": "Opaque Core-generated acceptance-criterion identifier.",
+              "title": "AcceptanceCriterionId",
+              "type": "string",
+              "x-volicord-semantic-type": "AcceptanceCriterionId"
+            },
             "ActorSource": {
               "type": "string"
             },
@@ -26,6 +32,12 @@
               ],
               "type": "string"
             },
+            "ArtifactId": {
+              "description": "Opaque artifact identifier.",
+              "title": "ArtifactId",
+              "type": "string",
+              "x-volicord-semantic-type": "ArtifactId"
+            },
             "ArtifactIntegrityStatus": {
               "description": "Artifact integrity fact classification values.",
               "enum": [
@@ -39,7 +51,7 @@
               "description": "Public artifact reference and metadata shape.",
               "properties": {
                 "artifact_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ArtifactId"
                 },
                 "availability": {
                   "$ref": "#/definitions/ArtifactAvailability"
@@ -77,7 +89,7 @@
                   "$ref": "#/definitions/ArtifactIntegrityStatus"
                 },
                 "project_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ProjectId"
                 },
                 "redaction_state": {
                   "$ref": "#/definitions/RedactionState"
@@ -97,13 +109,17 @@
                   ]
                 },
                 "storage_ref": {
-                  "type": [
-                    "string",
-                    "null"
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/StorageRef"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 },
                 "task_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/TaskId"
                 }
               },
               "required": [
@@ -122,6 +138,12 @@
                 "task_id"
               ],
               "type": "object"
+            },
+            "ChangeUnitId": {
+              "description": "Opaque Change Unit identifier.",
+              "title": "ChangeUnitId",
+              "type": "string",
+              "x-volicord-semantic-type": "ChangeUnitId"
             },
             "CliUserActionCapturePath": {
               "description": "Request-specific CLI path whose available branch carries a canonical command.",
@@ -197,9 +219,13 @@
                   "$ref": "#/definitions/CliUserActionCapturePath"
                 },
                 "change_unit_id": {
-                  "type": [
-                    "string",
-                    "null"
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ChangeUnitId"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 },
                 "context_summary": {
@@ -216,7 +242,7 @@
                   ]
                 },
                 "project_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ProjectId"
                 },
                 "question": {
                   "type": "string"
@@ -240,10 +266,10 @@
                   "$ref": "#/definitions/UserActionStatus"
                 },
                 "task_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/TaskId"
                 },
                 "user_action_request_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/UserActionRequestId"
                 }
               },
               "required": [
@@ -372,6 +398,12 @@
                 }
               ]
             },
+            "EvidenceClaimId": {
+              "description": "Opaque caller-assigned Task-scoped supplemental evidence-claim identifier.",
+              "title": "EvidenceClaimId",
+              "type": "string",
+              "x-volicord-semantic-type": "EvidenceClaimId"
+            },
             "EvidenceRelevanceStatus": {
               "description": "Core-derived claim-relevance assessment states for evidence observations.",
               "enum": [
@@ -388,7 +420,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "acceptance_criterion_id": {
-                      "type": "string"
+                      "$ref": "#/definitions/AcceptanceCriterionId"
                     },
                     "target_kind": {
                       "enum": [
@@ -407,7 +439,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "evidence_claim_id": {
-                      "type": "string"
+                      "$ref": "#/definitions/EvidenceClaimId"
                     },
                     "statement": {
                       "type": "string"
@@ -531,6 +563,18 @@
               ],
               "type": "string"
             },
+            "ProjectId": {
+              "description": "Opaque project identifier.",
+              "title": "ProjectId",
+              "type": "string",
+              "x-volicord-semantic-type": "ProjectId"
+            },
+            "RecordId": {
+              "description": "Opaque state-record identifier.",
+              "title": "RecordId",
+              "type": "string",
+              "x-volicord-semantic-type": "RecordId"
+            },
             "RedactionState": {
               "description": "Artifact redaction-state values.",
               "enum": [
@@ -581,18 +625,22 @@
                   ]
                 },
                 "project_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ProjectId"
                 },
                 "record_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/RecordId"
                 },
                 "record_kind": {
                   "$ref": "#/definitions/StateRecordKind"
                 },
                 "task_id": {
-                  "type": [
-                    "string",
-                    "null"
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/TaskId"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 }
               },
@@ -604,6 +652,12 @@
                 "task_id"
               ],
               "type": "object"
+            },
+            "StorageRef": {
+              "description": "Opaque artifact storage reference.",
+              "title": "StorageRef",
+              "type": "string",
+              "x-volicord-semantic-type": "StorageRef"
             },
             "SummaryCard": {
               "description": "Stable compact status card shared by status-like outputs.",
@@ -667,6 +721,12 @@
               ],
               "type": "object"
             },
+            "TaskId": {
+              "description": "Opaque Task identifier.",
+              "title": "TaskId",
+              "type": "string",
+              "x-volicord-semantic-type": "TaskId"
+            },
             "UserActionChannelKind": {
               "description": "Verified User Channel kinds that can resolve one pending user action.",
               "enum": [
@@ -688,6 +748,18 @@
               ],
               "type": "string"
             },
+            "UserActionOptionId": {
+              "description": "Opaque choice-action-local option identifier.",
+              "title": "UserActionOptionId",
+              "type": "string",
+              "x-volicord-semantic-type": "UserActionOptionId"
+            },
+            "UserActionRequestId": {
+              "description": "Opaque user-action-request identifier.",
+              "title": "UserActionRequestId",
+              "type": "string",
+              "x-volicord-semantic-type": "UserActionRequestId"
+            },
             "UserActionRequiredFor": {
               "description": "Judgment required-for values.",
               "enum": [
@@ -708,7 +780,7 @@
               "description": "Semantic answer choice for a choice-action resolution form.",
               "properties": {
                 "choice_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/UserActionOptionId"
                 },
                 "consequence": {
                   "type": "string"
@@ -868,6 +940,12 @@
           "$schema": "http://json-schema.org/draft-07/schema#",
           "additionalProperties": false,
           "definitions": {
+            "AcceptanceCriterionId": {
+              "description": "Opaque Core-generated acceptance-criterion identifier.",
+              "title": "AcceptanceCriterionId",
+              "type": "string",
+              "x-volicord-semantic-type": "AcceptanceCriterionId"
+            },
             "ActorSource": {
               "type": "string"
             },
@@ -883,6 +961,12 @@
               ],
               "type": "string"
             },
+            "ArtifactId": {
+              "description": "Opaque artifact identifier.",
+              "title": "ArtifactId",
+              "type": "string",
+              "x-volicord-semantic-type": "ArtifactId"
+            },
             "ArtifactIntegrityStatus": {
               "description": "Artifact integrity fact classification values.",
               "enum": [
@@ -896,7 +980,7 @@
               "description": "Public artifact reference and metadata shape.",
               "properties": {
                 "artifact_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ArtifactId"
                 },
                 "availability": {
                   "$ref": "#/definitions/ArtifactAvailability"
@@ -934,7 +1018,7 @@
                   "$ref": "#/definitions/ArtifactIntegrityStatus"
                 },
                 "project_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ProjectId"
                 },
                 "redaction_state": {
                   "$ref": "#/definitions/RedactionState"
@@ -954,13 +1038,17 @@
                   ]
                 },
                 "storage_ref": {
-                  "type": [
-                    "string",
-                    "null"
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/StorageRef"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 },
                 "task_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/TaskId"
                 }
               },
               "required": [
@@ -979,6 +1067,12 @@
                 "task_id"
               ],
               "type": "object"
+            },
+            "ChangeUnitId": {
+              "description": "Opaque Change Unit identifier.",
+              "title": "ChangeUnitId",
+              "type": "string",
+              "x-volicord-semantic-type": "ChangeUnitId"
             },
             "CliUserActionCapturePath": {
               "description": "Request-specific CLI path whose available branch carries a canonical command.",
@@ -1054,9 +1148,13 @@
                   "$ref": "#/definitions/CliUserActionCapturePath"
                 },
                 "change_unit_id": {
-                  "type": [
-                    "string",
-                    "null"
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ChangeUnitId"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 },
                 "context_summary": {
@@ -1073,7 +1171,7 @@
                   ]
                 },
                 "project_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ProjectId"
                 },
                 "question": {
                   "type": "string"
@@ -1097,10 +1195,10 @@
                   "$ref": "#/definitions/UserActionStatus"
                 },
                 "task_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/TaskId"
                 },
                 "user_action_request_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/UserActionRequestId"
                 }
               },
               "required": [
@@ -1229,6 +1327,12 @@
                 }
               ]
             },
+            "EvidenceClaimId": {
+              "description": "Opaque caller-assigned Task-scoped supplemental evidence-claim identifier.",
+              "title": "EvidenceClaimId",
+              "type": "string",
+              "x-volicord-semantic-type": "EvidenceClaimId"
+            },
             "EvidenceRelevanceStatus": {
               "description": "Core-derived claim-relevance assessment states for evidence observations.",
               "enum": [
@@ -1245,7 +1349,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "acceptance_criterion_id": {
-                      "type": "string"
+                      "$ref": "#/definitions/AcceptanceCriterionId"
                     },
                     "target_kind": {
                       "enum": [
@@ -1264,7 +1368,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "evidence_claim_id": {
-                      "type": "string"
+                      "$ref": "#/definitions/EvidenceClaimId"
                     },
                     "statement": {
                       "type": "string"
@@ -1388,6 +1492,18 @@
               ],
               "type": "string"
             },
+            "ProjectId": {
+              "description": "Opaque project identifier.",
+              "title": "ProjectId",
+              "type": "string",
+              "x-volicord-semantic-type": "ProjectId"
+            },
+            "RecordId": {
+              "description": "Opaque state-record identifier.",
+              "title": "RecordId",
+              "type": "string",
+              "x-volicord-semantic-type": "RecordId"
+            },
             "RedactionState": {
               "description": "Artifact redaction-state values.",
               "enum": [
@@ -1438,18 +1554,22 @@
                   ]
                 },
                 "project_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/ProjectId"
                 },
                 "record_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/RecordId"
                 },
                 "record_kind": {
                   "$ref": "#/definitions/StateRecordKind"
                 },
                 "task_id": {
-                  "type": [
-                    "string",
-                    "null"
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/TaskId"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 }
               },
@@ -1461,6 +1581,12 @@
                 "task_id"
               ],
               "type": "object"
+            },
+            "StorageRef": {
+              "description": "Opaque artifact storage reference.",
+              "title": "StorageRef",
+              "type": "string",
+              "x-volicord-semantic-type": "StorageRef"
             },
             "SummaryCard": {
               "description": "Stable compact status card shared by status-like outputs.",
@@ -1524,6 +1650,12 @@
               ],
               "type": "object"
             },
+            "TaskId": {
+              "description": "Opaque Task identifier.",
+              "title": "TaskId",
+              "type": "string",
+              "x-volicord-semantic-type": "TaskId"
+            },
             "UserActionChannelKind": {
               "description": "Verified User Channel kinds that can resolve one pending user action.",
               "enum": [
@@ -1545,6 +1677,18 @@
               ],
               "type": "string"
             },
+            "UserActionOptionId": {
+              "description": "Opaque choice-action-local option identifier.",
+              "title": "UserActionOptionId",
+              "type": "string",
+              "x-volicord-semantic-type": "UserActionOptionId"
+            },
+            "UserActionRequestId": {
+              "description": "Opaque user-action-request identifier.",
+              "title": "UserActionRequestId",
+              "type": "string",
+              "x-volicord-semantic-type": "UserActionRequestId"
+            },
             "UserActionRequiredFor": {
               "description": "Judgment required-for values.",
               "enum": [
@@ -1565,7 +1709,7 @@
               "description": "Semantic answer choice for a choice-action resolution form.",
               "properties": {
                 "choice_id": {
-                  "type": "string"
+                  "$ref": "#/definitions/UserActionOptionId"
                 },
                 "consequence": {
                   "type": "string"
@@ -1803,28 +1947,38 @@
         "cli.command.inbox.resolve"
       ],
       "schema_names": [
+        "AcceptanceCriterionId",
         "ActorSource",
         "ArtifactAvailability",
+        "ArtifactId",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
+        "ChangeUnitId",
         "CliUserActionCapturePath",
         "CliUserActionInboxItem",
         "CliUserActionInboxResponse",
         "CliUserActionRequirement",
         "CliUserChannelAvailability",
         "CliUserChannelPath",
+        "EvidenceClaimId",
         "EvidenceRelevanceStatus",
         "EvidenceTarget",
         "MethodName",
         "NextActionKind",
         "NextActionSummary",
         "OperationCategory",
+        "ProjectId",
+        "RecordId",
         "RedactionState",
         "StateRecordKind",
         "StateRecordRef",
+        "StorageRef",
         "SummaryCard",
+        "TaskId",
         "UserActionChannelKind",
         "UserActionKind",
+        "UserActionOptionId",
+        "UserActionRequestId",
         "UserActionRequiredFor",
         "UserActionResolutionChoice",
         "UserActionResolutionForm",

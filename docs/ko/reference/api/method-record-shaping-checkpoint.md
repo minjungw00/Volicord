@@ -22,7 +22,7 @@
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
-| `baseline_ref` | 예 | 예 | `string` |
+| `baseline_ref` | 예 | 예 | `BaselineRef` |
 | `checkpoint_operation` | 예 | 아니요 | `ShapingCheckpointOperation` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `evidence_refs` | 예 | 아니요 | `StateRecordRef[]` |
@@ -31,7 +31,7 @@
 | `scope_revision` | 예 | 아니요 | `integer` |
 | `source_refs` | 예 | 아니요 | `SourceRef[]` |
 | `summary` | 예 | 아니요 | `string` |
-| `task_id` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.record_shaping_checkpoint.request[params] -->
 
 위 생성 표는 adapter-neutral 메서드 요청입니다. MCP wire projection, 필수 nullable

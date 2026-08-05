@@ -65,7 +65,7 @@ Core는 현재 프로젝트와 `Task`의 미해결 미기록 변경도 함께 �
 |---|---|---|---|
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `resolution_requests` | 아니요 | 아니요 | `UnrecordedChangeResolutionRequest[]` |
-| `task_id` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.reconcile_changes.request[params] -->
 
 
@@ -73,7 +73,7 @@ Core는 현재 프로젝트와 `Task`의 미해결 미기록 변경도 함께 �
 요청 필드 참고:
 
 - `resolution_requests`는 생략할 수 있으며 기본값은 `[]`입니다.
-- `user_action_resolution_id`는 생략하거나 `null`로 보낼 수 있습니다. 둘 다 해당 항목에 사용자 행동 resolution을 제공하지 않았다는 뜻입니다.
+- `user_action_resolution_id`는 필수-null 허용 필드입니다. `null`은 해당 항목에 사용자 행동 resolution을 제공하지 않았다는 뜻이며, 생략은 유효하지 않습니다.
 - `basis=accepted_by_user`는 미기록 변경 참조에 연결된 기존 해결 사용자 행동을 `user_action_resolution_id`로 요구합니다. 그 행동은 같은 `Task`의 현재 `product_decision`이어야 하고, 호환 User Channel에서 `actor_source=local_user`, `machine_action=accept`, `resolution_outcome=accepted`로 기록되어야 합니다.
 - 호출자가 제공한 `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write` 요청은 에이전트가 제공한 시스템 해결 근거로 거부됩니다. Core가 결정적으로 검증할 수 있으면 같은 근거를 직접 적용할 수는 있습니다.
 

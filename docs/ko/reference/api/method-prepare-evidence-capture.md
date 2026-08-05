@@ -47,12 +47,12 @@ Fulfillment는 불변 영속 `EvidenceCaptureReceipt` source-fact record와 크�
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
-| `baseline_ref` | 예 | 아니요 | `string` |
+| `baseline_ref` | 예 | 아니요 | `BaselineRef` |
 | `capture` | 예 | 아니요 | `EvidenceCaptureSpec` |
-| `change_unit_id` | 예 | 아니요 | `string` |
+| `change_unit_id` | 예 | 아니요 | `ChangeUnitId` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `target` | 예 | 아니요 | `EvidenceTarget` |
-| `task_id` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.prepare_evidence_capture.request[params] -->
 
 
@@ -68,8 +68,8 @@ canonical JSON에 대한 접두사 없는 소문자 SHA-256입니다. `tool_inpu
 텍스트를 바꾸지 않은 채 앞뒤 공백만 제거합니다. 그 뒤 비어 있지 않은지와 256
 UTF-8-byte 상한을 검사하고 결과 값을 불변 intent에 저장합니다.
 
-MCP 생략 기본값은 `expected_exit_code=0`, `expected_success=true`입니다. 명시적
-`null`도 같은 뜻입니다. 안전한 label이 비어 있거나 digest가 잘못됐거나 대상이 현재 Task에
+`expected_exit_code`와 `expected_success`는 필수-null 허용 MCP 필드입니다. 명시적
+`null`은 각각 기본값 `0`과 `true`를 선택하며, 생략은 유효하지 않습니다. 안전한 label이 비어 있거나 digest가 잘못됐거나 대상이 현재 Task에
 속하지 않거나 Change Unit이 현재 상태가 아니거나 baseline이 호환되지 않거나
 검증된 Agent Connection 맥락이 없으면 커밋 전에 거부합니다. Tool capture는 호출
 맥락의 정확한 verified host invocation도 요구하지만 command capture는 요구하지

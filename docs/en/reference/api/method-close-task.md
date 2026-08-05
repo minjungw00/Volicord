@@ -175,7 +175,7 @@ semantic request descriptors.
 | Field | Required | Nullable | Type |
 |---|---|---|---|
 | `envelope` | yes | no | `ToolEnvelope` |
-| `task_id` | yes | no | `string` |
+| `task_id` | yes | no | `TaskId` |
 
 ### `CloseTaskRequest` fields
 
@@ -184,8 +184,8 @@ semantic request descriptors.
 | `close_reason` | yes | yes | `CloseReason` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `intent` | yes | no | `CloseMutationIntent` |
-| `superseding_task_id` | yes | yes | `string` |
-| `task_id` | yes | no | `string` |
+| `superseding_task_id` | yes | yes | `TaskId` |
+| `task_id` | yes | no | `TaskId` |
 | `user_note` | yes | yes | `string` |
 <!-- END GENERATED: contract-structures api.method.check_close.request[params] api.method.close_task.request[params] -->
 

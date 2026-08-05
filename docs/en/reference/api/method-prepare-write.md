@@ -114,14 +114,14 @@ come directly from the semantic request descriptor.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
-| `baseline_ref` | yes | no | `string` |
-| `change_unit_id` | yes | yes | `string` |
+| `baseline_ref` | yes | no | `BaselineRef` |
+| `change_unit_id` | yes | yes | `ChangeUnitId` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `intended_operation` | yes | no | `string` |
 | `intended_paths` | yes | no | `string[]` |
 | `product_file_write_intended` | yes | no | `boolean` |
 | `sensitive_categories` | yes | no | `string[]` |
-| `task_id` | yes | yes | `string` |
+| `task_id` | yes | yes | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.prepare_write.request[params] -->
 
 
@@ -294,7 +294,7 @@ state.
 | `write_decision_reasons` | yes | no | `WriteDecisionReason[]` |
 | `write_ticket` | no | yes | `WriteTicket` |
 | `write_ticket_effect` | yes | no | `WriteTicketEffect` |
-| `write_ticket_id` | no | yes | `string` |
+| `write_ticket_id` | no | yes | `WriteTicketId` |
 | `write_ticket_ref` | no | yes | `StateRecordRef` |
 
 ### `Result Metadata: core_committed` fields

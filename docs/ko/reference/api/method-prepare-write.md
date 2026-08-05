@@ -106,14 +106,14 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
-| `baseline_ref` | 예 | 아니요 | `string` |
-| `change_unit_id` | 예 | 예 | `string` |
+| `baseline_ref` | 예 | 아니요 | `BaselineRef` |
+| `change_unit_id` | 예 | 예 | `ChangeUnitId` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `intended_operation` | 예 | 아니요 | `string` |
 | `intended_paths` | 예 | 아니요 | `string[]` |
 | `product_file_write_intended` | 예 | 아니요 | `boolean` |
 | `sensitive_categories` | 예 | 아니요 | `string[]` |
-| `task_id` | 예 | 예 | `string` |
+| `task_id` | 예 | 예 | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.prepare_write.request[params] -->
 
 
@@ -273,7 +273,7 @@ ticket을 stored 상태로 표현하지 않습니다.
 | `write_decision_reasons` | 예 | 아니요 | `WriteDecisionReason[]` |
 | `write_ticket` | 아니요 | 예 | `WriteTicket` |
 | `write_ticket_effect` | 예 | 아니요 | `WriteTicketEffect` |
-| `write_ticket_id` | 아니요 | 예 | `string` |
+| `write_ticket_id` | 아니요 | 예 | `WriteTicketId` |
 | `write_ticket_ref` | 아니요 | 예 | `StateRecordRef` |
 
 ### `결과 Metadata: core_committed` 필드

@@ -20,13 +20,13 @@ effect are `stable`.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
-| `baseline_ref` | yes | no | `string` |
-| `change_unit_id` | yes | no | `string` |
+| `baseline_ref` | yes | no | `BaselineRef` |
+| `change_unit_id` | yes | no | `ChangeUnitId` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `scope_revision` | yes | no | `integer` |
-| `shaping_checkpoint_id` | yes | no | `string` |
-| `task_id` | yes | no | `string` |
-| `user_action_resolution_ids` | yes | no | `string[]` |
+| `shaping_checkpoint_id` | yes | no | `ShapingCheckpointId` |
+| `task_id` | yes | no | `TaskId` |
+| `user_action_resolution_ids` | yes | no | `UserActionResolutionId[]` |
 <!-- END GENERATED: contract-structures api.method.advance_task.request[params] -->
 
 The request supplies the exact current Task, current structurally ready shaping checkpoint,

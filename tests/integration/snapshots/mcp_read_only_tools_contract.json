@@ -32,7 +32,9 @@
         "definitions": [
           "ContinuityCursor",
           "ContinuityPageRequest",
+          "ProjectContinuityRecordId",
           "StatusDetailLevel",
+          "TaskId",
           "UtcTimestamp"
         ],
         "root_properties": [
@@ -41,29 +43,35 @@
           "project_selector",
           "task_id"
         ],
-        "root_required": [],
-        "sha256": "sha256:ee7df6846a9473edaf66b7f30bf1b68da505aad854b3462e25409f28cc6904a0"
+        "root_required": [
+          "task_id"
+        ],
+        "sha256": "sha256:208f363d6c70b1815c1566564bd0f53201ac6c15e8954c63f9a9a882b6de307d"
       },
       "name": "volicord.status",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptanceCriterionId",
           "AcceptancePolicy",
           "ActorSource",
           "AgentSafePendingUserActionStatus",
           "AgentSafeUserActionNextActor",
           "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
+          "ArtifactId",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "AuthorityReceipt",
+          "BaselineRef",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
+          "ChangeUnitId",
           "CloseReadinessBlocker",
           "CloseReadinessBlockerCategory",
           "CloseReason",
@@ -73,7 +81,9 @@
           "CurrentCloseBasis",
           "EmptyEventRefs",
           "ErrorCode",
+          "EventId",
           "EventRef",
+          "EvidenceClaimId",
           "EvidenceCoverageItem",
           "EvidenceCoverageState",
           "EvidenceDisplayState",
@@ -105,24 +115,31 @@
           "OperationCategory",
           "ProjectContinuityKind",
           "ProjectContinuityPage",
+          "ProjectContinuityRecordId",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
+          "ProjectId",
           "ProjectWorkflowPolicySummary",
+          "RecordId",
           "RedactionState",
+          "RequestHash",
           "RequestedControlLevel",
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RetryContract",
           "RiskAcceptanceCoverage",
+          "RiskId",
           "RunKind",
           "SensitiveActionRequirement",
           "ShapingCheckpointGap",
+          "ShapingCheckpointId",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
           "ShapingDecisionAuthorityState",
           "ShapingDecisionRecoveryReason",
           "ShapingDecisionRecoveryRequirement",
+          "ShapingGapId",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
@@ -131,9 +148,11 @@
           "StatusResult",
           "StatusResultBase",
           "StatusStateSummary",
+          "StorageRef",
           "SummaryCard",
           "TaskControlLevel",
           "TaskFlowItem",
+          "TaskId",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -144,6 +163,8 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultOrRejected_for_StatusResult",
+          "UserActionRequestId",
+          "UserActionResolutionId",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
@@ -173,7 +194,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b5024c7a1694f6496834780064e03691a30a0f49a397d2e6b60884d10fa198a3"
+        "sha256": "sha256:6ace1d408c5587750b07580e3d4563b6985ebefc269a05a2e11dbf92302c5c08"
       }
     },
     {
@@ -186,8 +207,10 @@
       "description": "Read one bounded page of an immutable historical mutation response; read current status separately.",
       "input_schema": {
         "definitions": [
+          "IdempotencyKey",
           "MethodName",
-          "OperationResultRef"
+          "OperationResultRef",
+          "ProjectId"
         ],
         "root_properties": [
           "cursor",
@@ -195,23 +218,28 @@
           "project_selector"
         ],
         "root_required": [
+          "cursor",
           "operation_result_ref"
         ],
-        "sha256": "sha256:e4f4e19ffac09eee9cc082e1ac698389dc852111b71a6c2022088eb00335131a"
+        "sha256": "sha256:7a74fa98674567029df7a5c6e0db8419951f9b8c3db56c5781c6d7ee60627c70"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
+          "BaselineRef",
+          "ChangeUnitId",
           "EmptyEventRefs",
           "ErrorCode",
+          "EventId",
           "EventRef",
           "FailureCategory",
           "GetOperationResultResult",
           "GetOperationResultResultBase",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "IdempotencyKey",
           "JsonValue",
           "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
@@ -226,23 +254,30 @@
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
           "OperationResultRef",
+          "ProjectId",
+          "RecordId",
+          "RequestHash",
           "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
+          "ShapingCheckpointId",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
           "ShapingDecisionAuthorityState",
           "ShapingDecisionRecoveryReason",
           "ShapingDecisionRecoveryRequirement",
+          "ShapingGapId",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
+          "TaskId",
           "TaskMode",
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionResolutionId",
           "UserActionStatus",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -263,7 +298,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9926dda8694257277ae3c302d268cef0eeeb2b410b1ca35931394939633c50bf"
+        "sha256": "sha256:e23981265856a8e6e80d1b20f2c3cb3435d773f8ee005ac1cdaf2c6d8ea239f1"
       }
     },
     {
@@ -275,7 +310,10 @@
       },
       "description": "Read current close readiness without requesting a terminal mutation.",
       "input_schema": {
-        "definitions": [],
+        "definitions": [
+          "RequestHash",
+          "TaskId"
+        ],
         "root_properties": [
           "action_form_ref",
           "project_selector",
@@ -285,28 +323,32 @@
           "action_form_ref",
           "task_id"
         ],
-        "sha256": "sha256:e9c25ac1fd903bc9f2a743839555b419a1d9750da35b406c571fe1ba8e79b227"
+        "sha256": "sha256:bac627c6747dd3407b6a05a95f53edf07846d851a5ac843ee0a7826100763ed3"
       },
       "name": "volicord.check_close",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptanceCriterionId",
           "AcceptancePolicy",
           "ActorSource",
           "AgentSafePendingUserActionStatus",
           "AgentSafeUserActionNextActor",
           "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
+          "ArtifactId",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
           "AuthorityReceipt",
+          "BaselineRef",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
+          "ChangeUnitId",
           "CheckCloseResult",
           "CheckCloseResultBase",
           "CloseReadinessBlocker",
@@ -316,7 +358,9 @@
           "CurrentCloseBasis",
           "EmptyEventRefs",
           "ErrorCode",
+          "EventId",
           "EventRef",
+          "EvidenceClaimId",
           "EvidenceCoverageItem",
           "EvidenceCoverageState",
           "EvidenceDisplayState",
@@ -349,30 +393,38 @@
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
+          "ProjectId",
           "ProjectWorkflowPolicySummary",
+          "RecordId",
           "RedactionState",
+          "RequestHash",
           "RequestedControlLevel",
           "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RetryContract",
           "RiskAcceptanceCoverage",
+          "RiskId",
           "RunKind",
           "SensitiveActionRequirement",
           "ShapingCheckpointGap",
+          "ShapingCheckpointId",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
           "ShapingDecisionAuthorityState",
           "ShapingDecisionRecoveryReason",
           "ShapingDecisionRecoveryRequirement",
+          "ShapingGapId",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
           "StatusCloseState",
+          "StorageRef",
           "SummaryCard",
           "TaskControlLevel",
+          "TaskId",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -382,6 +434,8 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "UserActionRequestId",
+          "UserActionResolutionId",
           "UserActionResolutionRef",
           "UserActionResolutionRefRecordKind",
           "UserActionStatus",
@@ -411,7 +465,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:718570db0efaa7601c9c53cf18c84d97520c54fbc1a99ea94557c7c65e025485"
+        "sha256": "sha256:f826c778ec902b39a9474cbdbdbdeb305d34e0e0ef04620df85087da447019d6"
       }
     },
     {
@@ -434,6 +488,8 @@
           "AgentConnectionMode",
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
+          "BaselineRef",
+          "ChangeUnitId",
           "JsonValue",
           "McpActionFormArgumentMismatch",
           "McpArgumentFailurePresentation",
@@ -443,20 +499,27 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "MethodName",
+          "ProjectId",
+          "RecordId",
+          "RequestHash",
           "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
+          "ShapingCheckpointId",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
           "ShapingDecisionAuthorityState",
           "ShapingDecisionRecoveryReason",
           "ShapingDecisionRecoveryRequirement",
+          "ShapingGapId",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
+          "TaskId",
           "TaskMode",
+          "UserActionResolutionId",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
           "WorkflowActionCatalog",
@@ -472,7 +535,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3e5dc43524b14785eb3a50fe591aab4c45ac59589f04cd0a28cee597ec2f832f"
+        "sha256": "sha256:98af30fd878e0a1bb15a405f130f0fce9a0d2145a56f1ee68a5f8469e30e88dd"
       }
     },
     {
@@ -496,7 +559,11 @@
         "definitions": [
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
+          "BaselineRef",
+          "ChangeUnitId",
+          "GuardEventId",
           "GuardIntegrationVerificationFinding",
+          "GuardIntegrationVerificationId",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
@@ -510,20 +577,27 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "MethodName",
+          "ProjectId",
+          "RecordId",
+          "RequestHash",
           "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
+          "ShapingCheckpointId",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
           "ShapingDecisionAuthorityState",
           "ShapingDecisionRecoveryReason",
           "ShapingDecisionRecoveryRequirement",
+          "ShapingGapId",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
+          "TaskId",
           "TaskMode",
+          "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -540,7 +614,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0d5d17bd1bb0119caa122f1e582aeaa19563ee8774a62fd585bf623c8869095b"
+        "sha256": "sha256:0bb8f5b0dc1825ce3db0e537b9db6aafa9983b33fed82f97478db3f0064190f2"
       }
     },
     {
@@ -552,21 +626,26 @@
       },
       "description": "Record or replay a first-write-wins MCP probe acknowledgement and return the authoritative tagged workflow state without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse.",
       "input_schema": {
-        "definitions": [],
+        "definitions": [
+          "GuardIntegrationVerificationId"
+        ],
         "root_properties": [
           "verification_id"
         ],
         "root_required": [
           "verification_id"
         ],
-        "sha256": "sha256:9bd76ee6685aebb3e307cf1437923509452e71f78738cf25e5ce5e2f3212347c"
+        "sha256": "sha256:ded9cf9ca33eae8f6eb8acf1328232bb97262953962fcd9c4538e3055b0e839f"
       },
       "name": "volicord.guard_probe",
       "output_schema": {
         "definitions": [
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
+          "BaselineRef",
+          "ChangeUnitId",
           "GuardIntegrationVerificationFinding",
+          "GuardIntegrationVerificationId",
           "GuardProbeToolReference",
           "GuardVerificationRepairReason",
           "GuardVerificationRetryPolicy",
@@ -580,20 +659,27 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "MethodName",
+          "ProjectId",
+          "RecordId",
+          "RequestHash",
           "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
+          "ShapingCheckpointId",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
           "ShapingDecisionAuthorityState",
           "ShapingDecisionRecoveryReason",
           "ShapingDecisionRecoveryRequirement",
+          "ShapingGapId",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
+          "TaskId",
           "TaskMode",
+          "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -610,7 +696,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5643a05bf0141a71aa7ae8576ef06ca37cb42fa1ba91cf4b1cc669a80de2818a"
+        "sha256": "sha256:3b33e211ddf3253da04c05fa1cdb2ce89b522038249be7f788867b1507067e50"
       }
     },
     {
@@ -622,21 +708,27 @@
       },
       "description": "Observe the authoritative tagged workflow state under the semantic host policy; the bounded read may persist a typed terminal repair reason when expected same-turn Guard correlation is absent or incompatible.",
       "input_schema": {
-        "definitions": [],
+        "definitions": [
+          "GuardIntegrationVerificationId"
+        ],
         "root_properties": [
           "verification_id"
         ],
         "root_required": [
           "verification_id"
         ],
-        "sha256": "sha256:9bd76ee6685aebb3e307cf1437923509452e71f78738cf25e5ce5e2f3212347c"
+        "sha256": "sha256:ded9cf9ca33eae8f6eb8acf1328232bb97262953962fcd9c4538e3055b0e839f"
       },
       "name": "volicord.get_integration_verification",
       "output_schema": {
         "definitions": [
           "AuthoritativeArgumentContext",
           "AuthorityNextActor",
+          "BaselineRef",
+          "ChangeUnitId",
+          "GuardEventId",
           "GuardIntegrationVerificationFinding",
+          "GuardIntegrationVerificationId",
           "GuardIntegrationVerificationPhaseStatus",
           "GuardIntegrationVerificationPhases",
           "GuardProbeToolReference",
@@ -652,20 +744,27 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "MethodName",
+          "ProjectId",
+          "RecordId",
+          "RequestHash",
           "RetryContract",
           "RunKind",
           "ShapingCheckpointGap",
+          "ShapingCheckpointId",
           "ShapingCheckpointReadiness",
           "ShapingCheckpointSummary",
           "ShapingDecisionApplicationOwner",
           "ShapingDecisionAuthorityState",
           "ShapingDecisionRecoveryReason",
           "ShapingDecisionRecoveryRequirement",
+          "ShapingGapId",
           "ShapingGapKind",
           "ShapingGapStatus",
           "StateRecordKind",
           "StateRecordRef",
+          "TaskId",
           "TaskMode",
+          "UserActionResolutionId",
           "UtcTimestamp",
           "WorkPhase",
           "WorkflowActionAuthorityCoordinates",
@@ -682,7 +781,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2afcea19d01b774474f2a9195d8f0fe3eb98714359e993bd0203cbc89fb932c9"
+        "sha256": "sha256:7cc3b2fa56b49d7506dc2a2d5d028fab278911b366ee8499ab254de9e2e25162"
       }
     }
   ]

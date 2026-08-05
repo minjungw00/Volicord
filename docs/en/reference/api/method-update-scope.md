@@ -114,7 +114,7 @@ come directly from the semantic request descriptor.
 |---|---|---|---|
 | `acceptance_criteria` | yes | yes | `AcceptanceCriterionReplacement[]` |
 | `autonomy_boundary` | yes | yes | `string` |
-| `baseline_ref` | yes | yes | `string` |
+| `baseline_ref` | yes | yes | `BaselineRef` |
 | `change_unit` | yes | no | `ChangeUnitUpdate` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `goal_summary` | yes | yes | `string` |
@@ -122,7 +122,7 @@ come directly from the semantic request descriptor.
 | `related_scope_decision_refs` | yes | no | `StateRecordRef[]` |
 | `scope_boundary` | yes | yes | `string` |
 | `scope_update` | yes | yes | `ScopeUpdate` |
-| `task_id` | yes | no | `string` |
+| `task_id` | yes | no | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.update_scope.request[params] -->
 
 

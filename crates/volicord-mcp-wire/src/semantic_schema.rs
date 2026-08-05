@@ -8,6 +8,443 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use volicord_types::values::UtcTimestamp;
 
+/// Type-owned entry point for an MCP semantic schema.
+///
+/// Rust wire types own their semantic name and leaf representation through
+/// `JsonSchema`; the MCP descriptor layer adds the closed object-union catalog
+/// below instead of inferring discriminators from incidental constants.
+pub trait McpSemanticSchema: JsonSchema {
+    fn mcp_semantic_type_name() -> String {
+        Self::schema_name()
+    }
+
+    fn mcp_schema_document() -> Value {
+        serde_json::to_value(schema_for!(Self)).unwrap_or_else(|error| {
+            panic!(
+                "{} schema must serialize: {error}",
+                Self::mcp_semantic_type_name()
+            )
+        })
+    }
+
+    fn mcp_semantic_descriptor(
+        canonical_examples: Vec<CanonicalSchemaExample>,
+    ) -> SemanticSchemaDescriptor {
+        SemanticSchemaDescriptor::from_json_schema(
+            Self::mcp_semantic_type_name(),
+            Self::mcp_schema_document(),
+            canonical_examples,
+        )
+    }
+}
+
+impl<T: JsonSchema> McpSemanticSchema for T {}
+
+/// One explicitly declared discriminator value and its caller-facing meaning.
+///
+/// Its ordinal in [`McpTaggedUnionContract::variants`] selects the schema at
+/// the same ordinal in the wire type's declared union.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpTaggedUnionVariantContract {
+    pub discriminator_value: &'static str,
+    pub semantic_type_suffix: &'static str,
+    pub meaning: &'static str,
+}
+
+/// One explicitly declared public object union.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpTaggedUnionContract {
+    pub semantic_type_patterns: &'static [&'static str],
+    pub discriminator_path: &'static str,
+    pub variants: &'static [McpTaggedUnionVariantContract],
+}
+
+macro_rules! semantic_variants {
+    ($($value:literal => $meaning:literal),+ $(,)?) => {
+        &[$(
+            McpTaggedUnionVariantContract {
+                discriminator_value: $value,
+                semantic_type_suffix: $value,
+                meaning: $meaning,
+            },
+        )+]
+    };
+    ($($value:literal),+ $(,)?) => {
+        &[$(
+            McpTaggedUnionVariantContract {
+                discriminator_value: $value,
+                semantic_type_suffix: $value,
+                meaning: concat!("Selects the `", $value, "` semantic branch."),
+            },
+        )+]
+    };
+}
+
+/// Closed discriminator catalog used by production MCP descriptors.
+///
+/// A declaration matches its named semantic owner and exact branch count. Each
+/// declared variant owns the same-position branch schema, and integrity checks
+/// verify the declared discriminator without using constants for selection.
+pub const MCP_TAGGED_UNION_CONTRACTS: &[McpTaggedUnionContract] = &[
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["StaleShapingAuthorityAction"],
+        discriminator_path: "/action",
+        variants: semantic_variants!(
+            "retire" => "Retires stale shaping authority without replacement authority.",
+            "reauthorize" => "Creates a successor user-owned authority request."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &[
+            "UserActionBasis",
+            "UserActionDraft",
+            "UserActionRequestBody",
+        ],
+        discriminator_path: "/action_type",
+        variants: semantic_variants!(
+            "choice" => "Requests one typed choice from a closed option set.",
+            "evidence_observation" => "Requests one typed evidence observation."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &[
+            "ToolResultOrRejected_for_*",
+            "McpReadOnlyToolStructuredContent_for_*::response",
+        ],
+        discriminator_path: "/base/effect_kind",
+        variants: semantic_variants!("read_only", "no_effect"),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["PreviewableToolResponse_for_*"],
+        discriminator_path: "/base/response_kind",
+        variants: semantic_variants!(
+            "result" => "Returns the method's applied or read-only result.",
+            "rejected" => "Returns an owner-defined rejection with no committed method effect.",
+            "dry_run" => "Returns the validated preview without committing the method."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["EvidenceCaptureSpec", "McpEvidenceCaptureSpec"],
+        discriminator_path: "/capture_kind",
+        variants: semantic_variants!(
+            "verified_command_execution" => "Captures a registered command execution.",
+            "verified_tool_invocation" => "Captures a registered tool invocation."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["ToolError"],
+        discriminator_path: "/code",
+        variants: semantic_variants!(
+            "VALIDATION_FAILED",
+            "RUN_KIND_INCOMPATIBLE",
+            "TASK_PHASE_TRANSITION_REQUIRED",
+            "SHAPING_CHECKPOINT_REQUIRED",
+            "SHAPING_CHECKPOINT_STALE",
+            "USER_DECISION_UNRESOLVED",
+            "CHANGE_UNIT_REQUIRED",
+            "CHANGE_UNIT_STALE",
+            "WORKSPACE_BASIS_STALE",
+            "WORKFLOW_ACTION_NOT_ALLOWED",
+            "PERSISTED_DATA_CORRUPT",
+            "STATE_VERSION_CONFLICT",
+            "INVOCATION_CONTEXT_MISMATCH",
+            "NO_ACTIVE_TASK",
+            "NO_ACTIVE_CHANGE_UNIT",
+            "BASELINE_STALE",
+            "SCOPE_REQUIRED",
+            "SCOPE_VIOLATION",
+            "WRITE_TICKET_REQUIRED",
+            "WRITE_TICKET_INVALID",
+            "APPROVAL_DENIED",
+            "APPROVAL_EXPIRED",
+            "APPROVAL_REQUIRED",
+            "DECISION_UNRESOLVED",
+            "AUTONOMY_BOUNDARY_EXCEEDED",
+            "DECISION_REQUIRED",
+            "CAPABILITY_INSUFFICIENT",
+            "EVIDENCE_INSUFFICIENT",
+            "RESIDUAL_RISK_NOT_VISIBLE",
+            "ACCEPTANCE_REQUIRED",
+            "PROJECTION_STALE",
+            "ARTIFACT_MISSING",
+            "VALIDATOR_FAILED",
+            "OPERATION_RESULT_UNAVAILABLE"
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["WorkflowActionAuthorityCoordinates"],
+        discriminator_path: "/coordinate_kind",
+        variants: semantic_variants!(
+            "record_shaping_checkpoint",
+            "update_scope",
+            "finalize_advice",
+            "advance_task",
+            "prepare_evidence_capture",
+            "prepare_write",
+            "stage_artifact",
+            "record_run",
+            "request_user_action",
+            "reconcile_changes",
+            "check_close",
+            "close_task"
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &[
+            "AdvanceTaskResultBase",
+            "FinalizeAdviceResultBase",
+            "IntakeResultBase",
+            "PrepareEvidenceCaptureResultBase",
+            "PrepareWriteResultBase",
+            "RecordRunResultBase",
+            "RecordShapingCheckpointResultBase",
+            "RequestUserActionResultBase",
+            "UpdateScopeResultBase",
+        ],
+        discriminator_path: "/effect_kind",
+        variants: semantic_variants!("core_committed"),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["CloseTaskResultBase"],
+        discriminator_path: "/effect_kind",
+        variants: semantic_variants!("core_committed", "no_effect"),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &[
+            "CheckCloseResultBase",
+            "GetOperationResultResultBase",
+            "StatusResultBase",
+        ],
+        discriminator_path: "/effect_kind",
+        variants: semantic_variants!("read_only"),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["ReconcileChangesResultBase"],
+        discriminator_path: "/effect_kind",
+        variants: semantic_variants!("read_only", "core_committed"),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["StageArtifactResultBase"],
+        discriminator_path: "/effect_kind",
+        variants: semantic_variants!("staging_created"),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["McpMustSurfaceFact"],
+        discriminator_path: "/fact_kind",
+        variants: semantic_variants!(
+            "method_rejected",
+            "current_task_phase",
+            "recovery_method",
+            "shaping_decision_outcome",
+            "non_authorizing_shaping_decision",
+            "user_action_request_exists",
+            "next_actor_is_user",
+            "chat_reply_is_not_resolution",
+            "product_repository_mutation_blocked_until_user_channel_resolution",
+            "implementation_blocked_until_user_action_authority_satisfied",
+            "entered_implementation",
+            "phase_transition_created_no_write_ticket",
+            "product_repository_writes_require_prepare_write"
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["UserActionResolutionForm"],
+        discriminator_path: "/form_type",
+        variants: semantic_variants!(
+            "choice" => "Presents the choices accepted by a choice-action resolution.",
+            "evidence_observation" => "Presents evidence targets and artifacts for an observation resolution."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["IntegrationVerificationWorkflowState"],
+        discriminator_path: "/kind",
+        variants: semantic_variants!(
+            "awaiting_probe" => "Requires the declared integration probe.",
+            "awaiting_observation" => "Requires observation of the declared integration result.",
+            "complete" => "Confirms the integration-verification workflow is complete.",
+            "repair_required" => "Requires the declared integration repair action."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["WorkflowProjection"],
+        discriminator_path: "/kind",
+        variants: semantic_variants!(
+            "no_active_task" => "No Task is currently active.",
+            "shaping_required" => "The active Task requires shaping.",
+            "awaiting_user_action" => "The active Task is waiting for User Channel authority.",
+            "decision_recovery_required" => "Stale shaping authority requires explicit recovery.",
+            "ready_to_apply_decisions" => "Current user decisions are ready for application.",
+            "ready_for_change_unit" => "The shaped Task is ready for a current Change Unit.",
+            "ready_to_finalize_advice" => "Advisor work is ready for finalization.",
+            "ready_for_implementation" => "The Task is ready to enter implementation.",
+            "implementation" => "The Task is in implementation.",
+            "close_review" => "The Task is undergoing close-readiness review.",
+            "terminal" => "The Task is in a terminal state."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["McpRequestUserActionOperation"],
+        discriminator_path: "/operation",
+        variants: semantic_variants!(
+            "create" => "Creates one new user-action request.",
+            "resume" => "Resumes one existing user-action request."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &[
+            "ShapingCheckpointOperation",
+            "WorkflowCheckpointActionCoordinates",
+        ],
+        discriminator_path: "/operation",
+        variants: semantic_variants!(
+            "create_initial" => "Creates the first shaping checkpoint.",
+            "replace_current" => "Replaces the exact current shaping checkpoint."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["McpUserActionResolutionSummary"],
+        discriminator_path: "/resolution_type",
+        variants: semantic_variants!(
+            "choice" => "Summarizes the selected user-owned choice.",
+            "evidence_observation" => "Summarizes the submitted evidence observation."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["McpMutationStructuredContent_for_*"],
+        discriminator_path: "/result_type",
+        variants: semantic_variants!(
+            "rejected" => "Method rejection.",
+            "dry_run" => "Non-committing preview.",
+            "full" => "Full result and receipt.",
+            "summary" => "Compact result and receipt.",
+            "workflow" => "Result with refreshed workflow.",
+            "operational_failure" => "Pre-effect operational failure.",
+            "refresh_failure" => "Post-effect refresh failure.",
+            "response_budget_exceeded" => "Applied result too large to inline.",
+            "post_effect_failure" => "Post-effect failure.",
+            "adapter_error" => "Pre-Core adapter failure."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["McpToolStructuredContent_for_*"],
+        discriminator_path: "/result_type",
+        variants: semantic_variants!(
+            "response" => "Successful adapter-owned response.",
+            "adapter_error" => "MCP adapter failure."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["McpReadOnlyToolStructuredContent_for_*"],
+        discriminator_path: "/result_type",
+        variants: semantic_variants!(
+            "response" => "Read-only Core response.",
+            "operational_failure" => "Operational read failure.",
+            "adapter_error" => "Adapter failure before Core execution."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["SourceRef"],
+        discriminator_path: "/source_kind",
+        variants: semantic_variants!(
+            "repository_file" => "Identifies an exact repository-file source.",
+            "git_commit" => "Identifies an exact Git commit source.",
+            "git_diff" => "Identifies an exact Git diff source.",
+            "command" => "Identifies an exact command source.",
+            "external_uri" => "Identifies an external URI source.",
+            "user_context" => "Identifies explicit user-provided context."
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["EvidenceTarget"],
+        discriminator_path: "/target_kind",
+        variants: semantic_variants!(
+            "acceptance_criterion" => "Targets one acceptance criterion.",
+            "supplemental_claim" => "Targets one supplemental evidence claim."
+        ),
+    },
+    #[cfg(test)]
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["ExampleUnion", "ExplicitUnionWithIncidentalConstants"],
+        discriminator_path: "/kind",
+        variants: semantic_variants!("alpha", "beta"),
+    },
+    #[cfg(test)]
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["LeftUnion"],
+        discriminator_path: "/kind",
+        variants: semantic_variants!("text"),
+    },
+    #[cfg(test)]
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["RightUnion"],
+        discriminator_path: "/kind",
+        variants: semantic_variants!("count"),
+    },
+];
+
+/// Validates the explicit discriminator catalog independently of generated schemas.
+pub fn mcp_tagged_union_contract_integrity_errors() -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut declarations = BTreeSet::new();
+    let mut owners = BTreeSet::new();
+    for contract in MCP_TAGGED_UNION_CONTRACTS {
+        if contract.semantic_type_patterns.is_empty() {
+            errors.push(format!(
+                "tagged union `{}` has no semantic type owner",
+                contract.discriminator_path
+            ));
+        }
+        for pattern in contract.semantic_type_patterns {
+            if pattern.is_empty() || pattern.matches('*').count() > 1 {
+                errors.push(format!(
+                    "tagged-union semantic owner pattern `{pattern}` is invalid"
+                ));
+            }
+            if !owners.insert(*pattern) {
+                errors.push(format!(
+                    "duplicate tagged-union semantic owner pattern `{pattern}`"
+                ));
+            }
+        }
+        if !contract.discriminator_path.starts_with('/') {
+            errors.push(format!(
+                "tagged-union discriminator path `{}` is not an absolute JSON Pointer",
+                contract.discriminator_path
+            ));
+        }
+        let mut values = BTreeSet::new();
+        for variant in contract.variants {
+            if !values.insert(variant.discriminator_value) {
+                errors.push(format!(
+                    "tagged union `{}` duplicates discriminator value `{}`",
+                    contract.discriminator_path, variant.discriminator_value
+                ));
+            }
+            if variant.meaning.trim().is_empty() {
+                errors.push(format!(
+                    "tagged union `{}` value `{}` has no semantic meaning",
+                    contract.discriminator_path, variant.discriminator_value
+                ));
+            }
+            if variant.semantic_type_suffix.trim().is_empty() {
+                errors.push(format!(
+                    "tagged union `{}` value `{}` has no semantic variant type",
+                    contract.discriminator_path, variant.discriminator_value
+                ));
+            }
+        }
+        let signature = format!(
+            "{}:{}",
+            contract.discriminator_path,
+            values.into_iter().collect::<Vec<_>>().join(",")
+        );
+        if !declarations.insert(signature.clone()) {
+            errors.push(format!("duplicate tagged-union declaration `{signature}`"));
+        }
+    }
+    errors
+}
+
 /// One typed canonical input example owned by a semantic descriptor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CanonicalSchemaExample {
@@ -69,16 +506,22 @@ pub struct SemanticSchemaDescriptor {
     dialect: Option<String>,
 }
 
+/// One field contract resolved from the descriptor tree.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SemanticFieldContract {
+    pub semantic_type: String,
+    pub required: bool,
+    pub nullable: bool,
+}
+
 impl SemanticSchemaDescriptor {
     /// Projects a Rust wire type into the closed semantic representation.
-    pub fn for_type<T: JsonSchema>(canonical_examples: Vec<CanonicalSchemaExample>) -> Self {
-        let schema = serde_json::to_value(schema_for!(T))
-            .unwrap_or_else(|error| panic!("{} schema must serialize: {error}", T::schema_name()));
-        Self::from_json_schema(T::schema_name(), schema, canonical_examples)
+    pub fn for_type<T: McpSemanticSchema>(canonical_examples: Vec<CanonicalSchemaExample>) -> Self {
+        T::mcp_semantic_descriptor(canonical_examples)
     }
 
     /// Projects an MCP structured output whose JSON root is always an object.
-    pub fn for_object_output<T: JsonSchema>(
+    pub fn for_object_output<T: McpSemanticSchema>(
         canonical_examples: Vec<CanonicalSchemaExample>,
     ) -> Self {
         let mut descriptor = Self::for_type::<T>(canonical_examples);
@@ -177,6 +620,23 @@ impl SemanticSchemaDescriptor {
         resolved.into_iter().collect()
     }
 
+    /// Resolves requiredness, nullability, and semantic type for one field path.
+    pub fn field_contracts_at_pointer_pattern(&self, pattern: &str) -> Vec<SemanticFieldContract> {
+        let Some(segments) = pointer_pattern_segments(pattern) else {
+            return Vec::new();
+        };
+        let mut resolved = BTreeSet::new();
+        resolve_field_contracts(
+            &self.node,
+            &self.definitions,
+            &segments,
+            0,
+            &mut BTreeSet::new(),
+            &mut resolved,
+        );
+        resolved.into_iter().collect()
+    }
+
     /// Checks whether one concrete pointer selects a schema that accepts the value.
     pub fn accepts_value_at_pointer(&self, pointer: &str, value: &Value) -> bool {
         let Some(segments) = pointer_pattern_segments(pointer) else {
@@ -226,10 +686,99 @@ impl SemanticSchemaDescriptor {
         schema
     }
 
+    /// Returns a deterministic digest of the generated documentation schema.
+    pub fn schema_digest(&self) -> String {
+        volicord_types::canonical::canonical_json_bare_sha256(&self.json_schema())
+            .expect("semantic JSON Schema must have a canonical digest")
+    }
+
+    /// Returns a deterministic digest that also binds explicit union meanings.
+    pub fn descriptor_digest(&self) -> String {
+        let mut tagged_unions = Vec::new();
+        collect_tagged_union_contracts(&self.node, "#", &mut tagged_unions);
+        for (name, node) in &self.definitions {
+            collect_tagged_union_contracts(
+                node,
+                &format!("#/definitions/{name}"),
+                &mut tagged_unions,
+            );
+        }
+        volicord_types::canonical::canonical_json_bare_sha256(&serde_json::json!({
+            "semantic_type": self.semantic_type,
+            "schema": self.json_schema(),
+            "tagged_unions": tagged_unions,
+        }))
+        .expect("semantic descriptor must have a canonical digest")
+    }
+
+    /// Generates the annotation-preserving input projection used by discovery.
+    pub fn runtime_json_schema(&self) -> Value {
+        const MAX_SUMMARY_CHARS: usize = 320;
+
+        let mut schema = self.node.to_runtime_json_schema(0);
+        let object = schema
+            .as_object_mut()
+            .expect("semantic schema root must render as an object");
+        if let Some(dialect) = &self.dialect {
+            object.insert("$schema".to_owned(), Value::String(dialect.clone()));
+        }
+        if !self.definitions.is_empty() {
+            let definition_depths = runtime_definition_depths(&self.node, &self.definitions);
+            object.insert(
+                "definitions".to_owned(),
+                Value::Object(
+                    self.definitions
+                        .iter()
+                        .map(|(name, node)| {
+                            (
+                                name.clone(),
+                                node.to_runtime_json_schema(
+                                    definition_depths.get(name).copied().unwrap_or(3),
+                                ),
+                            )
+                        })
+                        .collect(),
+                ),
+            );
+        }
+        let summary = bounded_chars(&runtime_semantic_summary(self), MAX_SUMMARY_CHARS);
+        object.insert("description".to_owned(), Value::String(summary));
+        schema
+    }
+
     /// Generates the bounded root-object projection used by runtime tool discovery.
     pub fn compact_root_object_schema(&self) -> Value {
         let mut object = Map::new();
         object.insert("type".to_owned(), Value::String("object".to_owned()));
+        if let Some(union) = root_tagged_union(&self.node, &self.definitions, 0) {
+            let meanings = union
+                .variants
+                .iter()
+                .map(|variant| format!("{}={}", variant.discriminator_value, variant.meaning))
+                .collect::<Vec<_>>()
+                .join("; ");
+            object.insert(
+                "properties".to_owned(),
+                Value::Object(Map::from_iter([(
+                    union.discriminator_path.trim_start_matches('/').to_owned(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": union
+                            .variants
+                            .iter()
+                            .map(|variant| variant.discriminator_value.clone())
+                            .collect::<Vec<_>>(),
+                        "description": format!("Allowed result variants: {meanings}"),
+                    }),
+                )])),
+            );
+            object.insert(
+                "required".to_owned(),
+                Value::Array(vec![Value::String(
+                    union.discriminator_path.trim_start_matches('/').to_owned(),
+                )]),
+            );
+        }
         Value::Object(object)
     }
 
@@ -314,7 +863,486 @@ impl SemanticSchemaDescriptor {
                 }
             }
         }
+        errors.extend(runtime_semantic_parity_errors(self));
         errors
+    }
+}
+
+fn runtime_semantic_parity_errors(descriptor: &SemanticSchemaDescriptor) -> Vec<String> {
+    let mut errors = Vec::new();
+    let documentation = descriptor.json_schema();
+    let runtime = descriptor.runtime_json_schema();
+    let documentation_properties = documentation
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| properties.keys().collect::<BTreeSet<_>>());
+    let runtime_properties = runtime
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| properties.keys().collect::<BTreeSet<_>>());
+    if runtime_properties != documentation_properties {
+        errors.push(format!(
+            "runtime/documentation root property semantics differ for `{}`",
+            descriptor.semantic_type
+        ));
+    }
+    for keyword in ["required", "additionalProperties"] {
+        if runtime.get(keyword) != documentation.get(keyword) {
+            errors.push(format!(
+                "runtime/documentation root `{keyword}` semantics differ for `{}`",
+                descriptor.semantic_type
+            ));
+        }
+    }
+
+    let mut expected_variants = Vec::new();
+    collect_descriptor_runtime_variants(&descriptor.node, &mut expected_variants);
+    for definition in descriptor.definitions.values() {
+        collect_descriptor_runtime_variants(definition, &mut expected_variants);
+    }
+    expected_variants.sort();
+    let mut actual_variants = Vec::new();
+    collect_projected_runtime_variants(&runtime, &mut actual_variants, &mut errors);
+    actual_variants.sort();
+    if actual_variants != expected_variants {
+        let first_mismatch = expected_variants
+            .iter()
+            .zip(&actual_variants)
+            .find(|(expected, actual)| expected != actual)
+            .map(|(expected, actual)| format!("expected {expected:?}, actual {actual:?}"))
+            .unwrap_or_else(|| "variant counts differ".to_owned());
+        errors.push(format!(
+            "runtime/documentation tagged-union semantics differ for `{}` ({} expected, {} actual; {first_mismatch})",
+            descriptor.semantic_type,
+            expected_variants.len(),
+            actual_variants.len(),
+        ));
+    }
+    errors
+}
+
+fn collect_descriptor_runtime_variants(
+    node: &SemanticSchemaNode,
+    variants: &mut Vec<(String, String, String)>,
+) {
+    match node {
+        SemanticSchemaNode::Object(object) => {
+            for field in &object.fields {
+                collect_descriptor_runtime_variants(&field.schema, variants);
+            }
+            if let SemanticAdditionalProperties::Schema(schema) = &object.additional_properties {
+                collect_descriptor_runtime_variants(schema, variants);
+            }
+        }
+        SemanticSchemaNode::Array(array) => {
+            collect_descriptor_runtime_variants(&array.items, variants);
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            collect_descriptor_runtime_variants(&nullable.schema, variants);
+        }
+        SemanticSchemaNode::TaggedUnion(union) => {
+            for variant in &union.variants {
+                variants.push((
+                    variant.semantic_type.clone(),
+                    variant.discriminator_value.clone(),
+                    variant.meaning.clone(),
+                ));
+                collect_descriptor_runtime_variants(&variant.schema, variants);
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for variant in &union.variants {
+                collect_descriptor_runtime_variants(variant, variants);
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for schema in &all_of.schemas {
+                collect_descriptor_runtime_variants(schema, variants);
+            }
+        }
+        SemanticSchemaNode::Reference(_)
+        | SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn collect_projected_runtime_variants(
+    value: &Value,
+    variants: &mut Vec<(String, String, String)>,
+    errors: &mut Vec<String>,
+) {
+    match value {
+        Value::Object(object) => {
+            if let Some(meaning) = object
+                .get("x-volicord-variant-meaning")
+                .and_then(Value::as_str)
+            {
+                let semantic_type = object
+                    .get("x-volicord-semantic-type")
+                    .and_then(Value::as_str);
+                let discriminator = object
+                    .get("enum")
+                    .and_then(Value::as_array)
+                    .filter(|values| values.len() == 1)
+                    .and_then(|values| values[0].as_str());
+                match (semantic_type, discriminator) {
+                    (Some(semantic_type), Some(discriminator)) => variants.push((
+                        semantic_type.to_owned(),
+                        discriminator.to_owned(),
+                        meaning.to_owned(),
+                    )),
+                    _ => errors.push(
+                        "runtime tagged-union meaning lacks one semantic type and discriminator"
+                            .to_owned(),
+                    ),
+                }
+            }
+            for child in object.values() {
+                collect_projected_runtime_variants(child, variants, errors);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_projected_runtime_variants(item, variants, errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn bounded_chars(value: &str, maximum: usize) -> String {
+    if value.chars().count() <= maximum {
+        return value.to_owned();
+    }
+    value
+        .chars()
+        .take(maximum.saturating_sub(1))
+        .collect::<String>()
+        + "…"
+}
+
+fn runtime_definition_depths(
+    root: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+) -> BTreeMap<String, usize> {
+    let mut depths = BTreeMap::new();
+    let mut pending = Vec::new();
+    collect_runtime_definition_refs(root, 1, &mut pending);
+    let mut index = 0;
+    while index < pending.len() {
+        let (name, depth) = pending[index].clone();
+        index += 1;
+        if depths.get(&name).is_some_and(|current| *current <= depth) {
+            continue;
+        }
+        depths.insert(name.clone(), depth);
+        if let Some(definition) = definitions.get(&name) {
+            collect_runtime_definition_refs(definition, depth + 1, &mut pending);
+        }
+    }
+    depths
+}
+
+fn collect_runtime_definition_refs(
+    node: &SemanticSchemaNode,
+    depth: usize,
+    references: &mut Vec<(String, usize)>,
+) {
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            if let Some(name) = reference.reference.strip_prefix("#/definitions/") {
+                references.push((name.to_owned(), depth));
+            }
+        }
+        SemanticSchemaNode::Object(object) => {
+            for field in &object.fields {
+                collect_runtime_definition_refs(&field.schema, depth, references);
+            }
+            if let SemanticAdditionalProperties::Schema(schema) = &object.additional_properties {
+                collect_runtime_definition_refs(schema, depth, references);
+            }
+        }
+        SemanticSchemaNode::Array(array) => {
+            collect_runtime_definition_refs(&array.items, depth, references);
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            collect_runtime_definition_refs(&nullable.schema, depth, references);
+        }
+        SemanticSchemaNode::TaggedUnion(union) => {
+            for variant in &union.variants {
+                collect_runtime_definition_refs(&variant.schema, depth, references);
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for variant in &union.variants {
+                collect_runtime_definition_refs(variant, depth, references);
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for schema in &all_of.schemas {
+                collect_runtime_definition_refs(schema, depth, references);
+            }
+        }
+        SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn runtime_semantic_summary(descriptor: &SemanticSchemaDescriptor) -> String {
+    let mut required_nullable = Vec::new();
+    let mut unions = Vec::new();
+    collect_runtime_semantics(
+        &descriptor.node,
+        &descriptor.definitions,
+        "",
+        0,
+        &mut BTreeSet::new(),
+        &mut required_nullable,
+        &mut unions,
+    );
+    required_nullable.sort();
+    required_nullable.dedup();
+    unions.sort();
+    unions.dedup();
+
+    let mut sections = vec![format!("Semantic type `{}`.", descriptor.semantic_type)];
+    if !unions.is_empty() {
+        sections.push(format!("Tagged unions: {}.", unions.join(" | ")));
+    }
+    if !required_nullable.is_empty() {
+        sections.push(format!(
+            "Required-nullable fields (must be present; JSON null or the named type): {}.",
+            required_nullable.join(", ")
+        ));
+    }
+    if let Some(example) = descriptor.canonical_examples.first() {
+        sections.push(format!(
+            "Canonical example `{}`: {}",
+            example.id, example.description
+        ));
+    }
+    sections.join(" ")
+}
+
+fn collect_runtime_semantics(
+    node: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    path: &str,
+    depth: usize,
+    references: &mut BTreeSet<String>,
+    required_nullable: &mut Vec<String>,
+    unions: &mut Vec<String>,
+) {
+    if depth >= 32 {
+        return;
+    }
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            if references.insert(reference.reference.clone()) {
+                if let Some(target) = reference_target(definitions, &reference.reference) {
+                    collect_runtime_semantics(
+                        target,
+                        definitions,
+                        path,
+                        depth + 1,
+                        references,
+                        required_nullable,
+                        unions,
+                    );
+                }
+                references.remove(&reference.reference);
+            }
+        }
+        SemanticSchemaNode::Object(object) => {
+            for field in &object.fields {
+                let field_path = format!("{path}/{}", field.field_name);
+                if field.required && field.nullable {
+                    required_nullable
+                        .push(format!("`{field_path}` (`{} | null`)", field.semantic_type));
+                }
+                collect_runtime_semantics(
+                    &field.schema,
+                    definitions,
+                    &field_path,
+                    depth + 1,
+                    references,
+                    required_nullable,
+                    unions,
+                );
+            }
+        }
+        SemanticSchemaNode::Array(array) => collect_runtime_semantics(
+            &array.items,
+            definitions,
+            &format!("{path}/*"),
+            depth + 1,
+            references,
+            required_nullable,
+            unions,
+        ),
+        SemanticSchemaNode::Nullable(nullable) => collect_runtime_semantics(
+            &nullable.schema,
+            definitions,
+            path,
+            depth + 1,
+            references,
+            required_nullable,
+            unions,
+        ),
+        SemanticSchemaNode::TaggedUnion(union) => {
+            unions.push(format!(
+                "`{path}{}` = {}",
+                union.discriminator_path,
+                union
+                    .variants
+                    .iter()
+                    .map(|variant| format!(
+                        "`{}` ({})",
+                        variant.discriminator_value, variant.meaning
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            ));
+            for variant in &union.variants {
+                collect_runtime_semantics(
+                    &variant.schema,
+                    definitions,
+                    path,
+                    depth + 1,
+                    references,
+                    required_nullable,
+                    unions,
+                );
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for variant in &union.variants {
+                collect_runtime_semantics(
+                    variant,
+                    definitions,
+                    path,
+                    depth + 1,
+                    references,
+                    required_nullable,
+                    unions,
+                );
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for schema in &all_of.schemas {
+                collect_runtime_semantics(
+                    schema,
+                    definitions,
+                    path,
+                    depth + 1,
+                    references,
+                    required_nullable,
+                    unions,
+                );
+            }
+        }
+        SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn collect_tagged_union_contracts(
+    node: &SemanticSchemaNode,
+    path: &str,
+    contracts: &mut Vec<Value>,
+) {
+    match node {
+        SemanticSchemaNode::Object(object) => {
+            for field in &object.fields {
+                collect_tagged_union_contracts(
+                    &field.schema,
+                    &format!("{path}/properties/{}", field.field_name),
+                    contracts,
+                );
+            }
+        }
+        SemanticSchemaNode::Array(array) => {
+            collect_tagged_union_contracts(&array.items, &format!("{path}/items"), contracts);
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            collect_tagged_union_contracts(&nullable.schema, path, contracts);
+        }
+        SemanticSchemaNode::TaggedUnion(union) => {
+            contracts.push(serde_json::json!({
+                "schema_path": path,
+                "discriminator_path": union.discriminator_path,
+                "variants": union.variants.iter().map(|variant| serde_json::json!({
+                    "value": variant.discriminator_value,
+                    "semantic_type": variant.semantic_type,
+                    "meaning": variant.meaning,
+                })).collect::<Vec<_>>(),
+            }));
+            for variant in &union.variants {
+                collect_tagged_union_contracts(
+                    &variant.schema,
+                    &format!("{path}/variants/{}", variant.discriminator_value),
+                    contracts,
+                );
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for (index, variant) in union.variants.iter().enumerate() {
+                collect_tagged_union_contracts(
+                    variant,
+                    &format!("{path}/{}/{index}", union.keyword),
+                    contracts,
+                );
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for (index, schema) in all_of.schemas.iter().enumerate() {
+                collect_tagged_union_contracts(schema, &format!("{path}/allOf/{index}"), contracts);
+            }
+        }
+        SemanticSchemaNode::Reference(_)
+        | SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn root_tagged_union<'a>(
+    node: &'a SemanticSchemaNode,
+    definitions: &'a BTreeMap<String, SemanticSchemaNode>,
+    depth: usize,
+) -> Option<&'a SemanticTaggedUnionSchema> {
+    if depth >= 16 {
+        return None;
+    }
+    match node {
+        SemanticSchemaNode::TaggedUnion(union) => Some(union),
+        SemanticSchemaNode::Reference(reference) => {
+            reference_target(definitions, &reference.reference)
+                .and_then(|target| root_tagged_union(target, definitions, depth + 1))
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            root_tagged_union(&nullable.schema, definitions, depth + 1)
+        }
+        SemanticSchemaNode::AllOf(all_of) => all_of
+            .schemas
+            .iter()
+            .find_map(|schema| root_tagged_union(schema, definitions, depth + 1)),
+        _ => None,
     }
 }
 
@@ -439,6 +1467,127 @@ fn resolve_pointer_pattern(
         SemanticSchemaNode::AllOf(all_of) => {
             for schema in &all_of.schemas {
                 resolve_pointer_pattern(
+                    schema,
+                    definitions,
+                    segments,
+                    depth + 1,
+                    references,
+                    resolved,
+                );
+            }
+        }
+        SemanticSchemaNode::Array(_)
+        | SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn resolve_field_contracts(
+    node: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    segments: &[String],
+    depth: usize,
+    references: &mut BTreeSet<String>,
+    resolved: &mut BTreeSet<SemanticFieldContract>,
+) {
+    if depth > 64 || segments.is_empty() {
+        return;
+    }
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            if references.insert(reference.reference.clone()) {
+                if let Some(target) = reference_target(definitions, &reference.reference) {
+                    resolve_field_contracts(
+                        target,
+                        definitions,
+                        segments,
+                        depth + 1,
+                        references,
+                        resolved,
+                    );
+                }
+                references.remove(&reference.reference);
+            }
+        }
+        SemanticSchemaNode::Nullable(nullable) => resolve_field_contracts(
+            &nullable.schema,
+            definitions,
+            segments,
+            depth + 1,
+            references,
+            resolved,
+        ),
+        SemanticSchemaNode::Object(object) => {
+            if let Some(field) = object
+                .fields
+                .iter()
+                .find(|field| field.field_name == segments[0])
+            {
+                if segments.len() == 1 {
+                    resolved.insert(SemanticFieldContract {
+                        semantic_type: if field.nullable {
+                            format!("{} | null", field.semantic_type)
+                        } else {
+                            field.semantic_type.clone()
+                        },
+                        required: field.required,
+                        nullable: field.nullable,
+                    });
+                } else {
+                    resolve_field_contracts(
+                        &field.schema,
+                        definitions,
+                        &segments[1..],
+                        depth + 1,
+                        references,
+                        resolved,
+                    );
+                }
+            }
+        }
+        SemanticSchemaNode::Array(array)
+            if segments[0] == "*" || segments[0].parse::<usize>().is_ok() =>
+        {
+            resolve_field_contracts(
+                &array.items,
+                definitions,
+                &segments[1..],
+                depth + 1,
+                references,
+                resolved,
+            );
+        }
+        SemanticSchemaNode::TaggedUnion(union) => {
+            for variant in &union.variants {
+                resolve_field_contracts(
+                    &variant.schema,
+                    definitions,
+                    segments,
+                    depth + 1,
+                    references,
+                    resolved,
+                );
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for variant in &union.variants {
+                resolve_field_contracts(
+                    variant,
+                    definitions,
+                    segments,
+                    depth + 1,
+                    references,
+                    resolved,
+                );
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for schema in &all_of.schemas {
+                resolve_field_contracts(
                     schema,
                     definitions,
                     segments,
@@ -610,24 +1759,6 @@ impl SemanticSchemaNode {
             Self::TaggedUnion(schema) => &schema.metadata,
             Self::Union(schema) => &schema.metadata,
             Self::AllOf(schema) => &schema.metadata,
-        }
-    }
-
-    fn metadata_mut(&mut self) -> &mut SemanticNodeMetadata {
-        match self {
-            Self::Object(schema) => &mut schema.metadata,
-            Self::Array(schema) => &mut schema.metadata,
-            Self::String(metadata)
-            | Self::Integer(metadata)
-            | Self::Number(metadata)
-            | Self::Boolean(metadata)
-            | Self::Null(metadata) => metadata,
-            Self::Nullable(schema) => &mut schema.metadata,
-            Self::Enum(schema) => &mut schema.metadata,
-            Self::Reference(schema) => &mut schema.metadata,
-            Self::TaggedUnion(schema) => &mut schema.metadata,
-            Self::Union(schema) => &mut schema.metadata,
-            Self::AllOf(schema) => &mut schema.metadata,
         }
     }
 
@@ -828,6 +1959,240 @@ impl SemanticSchemaNode {
             }
         }
         Value::Object(object)
+    }
+
+    fn to_runtime_json_schema(&self, depth: usize) -> Value {
+        let mut object = self
+            .metadata()
+            .validation
+            .clone()
+            .into_iter()
+            .collect::<Map<_, _>>();
+        match self {
+            Self::Object(schema) => {
+                object.insert("type".to_owned(), Value::String("object".to_owned()));
+                if depth < 2 {
+                    object.insert(
+                        "properties".to_owned(),
+                        Value::Object(
+                            schema
+                                .fields
+                                .iter()
+                                .map(|field| {
+                                    (
+                                        field.field_name.clone(),
+                                        field.schema.to_runtime_json_schema(depth + 1),
+                                    )
+                                })
+                                .collect(),
+                        ),
+                    );
+                    let required = schema
+                        .fields
+                        .iter()
+                        .filter(|field| field.required)
+                        .map(|field| Value::String(field.field_name.clone()))
+                        .collect::<Vec<_>>();
+                    if !required.is_empty() {
+                        object.insert("required".to_owned(), Value::Array(required));
+                    }
+                    match &schema.additional_properties {
+                        SemanticAdditionalProperties::Allowed => {}
+                        SemanticAdditionalProperties::Forbidden => {
+                            object.insert("additionalProperties".to_owned(), Value::Bool(false));
+                        }
+                        SemanticAdditionalProperties::Schema(schema) => {
+                            object.insert(
+                                "additionalProperties".to_owned(),
+                                schema.to_runtime_json_schema(depth + 1),
+                            );
+                        }
+                    }
+                } else if let Some(semantic_type) = schema.metadata.title.as_ref() {
+                    object.insert(
+                        "x-volicord-semantic-type".to_owned(),
+                        Value::String(semantic_type.clone()),
+                    );
+                }
+            }
+            Self::Array(schema) => {
+                object.insert("type".to_owned(), Value::String("array".to_owned()));
+                object.insert(
+                    "items".to_owned(),
+                    schema.items.to_runtime_json_schema(depth + 1),
+                );
+            }
+            Self::String(_) => {
+                object.insert("type".to_owned(), Value::String("string".to_owned()));
+            }
+            Self::Integer(_) => {
+                object.insert("type".to_owned(), Value::String("integer".to_owned()));
+            }
+            Self::Number(_) => {
+                object.insert("type".to_owned(), Value::String("number".to_owned()));
+            }
+            Self::Boolean(_) => {
+                object.insert("type".to_owned(), Value::String("boolean".to_owned()));
+            }
+            Self::Null(_) => {
+                object.insert("type".to_owned(), Value::String("null".to_owned()));
+            }
+            Self::Nullable(schema) => {
+                let inner = schema.schema.to_runtime_json_schema(depth + 1);
+                let primitive_type = inner
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .filter(|value_type| {
+                        matches!(*value_type, "string" | "integer" | "number" | "boolean")
+                    })
+                    .map(str::to_owned);
+                if let Some(primitive_type) = primitive_type {
+                    let mut inner = inner
+                        .as_object()
+                        .expect("primitive runtime schema has an object root")
+                        .clone();
+                    inner.remove("type");
+                    object.extend(inner);
+                    object.insert(
+                        "type".to_owned(),
+                        Value::Array(vec![
+                            Value::String(primitive_type),
+                            Value::String("null".to_owned()),
+                        ]),
+                    );
+                } else {
+                    object.insert(
+                        "anyOf".to_owned(),
+                        Value::Array(vec![inner, serde_json::json!({"type": "null"})]),
+                    );
+                }
+            }
+            Self::Enum(schema) => {
+                object.insert("type".to_owned(), Value::String(schema.value_type.clone()));
+                object.insert("enum".to_owned(), Value::Array(schema.values.clone()));
+            }
+            Self::Reference(schema) => {
+                object.insert("$ref".to_owned(), Value::String(schema.reference.clone()));
+            }
+            Self::TaggedUnion(schema) => {
+                object.insert("type".to_owned(), Value::String("object".to_owned()));
+                object.insert(
+                    "oneOf".to_owned(),
+                    Value::Array(
+                        schema
+                            .variants
+                            .iter()
+                            .map(|variant| runtime_discriminator_branch(schema, variant))
+                            .collect(),
+                    ),
+                );
+                let mut nested_variants = Vec::new();
+                for variant in &schema.variants {
+                    collect_runtime_variant_annotations(&variant.schema, &mut nested_variants);
+                }
+                if !nested_variants.is_empty() {
+                    object.insert(
+                        "x-volicord-nested-variants".to_owned(),
+                        Value::Array(nested_variants),
+                    );
+                }
+            }
+            Self::Union(schema) => {
+                object.insert(
+                    schema.keyword.to_owned(),
+                    Value::Array(
+                        schema
+                            .variants
+                            .iter()
+                            .map(|variant| variant.to_runtime_json_schema(depth + 1))
+                            .collect(),
+                    ),
+                );
+            }
+            Self::AllOf(schema) => {
+                object.insert(
+                    "allOf".to_owned(),
+                    Value::Array(
+                        schema
+                            .schemas
+                            .iter()
+                            .map(|schema| schema.to_runtime_json_schema(depth + 1))
+                            .collect(),
+                    ),
+                );
+            }
+        }
+        Value::Object(object)
+    }
+}
+
+fn runtime_discriminator_branch(
+    union: &SemanticTaggedUnionSchema,
+    variant: &SemanticTaggedUnionVariant,
+) -> Value {
+    let mut leaf = serde_json::json!({
+        "enum": [variant.discriminator_value.clone()],
+        "x-volicord-semantic-type": variant.semantic_type,
+        "x-volicord-variant-meaning": variant.meaning,
+    });
+    for segment in union
+        .discriminator_path
+        .trim_start_matches('/')
+        .split('/')
+        .rev()
+    {
+        leaf = serde_json::json!({
+            "type": "object",
+            "properties": { (segment): leaf },
+            "required": [segment],
+        });
+    }
+    leaf
+}
+
+fn collect_runtime_variant_annotations(node: &SemanticSchemaNode, variants: &mut Vec<Value>) {
+    match node {
+        SemanticSchemaNode::Object(object) => {
+            for field in &object.fields {
+                collect_runtime_variant_annotations(&field.schema, variants);
+            }
+            if let SemanticAdditionalProperties::Schema(schema) = &object.additional_properties {
+                collect_runtime_variant_annotations(schema, variants);
+            }
+        }
+        SemanticSchemaNode::Array(array) => {
+            collect_runtime_variant_annotations(&array.items, variants);
+        }
+        SemanticSchemaNode::Nullable(nullable) => {
+            collect_runtime_variant_annotations(&nullable.schema, variants);
+        }
+        SemanticSchemaNode::TaggedUnion(union) => {
+            for variant in &union.variants {
+                variants.push(serde_json::json!({
+                    "enum": [variant.discriminator_value.clone()],
+                    "x-volicord-semantic-type": variant.semantic_type,
+                    "x-volicord-variant-meaning": variant.meaning,
+                }));
+                collect_runtime_variant_annotations(&variant.schema, variants);
+            }
+        }
+        SemanticSchemaNode::Union(union) => {
+            for variant in &union.variants {
+                collect_runtime_variant_annotations(variant, variants);
+            }
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            for schema in &all_of.schemas {
+                collect_runtime_variant_annotations(schema, variants);
+            }
+        }
+        SemanticSchemaNode::Reference(_)
+        | SemanticSchemaNode::String(_)
+        | SemanticSchemaNode::Integer(_)
+        | SemanticSchemaNode::Number(_)
+        | SemanticSchemaNode::Boolean(_)
+        | SemanticSchemaNode::Null(_)
+        | SemanticSchemaNode::Enum(_) => {}
     }
 }
 
@@ -1112,7 +2477,7 @@ fn parse_schema_node(
             return nullable_node(inner, metadata);
         }
         if let Some(tagged) =
-            parse_tagged_union(branches, fallback_type, definitions, metadata.clone())
+            declared_tagged_union(branches, fallback_type, definitions, metadata.clone())
         {
             return with_union_siblings(
                 SemanticSchemaNode::TaggedUnion(tagged),
@@ -1215,24 +2580,9 @@ fn parse_schema_node(
                 .into_iter()
                 .flatten()
                 .map(|(name, field_schema)| {
-                    let mut node = parse_schema_node(field_schema, name, definitions);
-                    let semantic_type = if name == "baseline_ref" {
-                        "BaselineRef".to_owned()
-                    } else {
-                        node.semantic_type_name()
-                    };
-                    if required.contains(name.as_str())
-                        && node.is_nullable()
-                        && semantic_type == "BaselineRef"
-                    {
-                        node.metadata_mut().validation.insert(
-                            "not".to_owned(),
-                            Value::Object(Map::from_iter([(
-                                "const".to_owned(),
-                                Value::String("null".to_owned()),
-                            )])),
-                        );
-                    }
+                    let node = parse_schema_node(field_schema, name, definitions);
+                    let semantic_type = node.semantic_type_name();
+                    let required = required.contains(name.as_str());
                     let description = field_schema
                         .get("description")
                         .and_then(Value::as_str)
@@ -1242,7 +2592,7 @@ fn parse_schema_node(
                         });
                     SemanticObjectField {
                         field_name: name.clone(),
-                        required: required.contains(name.as_str()),
+                        required,
                         nullable: node.is_nullable(),
                         semantic_type,
                         description,
@@ -1516,158 +2866,59 @@ fn parse_union_node(
     })
 }
 
-fn parse_tagged_union(
+fn declared_tagged_union(
     branches: &[Value],
     fallback_type: &str,
     definitions: &Map<String, Value>,
-    metadata: SemanticNodeMetadata,
+    mut metadata: SemanticNodeMetadata,
 ) -> Option<SemanticTaggedUnionSchema> {
-    let branch_constants = branches
+    let contract = MCP_TAGGED_UNION_CONTRACTS.iter().find(|contract| {
+        contract.variants.len() == branches.len()
+            && contract
+                .semantic_type_patterns
+                .iter()
+                .any(|pattern| semantic_type_pattern_matches(pattern, fallback_type))
+    })?;
+    let variants = contract
+        .variants
         .iter()
-        .map(|branch| discriminator_constants(branch, definitions, 0))
-        .collect::<Vec<_>>();
-    let first = branch_constants.first()?;
-    let mut candidates = first.keys().cloned().collect::<Vec<_>>();
-    candidates.retain(|path| {
-        let values = branch_constants
-            .iter()
-            .filter_map(|constants| constants.get(path))
-            .collect::<BTreeSet<_>>();
-        values.len() == branches.len()
-    });
-    candidates.sort_by_key(|path| (path.matches('/').count(), path.clone()));
-    let discriminator_path = candidates.into_iter().next()?;
-    let variants = branches
-        .iter()
-        .zip(branch_constants)
-        .map(|(branch, constants)| {
-            let discriminator_value = constants.get(&discriminator_path)?.clone();
-            let semantic_type = branch_semantic_type(branch)
-                .unwrap_or_else(|| format!("{fallback_type}::{discriminator_value}"));
-            let meaning = branch
-                .get("description")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .unwrap_or_else(|| {
-                    format!("Selects the `{discriminator_value}` variant of `{fallback_type}`.")
-                });
-            Some(SemanticTaggedUnionVariant {
-                discriminator_value,
+        .zip(branches)
+        .map(|(variant, branch)| {
+            let semantic_type = format!("{fallback_type}::{}", variant.semantic_type_suffix);
+            SemanticTaggedUnionVariant {
+                discriminator_value: variant.discriminator_value.to_owned(),
                 semantic_type: semantic_type.clone(),
-                meaning,
+                meaning: variant.meaning.to_owned(),
                 schema: Box::new(parse_schema_node(branch, &semantic_type, definitions)),
-            })
+            }
         })
-        .collect::<Option<Vec<_>>>()?;
+        .collect::<Vec<_>>();
+    if metadata.description.is_none() {
+        metadata.description = Some(format!(
+            "Discriminator `{}`: {}",
+            contract.discriminator_path,
+            contract
+                .variants
+                .iter()
+                .map(|variant| format!("`{}` — {}", variant.discriminator_value, variant.meaning))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ));
+    }
     Some(SemanticTaggedUnionSchema {
-        discriminator_path,
+        discriminator_path: contract.discriminator_path.to_owned(),
         variants,
         metadata,
     })
 }
 
-fn discriminator_constants(
-    schema: &Value,
-    definitions: &Map<String, Value>,
-    depth: usize,
-) -> BTreeMap<String, String> {
-    if depth > 16 {
-        return BTreeMap::new();
-    }
-    let Some(object) = schema.as_object() else {
-        return BTreeMap::new();
+fn semantic_type_pattern_matches(pattern: &str, semantic_type: &str) -> bool {
+    let Some((prefix, suffix)) = pattern.split_once('*') else {
+        return pattern == semantic_type;
     };
-    if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
-        return reference
-            .strip_prefix("#/definitions/")
-            .and_then(|name| definitions.get(name))
-            .map(|schema| discriminator_constants(schema, definitions, depth + 1))
-            .unwrap_or_default();
-    }
-    let mut constants = BTreeMap::new();
-    if let Some(properties) = object.get("properties").and_then(Value::as_object) {
-        for (name, property) in properties {
-            if let Some(value) = singleton_string_enum(property, definitions, depth + 1) {
-                constants.insert(format!("/{name}"), value);
-            }
-            for (path, value) in discriminator_constants(property, definitions, depth + 1) {
-                constants.insert(format!("/{name}{path}"), value);
-            }
-        }
-    }
-    if let Some(schemas) = object.get("allOf").and_then(Value::as_array) {
-        for schema in schemas {
-            constants.extend(discriminator_constants(schema, definitions, depth + 1));
-        }
-    }
-    for keyword in ["oneOf", "anyOf"] {
-        let Some(branches) = object.get(keyword).and_then(Value::as_array) else {
-            continue;
-        };
-        let branch_constants = branches
-            .iter()
-            .map(|branch| discriminator_constants(branch, definitions, depth + 1))
-            .collect::<Vec<_>>();
-        let Some(first) = branch_constants.first() else {
-            continue;
-        };
-        for (path, value) in first {
-            if branch_constants
-                .iter()
-                .skip(1)
-                .all(|branch| branch.get(path) == Some(value))
-            {
-                constants.insert(path.clone(), value.clone());
-            }
-        }
-    }
-    constants
-}
-
-fn singleton_string_enum(
-    schema: &Value,
-    definitions: &Map<String, Value>,
-    depth: usize,
-) -> Option<String> {
-    if depth > 16 {
-        return None;
-    }
-    let object = schema.as_object()?;
-    if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
-        return reference
-            .strip_prefix("#/definitions/")
-            .and_then(|name| definitions.get(name))
-            .and_then(|schema| singleton_string_enum(schema, definitions, depth + 1));
-    }
-    if let Some(schemas) = object.get("allOf").and_then(Value::as_array) {
-        let values = schemas
-            .iter()
-            .filter_map(|schema| singleton_string_enum(schema, definitions, depth + 1))
-            .collect::<BTreeSet<_>>();
-        if values.len() == 1 {
-            return values.into_iter().next();
-        }
-    }
-    let values = object.get("enum")?.as_array()?;
-    match values.as_slice() {
-        [Value::String(value)] => Some(value.clone()),
-        _ => None,
-    }
-}
-
-fn branch_semantic_type(branch: &Value) -> Option<String> {
-    branch
-        .get("$ref")
-        .and_then(Value::as_str)
-        .and_then(|reference| reference.rsplit('/').next())
-        .or_else(|| branch.get("title").and_then(Value::as_str))
-        .map(str::to_owned)
-        .or_else(|| {
-            branch
-                .get("allOf")
-                .and_then(Value::as_array)
-                .and_then(|schemas| schemas.iter().find_map(branch_semantic_type))
-        })
+    semantic_type.starts_with(prefix)
+        && semantic_type.ends_with(suffix)
+        && semantic_type.len() >= prefix.len() + suffix.len()
 }
 
 fn node_metadata(object: &Map<String, Value>) -> SemanticNodeMetadata {
@@ -2493,6 +3744,7 @@ fn validate_node_integrity(
     required_context: &BTreeSet<String>,
     errors: &mut Vec<String>,
 ) {
+    validate_constraint_type_compatibility(node, path, errors);
     match node {
         SemanticSchemaNode::Reference(reference) => {
             if reference_target(definitions, &reference.reference).is_none() {
@@ -2580,11 +3832,18 @@ fn validate_node_integrity(
                         ));
                     }
                 }
-                let constants = rendered_discriminator_constants(&variant.schema, definitions);
-                if constants.get(&union.discriminator_path) != Some(&variant.discriminator_value) {
+                let declared_value = rendered_discriminator_value(
+                    &variant.schema,
+                    definitions,
+                    &union.discriminator_path,
+                );
+                if declared_value.as_ref() != Some(&variant.discriminator_value) {
                     errors.push(format!(
-                        "{path} variant `{}` is missing discriminator `{}`",
-                        variant.semantic_type, union.discriminator_path
+                        "{path} variant `{}` does not declare discriminator `{}` as `{}` (found {})",
+                        variant.semantic_type,
+                        union.discriminator_path,
+                        variant.discriminator_value,
+                        declared_value.as_deref().unwrap_or("no exact value")
                     ));
                 }
                 if !required_context.contains(&union.discriminator_path)
@@ -2663,6 +3922,48 @@ fn validate_node_integrity(
         | SemanticSchemaNode::Boolean(_)
         | SemanticSchemaNode::Null(_)
         | SemanticSchemaNode::Enum(_) => {}
+    }
+}
+
+fn validate_constraint_type_compatibility(
+    node: &SemanticSchemaNode,
+    path: &str,
+    errors: &mut Vec<String>,
+) {
+    let node_kind = match node {
+        SemanticSchemaNode::Object(_) => Some("object"),
+        SemanticSchemaNode::Array(_) => Some("array"),
+        SemanticSchemaNode::String(_) => Some("string"),
+        SemanticSchemaNode::Integer(_) => Some("integer"),
+        SemanticSchemaNode::Number(_) => Some("number"),
+        SemanticSchemaNode::Boolean(_) => Some("boolean"),
+        SemanticSchemaNode::Null(_) => Some("null"),
+        SemanticSchemaNode::Enum(schema) => Some(schema.value_type.as_str()),
+        SemanticSchemaNode::Nullable(_)
+        | SemanticSchemaNode::Reference(_)
+        | SemanticSchemaNode::TaggedUnion(_)
+        | SemanticSchemaNode::Union(_)
+        | SemanticSchemaNode::AllOf(_) => None,
+    };
+    let Some(node_kind) = node_kind else {
+        return;
+    };
+    for constraint in node.metadata().validation.keys() {
+        let allowed = match constraint.as_str() {
+            "minLength" | "maxLength" | "pattern" => node_kind == "string",
+            "format" => matches!(node_kind, "string" | "integer" | "number"),
+            "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" | "multipleOf" => {
+                matches!(node_kind, "integer" | "number")
+            }
+            "minItems" | "maxItems" | "uniqueItems" => node_kind == "array",
+            "minProperties" | "maxProperties" => node_kind == "object",
+            _ => true,
+        };
+        if !allowed {
+            errors.push(format!(
+                "{path} applies `{constraint}` to incompatible semantic type `{node_kind}`"
+            ));
+        }
     }
 }
 
@@ -2867,21 +4168,142 @@ fn discriminator_path_is_required(
     }
 }
 
-fn rendered_discriminator_constants(
+fn rendered_discriminator_value(
     node: &SemanticSchemaNode,
     definitions: &BTreeMap<String, SemanticSchemaNode>,
-) -> BTreeMap<String, String> {
-    let raw_definitions = definitions
-        .iter()
-        .map(|(name, node)| (name.clone(), node.to_json_schema()))
-        .collect::<Map<_, _>>();
-    discriminator_constants(&node.to_json_schema(), &raw_definitions, 0)
+    discriminator_path: &str,
+) -> Option<String> {
+    exact_semantic_string_at_path(node, definitions, discriminator_path, 0)
+}
+
+fn exact_semantic_string_at_path(
+    node: &SemanticSchemaNode,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    path: &str,
+    depth: usize,
+) -> Option<String> {
+    if depth > 32 {
+        return None;
+    }
+    if path.is_empty() {
+        return match node {
+            SemanticSchemaNode::Reference(reference) => {
+                reference_target(definitions, &reference.reference).and_then(|target| {
+                    exact_semantic_string_at_path(target, definitions, path, depth + 1)
+                })
+            }
+            SemanticSchemaNode::Enum(schema) => match schema.values.as_slice() {
+                [Value::String(value)] => Some(value.clone()),
+                _ => None,
+            },
+            SemanticSchemaNode::String(metadata) => metadata
+                .validation
+                .get("const")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            SemanticSchemaNode::AllOf(all_of) => {
+                let values = all_of
+                    .schemas
+                    .iter()
+                    .filter_map(|schema| {
+                        exact_semantic_string_at_path(schema, definitions, path, depth + 1)
+                    })
+                    .collect::<BTreeSet<_>>();
+                (values.len() == 1)
+                    .then(|| values.into_iter().next())
+                    .flatten()
+            }
+            SemanticSchemaNode::TaggedUnion(union) => common_exact_semantic_string(
+                union.variants.iter().map(|variant| variant.schema.as_ref()),
+                definitions,
+                path,
+                depth,
+            ),
+            SemanticSchemaNode::Union(union) => {
+                common_exact_semantic_string(union.variants.iter(), definitions, path, depth)
+            }
+            _ => None,
+        };
+    }
+    let remaining = path.strip_prefix('/')?;
+    let (segment, tail) = remaining
+        .split_once('/')
+        .map_or((remaining, None), |(segment, tail)| (segment, Some(tail)));
+    match node {
+        SemanticSchemaNode::Reference(reference) => {
+            reference_target(definitions, &reference.reference).and_then(|target| {
+                exact_semantic_string_at_path(target, definitions, path, depth + 1)
+            })
+        }
+        SemanticSchemaNode::Object(object) => object
+            .fields
+            .iter()
+            .find(|field| field.field_name == segment)
+            .and_then(|field| {
+                tail.map_or_else(
+                    || exact_semantic_string_at_path(&field.schema, definitions, "", depth + 1),
+                    |tail| {
+                        exact_semantic_string_at_path(
+                            &field.schema,
+                            definitions,
+                            &format!("/{tail}"),
+                            depth + 1,
+                        )
+                    },
+                )
+            }),
+        SemanticSchemaNode::Nullable(nullable) => {
+            exact_semantic_string_at_path(&nullable.schema, definitions, path, depth + 1)
+        }
+        SemanticSchemaNode::AllOf(all_of) => {
+            let values = all_of
+                .schemas
+                .iter()
+                .filter_map(|schema| {
+                    exact_semantic_string_at_path(schema, definitions, path, depth + 1)
+                })
+                .collect::<BTreeSet<_>>();
+            (values.len() == 1)
+                .then(|| values.into_iter().next())
+                .flatten()
+        }
+        SemanticSchemaNode::TaggedUnion(union) => common_exact_semantic_string(
+            union.variants.iter().map(|variant| variant.schema.as_ref()),
+            definitions,
+            path,
+            depth,
+        ),
+        SemanticSchemaNode::Union(union) => {
+            common_exact_semantic_string(union.variants.iter(), definitions, path, depth)
+        }
+        _ => None,
+    }
+}
+
+fn common_exact_semantic_string<'a>(
+    nodes: impl Iterator<Item = &'a SemanticSchemaNode>,
+    definitions: &BTreeMap<String, SemanticSchemaNode>,
+    path: &str,
+    depth: usize,
+) -> Option<String> {
+    let values = nodes
+        .map(|node| exact_semantic_string_at_path(node, definitions, path, depth + 1))
+        .collect::<Option<BTreeSet<_>>>()?;
+    (values.len() == 1)
+        .then(|| values.into_iter().next())
+        .flatten()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde::Deserialize;
+    use volicord_types::{
+        ids::BaselineRef,
+        schema::{
+            RequiredNullable, UserActionBasis, UserActionRequestBody, UserActionResolutionForm,
+        },
+    };
 
     #[derive(Debug, Serialize, Deserialize, JsonSchema)]
     #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -2952,6 +4374,57 @@ mod tests {
         required: String,
         enum_value: OrderEnum,
         items: Vec<u64>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct NestedBaseline {
+        authority_baseline: RequiredNullable<BaselineRef>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct TypeOwnedBaselineRoot {
+        current_baseline: RequiredNullable<BaselineRef>,
+        nested: NestedBaseline,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct MisleadingFieldName {
+        baseline_ref: RequiredNullable<String>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    enum AlphaConstant {
+        AlphaFixed,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    enum BetaConstant {
+        BetaFixed,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum ExplicitUnionWithIncidentalConstants {
+        Alpha { a_constant: AlphaConstant },
+        Beta { a_constant: BetaConstant },
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum UndeclaredLookalikeUnion {
+        Alpha { value: String },
+        Beta { count: u64 },
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct ExplicitUnionRoot {
+        value: ExplicitUnionWithIncidentalConstants,
     }
 
     #[test]
@@ -3110,5 +4583,163 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["/typed", "/required", "/unknown", "/enum_value", "/items/0",]
         );
+    }
+
+    #[test]
+    fn baseline_ref_and_required_nullable_are_type_owned_at_every_field_name() {
+        let descriptor = SemanticSchemaDescriptor::for_type::<TypeOwnedBaselineRoot>(Vec::new());
+        assert_eq!(
+            descriptor.semantic_types_at_pointer_pattern("/current_baseline"),
+            ["BaselineRef"]
+        );
+        assert_eq!(
+            descriptor.semantic_types_at_pointer_pattern("/nested/authority_baseline"),
+            ["BaselineRef"]
+        );
+
+        for valid in [
+            serde_json::json!({
+                "current_baseline": null,
+                "nested": {"authority_baseline": null}
+            }),
+            serde_json::json!({
+                "current_baseline": "baseline_current_001",
+                "nested": {"authority_baseline": "baseline_authority_001"}
+            }),
+        ] {
+            assert!(descriptor.validate(&valid).issues.is_empty());
+            assert!(serde_json::from_value::<TypeOwnedBaselineRoot>(valid).is_ok());
+        }
+
+        for invalid in [
+            serde_json::json!({
+                "current_baseline": "null",
+                "nested": {"authority_baseline": null}
+            }),
+            serde_json::json!({
+                "current_baseline": "",
+                "nested": {"authority_baseline": null}
+            }),
+            serde_json::json!({
+                "current_baseline": null,
+                "nested": {"authority_baseline": "null"}
+            }),
+            serde_json::json!({
+                "nested": {"authority_baseline": null}
+            }),
+        ] {
+            assert!(
+                !descriptor.validate(&invalid).issues.is_empty(),
+                "{invalid}"
+            );
+            assert!(serde_json::from_value::<TypeOwnedBaselineRoot>(invalid).is_err());
+        }
+
+        let misleading = SemanticSchemaDescriptor::for_type::<MisleadingFieldName>(Vec::new());
+        for ordinary_string in [
+            serde_json::json!({"baseline_ref": "null"}),
+            serde_json::json!({"baseline_ref": ""}),
+        ] {
+            assert!(misleading.validate(&ordinary_string).issues.is_empty());
+            assert!(serde_json::from_value::<MisleadingFieldName>(ordinary_string).is_ok());
+        }
+        assert_eq!(
+            misleading.semantic_types_at_pointer_pattern("/baseline_ref"),
+            ["string"]
+        );
+    }
+
+    #[test]
+    fn declared_discriminator_ignores_unrelated_singleton_constants() {
+        let descriptor = SemanticSchemaDescriptor::for_type::<ExplicitUnionRoot>(Vec::new());
+        let SemanticSchemaNode::TaggedUnion(union) = descriptor
+            .definitions()
+            .get("ExplicitUnionWithIncidentalConstants")
+            .expect("explicit union definition")
+        else {
+            panic!("union must use the explicit tagged representation");
+        };
+        assert_eq!(union.discriminator_path, "/kind");
+        assert_eq!(
+            union
+                .variants
+                .iter()
+                .map(|variant| variant.discriminator_value.as_str())
+                .collect::<Vec<_>>(),
+            ["alpha", "beta"]
+        );
+    }
+
+    #[test]
+    fn discriminator_contract_does_not_attach_to_an_unrelated_lookalike_type() {
+        let descriptor = SemanticSchemaDescriptor::for_type::<UndeclaredLookalikeUnion>(Vec::new());
+        assert!(matches!(descriptor.node(), SemanticSchemaNode::Union(_)));
+        assert!(descriptor
+            .integrity_errors()
+            .iter()
+            .any(|error| error.contains("object union without an explicit discriminator")));
+    }
+
+    #[test]
+    fn public_user_action_body_unions_have_explicit_type_owned_discriminators() {
+        fn assert_tagged<T: McpSemanticSchema>(path: &str, values: &[&str]) {
+            let descriptor = SemanticSchemaDescriptor::for_type::<T>(Vec::new());
+            let SemanticSchemaNode::TaggedUnion(union) = descriptor.node() else {
+                panic!(
+                    "{} must be an explicit tagged union",
+                    descriptor.semantic_type()
+                );
+            };
+            assert_eq!(union.discriminator_path, path);
+            assert_eq!(
+                union
+                    .variants
+                    .iter()
+                    .map(|variant| variant.discriminator_value.as_str())
+                    .collect::<Vec<_>>(),
+                values
+            );
+        }
+
+        assert_tagged::<UserActionRequestBody>("/action_type", &["choice", "evidence_observation"]);
+        assert_tagged::<UserActionBasis>("/action_type", &["choice", "evidence_observation"]);
+        assert_tagged::<UserActionResolutionForm>(
+            "/form_type",
+            &["choice", "evidence_observation"],
+        );
+    }
+
+    #[test]
+    fn catalog_and_descriptor_digests_are_deterministic() {
+        assert!(mcp_tagged_union_contract_integrity_errors().is_empty());
+        let first = SemanticSchemaDescriptor::for_type::<ExampleRoot>(Vec::new());
+        let second = SemanticSchemaDescriptor::for_type::<ExampleRoot>(Vec::new());
+        assert_eq!(first.schema_digest(), second.schema_digest());
+        assert_eq!(first.descriptor_digest(), second.descriptor_digest());
+        assert_ne!(first.schema_digest(), first.descriptor_digest());
+    }
+
+    #[test]
+    fn integrity_rejects_constraint_and_type_mismatches() {
+        let mut descriptor = SemanticSchemaDescriptor::for_type::<ConstraintRoot>(Vec::new());
+        let SemanticSchemaNode::Object(root) = &mut descriptor.node else {
+            panic!("constraint fixture must be an object");
+        };
+        let patterned = root
+            .fields
+            .iter_mut()
+            .find(|field| field.field_name == "patterned")
+            .expect("patterned field");
+        let SemanticSchemaNode::String(metadata) = patterned.schema.as_mut() else {
+            panic!("patterned field must be a string");
+        };
+        metadata
+            .validation
+            .insert("minimum".to_owned(), serde_json::json!(1));
+
+        assert!(descriptor
+            .integrity_errors()
+            .iter()
+            .any(|error| error.contains("incompatible semantic type `string`")));
     }
 }

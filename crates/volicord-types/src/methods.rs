@@ -1,4 +1,4 @@
-use schemars::{schema_for, JsonSchema};
+use schemars::{gen::SchemaGenerator, schema::Schema, schema_for, JsonSchema};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 
@@ -740,13 +740,39 @@ pub struct ScopeUpdate {
 }
 
 /// Change Unit update object. Additional method-owned fields remain object data.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChangeUnitUpdate {
     pub operation: ChangeUnitOperation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_contract: Option<ChangeUnitEffectContract>,
     #[serde(flatten)]
     pub fields: JsonObject,
+}
+
+impl JsonSchema for ChangeUnitUpdate {
+    fn schema_name() -> String {
+        "ChangeUnitUpdate".to_owned()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        serde_json::from_value(serde_json::json!({
+            "title": "ChangeUnitUpdate",
+            "description": "Change Unit operation and its typed method-owned planning fields; additional method-owned fields remain allowed.",
+            "type": "object",
+            "properties": {
+                "operation": generator.subschema_for::<ChangeUnitOperation>(),
+                "effect_contract": generator.subschema_for::<Option<ChangeUnitEffectContract>>(),
+                "scope_summary": generator.subschema_for::<String>(),
+                "affected_areas": generator.subschema_for::<Vec<String>>(),
+                "affected_paths": generator.subschema_for::<Vec<String>>(),
+                "constraints": generator.subschema_for::<Vec<String>>()
+            },
+            "required": ["operation"],
+            "additionalProperties": true,
+            "x-volicord-semantic-type": "ChangeUnitUpdate"
+        }))
+        .expect("ChangeUnitUpdate schema must be valid")
+    }
 }
 
 impl ChangeUnitUpdate {
@@ -1180,7 +1206,6 @@ pub struct RecordRunRequest {
     pub run_id: RequiredNullable<RunId>,
     pub baseline_ref: BaselineRef,
     pub write_ticket_id: RequiredNullable<WriteTicketId>,
-    #[serde(default, skip_serializing_if = "RequiredNullable::is_none")]
     pub performed_operation: RequiredNullable<String>,
     pub summary: String,
     pub observed_changes: ObservedChanges,
@@ -1307,7 +1332,6 @@ impl MethodOperationCategory for ReconcileChangesRequest {
 pub struct UnrecordedChangeResolutionRequest {
     pub unrecorded_change_id: UnrecordedChangeId,
     pub basis: UnrecordedChangeResolutionBasis,
-    #[serde(default)]
     pub user_action_resolution_id: RequiredNullable<UserActionResolutionId>,
 }
 
@@ -2064,6 +2088,27 @@ mod tests {
             TypeId::of::<<CheckCloseRequest as MethodResponseContract>::ResultFields>(),
             TypeId::of::<<CloseTaskRequest as MethodResponseContract>::ResultFields>(),
         );
+    }
+
+    #[test]
+    fn change_unit_update_schema_owns_known_flattened_planning_fields() {
+        let schema = serde_json::to_value(schema_for!(ChangeUnitUpdate)).unwrap();
+        let properties = schema["properties"]
+            .as_object()
+            .expect("ChangeUnitUpdate properties");
+        for field in [
+            "operation",
+            "effect_contract",
+            "scope_summary",
+            "affected_areas",
+            "affected_paths",
+            "constraints",
+        ] {
+            assert!(properties.contains_key(field), "missing `{field}` schema");
+        }
+        assert_eq!(schema["required"], serde_json::json!(["operation"]));
+        assert_eq!(schema["additionalProperties"], true);
+        assert_eq!(schema["x-volicord-semantic-type"], "ChangeUnitUpdate");
     }
 
     #[test]

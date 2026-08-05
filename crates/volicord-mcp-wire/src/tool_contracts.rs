@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
+#[cfg(test)]
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
@@ -40,8 +41,8 @@ use volicord_types::values::{
 
 use crate::methods::*;
 use crate::semantic_schema::{
-    CanonicalSchemaExample, ExpectedTaggedVariant, SemanticSchemaDescriptor,
-    SemanticValidationResult,
+    mcp_tagged_union_contract_integrity_errors, CanonicalSchemaExample, ExpectedTaggedVariant,
+    McpSemanticSchema, SemanticSchemaDescriptor, SemanticValidationResult,
 };
 
 pub const UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID: &str = "keep_current_change_unit";
@@ -103,6 +104,10 @@ impl McpToolContractDescriptor {
 
     pub fn input_schema(&self) -> Value {
         self.input.json_schema()
+    }
+
+    pub fn runtime_input_schema(&self) -> Value {
+        self.input.runtime_json_schema()
     }
 
     pub fn output_schema(&self) -> Value {
@@ -172,11 +177,35 @@ impl McpToolContractDescriptor {
                 self.tool.wire_name()
             ));
         }
+        let first_schema_digest = self.input.schema_digest();
+        let second_schema_digest = self.input.schema_digest();
+        let first_descriptor_digest = self.input.descriptor_digest();
+        let second_descriptor_digest = self.input.descriptor_digest();
+        if first_schema_digest != second_schema_digest
+            || first_descriptor_digest != second_descriptor_digest
+        {
+            errors.push(format!(
+                "{} input descriptor digest is nondeterministic",
+                self.tool.wire_name()
+            ));
+        }
         let first = self.output_schema();
         let second = self.output_schema();
         if first != second {
             errors.push(format!(
                 "{} output schema generation is nondeterministic",
+                self.tool.wire_name()
+            ));
+        }
+        let first_schema_digest = self.output.schema_digest();
+        let second_schema_digest = self.output.schema_digest();
+        let first_descriptor_digest = self.output.descriptor_digest();
+        let second_descriptor_digest = self.output.descriptor_digest();
+        if first_schema_digest != second_schema_digest
+            || first_descriptor_digest != second_descriptor_digest
+        {
+            errors.push(format!(
+                "{} output descriptor digest is nondeterministic",
                 self.tool.wire_name()
             ));
         }
@@ -207,6 +236,7 @@ pub fn mcp_tool_contracts() -> &'static [McpToolContractDescriptor] {
 pub fn mcp_tool_contract_integrity_errors() -> Vec<String> {
     let contracts = mcp_tool_contracts();
     let mut errors = Vec::new();
+    errors.extend(mcp_tagged_union_contract_integrity_errors());
     let mut tools = BTreeSet::new();
     for contract in contracts {
         if !tools.insert(contract.tool.wire_name()) {
@@ -236,8 +266,8 @@ fn contract<I, O>(
     examples: Vec<CanonicalSchemaExample>,
 ) -> McpToolContractDescriptor
 where
-    I: JsonSchema + Serialize + DeserializeOwned,
-    O: JsonSchema,
+    I: McpSemanticSchema + Serialize + DeserializeOwned,
+    O: McpSemanticSchema,
 {
     McpToolContractDescriptor {
         tool,
@@ -1391,6 +1421,7 @@ fn state_ref(kind: StateRecordKind, id: &str, task_id: &str) -> StateRecordRef {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::semantic_schema::{SemanticSchemaNode, SemanticValidationIssueCode};
     use serde::{Deserialize, Deserializer};
     use serde_json::json;
@@ -1567,7 +1598,7 @@ mod tests {
         assert!(validation.issues.is_empty(), "{:#?}", validation.issues);
         let schema = contract.input_schema();
         assert_eq!(
-            schema.pointer("/properties/baseline_ref/not/const"),
+            schema.pointer("/definitions/BaselineRef/not/const"),
             Some(&Value::String("null".to_owned()))
         );
 

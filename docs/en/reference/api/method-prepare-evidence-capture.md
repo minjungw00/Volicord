@@ -49,12 +49,12 @@ commit.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
-| `baseline_ref` | yes | no | `string` |
+| `baseline_ref` | yes | no | `BaselineRef` |
 | `capture` | yes | no | `EvidenceCaptureSpec` |
-| `change_unit_id` | yes | no | `string` |
+| `change_unit_id` | yes | no | `ChangeUnitId` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `target` | yes | no | `EvidenceTarget` |
-| `task_id` | yes | no | `string` |
+| `task_id` | yes | no | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.prepare_evidence_capture.request[params] -->
 
 
@@ -72,8 +72,9 @@ removes leading and trailing whitespace without rewriting its internal
 identifier text. The non-empty and 256-UTF-8-byte limits are checked afterward,
 and the resulting value is stored in the immutable intent.
 
-MCP omission defaults are `expected_exit_code=0` and `expected_success=true`.
-Explicit `null` has the same meaning. The method
+`expected_exit_code` and `expected_success` are required-nullable MCP fields.
+Explicit `null` selects the defaults `0` and `true`, respectively; omission is
+invalid. The method
 rejects an empty safe label, malformed digest, target
 outside the current Task, non-current Change Unit, incompatible baseline, or
 missing verified Agent Connection context before commit. Tool capture also

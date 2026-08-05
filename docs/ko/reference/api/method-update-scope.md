@@ -105,7 +105,7 @@ Task, Change Unit, checkpoint, `scope_revision`, baseline, request, 영향받는
 |---|---|---|---|
 | `acceptance_criteria` | 예 | 예 | `AcceptanceCriterionReplacement[]` |
 | `autonomy_boundary` | 예 | 예 | `string` |
-| `baseline_ref` | 예 | 예 | `string` |
+| `baseline_ref` | 예 | 예 | `BaselineRef` |
 | `change_unit` | 예 | 아니요 | `ChangeUnitUpdate` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `goal_summary` | 예 | 예 | `string` |
@@ -113,7 +113,7 @@ Task, Change Unit, checkpoint, `scope_revision`, baseline, request, 영향받는
 | `related_scope_decision_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `scope_boundary` | 예 | 예 | `string` |
 | `scope_update` | 예 | 예 | `ScopeUpdate` |
-| `task_id` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.update_scope.request[params] -->
 
 

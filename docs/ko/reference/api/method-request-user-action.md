@@ -23,11 +23,11 @@ Accepted disposition만 application 대상이 될 수 있습니다.
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
 | `action` | 예 | 아니요 | `UserActionDraft` |
-| `change_unit_id` | 예 | 예 | `string` |
+| `change_unit_id` | 예 | 예 | `ChangeUnitId` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `expires_at` | 예 | 예 | `UtcTimestamp` |
 | `required_for` | 예 | 아니요 | `UserActionRequiredFor[]` |
-| `task_id` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.request_user_action.request[params] -->
 
 

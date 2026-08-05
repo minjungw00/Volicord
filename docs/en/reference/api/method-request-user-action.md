@@ -24,11 +24,11 @@ eligibility.
 | Field | Required | Nullable | Type |
 |---|---|---|---|
 | `action` | yes | no | `UserActionDraft` |
-| `change_unit_id` | yes | yes | `string` |
+| `change_unit_id` | yes | yes | `ChangeUnitId` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `expires_at` | yes | yes | `UtcTimestamp` |
 | `required_for` | yes | no | `UserActionRequiredFor[]` |
-| `task_id` | yes | no | `string` |
+| `task_id` | yes | no | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.request_user_action.request[params] -->
 
 

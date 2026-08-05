@@ -102,7 +102,7 @@ ArtifactInput:
 
 For each input, exactly one source field is populated and the other source field is `null`. `ArtifactInput.source_kind` selects which source field applies; supported source-kind values and value meanings are owned by [artifact values](schema-value-sets.md#artifact-values).
 
-`artifact_input_id` is an opaque request-local input identifier. `relation_hint` is a free-form display string. `evidence_target`, when present, is the stable tagged criterion or supplemental-claim identity defined by [Evidence and run snapshot shapes](schema-state.md#evidence-and-run-snapshot-shapes); an artifact description or statement is not evidence identity. `expected_sha256` is a checksum string. `redaction_state`, when present, is a controlled value string.
+`artifact_input_id` is an opaque request-local input identifier. `relation_hint` is a free-form display string. `evidence_target`, when non-null, is the stable tagged criterion or supplemental-claim identity defined by [Evidence and run snapshot shapes](schema-state.md#evidence-and-run-snapshot-shapes); an artifact description or statement is not evidence identity. `expected_sha256` is a checksum string. `redaction_state`, when present, is a controlled value string.
 
 Shape rules:
 - If `staged_artifact_handle` is populated, `existing_artifact_ref` is `null`.

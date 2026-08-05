@@ -22,8 +22,8 @@ aggregate close-basis transaction은 `stable`입니다.
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
-| `baseline_ref` | 예 | 아니요 | `string` |
-| `change_unit_id` | 예 | 아니요 | `string` |
+| `baseline_ref` | 예 | 아니요 | `BaselineRef` |
+| `change_unit_id` | 예 | 아니요 | `ChangeUnitId` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `evidence_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `recovery_constraints` | 예 | 아니요 | `string[]` |
@@ -31,9 +31,9 @@ aggregate close-basis transaction은 `stable`입니다.
 | `result_refs` | 예 | 아니요 | `StateRecordRef[]` |
 | `result_summary` | 예 | 아니요 | `string` |
 | `scope_revision` | 예 | 아니요 | `integer` |
-| `shaping_checkpoint_id` | 예 | 아니요 | `string` |
-| `task_id` | 예 | 아니요 | `string` |
-| `user_action_resolution_ids` | 예 | 아니요 | `string[]` |
+| `shaping_checkpoint_id` | 예 | 아니요 | `ShapingCheckpointId` |
+| `task_id` | 예 | 아니요 | `TaskId` |
+| `user_action_resolution_ids` | 예 | 아니요 | `UserActionResolutionId[]` |
 <!-- END GENERATED: contract-structures api.method.finalize_advice.request[params] -->
 
 위 생성 표는 adapter-neutral 메서드 요청입니다. 사용자 결정 없음, 정확한 accepted

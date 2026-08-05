@@ -303,7 +303,11 @@ fn mcp_tools_call_requires_initialized_notification() -> Result<(), Box<dyn Erro
         request(2, "tools/list", json!({})),
         tools_call(3, "volicord.intake", intake_args(None)),
         initialized_notification(),
-        tools_call(4, "volicord.status", json!({ "detail": "workflow" })),
+        tools_call(
+            4,
+            "volicord.status",
+            json!({ "detail": "workflow", "task_id": null }),
+        ),
     ])?);
     let mut output = Vec::new();
 

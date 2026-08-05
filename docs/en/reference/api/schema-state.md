@@ -194,7 +194,11 @@ Meaning:
   canonical criterion records for the Task; retired criteria are not projected
   as current criteria.
 - `effect_contract` is the current Change Unit's optional extra effect contract. `null` means no extra Change Unit effect contract is recorded; it must not be described as broad safety or unrestricted execution.
-- `baseline_ref` is an opaque baseline identifier.
+- A non-null `BaselineRef` is a canonical, non-empty opaque identifier. Leading
+  or trailing whitespace and the string literal `"null"` are invalid wherever
+  this semantic type appears. JSON `null` is available only when the containing
+  field is explicitly typed as `BaselineRef | null`; it is not represented by
+  a string sentinel.
 - `workspace_context` is the optional verified Git coordinate captured for the
   current Change Unit baseline. Its paths and hashes are local authority facts,
   not portable repository identity or a security guarantee.
@@ -1127,8 +1131,8 @@ Meaning:
   immutable `statement`. Variant fields must not be mixed.
 - `EvidenceCaptureSpec` is a strict tagged union. Its caller-supplied lowercase
   64-character digest fields bind exact command or tool input. Expected-outcome
-  members are nullable in the typed shape and use method-owned omission
-  defaults on MCP.
+  members are required-nullable in the typed MCP shape; JSON `null` selects the
+  method-owned default and omission is invalid.
 - `EvidenceCaptureIntent` is the immutable, expiring current-basis request. Its
   `requested_by_actor_source` and `workspace_context` are Core-derived basis
   fields, not caller-selected attribution. Its public ref uses

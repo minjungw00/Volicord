@@ -280,6 +280,12 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         MethodName::UpdateScope,
         json!({
             "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
             "change_unit": {"operation": "keep_current"}
         }),
     )?;
@@ -297,7 +303,7 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         tools_call_with_codex_metadata(
             3,
             AgentToolId::STATUS.wire_name(),
-            json!({ "detail": "workflow" }),
+            json!({ "detail": "workflow", "task_id": null }),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
             "fixture_codex_turn_status",
@@ -305,7 +311,7 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         tools_call_with_codex_metadata(
             4,
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
-            json!({ "operation_result_ref": operation_result_ref }),
+            json!({ "operation_result_ref": operation_result_ref, "cursor": null }),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
             "fixture_codex_turn_result",
@@ -447,7 +453,11 @@ fn managed_stdio_tool_call_records_bounded_metrics() -> Result<(), Box<dyn Error
         initialize_request(1, json!({})),
         request(2, "tools/list", json!({})),
         initialized_notification(),
-        tools_call(3, "volicord.status", json!({ "detail": "workflow" })),
+        tools_call(
+            3,
+            "volicord.status",
+            json!({ "detail": "workflow", "task_id": null }),
+        ),
     ])?);
     let mut output = Vec::new();
 
@@ -495,7 +505,7 @@ fn managed_codex_new_client_version_uses_protocol_and_call_binding() -> Result<(
         tools_call_with_codex_metadata(
             2,
             AgentToolId::STATUS.wire_name(),
-            json!({"detail":"workflow"}),
+            json!({"detail":"workflow", "task_id": null}),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
             CODEX_TEST_TURN_ID,
@@ -532,7 +542,7 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
     let mut first_call = tools_call_with_codex_metadata(
         2,
         "volicord.status",
-        json!({"detail":"workflow"}),
+        json!({"detail":"workflow", "task_id": null}),
         native_session_id,
         native_thread_id,
         "turn.one",
@@ -545,7 +555,7 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
         tools_call_with_codex_metadata(
             3,
             "volicord.status",
-            json!({"detail":"workflow"}),
+            json!({"detail":"workflow", "task_id": null}),
             native_session_id,
             native_thread_id,
             "turn.two",
@@ -553,7 +563,7 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
         tools_call_with_codex_metadata(
             4,
             "volicord.status",
-            json!({"detail":"workflow"}),
+            json!({"detail":"workflow", "task_id": null}),
             native_session_id,
             "native.thread.other",
             "turn.three",
@@ -561,7 +571,7 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
         tools_call_with_codex_metadata(
             5,
             "volicord.status",
-            json!({"detail":"workflow"}),
+            json!({"detail":"workflow", "task_id": null}),
             "native.session.other",
             native_thread_id,
             "turn.four",
@@ -709,7 +719,7 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
         tools_call_with_codex_metadata(
             5,
             "volicord.status",
-            json!({"detail":"workflow"}),
+            json!({"detail":"workflow", "task_id": null}),
             accepted_session_id,
             "native.thread.accepted-after-recovery",
             "turn.accepted",

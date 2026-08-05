@@ -194,7 +194,10 @@ StateSummary:
   표시 문자열입니다. `acceptance_criteria`는 `Task`의 현재 기준 기록을
   정규 형태로 담으며 폐기된 기준을 현재 기준으로 표시하지 않습니다.
 - `effect_contract`는 현재 적용 Change Unit의 선택적 추가 효과 계약입니다. `null`은 추가 Change Unit 효과 계약이 기록되어 있지 않다는 뜻입니다. 넓은 안전성이나 제한 없는 실행처럼 설명하면 안 됩니다.
-- `baseline_ref`는 불투명 기준선 식별자입니다.
+- null이 아닌 `BaselineRef`는 비어 있지 않은 정규 불투명 식별자입니다. 이 의미 type이
+  나타나는 모든 곳에서 앞뒤 공백과 string literal `"null"`은 유효하지 않습니다. JSON
+  `null`은 포함 field가 명시적으로 `BaselineRef | null`일 때만 쓸 수 있으며 string
+  sentinel로 표현하지 않습니다.
 - `workspace_context`는 현재 Change Unit 기준선에 결합한 선택적 검증 Git
   좌표입니다. 그 경로와 해시는 로컬 권한 사실이며 portable repository
   identity나 보안 보장이 아닙니다.
@@ -1106,8 +1109,8 @@ ObservedChanges:
   있습니다. 변형별 필드를 섞을 수 없습니다.
 - `EvidenceCaptureSpec`은 엄격한 태그 합집합입니다. 호출자가 제공하는 소문자
   64자 digest 필드는 정확한 command 또는 tool input을 결합합니다. Typed shape의
-  expected-outcome 필드는 nullable이며 MCP에서 생략하면 메서드 담당 기본값을
-  사용합니다.
+  expected-outcome 필드는 MCP에서 필수-null 허용입니다. JSON `null`은 메서드 담당
+  기본값을 선택하며, 생략은 유효하지 않습니다.
 - `EvidenceCaptureIntent`는 만료되는 불변 current-basis 요청입니다.
   `requested_by_actor_source`와 `workspace_context`는 Core가 파생한 근거 필드이며
   호출자가 선택하는 attribution이 아닙니다. 공개 ref는

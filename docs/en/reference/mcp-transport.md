@@ -37,6 +37,19 @@ cases. This includes `McpOperationalErrorCode`,
 `McpOperationalFailure`, `McpReadOnlyToolStructuredContent`,
 `McpToolDefinitionEnvelope`, and `McpToolResultEnvelope`.
 
+Semantic behavior follows the Rust semantic type, not a containing property
+name or JSON Pointer. `BaselineRef` therefore owns its non-empty canonical
+string representation, surrounding-whitespace rejection, the forbidden string
+literal `"null"`, description, and canonical example wherever it is nested or
+renamed. `RequiredNullable<T>` is one generic descriptor rule: its member is
+required, JSON `null` is valid, and every non-null value is validated and
+decoded as `T`. There are no field-name registrations or nullable exceptions.
+Schemars supplies leaf JSON Schema representation for these type-owned rules;
+it does not select union discriminators or derive MCP meanings from incidental
+schema constants. Opaque identifier leaves carry
+`x-volicord-semantic-type` so runtime compaction retains their type identity
+even when a definition is inlined.
+
 `volicord-types` owns only adapter-neutral method facts, domain values, and
 public method schemas. `volicord-mcp` consumes those neutral outcomes and maps
 them into the wire-owned values. Core, Store, the UserAction service, the
@@ -55,20 +68,20 @@ This table is generated from the canonical MCP semantic descriptors. Required-nu
 | Tool | Input semantic type | Required nullable root fields | Typed examples | Output semantic type | Output discriminator |
 |---|---|---|---|---|---|
 | `volicord.intake` | `McpIntakeArguments` | `acceptance_policy`: `AcceptancePolicy`<br>`lineage`: `TaskLineageInput` | `create_new`<br>`resume_active`<br>`supersede_active`<br>`reject_if_active` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_IntakeResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.update_scope` | `McpUpdateScopeArguments` | none | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | none | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.advance_task` | `McpAdvanceTaskArguments` | none | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.status` | `McpStatusArguments` | none | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_McpStatusResponse` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
-| `volicord.get_operation_result` | `McpGetOperationResultArguments` | none | `first_operation_result_page` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_GetOperationResultResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
+| `volicord.status` | `McpStatusArguments` | `task_id`: `TaskId` | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_McpStatusResponse` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
+| `volicord.get_operation_result` | `McpGetOperationResultArguments` | `cursor`: `string` | `first_operation_result_page` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_GetOperationResultResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
 | `volicord.prepare_evidence_capture` | `McpPrepareEvidenceCaptureArguments` | none | `verified_command_capture`<br>`verified_tool_capture` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult_and_McpPrepareEvidenceCaptureCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.prepare_write` | `McpPrepareWriteArguments` | none | `simple_prepare_write` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareWriteResult_and_McpPrepareWriteCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.stage_artifact` | `McpStageArtifactArguments` | none | `stage_safe_text` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_StageArtifactResult_and_McpStageArtifactCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.record_run` | `McpRecordRunArguments` | none | `evidence_bearing_record_run` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordRunResult_and_McpRecordRunCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.stage_artifact` | `McpStageArtifactArguments` | `expected_sha256`: `string`<br>`expected_size_bytes`: `integer`<br>`relation_hint`: `string` | `stage_safe_text` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_StageArtifactResult_and_McpStageArtifactCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.record_run` | `McpRecordRunArguments` | `close_assessment`: `CloseAssessmentInput`<br>`performed_operation`: `string`<br>`run_id`: `RunId`<br>`write_ticket_id`: `WriteTicketId` | `evidence_bearing_record_run` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordRunResult_and_McpRecordRunCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.request_user_action` | `McpRequestUserActionArguments` | none | `final_acceptance_request`<br>`resume_user_action` | `McpMutationStructuredContent_for_McpRequestUserActionResponse_and_McpRequestUserActionCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.reconcile_changes` | `McpReconcileChangesArguments` | none | `reconcile_current_task` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_ReconcileChangesResult_and_McpReconcileChangesCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.check_close` | `McpCheckCloseArguments` | none | `check_close_missing_final_acceptance` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_CheckCloseResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
-| `volicord.close_task` | `McpCloseTaskArguments` | none | `close_complete`<br>`close_cancel`<br>`close_supersede` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_CloseTaskResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.close_task` | `McpCloseTaskArguments` | `close_reason`: `CloseReason`<br>`superseding_task_id`: `TaskId`<br>`user_note`: `string` | `close_complete`<br>`close_cancel`<br>`close_supersede` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_CloseTaskResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.list_projects` | `McpListProjectsArguments` | none | none | `McpToolStructuredContent_for_McpListProjectsResult` | `/result_type`: `response`, `adapter_error` |
 | `volicord.begin_integration_verification` | `BeginIntegrationVerificationArguments` | none | none | `McpToolStructuredContent_for_BeginIntegrationVerificationResult` | `/result_type`: `response`, `adapter_error` |
 | `volicord.guard_probe` | `IntegrationVerificationIdArguments` | none | none | `McpToolStructuredContent_for_GuardProbeResult` | `/result_type`: `response`, `adapter_error` |
@@ -610,6 +623,18 @@ revision. Connection mode and storage capability may withhold tools as listed
 above, but protocol revision does not rename or substitute the tools that
 remain visible.
 
+The descriptor generates a runtime-compact semantic synopsis independently of
+the complete documentation schema and exact branch-local validator. The
+synopsis retains root fields and requiredness, bounded leaf constraints and
+semantic type names, explicit discriminator values and meanings, generic
+required-nullable shapes, and one bounded summary that identifies a canonical
+typed example when available. Compact output schemas retain the required
+`result_type` field, its allowed values, and concise meanings. Compaction may
+remove redundant presentation annotations and unreachable definitions, but it
+does not remove load-bearing semantic guidance. The complete runtime
+`tools/list` projection is deterministically bounded to 50,000 serialized JSON
+bytes; mode and storage subsets are bounded by the same limit.
+
 `ToolVerificationRole::ManagedHostRoundTrip` is bound at compile time to
 `AgentToolId::LIST_PROJECTS`. The MCP runtime, administrative CLI, Store
 observation, and diagnostic comparison use that identity and project
@@ -752,6 +777,17 @@ and short variant meanings, then stops that union. A missing discriminator
 likewise produces one issue at that path with the allowed variants and meanings.
 Volicord does not score branch errors, choose a closest branch, or validate
 fields from an unselected branch.
+
+The closed union catalog declares each discriminator path, value, semantic
+branch type, branch schema, and short meaning. Descriptor construction pairs
+each catalog variant with its explicitly ordered branch schema; integrity
+verification reads only the declared path. It does not scan singleton constants,
+rank candidate paths, or infer a discriminator from path depth, so adding an
+unrelated fixed field cannot change branch selection. Integrity checks reject
+duplicate discriminator values or declarations, unresolved references,
+nullable metadata drift, constraint/type mismatch, invalid typed examples, and
+runtime/documentation semantic-projection drift. Canonical schema and descriptor
+digests also make generation changes deterministic and reviewable.
 
 Each issue receives its schema-node identity, selected branch, semantic type,
 and field description while the validator is traversing that exact branch.

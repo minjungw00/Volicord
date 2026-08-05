@@ -64,10 +64,13 @@ fn production_adapter_rejects_missing_current_managed_session_before_core(
     let before = fixture.counts()?;
 
     let error = adapter
-        .call_tool("volicord.status", json!({}))
+        .call_tool("volicord.status", json!({ "task_id": null }))
         .expect_err("a production adapter must require a current managed Agent Session");
 
-    assert!(error.to_string().contains("agent_session_missing"));
+    assert!(
+        error.to_string().contains("agent_session_missing"),
+        "unexpected adapter error: {error}"
+    );
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -181,10 +184,13 @@ fn multiple_allowed_projects_require_explicit_project_selector() -> Result<(), B
     let adapter = adapter(&fixture)?;
 
     let error = adapter
-        .call_tool("volicord.status", json!({}))
+        .call_tool("volicord.status", json!({ "task_id": null }))
         .expect_err("multiple allowed projects without project_selector should be ambiguous");
 
-    assert!(error.to_string().contains("ambiguous"));
+    assert!(
+        error.to_string().contains("ambiguous"),
+        "unexpected adapter error: {error}"
+    );
     assert!(error.to_string().contains("project_selector is required"));
     Ok(())
 }
@@ -219,11 +225,14 @@ fn explicit_allowed_project_still_requires_current_managed_session() -> Result<(
     let error = adapter
         .call_tool(
             "volicord.status",
-            json!({ "project_selector": second_project_id }),
+            json!({ "project_selector": second_project_id, "task_id": null }),
         )
         .expect_err("an allowed selector must not bypass managed Agent Session authority");
 
-    assert!(error.to_string().contains("agent_session_missing"));
+    assert!(
+        error.to_string().contains("agent_session_missing"),
+        "unexpected adapter error: {error}"
+    );
     Ok(())
 }
 

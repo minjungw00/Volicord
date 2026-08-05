@@ -19,13 +19,13 @@
 
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
-| `baseline_ref` | 예 | 아니요 | `string` |
-| `change_unit_id` | 예 | 아니요 | `string` |
+| `baseline_ref` | 예 | 아니요 | `BaselineRef` |
+| `change_unit_id` | 예 | 아니요 | `ChangeUnitId` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `scope_revision` | 예 | 아니요 | `integer` |
-| `shaping_checkpoint_id` | 예 | 아니요 | `string` |
-| `task_id` | 예 | 아니요 | `string` |
-| `user_action_resolution_ids` | 예 | 아니요 | `string[]` |
+| `shaping_checkpoint_id` | 예 | 아니요 | `ShapingCheckpointId` |
+| `task_id` | 예 | 아니요 | `TaskId` |
+| `user_action_resolution_ids` | 예 | 아니요 | `UserActionResolutionId[]` |
 <!-- END GENERATED: contract-structures api.method.advance_task.request[params] -->
 
 요청은 정확한 현재 Task, 구조적으로 ready인 현재 shaping checkpoint, 현재 활성 Change

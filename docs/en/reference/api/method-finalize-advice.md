@@ -23,8 +23,8 @@ application semantics, and aggregate close-basis transaction are `stable`.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
-| `baseline_ref` | yes | no | `string` |
-| `change_unit_id` | yes | no | `string` |
+| `baseline_ref` | yes | no | `BaselineRef` |
+| `change_unit_id` | yes | no | `ChangeUnitId` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `evidence_refs` | yes | no | `StateRecordRef[]` |
 | `recovery_constraints` | yes | no | `string[]` |
@@ -32,9 +32,9 @@ application semantics, and aggregate close-basis transaction are `stable`.
 | `result_refs` | yes | no | `StateRecordRef[]` |
 | `result_summary` | yes | no | `string` |
 | `scope_revision` | yes | no | `integer` |
-| `shaping_checkpoint_id` | yes | no | `string` |
-| `task_id` | yes | no | `string` |
-| `user_action_resolution_ids` | yes | no | `string[]` |
+| `shaping_checkpoint_id` | yes | no | `ShapingCheckpointId` |
+| `task_id` | yes | no | `TaskId` |
+| `user_action_resolution_ids` | yes | no | `UserActionResolutionId[]` |
 <!-- END GENERATED: contract-structures api.method.finalize_advice.request[params] -->
 
 The generated table above is the adapter-neutral method request. Its MCP wire

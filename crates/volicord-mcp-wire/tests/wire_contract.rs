@@ -77,8 +77,9 @@ fn wire_owner_generates_mcp_schemas_while_public_schemas_stay_neutral() {
     let request = mcp_request_schema(AgentToolId::STATUS).expect("status MCP request schema");
     let response = mcp_response_schema(AgentToolId::STATUS).expect("status MCP response schema");
     let arguments: McpStatusArguments =
-        serde_json::from_value(json!({})).expect("default MCP status arguments");
+        serde_json::from_value(json!({"task_id": null})).expect("nullable MCP status arguments");
 
+    assert!(arguments.task_id.is_none());
     assert!(arguments.continuity_page.is_none());
     assert_eq!(request["type"], "object");
     assert_eq!(response["type"], "object");

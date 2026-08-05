@@ -4,8 +4,8 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 use volicord_mcp_wire::{
     action_form_request_projection, mcp_tool_contract, McpActionFormArgumentMismatch,
-    RetryContract, WorkflowActionForm, WorkflowActionFormCatalog, WorkflowActionInput,
-    MAX_VALIDATION_ISSUES,
+    RetryContract, SemanticSchemaDescriptor, WorkflowActionForm, WorkflowActionFormCatalog,
+    WorkflowActionInput, MAX_VALIDATION_ISSUES,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
@@ -35,6 +35,48 @@ fn input(path: &str, semantic_type: &str) -> WorkflowActionInput {
         path: path.to_owned(),
         semantic_type: semantic_type.to_owned(),
     }
+}
+
+fn descriptor_owned_inputs(
+    descriptor: &SemanticSchemaDescriptor,
+    required: Vec<WorkflowActionInput>,
+    optional: Vec<WorkflowActionInput>,
+) -> Option<(Vec<WorkflowActionInput>, Vec<WorkflowActionInput>)> {
+    fn typed_input(
+        descriptor: &SemanticSchemaDescriptor,
+        authored: WorkflowActionInput,
+    ) -> Option<(WorkflowActionInput, bool)> {
+        let contracts = descriptor.field_contracts_at_pointer_pattern(&authored.path);
+        if contracts.is_empty() {
+            return None;
+        }
+        let semantic_types = contracts
+            .iter()
+            .map(|contract| contract.semantic_type.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join(" | ");
+        Some((
+            input(&authored.path, &semantic_types),
+            contracts.iter().all(|field| field.required),
+        ))
+    }
+
+    let mut descriptor_required = Vec::new();
+    for authored in required {
+        descriptor_required.push(typed_input(descriptor, authored)?.0);
+    }
+    let mut descriptor_optional = Vec::new();
+    for authored in optional {
+        let (authored, is_required) = typed_input(descriptor, authored)?;
+        if is_required {
+            descriptor_required.push(authored);
+        } else {
+            descriptor_optional.push(authored);
+        }
+    }
+    Some((descriptor_required, descriptor_optional))
 }
 
 fn selected_variant(coordinates: &WorkflowActionAuthorityCoordinates) -> &'static str {
@@ -432,6 +474,11 @@ pub(crate) fn workflow_action_form(
     let semantic_schema_digest = canonical_json_sha256(&descriptor.input_schema()).ok()?;
     let (task_id, fixed_arguments, suggested_arguments, required_inputs, optional_inputs) =
         project_fixed_arguments(project_id, &intent.fixed_authority_coordinates);
+    let (required_inputs, optional_inputs) = descriptor_owned_inputs(
+        descriptor.input_descriptor(),
+        required_inputs,
+        optional_inputs,
+    )?;
     let selected_semantic_variant = selected_variant(&intent.fixed_authority_coordinates);
     let projection = action_form_request_projection(intent.method, selected_semantic_variant)?;
     let fixed_argument_paths = projection
@@ -596,6 +643,7 @@ pub(crate) fn retry_contract(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use volicord_types::canonical::is_canonical_sha256_digest;
     use volicord_types::ids::{
         BaselineRef, ChangeUnitId, RecordId, ShapingCheckpointId, UserActionResolutionId,
@@ -667,6 +715,82 @@ mod tests {
                 input("/implementation_boundary", "string | null"),
                 input("/gaps", "array<ShapingGapInput>"),
             ]
+        );
+    }
+
+    #[test]
+    fn action_form_inputs_use_descriptor_owned_types_and_required_nullable_presence() {
+        let project_id = ProjectId::new("prj_descriptor_inputs");
+        let intent = WorkflowActionIntent {
+            method: MethodName::UpdateScope,
+            role: WorkflowActionRole::Allowed,
+            expected_state_version: 3,
+            fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id: TaskId::new("task_descriptor_inputs"),
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_current")),
+                current_change_unit_id: RequiredNullable::some(ChangeUnitId::new("cu_current")),
+                related_scope_decision_refs: Vec::new(),
+            },
+            required_refs: Vec::new(),
+        };
+
+        let form = workflow_action_form(&project_id, &intent).expect("current form");
+        let required = form
+            .required_inputs
+            .iter()
+            .map(|input| (input.path.as_str(), input.semantic_type.as_str()))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(required.get("/baseline_ref"), Some(&"BaselineRef | null"));
+        for path in [
+            "/goal_summary",
+            "/scope_update",
+            "/scope_boundary",
+            "/non_goals",
+            "/acceptance_criteria",
+            "/autonomy_boundary",
+        ] {
+            assert!(
+                required.contains_key(path),
+                "{path} must be required-nullable"
+            );
+        }
+        assert_eq!(
+            form.optional_inputs,
+            vec![input(
+                "/change_unit/effect_contract",
+                "ChangeUnitEffectContract | null"
+            )]
+        );
+    }
+
+    #[test]
+    fn create_change_unit_form_resolves_type_owned_flattened_fields() {
+        let project_id = ProjectId::new("prj_create_change_unit_form");
+        let intent = WorkflowActionIntent {
+            method: MethodName::UpdateScope,
+            role: WorkflowActionRole::Allowed,
+            expected_state_version: 1,
+            fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id: TaskId::new("task_create_change_unit_form"),
+                scope_revision: 0,
+                baseline_ref: RequiredNullable::null(),
+                current_change_unit_id: RequiredNullable::null(),
+                related_scope_decision_refs: Vec::new(),
+            },
+            required_refs: Vec::new(),
+        };
+
+        let form = workflow_action_form(&project_id, &intent).expect("create-current form");
+        let required = form
+            .required_inputs
+            .iter()
+            .map(|input| (input.path.as_str(), input.semantic_type.as_str()))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(required.get("/change_unit/scope_summary"), Some(&"string"));
+        assert_eq!(
+            required.get("/change_unit/affected_paths"),
+            Some(&"array<string>")
         );
     }
 

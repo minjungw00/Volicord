@@ -52,12 +52,12 @@ fn stdio_workflow_metrics_record_exact_tools_list_method_outcomes_and_status_rer
         tools_call(
             3,
             AgentToolId::STATUS.wire_name(),
-            json!({ "detail": "workflow" }),
+            json!({ "detail": "workflow", "task_id": null }),
         ),
         tools_call(
             4,
             AgentToolId::STATUS.wire_name(),
-            json!({ "detail": "workflow" }),
+            json!({ "detail": "workflow", "task_id": null }),
         ),
         tools_call(
             5,
@@ -138,9 +138,9 @@ fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
         tools_call(
             2,
             AgentToolId::STATUS.wire_name(),
-            json!({"unexpected_private_value": sensitive_sentinel}),
+            json!({"task_id": null, "unexpected_private_value": sensitive_sentinel}),
         ),
-        tools_call(3, AgentToolId::STATUS.wire_name(), json!({})),
+        tools_call(3, AgentToolId::STATUS.wire_name(), json!({"task_id": null})),
     ])?);
     let mut output = Vec::new();
 
@@ -214,7 +214,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_mcp_core_result() -> Result<(), Box<
         initialize_request(1, json!({})),
         initialized_notification(),
         request(2, "tools/list", json!({})),
-        tools_call(3, AgentToolId::STATUS.wire_name(), json!({})),
+        tools_call(3, AgentToolId::STATUS.wire_name(), json!({"task_id": null})),
     ])?);
     let mut output = Vec::new();
 
@@ -246,7 +246,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_managed_codex_binding() -> Result<()
         tools_call_with_codex_metadata(
             2,
             AgentToolId::STATUS.wire_name(),
-            json!({}),
+            json!({"task_id": null}),
             native_session_id,
             native_thread_id,
             "turn.one",
@@ -254,7 +254,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_managed_codex_binding() -> Result<()
         tools_call_with_codex_metadata(
             3,
             AgentToolId::STATUS.wire_name(),
-            json!({}),
+            json!({"task_id": null}),
             native_session_id,
             native_thread_id,
             "turn.two",

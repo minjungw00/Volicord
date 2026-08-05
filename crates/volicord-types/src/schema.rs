@@ -210,12 +210,6 @@ impl<T> From<Option<T>> for RequiredNullable<T> {
     }
 }
 
-impl<T> Default for RequiredNullable<T> {
-    fn default() -> Self {
-        Self::null()
-    }
-}
-
 impl<T> From<T> for RequiredNullable<T> {
     fn from(value: T) -> Self {
         Self::some(value)
@@ -3383,9 +3377,7 @@ pub struct PersistedArtifactProducer {
     pub content_type: Option<String>,
     pub created_by_actor_source: ActorSource,
     pub artifact_input_id: ArtifactInputId,
-    #[serde(default)]
     pub relation_hint: RequiredNullable<String>,
-    #[serde(default)]
     pub evidence_target: RequiredNullable<EvidenceTarget>,
 }
 
@@ -3463,7 +3455,6 @@ pub struct UserActionChoiceDraft {
     pub judgment_kind: JudgmentKind,
     pub presentation: JudgmentPresentation,
     pub question: String,
-    #[serde(default)]
     pub options: RequiredNullable<Vec<UserActionOptionInput>>,
     pub context: UserActionContext,
     pub affected_refs: Vec<StateRecordRef>,
@@ -3856,7 +3847,6 @@ impl UserActionBasis {
 pub enum UserActionResolutionInput {
     Choice {
         selected_option_id: UserActionOptionId,
-        #[serde(default)]
         note: RequiredNullable<String>,
     },
     EvidenceObservation {

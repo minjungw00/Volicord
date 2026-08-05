@@ -18,7 +18,7 @@ Connection MCP tool.
 | `channel_submission_id` | yes | no | `string` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `resolution` | yes | no | `UserActionResolutionInput` |
-| `user_action_request_id` | yes | no | `string` |
+| `user_action_request_id` | yes | no | `UserActionRequestId` |
 <!-- END GENERATED: contract-structures api.method.resolve_user_action.request[params] -->
 
 

@@ -835,19 +835,12 @@ pub struct McpUpdateScopeArguments {
     pub detail: MutationDetailLevel,
     pub action_form_ref: RequestHash,
     pub task_id: TaskId,
-    #[serde(default)]
     pub goal_summary: RequiredNullable<String>,
-    #[serde(default)]
     pub scope_update: RequiredNullable<ScopeUpdate>,
-    #[serde(default)]
     pub scope_boundary: RequiredNullable<String>,
-    #[serde(default)]
     pub non_goals: RequiredNullable<Vec<String>>,
-    #[serde(default)]
     pub acceptance_criteria: RequiredNullable<Vec<AcceptanceCriterionReplacement>>,
-    #[serde(default)]
     pub autonomy_boundary: RequiredNullable<String>,
-    #[serde(default)]
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub change_unit: ChangeUnitUpdate,
     #[serde(default)]
@@ -928,7 +921,6 @@ pub struct McpAdvanceTaskArguments {
 pub struct McpStatusArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
-    #[serde(default)]
     pub task_id: RequiredNullable<TaskId>,
     #[serde(default)]
     pub detail: StatusDetailLevel,
@@ -976,24 +968,21 @@ pub struct McpGetOperationResultArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
     pub operation_result_ref: OperationResultRef,
-    #[serde(default)]
     pub cursor: RequiredNullable<String>,
 }
 
-/// MCP-visible evidence-capture source selection with omission-equivalent expected outcomes.
+/// MCP-visible evidence-capture source selection with required-nullable expected outcomes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "capture_kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpEvidenceCaptureSpec {
     VerifiedCommandExecution {
         command_sha256: String,
         command_label: String,
-        #[serde(default)]
         expected_exit_code: RequiredNullable<i32>,
     },
     VerifiedToolInvocation {
         tool_name: String,
         tool_input_sha256: String,
-        #[serde(default)]
         expected_success: RequiredNullable<bool>,
     },
 }
@@ -1073,11 +1062,8 @@ pub struct McpStageArtifactArguments {
     pub content_type: String,
     pub redaction_state: RedactionState,
     pub safe_bytes_or_notice: String,
-    #[serde(default)]
     pub expected_sha256: RequiredNullable<String>,
-    #[serde(default)]
     pub expected_size_bytes: RequiredNullable<u64>,
-    #[serde(default)]
     pub relation_hint: RequiredNullable<String>,
 }
 
@@ -1093,12 +1079,9 @@ pub struct McpRecordRunArguments {
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub kind: RunKind,
-    #[serde(default)]
     pub run_id: RequiredNullable<RunId>,
     pub baseline_ref: BaselineRef,
-    #[serde(default)]
     pub write_ticket_id: RequiredNullable<WriteTicketId>,
-    #[serde(default)]
     pub performed_operation: RequiredNullable<String>,
     pub summary: String,
     pub observed_changes: ObservedChanges,
@@ -1108,7 +1091,6 @@ pub struct McpRecordRunArguments {
     pub evidence_updates: Vec<McpEvidenceCoverageUpdate>,
     #[serde(default)]
     pub evidence_observations: Vec<McpEvidenceObservationInput>,
-    #[serde(default)]
     pub close_assessment: RequiredNullable<CloseAssessmentInput>,
 }
 
@@ -1145,18 +1127,15 @@ impl McpEvidenceCoverageUpdate {
     }
 }
 
-/// MCP-visible evidence observation input with omission-equivalent null and collection defaults.
+/// MCP-visible evidence observation input with required-nullable source coordinates.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpEvidenceObservationInput {
     pub target: EvidenceTarget,
     pub source_kind: EvidenceSourceKind,
     pub assurance_level: EvidenceAssuranceLevel,
-    #[serde(default)]
     pub observed_by_actor_source: RequiredNullable<ActorSource>,
-    #[serde(default)]
     pub tool_name: RequiredNullable<String>,
-    #[serde(default)]
     pub tool_invocation_id: RequiredNullable<String>,
     #[serde(default)]
     pub tool_metadata: JsonObject,
@@ -1210,11 +1189,9 @@ pub struct McpRequestUserActionArguments {
 pub enum McpRequestUserActionOperation {
     Create {
         task_id: TaskId,
-        #[serde(default)]
         change_unit_id: RequiredNullable<ChangeUnitId>,
         action: UserActionDraft,
         required_for: Vec<UserActionRequiredFor>,
-        #[serde(default)]
         expires_at: RequiredNullable<UtcTimestamp>,
     },
     Resume {
@@ -1257,11 +1234,8 @@ pub struct McpCloseTaskArguments {
     pub action_form_ref: RequestHash,
     pub task_id: TaskId,
     pub intent: CloseMutationIntent,
-    #[serde(default)]
     pub close_reason: RequiredNullable<CloseReason>,
-    #[serde(default)]
     pub superseding_task_id: RequiredNullable<TaskId>,
-    #[serde(default)]
     pub user_note: RequiredNullable<String>,
 }
 

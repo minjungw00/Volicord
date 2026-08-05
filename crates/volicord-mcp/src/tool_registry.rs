@@ -19,7 +19,6 @@ pub(crate) fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
     AgentToolId::from_wire_name(tool_name).ok()?.method()
 }
 
-#[cfg(test)]
 pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 50_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -252,7 +251,7 @@ pub(crate) fn mcp_tools_for_mode_and_storage_with_detail(
     detail: ToolSchemaDetail,
 ) -> Vec<CanonicalToolDefinition> {
     let effective_mode = effective_tool_mode_for_mode_and_storage(mode, storage_capability);
-    tool_definitions(
+    let tools = tool_definitions(
         AgentToolId::ALL
             .iter()
             .copied()
@@ -269,7 +268,33 @@ pub(crate) fn mcp_tools_for_mode_and_storage_with_detail(
                 McpEffectiveToolMode::Workflow => tool.available_in(AgentConnectionMode::Workflow),
             }),
         detail,
-    )
+    );
+    if detail == ToolSchemaDetail::RuntimeCompact {
+        let encoded_size = serde_json::to_vec(&json!({ "tools": &tools }))
+            .expect("runtime tools/list projection must serialize")
+            .len();
+        let input_bytes = tools
+            .iter()
+            .map(|tool| {
+                serde_json::to_vec(&tool.input_schema)
+                    .expect("input schema")
+                    .len()
+            })
+            .sum::<usize>();
+        let output_bytes = tools
+            .iter()
+            .map(|tool| {
+                serde_json::to_vec(&tool.output_schema)
+                    .expect("output schema")
+                    .len()
+            })
+            .sum::<usize>();
+        assert!(
+            encoded_size <= MAX_RUNTIME_TOOLS_LIST_BYTES,
+            "runtime tools/list projection is {encoded_size} bytes ({input_bytes} input, {output_bytes} output); limit is {MAX_RUNTIME_TOOLS_LIST_BYTES}"
+        );
+    }
+    tools
 }
 
 pub(crate) fn tools_list_schema_validation_status(
@@ -386,7 +411,11 @@ pub(crate) fn tool_definitions(
 }
 
 fn mcp_tool_input_schema_with_detail(tool: AgentToolId, detail: ToolSchemaDetail) -> Option<Value> {
-    let mut schema = mcp_tool_contract(tool)?.input_schema();
+    let contract = mcp_tool_contract(tool)?;
+    let mut schema = match detail {
+        ToolSchemaDetail::RuntimeCompact => contract.runtime_input_schema(),
+        ToolSchemaDetail::Documentation => contract.input_schema(),
+    };
     match detail {
         ToolSchemaDetail::RuntimeCompact => compact_runtime_schema(&mut schema),
         ToolSchemaDetail::Documentation => {}
@@ -396,29 +425,89 @@ fn mcp_tool_input_schema_with_detail(tool: AgentToolId, detail: ToolSchemaDetail
 
 pub(crate) fn compact_runtime_schema(schema: &mut Value) {
     // Keep the draft marker and validation semantics. Runtime compaction
-    // removes annotations and redundant constraints, drops unreachable
+    // keeps bounded semantic summaries and examples, removes non-semantic
+    // presentation annotations and redundant constraints, drops unreachable
     // definitions, and rewrites only local definition references.
-    strip_schema_presentation_annotations(schema);
+    strip_schema_presentation_annotations(schema, true);
     prune_unreferenced_definitions(schema);
     inline_single_use_definitions(schema);
-    compact_definition_names(schema);
+    compact_definition_references(schema);
 }
 
-fn strip_schema_presentation_annotations(value: &mut Value) {
+fn compact_definition_references(schema: &mut Value) {
+    let Some(definitions) = schema
+        .get("definitions")
+        .and_then(Value::as_object)
+        .cloned()
+    else {
+        return;
+    };
+    let aliases = definitions
+        .keys()
+        .enumerate()
+        .map(|(index, name)| (name.clone(), base36(index)))
+        .collect::<BTreeMap<_, _>>();
+    let compact = definitions
+        .into_iter()
+        .map(|(name, definition)| (aliases[&name].clone(), definition))
+        .collect::<Map<_, _>>();
+    schema
+        .as_object_mut()
+        .expect("generated schema should be an object")
+        .insert("definitions".to_owned(), Value::Object(compact));
+    rewrite_definition_references(schema, &aliases);
+}
+
+fn rewrite_definition_references(value: &mut Value, aliases: &BTreeMap<String, String>) {
+    match value {
+        Value::Object(object) => {
+            let alias = object
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(definition_name_from_ref)
+                .and_then(|name| aliases.get(name));
+            if let Some(alias) = alias {
+                object.insert(
+                    "$ref".to_owned(),
+                    Value::String(format!("#/definitions/{alias}")),
+                );
+            }
+            for child in object.values_mut() {
+                rewrite_definition_references(child, aliases);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                rewrite_definition_references(child, aliases);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn strip_schema_presentation_annotations(value: &mut Value, root: bool) {
     let Some(object) = value.as_object_mut() else {
         return;
     };
+    let semantic_description = root;
+    let semantic_examples = root;
     for annotation in [
         "$comment",
         "default",
         "deprecated",
-        "description",
-        "examples",
         "readOnly",
         "title",
         "writeOnly",
     ] {
         object.remove(annotation);
+    }
+    if !semantic_description {
+        object.remove("description");
+    }
+    if !semantic_examples {
+        object.remove("examples");
+    } else if let Some(examples) = object.get_mut("examples").and_then(Value::as_array_mut) {
+        examples.truncate(1);
     }
     if enum_makes_type_redundant(object) {
         object.remove("type");
@@ -438,23 +527,23 @@ fn strip_schema_presentation_annotations(value: &mut Value) {
         "unevaluatedProperties",
     ] {
         if let Some(child) = object.get_mut(keyword) {
-            strip_schema_presentation_annotations(child);
+            strip_schema_presentation_annotations(child, false);
         }
     }
     if let Some(items) = object.get_mut("items") {
         match items {
             Value::Array(items) => {
                 for item in items {
-                    strip_schema_presentation_annotations(item);
+                    strip_schema_presentation_annotations(item, false);
                 }
             }
-            item => strip_schema_presentation_annotations(item),
+            item => strip_schema_presentation_annotations(item, false),
         }
     }
     for keyword in ["allOf", "anyOf", "oneOf", "prefixItems"] {
         if let Some(items) = object.get_mut(keyword).and_then(Value::as_array_mut) {
             for item in items {
-                strip_schema_presentation_annotations(item);
+                strip_schema_presentation_annotations(item, false);
             }
         }
     }
@@ -467,7 +556,7 @@ fn strip_schema_presentation_annotations(value: &mut Value) {
     ] {
         if let Some(children) = object.get_mut(keyword).and_then(Value::as_object_mut) {
             for child in children.values_mut() {
-                strip_schema_presentation_annotations(child);
+                strip_schema_presentation_annotations(child, false);
             }
         }
     }
@@ -477,7 +566,7 @@ fn strip_schema_presentation_annotations(value: &mut Value) {
     {
         for dependency in dependencies.values_mut() {
             if dependency.is_object() {
-                strip_schema_presentation_annotations(dependency);
+                strip_schema_presentation_annotations(dependency, false);
             }
         }
     }
@@ -710,76 +799,8 @@ fn replace_one_definition_ref(value: &mut Value, name: &str, definition: &Value)
     }
 }
 
-fn compact_definition_names(schema: &mut Value) {
-    let names = schema
-        .get("definitions")
-        .and_then(Value::as_object)
-        .map(|definitions| definitions.keys().cloned().collect::<Vec<_>>())
-        .unwrap_or_default();
-    let aliases = names
-        .into_iter()
-        .enumerate()
-        .map(|(index, name)| (name, base36(index)))
-        .collect::<BTreeMap<_, _>>();
-    replace_definition_refs(schema, &aliases);
-
-    let Some(definitions) = schema
-        .as_object_mut()
-        .and_then(|object| object.get_mut("definitions"))
-        .and_then(Value::as_object_mut)
-    else {
-        return;
-    };
-    let original = std::mem::take(definitions);
-    for (name, definition) in original {
-        definitions.insert(
-            aliases
-                .get(&name)
-                .expect("every retained definition should have a compact alias")
-                .clone(),
-            definition,
-        );
-    }
-}
-
-fn replace_definition_refs(value: &mut Value, aliases: &BTreeMap<String, String>) {
-    match value {
-        Value::Object(object) => {
-            if let Some(Value::String(reference)) = object.get_mut("$ref") {
-                if let Some(name) = definition_name_from_ref(reference) {
-                    if let Some(alias) = aliases.get(name) {
-                        *reference = format!("#/definitions/{alias}");
-                    }
-                }
-            }
-            for child in object.values_mut() {
-                replace_definition_refs(child, aliases);
-            }
-        }
-        Value::Array(items) => {
-            for child in items {
-                replace_definition_refs(child, aliases);
-            }
-        }
-        _ => {}
-    }
-}
-
 fn definition_name_from_ref(reference: &str) -> Option<&str> {
     reference.strip_prefix("#/definitions/")
-}
-
-fn remove_empty_definitions(schema: &mut Value) {
-    if schema
-        .get("definitions")
-        .and_then(Value::as_object)
-        .is_some_and(Map::is_empty)
-    {
-        schema
-            .as_object_mut()
-            .expect("generated schema should be an object")
-            .remove("definitions");
-    }
 }
 
 fn base36(mut value: usize) -> String {
@@ -797,6 +818,19 @@ fn base36(mut value: usize) -> String {
         value /= 36;
     }
     digits.iter().rev().collect()
+}
+
+fn remove_empty_definitions(schema: &mut Value) {
+    if schema
+        .get("definitions")
+        .and_then(Value::as_object)
+        .is_some_and(Map::is_empty)
+    {
+        schema
+            .as_object_mut()
+            .expect("generated schema should be an object")
+            .remove("definitions");
+    }
 }
 
 fn tool_annotations(tool: AgentToolId) -> McpToolAnnotations {

@@ -52,7 +52,7 @@
 | `redaction_state` | 예 | 아니요 | `RedactionState` |
 | `relation_hint` | 예 | 예 | `string` |
 | `safe_bytes_or_notice` | 예 | 아니요 | `string` |
-| `task_id` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.stage_artifact.request[params] -->
 
 

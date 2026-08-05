@@ -103,9 +103,10 @@ Run 권한을 다른 작업 공간으로 옮길 수 없습니다.
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
-- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, `close_assessment`.
-- 선택적 `performed_operation`. 생략은 `null`과 같습니다. 모든 유효
-  `sensitive` 비제품 Run은 바깥쪽 공백을 제거한 뒤 소비할 쓰기 티켓에 저장된
+- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `performed_operation`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, `close_assessment`.
+- `performed_operation`은 필수-null 허용 필드입니다. JSON `null`은 수행 동작이
+  없음을 뜻하며, 생략은 유효하지 않습니다. 모든 유효 `sensitive` 비제품 Run은
+  바깥쪽 공백을 제거한 뒤 소비할 쓰기 티켓에 저장된
   동작과 정확히 일치하는 비어 있지 않은 값을 제공해야 합니다. 일반 제품 쓰기
   Run은 이 필드를 생략할 수 있습니다.
 - 제품 쓰기 Run과 모든 유효 `sensitive` Run은 `volicord.prepare_write`가 발급한
@@ -146,19 +147,19 @@ Run 생성, 증거나 닫기 근거 상태 변경, 아티팩트 승격, 쓰기 �
 | 필드 | 필수 | Null 허용 | 형식 |
 |---|---|---|---|
 | `artifact_inputs` | 예 | 아니요 | `ArtifactInput[]` |
-| `baseline_ref` | 예 | 아니요 | `string` |
-| `change_unit_id` | 예 | 아니요 | `string` |
+| `baseline_ref` | 예 | 아니요 | `BaselineRef` |
+| `change_unit_id` | 예 | 아니요 | `ChangeUnitId` |
 | `close_assessment` | 예 | 예 | `CloseAssessmentInput` |
 | `envelope` | 예 | 아니요 | `ToolEnvelope` |
 | `evidence_observations` | 예 | 아니요 | `EvidenceObservationInput[]` |
 | `evidence_updates` | 예 | 아니요 | `EvidenceCoverageUpdate[]` |
 | `kind` | 예 | 아니요 | `RunKind` |
 | `observed_changes` | 예 | 아니요 | `ObservedChanges` |
-| `performed_operation` | 아니요 | 예 | `string` |
-| `run_id` | 예 | 예 | `string` |
+| `performed_operation` | 예 | 예 | `string` |
+| `run_id` | 예 | 예 | `RunId` |
 | `summary` | 예 | 아니요 | `string` |
-| `task_id` | 예 | 아니요 | `string` |
-| `write_ticket_id` | 예 | 예 | `string` |
+| `task_id` | 예 | 아니요 | `TaskId` |
+| `write_ticket_id` | 예 | 예 | `WriteTicketId` |
 <!-- END GENERATED: contract-structures api.method.record_run.request[params] -->
 
 
@@ -550,6 +551,7 @@ params:
   run_id: null
   baseline_ref: baseline_runprobe_001
   write_ticket_id: null
+  performed_operation: null
   summary: "검색 결과 수 검증을 통과했습니다."
   observed_changes:
     changed_paths: []

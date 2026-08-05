@@ -109,9 +109,10 @@ any attachment link or promotion according to the evidence rules below.
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
-- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
-- Optional `performed_operation`. Omission is equivalent to `null`. Every
-  effective `sensitive` non-product Run must supply a non-empty value that
+- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `performed_operation`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
+- `performed_operation` is required-nullable. JSON `null` means no performed
+  operation; omission is invalid. Every effective `sensitive` non-product Run
+  must supply a non-empty value that
   exactly matches the operation stored in the consumed write ticket after
   trimming outer whitespace. An ordinary product-write Run may omit it.
 - Product-write Runs and all effective `sensitive` Runs require a compatible
@@ -154,19 +155,19 @@ come directly from the semantic request descriptor.
 | Field | Required | Nullable | Type |
 |---|---|---|---|
 | `artifact_inputs` | yes | no | `ArtifactInput[]` |
-| `baseline_ref` | yes | no | `string` |
-| `change_unit_id` | yes | no | `string` |
+| `baseline_ref` | yes | no | `BaselineRef` |
+| `change_unit_id` | yes | no | `ChangeUnitId` |
 | `close_assessment` | yes | yes | `CloseAssessmentInput` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `evidence_observations` | yes | no | `EvidenceObservationInput[]` |
 | `evidence_updates` | yes | no | `EvidenceCoverageUpdate[]` |
 | `kind` | yes | no | `RunKind` |
 | `observed_changes` | yes | no | `ObservedChanges` |
-| `performed_operation` | no | yes | `string` |
-| `run_id` | yes | yes | `string` |
+| `performed_operation` | yes | yes | `string` |
+| `run_id` | yes | yes | `RunId` |
 | `summary` | yes | no | `string` |
-| `task_id` | yes | no | `string` |
-| `write_ticket_id` | yes | yes | `string` |
+| `task_id` | yes | no | `TaskId` |
+| `write_ticket_id` | yes | yes | `WriteTicketId` |
 <!-- END GENERATED: contract-structures api.method.record_run.request[params] -->
 
 
@@ -583,6 +584,7 @@ params:
   run_id: null
   baseline_ref: baseline_runprobe_001
   write_ticket_id: null
+  performed_operation: null
   summary: "Search-result count validation passed."
   observed_changes:
     changed_paths: []

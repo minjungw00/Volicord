@@ -22,7 +22,7 @@ and checkpoint-readiness semantics are `stable`.
 
 | Field | Required | Nullable | Type |
 |---|---|---|---|
-| `baseline_ref` | yes | yes | `string` |
+| `baseline_ref` | yes | yes | `BaselineRef` |
 | `checkpoint_operation` | yes | no | `ShapingCheckpointOperation` |
 | `envelope` | yes | no | `ToolEnvelope` |
 | `evidence_refs` | yes | no | `StateRecordRef[]` |
@@ -31,7 +31,7 @@ and checkpoint-readiness semantics are `stable`.
 | `scope_revision` | yes | no | `integer` |
 | `source_refs` | yes | no | `SourceRef[]` |
 | `summary` | yes | no | `string` |
-| `task_id` | yes | no | `string` |
+| `task_id` | yes | no | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.record_shaping_checkpoint.request[params] -->
 
 The generated table above is the adapter-neutral method request. Its MCP wire

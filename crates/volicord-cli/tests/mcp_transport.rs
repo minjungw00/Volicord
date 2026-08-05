@@ -738,7 +738,7 @@ fn database_row_counts(prefix: &str, path: &Path) -> Result<BTreeMap<String, u64
 }
 
 fn assert_agent_session_missing(response: &Value) {
-    assert_eq!(response["error"]["code"], -32602);
+    assert_eq!(response["error"]["code"], -32602, "{response}");
     assert!(response["error"]["data"]
         .as_str()
         .is_some_and(|data| data.contains("agent_session_missing")));
@@ -746,7 +746,8 @@ fn assert_agent_session_missing(response: &Value) {
 
 fn status_arguments(project_selector: Option<&str>) -> Value {
     let mut arguments = json!({
-        "detail": "workflow"
+        "detail": "workflow",
+        "task_id": null
     });
     if let Some(project_selector) = project_selector {
         arguments["project_selector"] = json!(project_selector);

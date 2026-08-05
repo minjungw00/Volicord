@@ -938,31 +938,33 @@ mod tests {
     }
 
     #[test]
-    fn record_run_performed_operation_omission_defaults_to_null() {
+    fn record_run_performed_operation_is_required_nullable() {
         let schema = public_request_schema("volicord.record_run").expect("record_run schema");
-        assert!(!schema["required"]
+        assert!(schema["required"]
             .as_array()
             .expect("record_run required fields")
             .iter()
             .any(|field| field == "performed_operation"));
-        assert_eq!(
-            schema["properties"]["performed_operation"]["default"],
-            Value::Null
-        );
+        assert_schema_allows_null_property(&schema, "performed_operation");
 
         let mut omitted = record_run_request_json();
         omitted
             .as_object_mut()
             .expect("record_run request object")
             .remove("performed_operation");
-        assert_schema_and_serde("volicord.record_run", omitted.clone(), true);
+        assert_schema_and_serde("volicord.record_run", omitted, false);
+
+        let mut explicit_null = record_run_request_json();
+        explicit_null["performed_operation"] = Value::Null;
+        assert_schema_and_serde("volicord.record_run", explicit_null.clone(), true);
         let decoded: RecordRunRequest =
-            serde_json::from_value(omitted).expect("omitted operation should decode");
+            serde_json::from_value(explicit_null).expect("explicit null operation should decode");
         assert!(decoded.performed_operation.is_none());
-        assert!(serde_json::to_value(decoded)
-            .expect("record_run request should serialize")
-            .get("performed_operation")
-            .is_none());
+        assert!(
+            serde_json::to_value(decoded).expect("record_run request should serialize")
+                ["performed_operation"]
+                .is_null()
+        );
     }
 
     #[test]
@@ -3412,6 +3414,7 @@ mod tests {
             ("volicord.stage_artifact", &["relation_hint"]),
             ("volicord.record_run", &["run_id"]),
             ("volicord.record_run", &["write_ticket_id"]),
+            ("volicord.record_run", &["performed_operation"]),
             ("volicord.record_run", &["observed_changes", "baseline_ref"]),
             ("volicord.record_run", &["close_assessment"]),
             ("volicord.request_user_action", &["change_unit_id"]),
@@ -3638,6 +3641,7 @@ mod tests {
                 "run_id",
                 "baseline_ref",
                 "write_ticket_id",
+                "performed_operation",
                 "summary",
                 "observed_changes",
                 "artifact_inputs",

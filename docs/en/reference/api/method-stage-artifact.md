@@ -52,7 +52,7 @@ come directly from the semantic request descriptor.
 | `redaction_state` | yes | no | `RedactionState` |
 | `relation_hint` | yes | yes | `string` |
 | `safe_bytes_or_notice` | yes | no | `string` |
-| `task_id` | yes | no | `string` |
+| `task_id` | yes | no | `TaskId` |
 <!-- END GENERATED: contract-structures api.method.stage_artifact.request[params] -->
 
 

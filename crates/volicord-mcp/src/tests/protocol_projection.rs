@@ -112,7 +112,7 @@ fn mcp_tools_list_schema_is_client_compatible() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
+fn runtime_tools_list_is_bounded_and_semantically_descriptor_owned() {
     for mode in [AgentConnectionMode::Workflow, AgentConnectionMode::ReadOnly] {
         for storage_capability in [
             McpStorageCapability::ReadWrite,
@@ -138,8 +138,24 @@ fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
                     documentation_tool.id.wire_name()
                 );
                 assert_eq!(runtime_tool.annotations, documentation_tool.annotations);
-                assert_eq!(runtime_tool.output_schema, json!({ "type": "object" }));
+                assert_eq!(runtime_tool.output_schema["type"], "object");
                 assert_eq!(documentation_tool.output_schema["type"], "object");
+                assert_eq!(
+                    runtime_tool.output_schema["required"],
+                    json!(["result_type"]),
+                    "{} compact output must require its semantic discriminator",
+                    runtime_tool.id.wire_name()
+                );
+                assert!(
+                    runtime_tool.output_schema["properties"]["result_type"]["enum"]
+                        .as_array()
+                        .is_some_and(|variants| !variants.is_empty())
+                );
+                assert!(
+                    runtime_tool.output_schema["properties"]["result_type"]["description"]
+                        .as_str()
+                        .is_some_and(|description| !description.is_empty())
+                );
 
                 assert_eq!(
                     root_properties(&runtime_tool.input_schema),
@@ -160,18 +176,42 @@ fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
                     runtime_tool.id.wire_name()
                 );
 
-                let mut documented_input = documentation_tool.input_schema.clone();
-                documented_input
-                    .as_object_mut()
-                    .expect("tool input schema should be an object")
-                    .remove("examples");
-                strip_schema_presentation_for_test(&mut documented_input);
-                assert_eq!(runtime_tool.input_schema, documented_input);
+                assert_runtime_variant_semantics_are_documented(
+                    &runtime_tool.input_schema,
+                    &documentation_tool.input_schema,
+                    runtime_tool.id.wire_name(),
+                );
                 assert!(
-                    !json_member_exists(&runtime_tool.input_schema, "examples"),
-                    "{} runtime input schema must not contain examples",
+                    runtime_tool.input_schema["description"]
+                        .as_str()
+                        .is_some_and(|description| description.contains("Semantic type")),
+                    "{} runtime input schema must carry its semantic summary",
                     runtime_tool.id.wire_name()
                 );
+                let advertised_examples = runtime_tool.input_schema["examples"]
+                    .as_array()
+                    .map_or(0, Vec::len);
+                assert!(advertised_examples <= 1);
+                if runtime_tool.id == AgentToolId::RECORD_SHAPING_CHECKPOINT {
+                    let descriptions =
+                        json_values_for_key(&runtime_tool.input_schema, "description");
+                    assert!(descriptions.iter().any(|description| {
+                        description.as_str().is_some_and(|description| {
+                            description.contains("create_initial")
+                                && description.contains("replace_current")
+                        })
+                    }));
+                    let semantic_types =
+                        json_values_for_key(&runtime_tool.input_schema, "x-volicord-semantic-type");
+                    for semantic_type in ["BaselineRef", "TaskId", "RequestHash"] {
+                        assert!(
+                            semantic_types
+                                .iter()
+                                .any(|value| { value.as_str() == Some(semantic_type) }),
+                            "runtime schema must preserve `{semantic_type}`"
+                        );
+                    }
+                }
                 assert_local_schema_refs_resolve(
                     &runtime_tool.input_schema,
                     runtime_tool.id.wire_name(),
@@ -187,6 +227,68 @@ fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
                 MAX_RUNTIME_TOOLS_LIST_BYTES
             );
         }
+    }
+}
+
+fn assert_runtime_variant_semantics_are_documented(
+    runtime: &Value,
+    documentation: &Value,
+    tool_name: &str,
+) {
+    let documented_values = json_values_for_key(documentation, "enum")
+        .into_iter()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_runtime_variant_nodes(runtime, &documented_values, tool_name);
+}
+
+fn assert_runtime_variant_nodes(
+    value: &Value,
+    documented_values: &BTreeSet<&str>,
+    tool_name: &str,
+) {
+    match value {
+        Value::Object(object) => {
+            if let Some(meaning) = object
+                .get("x-volicord-variant-meaning")
+                .and_then(Value::as_str)
+            {
+                assert!(
+                    !meaning.is_empty(),
+                    "{tool_name} has an empty variant meaning"
+                );
+                let discriminator = object
+                    .get("enum")
+                    .and_then(Value::as_array)
+                    .filter(|values| values.len() == 1)
+                    .and_then(|values| values[0].as_str())
+                    .unwrap_or_else(|| {
+                        panic!("{tool_name} runtime variant meaning lacks one discriminator")
+                    });
+                assert!(
+                    documented_values.contains(discriminator),
+                    "{tool_name} runtime discriminator `{discriminator}` is absent from documentation"
+                );
+                assert!(
+                    object
+                        .get("x-volicord-semantic-type")
+                        .and_then(Value::as_str)
+                        .is_some_and(|semantic_type| !semantic_type.is_empty()),
+                    "{tool_name} runtime discriminator `{discriminator}` lacks its semantic type"
+                );
+            }
+            for child in object.values() {
+                assert_runtime_variant_nodes(child, documented_values, tool_name);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                assert_runtime_variant_nodes(item, documented_values, tool_name);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -406,7 +508,7 @@ fn request_user_action_output_schema_covers_compound_agent_safe_response() {
 }
 
 #[test]
-fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<dyn Error>> {
+fn common_mcp_defaults_distinguish_optional_and_required_nullable() -> Result<(), Box<dyn Error>> {
     let cases = [
         (
             AgentToolId::INTAKE.wire_name(),
@@ -449,22 +551,43 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
     for (tool_name, example_id, defaults) in cases {
         let tool = tool_definition(tool_name);
         let required = root_required_fields(&tool.input_schema);
-        let decoded = decode_mcp_arguments_to_value(
-            tool_name,
-            canonical_example_value(tool_name, example_id)?,
-        )?;
+        let example = canonical_example_value(tool_name, example_id)?;
+        let decoded = decode_mcp_arguments_to_value(tool_name, example.clone())?;
         for (field, expected) in defaults {
-            assert!(
-                !required.iter().any(|required| required == field),
-                "{tool_name}.{field} should be omittable"
-            );
-            assert_eq!(
-                tool.input_schema["properties"][field]["default"], expected,
-                "{tool_name}.{field} should advertise its exact omission default"
-            );
+            if expected.is_null() {
+                assert!(
+                    required.iter().any(|required| required == field),
+                    "{tool_name}.{field} should be required-nullable"
+                );
+                assert!(
+                    tool.input_schema["properties"][field]
+                        .get("default")
+                        .is_none(),
+                    "{tool_name}.{field} must not advertise omission as null: {}",
+                    tool.input_schema["properties"][field]
+                );
+                let mut omitted = example.clone();
+                omitted
+                    .as_object_mut()
+                    .expect("canonical arguments must be an object")
+                    .remove(field);
+                assert!(
+                    crate::schema_validation::validate_mcp_tool_arguments(tool_name, &omitted)
+                        .is_err()
+                );
+            } else {
+                assert!(
+                    !required.iter().any(|required| required == field),
+                    "{tool_name}.{field} should be omittable"
+                );
+                assert_eq!(
+                    tool.input_schema["properties"][field]["default"], expected,
+                    "{tool_name}.{field} should advertise its exact omission default"
+                );
+            }
             assert_eq!(
                 decoded[field], expected,
-                "{tool_name}.{field} omission should decode to the advertised default"
+                "{tool_name}.{field} example should carry the declared value"
             );
         }
     }
@@ -485,28 +608,35 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         ("expires_at", "/request/expires_at", Value::Null),
     ] {
         assert!(
-            !create_required.iter().any(|required| required == field),
-            "{}{pointer} should be omittable",
+            create_required.iter().any(|required| required == field),
+            "{}{pointer} should be required-nullable",
             AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
-        assert_eq!(
-            create_schema["properties"][field]["default"],
-            expected,
-            "{}{pointer} should advertise its exact omission default",
+        assert!(
+            create_schema["properties"][field].get("default").is_none(),
+            "{}{pointer} must not advertise omission as null",
             AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
         assert_eq!(
             decoded.pointer(pointer),
             Some(&expected),
-            "{}{pointer} omission should decode to the advertised default",
+            "{}{pointer} canonical example should carry explicit null",
             AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
     }
-    let choice_schema = &tool.input_schema["definitions"]["UserActionChoiceDraft"];
-    assert_eq!(
-        choice_schema["properties"]["options"]["default"],
-        Value::Null
+    let choice_schema = schema_variant_by_tag(&tool.input_schema, "action_type", "choice")
+        .expect("request-user-action schema should retain the choice action branch");
+    let choice_required = root_required_fields(choice_schema);
+    assert!(
+        choice_required.iter().any(|field| field == "options"),
+        "choice required: {choice_required:?}; schema: {choice_schema}"
     );
+    assert!(choice_required
+        .iter()
+        .any(|field| field == "sensitive_action_scope"));
+    assert!(choice_schema["properties"]["options"]
+        .get("default")
+        .is_none());
     assert_eq!(decoded["request"]["action"]["options"], Value::Null);
     assert_eq!(decoded["request"]["action"]["affected_refs"], json!([]));
     assert_eq!(
@@ -563,7 +693,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
 }
 
 #[test]
-fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
+fn prepare_evidence_capture_arguments_map_strict_variants_and_required_nulls(
 ) -> Result<(), Box<dyn Error>> {
     let cases = [
         (
@@ -579,7 +709,8 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
                 "capture": {
                     "capture_kind": "verified_command_execution",
                     "command_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "command_label": "Focused validation"
+                    "command_label": "Focused validation",
+                    "expected_exit_code": null
                 }
             }),
             json!({
@@ -604,7 +735,8 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
                 "capture": {
                     "capture_kind": "verified_tool_invocation",
                     "tool_name": "fixture.validator",
-                    "tool_input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    "tool_input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "expected_success": null
                 }
             }),
             json!({
@@ -642,7 +774,7 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
 }
 
 #[test]
-fn mcp_omission_defaults_do_not_change_core_request_required_members() {
+fn mcp_input_projection_preserves_core_request_required_members() {
     let cases = [
         (
             AgentToolId::INTAKE.wire_name(),
@@ -1266,7 +1398,8 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
 }
 
 #[test]
-fn record_run_evidence_example_expands_nested_omission_defaults() -> Result<(), Box<dyn Error>> {
+fn record_run_evidence_example_expands_collection_defaults_and_required_nulls(
+) -> Result<(), Box<dyn Error>> {
     let arguments = canonical_example_value(
         AgentToolId::RECORD_RUN.wire_name(),
         "evidence_bearing_record_run",
@@ -1616,7 +1749,11 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         run_stdio(adapter(fixture)?, BufReader::new(input), &mut output)?;
         let responses = stdio_responses(&output)?;
         assert_eq!(responses.len(), 2);
-        assert_eq!(responses[1]["result"]["isError"], false);
+        assert_eq!(
+            responses[1]["result"]["isError"], false,
+            "unexpected compact mutation result: {:#}",
+            responses[1]
+        );
         Ok(responses[1]["result"]["structuredContent"].clone())
     }
 
@@ -1634,7 +1771,10 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "display_name": "default-stage.log",
             "content_type": "text/plain",
             "redaction_state": "none",
-            "safe_bytes_or_notice": "Default compact staging result."
+            "safe_bytes_or_notice": "Default compact staging result.",
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "relation_hint": null
         }),
     )?;
     assert_eq!(
@@ -1658,6 +1798,12 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         json!({
             "task_id": capture_task_id,
             "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
             "change_unit": {"operation": "keep_current"}
         }),
     )?;
@@ -1693,7 +1839,8 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "capture": {
                 "capture_kind": "verified_command_execution",
                 "command_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-                "command_label": "Focused compact projection validation"
+                "command_label": "Focused compact projection validation",
+                "expected_exit_code": null
             }
         }),
     )?;
@@ -1737,7 +1884,10 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "display_name": "record-compact.log",
             "content_type": "text/plain",
             "redaction_state": "none",
-            "safe_bytes_or_notice": "Evidence attachment for compact record_run refs."
+            "safe_bytes_or_notice": "Evidence attachment for compact record_run refs.",
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "relation_hint": null
         }),
     )?;
     let staged_handle = staged_for_run.response_value["staged_artifact_handle"].clone();
@@ -1756,6 +1906,9 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             "change_unit_id": change_unit_id,
             "kind": "implementation",
             "baseline_ref": volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+            "run_id": null,
+            "write_ticket_id": null,
+            "performed_operation": null,
             "summary": "Recorded compact follow-up references.",
             "observed_changes": {
                 "changed_paths": [],
@@ -1782,7 +1935,10 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
                 "target": target,
                 "source_kind": "agent_report",
                 "assurance_level": "cooperative_report",
-                "observed_at": "2026-07-13T00:00:00Z"
+                "observed_at": "2026-07-13T00:00:00Z",
+                "observed_by_actor_source": null,
+                "tool_name": null,
+                "tool_invocation_id": null
             }],
             "close_assessment": {
                 "result_summary": "Recorded compact follow-up references.",

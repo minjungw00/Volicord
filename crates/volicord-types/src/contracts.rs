@@ -655,7 +655,9 @@ fn collect_json_schema_identifiers(value: &Value, identifiers: &mut JsonContract
                     }
                     _ => {}
                 }
-                collect_json_schema_identifiers(value, identifiers);
+                if key != "not" {
+                    collect_json_schema_identifiers(value, identifiers);
+                }
             }
         }
         Value::Array(values) => {
@@ -703,6 +705,18 @@ mod tests {
             response.schema(),
             response.example_schema("complete_response")
         );
+    }
+
+    #[test]
+    fn forbidden_schema_values_are_not_cataloged_as_supported_api_values() {
+        let identifiers = identifiers_from_json_schema(&serde_json::json!({
+            "type": "string",
+            "enum": ["supported"],
+            "not": {"const": "forbidden"}
+        }));
+
+        assert!(identifiers.values().contains("supported"));
+        assert!(!identifiers.values().contains("forbidden"));
     }
 
     #[test]

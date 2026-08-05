@@ -35,6 +35,17 @@ catalog, conformance case를 만듭니다. 여기에는
 `McpReadOnlyToolStructuredContent`, `McpToolDefinitionEnvelope`,
 `McpToolResultEnvelope`가 포함됩니다.
 
+의미 동작은 포함 property 이름이나 JSON Pointer가 아니라 Rust 의미 type을 따릅니다.
+따라서 `BaselineRef`는 어느 위치에 중첩되거나 다른 이름으로 쓰이더라도 비어 있지 않은
+정규 string 표현, 앞뒤 공백 거부, 금지된 string literal `"null"`, description, 정규
+example을 직접 소유합니다. `RequiredNullable<T>`에는 하나의 일반 descriptor 규칙만
+있습니다. member는 필수이고 JSON `null`은 유효하며, null이 아닌 모든 값은 `T`로 검증하고
+decode합니다. Field 이름 등록이나 nullable 예외는 없습니다. Schemars는 이런 type 소유
+규칙의 leaf JSON Schema 표현만 제공합니다. 부수적인 schema 상수에서 union discriminator를
+고르거나 MCP 의미를 유도하지 않습니다. 불투명 식별자 leaf는
+`x-volicord-semantic-type`을 포함하므로 runtime compaction이 definition을 inline해도 type
+identity가 유지됩니다.
+
 `volicord-types`는 adapter-neutral 메서드 fact, domain 값, 공개 메서드 schema만
 담당합니다. `volicord-mcp`는 이 neutral outcome을 소비해 wire 담당 값으로 변환합니다.
 Core, Store, UserAction 서비스, 관리 CLI, UserAction presentation은
@@ -52,20 +63,20 @@ profile의 semantic capability로만 결정합니다.
 | 도구 | 입력 의미 type | 필수 nullable 최상위 field | Typed example | 출력 의미 type | 출력 discriminator |
 |---|---|---|---|---|---|
 | `volicord.intake` | `McpIntakeArguments` | `acceptance_policy`: `AcceptancePolicy`<br>`lineage`: `TaskLineageInput` | `create_new`<br>`resume_active`<br>`supersede_active`<br>`reject_if_active` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_IntakeResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.update_scope` | `McpUpdateScopeArguments` | 없음 | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | 없음 | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.advance_task` | `McpAdvanceTaskArguments` | 없음 | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.status` | `McpStatusArguments` | 없음 | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_McpStatusResponse` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
-| `volicord.get_operation_result` | `McpGetOperationResultArguments` | 없음 | `first_operation_result_page` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_GetOperationResultResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
+| `volicord.status` | `McpStatusArguments` | `task_id`: `TaskId` | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_McpStatusResponse` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
+| `volicord.get_operation_result` | `McpGetOperationResultArguments` | `cursor`: `string` | `first_operation_result_page` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_GetOperationResultResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
 | `volicord.prepare_evidence_capture` | `McpPrepareEvidenceCaptureArguments` | 없음 | `verified_command_capture`<br>`verified_tool_capture` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult_and_McpPrepareEvidenceCaptureCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.prepare_write` | `McpPrepareWriteArguments` | 없음 | `simple_prepare_write` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareWriteResult_and_McpPrepareWriteCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.stage_artifact` | `McpStageArtifactArguments` | 없음 | `stage_safe_text` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_StageArtifactResult_and_McpStageArtifactCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.record_run` | `McpRecordRunArguments` | 없음 | `evidence_bearing_record_run` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordRunResult_and_McpRecordRunCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.stage_artifact` | `McpStageArtifactArguments` | `expected_sha256`: `string`<br>`expected_size_bytes`: `integer`<br>`relation_hint`: `string` | `stage_safe_text` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_StageArtifactResult_and_McpStageArtifactCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.record_run` | `McpRecordRunArguments` | `close_assessment`: `CloseAssessmentInput`<br>`performed_operation`: `string`<br>`run_id`: `RunId`<br>`write_ticket_id`: `WriteTicketId` | `evidence_bearing_record_run` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordRunResult_and_McpRecordRunCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.request_user_action` | `McpRequestUserActionArguments` | 없음 | `final_acceptance_request`<br>`resume_user_action` | `McpMutationStructuredContent_for_McpRequestUserActionResponse_and_McpRequestUserActionCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.reconcile_changes` | `McpReconcileChangesArguments` | 없음 | `reconcile_current_task` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_ReconcileChangesResult_and_McpReconcileChangesCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.check_close` | `McpCheckCloseArguments` | 없음 | `check_close_missing_final_acceptance` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_CheckCloseResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
-| `volicord.close_task` | `McpCloseTaskArguments` | 없음 | `close_complete`<br>`close_cancel`<br>`close_supersede` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_CloseTaskResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.close_task` | `McpCloseTaskArguments` | `close_reason`: `CloseReason`<br>`superseding_task_id`: `TaskId`<br>`user_note`: `string` | `close_complete`<br>`close_cancel`<br>`close_supersede` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_CloseTaskResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.list_projects` | `McpListProjectsArguments` | 없음 | 없음 | `McpToolStructuredContent_for_McpListProjectsResult` | `/result_type`: `response`, `adapter_error` |
 | `volicord.begin_integration_verification` | `BeginIntegrationVerificationArguments` | 없음 | 없음 | `McpToolStructuredContent_for_BeginIntegrationVerificationResult` | `/result_type`: `response`, `adapter_error` |
 | `volicord.guard_probe` | `IntegrationVerificationIdArguments` | 없음 | 없음 | `McpToolStructuredContent_for_GuardProbeResult` | `/result_type`: `response`, `adapter_error` |
@@ -532,6 +543,16 @@ revision마다 별도 도구 registry나 server 구현을 두지 않습니다. C
 capability는 위 표에 따라 도구를 숨길 수 있지만 protocol revision은 계속 보이는 도구의
 이름을 바꾸거나 다른 도구로 대체하지 않습니다.
 
+Descriptor는 완전한 documentation schema 및 정확한 branch-local validator와 별도로
+runtime compact 의미 synopsis를 생성합니다. 이 synopsis는 root field와 required 여부,
+제한된 leaf 제약과 의미 type 이름, 명시적인 discriminator 값과 의미, generic required
+nullable 형태를 유지하며, 정규 typed example이 있으면 그 identity를 포함하는 제한된
+summary 하나도 제공합니다. Compact output schema는 필수 `result_type` field, 허용 값,
+간결한 의미를 유지합니다. Compaction은 중복 표시 annotation과 도달할 수 없는 definition을
+제거할 수 있지만 핵심 의미 지침은 제거하지 않습니다. 전체 runtime `tools/list`
+projection은 직렬화된 JSON 50,000 byte로 결정적으로 제한하며 mode와 storage subset에도
+같은 제한을 적용합니다.
+
 `ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
 `AgentToolId::LIST_PROJECTS`에 결합됩니다. MCP runtime, 관리 CLI, Store 관찰, 진단 비교는
 이 identity를 함께 사용하고 wire 또는 영속 이름 경계에서만 `volicord.list_projects`를
@@ -658,6 +679,16 @@ type, 짧은 variant 의미를 담은 `MCP_ARGUMENT_ENUM_VALUE` 하나를 만들
 끝냅니다. discriminator가 없을 때도 같은 경로에 허용 variant와 의미를 담은 issue 하나만
 만듭니다. Volicord는 branch 오류 개수를 점수화하거나 가장 가까운 branch를 고르거나
 선택되지 않은 branch의 field를 검증하지 않습니다.
+
+폐쇄형 union catalog는 각 discriminator 경로, 값, 의미 branch type, branch schema, 짧은
+의미를 명시합니다. Descriptor 구성은 catalog variant를 명시적 순서의 branch schema와
+짝지으며, 무결성 검증만 선언된 경로를 읽습니다. Singleton 상수를 훑거나 후보 경로 순위를 정하거나 경로 깊이에서 discriminator를 추론하지 않으므로
+무관한 고정 field를 추가해도 branch 선택이 바뀌지 않습니다. 무결성 검사는 중복
+discriminator 값이나 선언, 해결되지 않은 reference, nullable metadata 불일치,
+constraint/type 불일치, 유효하지 않은 typed example, runtime/documentation 의미 projection
+불일치를 거부합니다. 정규
+schema 및 descriptor digest도 생성 변경을 결정적이고 검토 가능하게
+만듭니다.
 
 Validator는 정확한 branch를 순회하는 시점에 각 issue의 schema node identity, 선택한 branch,
 semantic type, field description을 정합니다. Issue projection은 나중에 root schema를 다시
