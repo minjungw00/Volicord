@@ -49,7 +49,7 @@ non-null `baseline_ref`, 완전한 `user_action_resolution_ids`, `result_summary
 범위 리비전, 기준선, 완전한 현재 resolution ID를 호출자에게 보이는 고정 인자로
 제공합니다. 프로젝트와 예상 상태 버전은 adapter가 주입하며 일반 binder는 Core 전에
 모든 고정 값의 정확한 일치를 요구합니다. MCP는 현재 workflow catalog에 이 메서드가 있을 때만 허용하며 Core 호출
-전에 이 메서드별 form의 정확한 `action_form_ref`가 필요합니다. 결과 summary, 결과 ref, evidence ref, residual risk,
+전에 이 메서드-variant form의 정확한 `action_form_ref`가 필요합니다. 결과 summary, 결과 ref, evidence ref, residual risk,
 recovery constraint만 에이전트가 작성하며 권한 좌표를 다시 조립하지 않습니다.
 
 Task는 `mode=advisor`, `work_phase=shaping`이어야 합니다. Checkpoint는 current gap이 없는

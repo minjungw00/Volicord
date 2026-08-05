@@ -695,7 +695,7 @@ Advisor create와 replace에는 Core의 정규 비쓰기 조건이 그대로 적
 호출자에게 보이는 고정 값을 하나라도 바꾸거나 생략하면 adapter는 결정적으로 정렬되고
 개수가 제한된 mismatch entry와 함께 `ACTION_FORM_ARGUMENT_MISMATCH`를 반환합니다. 각
 entry는 메서드, form, JSON Pointer, 정확한 예상 값과 받은 값, 값이 실제로 있었는지,
-현재 메서드 form을 식별합니다. `state_change_applied=false`, `reached_core=false`를
+현재 메서드-variant form을 식별합니다. `state_change_applied=false`, `reached_core=false`를
 보고하며 간결한 message는 form이 현재 값이었고 고정 권한 값이 변경되거나 빠졌으며
 Core에 도달하지 않았고 정확한 고정 인자로 재시도해야 한다고 알립니다.
 

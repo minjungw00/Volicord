@@ -674,7 +674,7 @@ Core selects every currently allowed Task-state-bound method in one neutral
 `WorkflowActionCatalog`. Each `WorkflowActionIntent` carries its method, closed
 method-owned semantic variant, `required` or `allowed` role, expected state
 version, exact fixed authority coordinates, and required refs. All intents for
-one method form one method group: the catalog contains each allowed method
+one method constitute one method group: the catalog contains each allowed method
 group, contains no disallowed method, rejects duplicate method-and-variant
 keys, and orders intents by canonical method then variant. When a required
 Task-state-bound method has multiple variants, those variants are alternative

@@ -26,7 +26,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
 | `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
 | `crates/volicord-types/src/connection_verification.rs` | 정규 `ConnectionStatus`, `IntegrationActivationState`, `HookActivationState`, check, 단일 계층형 `IntegrationActivationPlan`, 안정적인 actor/channel/step metadata, 위상 검증, nested agent sequence, session-role evidence, 검증 보고서 타입. |
-| `crates/volicord-types/src/integration_revision.rs` | 서로 다른 managed-guidance, workflow-action-contract, MCP-semantic-schema digest 입력을 포함하는 typed Connection/프로젝트 integration revision basis와 파생. |
+| `crates/volicord-types/src/integration_revision.rs` | 서로 다른 storage-manifest, managed-guidance, workflow-action-contract, MCP-semantic-schema digest 입력을 포함하는 typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
 | `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, catalog 소유 `IntegrationVerificationToolRole`, 안정적인 MCP wire 이름 투영. |
 | `crates/volicord-types/src/integration_verification.rs` | 공유 폐쇄형 tagged integration-verification workflow 상태, 정규 `AgentToolId`에 결속된 고정 tool-reference 타입, typed routed-event relevance, terminal reason mapping을 포함한 Guard probe acquisition stage, restart reason, begin/probe/get 공개 결과 형태. |
@@ -121,7 +121,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-store/src/core_pipeline/mutations.rs` | Grouped `CoreStorageMutation` routing, 정적 aggregate dispatch, transaction 범위 mutation context, typed aggregate 적용 결과. |
 | `crates/volicord-store/src/core_pipeline/commit.rs` | Replay 및 최신성 gate, 순서 있는 aggregate 위임, state-version 전진 한 번과 정규 commit timestamp 하나, 원자적 event·replay·response 영속화, rollback, 최종 commit 결과. |
 | `crates/volicord-store/src/core_pipeline/validation.rs` | 현재 Store 담당 모듈이 공유하는 저장 값 및 mutation 입력 검증. |
-| `crates/volicord-store/src/guards.rs`와 `crates/volicord-store/src/guards/repository_observation.rs` | Typed exact host 상관관계 정규화, MCP 전용 project anchor, prompt capture, 호출 범위 저장소 관찰, 정확한 expected-write 일치, 불일치 delta 기반 Unrecorded Change 구체화의 원자적 처리. |
+| `crates/volicord-store/src/guards.rs`와 `crates/volicord-store/src/guards/repository_observation.rs` | Typed exact host 상관관계 정규화, MCP 전용 project anchor, storage-manifest 및 현재 semantic digest에 결속된 프로젝트 integration revision 파생, prompt capture, 호출 범위 저장소 관찰, 정확한 expected-write 일치, 불일치 delta 기반 Unrecorded Change 구체화의 원자적 처리. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent와 producer 레코드. |
 | `crates/volicord-store/src/artifacts.rs` | 아티팩트 staging과 영속 본문 검증. |
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home 선택과 경로 경계 검증, runtime-path failure를 거치는 typed 플랫폼 diagnostic 전파. |

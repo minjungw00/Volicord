@@ -2,8 +2,9 @@
 
 workflow 모드 connection은 지원되는 에이전트 소유 메서드를 dispatch할 수 있습니다.
 반환된 태그형 workflow action catalog가 Task 상태 결속 mutation을 허용하며, 허용된 각
-메서드는 Core 전에 정확한 현재 메서드별 form을 요구합니다. `required_action`은 진행
-상태가 선택하며 닫기 차단 사유는 별도 close-readiness projection으로 유지됩니다.
+메서드 variant에는 Core 진입 전에 정확한 현재 메서드-variant form이 필요합니다.
+`required_action`은 진행 상태가 선택하며 닫기 차단 사유는 별도 close-readiness
+projection으로 유지됩니다.
 
 이 문서는 현재 `host_kind=codex` Agent Connection 계약을 정의합니다. 정확한
 `host_kind=codex` Record 연결 표면, 정규 연결 검증 보고서, 관리 구성 소유권, 통합
@@ -605,6 +606,7 @@ field를 다시 쓰지 않습니다. Preflight만 수행했거나 preflight가 �
 조작 방지 기록을 성립시키지는 않습니다. Core 호출 권한은 각 관리 MCP 호출에서 별도로
 평가합니다.
 
+<a id="integration-revisions-and-operational-sessions"></a>
 ## 통합 Revision과 운영 Session
 
 Agent Connection 변경, managed-launch lease 발급·소비·정리, runtime 및 project
@@ -691,17 +693,21 @@ Connection report context는 finding correlation뿐 아니라 check evidence에�
 프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
 fingerprint, 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
 부재, 저장소 관찰자 semantic contract digest, 정규 Product Repository effect-catalog
-digest를 더합니다. 또한 managed agent guidance, workflow action contract, MCP semantic
-schema라는 세 가지 현재 semantic digest를 결속합니다. Guidance digest는 managed
+digest를 더합니다. 또한 완전한 현재 `StorageManifest`의 digest와 managed agent
+guidance, workflow action contract, MCP semantic schema라는 세 가지 현재 semantic
+digest를 결속합니다. Storage-manifest digest는 contract identity, 정규 DDL 및 무결성
+제약 digest, 완전한 capability 집합을 포함합니다. Guidance digest는 managed
 `AGENTS.md` block과 MCP server instruction에 rendering하는 폐쇄형 현재 workflow fact를
-포함하며 프로젝트별 prose의 hash가 아닙니다. Action-contract digest는 메서드 그룹,
+포함합니다. 여기에는 정확한 update-scope variant 선택, replace-current 대상 변경 또는
+재기준 설정 복구, nullable baseline JSON 처리, 영속 baseline 손상 시 중단 동작이
+포함되며 프로젝트별 prose의 hash가 아닙니다. Action-contract digest는 메서드 그룹,
 메서드 소유 폐쇄형 variant, catalog admission, 정확한 메서드-variant form identity,
-고정 인자 결속, 현재 권한 context, variant-aware retry, typed basis mismatch 의미를
-포함합니다. Semantic-schema digest는 타입 소유 제약, 일반
-required-nullable 의미, 명시적 discriminator, branch-local 검증, 한도 있는 runtime
-semantic projection을 포함합니다. Hook 명령 text가 같아도 이 semantic digest 중 하나가
-바뀌면 관리형
-통합 revision이 바뀝니다. 과거 Guard event는 기록 당시 revision의 증거로 남지만 현재
+update-scope의 고정 인자와 에이전트 작성 인자 구분, 현재 권한 context,
+variant-aware retry, typed basis mismatch 의미를 포함합니다. Semantic-schema digest는
+checked 정규 `BaselineRef` 제약, 일반 required-nullable 의미, 명시적 discriminator,
+branch-local 검증, 한도 있는 runtime semantic projection을 포함합니다. Hook 명령 text가
+같아도 storage manifest나 이 semantic digest 중 하나가 바뀌면 관리형 통합 revision이
+바뀝니다. 과거 Guard event는 기록 당시 revision의 증거로 남지만 현재
 정의의 coverage를 만족하지 못합니다. `host_sessions`는 revision 범위 로컬 session ID, Connection, 정확한
 native session, 관찰 시각을 보관합니다. `host_turns`는 두 계약 source가 함께 쓰는 turn을
 보관하고, `host_tool_invocations`는 hook tool-use ID와 정규 tool name을 보관합니다. Store는

@@ -2,9 +2,9 @@
 
 Workflow-mode connections may dispatch the supported Agent-owned methods. The
 returned tagged workflow action catalog admits Task-state-bound mutations, and
-each admitted method requires its exact current method-specific form before
-Core. `required_action` is selected by progression state, while close blockers
-remain a separate close-readiness projection.
+each admitted method variant requires its exact current method-and-variant form
+before Core. `required_action` is selected by progression state, while close
+blockers remain a separate close-readiness projection.
 
 This document defines the current `host_kind=codex` Agent Connection contract. It owns the
 exact `host_kind=codex` Record connection surface, the canonical connection
@@ -674,6 +674,7 @@ operating-system enforcement, actor or human
 identity, correctness, future behavior, or tamper-proof recording. Core
 invocation authorization is evaluated separately for each managed MCP call.
 
+<a id="integration-revisions-and-operational-sessions"></a>
 ## Integration Revisions And Operational Sessions
 
 Agent Connection mutations, managed-launch lease issue/consumption/cleanup,
@@ -774,18 +775,24 @@ The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint, current Guard installation
 identity/policy hash or explicit absence of Guard ownership, the repository
 observer semantic contract digest, and the canonical Product Repository
-effect-catalog digest. It also binds three current semantic digests: managed
-agent guidance, the workflow action contract, and the MCP semantic schema. The
-guidance digest covers the closed current workflow facts rendered into the
-managed `AGENTS.md` block and MCP server instructions; it is not a hash of
+effect-catalog digest. It also binds the digest of the complete current
+`StorageManifest` and three current semantic digests: managed agent guidance,
+the workflow action contract, and the MCP semantic schema. The storage-manifest
+digest covers its contract identity, canonical DDL and integrity-constraint
+digests, and complete capability set. The guidance digest covers the closed
+current workflow facts rendered into the managed `AGENTS.md` block and MCP
+server instructions, including exact update-scope variant selection,
+replace-current retarget or rebaseline recovery, nullable-baseline JSON
+handling, and persisted-baseline corruption stop behavior; it is not a hash of
 project-specific prose. The action-contract digest covers method groups,
 closed method-owned variants, catalog admission, exact method-and-variant form
-identity, fixed-argument binding, authoritative context, variant-aware retry,
-and typed basis-mismatch semantics. The semantic-schema digest
-covers type-owned constraints, generic required-nullable semantics, explicit
-discriminators, branch-local validation, and bounded runtime semantic
-projection. A change to any of these semantic digests changes the managed
-integration revision even when the hook command text is unchanged. Historical
+identity, update-scope fixed versus Agent-authored arguments, authoritative
+context, variant-aware retry, and typed basis-mismatch semantics. The
+semantic-schema digest covers checked canonical `BaselineRef` constraints,
+generic required-nullable semantics, explicit discriminators, branch-local
+validation, and bounded runtime semantic projection. A change to the storage
+manifest or any of these semantic digests changes the managed integration
+revision even when the hook command text is unchanged. Historical
 Guard events remain evidence for their recorded revision and cannot satisfy
 current-definition coverage. `host_sessions`
 retains the revision-scoped local session ID, Connection, exact native session,

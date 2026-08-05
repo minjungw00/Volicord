@@ -42,6 +42,7 @@ use crate::{
         connection_integration_revision, current_managed_mcp_runtime_session_for_connection,
         reserve_mcp_runtime_project_session, McpRuntimeProjectSessionReservation,
     },
+    schema::current_storage_manifest,
     sqlite::{
         begin_immediate_transaction, open_project_state_database_for_mutation,
         open_project_state_database_read_only, open_registry_database_for_mutation,
@@ -585,6 +586,12 @@ pub fn current_project_agent_session_coordinates(
     let observer_contract_digest =
         SemanticObserverContractDigest::for_limits(&ObserverLimits::default());
     let effect_catalog_digest = CodexGuardToolEffectContract::semantic_digest();
+    let storage_manifest_digest =
+        canonical_json_sha256(current_storage_manifest()?).map_err(|_| {
+            StoreError::InvalidInput {
+                detail: "current storage manifest digest could not be derived".to_owned(),
+            }
+        })?;
     let guidance_digest = volicord_types::managed_guidance::managed_guidance_semantic_digest();
     let action_contract_digest =
         volicord_types::managed_guidance::workflow_action_contract_semantic_digest();
@@ -597,6 +604,7 @@ pub fn current_project_agent_session_coordinates(
         guard_policy_hash: guard_ownership.as_ref().map(|value| value.1.as_str()),
         repository_observer_contract_digest: observer_contract_digest.as_str(),
         product_repository_effect_catalog_digest: effect_catalog_digest.as_str(),
+        storage_manifest_digest: storage_manifest_digest.as_str(),
         managed_guidance_semantic_digest: guidance_digest.as_str(),
         workflow_action_contract_semantic_digest: action_contract_digest.as_str(),
         mcp_semantic_schema_digest: semantic_schema_digest.as_str(),

@@ -53,7 +53,7 @@ checkpoint, non-write Change Unit, scope revision, baseline, and complete
 current resolution IDs as caller-visible fixed arguments. Project and expected
 state version are adapter-injected. The generic binder requires every fixed
 value to match exactly before Core. MCP admits this method only when it is present in the current
-workflow catalog and requires this method-specific form's exact
+workflow catalog and requires this method-and-variant form's exact
 `action_form_ref` before Core invocation.
 Only result summary, result refs, evidence refs, residual risks, and recovery
 constraints remain Agent-authored; the Agent does not reconstruct authority

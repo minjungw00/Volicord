@@ -51,7 +51,7 @@ implementation boundary, typed gap만 필수 에이전트 입력으로 남깁니
 참조, carry-forward 참조, stale application 참조도 고정합니다. 현재·선행 checkpoint
 참조는 문맥 계보로 남으며 최상위 mutation 인자가 아닙니다. 일반 binder는 Core 전에
 모든 고정 경로가 존재하고 깊은 동등성을 만족하도록 요구합니다. MCP는 현재 workflow catalog에
-이 메서드가 있을 때만 허용하며 Core 호출 전에 이 메서드별 form의 정확한
+이 메서드가 있을 때만 허용하며 Core 호출 전에 이 메서드-variant form의 정확한
 `action_form_ref`를 요구합니다.
 
 `checkpoint_operation.operation=create_initial`은 현재 checkpoint가 없어야 합니다.

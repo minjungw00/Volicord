@@ -93,6 +93,11 @@ unknown, missing, duplicate, reordered, or strict-subset capability list, or a
 noncurrent value is invalid. Store supplies no default, alias, conversion, or
 capability inference.
 
+The canonical digest of this complete current manifest is a project
+integration-revision input. It binds the exact storage contract used by the
+managed session; it is not a numeric schema selector or a migration switch.
+See [Agent Connection](agent-connection.md#integration-revisions-and-operational-sessions).
+
 `invocation_repository_observation` identifies the single current storage
 shape for exact invocation-scoped repository observations, observation-bound
 expected writes, and unmatched-delta Unrecorded Changes. It is a semantic

@@ -793,7 +793,7 @@ If any caller-visible fixed value is altered or omitted, the adapter returns
 `ACTION_FORM_ARGUMENT_MISMATCH` with deterministically ordered, bounded
 mismatch entries. Each entry identifies the method, form, JSON Pointer, exact
 expected and received values, whether a received value was present, and the
-current method form. It reports `state_change_applied=false` and
+current method-and-variant form. It reports `state_change_applied=false` and
 `reached_core=false`; the compact message says the form was current, fixed
 authority was altered or omitted, Core was not reached, and the exact fixed
 arguments must be retried.

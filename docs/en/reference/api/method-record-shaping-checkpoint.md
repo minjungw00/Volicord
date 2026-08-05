@@ -55,7 +55,7 @@ checkpoint refs remain contextual lineage and are not top-level mutation
 arguments. The generic binder requires every fixed path to be present and
 deeply equal before Core. MCP admits this method only
 when it is present in the current workflow catalog and requires this
-method-specific form's exact `action_form_ref` before Core invocation.
+method-and-variant form's exact `action_form_ref` before Core invocation.
 
 `checkpoint_operation.operation=create_initial` requires no current checkpoint.
 `checkpoint_operation.operation=replace_current` compare-and-swaps the exact

@@ -86,6 +86,7 @@ pub struct ProjectIntegrationRevisionBasis<'a> {
     pub guard_policy_hash: Option<&'a str>,
     pub repository_observer_contract_digest: &'a str,
     pub product_repository_effect_catalog_digest: &'a str,
+    pub storage_manifest_digest: &'a str,
     pub managed_guidance_semantic_digest: &'a str,
     pub workflow_action_contract_semantic_digest: &'a str,
     pub mcp_semantic_schema_digest: &'a str,
@@ -223,6 +224,7 @@ fn validate_project_basis(
     }
     if !is_canonical_sha256_digest(basis.repository_observer_contract_digest)
         || !is_canonical_sha256_digest(basis.product_repository_effect_catalog_digest)
+        || !is_canonical_sha256_digest(basis.storage_manifest_digest)
         || !is_canonical_sha256_digest(basis.managed_guidance_semantic_digest)
         || !is_canonical_sha256_digest(basis.workflow_action_contract_semantic_digest)
         || !is_canonical_sha256_digest(basis.mcp_semantic_schema_digest)
@@ -312,6 +314,7 @@ mod tests {
         let guard_policy_hash = format!("sha256:{}", "b".repeat(64));
         let observer_digest = format!("sha256:{}", "c".repeat(64));
         let effect_digest = format!("sha256:{}", "d".repeat(64));
+        let storage_manifest_digest = format!("sha256:{}", "4".repeat(64));
         let guidance_digest = format!("sha256:{}", "e".repeat(64));
         let action_contract_digest = format!("sha256:{}", "f".repeat(64));
         let semantic_schema_digest = format!("sha256:{}", "0".repeat(64));
@@ -323,6 +326,7 @@ mod tests {
             guard_policy_hash: Some(&guard_policy_hash),
             repository_observer_contract_digest: &observer_digest,
             product_repository_effect_catalog_digest: &effect_digest,
+            storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
             workflow_action_contract_semantic_digest: &action_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
@@ -344,6 +348,12 @@ mod tests {
                 ..project_basis.clone()
             })
             .expect("changed effect catalog");
+        let changed_storage_manifest =
+            IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+                storage_manifest_digest: &format!("sha256:{}", "5".repeat(64)),
+                ..project_basis.clone()
+            })
+            .expect("changed storage manifest");
         let changed_guidance = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
             managed_guidance_semantic_digest: &format!("sha256:{}", "1".repeat(64)),
             ..project_basis.clone()
@@ -363,6 +373,7 @@ mod tests {
             .expect("changed MCP semantic schema semantics");
         assert_ne!(project, changed_observer);
         assert_ne!(project, changed_effect_catalog);
+        assert_ne!(project, changed_storage_manifest);
         assert_ne!(project, changed_guidance);
         assert_ne!(project, changed_action_contract);
         assert_ne!(project, changed_semantic_schema);
@@ -374,6 +385,7 @@ mod tests {
             guard_policy_hash: Some(&format!("sha256:{}", "b".repeat(64))),
             repository_observer_contract_digest: &observer_digest,
             product_repository_effect_catalog_digest: &effect_digest,
+            storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
             workflow_action_contract_semantic_digest: &action_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
@@ -387,6 +399,7 @@ mod tests {
             guard_policy_hash: Some(&format!("sha256:{}", "b".repeat(64))),
             repository_observer_contract_digest: &observer_digest,
             product_repository_effect_catalog_digest: &effect_digest,
+            storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
             workflow_action_contract_semantic_digest: &action_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,

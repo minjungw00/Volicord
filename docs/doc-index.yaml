@@ -225,8 +225,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-05'
+  last_verified_on: '2026-08-05'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -244,8 +244,9 @@ shared_documents:
   path: docs/terminology-map.yaml
   kind: maintenance
   summary: Structured terminology metadata for current shaping authority, workflow action catalogs,
-    method-specific forms, type-owned MCP semantic schemas, immutable history, stale reauthorization,
-    normalized write authority, shaping-decision lifecycle, and identifier presentation and preservation policy.
+    method-and-variant forms, canonical BaselineRef integrity, type-owned MCP semantic schemas,
+    immutable history, stale reauthorization, normalized write authority, shaping-decision lifecycle,
+    and identifier presentation and preservation policy.
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
@@ -271,7 +272,7 @@ shared_documents:
     and verification-criteria terminology distinctions
   - shaping request status, exact decision outcome, recovery, first-class application,
     coordinate validity, checkpoint carry-forward, and authority invalidation distinctions
-  - workflow action catalog, method-specific action form, fixed authority argument, authoritative
+  - workflow action catalog, method-and-semantic-variant action form, fixed authority argument, authoritative
     argument context, retry contract, and type-owned MCP semantic schema terminology
   - actor_source and operation_category terminology distinctions
   - natural Korean terminology guidance
@@ -1841,7 +1842,7 @@ documents:
   kind: reference
   summary: Reference contract for managed stdio startup, revision-profiled JSON-RPC framing,
     canonical tool projection including current shaping, stale recovery, and advance, tagged workflow
-    catalog admission and method-specific forms, response wrapping, UserAction request boundaries, and shutdown.
+    catalog admission and method-and-variant forms, response wrapping, UserAction request boundaries, and shutdown.
   normative_level: contract
   translation_policy: semantic_parity
   contracts:
@@ -1921,8 +1922,8 @@ documents:
   - selected-profile server capability and JSON-RPC batch behavior
   - canonical tool registry and capability-driven `tools/list` field projection
   - public MCP routing for `volicord.record_shaping_checkpoint`, `volicord.finalize_advice`, and `volicord.advance_task`
-  - Core-owned workflow action catalog admission with exact required versus allowed roles and one
-    method-specific action form for each currently allowed Task-state-bound mutation
+  - Core-owned workflow action catalog admission with exact required versus allowed method groups
+    and one distinct action form for each currently allowed method-and-variant mutation
   - exact fixed-authority-argument binding, Agent-authored input separation, and omission of redundant
     current or predecessor checkpoint mutation mirrors
   - type-owned MCP semantic constraints, generic required-nullable semantics, explicit discriminators,
@@ -3169,8 +3170,9 @@ documents:
   - shared CLI diagnostic projection of canonical verification checks, findings, cause graph, and
     root-scoped activation plan without renderer-side cause inference
   - subject-aware current operational findings and explicit current-report finding selection
-  - typed integration revisions, including managed-guidance, workflow-action-contract, and
-    MCP-semantic-schema digests, and authoritative managed-host operational-session evidence
+  - typed integration revisions, including storage-manifest, managed-guidance,
+    workflow-action-contract, and MCP-semantic-schema digests, and authoritative managed-host
+    operational-session evidence
   - immutable Store-owned integration-instance identity across physical Connection lifecycles
   - Store-derived revision-scoped project Agent Session identity across mode and physical lifecycles
   - canonical personal/shared managed MCP launch command, arguments, environment bindings, projection,
@@ -3223,7 +3225,7 @@ documents:
   path_ko: docs/ko/reference/template-bodies.md
   kind: reference
   summary: Reference contract for exact template body ownership, including workflow catalog admission,
-    method-specific forms, exact fixed authority arguments, type-owned MCP schemas, current shaping
+    method-and-variant forms, exact fixed authority arguments, type-owned MCP schemas, current shaping
     authority, immutable history, stale retirement or reauthorization, UserAction,
     rejection/recovery surfacing, and close-review guidance.
   normative_level: contract

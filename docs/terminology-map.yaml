@@ -976,6 +976,37 @@ terms:
       - "Use for one current adapter projection that authorizes its exact method and semantic variant only."
       - "Agent-authored inputs remain distinct from authority-owned fixed arguments, which callers copy without omission or alteration."
       - "Authoritative argument context and retry contracts return current bounded authority; they do not make another method or variant's form interchangeable."
+  baseline_ref:
+    category: "api_concept"
+    en: "canonical BaselineRef"
+    visibility: "public"
+    allowed_document_layers:
+      - "user_guide"
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "api_schema"
+      - "implementation_output"
+    ko_reference: "정규 BaselineRef"
+    ko_user: "정규 기준선 참조"
+    preserve_as_identifier:
+      - "BaselineRef"
+      - "baseline_ref"
+      - "applied_baseline_ref"
+    primary_owner:
+      en: "docs/en/reference/api/schema-state.md"
+      ko: "docs/ko/reference/api/schema-state.md"
+    related_references:
+      - en: "docs/en/reference/mcp-transport.md"
+        ko: "docs/ko/reference/mcp-transport.md"
+      - en: "docs/en/reference/storage-versioning.md"
+        ko: "docs/ko/reference/storage-versioning.md"
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+    notes:
+      - "Use for the one checked, non-empty opaque baseline identifier with no surrounding whitespace and with the literal string `null` forbidden."
+      - "At owner-declared nullable positions, JSON `null` or SQL `NULL` represents absence; the string `null` is never a baseline or null alias."
+      - "Store strictly decodes every persisted scalar and typed JSON baseline through this semantic type; invalid persisted values are corruption and never repaired by trimming or fallback."
   mcp_semantic_schema:
     category: "api_concept"
     en: "type-owned MCP semantic schema"
