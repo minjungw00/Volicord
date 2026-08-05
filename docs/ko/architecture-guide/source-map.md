@@ -19,14 +19,14 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-types/src/methods.rs` | 공개 메서드 요청 및 결과 schema, 메서드-연산 매핑, 메서드 소유 `ChangeUnitUpdate` object member의 정확한 typed accessor. |
 | `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계, 불변 `WriteTicketPathScope`의 고유성과 분리 조건. 파일시스템은 관찰하지 않습니다. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
-| `crates/volicord-types/src/managed_guidance.rs` | 생성된 managed host guidance를 위한 폐쇄형 semantic fact입니다. Store가 도출한 현재 권한, 행동할 수 없는 변경 불가능한 이력, 정확한 stale 폐기 또는 새 identity 재권한, implementation 보존 거부, 현재 checkpoint/UserAction 보존, 명시적 호환 application carry-forward, 결정 담당, User Channel resolution, tagged rejection/recovery 표면화, close-review 경계를 포함하며 digest는 프로젝트 integration revision에 참여합니다. |
+| `crates/volicord-types/src/managed_guidance.rs` | 생성된 managed host guidance, workflow action contract, MCP semantic schema를 위한 폐쇄형 semantic fact와 canonical digest입니다. 현재 catalog admission, 정확한 메서드별 form과 고정 권한 인자, 타입 소유 schema 의미, Store가 도출한 현재 권한, 행동할 수 없는 변경 불가능한 이력, 정확한 stale 폐기 또는 새 identity 재권한, implementation 보존 거부, 현재 checkpoint/UserAction 보존, 명시적 호환 application carry-forward, 결정 담당, User Channel resolution, tagged rejection/recovery 표면화, close-review 경계를 포함합니다. 세 digest는 모두 프로젝트 integration revision에 참여합니다. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
 | `crates/volicord-types/src/diagnostics.rs` | Lifecycle별 occurrence/current finding 타입, opaque `DiagnosticSubjectIdentity`, `CurrentDiagnosticKey` 정규 identity와 고정 digest ID 파생, lifecycle-aware `StoredDiagnosticFinding` 및 `StoredDiagnosticGraph`, 별도의 `DiagnosticLookupReport`, 공유 read-only `DiagnosticFinding` 및 선택한 Connection의 `DiagnosticReport` 타입, 안정적인 네임스페이스 code 검증, 담당 크레이트의 typed fact에 한도와 민감정보 제거를 적용하는 projection, cause graph 검증, 예기치 않은 실패 대체 표현. |
 | `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
 | `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
 | `crates/volicord-types/src/connection_verification.rs` | 정규 `ConnectionStatus`, `IntegrationActivationState`, `HookActivationState`, check, 단일 계층형 `IntegrationActivationPlan`, 안정적인 actor/channel/step metadata, 위상 검증, nested agent sequence, session-role evidence, 검증 보고서 타입. |
-| `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
+| `crates/volicord-types/src/integration_revision.rs` | 서로 다른 managed-guidance, workflow-action-contract, MCP-semantic-schema digest 입력을 포함하는 typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
 | `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, catalog 소유 `IntegrationVerificationToolRole`, 안정적인 MCP wire 이름 투영. |
 | `crates/volicord-types/src/integration_verification.rs` | 공유 폐쇄형 tagged integration-verification workflow 상태, 정규 `AgentToolId`에 결속된 고정 tool-reference 타입, typed routed-event relevance, terminal reason mapping을 포함한 Guard probe acquisition stage, restart reason, begin/probe/get 공개 결과 형태. |
@@ -255,7 +255,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-cli/src/host_integration/contracts.rs` | 명시적인 semantic Codex host-contract 선택, typed Guard routing strategy 투영, 등록된 `McpServerKey`로부터의 엄격한 구성 재구성. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest, 정확한 host-contract profile/digest, 정규 관리 artifact 기대값 생성. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
-| `crates/volicord-cli/src/guard_integration/plan.rs` 및 `hosts/codex.rs` | 현재 권한/이력 분리, 정확한 stale 복구, implementation 보존 거부, rejection/recovery 표면화, stop 및 diagnostic 경계가 있는 nested integration-verification sequence를 포함한 managed AGENTS와 Codex rule 안내 source template. |
+| `crates/volicord-cli/src/guard_integration/plan.rs` 및 `hosts/codex.rs` | 현재 workflow catalog admission, 정확한 메서드별 form과 고정 권한 인자, 타입 소유 MCP schema, 정직한 pre-Core 거부 보고, 현재 권한/이력 분리, 정확한 stale 복구, implementation 보존 거부, rejection/recovery 표면화, stop 및 diagnostic 경계가 있는 nested integration-verification sequence를 포함한 managed AGENTS와 Codex rule 안내 source template. |
 | `crates/volicord-cli/src/guard_command/` | 명시적인 `codex-command-hooks` event decoding, semantic Guard probe filtering, routing된 MCP payload를 보관하지 않는 한도 있는 source별 observation. |
 | `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. 승인 전에는 구문과 repository target만 처리하고, 같은 mutation context를 유지한 채 승인 뒤 Registry/project 선택, neutral Core fact 사용, 공유 UserAction presentation, 단일 snapshot 후보 계획, 진단, Core 효과, terminal 응답 표시를 수행합니다. |
 | `crates/volicord-cli/src/doctor_command.rs` | Doctor 진단 사실 수집, 순수 report finalization, finalized report 하나에서 compact, verbose, JSON projection 생성. |
@@ -273,7 +273,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-mcp-wire/src/methods.rs` | 정확한 MCP 인자, 구조화 결과, workflow action form, 현재 권한 인자 맥락, retry contract, 운영 오류, 간결한 mutation, UserAction projection, 직렬화, 생성 요청/결과 schema 소유권. |
-| `crates/volicord-mcp-wire/src/semantic_schema.rs` | 닫힌 의미 schema node, 명시적 discriminator와 nullability, 결정적 JSON Schema projection, 의미 검증 metadata, descriptor 무결성 검증. |
+| `crates/volicord-mcp-wire/src/semantic_schema.rs` | 닫힌 타입 소유 semantic schema node, 일반 required-nullable 의미, 명시적 discriminator, branch-local semantic 검증 metadata, 한도 있고 annotation을 보존하는 runtime projection, 결정적 JSON Schema와 descriptor digest, canonical example, descriptor 무결성 검증. |
 | `crates/volicord-mcp-wire/src/tool_contracts.rs` | Input/output descriptor, description, typed canonical example, 정확한 request decoding, catalog 무결성을 묶는 단일 `AgentToolId` 기반 MCP 계약 entry. |
 | `crates/volicord-mcp-wire/src/tools.rs` | 정확한 capability field 이름, tool annotation, capability가 선택하는 tool-definition 및 tool-result envelope. |
 | `crates/volicord-mcp-wire/src/json_rpc.rs` | Core 접근 없는 JSON 구문 decoding, JSON-RPC envelope 분류, request ID와 object parameter 검증, 성공/오류 응답 구성. |
@@ -303,7 +303,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic session 생성과 session 범위 tools-list, method-call, status-reread workflow metric. |
 | `crates/volicord-mcp/src/diagnostics.rs` | 폐쇄형 MCP diagnostic mapping, 공유 finding 구성, bootstrap 및 영속 terminal projection에서 플랫폼 담당 diagnostic code와 action class 보존. |
 | `crates/volicord-mcp/src/adapter.rs` | 유지되는 연산 전 routing identity, 유효하지 않은 인자를 위한 한도 있는 읽기 전용 현재 권한 bootstrap, mutation Core 진입 전 정확한 action-form admission, 활성 mutation-context 상관관계, context에 결합된 Core 호출 API, Core 밖의 managed in-chat integration-verification 조율. |
-| `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청과 현재 managed workflow의 Store 유래 현재 권한, 변경 불가능한 이력 제외, 정확한 stale 복구, 새 UserAction identity, 명시적 shaping과 advance, implementation 보존 거부, rejection/recovery 표면화, close review, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
+| `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청과 현재 managed workflow의 catalog admission, 정확한 메서드별 form과 고정 권한 인자, 타입 소유 schema와 retry contract, 정직한 pre-Core 거부 보고, Store 유래 현재 권한, 변경 불가능한 이력 제외, 정확한 stale 복구, 새 UserAction identity, 명시적 shaping과 advance, implementation 보존 거부, rejection/recovery 표면화, close review, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Descriptor를 소비해 `AgentToolId` 정의, protocol profile용 schema 압축, annotation, 가시성, 명시적 server의 충돌 검사 Codex callable catalog를 조립합니다. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Wire 담당 semantic validator tree와 metadata를 통한 known-tool 인자 및 출력 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색, 현재 Connection/project routing, 정규 catalog에서 server/raw/callable identity를 가져오는 preflight diagnostic 투영. |

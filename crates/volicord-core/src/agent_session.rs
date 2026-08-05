@@ -300,8 +300,10 @@ pub(crate) fn validated_agent_session_for_test_with_project_session(
                 "sha256:4444444444444444444444444444444444444444444444444444444444444444",
             managed_guidance_semantic_digest:
                 "sha256:5555555555555555555555555555555555555555555555555555555555555555",
-            workflow_action_form_semantic_digest:
+            workflow_action_contract_semantic_digest:
                 "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            mcp_semantic_schema_digest:
+                "sha256:7777777777777777777777777777777777777777777777777777777777777777",
         },
     )
     .expect("test project revision must be valid");

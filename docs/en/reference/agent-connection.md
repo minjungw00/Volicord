@@ -774,12 +774,16 @@ The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint, current Guard installation
 identity/policy hash or explicit absence of Guard ownership, the repository
 observer semantic contract digest, and the canonical Product Repository
-effect-catalog digest, plus the managed agent-guidance semantic digest. The
+effect-catalog digest. It also binds three current semantic digests: managed
+agent guidance, the workflow action contract, and the MCP semantic schema. The
 guidance digest covers the closed current workflow facts rendered into the
 managed `AGENTS.md` block and MCP server instructions; it is not a hash of
-project-specific prose. The project revision also binds the workflow-action-form
-semantic digest, so changes to form identity, fixed-coordinate, retry-context,
-or typed basis-mismatch semantics invalidate earlier project sessions. A change to any of these semantic digests changes the managed
+project-specific prose. The action-contract digest covers catalog admission,
+method-specific form identity, exact fixed-argument binding, authoritative
+context, retry, and typed basis-mismatch semantics. The semantic-schema digest
+covers type-owned constraints, generic required-nullable semantics, explicit
+discriminators, branch-local validation, and bounded runtime semantic
+projection. A change to any of these semantic digests changes the managed
 integration revision even when the hook command text is unchanged. Historical
 Guard events remain evidence for their recorded revision and cannot satisfy
 current-definition coverage. `host_sessions`
