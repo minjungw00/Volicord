@@ -193,6 +193,9 @@ fn runtime_tools_list_is_bounded_and_semantically_descriptor_owned() {
                     .map_or(0, Vec::len);
                 assert!(advertised_examples <= 1);
                 if runtime_tool.id == AgentToolId::RECORD_SHAPING_CHECKPOINT {
+                    let properties = runtime_tool.input_schema["properties"]
+                        .as_object()
+                        .expect("checkpoint runtime schema properties");
                     let descriptions =
                         json_values_for_key(&runtime_tool.input_schema, "description");
                     assert!(descriptions.iter().any(|description| {
@@ -203,13 +206,74 @@ fn runtime_tools_list_is_bounded_and_semantically_descriptor_owned() {
                     }));
                     let semantic_types =
                         json_values_for_key(&runtime_tool.input_schema, "x-volicord-semantic-type");
-                    for semantic_type in ["BaselineRef", "TaskId", "RequestHash"] {
+                    for semantic_type in [
+                        "BaselineRef",
+                        "TaskId",
+                        "RequestHash",
+                        "SourceRef::repository_file",
+                    ] {
                         assert!(
                             semantic_types
                                 .iter()
                                 .any(|value| { value.as_str() == Some(semantic_type) }),
                             "runtime schema must preserve `{semantic_type}`"
                         );
+                    }
+                    assert!(schema_accepts_json_null(&properties["baseline_ref"]));
+                    let gap_kinds = json_values_for_key(&properties["gaps"]["items"], "enum")
+                        .into_iter()
+                        .filter_map(Value::as_array)
+                        .flatten()
+                        .filter_map(Value::as_str)
+                        .collect::<BTreeSet<_>>();
+                    for gap_kind in [
+                        "implementation_boundary_missing",
+                        "user_product_decision_required",
+                        "user_technical_decision_required",
+                        "user_scope_decision_required",
+                    ] {
+                        assert!(
+                            gap_kinds.contains(gap_kind),
+                            "runtime ShapingGapInput must advertise `{gap_kind}`"
+                        );
+                    }
+                    for (schema, discriminator, expected) in [
+                        (
+                            &properties["checkpoint_operation"],
+                            "operation",
+                            ["create_initial", "replace_current"].as_slice(),
+                        ),
+                        (
+                            &properties["source_refs"]["items"],
+                            "source_kind",
+                            [
+                                "repository_file",
+                                "git_commit",
+                                "git_diff",
+                                "command",
+                                "external_uri",
+                                "user_context",
+                            ]
+                            .as_slice(),
+                        ),
+                    ] {
+                        let advertised = json_values_for_key(schema, "enum")
+                            .into_iter()
+                            .filter_map(Value::as_array)
+                            .flatten()
+                            .filter_map(Value::as_str)
+                            .collect::<BTreeSet<_>>();
+                        for value in expected {
+                            assert!(
+                                advertised.contains(value),
+                                "runtime `{discriminator}` must advertise `{value}`"
+                            );
+                        }
+                        let meanings = json_values_for_key(schema, "x-volicord-variant-meaning");
+                        assert_eq!(meanings.len(), expected.len());
+                        assert!(meanings.iter().all(|meaning| meaning
+                            .as_str()
+                            .is_some_and(|meaning| !meaning.trim().is_empty())));
                     }
                 }
                 assert_local_schema_refs_resolve(
@@ -228,6 +292,16 @@ fn runtime_tools_list_is_bounded_and_semantically_descriptor_owned() {
             );
         }
     }
+}
+
+fn schema_accepts_json_null(schema: &Value) -> bool {
+    json_values_for_key(schema, "type")
+        .into_iter()
+        .any(|value| match value {
+            Value::String(value_type) => value_type == "null",
+            Value::Array(value_types) => value_types.iter().any(|value_type| value_type == "null"),
+            _ => false,
+        })
 }
 
 fn assert_runtime_variant_semantics_are_documented(

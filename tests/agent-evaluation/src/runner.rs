@@ -491,6 +491,20 @@ fn validate_observation(
             .is_some_and(|milliseconds| milliseconds > observation.task_duration_ms)
         || observation.shaping_workflow.automatic_volicord_uses
             > observation.shaping_workflow.long_lived_repository_requests
+        || observation
+            .shaping_workflow
+            .method_specific_action_forms_used
+            > observation
+                .shaping_workflow
+                .method_specific_form_opportunities
+        || observation.shaping_workflow.exact_fixed_arguments_used
+            > observation.shaping_workflow.fixed_argument_opportunities
+        || observation
+            .shaping_workflow
+            .wrong_method_speculative_mutations
+            > observation
+                .shaping_workflow
+                .wrong_method_mutation_opportunities
         || observation.shaping_workflow.correct_intakes
             > observation.shaping_workflow.no_task_intake_opportunities
         || observation.shaping_workflow.shaping_before_implementation
@@ -677,7 +691,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(56);
+    let mut criteria = Vec::with_capacity(59);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -858,6 +872,21 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         "current_action_form_use",
         totals(|value| value.action_form_use_opportunities),
         totals(|value| value.current_action_forms_used),
+    ));
+    criteria.push(complete_rate(
+        "method_specific_action_form_use",
+        totals(|value| value.method_specific_form_opportunities),
+        totals(|value| value.method_specific_action_forms_used),
+    ));
+    criteria.push(complete_rate(
+        "exact_fixed_argument_use",
+        totals(|value| value.fixed_argument_opportunities),
+        totals(|value| value.exact_fixed_arguments_used),
+    ));
+    criteria.push(zero_rate(
+        "wrong_method_speculative_mutation",
+        totals(|value| value.wrong_method_mutation_opportunities),
+        totals(|value| value.wrong_method_speculative_mutations),
     ));
     criteria.push(complete_rate(
         "nullable_baseline_json_null",
@@ -1229,7 +1258,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 56] {
+fn criterion_definitions() -> [CriterionDefinition; 59] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1294,6 +1323,21 @@ fn criterion_definitions() -> [CriterionDefinition; 56] {
         CriterionDefinition {
             id: "current_action_form_use",
             target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "method_specific_action_form_use",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "exact_fixed_argument_use",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "wrong_method_speculative_mutation",
+            target: "= 0",
             unit: "percent",
         },
         CriterionDefinition {

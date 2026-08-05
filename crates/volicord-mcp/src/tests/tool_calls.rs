@@ -316,6 +316,22 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
         rejected_checkpoint["workflow_admission"]["required_method_form"]["form_ref"],
         advance_form_ref
     );
+    assert_eq!(
+        rejected_checkpoint["workflow_admission"]["required_method_form"]
+            ["selected_semantic_variant"],
+        "advance_task"
+    );
+    for advisor_field in [
+        "finalize_advice",
+        "result_summary",
+        "residual_risks",
+        "recovery_constraints",
+    ] {
+        assert!(
+            json_values_for_key(&rejected_checkpoint, advisor_field).is_empty(),
+            "workflow admission rejection must not fabricate `{advisor_field}`"
+        );
+    }
     assert_eq!(fixture.counts()?, before_checkpoint_attempt);
     assert_eq!(
         read_only_table_count(&fixture, "shaping_checkpoints")?,
@@ -399,6 +415,46 @@ fn workflow_catalog_admission_is_method_specific_and_pre_core() -> Result<(), Bo
         .len(),
         9
     );
+
+    let pairwise_forms = [
+        (MethodName::UpdateScope, update_form_ref.as_str()),
+        (MethodName::PrepareWrite, prepare_form_ref.as_str()),
+        (MethodName::RecordRun, record_form_ref.as_str()),
+        (MethodName::CheckClose, check_close_form_ref.as_str()),
+    ];
+    for (called_method, called_form_ref) in pairwise_forms {
+        let called_tool = AgentToolId::from_method(called_method)
+            .expect("every pairwise method is an Agent tool");
+        for (provided_method, provided_form_ref) in pairwise_forms {
+            if called_method == provided_method {
+                continue;
+            }
+            let before = fixture.counts()?;
+            let error = adapter
+                .call_tool(
+                    called_tool.wire_name(),
+                    json!({
+                        "action_form_ref": provided_form_ref,
+                        "task_id": task_id,
+                    }),
+                )
+                .expect_err("one method's form must not authorize another method");
+            let error = structured_tool_error(called_tool.wire_name(), &error);
+            assert_eq!(error["code"], "MCP_ACTION_FORM_STALE");
+            assert_eq!(error["reached_core"], false);
+            assert_eq!(error["committed"], false);
+            assert_eq!(
+                error["workflow_admission"]["called_method"],
+                called_method.as_str()
+            );
+            assert_eq!(
+                error["workflow_admission"]["called_method_form"]["form_ref"],
+                called_form_ref
+            );
+            assert_ne!(provided_form_ref, called_form_ref);
+            assert_eq!(fixture.counts()?, before);
+        }
+    }
 
     let assert_stale_without_effect = |arguments: Value| -> Result<(), Box<dyn Error>> {
         let before = fixture.counts()?;
@@ -571,6 +627,106 @@ fn checkpoint_fixed_basis_mismatch_is_pre_core_and_reports_typed_null() -> Resul
         corrected,
     )?;
     assert_eq!(corrected.response_value["base"]["response_kind"], "result");
+    Ok(())
+}
+
+#[test]
+fn implementation_forms_reject_every_tampered_fixed_coordinate_before_core(
+) -> Result<(), Box<dyn Error>> {
+    fn altered_fixed_value(value: &Value) -> Value {
+        match value {
+            Value::Null => json!("null"),
+            Value::Bool(value) => json!(!value),
+            Value::Number(value) => json!(value.as_u64().unwrap_or_default() + 1),
+            Value::String(value) => json!(format!("{value}_tampered")),
+            Value::Array(values) if values.is_empty() => json!([null]),
+            Value::Array(_) => json!([]),
+            Value::Object(values) => {
+                let mut values = values.clone();
+                values.insert("tampered".to_owned(), Value::Bool(true));
+                Value::Object(values)
+            }
+        }
+    }
+
+    let methods = [
+        MethodName::UpdateScope,
+        MethodName::PrepareEvidenceCapture,
+        MethodName::PrepareWrite,
+        MethodName::StageArtifact,
+        MethodName::RecordRun,
+        MethodName::RequestUserAction,
+        MethodName::ReconcileChanges,
+        MethodName::CheckClose,
+        MethodName::CloseTask,
+    ];
+    for (index, method) in methods.into_iter().enumerate() {
+        let fixture = CoreFixture::new(&format!("mcp-fixed-argument-{index}"))?;
+        let adapter = adapter(&fixture)?;
+        let (task_id, _, _) = create_implementation_task(&fixture)?;
+        let tool = AgentToolId::from_method(method).expect("state-bound method tool");
+        let form = action_form_for_method(&adapter, &task_id, method)?;
+        assert_eq!(form.expected_state_version, fixture.counts()?.state_version);
+        assert!(!form.fixed_argument_paths.is_empty());
+
+        let authored = match method {
+            MethodName::ReconcileChanges => json!({"resolution_requests": []}),
+            MethodName::CheckClose => json!({}),
+            _ => canonical_tool_examples(tool)
+                .first()
+                .ok_or_else(|| format!("{} canonical example", tool.wire_name()))?
+                .value()
+                .clone(),
+        };
+        let exact = bind_action_form_arguments(&adapter, &task_id, method, authored)?;
+
+        for path in &form.fixed_argument_paths {
+            let expected = exact
+                .pointer(path)
+                .ok_or_else(|| format!("{} missing fixed path {path}", method.as_str()))?
+                .clone();
+            let mut tampered = exact.clone();
+            let received = altered_fixed_value(&expected);
+            *tampered
+                .pointer_mut(path)
+                .ok_or_else(|| format!("{} missing mutable path {path}", method.as_str()))? =
+                received.clone();
+            let before = fixture.counts()?;
+            let error = adapter
+                .call_tool(tool.wire_name(), tampered)
+                .expect_err("tampered fixed authority must reject before Core");
+            let error = structured_tool_error(tool.wire_name(), &error);
+            assert_eq!(error["code"], "ACTION_FORM_ARGUMENT_MISMATCH");
+            assert_eq!(error["reached_core"], false);
+            assert_eq!(error["committed"], false);
+            let mismatch = error["action_form_argument_mismatches"]
+                .as_array()
+                .expect("fixed-argument mismatches")
+                .iter()
+                .find(|mismatch| mismatch["path"].as_str() == Some(path))
+                .ok_or_else(|| format!("{} did not report {path}: {error}", method.as_str()))?;
+            assert_eq!(mismatch["expected_value"], expected);
+            assert_eq!(mismatch["received_value"], received);
+            assert_eq!(mismatch["reached_core"], false);
+            assert_eq!(mismatch["state_change_applied"], false);
+            assert_eq!(
+                mismatch["current_method_form"]["form_ref"],
+                form.form_ref.as_str()
+            );
+            assert_eq!(
+                error["retry_contract"]["action_form_ref"],
+                form.form_ref.as_str()
+            );
+            assert_eq!(fixture.counts()?, before);
+        }
+
+        let corrected = adapter.call_tool(tool.wire_name(), exact)?;
+        assert!(
+            corrected.verified_invocation.is_some(),
+            "{} corrected retry must enter Core",
+            method.as_str()
+        );
+    }
     Ok(())
 }
 

@@ -236,10 +236,55 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
                 .find(|tool| tool["name"] == AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
         })
         .ok_or("record-shaping tool schema")?;
-    assert!(checkpoint_tool["inputSchema"]["properties"]["checkpoint_operation"].is_object());
-    assert!(checkpoint_tool["inputSchema"]["required"]
+    let checkpoint_schema = &checkpoint_tool["inputSchema"];
+    let checkpoint_properties = checkpoint_schema["properties"]
+        .as_object()
+        .ok_or("record-shaping input properties")?;
+    assert!(checkpoint_properties["checkpoint_operation"].is_object());
+    assert!(checkpoint_schema["required"]
         .as_array()
         .is_some_and(|required| required.iter().any(|field| field == "checkpoint_operation")));
+    let schema_enums = json_values_for_key(checkpoint_schema, "enum")
+        .into_iter()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    for discriminator in [
+        "create_initial",
+        "replace_current",
+        "implementation_boundary_missing",
+        "user_product_decision_required",
+        "user_technical_decision_required",
+        "user_scope_decision_required",
+        "repository_file",
+    ] {
+        assert!(
+            schema_enums.contains(discriminator),
+            "runtime checkpoint schema must advertise `{discriminator}`"
+        );
+    }
+    assert!(schema_accepts_json_null(
+        &checkpoint_properties["baseline_ref"]
+    ));
+    let checkpoint_summary = checkpoint_schema["description"]
+        .as_str()
+        .ok_or("record-shaping semantic summary")?;
+    for semantic_guidance in [
+        "/checkpoint_operation/operation",
+        "Creates the first shaping checkpoint",
+        "Replaces the exact current shaping checkpoint",
+    ] {
+        assert!(
+            checkpoint_summary.contains(semantic_guidance),
+            "runtime semantic summary must explain `{semantic_guidance}`: {checkpoint_summary}"
+        );
+    }
+    let variant_meanings = json_values_for_key(checkpoint_schema, "x-volicord-variant-meaning")
+        .into_iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert!(variant_meanings.contains("Identifies an exact repository-file source."));
     let mut call_id = 100;
 
     let projects = live_mcp_call(
@@ -386,6 +431,17 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         invalid["retry_contract"]["action_form_ref"],
         action_form_ref
     );
+    for forbidden_field in [
+        "finalize_advice",
+        "result_summary",
+        "residual_risks",
+        "recovery_constraints",
+    ] {
+        assert!(!json_key_exists(invalid, forbidden_field));
+    }
+    assert!(!invalid_response["result"]["content"][0]["text"]
+        .as_str()
+        .is_some_and(|text| text.to_ascii_lowercase().contains("corrupt")));
     let after_invalid = rusqlite::Connection::open(&state_db)?;
     assert_eq!(
         (
@@ -501,6 +557,14 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         mismatch["retry_contract"]["action_form_ref"],
         action_form_ref
     );
+    for forbidden_field in [
+        "finalize_advice",
+        "result_summary",
+        "residual_risks",
+        "recovery_constraints",
+    ] {
+        assert!(!json_key_exists(mismatch, forbidden_field));
+    }
     let after_mismatch = rusqlite::Connection::open(&state_db)?;
     assert_eq!(
         after_mismatch.query_row("SELECT state_version FROM project_state", [], |row| {
@@ -611,6 +675,14 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         .is_some_and(|facts| facts
             .iter()
             .any(|fact| { fact["fact_kind"] == "user_action_request_exists" })));
+    for forbidden_field in [
+        "finalize_advice",
+        "result_summary",
+        "residual_risks",
+        "recovery_constraints",
+    ] {
+        assert!(!json_key_exists(successful, forbidden_field));
+    }
     let state = rusqlite::Connection::open(&state_db)?;
     assert_eq!(
         state.query_row("SELECT COUNT(*) FROM shaping_checkpoints", [], |row| {
@@ -624,6 +696,25 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     assert_eq!(table_count(&state, "unrecorded_changes")?, 0);
     drop(state);
     assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+    let awaiting_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        SESSION,
+        "future.turn.planning-recovery.corrected",
+    )?;
+    call_id += 1;
+    let awaiting_task = &method_result(&awaiting_status)["active_task"];
+    assert_eq!(awaiting_task["work_phase"], "shaping");
+    assert_eq!(awaiting_task["workflow"]["kind"], "awaiting_user_action");
+    assert_eq!(
+        awaiting_task["pending_user_action_summaries"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
 
     let chat = json!({
         "hook_event_name": "UserPromptSubmit",
@@ -681,29 +772,85 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     );
     let update_scope_form_ref = required_action_form_ref(&decisions_ready)?;
     assert_ne!(update_scope_form_ref, action_form_ref);
-    let scope = live_mcp_call(
-        &mut child,
-        call_id,
+    let scope_arguments = bound_action_arguments(
+        &decisions_ready,
         AgentToolId::UPDATE_SCOPE,
-        bound_action_arguments(
-            &decisions_ready,
-            AgentToolId::UPDATE_SCOPE,
-            json!({
-                "project_selector": project_id,
-                "detail": "workflow",
-                "goal_summary": null,
-                "scope_update": null,
-                "scope_boundary": "Create only the bounded preparation note.",
-                "non_goals": ["Add unrelated product behavior."],
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": "Create only the bounded preparation note.",
+            "non_goals": ["Add unrelated product behavior."],
             "acceptance_criteria": null,
             "autonomy_boundary": "No other Product Repository path may change.",
             "baseline_ref": BASELINE,
             "change_unit": {
-                    "scope_summary": "Create the bounded preparation note.",
-                    "affected_paths": [IMPLEMENTATION_PATH]
-                }
-            }),
-        )?,
+                "scope_summary": "Create the bounded preparation note.",
+                "affected_paths": [IMPLEMENTATION_PATH]
+            }
+        }),
+    )?;
+    let expected_scope_resolution_refs = scope_arguments["related_scope_decision_refs"].clone();
+    assert!(expected_scope_resolution_refs
+        .as_array()
+        .is_some_and(|refs| !refs.is_empty()));
+    let before_scope_mismatch = rusqlite::Connection::open(&state_db)?;
+    let before_scope_counts = (
+        before_scope_mismatch.query_row("SELECT state_version FROM project_state", [], |row| {
+            row.get::<_, u64>(0)
+        })?,
+        table_count(&before_scope_mismatch, "change_units")?,
+        table_count(&before_scope_mismatch, "write_tickets")?,
+    );
+    drop(before_scope_mismatch);
+    let mut tampered_scope_arguments = scope_arguments.clone();
+    tampered_scope_arguments["related_scope_decision_refs"] = json!([]);
+    let scope_mismatch_response = live_mcp_raw_call(
+        &mut child,
+        call_id,
+        AgentToolId::UPDATE_SCOPE,
+        tampered_scope_arguments,
+        SESSION,
+        "future.turn.planning-recovery.apply",
+    )?;
+    call_id += 1;
+    assert_eq!(scope_mismatch_response["result"]["isError"], true);
+    let scope_mismatch = &scope_mismatch_response["result"]["structuredContent"];
+    assert_eq!(scope_mismatch["code"], "ACTION_FORM_ARGUMENT_MISMATCH");
+    assert_eq!(scope_mismatch["reached_core"], false);
+    assert_eq!(scope_mismatch["committed"], false);
+    assert_eq!(
+        scope_mismatch["action_form_argument_mismatches"][0]["path"],
+        "/related_scope_decision_refs"
+    );
+    assert_eq!(
+        scope_mismatch["action_form_argument_mismatches"][0]["expected_value"],
+        expected_scope_resolution_refs
+    );
+    assert_eq!(
+        scope_mismatch["action_form_argument_mismatches"][0]["received_value"],
+        json!([])
+    );
+    let after_scope_mismatch = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(
+        (
+            after_scope_mismatch.query_row(
+                "SELECT state_version FROM project_state",
+                [],
+                |row| row.get::<_, u64>(0),
+            )?,
+            table_count(&after_scope_mismatch, "change_units")?,
+            table_count(&after_scope_mismatch, "write_tickets")?,
+        ),
+        before_scope_counts
+    );
+    drop(after_scope_mismatch);
+    let scope = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::UPDATE_SCOPE,
+        scope_arguments,
         SESSION,
         "future.turn.planning-recovery.apply",
     )?;
@@ -711,18 +858,78 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     assert_eq!(scope["workflow"]["kind"], "ready_for_implementation");
     let advance_form_ref = required_action_form_ref(&scope)?;
     assert_ne!(advance_form_ref, update_scope_form_ref);
+    let ready_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        SESSION,
+        "future.turn.planning-recovery.advance",
+    )?;
+    call_id += 1;
+    assert_eq!(
+        method_result(&ready_status)["active_task"]["workflow"]["kind"],
+        "ready_for_implementation"
+    );
+    assert_eq!(required_action_form_ref(&ready_status)?, advance_form_ref);
+    let advance_arguments = bound_action_arguments(
+        &ready_status,
+        AgentToolId::ADVANCE_TASK,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow"
+        }),
+    )?;
+    let expected_advance_resolution_ids = advance_arguments["user_action_resolution_ids"].clone();
+    assert!(expected_advance_resolution_ids
+        .as_array()
+        .is_some_and(|ids| ids.len() >= 2));
+    let before_advance_counts = (
+        method_result(&ready_status)["base"]["state_version"]
+            .as_u64()
+            .ok_or("ready state version")?,
+        table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
+    );
+    let mut tampered_advance_arguments = advance_arguments.clone();
+    tampered_advance_arguments["user_action_resolution_ids"] = json!([]);
+    let advance_mismatch_response = live_mcp_raw_call(
+        &mut child,
+        call_id,
+        AgentToolId::ADVANCE_TASK,
+        tampered_advance_arguments,
+        SESSION,
+        "future.turn.planning-recovery.advance",
+    )?;
+    call_id += 1;
+    assert_eq!(advance_mismatch_response["result"]["isError"], true);
+    let advance_mismatch = &advance_mismatch_response["result"]["structuredContent"];
+    assert_eq!(advance_mismatch["code"], "ACTION_FORM_ARGUMENT_MISMATCH");
+    assert_eq!(advance_mismatch["reached_core"], false);
+    assert_eq!(advance_mismatch["committed"], false);
+    assert_eq!(
+        advance_mismatch["action_form_argument_mismatches"][0]["path"],
+        "/user_action_resolution_ids"
+    );
+    assert_eq!(
+        advance_mismatch["action_form_argument_mismatches"][0]["expected_value"],
+        expected_advance_resolution_ids
+    );
+    assert_eq!(
+        (
+            rusqlite::Connection::open(&state_db)?.query_row(
+                "SELECT state_version FROM project_state",
+                [],
+                |row| row.get::<_, u64>(0),
+            )?,
+            table_count(&rusqlite::Connection::open(&state_db)?, "write_tickets")?,
+        ),
+        before_advance_counts
+    );
     let advanced = live_mcp_call(
         &mut child,
         call_id,
         AgentToolId::ADVANCE_TASK,
-        bound_action_arguments(
-            &scope,
-            AgentToolId::ADVANCE_TASK,
-            json!({
-                "project_selector": project_id,
-                "detail": "workflow"
-            }),
-        )?,
+        advance_arguments,
         SESSION,
         "future.turn.planning-recovery.advance",
     )?;
@@ -758,7 +965,11 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
         AgentToolId::STATUS.wire_name(),
+        AgentToolId::STATUS.wire_name(),
         AgentToolId::UPDATE_SCOPE.wire_name(),
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        AgentToolId::STATUS.wire_name(),
+        AgentToolId::ADVANCE_TASK.wire_name(),
         AgentToolId::ADVANCE_TASK.wire_name(),
         AgentToolId::STATUS.wire_name(),
     ];
@@ -779,7 +990,13 @@ fn planning_schema_recovery_reaches_implementation() -> Result<(), Box<dyn Error
     );
     for call in child.transcript().calls() {
         let encoded = serde_json::to_string(call)?;
-        for forbidden in ["--help", "strings", "finalize_advice", "\"null\""] {
+        for forbidden in [
+            "--help",
+            "strings",
+            "source grep",
+            "finalize_advice",
+            "\"null\"",
+        ] {
             assert!(
                 !encoded.contains(forbidden),
                 "forbidden recovery behavior: {encoded}"
@@ -6391,6 +6608,37 @@ fn json_key_exists(value: &Value, key: &str) -> bool {
         Value::Array(values) => values.iter().any(|value| json_key_exists(value, key)),
         _ => false,
     }
+}
+
+fn json_values_for_key<'a>(value: &'a Value, key: &str) -> Vec<&'a Value> {
+    let mut values = Vec::new();
+    match value {
+        Value::Object(object) => {
+            if let Some(value) = object.get(key) {
+                values.push(value);
+            }
+            for value in object.values() {
+                values.extend(json_values_for_key(value, key));
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                values.extend(json_values_for_key(item, key));
+            }
+        }
+        _ => {}
+    }
+    values
+}
+
+fn schema_accepts_json_null(schema: &Value) -> bool {
+    json_values_for_key(schema, "type")
+        .into_iter()
+        .any(|value| match value {
+            Value::String(value_type) => value_type == "null",
+            Value::Array(value_types) => value_types.iter().any(|value_type| value_type == "null"),
+            _ => false,
+        })
 }
 
 fn toml_entry_string_array(

@@ -113,7 +113,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 56);
+    assert_eq!(result.criteria.len(), 59);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -285,11 +285,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(56)
+        Some(59)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(56)
+        Some(59)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -411,6 +411,12 @@ impl TrialDriver for AggregateSyntheticDriver {
                 correct_workflow_tool_selections: u64::from(planning),
                 action_form_use_opportunities: u64::from(planning),
                 current_action_forms_used: u64::from(planning),
+                method_specific_form_opportunities: u64::from(planning),
+                method_specific_action_forms_used: u64::from(planning),
+                fixed_argument_opportunities: u64::from(planning),
+                exact_fixed_arguments_used: u64::from(planning),
+                wrong_method_mutation_opportunities: u64::from(planning),
+                wrong_method_speculative_mutations: 0,
                 nullable_baseline_opportunities: u64::from(schema_recovery),
                 json_null_baselines_used: u64::from(schema_recovery),
                 schema_recovery_opportunities: u64::from(schema_recovery),
@@ -605,12 +611,21 @@ fn schema_recovery_metric_defects_fail_their_generic_criteria() {
 
     let result = run_live_with_driver(&enabled_test_config(), &mut AggregateSyntheticDriver)
         .expect("synthetic in-process matrix should run");
-    let defects: [CriterionMetricDefect; 10] = [
+    let defects: [CriterionMetricDefect; 13] = [
         ("correct_workflow_tool_selection", |workflow| {
             workflow.correct_workflow_tool_selections = 0
         }),
         ("current_action_form_use", |workflow| {
             workflow.current_action_forms_used = 0
+        }),
+        ("method_specific_action_form_use", |workflow| {
+            workflow.method_specific_action_forms_used = 0
+        }),
+        ("exact_fixed_argument_use", |workflow| {
+            workflow.exact_fixed_arguments_used = 0
+        }),
+        ("wrong_method_speculative_mutation", |workflow| {
+            workflow.wrong_method_speculative_mutations = 1
         }),
         ("nullable_baseline_json_null", |workflow| {
             workflow.json_null_baselines_used = 0
