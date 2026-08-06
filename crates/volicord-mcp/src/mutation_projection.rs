@@ -129,10 +129,12 @@ pub(crate) fn finalize_mutation_output(
                     )
                 })
                 .transpose()
-                .map_err(|error| ActionFormCatalogError {
-                    action_key: None,
-                    stage: volicord_mcp_wire::McpWorkflowContractStage::AdapterProjection,
-                    detail: error.to_string(),
+                .map_err(|error| {
+                    ActionFormCatalogError::contract(
+                        None,
+                        volicord_mcp_wire::McpWorkflowContractStage::AdapterProjection,
+                        error.to_string(),
+                    )
                 })?;
             adapter.validated_workflow_action_form_catalog(
                 mutation_context,
@@ -251,11 +253,7 @@ where
     let action_form_catalog = match action_forms(&context, &authority) {
         Ok(catalog) => catalog,
         Err(failure) => {
-            let diagnostics = workflow_contract_diagnostics_with_failure(
-                &authority.workflow,
-                failure.action_key,
-                failure.stage,
-            );
+            let diagnostics = failure.diagnostics(&authority.workflow);
             return internal_contract_inconsistent_rejection(output, tool_name, None, diagnostics);
         }
     };
@@ -755,6 +753,12 @@ fn workflow_contract_diagnostics(
         ),
         failed_action_key: RequiredNullable::null(),
         failed_stage: RequiredNullable::null(),
+        planned_branch: RequiredNullable::null(),
+        method_error_code: RequiredNullable::null(),
+        method_error_details: RequiredNullable::null(),
+        basis_state_version: RequiredNullable::null(),
+        state_change_applied: false,
+        committed: false,
         workflow_contract_digest: action_forms.map_or_else(
             volicord_types::managed_guidance::workflow_contract_semantic_digest,
             |forms| forms.workflow_contract_digest.clone(),
@@ -778,6 +782,7 @@ fn workflow_contract_diagnostics(
     }
 }
 
+#[cfg(test)]
 fn workflow_contract_diagnostics_with_failure(
     workflow: &volicord_types::schema::WorkflowProjection,
     action_key: Option<volicord_types::schema::WorkflowActionKey>,

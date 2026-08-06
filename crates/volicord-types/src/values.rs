@@ -1766,6 +1766,16 @@ pub enum WorkflowTransitionEffectClass {
     TerminalMutation,
 }
 
+/// Accepted Core pipeline branch proven by exact no-commit transition planning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NoCommitPlannedBranch {
+    CommitMutation,
+    NormalNoEffectResult,
+    ReadOnlyResult,
+    ArtifactStaging,
+}
+
 /// Expected state family after a transition is evaluated and committed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

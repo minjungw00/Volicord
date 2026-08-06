@@ -49,8 +49,8 @@ pub use pipeline::{
     dry_run_response, rejected_response, tool_error, Clock, CoreOperationalOperation,
     CoreOperationalResource, CoreOperationalUnavailable, CorePipelineError, CoreResult,
     CoreService, GitWorkspaceContext, InvocationAuthority, InvocationContext,
-    NoCommitTransitionPlan, PipelineResponse, SystemClock, TransitionSubmission,
-    VerifiedInvocationContext,
+    NoCommitSubmissionRejected, NoCommitTransitionPlan, PipelineResponse, SystemClock,
+    TransitionSubmission, VerifiedInvocationContext,
 };
 pub use write_ticket::current_validity::StoredWriteTicketEvaluation;
 pub use write_ticket::service::load_evaluated_stored_write_tickets;

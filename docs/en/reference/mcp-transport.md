@@ -721,10 +721,13 @@ form must pass, in order, transition-contract validation, witness projection,
 semantic validation, exact Rust decoding, fixed-value binding, exact adapter
 request projection with the current injected project and state version, and the
 exact Core no-commit planner under a verified invocation. Core then validates
-the planned transition effect and actual result state, or the exact typed
-no-effect result when current policy blocks that operation. The adapter publishes
-the catalog only after a totality check proves that every current Agent action
-key appears exactly once and no other form appears.
+the exact accepted `planned_branch`, transition effect, Store mutation shape,
+and actual result state. Accepted branches are `commit_mutation`,
+`normal_no_effect_result`, `read_only_result`, and `artifact_staging`. A normal
+no-effect branch is specifically a `response_kind=result` response with
+`effect_kind=no_effect`; it is not a typed method rejection. The adapter
+publishes the catalog only after a totality check proves that every current
+Agent action key appears exactly once and no other form appears.
 
 The `canonical_minimal_request` remains the schema-valid request-shape starting
 point. Its bounded witness values validate the form shape; they do not claim
@@ -733,7 +736,11 @@ validation uses the current Store snapshot read-only and creates no Store or
 Product Repository effect. Failure exposes no catalog and returns or records
 `INTERNAL_CONTRACT_INCONSISTENT` with `committed=false`, the bounded failed
 action key and closed validation stage when known; it never omits a required
-form or chooses a nearby form.
+form or chooses a nearby form. If the exact witness produces
+`response_kind=rejected`, Core returns `NoCommitSubmissionRejected` instead of a
+plan. The `core_planning` diagnostics preserve the method error code and typed
+details, basis state version, `state_change_applied=false`, and
+`committed=false` without reconstructing method semantics from display text.
 
 The canonical public method/tool registries classify every callable as
 `read_only`, `not_task_state_bound`, `user_channel_authority`, or
@@ -1231,6 +1238,12 @@ McpWorkflowContractDiagnostics:
   recovery_action_key: WorkflowActionKey | null
   failed_action_key: WorkflowActionKey | null
   failed_stage: McpWorkflowContractStage | null
+  planned_branch: NoCommitPlannedBranch | null
+  method_error_code: ErrorCode | null
+  method_error_details: object | null
+  basis_state_version: integer | null
+  state_change_applied: boolean
+  committed: boolean
   workflow_contract_digest: RequestHash
   submission_contract_digest: RequestHash
   action_form_contract_digest: RequestHash

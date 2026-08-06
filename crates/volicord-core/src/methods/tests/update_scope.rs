@@ -1773,7 +1773,7 @@ fn update_scope_blocks_only_matching_pending_user_actions_without_effect(
             assert_eq!(response.response_value["base"]["response_kind"], "rejected");
             assert_eq!(
                 response.response_value["errors"][0]["code"],
-                "DECISION_UNRESOLVED"
+                "WORKFLOW_ACTION_NOT_ALLOWED"
             );
             assert_eq!(harness.counts()?, before);
 
@@ -1792,7 +1792,7 @@ fn update_scope_blocks_only_matching_pending_user_actions_without_effect(
             assert_eq!(dry_run.response_value["base"]["response_kind"], "rejected");
             assert_eq!(
                 dry_run.response_value["errors"][0]["code"],
-                "DECISION_UNRESOLVED"
+                "WORKFLOW_ACTION_NOT_ALLOWED"
             );
             assert_eq!(harness.counts()?, before);
         } else {

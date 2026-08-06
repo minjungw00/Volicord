@@ -689,11 +689,26 @@ Core의 `plan_transition_submission_no_commit`은 현재 snapshot에서 Agent tr
 invocation을 받아 현재 project Store를 읽기 전용으로 열고, 선택한 공개 메서드의 정상 admission,
 정규화, policy, semantic validation을 그대로 수행합니다. Policy가 효과를 허용하면 mutation
 planning, transition effect 검증, 실제 예상 결과 검증까지 이어집니다. Replay lookup은 수행하지
-않고 typed no-commit plan만 반환합니다.
-Transaction 시작, mutation 적용, event·replay 할당, state-version 변경, Product Repository 효과,
-Write Ticket, Run, evidence, artifact staging, Unrecorded Change 생성 전에 멈춥니다. 닫기 검토가
-차단되거나 특정 operation에 필요한 결정이 미해결인 경우처럼 메서드가 정의한 유효한 no-effect
-결과는 그대로 no-effect이며 descriptor의 성공 결과 상태로 표현하지 않습니다.
+않으며 정확한 메서드가 허용된 pipeline branch에 도달한 경우에만 typed no-commit plan을
+반환합니다. Plan은 폐쇄형 `planned_branch`를 정확히 하나 기록합니다. Store mutation을 계획한
+경우 `commit_mutation`, 정상 `response_kind=result`이면서 `effect_kind=no_effect`인 결과는
+`normal_no_effect_result`, transition이 소유한 읽기 전용 결과는 `read_only_result`, artifact
+staging 경로는 `artifact_staging`입니다. 각 branch는 admit된 action key, 기준 state version,
+transition effect class, 계획한 Store mutation, 예상 결과 상태 계열과 일치해야 합니다.
+
+`response_kind=rejected`인 메서드 응답은 no-commit plan이 아닙니다. Core는 정확한 action key,
+첫 번째 정규 메서드 오류 code와 typed details, 기준 state version,
+`state_change_applied=false`를 포함한 typed `NoCommitSubmissionRejected` planning failure를
+반환합니다. 정상 no-effect 결과는 허용된 result branch로 유지되며 거부에서 추론하거나 거부를
+대신하도록 변환하지 않습니다. Planning 성공과 planning 거부는 모두 transaction 시작,
+mutation 적용, event·replay 할당, state-version 변경, Product Repository 효과, Write Ticket,
+Run, evidence, artifact staging, Unrecorded Change 생성 전에 멈춥니다.
+
+현재 권한 사실 때문에 해당 operation의 정확한 제출이 반드시 거부되는 경우 workflow machine은
+선택 가능한 Agent transition을 게시하지 않습니다. 현재 operation에 한정된 pending UserAction은
+그것이 차단하는 `update_scope` 또는 `record_run` transition을 제거하고, 아직 적용되지 않은 accepted
+shaping 권한은 선택 가능한 `record_shaping_checkpoint` transition을 제거합니다. 이는 transition
+admission 사실이며 정상 no-effect 메서드 결과가 아닙니다.
 
 이 machine은 `volicord.update_scope` variant 가용성도 모두 소유합니다. 좌표는 현재
 Change Unit 권한에 맞는 정확한 `ChangeUnitOperation`을 선택하며 adapter나 projection이

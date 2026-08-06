@@ -135,6 +135,7 @@
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonGuarantee",
           "ObservedChanges",
           "OperationCategory",
@@ -272,7 +273,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:41d1ed6db5a122a9d267c7689a51403acb481620b88602eb025c1a28f3e4e2e5"
+        "sha256": "sha256:a7c90e0565168bab4944e5a8dda6e4c331edf6f4b55d40f67ca4be1a95f9901b"
       }
     },
     {
@@ -365,6 +366,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
           "ObservedChanges",
@@ -470,7 +472,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:eb72b0e7bbb344f84014623a1eb0fe79cf1ab4ee081f6d3851801d281e640f10"
+        "sha256": "sha256:b1851dba8405e5ea0670ada56260411d3daeb699c303e4640706e59a1dd69ba4"
       }
     },
     {
@@ -584,6 +586,7 @@
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonGuarantee",
           "ObservedChanges",
           "OperationCategory",
@@ -715,7 +718,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:32dbc45a3bccd2dcd0f80e041998765eb7cdf55eb21c828d7f9a6273a6c64a34"
+        "sha256": "sha256:282082b3247fed30c00dee25f4cd035e88cb5204b1f2dfbb1b822baae88796c2"
       }
     },
     {
@@ -759,6 +762,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -785,6 +789,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -884,7 +889,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d82bfd85c741113303a0fa8a3033237a3b6f794a2a68d15e910ca622c5cd9458"
+        "sha256": "sha256:2ab5cfd12ee84d9ec0c65499a5af10448902c2a854801491146fbd3391689964"
       }
     },
     {
@@ -929,6 +934,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -962,6 +968,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -1061,7 +1068,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5d206c4ccef63b124e3495774c894bc1bacd26bc11a550820dc25260341a10cd"
+        "sha256": "sha256:86a4573b207b00b3de584d5f4a0f2055baf2539ba86d113b3da38a60c4ce6c3c"
       }
     },
     {
@@ -1110,6 +1117,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -1142,6 +1150,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -1241,7 +1250,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:47b9d1c3403ab052e8df136a6cb1fdf6e6c929ea44826f1d16878f95de3a629d"
+        "sha256": "sha256:0ce6c0bbc63bc10d4475e71d6b91b505c727161f14f857d6e3bbe8ac453762c4"
       }
     },
     {
@@ -1290,6 +1299,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -1325,6 +1335,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -1424,7 +1435,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7045f5deb12e4385900bc5a0885a2184ebc0ccc3063d1e10e33678e54337a900"
+        "sha256": "sha256:cef4a699dc56dccfb4cbc9e69452a679bd3e390dd5a070c2fc08408465d31773"
       }
     }
   ]

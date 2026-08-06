@@ -1,4 +1,6 @@
-use crate::action_form::{bind_fixed_arguments, retry_contract, workflow_action_form_catalog};
+use crate::action_form::{
+    bind_fixed_arguments, retry_contract, workflow_action_form_catalog, ActionFormCatalogError,
+};
 use crate::authority_refresh::{validated_authority_refresh, MutationRefreshContext};
 use crate::constants::DEFAULT_LOCALE;
 use crate::errors::McpAdapterError;
@@ -33,7 +35,7 @@ use volicord_mcp_wire::{
     McpRecordRunArguments, McpRecordShapingCheckpointArguments, McpRequestUserActionArguments,
     McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments, McpToolErrorCode,
     McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments, McpWorkflowAdmissionRejection,
-    McpWorkflowContractDiagnostics, McpWorkflowContractStage, WorkflowActionForm,
+    McpWorkflowContractStage, WorkflowActionForm,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
@@ -72,8 +74,44 @@ use volicord_types::schema::{
 };
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
-    IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
+    IntegrationProfile, MethodName, NoCommitPlannedBranch, OperationCategory, StatusDetailLevel,
+    UtcTimestamp, WorkflowTransitionEffectClass,
 };
+
+fn no_commit_branch_matches_transition(
+    branch: NoCommitPlannedBranch,
+    method: MethodName,
+    effect: WorkflowTransitionEffectClass,
+) -> bool {
+    matches!(
+        (branch, method, effect),
+        (
+            NoCommitPlannedBranch::CommitMutation,
+            _,
+            WorkflowTransitionEffectClass::CoreStateMutation
+                | WorkflowTransitionEffectClass::WriteAuthorization
+                | WorkflowTransitionEffectClass::EvidenceCapture
+                | WorkflowTransitionEffectClass::ExecutionRecording
+                | WorkflowTransitionEffectClass::TerminalMutation,
+        ) | (
+            NoCommitPlannedBranch::NormalNoEffectResult,
+            MethodName::CloseTask,
+            WorkflowTransitionEffectClass::TerminalMutation,
+        ) | (
+            NoCommitPlannedBranch::ReadOnlyResult,
+            MethodName::CheckClose,
+            WorkflowTransitionEffectClass::ReadOnlyAssessment,
+        ) | (
+            NoCommitPlannedBranch::ReadOnlyResult,
+            MethodName::ReconcileChanges,
+            WorkflowTransitionEffectClass::CoreStateMutation,
+        ) | (
+            NoCommitPlannedBranch::ArtifactStaging,
+            MethodName::StageArtifact,
+            WorkflowTransitionEffectClass::ArtifactStaging,
+        )
+    )
+}
 
 /// Invocation context derived for one tool call before entering Core.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -974,26 +1012,7 @@ impl McpAdapter {
                 tool_name: "workflow_action_form_catalog".to_owned(),
                 reached_core: failure.reached_core(),
                 transition_rejection: None,
-                diagnostics: Box::new(McpWorkflowContractDiagnostics {
-                    normalized_workflow_snapshot: authority.workflow.clone(),
-                    current_transition_catalog: authority.workflow.transition_catalog().clone(),
-                    current_action_forms: RequiredNullable::null(),
-                    attempted_action_key: RequiredNullable::null(),
-                    typed_rejection_reason: RequiredNullable::null(),
-                    recovery_action_key: RequiredNullable::null(),
-                    failed_action_key: RequiredNullable::new(failure.action_key),
-                    failed_stage: RequiredNullable::some(failure.stage),
-                    workflow_contract_digest:
-                        volicord_types::managed_guidance::workflow_contract_semantic_digest(),
-                    submission_contract_digest:
-                        volicord_types::managed_guidance::submission_contract_semantic_digest(),
-                    action_form_contract_digest:
-                        volicord_types::managed_guidance::action_form_contract_semantic_digest(),
-                    semantic_schema_digest:
-                        volicord_types::managed_guidance::mcp_semantic_schema_digest(),
-                    scalar_contract_digest:
-                        volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest(),
-                }),
+                diagnostics: Box::new(failure.diagnostics(&authority.workflow)),
             })?;
         Ok(Some(AuthoritativeArgumentContext {
             context_loaded: true,
@@ -1023,9 +1042,10 @@ impl McpAdapter {
             witness
                 .as_object_mut()
                 .ok_or_else(|| {
-                    (
+                    ActionFormCatalogError::contract(
+                        Some(form.action_key),
                         McpWorkflowContractStage::AdapterProjection,
-                        "complete action-form witness is not an object".to_owned(),
+                        "complete action-form witness is not an object",
                     )
                 })?
                 .insert("project_selector".to_owned(), serde_json::json!(project_id));
@@ -1035,27 +1055,40 @@ impl McpAdapter {
                 .transition_catalog()
                 .transition(&form.action_key)
                 .ok_or_else(|| {
-                    (
+                    ActionFormCatalogError::contract(
+                        Some(form.action_key),
                         McpWorkflowContractStage::CatalogTotality,
-                        "planned action form lost its exact current transition".to_owned(),
+                        "planned action form lost its exact current transition",
                     )
                 })?;
             if plan.action_key != transition.action_key
                 || plan.basis_state_version != transition.expected_state_version
             {
-                return Err((
+                let mut failure = ActionFormCatalogError::contract(
+                    Some(form.action_key),
                     McpWorkflowContractStage::CorePlanning,
-                    "Core no-commit plan changed the action key or authority version".to_owned(),
-                ));
+                    "Core no-commit plan changed the action key or authority version",
+                );
+                failure.planned_branch = Some(plan.planned_branch);
+                failure.basis_state_version = Some(plan.basis_state_version);
+                return Err(failure);
             }
             if plan.effect_class != transition.effect_class
                 || plan.expected_result_state != transition.expected_result_state
+                || !no_commit_branch_matches_transition(
+                    plan.planned_branch,
+                    transition.action_key.method,
+                    transition.effect_class,
+                )
             {
-                return Err((
+                let mut failure = ActionFormCatalogError::contract(
+                    Some(form.action_key),
                     McpWorkflowContractStage::ExpectedResultValidation,
-                    "Core no-commit plan changed the expected effect or result-state family"
-                        .to_owned(),
-                ));
+                    "Core no-commit plan changed the accepted branch, effect, or expected result-state family",
+                );
+                failure.planned_branch = Some(plan.planned_branch);
+                failure.basis_state_version = Some(plan.basis_state_version);
+                return Err(failure);
             }
             Ok(())
         })
@@ -1067,13 +1100,14 @@ impl McpAdapter {
         form: &WorkflowActionForm,
         witness: Value,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<NoCommitTransitionPlan, (McpWorkflowContractStage, String)> {
+    ) -> Result<NoCommitTransitionPlan, ActionFormCatalogError> {
         let mut planner = self.clone();
         planner.planning_action_key = Some(form.action_key);
         let tool = AgentToolId::from_method(form.action_key.method).ok_or_else(|| {
-            (
+            ActionFormCatalogError::contract(
+                Some(form.action_key),
                 McpWorkflowContractStage::AdapterProjection,
-                "current action has no MCP adapter projection".to_owned(),
+                "current action has no MCP adapter projection",
             )
         })?;
         let tool_name = tool.wire_name();
@@ -1118,9 +1152,10 @@ impl McpAdapter {
             | MethodName::Status
             | MethodName::GetOperationResult
             | MethodName::ResolveUserAction => {
-                return Err((
+                return Err(ActionFormCatalogError::contract(
+                    Some(form.action_key),
                     McpWorkflowContractStage::AdapterProjection,
-                    "current Agent transition has no exact state-bound adapter planner".to_owned(),
+                    "current Agent transition has no exact state-bound adapter planner",
                 ));
             }
         };
@@ -1135,26 +1170,41 @@ impl McpAdapter {
                     })
                     .and_then(|plan| serde_json::from_value(plan).map_err(McpAdapterError::Json))
             })
-            .map_err(|error| {
-                let (stage, detail) = match &error {
-                    McpAdapterError::Core(CorePipelineError::Invariant { detail })
-                        if detail.contains("expected-result")
-                            || detail.contains("expected result") =>
-                    {
-                        (
-                            McpWorkflowContractStage::ExpectedResultValidation,
-                            detail.clone(),
-                        )
+            .map_err(|error| match &error {
+                McpAdapterError::Core(CorePipelineError::NoCommitSubmissionRejected(rejection)) => {
+                    ActionFormCatalogError {
+                        action_key: Some(rejection.action_key()),
+                        stage: McpWorkflowContractStage::CorePlanning,
+                        detail: error.to_string(),
+                        planned_branch: None,
+                        method_error_code: Some(rejection.method_error_code()),
+                        method_error_details: rejection.method_error_details().cloned(),
+                        basis_state_version: Some(rejection.basis_state_version()),
+                        state_change_applied: rejection.state_change_applied(),
+                        committed: rejection.committed(),
                     }
-                    McpAdapterError::Core(error) => {
-                        (McpWorkflowContractStage::CorePlanning, error.to_string())
-                    }
-                    _ => (
-                        McpWorkflowContractStage::AdapterProjection,
-                        error.to_string(),
-                    ),
-                };
-                (stage, detail)
+                }
+                _ => {
+                    let (stage, detail) = match &error {
+                        McpAdapterError::Core(CorePipelineError::Invariant { detail })
+                            if detail.contains("expected-result")
+                                || detail.contains("expected result") =>
+                        {
+                            (
+                                McpWorkflowContractStage::ExpectedResultValidation,
+                                detail.clone(),
+                            )
+                        }
+                        McpAdapterError::Core(error) => {
+                            (McpWorkflowContractStage::CorePlanning, error.to_string())
+                        }
+                        _ => (
+                            McpWorkflowContractStage::AdapterProjection,
+                            error.to_string(),
+                        ),
+                    };
+                    ActionFormCatalogError::contract(Some(form.action_key), stage, detail)
+                }
             })
     }
 

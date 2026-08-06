@@ -709,13 +709,32 @@ the current project Store read-only, and follows the selected public method's
 normal admission, normalization, policy, and semantic validation. When policy
 admits an effect, it continues through mutation planning, transition-effect
 validation, and actual expected-result validation.
-It does not perform replay lookup and returns only a typed no-commit plan. It
-stops before any transaction, mutation application, event or replay allocation,
-state-version change, Product Repository effect, Write Ticket, Run, evidence,
-artifact staging, or Unrecorded Change creation. A valid method-owned no-effect
-result, such as a blocked close review or an operation-specific unresolved
-decision, remains no-effect and is not presented as the descriptor's successful
-result state.
+It does not perform replay lookup and returns a typed no-commit plan only after
+the exact method reaches an accepted pipeline branch. The plan records exactly
+one closed `planned_branch`: `commit_mutation` for a planned Store mutation,
+`normal_no_effect_result` for a normal `response_kind=result` and
+`effect_kind=no_effect` result, `read_only_result` for a transition-owned
+read-only result, or `artifact_staging` for the artifact staging path. Each
+branch must match the admitted action key, basis state version, transition
+effect class, planned Store mutations, and expected result-state family.
+
+A `response_kind=rejected` method response is not a no-commit plan. Core returns
+the typed `NoCommitSubmissionRejected` planning failure with the exact action
+key, first canonical method error code and typed details, basis state version,
+and `state_change_applied=false`. A normal no-effect result remains an accepted
+result branch and is never inferred from or substituted for a rejection. Both
+planning success and planning rejection stop before any transaction, mutation
+application, event or replay allocation, state-version change, Product
+Repository effect, Write Ticket, Run, evidence, artifact staging, or Unrecorded
+Change creation.
+
+The workflow machine does not advertise an optional Agent transition when
+current authority facts make that operation's exact submission necessarily
+reject. A current operation-specific pending UserAction removes its blocked
+`update_scope` or `record_run` transition, and accepted shaping authority that
+still awaits application removes an optional `record_shaping_checkpoint`
+transition. These are transition-admission facts, not normal no-effect method
+results.
 
 The machine also owns all `volicord.update_scope` variant availability. Its
 coordinates select the exact `ChangeUnitOperation` against current Change Unit

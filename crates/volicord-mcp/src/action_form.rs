@@ -5,8 +5,9 @@ use serde_json::{json, Map, Value};
 use volicord_mcp_wire::{
     action_form_request_projection, mcp_tool_contract, submitted_action_form_semantic_variant,
     ActionFormRequestProjectionDescriptor, McpActionFormArgumentMismatch,
-    McpInputContractValidation, McpWorkflowContractStage, RetryContract, SemanticSchemaDescriptor,
-    WorkflowActionForm, WorkflowActionFormCatalog, WorkflowActionInput, MAX_VALIDATION_ISSUES,
+    McpInputContractValidation, McpWorkflowContractDiagnostics, McpWorkflowContractStage,
+    RetryContract, SemanticSchemaDescriptor, WorkflowActionForm, WorkflowActionFormCatalog,
+    WorkflowActionInput, MAX_VALIDATION_ISSUES,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
@@ -19,6 +20,7 @@ use volicord_types::schema::{
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::MethodName;
+use volicord_types::values::{ErrorCode, NoCommitPlannedBranch};
 
 #[derive(Serialize)]
 struct WorkflowActionFormDigestBasis<'a> {
@@ -827,6 +829,12 @@ pub(crate) struct ActionFormCatalogError {
     pub action_key: Option<WorkflowActionKey>,
     pub stage: McpWorkflowContractStage,
     pub detail: String,
+    pub planned_branch: Option<NoCommitPlannedBranch>,
+    pub method_error_code: Option<ErrorCode>,
+    pub method_error_details: Option<JsonObject>,
+    pub basis_state_version: Option<u64>,
+    pub state_change_applied: bool,
+    pub committed: bool,
 }
 
 impl std::fmt::Display for ActionFormCatalogError {
@@ -838,12 +846,61 @@ impl std::fmt::Display for ActionFormCatalogError {
 impl std::error::Error for ActionFormCatalogError {}
 
 impl ActionFormCatalogError {
+    pub(crate) fn contract(
+        action_key: Option<WorkflowActionKey>,
+        stage: McpWorkflowContractStage,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            action_key,
+            stage,
+            detail: detail.into(),
+            planned_branch: None,
+            method_error_code: None,
+            method_error_details: None,
+            basis_state_version: None,
+            state_change_applied: false,
+            committed: false,
+        }
+    }
+
     pub(crate) fn reached_core(&self) -> bool {
         matches!(
             self.stage,
             McpWorkflowContractStage::CorePlanning
                 | McpWorkflowContractStage::ExpectedResultValidation
         )
+    }
+
+    pub(crate) fn diagnostics(
+        &self,
+        workflow: &WorkflowProjection,
+    ) -> McpWorkflowContractDiagnostics {
+        McpWorkflowContractDiagnostics {
+            normalized_workflow_snapshot: workflow.clone(),
+            current_transition_catalog: workflow.transition_catalog().clone(),
+            current_action_forms: RequiredNullable::null(),
+            attempted_action_key: RequiredNullable::null(),
+            typed_rejection_reason: RequiredNullable::null(),
+            recovery_action_key: RequiredNullable::null(),
+            failed_action_key: RequiredNullable::new(self.action_key),
+            failed_stage: RequiredNullable::some(self.stage),
+            planned_branch: RequiredNullable::new(self.planned_branch),
+            method_error_code: RequiredNullable::new(self.method_error_code),
+            method_error_details: RequiredNullable::new(self.method_error_details.clone()),
+            basis_state_version: RequiredNullable::new(self.basis_state_version),
+            state_change_applied: self.state_change_applied,
+            committed: self.committed,
+            workflow_contract_digest:
+                volicord_types::managed_guidance::workflow_contract_semantic_digest(),
+            submission_contract_digest:
+                volicord_types::managed_guidance::submission_contract_semantic_digest(),
+            action_form_contract_digest:
+                volicord_types::managed_guidance::action_form_contract_semantic_digest(),
+            semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
+            scalar_contract_digest:
+                volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest(),
+        }
     }
 }
 
@@ -915,7 +972,7 @@ pub(crate) fn workflow_action_form_catalog<F>(
     mut validate_plan: F,
 ) -> Result<WorkflowActionFormCatalog, ActionFormCatalogError>
 where
-    F: FnMut(&WorkflowActionForm, Value) -> Result<(), (McpWorkflowContractStage, String)>,
+    F: FnMut(&WorkflowActionForm, Value) -> Result<(), ActionFormCatalogError>,
 {
     let mut forms = Vec::new();
     for transition in &workflow.transition_catalog().transitions {
@@ -923,25 +980,28 @@ where
             continue;
         }
         let projected = workflow_action_form(project_id, workflow, transition)
-            .map_err(|detail| ActionFormCatalogError {
-                action_key: Some(transition.action_key),
-                stage: projection_failure_stage(&detail),
-                detail,
+            .map_err(|detail| {
+                ActionFormCatalogError::contract(
+                    Some(transition.action_key),
+                    projection_failure_stage(&detail),
+                    detail,
+                )
             })?
-            .ok_or_else(|| ActionFormCatalogError {
-                action_key: Some(transition.action_key),
-                stage: McpWorkflowContractStage::CatalogTotality,
-                detail: format!(
-                    "Agent transition {} {} did not produce an MCP action form",
-                    transition.action_key.method.as_str(),
-                    transition.action_key.semantic_variant.as_str()
-                ),
+            .ok_or_else(|| {
+                ActionFormCatalogError::contract(
+                    Some(transition.action_key),
+                    McpWorkflowContractStage::CatalogTotality,
+                    format!(
+                        "Agent transition {} {} did not produce an MCP action form",
+                        transition.action_key.method.as_str(),
+                        transition.action_key.semantic_variant.as_str()
+                    ),
+                )
             })?;
         validate_plan(&projected.form, projected.complete_validation_witness).map_err(
-            |(stage, detail)| ActionFormCatalogError {
-                action_key: Some(transition.action_key),
-                stage,
-                detail,
+            |mut failure| {
+                failure.action_key.get_or_insert(transition.action_key);
+                failure
             },
         )?;
         forms.push(projected.form);
@@ -1000,12 +1060,11 @@ fn validate_action_form_totality(
             .iter()
             .any(|form| form.action_key == transition.action_key)
         {
-            return Err(ActionFormCatalogError {
-                action_key: Some(transition.action_key),
-                stage: McpWorkflowContractStage::CatalogTotality,
-                detail: "a current Agent transition has no exact validated MCP action form"
-                    .to_owned(),
-            });
+            return Err(ActionFormCatalogError::contract(
+                Some(transition.action_key),
+                McpWorkflowContractStage::CatalogTotality,
+                "a current Agent transition has no exact validated MCP action form",
+            ));
         }
     }
     if forms.len()
@@ -1018,12 +1077,11 @@ fn validate_action_form_totality(
             })
             .count()
     {
-        return Err(ActionFormCatalogError {
-            action_key: None,
-            stage: McpWorkflowContractStage::CatalogTotality,
-            detail: "the MCP action-form catalog is not a one-to-one Agent-transition projection"
-                .to_owned(),
-        });
+        return Err(ActionFormCatalogError::contract(
+            None,
+            McpWorkflowContractStage::CatalogTotality,
+            "the MCP action-form catalog is not a one-to-one Agent-transition projection",
+        ));
     }
     Ok(())
 }
@@ -1194,6 +1252,66 @@ mod tests {
                 volicord_types::values::WorkflowAuthorityInvalidationPolicy::Permitted,
             required_refs,
         }
+    }
+
+    #[test]
+    fn no_commit_rejection_diagnostics_preserve_typed_core_planning_facts() {
+        let task_id = TaskId::new("task_no_commit_diagnostics");
+        let transition = agent_transition(
+            MethodName::RecordRun,
+            WorkflowActionSemanticVariant::RecordRun,
+            WorkflowActionRole::Allowed,
+            9,
+            WorkflowActionAuthorityCoordinates::RecordRun {
+                task_id,
+                change_unit_id: ChangeUnitId::new("cu_no_commit_diagnostics"),
+                baseline_ref: BaselineRef::parse("baseline_no_commit_diagnostics")
+                    .expect("baseline"),
+                run_kind: RunKind::Implementation,
+            },
+            Vec::new(),
+        );
+        let workflow = workflow_for_transitions(vec![transition.clone()]);
+        let method_error_details = json!({
+            "reason": "run_kind_incompatible",
+            "state_change_applied": false,
+        })
+        .as_object()
+        .expect("details object")
+        .clone();
+        let failure = ActionFormCatalogError {
+            action_key: Some(transition.action_key),
+            stage: McpWorkflowContractStage::CorePlanning,
+            detail: "typed no-commit rejection".to_owned(),
+            planned_branch: None,
+            method_error_code: Some(ErrorCode::RunKindIncompatible),
+            method_error_details: Some(method_error_details.clone()),
+            basis_state_version: Some(9),
+            state_change_applied: false,
+            committed: false,
+        };
+
+        let diagnostics = failure.diagnostics(&workflow);
+        assert_eq!(
+            diagnostics.failed_action_key.as_ref(),
+            Some(&transition.action_key)
+        );
+        assert_eq!(
+            diagnostics.failed_stage.as_ref(),
+            Some(&McpWorkflowContractStage::CorePlanning)
+        );
+        assert_eq!(
+            diagnostics.method_error_code.as_ref(),
+            Some(&ErrorCode::RunKindIncompatible)
+        );
+        assert_eq!(
+            diagnostics.method_error_details.as_ref(),
+            Some(&method_error_details)
+        );
+        assert_eq!(diagnostics.basis_state_version.as_ref(), Some(&9));
+        assert!(!diagnostics.state_change_applied);
+        assert!(!diagnostics.committed);
+        assert!(diagnostics.planned_branch.as_ref().is_none());
     }
 
     #[test]

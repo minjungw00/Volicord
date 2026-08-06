@@ -26,6 +26,9 @@ use volicord_types::values::{
     WorkflowExpectedResultState, WorkflowStateKind, WorkflowTransitionActor,
     WorkflowTransitionEffectClass,
 };
+use volicord_user_action_service::{
+    pending_user_action_refs_for_operation, UserActionOperation, UserActionOperationContext,
+};
 
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::record_refs::{state_ref, stored_refs_to_state_refs};
@@ -139,6 +142,8 @@ pub(crate) struct TaskWideShapingAuthority {
     pub(crate) current_resolution_ids: BTreeSet<String>,
     pub(crate) stale_application_refs: Vec<StateRecordRef>,
     pub(crate) pending_request_refs: Vec<StateRecordRef>,
+    pub(crate) pending_scope_update: bool,
+    pub(crate) pending_record_run: bool,
 }
 
 impl TaskWideShapingAuthority {
@@ -217,6 +222,56 @@ pub(crate) fn task_wide_shaping_authority(
     );
     pending_request_refs.sort();
     pending_request_refs.dedup();
+    let current_change_unit_id = current_change_unit
+        .map(|change_unit| ChangeUnitId::new(change_unit.change_unit_id.clone()));
+    let mut operation_refs = vec![state_ref(
+        StateRecordKind::Task,
+        task_id.as_str(),
+        project_id,
+        Some(&task_id),
+        Some(state_version),
+    )];
+    if let Some(change_unit) = current_change_unit {
+        operation_refs.push(state_ref(
+            StateRecordKind::ChangeUnit,
+            &change_unit.change_unit_id,
+            project_id,
+            Some(&task_id),
+            Some(change_unit.basis_state_version),
+        ));
+    }
+    let pending_scope_update = !pending_user_action_refs_for_operation(
+        store,
+        project_id,
+        state_version,
+        now,
+        &UserActionOperationContext {
+            operation: UserActionOperation::ScopeUpdate,
+            task_id: &task_id,
+            change_unit_id: current_change_unit_id.as_ref(),
+            scope_revision: task.scope_revision,
+            close_basis: None,
+            operation_refs: &operation_refs,
+            sensitive_approval: None,
+        },
+    )?
+    .is_empty();
+    let pending_record_run = !pending_user_action_refs_for_operation(
+        store,
+        project_id,
+        state_version,
+        now,
+        &UserActionOperationContext {
+            operation: UserActionOperation::RecordRun,
+            task_id: &task_id,
+            change_unit_id: current_change_unit_id.as_ref(),
+            scope_revision: task.scope_revision,
+            close_basis: None,
+            operation_refs: &operation_refs,
+            sensitive_approval: None,
+        },
+    )?
+    .is_empty();
     let graph = store
         .current_shaping_authority_graph(&task_id, now)
         .map_err(CorePipelineError::from)?;
@@ -345,6 +400,8 @@ pub(crate) fn task_wide_shaping_authority(
     let mut assessment = TaskWideShapingAuthority {
         stale_application_refs,
         pending_request_refs,
+        pending_scope_update,
+        pending_record_run,
         ..TaskWideShapingAuthority::default()
     };
     for record in records {
@@ -1726,6 +1783,21 @@ impl WorkflowMachine {
         typed_blocking_reason: Option<WorkflowBlockingReason>,
     ) -> CoreResult<WorkflowEvaluation> {
         let mut admitted_methods = allowed_methods.to_vec();
+        if snapshot.user_action_state.accepted_unapplied > 0
+            && required_key.is_none_or(|key| key.method != MethodName::RecordShapingCheckpoint)
+        {
+            admitted_methods.retain(|method| *method != MethodName::RecordShapingCheckpoint);
+        }
+        if snapshot.shaping_authority_graph.pending_scope_update
+            && required_key.is_none_or(|key| key.method != MethodName::UpdateScope)
+        {
+            admitted_methods.retain(|method| *method != MethodName::UpdateScope);
+        }
+        if snapshot.shaping_authority_graph.pending_record_run
+            && required_key.is_none_or(|key| key.method != MethodName::RecordRun)
+        {
+            admitted_methods.retain(|method| *method != MethodName::RecordRun);
+        }
         if workflow_kind != WorkflowStateKind::Terminal {
             admitted_methods.extend([
                 MethodName::CheckClose,

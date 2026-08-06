@@ -186,6 +186,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -320,7 +321,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:499cf116150ba4fda8c8e8a607defbb12937ac8d676d65438966f306cf9d9956"
+        "sha256": "sha256:bbed52c62f324324c1571d965d5e4c6f89a29fb0156979ba81373149bf9f0f29"
       }
     },
     {
@@ -478,6 +479,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -614,7 +616,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:710a61eb69f8644f67a1bc3b7afa9d5d7cd55fc5a121c7cb9fb61272230203c3"
+        "sha256": "sha256:fe489c446a254144cba83cd19695cac6fbf8d052617b30c7f03ca8fb0bc3d18f"
       }
     },
     {
@@ -794,6 +796,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -931,7 +934,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8c3764cf5e0745737d2064a9a2a3331a07ef87d1cc1066cc6b284aa0f25aa4a7"
+        "sha256": "sha256:3186a9ccc137216d35d1e37e5869278baa5928c411e0df1137d8ebddfd456c35"
       }
     },
     {
@@ -1085,6 +1088,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -1220,7 +1224,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f5287935ce282f54e0e047e4417237379df80926c2e5a8c292886bd8ac4ea7c0"
+        "sha256": "sha256:29051d8f7503290b1f6e9bd35f2c06f5803746013bc1141353ecccb7bea3e058"
       }
     },
     {
@@ -1363,6 +1367,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -1497,7 +1502,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7989a2235f3c9124972b91cf6d81bac2821217298d3d87d39903184830d9662b"
+        "sha256": "sha256:6d3fc3615ae758734ba35d3d0ccb5e369ec3353767d0ef955c4f36b40bc1c9d7"
       }
     },
     {
@@ -1615,6 +1620,7 @@
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonGuarantee",
           "ObservedChanges",
           "OperationCategory",
@@ -1752,7 +1758,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:41d1ed6db5a122a9d267c7689a51403acb481620b88602eb025c1a28f3e4e2e5"
+        "sha256": "sha256:a7c90e0565168bab4944e5a8dda6e4c331edf6f4b55d40f67ca4be1a95f9901b"
       }
     },
     {
@@ -1845,6 +1851,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
           "ObservedChanges",
@@ -1950,7 +1957,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:eb72b0e7bbb344f84014623a1eb0fe79cf1ab4ee081f6d3851801d281e640f10"
+        "sha256": "sha256:b1851dba8405e5ea0670ada56260411d3daeb699c303e4640706e59a1dd69ba4"
       }
     },
     {
@@ -2078,6 +2085,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -2196,7 +2204,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4df68a0e6b0ed6e639955be19adf080d9cfb11926814fe40769e658bff3edc14"
+        "sha256": "sha256:e8515f0068e093928257a8242c1e481a917ea887fc47c9015ac80cda6df73092"
       }
     },
     {
@@ -2337,6 +2345,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -2481,7 +2490,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8c19f14672858d82cada1bfde8bd62b1f104407dccbfe1d706ec40f548bc1698"
+        "sha256": "sha256:01738a9d22365e9ea481c31e11e32e0acf688a6df0f147eeed8daa8d405b7856"
       }
     },
     {
@@ -2608,6 +2617,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonGuarantee",
           "ObservedChanges",
           "OperationCategory",
@@ -2726,7 +2736,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5bd2a93670d04faf59f6b7e21831f7e5f1ee4719bed519b13c3c9f36f0d1d7b2"
+        "sha256": "sha256:7e32f07c2ef262466b770759e2b301e68b9ea6aac1a471ead25c56b42529ed41"
       }
     },
     {
@@ -2930,6 +2940,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -3069,7 +3080,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:70fcd4902b1b1261096282f594803029712dd2ce84f0466b696c3627d35ca6d0"
+        "sha256": "sha256:14b4dc267e68a6b20dc791d4e96f31ab29c0aafaa734b2482e7160757131039c"
       }
     },
     {
@@ -3229,6 +3240,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
@@ -3367,7 +3379,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fd251113797d11ceb51d3d5165eb915bc7d37db8c8e1afe8d988db6ba64e2023"
+        "sha256": "sha256:292ad2edbb4ace9676dc1facfef564f46b1d4e29afd2a322b4e59626cf66ac83"
       }
     },
     {
@@ -3500,6 +3512,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonEmptyEventRefs",
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
@@ -3642,7 +3655,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3c5dcc6db7781b829305a4853722e6a6338952bc5b763cf1b45608534cbd180b"
+        "sha256": "sha256:9f2e0ec9a0d51c7373c65c970e4460fbe1fd61ac68c437970ea616f927dae78c"
       }
     },
     {
@@ -3756,6 +3769,7 @@
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NonGuarantee",
           "ObservedChanges",
           "OperationCategory",
@@ -3887,7 +3901,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:32dbc45a3bccd2dcd0f80e041998765eb7cdf55eb21c828d7f9a6273a6c64a34"
+        "sha256": "sha256:282082b3247fed30c00dee25f4cd035e88cb5204b1f2dfbb1b822baae88796c2"
       }
     },
     {
@@ -4027,6 +4041,7 @@
           "MutationDetailLevel",
           "NextActionKind",
           "NextActionSummary",
+          "NoCommitPlannedBranch",
           "NoEffectResultBase",
           "NonEmptyEventRefs",
           "NonGuarantee",
@@ -4169,7 +4184,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b9b2f929b07e5cfdfa9da0bf6efa37f4e0f512c48ab661ed789b57a929affac4"
+        "sha256": "sha256:7d62447fa25d9103e79766f8f572cdd1de2741afee9d2971e149151c793d9dd8"
       }
     },
     {
@@ -4213,6 +4228,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -4239,6 +4255,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -4338,7 +4355,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d82bfd85c741113303a0fa8a3033237a3b6f794a2a68d15e910ca622c5cd9458"
+        "sha256": "sha256:2ab5cfd12ee84d9ec0c65499a5af10448902c2a854801491146fbd3391689964"
       }
     },
     {
@@ -4383,6 +4400,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -4416,6 +4434,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -4515,7 +4534,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5d206c4ccef63b124e3495774c894bc1bacd26bc11a550820dc25260341a10cd"
+        "sha256": "sha256:86a4573b207b00b3de584d5f4a0f2055baf2539ba86d113b3da38a60c4ce6c3c"
       }
     },
     {
@@ -4564,6 +4583,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -4596,6 +4616,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -4695,7 +4716,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:47b9d1c3403ab052e8df136a6cb1fdf6e6c929ea44826f1d16878f95de3a629d"
+        "sha256": "sha256:0ce6c0bbc63bc10d4475e71d6b91b505c727161f14f857d6e3bbe8ac453762c4"
       }
     },
     {
@@ -4744,6 +4765,7 @@
           "CloseMutationIntent",
           "CloseReason",
           "CommandSource",
+          "ErrorCode",
           "EvidenceAssuranceLevel",
           "EvidenceCaptureSpec",
           "EvidenceClaimId",
@@ -4779,6 +4801,7 @@
           "McpWorkflowContractDiagnostics",
           "McpWorkflowContractStage",
           "MethodName",
+          "NoCommitPlannedBranch",
           "ObservedChanges",
           "ProjectId",
           "RecordId",
@@ -4878,7 +4901,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7045f5deb12e4385900bc5a0885a2184ebc0ccc3063d1e10e33678e54337a900"
+        "sha256": "sha256:cef4a699dc56dccfb4cbc9e69452a679bd3e390dd5a070c2fc08408465d31773"
       }
     }
   ]

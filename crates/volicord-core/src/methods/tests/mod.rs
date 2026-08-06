@@ -642,6 +642,7 @@ mod approval_consumer_conformance;
 mod close_readiness;
 mod close_task;
 mod intake;
+mod no_commit_planning;
 mod operation_result;
 mod preflight;
 mod prepare_evidence_capture;

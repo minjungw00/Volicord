@@ -631,10 +631,12 @@ contract에서 고정 값, 필수·선택 Agent 작성 slot, 완전한 typed wit
 각 form은 transition contract 검증, witness projection, semantic validation, 정확한 Rust
 decode, 고정 값 binding, 현재 project와 state version을 주입한 정확한 adapter request
 projection, 검증된 invocation을 사용하는 정확한 Core no-commit planner를 순서대로 통과해야
-합니다. 이어서 Core가 계획한 transition effect와 실제 결과 상태를 검증하며, 현재 policy가 해당
-operation을 차단하면 정확한 typed no-effect 결과를 검증합니다. Adapter는 현재
-Agent action key가 빠짐없이 정확히 한 번씩만 나타나고 다른 form이 없음을 totality 검사로
-확인한 뒤에만 catalog를 게시합니다.
+합니다. 이어서 Core가 정확히 허용한 `planned_branch`, transition effect, Store mutation 형태,
+실제 결과 상태를 검증합니다. 허용되는 branch는 `commit_mutation`,
+`normal_no_effect_result`, `read_only_result`, `artifact_staging`입니다. 정상 no-effect branch는
+정확히 `response_kind=result`이면서 `effect_kind=no_effect`인 응답이며 typed 메서드 거부가
+아닙니다. Adapter는 현재 Agent action key가 빠짐없이 정확히 한 번씩만 나타나고 다른 form이
+없음을 totality 검사로 확인한 뒤에만 catalog를 게시합니다.
 
 `canonical_minimal_request`는 schema 검증을 통과하는 request-shape 시작점으로 유지됩니다.
 그 한정된 witness 값은 form 형태 검증용이며 사용자 권한이나 제품 결정을 주장하지 않고 권장
@@ -642,7 +644,10 @@ Agent action key가 빠짐없이 정확히 한 번씩만 나타나고 다른 for
 Repository에 효과를 만들지 않습니다. 실패하면 catalog를 노출하지 않고 `committed=false`,
 알 수 있는 경우 한정된 실패 action key와 폐쇄형 검증 stage를 포함한
 `INTERNAL_CONTRACT_INCONSISTENT`를 반환하거나 기록합니다. 필수 form을 생략하거나 가까운 form을
-선택하지 않습니다.
+선택하지 않습니다. 정확한 witness가 `response_kind=rejected`를 만들면 Core는 plan 대신
+`NoCommitSubmissionRejected`를 반환합니다. `core_planning` diagnostics는 표시 문구에서 메서드
+의미를 복원하지 않고 메서드 오류 code와 typed details, 기준 state version,
+`state_change_applied=false`, `committed=false`를 보존합니다.
 
 정규 공개 메서드·도구 registry는 모든 호출 대상을 `read_only`,
 `not_task_state_bound`, `user_channel_authority`, `task_state_bound` 중 하나로 분류합니다.
@@ -1096,6 +1101,12 @@ McpWorkflowContractDiagnostics:
   recovery_action_key: WorkflowActionKey | null
   failed_action_key: WorkflowActionKey | null
   failed_stage: McpWorkflowContractStage | null
+  planned_branch: NoCommitPlannedBranch | null
+  method_error_code: ErrorCode | null
+  method_error_details: object | null
+  basis_state_version: integer | null
+  state_change_applied: boolean
+  committed: boolean
   workflow_contract_digest: RequestHash
   submission_contract_digest: RequestHash
   action_form_contract_digest: RequestHash

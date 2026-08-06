@@ -51,8 +51,8 @@ use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
     McpOperationalErrorCode, McpOperationalFailure, McpOperationalOperation,
     McpOperationalResource, McpPostEffectFailureCode, McpStatusResponse, McpToolErrorCode,
-    McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode, McpWorkflowContractDiagnostics,
-    MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
+    McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    MAX_VALIDATION_ISSUES,
 };
 use volicord_store::agent_connections::{
     agent_connection_record_read_only, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
@@ -742,28 +742,12 @@ impl ToolCallOutput {
                         &workflow,
                         session,
                     )
-                    .map_err(|failure| {
-                    McpAdapterError::InternalContractInconsistent {
+                    .map_err(|failure| McpAdapterError::InternalContractInconsistent {
                         tool_name: AgentToolId::STATUS.wire_name().to_owned(),
                         reached_core: true,
                         transition_rejection: None,
-                        diagnostics: Box::new(McpWorkflowContractDiagnostics {
-                            normalized_workflow_snapshot: workflow.clone(),
-                            current_transition_catalog: workflow.transition_catalog().clone(),
-                            current_action_forms: RequiredNullable::null(),
-                            attempted_action_key: RequiredNullable::null(),
-                            typed_rejection_reason: RequiredNullable::null(),
-                            recovery_action_key: RequiredNullable::null(),
-                            failed_action_key: RequiredNullable::new(failure.action_key),
-                            failed_stage: RequiredNullable::some(failure.stage),
-                            workflow_contract_digest: volicord_types::managed_guidance::workflow_contract_semantic_digest(),
-                            submission_contract_digest: volicord_types::managed_guidance::submission_contract_semantic_digest(),
-                            action_form_contract_digest: volicord_types::managed_guidance::action_form_contract_semantic_digest(),
-                            semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
-                            scalar_contract_digest: volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest(),
-                        }),
-                    }
-                })?,
+                        diagnostics: Box::new(failure.diagnostics(&workflow)),
+                    })?,
             ),
             _ => None,
         };

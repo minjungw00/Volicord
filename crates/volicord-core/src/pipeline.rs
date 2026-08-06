@@ -47,8 +47,8 @@ use volicord_types::schema::{
     WorkflowActionKey, WorkflowCheckpointActionCoordinates, WorkflowProjection,
 };
 use volicord_types::values::{
-    ActorSource, ChangeUnitOperation, EffectKind, ErrorCode, MethodName, OperationCategory,
-    RunKind, UserActionChannelKind, UtcTimestamp, WorkflowActionSemanticVariant,
+    ActorSource, ChangeUnitOperation, EffectKind, ErrorCode, MethodName, NoCommitPlannedBranch,
+    OperationCategory, RunKind, UserActionChannelKind, UtcTimestamp, WorkflowActionSemanticVariant,
     WorkflowExpectedResultState, WorkflowStateKind, WorkflowTransitionEffectClass,
 };
 
@@ -151,15 +151,69 @@ impl TransitionSubmission {
             detail: format!("typed transition submission has an invalid action key: {error}"),
         })
     }
+
+    fn envelope(&self) -> &ToolEnvelope {
+        match self {
+            Self::RecordShapingCheckpoint(request) => &request.envelope,
+            Self::UpdateScope(request) => &request.envelope,
+            Self::FinalizeAdvice(request) => &request.envelope,
+            Self::AdvanceTask(request) => &request.envelope,
+            Self::PrepareEvidenceCapture(request) => &request.envelope,
+            Self::PrepareWrite(request) => &request.envelope,
+            Self::StageArtifact(request) => &request.envelope,
+            Self::RecordRun(request) => &request.envelope,
+            Self::RequestUserAction(request) => &request.envelope,
+            Self::ReconcileChanges(request) => &request.envelope,
+            Self::CheckClose(request) => &request.envelope,
+            Self::CloseTask(request) => &request.envelope,
+        }
+    }
 }
 
 /// Verified output of the exact current-transition planner before any effect.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NoCommitTransitionPlan {
     pub action_key: WorkflowActionKey,
     pub basis_state_version: u64,
     pub effect_class: WorkflowTransitionEffectClass,
     pub expected_result_state: WorkflowExpectedResultState,
+    pub planned_branch: NoCommitPlannedBranch,
+}
+
+/// Typed method rejection returned by exact no-commit transition planning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoCommitSubmissionRejected {
+    action_key: WorkflowActionKey,
+    method_error_code: ErrorCode,
+    method_error_details: Option<JsonObject>,
+    basis_state_version: u64,
+}
+
+impl NoCommitSubmissionRejected {
+    pub const fn action_key(&self) -> WorkflowActionKey {
+        self.action_key
+    }
+
+    pub const fn method_error_code(&self) -> ErrorCode {
+        self.method_error_code
+    }
+
+    pub fn method_error_details(&self) -> Option<&JsonObject> {
+        self.method_error_details.as_ref()
+    }
+
+    pub const fn basis_state_version(&self) -> u64 {
+        self.basis_state_version
+    }
+
+    pub const fn state_change_applied(&self) -> bool {
+        false
+    }
+
+    pub const fn committed(&self) -> bool {
+        false
+    }
 }
 
 /// Typed Core operation that could not produce a method result.
@@ -316,6 +370,7 @@ pub enum CorePipelineError {
     InvalidDispatch {
         detail: String,
     },
+    NoCommitSubmissionRejected(NoCommitSubmissionRejected),
     Invariant {
         detail: String,
     },
@@ -335,6 +390,14 @@ impl fmt::Display for CorePipelineError {
             Self::InvalidDispatch { detail } => {
                 write!(formatter, "invalid pipeline dispatch: {detail}")
             }
+            Self::NoCommitSubmissionRejected(rejection) => write!(
+                formatter,
+                "no-commit submission rejected for {} {} at state version {} with {}",
+                rejection.action_key.method.as_str(),
+                rejection.action_key.semantic_variant.as_str(),
+                rejection.basis_state_version,
+                rejection.method_error_code.as_str()
+            ),
             Self::Invariant { detail } => write!(formatter, "Core invariant failed: {detail}"),
         }
     }
@@ -349,6 +412,7 @@ impl Error for CorePipelineError {
             Self::DurableId(error) => Some(error),
             Self::GeneratedIdCollision { .. }
             | Self::InvalidDispatch { .. }
+            | Self::NoCommitSubmissionRejected(_)
             | Self::Invariant { .. } => None,
         }
     }
@@ -1030,6 +1094,11 @@ impl CoreService {
             });
         }
         self.ensure_mutation_context(context)?;
+        let project_id = submission.envelope().project_id.clone();
+        let basis_state_version =
+            CoreProjectStore::open_read_only(self.runtime_home(), &project_id)?
+                .project_state()?
+                .state_version;
         let mut planner = self.clone();
         planner.execution_mode = CoreExecutionMode::PlanNoCommit(action_key);
         let response = match submission {
@@ -1068,33 +1137,20 @@ impl CoreService {
                 planner.close_task(context, request, invocation)
             }
         }?;
+        if let Some(rejection) =
+            decode_no_commit_submission_rejection(action_key, basis_state_version, &response)?
+        {
+            return Err(CorePipelineError::NoCommitSubmissionRejected(rejection));
+        }
         if let Some(plan) = decode_no_commit_transition_plan(&response)? {
             return Ok(plan);
         }
-        Err({
-            let code = response
-                .response_value
-                .pointer("/errors/0/code")
-                .and_then(Value::as_str)
-                .unwrap_or("method_planner_rejected");
-            let message = response
-                .response_value
-                .pointer("/errors/0/message")
-                .and_then(Value::as_str)
-                .unwrap_or("no diagnostic message");
-            let field = response
-                .response_value
-                .pointer("/errors/0/details/field")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown_field");
-            CorePipelineError::Invariant {
-                detail: format!(
-                    "no-commit planner did not reach a valid exact method plan for {} {} at {code}:{field}:{}",
-                    action_key.method.as_str(),
-                    action_key.semantic_variant.as_str(),
-                    message.chars().take(160).collect::<String>()
-                ),
-            }
+        Err(CorePipelineError::Invariant {
+            detail: format!(
+                "no-commit planner did not return an accepted plan or typed rejection for {} {}",
+                action_key.method.as_str(),
+                action_key.semantic_variant.as_str()
+            ),
         })
     }
 
@@ -1693,10 +1749,7 @@ impl CoreService {
         }
     }
 
-    /// Completes a method-owned response produced after exact transition
-    /// admission. During no-commit planning, an exact method-owned rejection is
-    /// a valid no-effect plan: the advertised transition remains current while
-    /// the method's present policy or semantic state blocks an effect.
+    /// Completes a method-owned response produced after exact transition admission.
     pub(crate) fn complete_prepared_response(
         &self,
         response: PipelineResponse,
@@ -1714,13 +1767,6 @@ impl CoreService {
         {
             return Ok(response);
         }
-        let rejected =
-            serde_json::from_value::<ToolRejectedResponse>(response.response_value.clone())?;
-        if rejected.errors().is_empty() {
-            return Err(CorePipelineError::Invariant {
-                detail: "no-commit method-owned rejection has no typed error".to_owned(),
-            });
-        }
         let admission =
             prepared
                 .admitted_transition
@@ -1732,29 +1778,21 @@ impl CoreService {
         if admission.descriptor.action_key != action_key
             || admission.descriptor.expected_state_version
                 != prepared.context.project_state.state_version
-            || rejected.base().dry_run_intent() != DryRunIntent::NotRequested
-            || rejected.base().state_version() != Some(prepared.context.project_state.state_version)
-            || !rejected.base().events().is_empty()
-            || response.operation_result_ref.is_some()
-            || response.replayed
         {
             return Err(CorePipelineError::Invariant {
-                detail: "no-commit policy rejection contradicts its admitted no-effect plan"
+                detail: "no-commit method rejection contradicts its exact transition admission"
                     .to_owned(),
             });
         }
-        validate_planned_expected_result(
-            true,
-            None,
-            &admission.workflow,
-            admission.descriptor.expected_result_state,
-        )?;
-        Ok(no_commit_pipeline_response(NoCommitTransitionPlan {
+        let rejection = decode_no_commit_submission_rejection(
             action_key,
-            basis_state_version: prepared.context.project_state.state_version,
-            effect_class: admission.descriptor.effect_class,
-            expected_result_state: admission.descriptor.expected_result_state,
-        }))
+            prepared.context.project_state.state_version,
+            &response,
+        )?
+        .ok_or_else(|| CorePipelineError::Invariant {
+            detail: "no-commit method rejection did not decode as a typed rejection".to_owned(),
+        })?;
+        Err(CorePipelineError::NoCommitSubmissionRejected(rejection))
     }
 
     pub(crate) fn complete_stage_artifact_no_commit(
@@ -1772,10 +1810,17 @@ impl CoreService {
                     detail: "no-commit artifact planner lost exact transition admission".to_owned(),
                 })?;
         if admission.descriptor.action_key != action_key
-            || admission.descriptor.effect_class != WorkflowTransitionEffectClass::ArtifactStaging
+            || admission.descriptor.expected_state_version
+                != prepared.context.project_state.state_version
+            || !planned_branch_matches_transition(
+                action_key,
+                admission.descriptor.effect_class,
+                NoCommitPlannedBranch::ArtifactStaging,
+            )
         {
             return Err(CorePipelineError::Invariant {
-                detail: "planned artifact branch contradicts current transition effect".to_owned(),
+                detail: "planned artifact branch contradicts current transition basis or effect"
+                    .to_owned(),
             });
         }
         if !workflow_matches_expected_result(
@@ -1791,6 +1836,7 @@ impl CoreService {
             basis_state_version: prepared.context.project_state.state_version,
             effect_class: admission.descriptor.effect_class,
             expected_result_state: admission.descriptor.expected_result_state,
+            planned_branch: NoCommitPlannedBranch::ArtifactStaging,
         })))
     }
 }
@@ -1837,7 +1883,13 @@ fn validate_no_commit_transition_plan<F, B>(
             detail: "no-commit planner admitted a different current action key".to_owned(),
         });
     }
-    match &branch.kind {
+    if admission.descriptor.expected_state_version != prepared.context.project_state.state_version {
+        return Err(CorePipelineError::Invariant {
+            detail: "no-commit planner basis state version differs from transition admission"
+                .to_owned(),
+        });
+    }
+    let planned_branch = match &branch.kind {
         OwnerPipelineBranchKind::CommitMutation {
             storage_mutations, ..
         } if !volicord_store::core_pipeline::transition_effect_matches_mutations(
@@ -1850,15 +1902,37 @@ fn validate_no_commit_transition_plan<F, B>(
                 detail: "planned mutation batch contradicts transition effect class".to_owned(),
             });
         }
+        OwnerPipelineBranchKind::CommitMutation { .. } => NoCommitPlannedBranch::CommitMutation,
         OwnerPipelineBranchKind::DryRunPreview { .. } => {
             return Err(CorePipelineError::Invariant {
                 detail: "no-commit transition planning cannot stop at a dry-run preview".to_owned(),
             });
         }
         OwnerPipelineBranchKind::ReadOnly { .. }
-        | OwnerPipelineBranchKind::NoEffectResult { .. }
-        | OwnerPipelineBranchKind::CommitMutation { .. } => {}
-    }
+            if planned_branch_matches_transition(
+                action_key,
+                admission.descriptor.effect_class,
+                NoCommitPlannedBranch::ReadOnlyResult,
+            ) =>
+        {
+            NoCommitPlannedBranch::ReadOnlyResult
+        }
+        OwnerPipelineBranchKind::NoEffectResult { .. }
+            if planned_branch_matches_transition(
+                action_key,
+                admission.descriptor.effect_class,
+                NoCommitPlannedBranch::NormalNoEffectResult,
+            ) =>
+        {
+            NoCommitPlannedBranch::NormalNoEffectResult
+        }
+        OwnerPipelineBranchKind::ReadOnly { .. }
+        | OwnerPipelineBranchKind::NoEffectResult { .. } => {
+            return Err(CorePipelineError::Invariant {
+                detail: "planned result branch contradicts transition effect class".to_owned(),
+            });
+        }
+    };
 
     let projected_workflow = planned_fields
         .and_then(|fields| {
@@ -1881,7 +1955,35 @@ fn validate_no_commit_transition_plan<F, B>(
         basis_state_version: prepared.context.project_state.state_version,
         effect_class: admission.descriptor.effect_class,
         expected_result_state: admission.descriptor.expected_result_state,
+        planned_branch,
     })
+}
+
+fn planned_branch_matches_transition(
+    action_key: WorkflowActionKey,
+    effect_class: WorkflowTransitionEffectClass,
+    planned_branch: NoCommitPlannedBranch,
+) -> bool {
+    matches!(
+        (planned_branch, action_key.method, effect_class),
+        (
+            NoCommitPlannedBranch::NormalNoEffectResult,
+            MethodName::CloseTask,
+            WorkflowTransitionEffectClass::TerminalMutation,
+        ) | (
+            NoCommitPlannedBranch::ReadOnlyResult,
+            MethodName::CheckClose,
+            WorkflowTransitionEffectClass::ReadOnlyAssessment,
+        ) | (
+            NoCommitPlannedBranch::ReadOnlyResult,
+            MethodName::ReconcileChanges,
+            WorkflowTransitionEffectClass::CoreStateMutation,
+        ) | (
+            NoCommitPlannedBranch::ArtifactStaging,
+            MethodName::StageArtifact,
+            WorkflowTransitionEffectClass::ArtifactStaging,
+        )
+    )
 }
 
 fn validate_planned_expected_result(
@@ -1890,8 +1992,21 @@ fn validate_planned_expected_result(
     workflow: &WorkflowProjection,
     expected: WorkflowExpectedResultState,
 ) -> CoreResult<()> {
-    if no_effect_result || planned_fields_match_expected_result(planned_fields, workflow, expected)
-    {
+    let matches_expected_result = if no_effect_result {
+        expected == WorkflowExpectedResultState::Terminal
+            && workflow.kind() != WorkflowStateKind::Terminal
+            && planned_fields
+                .and_then(|fields| fields.get("close_state"))
+                .and_then(Value::as_str)
+                == Some("blocked")
+            && planned_fields
+                .and_then(|fields| fields.get("blockers"))
+                .and_then(Value::as_array)
+                .is_some_and(|blockers| !blockers.is_empty())
+    } else {
+        planned_fields_match_expected_result(planned_fields, workflow, expected)
+    };
+    if matches_expected_result {
         return Ok(());
     }
     let observed_phase = planned_fields
@@ -2039,6 +2154,46 @@ fn decode_no_commit_transition_plan(
         serde_json::from_value::<NoCommitPipelineMarker>(response.response_value.clone())?
             .no_commit_transition_plan,
     ))
+}
+
+fn decode_no_commit_submission_rejection(
+    action_key: WorkflowActionKey,
+    basis_state_version: u64,
+    response: &PipelineResponse,
+) -> CoreResult<Option<NoCommitSubmissionRejected>> {
+    if response
+        .response_value
+        .pointer("/base/response_kind")
+        .and_then(Value::as_str)
+        != Some("rejected")
+    {
+        return Ok(None);
+    }
+    let rejected = serde_json::from_value::<ToolRejectedResponse>(response.response_value.clone())?;
+    let first_error = rejected
+        .errors()
+        .first()
+        .ok_or_else(|| CorePipelineError::Invariant {
+            detail: "no-commit method rejection has no canonical typed error".to_owned(),
+        })?;
+    if rejected
+        .base()
+        .state_version()
+        .is_some_and(|version| version != basis_state_version)
+        || !rejected.base().events().is_empty()
+        || response.operation_result_ref.is_some()
+        || response.replayed
+    {
+        return Err(CorePipelineError::Invariant {
+            detail: "no-commit typed rejection contradicts its no-effect planning basis".to_owned(),
+        });
+    }
+    Ok(Some(NoCommitSubmissionRejected {
+        action_key,
+        method_error_code: first_error.code(),
+        method_error_details: first_error.details().cloned(),
+        basis_state_version,
+    }))
 }
 
 /// Injectable UTC clock used by Core authority checks.
@@ -3759,6 +3914,63 @@ mod tests {
             WorkflowExpectedResultState::Implementation,
         )
         .is_ok());
+        assert!(matches!(
+            validate_planned_expected_result(
+                true,
+                Some(&planned_fields),
+                &workflow,
+                WorkflowExpectedResultState::Terminal,
+            ),
+            Err(CorePipelineError::Invariant { .. })
+        ));
+        let blocked_close_fields = json!({
+            "close_state": "blocked",
+            "blockers": [{"code": "test_blocker"}],
+            "state": {
+                "work_phase": "implementation",
+                "lifecycle": { "lifecycle_phase": "executing" }
+            }
+        });
+        assert!(validate_planned_expected_result(
+            true,
+            Some(&blocked_close_fields),
+            &workflow,
+            WorkflowExpectedResultState::Terminal,
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn no_commit_plan_serialization_requires_one_closed_accepted_branch() {
+        let plan = NoCommitTransitionPlan {
+            action_key: WorkflowActionKey::new(
+                MethodName::RecordRun,
+                WorkflowActionSemanticVariant::RecordRun,
+            )
+            .expect("record-run action key"),
+            basis_state_version: 7,
+            effect_class: WorkflowTransitionEffectClass::ExecutionRecording,
+            expected_result_state: WorkflowExpectedResultState::Implementation,
+            planned_branch: NoCommitPlannedBranch::CommitMutation,
+        };
+        let encoded = serde_json::to_value(&plan).expect("serialize no-commit plan");
+        assert_eq!(encoded["planned_branch"], "commit_mutation");
+        assert_eq!(
+            serde_json::from_value::<NoCommitTransitionPlan>(encoded.clone())
+                .expect("decode exact plan"),
+            plan
+        );
+
+        let mut missing = encoded.clone();
+        missing
+            .as_object_mut()
+            .expect("plan object")
+            .remove("planned_branch");
+        assert!(serde_json::from_value::<NoCommitTransitionPlan>(missing).is_err());
+
+        let mut rejected = encoded;
+        rejected["planned_branch"] = json!("rejected");
+        assert!(serde_json::from_value::<NoCommitTransitionPlan>(rejected).is_err());
     }
 
     #[test]
