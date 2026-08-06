@@ -567,6 +567,24 @@ fn validate_observation(
             .shaping_workflow
             .accurate_cooperative_guarantee_wording
             > observation.shaping_workflow.guarantee_wording_checks
+        || observation.shaping_workflow.impossible_retry_instructions
+            > observation
+                .shaping_workflow
+                .impossible_retry_instruction_opportunities
+        || observation
+            .shaping_workflow
+            .accurate_canonicality_compatibility_wording
+            > observation
+                .shaping_workflow
+                .canonicality_compatibility_wording_opportunities
+        || observation.shaping_workflow.accurate_mutation_reports
+            > observation
+                .shaping_workflow
+                .mutation_reporting_opportunities
+        || observation.shaping_workflow.accurate_completion_reports
+            > observation
+                .shaping_workflow
+                .completion_reporting_opportunities
         || observation
             .shaping_workflow
             .product_only_decisions_applied_exactly
@@ -723,7 +741,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(65);
+    let mut criteria = Vec::with_capacity(69);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -1060,6 +1078,26 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
             .map(|observation| u128::from(field(&observation.shaping_workflow)))
             .sum::<u128>()
     };
+    criteria.push(zero_rate(
+        "impossible_retry_instruction",
+        all_shaping_totals(|value| value.impossible_retry_instruction_opportunities),
+        all_shaping_totals(|value| value.impossible_retry_instructions),
+    ));
+    criteria.push(complete_rate(
+        "accurate_canonicality_compatibility_wording",
+        all_shaping_totals(|value| value.canonicality_compatibility_wording_opportunities),
+        all_shaping_totals(|value| value.accurate_canonicality_compatibility_wording),
+    ));
+    criteria.push(complete_rate(
+        "accurate_mutation_reporting",
+        all_shaping_totals(|value| value.mutation_reporting_opportunities),
+        all_shaping_totals(|value| value.accurate_mutation_reports),
+    ));
+    criteria.push(complete_rate(
+        "accurate_completion_reporting",
+        all_shaping_totals(|value| value.completion_reporting_opportunities),
+        all_shaping_totals(|value| value.accurate_completion_reports),
+    ));
     criteria.push(complete_rate(
         "product_only_decision_application",
         all_shaping_totals(|value| value.product_only_decision_opportunities),
@@ -1326,7 +1364,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 65] {
+fn criterion_definitions() -> [CriterionDefinition; 69] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1530,6 +1568,26 @@ fn criterion_definitions() -> [CriterionDefinition; 65] {
         },
         CriterionDefinition {
             id: "accurate_cooperative_guarantee_wording",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "impossible_retry_instruction",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "accurate_canonicality_compatibility_wording",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "accurate_mutation_reporting",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "accurate_completion_reporting",
             target: "= 100",
             unit: "percent",
         },

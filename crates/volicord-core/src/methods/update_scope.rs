@@ -18,8 +18,8 @@ use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{
     decision_rejected_response, dry_run_summary, no_active_task_response,
-    rejected_pipeline_response, transition_rejected_response, validation_rejected,
-    workflow_rejection_plan_error,
+    rejected_pipeline_response, transition_rejected_response_with_compatibility,
+    validation_rejected, workflow_rejection_plan_error,
 };
 use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
@@ -471,7 +471,17 @@ fn plan_update_scope_mutations(
             .iter()
             .find(|transition| transition.action_key.method == MethodName::CloseTask)
             .map(|transition| transition.action_key);
-        let response = transition_rejected_response(
+        let submitted_baseline_matches_current =
+            current_scope.baseline_ref == next_scope.baseline_ref;
+        let baseline_compatibility = (!submitted_baseline_matches_current).then_some(
+            volicord_types::schema::BaselineTransitionCompatibility {
+                current_baseline_canonical: true,
+                submitted_baseline_canonical: true,
+                submitted_baseline_matches_current: false,
+                submitted_baseline_compatible_with_transition: false,
+            },
+        );
+        let response = transition_rejected_response_with_compatibility(
             &request.envelope,
             project_state,
             &admitted_transition.workflow,
@@ -481,6 +491,7 @@ fn plan_update_scope_mutations(
             TransitionRejectionReason::ImplementationAuthorityWouldBeInvalidated,
             false,
             recovery_action_key,
+            baseline_compatibility,
         )
         .map_err(PlanError::Core)?;
         return Err(PlanError::Response(Box::new(response)));
@@ -501,7 +512,7 @@ fn plan_update_scope_mutations(
             .transition_catalog()
             .transition(&replace_key)
             .map(|transition| transition.action_key);
-        let response = crate::method_rejection::transition_rejected_response_with_compatibility(
+        let response = transition_rejected_response_with_compatibility(
             &request.envelope,
             project_state,
             &admitted_transition.workflow,

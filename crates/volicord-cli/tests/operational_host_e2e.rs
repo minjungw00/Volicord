@@ -142,6 +142,8 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
         .map_err(|error| format!("planning schema-recovery regression: {error}"))?;
     planning_product_explicit_shaping_journey()
         .map_err(|error| format!("planning-product shaping regression: {error}"))?;
+    planning_non_authorizing_outcomes_recover_to_implementation()
+        .map_err(|error| format!("planning decision-recovery regression: {error}"))?;
     codex_2025_06_18_compatibility_records_managed_runtime_facts()
         .map_err(|error| format!("compatibility regression: {error}"))?;
     verification_tool_designation_mismatch_is_typed()
@@ -1198,6 +1200,9 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     assert_connection_report(&init, 0, "init", "action_required")?;
     let connection_id = fixture.connection_id();
     let project_id = fixture.project_id();
+    let connection = agent_connection_record(&fixture.runtime_home, &connection_id)?
+        .ok_or("planning Product Repository Agent Connection")?;
+    let server = McpServerKey::parse(&connection.server_name)?;
     let snapshot = fixture.registry_snapshot();
     let manifest = snapshot
         .guard_installations
@@ -1474,21 +1479,39 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     assert_eq!(pending_replacement["reached_core"], false);
     assert_eq!(pending_replacement["committed"], false);
 
+    let early_write_arguments = json!({
+        "project_selector": project_id,
+        "detail": "full",
+        "task_id": task_id,
+        "change_unit_id": null,
+        "intended_operation": "Create the bounded release-preparation note.",
+        "intended_paths": [IMPLEMENTATION_PATH],
+        "product_file_write_intended": true,
+        "sensitive_categories": [],
+        "baseline_ref": BASELINE
+    });
+    let early_write_tool_use = "future.tool-use.planning-product.early-write";
+    let prepare_write_callable = project_mcp_tool(&server, AgentToolId::PREPARE_WRITE)?;
+    let early_write_pre = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-product.early-write",
+        "tool_use_id": early_write_tool_use,
+        "tool_name": prepare_write_callable.callable_name().as_str(),
+        "tool_input": early_write_arguments
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PreTool),
+            &early_write_pre,
+        )?
+        .status
+        .success());
     let early_write = live_mcp_error(
         &mut child,
         call_id,
         AgentToolId::PREPARE_WRITE,
-        json!({
-            "project_selector": project_id,
-            "detail": "full",
-            "task_id": task_id,
-            "change_unit_id": null,
-            "intended_operation": "Create the bounded release-preparation note.",
-            "intended_paths": [IMPLEMENTATION_PATH],
-            "product_file_write_intended": true,
-            "sensitive_categories": [],
-            "baseline_ref": BASELINE
-        }),
+        early_write_arguments,
         SESSION,
         "future.turn.planning-product.early-write",
     )?;
@@ -1507,6 +1530,13 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     assert_eq!(table_count(&state, "change_units")?, 0);
     assert_eq!(table_count(&state, "write_tickets")?, 0);
     assert_eq!(table_count(&state, "user_action_resolutions")?, 0);
+    let early_write_observation_id: String = state.query_row(
+        "SELECT repository_observation_id
+           FROM repository_observations
+          WHERE host_tool_use_id = ?1",
+        [early_write_tool_use],
+        |row| row.get(0),
+    )?;
     let before_chat_version: u64 =
         state.query_row("SELECT state_version FROM project_state", [], |row| {
             row.get(0)
@@ -1525,6 +1555,47 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
         )?
         .status
         .success());
+    let early_write_terminal = repository_observation(
+        &fixture.runtime_home,
+        &project_id,
+        &early_write_observation_id,
+    )?
+    .ok_or("transition-admission repository observation")?;
+    assert_eq!(
+        early_write_terminal.state,
+        RepositoryObservationState::Unavailable
+    );
+    assert_eq!(
+        early_write_terminal.unavailable_reason,
+        Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
+    );
+    assert!(early_write_terminal.delta.is_none());
+    let after_early_write_terminal = fixture.diagnostic_registry_snapshot()?;
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &chat_prompt,
+        )?
+        .status
+        .success());
+    assert_eq!(
+        repository_observation(
+            &fixture.runtime_home,
+            &project_id,
+            &early_write_observation_id,
+        )?,
+        Some(early_write_terminal),
+        "prompt replay must preserve transition-admission observation identity"
+    );
+    let replayed_early_write_diagnostics = fixture.diagnostic_registry_snapshot()?;
+    assert_eq!(
+        replayed_early_write_diagnostics.current_count, after_early_write_terminal.current_count,
+        "prompt replay must not duplicate transition-admission current findings"
+    );
+    assert_eq!(
+        replayed_early_write_diagnostics.current_timestamps,
+        after_early_write_terminal.current_timestamps
+    );
     let state = rusqlite::Connection::open(&state_db)?;
     assert_eq!(table_count(&state, "user_action_resolutions")?, 0);
     assert_eq!(
@@ -1910,6 +1981,272 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             .is_some_and(|facts| facts.iter().any(|fact| fact["fact_kind"] == fact_kind)));
     }
 
+    let implementation_action_forms = [
+        "/action_form_catalog/forms",
+        "/presentation/action_form_catalog/forms",
+    ]
+    .into_iter()
+    .find_map(|pointer| advanced.pointer(pointer).and_then(Value::as_array))
+    .ok_or("implementation action-form catalog")?;
+    let implementation_update_forms = implementation_action_forms
+        .iter()
+        .filter(|form| {
+            form.pointer("/action_key/method").and_then(Value::as_str)
+                == Some(AgentToolId::UPDATE_SCOPE.wire_name())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(implementation_update_forms.len(), 1);
+    assert_eq!(
+        implementation_update_forms[0]["action_key"]["semantic_variant"],
+        "keep_current_change_unit"
+    );
+    let before_implementation_rebaseline = rusqlite::Connection::open(&state_db)?;
+    let implementation_rebaseline_counts = (
+        before_implementation_rebaseline.query_row(
+            "SELECT state_version FROM project_state",
+            [],
+            |row| row.get::<_, u64>(0),
+        )?,
+        table_count(&before_implementation_rebaseline, "change_units")?,
+        table_count(
+            &before_implementation_rebaseline,
+            "shaping_decision_applications",
+        )?,
+        table_count(&before_implementation_rebaseline, "write_tickets")?,
+        table_count(&before_implementation_rebaseline, "unrecorded_changes")?,
+    );
+    let (current_change_unit_id, current_task_baseline): (String, String) =
+        before_implementation_rebaseline.query_row(
+            "SELECT current_change_unit_id,
+                    json_extract(shaping_summary_json, '$.baseline_ref')
+               FROM tasks
+              WHERE project_id = ?1 AND task_id = ?2",
+            (&project_id, &task_id),
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+    assert_eq!(current_task_baseline, BASELINE);
+    drop(before_implementation_rebaseline);
+    let repository_observations_before_rebaseline = table_count(
+        &rusqlite::Connection::open(&state_db)?,
+        "repository_observations",
+    )?;
+    let implementation_rebaseline_arguments = bound_action_arguments(
+        &advanced,
+        AgentToolId::UPDATE_SCOPE,
+        json!({
+            "project_selector": project_id,
+            "detail": "workflow",
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": "planning_product_rebaseline",
+            "change_unit": {}
+        }),
+    )?;
+    let implementation_rebaseline_tool_use =
+        "future.tool-use.planning-product.implementation-rebaseline";
+    let update_scope_callable = project_mcp_tool(&server, AgentToolId::UPDATE_SCOPE)?;
+    let implementation_rebaseline_pre = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-product.implementation-rebaseline",
+        "tool_use_id": implementation_rebaseline_tool_use,
+        "tool_name": update_scope_callable.callable_name().as_str(),
+        "tool_input": implementation_rebaseline_arguments
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PreTool),
+            &implementation_rebaseline_pre,
+        )?
+        .status
+        .success());
+    let implementation_rebaseline = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::UPDATE_SCOPE,
+        implementation_rebaseline_arguments,
+        SESSION,
+        "future.turn.planning-product.implementation-rebaseline",
+    )?;
+    call_id += 1;
+    assert_eq!(implementation_rebaseline["result_type"], "rejected");
+    assert_eq!(
+        implementation_rebaseline["transition_rejection"]["reason"],
+        "implementation_authority_would_be_invalidated"
+    );
+    assert_eq!(
+        implementation_rebaseline["transition_rejection"]["attempted_action_key"]
+            ["semantic_variant"],
+        "keep_current_change_unit"
+    );
+    assert_eq!(
+        implementation_rebaseline["transition_rejection"]["recovery_action_key"]["method"],
+        AgentToolId::CLOSE_TASK.wire_name()
+    );
+    assert_eq!(
+        implementation_rebaseline["retry_contract"]["recovery_action_key"],
+        implementation_rebaseline["transition_rejection"]["recovery_action_key"]
+    );
+    assert_eq!(
+        implementation_rebaseline["retry_contract"]["recovery_form"],
+        Value::Null
+    );
+    assert_eq!(
+        implementation_rebaseline["retry_contract"]["retry_possible_in_current_task"],
+        false
+    );
+    assert_eq!(
+        implementation_rebaseline["retry_contract"]["invalid_or_incompatible_submitted_paths"],
+        json!(["/baseline_ref"])
+    );
+    assert_eq!(
+        implementation_rebaseline["failure"]["current_baseline_canonical"],
+        true
+    );
+    assert_eq!(
+        implementation_rebaseline["failure"]["submitted_baseline_canonical"],
+        true
+    );
+    assert_eq!(
+        implementation_rebaseline["failure"]["submitted_baseline_matches_current"],
+        false
+    );
+    assert_eq!(
+        implementation_rebaseline["failure"]["submitted_baseline_compatible_with_transition"],
+        false
+    );
+    assert_eq!(
+        implementation_rebaseline["failure"]["product_repository_changed"],
+        false
+    );
+    assert_eq!(implementation_rebaseline["failure"]["reached_core"], true);
+    assert_eq!(
+        implementation_rebaseline["failure"]["method_committed"],
+        false
+    );
+    let diagnostic_update_variants = implementation_rebaseline["contract_diagnostics"]
+        ["current_action_forms"]["forms"]
+        .as_array()
+        .ok_or("rebaseline rejection current forms")?
+        .iter()
+        .filter(|form| {
+            form.pointer("/action_key/method").and_then(Value::as_str)
+                == Some(AgentToolId::UPDATE_SCOPE.wire_name())
+        })
+        .map(|form| form["action_key"]["semantic_variant"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        diagnostic_update_variants,
+        vec![json!("keep_current_change_unit")]
+    );
+    let after_implementation_rebaseline = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(
+        (
+            after_implementation_rebaseline.query_row(
+                "SELECT state_version FROM project_state",
+                [],
+                |row| row.get::<_, u64>(0),
+            )?,
+            table_count(&after_implementation_rebaseline, "change_units")?,
+            table_count(
+                &after_implementation_rebaseline,
+                "shaping_decision_applications",
+            )?,
+            table_count(&after_implementation_rebaseline, "write_tickets")?,
+            table_count(&after_implementation_rebaseline, "unrecorded_changes")?,
+        ),
+        implementation_rebaseline_counts
+    );
+    let (reported_change_unit_id, reported_task_baseline): (String, String) =
+        after_implementation_rebaseline.query_row(
+            "SELECT current_change_unit_id,
+                    json_extract(shaping_summary_json, '$.baseline_ref')
+               FROM tasks
+              WHERE project_id = ?1 AND task_id = ?2",
+            (&project_id, &task_id),
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+    assert_eq!(reported_change_unit_id, current_change_unit_id);
+    assert_eq!(reported_task_baseline, BASELINE);
+    let implementation_rebaseline_observation_id: String = after_implementation_rebaseline
+        .query_row(
+            "SELECT repository_observation_id
+               FROM repository_observations
+              WHERE host_tool_use_id = ?1",
+            [implementation_rebaseline_tool_use],
+            |row| row.get(0),
+        )?;
+    assert_eq!(
+        table_count(&after_implementation_rebaseline, "repository_observations")?,
+        repository_observations_before_rebaseline + 1
+    );
+    drop(after_implementation_rebaseline);
+    assert_eq!(fixture.repository_snapshot()?, before_analysis);
+    let implementation_rebaseline_continuation = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": SESSION,
+        "turn_id": "future.turn.planning-product.implementation-rebaseline-continuation",
+        "prompt": "Continue only through the currently supported recovery owner."
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &implementation_rebaseline_continuation,
+        )?
+        .status
+        .success());
+    let implementation_rebaseline_observation = repository_observation(
+        &fixture.runtime_home,
+        &project_id,
+        &implementation_rebaseline_observation_id,
+    )?
+    .ok_or("Core-rejection repository observation")?;
+    assert_eq!(
+        implementation_rebaseline_observation.state,
+        RepositoryObservationState::Unavailable
+    );
+    assert_eq!(
+        implementation_rebaseline_observation.unavailable_reason,
+        Some(RepositoryObservationUnavailableReason::PostToolNotObserved)
+    );
+    assert!(implementation_rebaseline_observation.delta.is_none());
+    let after_rebaseline_terminal = fixture.diagnostic_registry_snapshot()?;
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &implementation_rebaseline_continuation,
+        )?
+        .status
+        .success());
+    assert_eq!(
+        repository_observation(
+            &fixture.runtime_home,
+            &project_id,
+            &implementation_rebaseline_observation_id,
+        )?,
+        Some(implementation_rebaseline_observation)
+    );
+    let replayed_rebaseline_diagnostics = fixture.diagnostic_registry_snapshot()?;
+    assert_eq!(
+        replayed_rebaseline_diagnostics.current_count,
+        after_rebaseline_terminal.current_count
+    );
+    assert_eq!(
+        replayed_rebaseline_diagnostics.current_timestamps,
+        after_rebaseline_terminal.current_timestamps
+    );
+    assert_eq!(
+        table_count(
+            &rusqlite::Connection::open(&state_db)?,
+            "unrecorded_changes"
+        )?,
+        implementation_rebaseline_counts.4
+    );
+
     let prepared = live_mcp_call(
         &mut child,
         call_id,
@@ -2241,6 +2578,829 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
     assert!(historical_applications
         .iter()
         .all(|record| record.row["authority_status"] == "superseded"));
+    let output = child.finish()?;
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    Ok(())
+}
+
+fn planning_non_authorizing_outcomes_recover_to_implementation() -> Result<(), Box<dyn Error>> {
+    for (label, cli_choice, expires_at, expected_outcome) in [
+        ("deferred", Some("defer"), Value::Null, "deferred"),
+        ("expired", None, json!("2999-01-01T00:00:00Z"), "expired"),
+    ] {
+        planning_non_authorizing_outcome_recovers(label, cli_choice, expires_at, expected_outcome)?;
+    }
+    Ok(())
+}
+
+fn planning_non_authorizing_outcome_recovers(
+    label: &str,
+    cli_choice: Option<&str>,
+    expires_at: Value,
+    expected_outcome: &str,
+) -> Result<(), Box<dyn Error>> {
+    const BASELINE: &str = "planning_recovery_baseline";
+    const IMPLEMENTATION_PATH: &str = "implementation/bounded-preparation.md";
+
+    let fixture = OperationalFixture::planning_product(&format!("planning-{label}-recovery"))?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&init, 0, "init", "action_required")?;
+    let connection_id = fixture.connection_id();
+    let project_id = fixture.project_id();
+    let repository_before = fixture.repository_snapshot()?;
+    let session = format!("future.session.planning-{label}-recovery");
+
+    let mut command = fixture.managed_mcp_command(&connection_id)?;
+    let mut child = LiveMcpChild::spawn(&mut command)?;
+    child.write(&json_lines(&[
+        initialize_request(FUTURE_VERSION),
+        initialized_notification(),
+        tools_list_request(),
+    ])?)?;
+    let startup = child.read_responses(2)?;
+    assert!(startup[1]["result"]["tools"]
+        .as_array()
+        .is_some_and(|tools| tools
+            .iter()
+            .any(|tool| { tool["name"] == AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name() })));
+    let mut call_id = 300;
+
+    let projects = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::LIST_PROJECTS,
+        json!({}),
+        &session,
+        &format!("future.turn.planning-{label}.selection"),
+    )?;
+    call_id += 1;
+    assert!(projects["projects"]
+        .as_array()
+        .is_some_and(|projects| projects
+            .iter()
+            .any(|project| project["project_selector"] == project_id)));
+
+    let empty_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": null, "detail": "full"}),
+        &session,
+        &format!("future.turn.planning-{label}.status"),
+    )?;
+    call_id += 1;
+    let initial_state_version = method_result(&empty_status)["base"]["state_version"]
+        .as_u64()
+        .ok_or("decision-recovery initial state version")?;
+    assert_eq!(method_result(&empty_status)["active_task"], Value::Null);
+
+    let intake = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::INTAKE,
+        json!({
+            "project_selector": project_id,
+            "detail": "full",
+            "plain_language_request": "Prepare one bounded development step from the planning documents.",
+            "requested_mode": "work",
+            "requested_control_level": "auto",
+            "resume_policy": "create_new",
+            "acceptance_policy": "required",
+            "lineage": null,
+            "initial_scope": {
+                "boundary": "Prepare one bounded implementation note from the current plans.",
+                "non_goals": ["Implement unrelated capabilities."],
+                "acceptance_criteria": [{
+                    "statement": "The bounded preparation reaches implementation readiness.",
+                    "evidence_requirement": "not_required"
+                }]
+            },
+            "initial_context_refs": [],
+            "initial_source_refs": []
+        }),
+        &session,
+        &format!("future.turn.planning-{label}.intake"),
+    )?;
+    call_id += 1;
+    let intake_result = method_result(&intake);
+    assert_typed_mutation_state(
+        intake_result,
+        initial_state_version + 1,
+        "work",
+        Some("shaping"),
+        "shaping_required",
+    );
+    assert_eq!(
+        required_transition_method(&intake_result["state"]["workflow"]),
+        Some(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
+    );
+    required_transition_form_ref(&intake)?;
+    let task_id = required_string(&intake_result["task_ref"], "record_id")?;
+
+    let action = |produced_at_state_version: u64| {
+        json!({
+            "action_type": "choice",
+            "judgment_kind": "scope_decision",
+            "presentation": "short",
+            "question": "Accept the bounded scope?",
+            "options": null,
+            "context": {
+                "summary": "One bounded user-owned scope decision is required.",
+                "related_refs": [],
+                "artifact_refs": [],
+                "visible_risks": [],
+                "constraints": ["This decision authorizes no Product Repository write."]
+            },
+            "affected_refs": [{
+                "record_kind": "task",
+                "record_id": task_id,
+                "project_id": project_id,
+                "task_id": task_id,
+                "produced_at_state_version": produced_at_state_version
+            }],
+            "sensitive_action_scope": null
+        })
+    };
+    let state_db = fixture.project_state_db_path();
+    let before_checkpoint = rusqlite::Connection::open(&state_db)?;
+    let before_checkpoint_counts = (
+        table_count(&before_checkpoint, "shaping_checkpoints")?,
+        table_count(&before_checkpoint, "user_action_requests")?,
+    );
+    drop(before_checkpoint);
+    let checkpoint = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
+        bound_action_arguments(
+            &intake,
+            AgentToolId::RECORD_SHAPING_CHECKPOINT,
+            json!({
+                "project_selector": project_id,
+                "detail": "full",
+                "summary": "The bounded proposal requires one scope decision.",
+                "implementation_boundary": "Create only the bounded implementation note.",
+                "gaps": [{
+                    "gap_kind": "user_scope_decision_required",
+                    "summary": "Confirm the bounded scope.",
+                    "affected_refs": [],
+                    "user_action": {
+                        "action": action(initial_state_version + 1),
+                        "expires_at": expires_at
+                    }
+                }],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )?,
+        &session,
+        &format!("future.turn.planning-{label}.checkpoint"),
+    )?;
+    call_id += 1;
+    let checkpoint_result = method_result(&checkpoint);
+    let request_refs = checkpoint_result["created_user_action_request_refs"]
+        .as_array()
+        .ok_or_else(|| format!("{label} initial UserAction refs missing: {checkpoint}"))?;
+    assert_eq!(request_refs.len(), 1);
+    let retired_request_id = required_string(&request_refs[0], "record_id")?;
+    let retired_checkpoint_id = required_string(
+        &checkpoint_result["shaping_checkpoint"],
+        "shaping_checkpoint_id",
+    )?;
+    let after_checkpoint = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(
+        (
+            table_count(&after_checkpoint, "shaping_checkpoints")?,
+            table_count(&after_checkpoint, "user_action_requests")?,
+        ),
+        (
+            before_checkpoint_counts.0 + 1,
+            before_checkpoint_counts.1 + 1
+        ),
+        "checkpoint and its UserAction must commit atomically"
+    );
+    assert_eq!(table_count(&after_checkpoint, "write_tickets")?, 0);
+    assert_eq!(table_count(&after_checkpoint, "unrecorded_changes")?, 0);
+    drop(after_checkpoint);
+    if cli_choice.is_none() {
+        let expiry_fixture = rusqlite::Connection::open(&state_db)?;
+        let request_json: String = expiry_fixture.query_row(
+            "SELECT request_json
+               FROM user_action_requests
+              WHERE project_id = ?1 AND user_action_request_id = ?2",
+            (&project_id, &retired_request_id),
+            |row| row.get(0),
+        )?;
+        let mut request_json: Value = serde_json::from_str(&request_json)?;
+        request_json["expires_at"] = json!("2000-01-01T00:00:00Z");
+        assert_eq!(
+            expiry_fixture.execute(
+                "UPDATE user_action_requests
+                    SET request_json = ?3,
+                        requested_at = ?4,
+                        expires_at = ?5
+                  WHERE project_id = ?1 AND user_action_request_id = ?2",
+                rusqlite::params![
+                    project_id,
+                    retired_request_id,
+                    request_json.to_string(),
+                    "1999-01-01T00:00:00Z",
+                    "2000-01-01T00:00:00Z"
+                ],
+            )?,
+            1,
+            "controlled expiry fixture must update exactly one request"
+        );
+        drop(expiry_fixture);
+    }
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+    let recovery_version = if let Some(choice) = cli_choice {
+        assert_eq!(
+            checkpoint_result["workflow"]["kind"],
+            "awaiting_user_action"
+        );
+        let resolved = fixture.run_inbox(&[
+            "resolve",
+            &retired_request_id,
+            "--choice",
+            choice,
+            "--repo",
+            fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+            "--json",
+        ])?;
+        assert_eq!(resolved.status.code(), Some(0));
+        let resolved: Value = serde_json::from_slice(&resolved.stdout)?;
+        assert_eq!(
+            resolved["user_action_resolution"]["body"]["resolution_outcome"],
+            expected_outcome
+        );
+        assert_typed_mutation_state(
+            &resolved,
+            initial_state_version + 3,
+            "work",
+            Some("shaping"),
+            "decision_recovery_required",
+        );
+        initial_state_version + 3
+    } else {
+        assert_eq!(
+            checkpoint_result["workflow"]["kind"],
+            "awaiting_user_action"
+        );
+        let inbox = fixture.run_inbox(&["--task", &task_id, "--json"])?;
+        assert_eq!(
+            inbox.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&inbox.stdout),
+            String::from_utf8_lossy(&inbox.stderr)
+        );
+        let inbox: Value = serde_json::from_slice(&inbox.stdout)?;
+        assert!(inbox["pending_user_action_inbox_items"]
+            .as_array()
+            .is_some_and(Vec::is_empty));
+        let rejected_resolution = fixture.run_inbox(&[
+            "resolve",
+            &retired_request_id,
+            "--choice",
+            "accept",
+            "--repo",
+            fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+            "--json",
+        ])?;
+        assert_ne!(rejected_resolution.status.code(), Some(0));
+        initial_state_version + 2
+    };
+
+    let recovery_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "full"}),
+        &session,
+        &format!("future.turn.planning-{label}.recovery-status"),
+    )?;
+    call_id += 1;
+    let recovery_workflow = &method_result(&recovery_status)["active_task"]["workflow"];
+    assert_eq!(recovery_workflow["kind"], "decision_recovery_required");
+    assert_eq!(
+        required_transition_method(recovery_workflow),
+        Some(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
+    );
+    assert_eq!(
+        recovery_workflow["checkpoint"]["decision_recovery_requirements"][0]["reason"],
+        expected_outcome
+    );
+    required_transition_form_ref(&recovery_status)?;
+
+    let replacement = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::RECORD_SHAPING_CHECKPOINT,
+        bound_action_arguments(
+            &recovery_status,
+            AgentToolId::RECORD_SHAPING_CHECKPOINT,
+            json!({
+                "project_selector": project_id,
+                "detail": "full",
+                "summary": "The recovered plan still requires a fresh scope decision.",
+                "implementation_boundary": "Create only the bounded implementation note.",
+                "gaps": [{
+                    "gap_kind": "user_scope_decision_required",
+                    "summary": "Confirm the recovered bounded scope.",
+                    "affected_refs": [],
+                    "user_action": {
+                        "action": action(recovery_version),
+                        "expires_at": null
+                    }
+                }],
+                "source_refs": [],
+                "evidence_refs": []
+            }),
+        )?,
+        &session,
+        &format!("future.turn.planning-{label}.replacement"),
+    )?;
+    call_id += 1;
+    let replacement_result = method_result(&replacement);
+    assert_eq!(
+        replacement_result["workflow"]["kind"],
+        "awaiting_user_action"
+    );
+    let successor_refs = replacement_result["created_user_action_request_refs"]
+        .as_array()
+        .ok_or("decision-recovery successor refs")?;
+    assert_eq!(successor_refs.len(), 1);
+    let successor_request_id = required_string(&successor_refs[0], "record_id")?;
+    assert_ne!(successor_request_id, retired_request_id);
+    let replacement_checkpoint_id = required_string(
+        &replacement_result["shaping_checkpoint"],
+        "shaping_checkpoint_id",
+    )?;
+    let state = rusqlite::Connection::open(&state_db)?;
+    let (basis_status, resolution_count): (String, u64) = state.query_row(
+        "SELECT request.basis_status,
+                COUNT(resolution.user_action_resolution_id)
+           FROM user_action_requests AS request
+      LEFT JOIN user_action_resolutions AS resolution
+             ON resolution.project_id = request.project_id
+            AND resolution.user_action_request_id = request.user_action_request_id
+          WHERE request.user_action_request_id = ?1
+       GROUP BY request.basis_status",
+        [&retired_request_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(basis_status, "superseded");
+    assert_eq!(resolution_count, u64::from(cli_choice.is_some()));
+    let predecessor: String = state.query_row(
+        "SELECT predecessor_shaping_checkpoint_id
+           FROM shaping_checkpoints
+          WHERE shaping_checkpoint_id = ?1",
+        [&replacement_checkpoint_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(predecessor, retired_checkpoint_id);
+    assert_eq!(table_count(&state, "write_tickets")?, 0);
+    assert_eq!(table_count(&state, "unrecorded_changes")?, 0);
+    drop(state);
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+    let accepted = fixture.run_inbox(&[
+        "resolve",
+        &successor_request_id,
+        "--choice",
+        "accept",
+        "--repo",
+        fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+        "--json",
+    ])?;
+    assert_eq!(accepted.status.code(), Some(0));
+    let accepted: Value = serde_json::from_slice(&accepted.stdout)?;
+    assert_eq!(
+        accepted["user_action_resolution"]["body"]["resolution_outcome"],
+        "accepted"
+    );
+
+    let application_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        &session,
+        &format!("future.turn.planning-{label}.application-status"),
+    )?;
+    call_id += 1;
+    let application_workflow = &method_result(&application_status)["active_task"]["workflow"];
+    assert_eq!(
+        required_transition_method(application_workflow),
+        Some(AgentToolId::UPDATE_SCOPE.wire_name())
+    );
+    required_transition_form_ref(&application_status)?;
+    let scope = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::UPDATE_SCOPE,
+        bound_action_arguments(
+            &application_status,
+            AgentToolId::UPDATE_SCOPE,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": "Create only the bounded implementation note.",
+                "non_goals": ["Add unrelated runtime behavior."],
+                "acceptance_criteria": null,
+                "autonomy_boundary": "No other Product Repository path may change.",
+                "baseline_ref": BASELINE,
+                "change_unit": {
+                    "scope_summary": "Create the bounded implementation note.",
+                    "affected_paths": [IMPLEMENTATION_PATH]
+                }
+            }),
+        )?,
+        &session,
+        &format!("future.turn.planning-{label}.apply"),
+    )?;
+    call_id += 1;
+    assert_ne!(
+        scope["result_type"], "refresh_failure",
+        "{label} scope application could not refresh: {scope}"
+    );
+    let scope_result = method_result(&scope);
+    assert_eq!(
+        scope["presentation"]["action_form_catalog"]["required_action_key"]["method"],
+        AgentToolId::ADVANCE_TASK.wire_name()
+    );
+    required_transition_form_ref(&scope)?;
+    let scope_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        &session,
+        &format!("future.turn.planning-{label}.ready-status"),
+    )?;
+    call_id += 1;
+    let scope_status_result = method_result(&scope_status);
+    assert_eq!(
+        scope_status_result["base"]["state_version"],
+        scope_result["effect"]["state_version"]
+    );
+    let ready_workflow = &scope_status_result["active_task"]["workflow"];
+    assert_eq!(ready_workflow["kind"], "ready_for_implementation");
+    assert_eq!(
+        required_transition_method(ready_workflow),
+        Some(AgentToolId::ADVANCE_TASK.wire_name())
+    );
+    let advance_source = if label == "deferred" {
+        let replacement_form = [
+            "/action_form_catalog/forms",
+            "/presentation/action_form_catalog/forms",
+        ]
+        .into_iter()
+        .find_map(|pointer| scope_status.pointer(pointer).and_then(Value::as_array))
+        .and_then(|forms| {
+            forms.iter().find(|form| {
+                form.pointer("/action_key/method").and_then(Value::as_str)
+                    == Some(AgentToolId::UPDATE_SCOPE.wire_name())
+                    && form
+                        .pointer("/action_key/semantic_variant")
+                        .and_then(Value::as_str)
+                        == Some("replace_current_change_unit")
+            })
+        })
+        .ok_or("stale-authority replace-current action form")?;
+        let mut replacement_arguments = replacement_form["fixed_arguments"].clone();
+        merge_json(
+            &mut replacement_arguments,
+            json!({
+                "project_selector": project_id,
+                "detail": "workflow",
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": "Create only the rebased bounded implementation note.",
+                "non_goals": ["Add unrelated runtime behavior."],
+                "acceptance_criteria": null,
+                "autonomy_boundary": "No other Product Repository path may change.",
+                "baseline_ref": "planning_recovery_rebased",
+                "change_unit": {
+                    "scope_summary": "Create the rebased bounded implementation note.",
+                    "affected_paths": [IMPLEMENTATION_PATH]
+                }
+            }),
+        );
+        replacement_arguments
+            .as_object_mut()
+            .ok_or("replace-current fixed arguments")?
+            .insert(
+                "action_form_ref".to_owned(),
+                replacement_form["form_ref"].clone(),
+            );
+        let before_stale = rusqlite::Connection::open(&state_db)?;
+        let stale_safety_counts = (
+            table_count(&before_stale, "shaping_decision_applications")?,
+            table_count(&before_stale, "write_tickets")?,
+            table_count(&before_stale, "unrecorded_changes")?,
+        );
+        drop(before_stale);
+        let stale_trigger = live_mcp_call(
+            &mut child,
+            call_id,
+            AgentToolId::UPDATE_SCOPE,
+            replacement_arguments,
+            &session,
+            "future.turn.planning-deferred.stale-trigger",
+        )?;
+        call_id += 1;
+        assert_eq!(
+            method_result(&stale_trigger)["effect"]["effect_kind"],
+            "core_committed"
+        );
+        let stale_status = live_mcp_call(
+            &mut child,
+            call_id,
+            AgentToolId::STATUS,
+            json!({"project_selector": project_id, "task_id": task_id, "detail": "full"}),
+            &session,
+            "future.turn.planning-deferred.stale-status",
+        )?;
+        call_id += 1;
+        let stale_status_result = method_result(&stale_status);
+        assert_eq!(
+            stale_status_result["base"]["state_version"],
+            method_result(&stale_trigger)["effect"]["state_version"]
+        );
+        let stale_workflow = &stale_status_result["active_task"]["workflow"];
+        assert_eq!(stale_workflow["kind"], "shaping_required");
+        assert_eq!(
+            required_transition_method(stale_workflow),
+            Some(AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name())
+        );
+        let stale_form = method_action_form(&stale_status, AgentToolId::RECORD_SHAPING_CHECKPOINT)?;
+        let mut stale_authority_actions = stale_form["fixed_arguments"]["checkpoint_operation"]
+            ["stale_authority_actions"]
+            .clone();
+        let stale_actions = stale_authority_actions
+            .as_array_mut()
+            .ok_or("stale-authority fixed actions")?;
+        assert_eq!(stale_actions.len(), 1);
+        let stale_application_ref = stale_actions[0]["stale_application_ref"].clone();
+        let stale_application_id = required_string(&stale_application_ref, "record_id")?;
+        assert_eq!(
+            rusqlite::Connection::open(&state_db)?.query_row(
+                "SELECT authority_status
+                   FROM shaping_decision_applications
+                  WHERE shaping_decision_application_id = ?1",
+                [&stale_application_id],
+                |row| row.get::<_, String>(0),
+            )?,
+            "stale"
+        );
+        let stale_action = stale_actions[0]
+            .as_object_mut()
+            .ok_or("stale-authority action object")?;
+        stale_action.insert("action".to_owned(), json!("reauthorize"));
+        stale_action.insert(
+            "successor_gap".to_owned(),
+            json!({
+                "gap_kind": "user_scope_decision_required",
+                "summary": "Reconfirm the bounded scope on the rebased authority coordinates.",
+                "affected_refs": [],
+                "user_action": {
+                    "action": action(
+                        stale_status_result["base"]["state_version"]
+                            .as_u64()
+                            .ok_or("stale-authority state version")?
+                    ),
+                    "expires_at": null
+                }
+            }),
+        );
+        let stale_recovery = live_mcp_call(
+            &mut child,
+            call_id,
+            AgentToolId::RECORD_SHAPING_CHECKPOINT,
+            bound_action_arguments(
+                &stale_status,
+                AgentToolId::RECORD_SHAPING_CHECKPOINT,
+                json!({
+                    "project_selector": project_id,
+                    "detail": "full",
+                    "checkpoint_operation": {
+                        "stale_authority_actions": stale_authority_actions
+                    },
+                    "summary": "The rebased plan requires fresh scope authority.",
+                    "implementation_boundary": "Create only the rebased bounded implementation note.",
+                    "gaps": [],
+                    "source_refs": [],
+                    "evidence_refs": []
+                }),
+            )?,
+            &session,
+            "future.turn.planning-deferred.stale-recovery",
+        )?;
+        call_id += 1;
+        let stale_recovery_result = method_result(&stale_recovery);
+        assert_eq!(
+            stale_recovery_result["workflow"]["kind"],
+            "awaiting_user_action"
+        );
+        let fresh_refs = stale_recovery_result["created_user_action_request_refs"]
+            .as_array()
+            .ok_or("fresh stale-reauthorization UserAction refs")?;
+        assert_eq!(fresh_refs.len(), 1);
+        let fresh_request_id = required_string(&fresh_refs[0], "record_id")?;
+        assert_ne!(fresh_request_id, successor_request_id);
+        let stale_state = rusqlite::Connection::open(&state_db)?;
+        assert_eq!(
+            stale_state.query_row(
+                "SELECT authority_status
+                   FROM shaping_decision_applications
+                  WHERE shaping_decision_application_id = ?1",
+                [&stale_application_id],
+                |row| row.get::<_, String>(0),
+            )?,
+            "superseded"
+        );
+        let reauthorization: (String, String, String) = stale_state.query_row(
+            "SELECT outcome, stale_user_action_request_id, successor_user_action_request_id
+               FROM shaping_authority_reauthorizations
+              WHERE stale_application_id = ?1",
+            [&stale_application_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(
+            reauthorization,
+            (
+                "reissued".to_owned(),
+                successor_request_id.clone(),
+                fresh_request_id.clone(),
+            )
+        );
+        assert_eq!(
+            (
+                table_count(&stale_state, "shaping_decision_applications")?,
+                table_count(&stale_state, "write_tickets")?,
+                table_count(&stale_state, "unrecorded_changes")?,
+            ),
+            stale_safety_counts
+        );
+        drop(stale_state);
+        assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+        let fresh_acceptance = fixture.run_inbox(&[
+            "resolve",
+            &fresh_request_id,
+            "--choice",
+            "accept",
+            "--repo",
+            fixture.repo_root.to_str().ok_or("UTF-8 repository path")?,
+            "--json",
+        ])?;
+        assert_eq!(fresh_acceptance.status.code(), Some(0));
+        let fresh_acceptance: Value = serde_json::from_slice(&fresh_acceptance.stdout)?;
+        assert_eq!(
+            fresh_acceptance["user_action_resolution"]["body"]["resolution_outcome"],
+            "accepted"
+        );
+        let reapply_status = live_mcp_call(
+            &mut child,
+            call_id,
+            AgentToolId::STATUS,
+            json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+            &session,
+            "future.turn.planning-deferred.reapply-status",
+        )?;
+        call_id += 1;
+        assert_eq!(
+            required_transition_method(&method_result(&reapply_status)["active_task"]["workflow"]),
+            Some(AgentToolId::UPDATE_SCOPE.wire_name())
+        );
+        let reapplied = live_mcp_call(
+            &mut child,
+            call_id,
+            AgentToolId::UPDATE_SCOPE,
+            bound_action_arguments(
+                &reapply_status,
+                AgentToolId::UPDATE_SCOPE,
+                json!({
+                    "project_selector": project_id,
+                    "detail": "workflow",
+                    "goal_summary": null,
+                    "scope_update": null,
+                    "scope_boundary": null,
+                    "non_goals": null,
+                    "acceptance_criteria": null,
+                    "autonomy_boundary": null,
+                    "baseline_ref": null,
+                    "change_unit": {}
+                }),
+            )?,
+            &session,
+            "future.turn.planning-deferred.reapply",
+        )?;
+        call_id += 1;
+        let advance_status = live_mcp_call(
+            &mut child,
+            call_id,
+            AgentToolId::STATUS,
+            json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+            &session,
+            "future.turn.planning-deferred.reauthorized-status",
+        )?;
+        call_id += 1;
+        assert_eq!(
+            method_result(&advance_status)["base"]["state_version"],
+            method_result(&reapplied)["effect"]["state_version"]
+        );
+        assert_eq!(
+            method_result(&advance_status)["active_task"]["workflow"]["kind"],
+            "ready_for_implementation"
+        );
+        let current_applications: u64 = rusqlite::Connection::open(&state_db)?.query_row(
+            "SELECT COUNT(*)
+               FROM shaping_decision_applications
+              WHERE task_id = ?1 AND authority_status = 'current'",
+            [&task_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(current_applications, 1);
+        advance_status
+    } else {
+        scope_status
+    };
+    let advanced = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::ADVANCE_TASK,
+        bound_action_arguments(
+            &advance_source,
+            AgentToolId::ADVANCE_TASK,
+            json!({"project_selector": project_id, "detail": "workflow"}),
+        )?,
+        &session,
+        &format!("future.turn.planning-{label}.advance"),
+    )?;
+    call_id += 1;
+    assert_eq!(
+        advanced["presentation"]["task_phase"]["work_phase"],
+        "implementation"
+    );
+    let implementation_status = live_mcp_call(
+        &mut child,
+        call_id,
+        AgentToolId::STATUS,
+        json!({"project_selector": project_id, "task_id": task_id, "detail": "workflow"}),
+        &session,
+        &format!("future.turn.planning-{label}.implementation-status"),
+    )?;
+    assert_eq!(
+        method_result(&implementation_status)["active_task"]["workflow"]["kind"],
+        "implementation"
+    );
+    assert_eq!(
+        method_result(&implementation_status)["base"]["state_version"],
+        method_result(&advanced)["effect"]["state_version"]
+    );
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+    let state = rusqlite::Connection::open(&state_db)?;
+    assert_eq!(table_count(&state, "write_tickets")?, 0);
+    assert_eq!(table_count(&state, "unrecorded_changes")?, 0);
+    drop(state);
+
+    let form_bound_methods = child
+        .transcript()
+        .calls()
+        .iter()
+        .filter_map(|call| {
+            let name = call.pointer("/params/name")?.as_str()?;
+            call.pointer("/params/arguments/action_form_ref")
+                .and_then(Value::as_str)
+                .map(|_| name)
+        })
+        .collect::<Vec<_>>();
+    let mut expected_form_bound_methods = vec![
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+    ];
+    if label == "deferred" {
+        expected_form_bound_methods.extend([
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+            AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+        ]);
+    }
+    expected_form_bound_methods.push(AgentToolId::ADVANCE_TASK.wire_name());
+    assert_eq!(form_bound_methods, expected_form_bound_methods);
+    assert!(child
+        .transcript()
+        .tool_names()
+        .iter()
+        .all(|name| !name.contains("help") && !name.contains("source") && !name.contains("stdio")));
     let output = child.finish()?;
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
@@ -6741,6 +7901,7 @@ fn table_count(connection: &rusqlite::Connection, table: &str) -> Result<i64, Bo
             | "tool_invocations"
             | "runs"
             | "shaping_checkpoints"
+            | "shaping_decision_applications"
             | "write_tickets"
             | "user_action_requests"
             | "user_action_resolutions"

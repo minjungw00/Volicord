@@ -1029,13 +1029,18 @@ impl TransitionRejection {
         })
     }
 
-    /// Attaches the exact Core-owned baseline assessment for a compatibility rejection.
+    /// Attaches the exact Core-owned baseline assessment for a rejection caused by
+    /// a submitted baseline mismatch.
     pub fn with_baseline_compatibility(
         mut self,
         compatibility: BaselineTransitionCompatibility,
     ) -> Result<Self, &'static str> {
-        if self.reason != crate::values::TransitionRejectionReason::AuthorityBasisMismatch {
-            return Err("baseline compatibility requires an authority-basis mismatch");
+        if !matches!(
+            self.reason,
+            crate::values::TransitionRejectionReason::AuthorityBasisMismatch
+                | crate::values::TransitionRejectionReason::ImplementationAuthorityWouldBeInvalidated
+        ) {
+            return Err("baseline compatibility requires a baseline-incompatibility rejection");
         }
         if compatibility.submitted_baseline_compatible_with_transition {
             return Err("a rejected baseline assessment cannot be transition-compatible");

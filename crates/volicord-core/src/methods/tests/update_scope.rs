@@ -90,7 +90,7 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
     baseline_update.baseline_ref = RequiredNullable::some(
         BaselineRef::parse("baseline_revised").expect("canonical test BaselineRef"),
     );
-    baseline_update.change_unit.operation = ChangeUnitOperation::ReplaceCurrent;
+    baseline_update.change_unit.operation = ChangeUnitOperation::KeepCurrent;
 
     let mut change_unit_update = update_scope_request(
         "req_implementation_scope_guard_change_unit",
@@ -141,6 +141,18 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
             "{coordinate}"
         );
         assert!(!details.retryable, "{coordinate}");
+        if coordinate == "baseline" {
+            let compatibility = details
+                .baseline_compatibility
+                .as_ref()
+                .expect("implementation baseline rejection compatibility");
+            assert!(compatibility.current_baseline_canonical);
+            assert!(compatibility.submitted_baseline_canonical);
+            assert!(!compatibility.submitted_baseline_matches_current);
+            assert!(!compatibility.submitted_baseline_compatible_with_transition);
+        } else {
+            assert!(details.baseline_compatibility.as_ref().is_none());
+        }
         assert!(
             details.blocking_refs.contains(&application_ref),
             "{coordinate}"

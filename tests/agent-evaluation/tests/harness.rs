@@ -115,7 +115,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 65);
+    assert_eq!(result.criteria.len(), 69);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -287,11 +287,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(65)
+        Some(69)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(65)
+        Some(69)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -346,6 +346,10 @@ impl TrialDriver for AggregateSyntheticDriver {
             record && request.trial.scenario_id == "read-only-persisted-baseline-corruption";
         let authority_recovery =
             superseded_history || stale_reauthorization || implementation_invalidation;
+        let retry_guidance =
+            non_authorizing || authority_recovery || explicit_replacement || persisted_corruption;
+        let canonicality_wording =
+            implementation_invalidation || explicit_replacement || persisted_corruption;
         let shaping_scenario = planning || advisor;
         let planning_decisions =
             if request.trial.scenario_id == "planning-only-development-preparation" {
@@ -469,6 +473,14 @@ impl TrialDriver for AggregateSyntheticDriver {
                 raw_mcp_json_repetitions: 0,
                 guarantee_wording_checks: u64::from(planning),
                 accurate_cooperative_guarantee_wording: u64::from(planning),
+                impossible_retry_instruction_opportunities: u64::from(retry_guidance),
+                impossible_retry_instructions: 0,
+                canonicality_compatibility_wording_opportunities: u64::from(canonicality_wording),
+                accurate_canonicality_compatibility_wording: u64::from(canonicality_wording),
+                mutation_reporting_opportunities: u64::from(planning),
+                accurate_mutation_reports: u64::from(planning),
+                completion_reporting_opportunities: u64::from(shaping_scenario),
+                accurate_completion_reports: u64::from(shaping_scenario),
                 product_only_decision_opportunities: u64::from(product_only),
                 product_only_decisions_applied_exactly: u64::from(product_only),
                 technical_only_decision_opportunities: u64::from(technical_only),
@@ -870,6 +882,31 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
         ),
     ];
     for (scenario_id, criterion_id, mutate) in retarget_defects {
+        assert_defect(&result.observations, scenario_id, criterion_id, mutate);
+    }
+    let reporting_defects: [ShapingMetricDefect; 4] = [
+        (
+            "planning-implementation-invalidation",
+            "impossible_retry_instruction",
+            |workflow| workflow.impossible_retry_instructions = 1,
+        ),
+        (
+            "planning-implementation-invalidation",
+            "accurate_canonicality_compatibility_wording",
+            |workflow| workflow.accurate_canonicality_compatibility_wording = 0,
+        ),
+        (
+            "planning-only-development-preparation",
+            "accurate_mutation_reporting",
+            |workflow| workflow.accurate_mutation_reports = 0,
+        ),
+        (
+            "planning-only-development-preparation",
+            "accurate_completion_reporting",
+            |workflow| workflow.accurate_completion_reports = 0,
+        ),
+    ];
+    for (scenario_id, criterion_id, mutate) in reporting_defects {
         assert_defect(&result.observations, scenario_id, criterion_id, mutate);
     }
 }
