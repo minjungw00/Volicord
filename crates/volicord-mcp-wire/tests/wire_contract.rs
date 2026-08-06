@@ -228,6 +228,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "semantic_variant": "create_initial"
         },
         "workflow_contract_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "submission_contract_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "action_form_contract_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "semantic_schema_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "scalar_contract_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
@@ -293,6 +294,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "failed_action_key": null,
             "failed_stage": null,
             "workflow_contract_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "submission_contract_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             "action_form_contract_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
             "semantic_schema_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             "scalar_contract_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"

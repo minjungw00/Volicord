@@ -194,7 +194,7 @@ impl ReachabilityCoverage {
                 AuthorityNextActor::Agent => {
                     assert!(
                         agent_transition_count > 0,
-                        "{label}: Agent has no executable action"
+                        "{label}: Agent has no advertised transition"
                     );
                     if let Some(required) = required {
                         assert_eq!(required.actor, WorkflowTransitionActor::Agent, "{label}");

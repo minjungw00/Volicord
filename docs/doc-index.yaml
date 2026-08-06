@@ -720,7 +720,7 @@ documents:
   summary: Source path responsibility map for current Rust workspace modules, including the current
     effective shaping authority graph, immutable history, stale reauthorization, checkpoint
     succession, application carry-forward and ownership, advisor finalization, tagged workflow
-    transition catalogs, managed-guidance, transition-contract, and semantic-schema revision identities,
+    transition catalogs, managed-guidance, transition-contract, submission-contract, and semantic-schema revision identities,
     and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
@@ -1794,8 +1794,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -3157,8 +3157,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -3175,7 +3175,7 @@ documents:
     root-scoped activation plan without renderer-side cause inference
   - subject-aware current operational findings and explicit current-report finding selection
   - typed integration revisions, including distinct Store-manifest, managed-guidance,
-    workflow-contract, action-form-contract, MCP-semantic-schema, and scalar-contract digests,
+    workflow-contract, submission-contract, action-form-contract, MCP-semantic-schema, and scalar-contract digests,
     and authoritative managed-host operational-session evidence
   - immutable Store-owned integration-instance identity across physical Connection lifecycles
   - Store-derived revision-scoped project Agent Session identity across mode and physical lifecycles
@@ -3236,8 +3236,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - implementers
   - maintainers

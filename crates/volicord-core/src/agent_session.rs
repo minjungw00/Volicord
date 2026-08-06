@@ -304,6 +304,8 @@ pub(crate) fn validated_agent_session_for_test_with_project_session(
                 "sha256:5555555555555555555555555555555555555555555555555555555555555555",
             workflow_contract_semantic_digest:
                 "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            submission_contract_semantic_digest:
+                "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             action_form_contract_semantic_digest:
                 "sha256:9999999999999999999999999999999999999999999999999999999999999999",
             mcp_semantic_schema_digest:

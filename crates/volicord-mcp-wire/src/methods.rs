@@ -213,6 +213,7 @@ pub struct WorkflowActionForm {
 pub struct WorkflowActionFormCatalog {
     pub required_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub workflow_contract_digest: RequestHash,
+    pub submission_contract_digest: RequestHash,
     pub action_form_contract_digest: RequestHash,
     pub semantic_schema_digest: RequestHash,
     pub scalar_contract_digest: RequestHash,
@@ -291,6 +292,7 @@ pub struct McpWorkflowContractDiagnostics {
     pub failed_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub failed_stage: RequiredNullable<McpWorkflowContractStage>,
     pub workflow_contract_digest: RequestHash,
+    pub submission_contract_digest: RequestHash,
     pub action_form_contract_digest: RequestHash,
     pub semantic_schema_digest: RequestHash,
     pub scalar_contract_digest: RequestHash,

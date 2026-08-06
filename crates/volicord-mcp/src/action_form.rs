@@ -34,6 +34,7 @@ struct WorkflowActionFormDigestBasis<'a> {
     semantic_schema_digest: &'a RequestHash,
     scalar_contract_digest: &'a RequestHash,
     workflow_contract_digest: &'a RequestHash,
+    submission_contract_digest: &'a RequestHash,
     action_form_contract_digest: &'a RequestHash,
 }
 
@@ -632,6 +633,8 @@ fn workflow_action_form(
     let semantic_schema_digest = volicord_types::managed_guidance::mcp_semantic_schema_digest();
     let workflow_contract_digest =
         volicord_types::managed_guidance::workflow_contract_semantic_digest();
+    let submission_contract_digest =
+        volicord_types::managed_guidance::submission_contract_semantic_digest();
     let action_form_contract_digest =
         volicord_types::managed_guidance::action_form_contract_semantic_digest();
     let scalar_contract_digest =
@@ -705,6 +708,7 @@ fn workflow_action_form(
         semantic_schema_digest: &semantic_schema_digest,
         scalar_contract_digest: &scalar_contract_digest,
         workflow_contract_digest: &workflow_contract_digest,
+        submission_contract_digest: &submission_contract_digest,
         action_form_contract_digest: &action_form_contract_digest,
     })
     .map_err(|error| error.to_string())?;
@@ -955,6 +959,8 @@ where
         ),
         workflow_contract_digest:
             volicord_types::managed_guidance::workflow_contract_semantic_digest(),
+        submission_contract_digest:
+            volicord_types::managed_guidance::submission_contract_semantic_digest(),
         action_form_contract_digest:
             volicord_types::managed_guidance::action_form_contract_semantic_digest(),
         semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
@@ -1858,7 +1864,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_is_a_total_exact_projection_and_minimal_requests_are_executable() {
+    fn catalog_is_a_total_exact_projection_and_minimal_requests_bind() {
         let project_id = ProjectId::new("prj_total_projection");
         let task_id = TaskId::new("task_total_projection");
         let coordinates = |operation| WorkflowActionAuthorityCoordinates::UpdateScope {

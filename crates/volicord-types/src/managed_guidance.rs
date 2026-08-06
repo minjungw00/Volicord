@@ -12,8 +12,13 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "call_only_currently_executable_agent_transition",
     "use_exact_method_and_semantic_variant_action_form",
     "copy_and_preserve_fixed_authority_arguments_exactly",
+    "satisfy_task_mode_specific_required_and_optional_agent_inputs",
+    "advisor_change_units_are_observe_only_and_pathless",
+    "method_examples_are_not_authority_bearing_requests",
+    "use_only_action_forms_that_pass_exact_core_no_commit_planning",
     "action_form_never_authorizes_different_method_or_semantic_variant",
     "use_only_core_returned_recovery_action_and_form",
+    "use_typed_rejection_attempt_details_for_recovery",
     "never_infer_recovery_from_error_text_or_field_names",
     "use_type_owned_mcp_schema_semantics",
     "read_only_status_grants_no_mutation_authority",
@@ -25,6 +30,7 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "source_code_is_not_mcp_request_schema",
     "preserve_json_null_boolean_and_number_primitive_types",
     "do_not_infer_another_union_branch",
+    "schema_validity_transition_compatibility_and_persisted_corruption_are_distinct",
     "transition_compatibility_error_does_not_imply_persisted_corruption",
     "pre_core_core_rejected_and_persisted_corruption_outcomes_surface_exactly",
     "product_repository_edit_requires_successful_authority_mutation",
@@ -82,10 +88,22 @@ pub const WORKFLOW_CONTRACT_FACTS: &[&str] = &[
     "current_submitted_canonicality_match_and_compatibility_remain_distinct",
 ];
 
+/// Closed semantics whose change invalidates transition-submission identity.
+pub const SUBMISSION_CONTRACT_FACTS: &[&str] = &[
+    "every_transition_owns_one_method_state_and_semantic_variant_specific_submission_contract",
+    "submission_contracts_separate_fixed_required_and_optional_values",
+    "fixed_values_are_owned_by_current_core_authority_coordinates",
+    "required_and_optional_agent_inputs_are_task_mode_specific",
+    "submission_contract_witnesses_are_bounded_and_typed",
+    "advisor_scope_submission_fixes_empty_paths_and_canonical_observe_only_effects",
+    "record_run_submission_fixes_current_task_change_unit_and_baseline_and_authors_kind",
+    "method_examples_never_supply_submission_contract_values",
+];
+
 /// Closed semantics whose change invalidates MCP action-form identity.
 pub const ACTION_FORM_CONTRACT_FACTS: &[&str] = &[
     "mcp_projects_each_descriptor_bound_action_form",
-    "form_ref_binds_project_task_action_state_coordinates_submission_workflow_action_form_semantic_schema_and_scalar_contracts",
+    "form_ref_binds_project_task_action_state_coordinates_submission_contract_workflow_action_form_semantic_schema_and_scalar_contracts",
     "every_agent_transition_has_exactly_one_executable_form",
     "fixed_and_agent_authored_inputs_derive_from_the_exact_submission_contract",
     "canonical_minimal_request_uses_only_bounded_submission_contract_witness_values",
@@ -140,6 +158,15 @@ pub fn workflow_contract_semantic_digest() -> RequestHash {
     .expect("static workflow contract semantics always serialize")
 }
 
+/// Returns the canonical semantic digest for current transition submissions.
+pub fn submission_contract_semantic_digest() -> RequestHash {
+    canonical_json_sha256(&SemanticDigestBasis {
+        domain: "volicord.submission-contract",
+        facts: SUBMISSION_CONTRACT_FACTS,
+    })
+    .expect("static submission contract semantics always serialize")
+}
+
 /// Returns the canonical semantic digest for current MCP action-form behavior.
 pub fn action_form_contract_semantic_digest() -> RequestHash {
     canonical_json_sha256(&SemanticDigestBasis {
@@ -187,6 +214,20 @@ mod tests {
             facts: &WORKFLOW_CONTRACT_FACTS[..WORKFLOW_CONTRACT_FACTS.len() - 1],
         })
         .expect("test workflow semantics serialize");
+        assert_ne!(digest, changed);
+    }
+
+    #[test]
+    fn submission_contract_semantic_digest_is_canonical_and_fact_bound() {
+        let digest = submission_contract_semantic_digest();
+        assert!(crate::canonical::is_canonical_sha256_digest(
+            digest.as_str()
+        ));
+        let changed = canonical_json_sha256(&SemanticDigestBasis {
+            domain: "volicord.submission-contract",
+            facts: &SUBMISSION_CONTRACT_FACTS[..SUBMISSION_CONTRACT_FACTS.len() - 1],
+        })
+        .expect("test submission contract semantics serialize");
         assert_ne!(digest, changed);
     }
 

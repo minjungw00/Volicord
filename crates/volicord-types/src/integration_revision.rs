@@ -89,6 +89,7 @@ pub struct ProjectIntegrationRevisionBasis<'a> {
     pub storage_manifest_digest: &'a str,
     pub managed_guidance_semantic_digest: &'a str,
     pub workflow_contract_semantic_digest: &'a str,
+    pub submission_contract_semantic_digest: &'a str,
     pub action_form_contract_semantic_digest: &'a str,
     pub mcp_semantic_schema_digest: &'a str,
     pub scalar_contract_semantic_digest: &'a str,
@@ -229,6 +230,7 @@ fn validate_project_basis(
         || !is_canonical_sha256_digest(basis.storage_manifest_digest)
         || !is_canonical_sha256_digest(basis.managed_guidance_semantic_digest)
         || !is_canonical_sha256_digest(basis.workflow_contract_semantic_digest)
+        || !is_canonical_sha256_digest(basis.submission_contract_semantic_digest)
         || !is_canonical_sha256_digest(basis.action_form_contract_semantic_digest)
         || !is_canonical_sha256_digest(basis.mcp_semantic_schema_digest)
         || !is_canonical_sha256_digest(basis.scalar_contract_semantic_digest)
@@ -321,6 +323,7 @@ mod tests {
         let storage_manifest_digest = format!("sha256:{}", "4".repeat(64));
         let guidance_digest = format!("sha256:{}", "e".repeat(64));
         let workflow_contract_digest = format!("sha256:{}", "f".repeat(64));
+        let submission_contract_digest = format!("sha256:{}", "5".repeat(64));
         let action_form_contract_digest = format!("sha256:{}", "6".repeat(64));
         let semantic_schema_digest = format!("sha256:{}", "0".repeat(64));
         let scalar_contract_digest = format!("sha256:{}", "7".repeat(64));
@@ -335,6 +338,7 @@ mod tests {
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
             workflow_contract_semantic_digest: &workflow_contract_digest,
+            submission_contract_semantic_digest: &submission_contract_digest,
             action_form_contract_semantic_digest: &action_form_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
             scalar_contract_semantic_digest: &scalar_contract_digest,
@@ -373,6 +377,12 @@ mod tests {
                 ..project_basis.clone()
             })
             .expect("changed workflow contract semantics");
+        let changed_submission_contract =
+            IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+                submission_contract_semantic_digest: &format!("sha256:{}", "a".repeat(64)),
+                ..project_basis.clone()
+            })
+            .expect("changed submission contract semantics");
         let changed_action_form_contract =
             IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
                 action_form_contract_semantic_digest: &format!("sha256:{}", "8".repeat(64)),
@@ -396,6 +406,7 @@ mod tests {
         assert_ne!(project, changed_storage_manifest);
         assert_ne!(project, changed_guidance);
         assert_ne!(project, changed_workflow_contract);
+        assert_ne!(project, changed_submission_contract);
         assert_ne!(project, changed_action_form_contract);
         assert_ne!(project, changed_semantic_schema);
         assert_ne!(project, changed_scalar_contract);
@@ -410,6 +421,7 @@ mod tests {
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
             workflow_contract_semantic_digest: &workflow_contract_digest,
+            submission_contract_semantic_digest: &submission_contract_digest,
             action_form_contract_semantic_digest: &action_form_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
             scalar_contract_semantic_digest: &scalar_contract_digest,
@@ -426,6 +438,7 @@ mod tests {
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
             workflow_contract_semantic_digest: &workflow_contract_digest,
+            submission_contract_semantic_digest: &submission_contract_digest,
             action_form_contract_semantic_digest: &action_form_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
             scalar_contract_semantic_digest: &scalar_contract_digest,

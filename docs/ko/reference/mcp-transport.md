@@ -600,6 +600,7 @@ WorkflowActionForm:
 WorkflowActionFormCatalog:
   required_action_key: WorkflowActionKey | null
   workflow_contract_digest: RequestHash
+  submission_contract_digest: RequestHash
   action_form_contract_digest: RequestHash
   semantic_schema_digest: RequestHash
   scalar_contract_digest: RequestHash
@@ -614,8 +615,9 @@ RetryContract:
 ```
 
 `form_ref`는 프로젝트, Task, 완전한 `action_key`, 예상 상태 버전, 정확한 고정 권한 좌표,
-정확한 `WorkflowTransitionSubmissionContract`, 완전한 `fixed_arguments` 객체와 descriptor 소유 고정 경로, 현재 workflow-contract,
-action-form-contract, semantic-schema, scalar-contract digest의 불투명 canonical digest입니다.
+정확한 `WorkflowTransitionSubmissionContract`, 완전한 `fixed_arguments` 객체와 descriptor 소유
+고정 경로, 현재 workflow-contract, submission-contract, action-form-contract,
+semantic-schema, scalar-contract digest의 불투명 canonical digest입니다.
 숫자 workflow 또는 action-form 버전이 아닙니다.
 Form catalog는 Core transition catalog의 순서를 보존합니다. 각 Agent
 `TransitionDescriptor`마다 서로 다른 실행 가능한 form과 form ref가 정확히 하나씩 있으며,
@@ -1095,6 +1097,7 @@ McpWorkflowContractDiagnostics:
   failed_action_key: WorkflowActionKey | null
   failed_stage: McpWorkflowContractStage | null
   workflow_contract_digest: RequestHash
+  submission_contract_digest: RequestHash
   action_form_contract_digest: RequestHash
   semantic_schema_digest: RequestHash
   scalar_contract_digest: RequestHash
@@ -1107,8 +1110,9 @@ McpWorkflowContractDiagnostics:
 한도와 redaction을 적용한 이 fact는 workflow 거부와 contract inconsistency, 기존 session
 diagnostics 경로에서 사용하는 읽기 전용 projection입니다. 권한을 변경하거나 두 번째 workflow
 API를 만들지 않으며 일반 status에 추가하지 않습니다. 현재 권한은 변경 불가능한 diagnostic
-이력과 계속 분리됩니다. 네 digest는 숫자 버전으로 동작을 선택하지 않고 이 projection에 사용한
-정확한 workflow machine, action form, semantic schema, canonical scalar contract를 식별합니다.
+이력과 계속 분리됩니다. 다섯 digest는 숫자 버전으로 동작을 선택하지 않고 이 projection에
+사용한 정확한 workflow machine, submission, action form, semantic schema, canonical scalar
+contract를 식별합니다.
 
 ```schema
 McpArgumentFailurePresentation:

@@ -985,6 +985,8 @@ impl McpAdapter {
                     failed_stage: RequiredNullable::some(failure.stage),
                     workflow_contract_digest:
                         volicord_types::managed_guidance::workflow_contract_semantic_digest(),
+                    submission_contract_digest:
+                        volicord_types::managed_guidance::submission_contract_semantic_digest(),
                     action_form_contract_digest:
                         volicord_types::managed_guidance::action_form_contract_semantic_digest(),
                     semantic_schema_digest:

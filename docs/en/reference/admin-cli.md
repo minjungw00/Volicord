@@ -2087,7 +2087,9 @@ An MCP workflow projection inconsistency records the bounded occurrence code
 diagnostic path. The immediate structured tool error carries the normalized
 workflow snapshot, current transition catalog, current action forms when they
 could be generated, attempted action key, typed rejection reason, recovery
-action key, workflow-contract digest, and semantic-schema digest. The CLI
+action key, workflow-contract digest, submission-contract digest,
+action-form-contract digest, semantic-schema digest, and scalar-contract
+digest. The CLI
 session lookup retains the occurrence separately from current authority; it does
 not replay request bodies, mutate the Task, or turn immutable diagnostic history
 into workflow authority.

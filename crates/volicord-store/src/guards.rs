@@ -595,6 +595,8 @@ pub fn current_project_agent_session_coordinates(
     let guidance_digest = volicord_types::managed_guidance::managed_guidance_semantic_digest();
     let workflow_contract_digest =
         volicord_types::managed_guidance::workflow_contract_semantic_digest();
+    let submission_contract_digest =
+        volicord_types::managed_guidance::submission_contract_semantic_digest();
     let action_form_contract_digest =
         volicord_types::managed_guidance::action_form_contract_semantic_digest();
     let semantic_schema_digest = volicord_types::managed_guidance::mcp_semantic_schema_digest();
@@ -611,6 +613,7 @@ pub fn current_project_agent_session_coordinates(
         storage_manifest_digest: storage_manifest_digest.as_str(),
         managed_guidance_semantic_digest: guidance_digest.as_str(),
         workflow_contract_semantic_digest: workflow_contract_digest.as_str(),
+        submission_contract_semantic_digest: submission_contract_digest.as_str(),
         action_form_contract_semantic_digest: action_form_contract_digest.as_str(),
         mcp_semantic_schema_digest: semantic_schema_digest.as_str(),
         scalar_contract_semantic_digest: scalar_contract_digest.as_str(),

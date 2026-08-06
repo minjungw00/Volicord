@@ -1939,7 +1939,8 @@ MCP workflow projection inconsistency는 기존 runtime-session diagnostic 경�
 발생 code `mcp.tool_call.contract_inconsistent`를 기록합니다. 즉시 반환하는 structured tool
 error는 정규화된 workflow snapshot, 현재 transition catalog, 생성할 수 있었던 경우의 현재
 action form, 시도 action key, typed rejection reason, recovery action key,
-workflow-contract digest, semantic-schema digest를 담습니다. CLI session 조회는 이 발생 기록을
+workflow-contract digest, submission-contract digest, action-form-contract digest,
+semantic-schema digest, scalar-contract digest를 담습니다. CLI session 조회는 이 발생 기록을
 현재 권한과 분리해 유지하며 요청 본문을 replay하거나 Task를 변경하거나 변경 불가능한
 diagnostic 이력을 workflow 권한으로 바꾸지 않습니다.
 

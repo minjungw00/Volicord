@@ -759,6 +759,10 @@ fn workflow_contract_diagnostics(
             volicord_types::managed_guidance::workflow_contract_semantic_digest,
             |forms| forms.workflow_contract_digest.clone(),
         ),
+        submission_contract_digest: action_forms.map_or_else(
+            volicord_types::managed_guidance::submission_contract_semantic_digest,
+            |forms| forms.submission_contract_digest.clone(),
+        ),
         action_form_contract_digest: action_forms.map_or_else(
             volicord_types::managed_guidance::action_form_contract_semantic_digest,
             |forms| forms.action_form_contract_digest.clone(),
@@ -1450,6 +1454,7 @@ mod tests {
         let action_form_catalog = WorkflowActionFormCatalog {
             required_action_key: RequiredNullable::some(action_key),
             workflow_contract_digest: RequestHash::new("workflow_digest"),
+            submission_contract_digest: RequestHash::new("submission_digest"),
             action_form_contract_digest: RequestHash::new("action_form_digest"),
             semantic_schema_digest: RequestHash::new("semantic_schema_digest"),
             scalar_contract_digest: RequestHash::new("scalar_contract_digest"),

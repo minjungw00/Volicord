@@ -685,6 +685,7 @@ WorkflowActionForm:
 WorkflowActionFormCatalog:
   required_action_key: WorkflowActionKey | null
   workflow_contract_digest: RequestHash
+  submission_contract_digest: RequestHash
   action_form_contract_digest: RequestHash
   semantic_schema_digest: RequestHash
   scalar_contract_digest: RequestHash
@@ -702,8 +703,9 @@ RetryContract:
 `action_key`, expected state version, exact fixed authority coordinates, the
 exact `WorkflowTransitionSubmissionContract`, complete `fixed_arguments`
 object and descriptor-owned fixed paths, the current
-workflow-contract, action-form-contract, semantic-schema, and scalar-contract
-digests. It is not a numeric workflow or action-form version. The form catalog
+workflow-contract, submission-contract, action-form-contract, semantic-schema,
+and scalar-contract digests. It is not a numeric workflow or action-form
+version. The form catalog
 preserves Core transition-catalog ordering.
 Every Agent `TransitionDescriptor` has exactly one distinct executable form and
 form ref; `required_action_key` is copied only from a required Agent descriptor.
@@ -1230,6 +1232,7 @@ McpWorkflowContractDiagnostics:
   failed_action_key: WorkflowActionKey | null
   failed_stage: McpWorkflowContractStage | null
   workflow_contract_digest: RequestHash
+  submission_contract_digest: RequestHash
   action_form_contract_digest: RequestHash
   semantic_schema_digest: RequestHash
   scalar_contract_digest: RequestHash
@@ -1244,9 +1247,9 @@ These bounded, redacted facts are a read-only projection used on workflow
 rejections and contract inconsistencies and by the existing session-diagnostic
 path. They do not mutate authority, do not add a second workflow API, and are not
 added to ordinary status. Current authority remains separate from immutable
-diagnostic history. The four digests identify the exact workflow-machine,
-action-form, semantic-schema, and canonical-scalar contracts used for the
-projection without selecting behavior through numeric versions.
+diagnostic history. The five digests identify the exact workflow-machine,
+submission, action-form, semantic-schema, and canonical-scalar contracts used
+for the projection without selecting behavior through numeric versions.
 
 ```schema
 McpArgumentFailurePresentation:

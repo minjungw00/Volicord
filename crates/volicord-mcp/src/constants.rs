@@ -18,12 +18,12 @@ pub(crate) fn server_instructions() -> String {
             "Only that first-party state-directed workflow proves current managed MCP and Guard correlation. If Volicord tools are not exposed, report the managed MCP connection as unavailable; do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as proof of tool availability. `volicord connection verify` is optional active diagnostics only and does not replace the managed-host workflow. Read-only connection status and CLI MCP preflight are diagnostic only and are not managed-host evidence. Hook trust remains user/host owned. ",
             "Use the Store-derived tagged current effective shaping authority graph. Superseded checkpoint, request, resolution, and application history is immutable audit history only and never actionable authority. ",
             "Follow the tagged workflow's required transition; do not call workflow tools speculatively or select progression from top-level array order. The tagged workflow transition catalog is mutation admission authority: call only a currently executable Agent transition, and never speculate with a different shaping or implementation method. Read-only status grants no mutation authority. Never replace the current checkpoint to remove a pending or accepted-but-unapplied decision. When revising a checkpoint, carry every current compatible applied decision explicitly through carry_forward_application_refs; never replace a checkpoint to discard applied authority. ",
-            "Follow the exact Core transition and its current action form, use only the exact recovery action and form returned from Core, and never reuse a form for another method or semantic variant. Do not infer recovery from error text or field names. Use the type-owned MCP tool schema; never search ordinary CLI help, binary strings, or source code for MCP request schemas. Preserve JSON primitive types and do not infer another union branch. A transition compatibility error does not diagnose persisted corruption. Report pre-Core rejection, Core rejection, and persisted-data corruption as distinct outcomes, including their exact commit and side-effect facts. Do not modify Product Repository files before the required authority mutation commits successfully, and report failed checkpoint and UserAction creation without claiming either was created. ",
+            "Follow the exact current Core transition and its state-specific action form. Copy every authority-owned fixed value exactly, and satisfy the required and optional Agent-authored input constraints for the current Task mode. Generic method examples do not authorize live requests. Use only a form published after exact Core no-commit planning. Use the exact typed rejection details, recovery action, and recovery form returned from Core. Do not infer recovery from error text or field names, and never reuse a form for another method or semantic variant. Use the type-owned MCP tool schema; never search ordinary CLI help, binary strings, or source code for MCP request schemas. Preserve JSON primitive types and do not infer another union branch. Treat schema validity, transition compatibility, and persisted-data corruption as distinct outcomes. Report pre-Core rejection, Core rejection, and persisted-data corruption with their exact commit and side-effect facts. Do not modify Product Repository files before the required authority mutation commits successfully, and report failed checkpoint and UserAction creation without claiming either was created. ",
             "Stale shaping authority grants no permission. Never carry a stale application forward or reuse its accepted resolution. For application_authority_stale, follow the exact stale_authority_actions: retire it or reauthorize it through a fresh successor gap and fresh UserActionRequest, preserving immutable ShapingAuthorityReauthorization lineage. ",
             "Inspect the exact User Channel resolution outcome. Resolution does not apply a shaping decision: apply only accepted, current, compatible authority through its application_owner with the exact current resolution refs. After rejection, deferral, or expiration, follow decision_recovery_required and revise shaping. Never retry resolution of a terminal or expired request. If the revised plan still needs that judgment, create a successor UserActionRequest with an independent identity; chat text cannot replace it. A rejected, deferred, or expired decision grants no authority and keeps Product Repository mutation unavailable; surface that outcome and do not hide it as success. ",
             "During work/implementation, an authority-invalidating scope, baseline, or Change Unit update is rejected before mutation. Follow the tagged volicord.close_task recovery to leave implementation; implementation work never returns silently to shaping. ",
             "Do not invent a scope decision or pass a scope-decision ref for product-only or technical-only work. Change Unit creation does not advance phase. For work, call volicord.advance_task only when the tagged workflow requires explicit advance and never while a UserAction is pending; do not call volicord.prepare_write before implementation. ",
-            "Advisor work uses only a non-write Change Unit. On ready_to_finalize_advice, finalize the current advisor result with volicord.finalize_advice; do not use volicord.record_run, volicord.advance_task, or volicord.prepare_write for advisor. Create current UserAction requests before presenting user-owned choices; a chat reply is not a User Channel resolution. ",
+            "Advisor Change Units are observe-only and pathless: the current form fixes affected_paths=[] and the canonical observe-only effect_contract; neither value is Agent-authored. On ready_to_finalize_advice, finalize the current advisor result with volicord.finalize_advice; do not use volicord.record_run, volicord.advance_task, or volicord.prepare_write for advisor. Create current UserAction requests before presenting user-owned choices; a chat reply is not a User Channel resolution. ",
             "Never present a rejected mutation as success; surface the tagged workflow and every structured presentation.must_surface rejection and recovery fact. Evaluate close readiness only during close review. Close blockers do not replace workflow progression. ",
             "Mutation tools default to a fresh compact authority receipt plus the method outcome needed for the next step; request detail=workflow for current workflow authority or detail=full only when the bounded full method result is needed. When a mutation returns a non-null operation_result_ref, use {} for omitted exact historical bytes and {} separately for current authority; never retry an applied mutation. ",
             "Volicord state management is separate from product-file edit authority: product-file edits still require the host/user path and any required write ticket. A write ticket records intended product-file changes; it is not OS permission, review bypass, access control, or a promise of automatic tool use.",
@@ -65,16 +65,20 @@ mod tests {
             "only a currently executable Agent transition",
             "never speculate with a different shaping or implementation method",
             "Read-only status grants no mutation authority",
-            "exact Core transition and its current action form",
-            "exact recovery action and form returned from Core",
+            "exact current Core transition and its state-specific action form",
+            "authority-owned fixed value exactly",
+            "Agent-authored input constraints for the current Task mode",
+            "Generic method examples do not authorize live requests",
+            "form published after exact Core no-commit planning",
+            "exact typed rejection details, recovery action, and recovery form",
             "never reuse a form for another method or semantic variant",
             "Do not infer recovery from error text or field names",
             "type-owned MCP tool schema",
             "CLI help, binary strings, or source code for MCP request schemas",
             "Preserve JSON primitive types",
             "do not infer another union branch",
-            "transition compatibility error does not diagnose persisted corruption",
-            "pre-Core rejection, Core rejection, and persisted-data corruption as distinct outcomes",
+            "schema validity, transition compatibility, and persisted-data corruption as distinct outcomes",
+            "pre-Core rejection, Core rejection, and persisted-data corruption",
             "before the required authority mutation commits successfully",
             "failed checkpoint and UserAction creation",
             "Store-derived tagged current effective shaping authority graph",
@@ -104,7 +108,10 @@ mod tests {
             "chat reply is not a User Channel resolution",
             "tagged workflow requires explicit advance",
             "never while a UserAction is pending",
-            "Advisor work uses only a non-write Change Unit",
+            "Advisor Change Units are observe-only and pathless",
+            "affected_paths=[]",
+            "canonical observe-only effect_contract",
+            "neither value is Agent-authored",
             "ready_to_finalize_advice",
             "finalize the current advisor result with volicord.finalize_advice",
             "volicord.prepare_write before implementation",
@@ -113,7 +120,10 @@ mod tests {
             "Close blockers do not replace workflow progression",
             "close readiness only during close review",
         ] {
-            assert!(instructions.contains(required));
+            assert!(
+                instructions.contains(required),
+                "server instructions omit required guidance: {required}"
+            );
         }
     }
 

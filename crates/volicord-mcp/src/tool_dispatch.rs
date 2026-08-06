@@ -757,6 +757,7 @@ impl ToolCallOutput {
                             failed_action_key: RequiredNullable::new(failure.action_key),
                             failed_stage: RequiredNullable::some(failure.stage),
                             workflow_contract_digest: volicord_types::managed_guidance::workflow_contract_semantic_digest(),
+                            submission_contract_digest: volicord_types::managed_guidance::submission_contract_semantic_digest(),
                             action_form_contract_digest: volicord_types::managed_guidance::action_form_contract_semantic_digest(),
                             semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
                             scalar_contract_digest: volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest(),
