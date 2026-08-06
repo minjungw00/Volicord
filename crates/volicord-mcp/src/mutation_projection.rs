@@ -253,8 +253,15 @@ where
     let action_form_catalog = match action_forms(&context, &authority) {
         Ok(catalog) => catalog,
         Err(failure) => {
+            let reached_core = failure.reached_core();
             let diagnostics = failure.diagnostics(&authority.workflow);
-            return internal_contract_inconsistent_rejection(output, tool_name, None, diagnostics);
+            return internal_contract_inconsistent_rejection(
+                output,
+                tool_name,
+                None,
+                diagnostics,
+                reached_core,
+            );
         }
     };
 
@@ -284,6 +291,7 @@ where
                 tool_name,
                 transition_rejection,
                 diagnostics,
+                true,
             );
         }
         Err(_) => {
@@ -322,6 +330,7 @@ where
                     tool_name,
                     transition_rejection,
                     diagnostics,
+                    true,
                 )
             }
             None => None,
@@ -799,6 +808,7 @@ fn internal_contract_inconsistent_rejection(
     tool_name: &str,
     transition_rejection: Option<TransitionRejection>,
     diagnostics: McpWorkflowContractDiagnostics,
+    reached_core: bool,
 ) -> Result<ToolCallOutput, McpAdapterError> {
     let mut structured = McpToolErrorResponse {
         code: McpToolErrorCode::InternalContractInconsistent,
@@ -806,16 +816,19 @@ fn internal_contract_inconsistent_rejection(
         selected_variant: RequiredNullable::null(),
         canonical_example: RequiredNullable::null(),
         retryable: false,
-        reached_core: true,
+        reached_core,
         committed: false,
         failed_action_key: diagnostics.failed_action_key.clone(),
         failed_stage: diagnostics.failed_stage.clone(),
+        method_error_code: diagnostics.method_error_code.clone(),
+        method_error_details: diagnostics.method_error_details.clone(),
+        state_change_applied: diagnostics.state_change_applied,
         reported_issue_count: 1,
         truncated: false,
         issues: vec![McpToolErrorIssue::new(
             String::new(),
             McpToolIssueCode::InternalContractInconsistent,
-            "Core named a recovery action that has no exact executable form in the current MCP projection.",
+            "The current workflow form contract is internally inconsistent; the rejected witness is not executable and must not be retried.",
         )],
         authoritative_context: RequiredNullable::null(),
         retry_contract: RequiredNullable::null(),
@@ -833,13 +846,13 @@ fn internal_contract_inconsistent_rejection(
         structured.contract_diagnostics = RequiredNullable::null();
         structured.truncated = true;
     }
-    output.primary_text = "Volicord rejected the mutation and found an internal workflow-contract inconsistency; Core state is unchanged and no retry is suggested.".to_owned();
+    output.primary_text = "Volicord rejected the mutation because the current workflow form contract is internally inconsistent; Core state is unchanged, the rejected witness is not executable, and no retry is suggested.".to_owned();
     output.structured_content = serde_json::to_value(
         McpMutationStructuredContent::<Value, Value>::AdapterError(Box::new(structured)),
     )
     .map_err(McpAdapterError::Json)?;
     output.is_error = true;
-    output.diagnostic_facts.core_reached = true;
+    output.diagnostic_facts.core_reached = reached_core;
     output.diagnostic_facts.core_committed = false;
     output.diagnostic_facts.effect_applied = false;
     output.mutation_refresh_context = None;
@@ -1356,6 +1369,7 @@ mod tests {
             MethodName::CloseTask.as_str(),
             Some(rejection.clone()),
             diagnostics,
+            true,
         )
         .expect("bounded internal error projection");
 

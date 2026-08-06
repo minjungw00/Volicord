@@ -402,6 +402,95 @@ fn read_only_status_validates_current_forms_without_granting_mutation_authority(
     Ok(())
 }
 
+#[test]
+fn exact_method_rejection_suppresses_form_and_preserves_bounded_failure_facts(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-method-rejected-form-witness")?;
+    let repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+        fixture.product_repo_path(),
+    )?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
+    let adapter = adapter(&fixture)?;
+    let context = fixture.mutation_context()?;
+    let status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "workflow"}),
+    )?;
+    let workflow: volicord_types::schema::WorkflowProjection =
+        serde_json::from_value(status.response_value["active_task"]["workflow"].clone())?;
+    let catalog = adapter
+        .validated_workflow_action_form_catalog(
+            &context,
+            &ProjectId::new(fixture.project_id()),
+            &workflow,
+            None,
+        )
+        .map_err(std::io::Error::other)?;
+    let form = catalog
+        .form(
+            MethodName::RecordRun,
+            WorkflowActionSemanticVariant::RecordRun,
+        )
+        .ok_or("implementation workflow omitted RecordRun form")?;
+    let mut rejected_witness = Value::Object(form.canonical_minimal_request.clone());
+    rejected_witness["kind"] = json!("direct");
+    rejected_witness["project_selector"] = json!(fixture.project_id());
+    let before = fixture.counts()?;
+    let repository_before = repository.status_bytes()?;
+
+    let failure = adapter
+        .plan_action_form_submission_no_commit_for_test(&context, form, rejected_witness)
+        .expect_err("incompatible complete witness must be a typed method-planning rejection");
+    assert_eq!(failure.action_key, Some(form.action_key));
+    assert_eq!(
+        failure.stage,
+        volicord_mcp_wire::McpWorkflowContractStage::MethodPlanningRejected
+    );
+    assert_eq!(
+        failure.method_error_code,
+        Some(volicord_types::values::ErrorCode::RunKindIncompatible)
+    );
+    assert_eq!(
+        failure
+            .method_error_details
+            .as_ref()
+            .and_then(|details| details.get("reason")),
+        Some(&json!("run_kind_incompatible"))
+    );
+    assert!(failure.reached_core());
+    assert!(!failure.committed);
+    assert!(!failure.state_change_applied);
+
+    let projected = structured_error_result(&crate::tool_dispatch::tool_execution_error_result(
+        AgentToolId::STATUS.wire_name(),
+        &McpAdapterError::InternalContractInconsistent {
+            tool_name: AgentToolId::STATUS.wire_name().to_owned(),
+            reached_core: failure.reached_core(),
+            transition_rejection: None,
+            diagnostics: Box::new(failure.diagnostics(&workflow)),
+        },
+    ));
+    assert_eq!(projected["code"], "INTERNAL_CONTRACT_INCONSISTENT");
+    assert_eq!(projected["failed_action_key"], json!(form.action_key));
+    assert_eq!(projected["failed_stage"], "method_planning_rejected");
+    assert_eq!(projected["method_error_code"], "RUN_KIND_INCOMPATIBLE");
+    assert_eq!(
+        projected["method_error_details"]["reason"],
+        "run_kind_incompatible"
+    );
+    assert_eq!(projected["reached_core"], true);
+    assert_eq!(projected["committed"], false);
+    assert_eq!(projected["state_change_applied"], false);
+    assert_eq!(projected["retryable"], false);
+    assert_eq!(projected["retry_contract"], Value::Null);
+    assert!(projected["issues"][0]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("internally inconsistent")));
+    assert_eq!(fixture.counts()?, before);
+    assert_eq!(repository.status_bytes()?, repository_before);
+    Ok(())
+}
+
 use volicord_test_support::TestRuntimeHomeSetup;
 
 #[test]

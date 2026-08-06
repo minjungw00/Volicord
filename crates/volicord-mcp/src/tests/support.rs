@@ -1398,7 +1398,12 @@ pub(super) fn structured_error_result(result: &Value) -> Value {
         .remove("result_type");
     serde_json::from_value::<McpToolErrorResponse>(payload)
         .expect("structured tool error should match its advertised response type");
-    assert_eq!(parsed["reached_core"], false);
+    if parsed["reached_core"] == true {
+        assert_eq!(parsed["code"], "INTERNAL_CONTRACT_INCONSISTENT");
+        assert_eq!(parsed["state_change_applied"], false);
+    } else {
+        assert_eq!(parsed["reached_core"], false);
+    }
     assert_eq!(parsed["committed"], false);
     assert!(parsed["selected_variant"].is_null() || parsed["selected_variant"].is_string());
     assert!(parsed["canonical_example"].is_null() || parsed["canonical_example"].is_object());

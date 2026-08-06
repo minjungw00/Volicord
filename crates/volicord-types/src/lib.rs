@@ -255,10 +255,28 @@ mod tests {
         let valid_advisor = json!({"transitions": [advisor_transition]});
         serde_json::from_value::<WorkflowTransitionCatalog>(valid_advisor.clone())
             .expect("canonical Advisor submission contract");
-        let mut malformed_advisor = valid_advisor;
+        let mut malformed_advisor = valid_advisor.clone();
         malformed_advisor["transitions"][0]["submission_contract"]["contract"]["fixed_values"]
             ["affected_paths"] = json!(["src/lib.rs"]);
         assert!(serde_json::from_value::<WorkflowTransitionCatalog>(malformed_advisor).is_err());
+
+        let mut missing_advisor_constraint = valid_advisor.clone();
+        missing_advisor_constraint["transitions"][0]["submission_contract"]["contract"]
+            .as_object_mut()
+            .expect("Advisor contract object")
+            .remove("constraints");
+        assert!(
+            serde_json::from_value::<WorkflowTransitionCatalog>(missing_advisor_constraint)
+                .is_err()
+        );
+
+        let mut noncanonical_advisor_constraint = valid_advisor;
+        noncanonical_advisor_constraint["transitions"][0]["submission_contract"]["contract"]
+            ["constraints"]["product_repository_authority"] = json!(true);
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(
+            noncanonical_advisor_constraint
+        )
+        .is_err());
 
         let mut missing_observe_only_effect = valid["transitions"][1].clone();
         missing_observe_only_effect["fixed_authority_coordinates"] = json!(replace_coordinates);
@@ -290,12 +308,119 @@ mod tests {
         }))
         .is_err());
 
+        let mut wrong_update_scope_baseline = valid["transitions"][1].clone();
+        wrong_update_scope_baseline["submission_contract"]["contract"]
+            ["required_agent_input_witness"]["baseline_ref"] = json!("baseline_other");
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [wrong_update_scope_baseline]
+        }))
+        .is_err());
+
         let mut advisor_with_general_contract = valid["transitions"][1].clone();
         advisor_with_general_contract["fixed_authority_coordinates"] = json!(replace_coordinates);
         advisor_with_general_contract["submission_contract"] =
             valid["transitions"][1]["submission_contract"].clone();
         assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
             "transitions": [advisor_with_general_contract]
+        }))
+        .is_err());
+
+        let record_coordinates = WorkflowActionAuthorityCoordinates::RecordRun {
+            task_id: TaskId::new("task_catalog"),
+            change_unit_id: ChangeUnitId::new("change_unit_catalog"),
+            baseline_ref: BaselineRef::parse("baseline_catalog").expect("baseline"),
+            run_kind: RunKind::Implementation,
+        };
+        let record_contract = WorkflowTransitionSubmissionContract::for_current_transition(
+            TaskMode::Work,
+            &record_coordinates,
+        );
+        let record_transition = json!({
+            "action_key": {
+                "method": "volicord.record_run",
+                "semantic_variant": "record_run"
+            },
+            "actor": "agent",
+            "role": "allowed",
+            "expected_state_version": 7,
+            "fixed_authority_coordinates": record_coordinates,
+            "submission_contract": record_contract,
+            "effect_class": "execution_recording",
+            "expected_result_state": "implementation",
+            "authority_invalidation": "permitted",
+            "required_refs": []
+        });
+        serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [record_transition.clone()]
+        }))
+        .expect("current RecordRun witness");
+        let mut wrong_record_kind = record_transition;
+        wrong_record_kind["submission_contract"]["required_agent_input_witness"]["kind"] =
+            json!("direct");
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [wrong_record_kind]
+        }))
+        .is_err());
+
+        let stale_ref = StateRecordRef::new(
+            StateRecordKind::ShapingDecisionApplication,
+            "application_catalog_stale",
+            ProjectId::new("prj_catalog"),
+            Some(TaskId::new("task_catalog")),
+            Some(7),
+        );
+        let checkpoint_coordinates = WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+            task_id: TaskId::new("task_catalog"),
+            checkpoint_operation: WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                current_checkpoint_ref: StateRecordRef::new(
+                    StateRecordKind::ShapingCheckpoint,
+                    "checkpoint_catalog_current",
+                    ProjectId::new("prj_catalog"),
+                    Some(TaskId::new("task_catalog")),
+                    Some(7),
+                ),
+                predecessor_checkpoint_ref: RequiredNullable::null(),
+                retired_non_authorizing_request_refs: Vec::new(),
+                carry_forward_application_refs: Vec::new(),
+                stale_application_refs: vec![stale_ref],
+            },
+            scope_revision: 2,
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_catalog").expect("baseline"),
+            ),
+        };
+        let checkpoint_contract = WorkflowTransitionSubmissionContract::for_current_transition(
+            TaskMode::Work,
+            &checkpoint_coordinates,
+        );
+        let checkpoint_transition = json!({
+            "action_key": {
+                "method": "volicord.record_shaping_checkpoint",
+                "semantic_variant": "replace_current"
+            },
+            "actor": "agent",
+            "role": "required",
+            "expected_state_version": 7,
+            "fixed_authority_coordinates": checkpoint_coordinates,
+            "submission_contract": checkpoint_contract,
+            "effect_class": "core_state_mutation",
+            "expected_result_state": "reevaluate_current_authority",
+            "authority_invalidation": "permitted",
+            "required_refs": []
+        });
+        let mut wrong_checkpoint_variant = checkpoint_transition.clone();
+        wrong_checkpoint_variant["submission_contract"]["contract"]["submission_variant"] =
+            json!("create_initial");
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [wrong_checkpoint_variant]
+        }))
+        .is_err());
+
+        let mut wrong_stale_cardinality = checkpoint_transition;
+        wrong_stale_cardinality["submission_contract"]["contract"]
+            ["required_agent_input_witness"]["stale_authority_actions"] = json!([]);
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [wrong_stale_cardinality]
         }))
         .is_err());
 

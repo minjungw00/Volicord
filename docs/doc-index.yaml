@@ -492,8 +492,8 @@ documents:
   - api.schema.user_action
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-08-06'
-  last_verified_on: '2026-08-06'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   primary_audience:
   - agents
   - agent operators
@@ -1901,8 +1901,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-08-06'
-  last_verified_on: '2026-08-06'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -2579,8 +2579,8 @@ documents:
   - cli.command.connection.mode
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-06'
-  last_verified_on: '2026-08-06'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   primary_audience:
   - API implementers
   - agent integrators
@@ -3236,8 +3236,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-08-06'
-  last_verified_on: '2026-08-06'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   primary_audience:
   - implementers
   - maintainers

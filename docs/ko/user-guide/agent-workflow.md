@@ -57,8 +57,11 @@ Task 상태 결속 action에는 선택한 Core transition과 `action_key`가 일
 `canonical_minimal_request`는 schema 검증을 통과하는 request-shape 시작점입니다. 채워진 Agent 값은 한정된 contract 검증
 witness이며 권장 입력, 사용자 권한, 제품 결정이 아닙니다. 실제로 제출할 Task 호환 값으로
 바꾸십시오. Catalog가 표시되기 전에 현재 Agent form 각각의 완전한 witness는 현재 Store
-snapshot에 대한 정확한 adapter projection과 대응하는 Core no-commit planner를 이미
-통과합니다. 이 검사는 form이 contract로서 실행 가능함을 입증하지만 witness 값을 해당 Task에
+snapshot에 대해 대응하는 정확한 Core no-commit 메서드 planner의 허용된 plan에 도달해야
+합니다. Form action key가 현재 Agent transition action key 전체와 같을 때만 catalog를
+게시합니다. 필수 또는 허용 form witness 중 하나라도 거부되면 form catalog를 전혀 노출하지
+않고, 상태 변경을 커밋하지 않은 재시도 불가 내부 workflow-form contract 실패를 보고합니다.
+이 검사는 게시된 form이 contract로서 실행 가능함을 입증하지만 witness 값을 해당 Task에
 적합하게 만들지는 않습니다. Form은 다른 메서드나 variant에 권한을 주지 않습니다. JSON 타입과
 배열 순서를 보존하고 고정 좌표를 다시 조립하지 않습니다. 프로젝트와 예상 상태 버전은 호출자가
 보내는 field가 아니라 현재 권한에서 adapter가 주입합니다.

@@ -1159,53 +1159,59 @@ impl McpAdapter {
                 ));
             }
         };
-        result
-            .and_then(|response| {
-                response
-                    .response_value
-                    .get("no_commit_transition_plan")
-                    .cloned()
-                    .ok_or_else(|| McpAdapterError::SchemaContractFailure {
-                        tool_name: tool_name.to_owned(),
-                    })
-                    .and_then(|plan| serde_json::from_value(plan).map_err(McpAdapterError::Json))
-            })
-            .map_err(|error| match &error {
-                McpAdapterError::Core(CorePipelineError::NoCommitSubmissionRejected(rejection)) => {
-                    ActionFormCatalogError {
-                        action_key: Some(rejection.action_key()),
-                        stage: McpWorkflowContractStage::CorePlanning,
-                        detail: error.to_string(),
-                        planned_branch: None,
-                        method_error_code: Some(rejection.method_error_code()),
-                        method_error_details: rejection.method_error_details().cloned(),
-                        basis_state_version: Some(rejection.basis_state_version()),
-                        state_change_applied: rejection.state_change_applied(),
-                        committed: rejection.committed(),
-                    }
+        let response = result.map_err(|error| match &error {
+            McpAdapterError::Core(CorePipelineError::NoCommitSubmissionRejected(rejection)) => {
+                ActionFormCatalogError {
+                    action_key: Some(rejection.action_key()),
+                    stage: McpWorkflowContractStage::MethodPlanningRejected,
+                    detail: error.to_string(),
+                    planned_branch: None,
+                    method_error_code: Some(rejection.method_error_code()),
+                    method_error_details: rejection.method_error_details().cloned(),
+                    basis_state_version: Some(rejection.basis_state_version()),
+                    state_change_applied: rejection.state_change_applied(),
+                    committed: rejection.committed(),
                 }
-                _ => {
-                    let (stage, detail) = match &error {
-                        McpAdapterError::Core(CorePipelineError::Invariant { detail })
-                            if detail.contains("expected-result")
-                                || detail.contains("expected result") =>
-                        {
-                            (
-                                McpWorkflowContractStage::ExpectedResultValidation,
-                                detail.clone(),
-                            )
-                        }
-                        McpAdapterError::Core(error) => {
-                            (McpWorkflowContractStage::CorePlanning, error.to_string())
-                        }
-                        _ => (
-                            McpWorkflowContractStage::AdapterProjection,
-                            error.to_string(),
-                        ),
-                    };
-                    ActionFormCatalogError::contract(Some(form.action_key), stage, detail)
-                }
-            })
+            }
+            McpAdapterError::Core(error) => ActionFormCatalogError::contract(
+                Some(form.action_key),
+                McpWorkflowContractStage::CorePlanning,
+                error.to_string(),
+            ),
+            _ => ActionFormCatalogError::contract(
+                Some(form.action_key),
+                McpWorkflowContractStage::AdapterProjection,
+                error.to_string(),
+            ),
+        })?;
+        let plan = response
+            .response_value
+            .get("no_commit_transition_plan")
+            .cloned()
+            .ok_or_else(|| {
+                ActionFormCatalogError::contract(
+                    Some(form.action_key),
+                    McpWorkflowContractStage::CorePlanning,
+                    "accepted Core no-commit planning omitted its typed plan",
+                )
+            })?;
+        serde_json::from_value(plan).map_err(|error| {
+            ActionFormCatalogError::contract(
+                Some(form.action_key),
+                McpWorkflowContractStage::CorePlanning,
+                error.to_string(),
+            )
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn plan_action_form_submission_no_commit_for_test(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        form: &WorkflowActionForm,
+        witness: Value,
+    ) -> Result<NoCommitTransitionPlan, ActionFormCatalogError> {
+        self.plan_action_form_submission_no_commit(context, form, witness, None)
     }
 
     fn call_intake(

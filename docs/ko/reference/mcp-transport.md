@@ -628,26 +628,29 @@ form도 없습니다. 현재 Task가 있는 일반 status, mutation 성공과 �
 
 Adapter는 catalog를 노출하기 전에 현재 Agent transition을 모두 검증합니다. 정확한 submission
 contract에서 고정 값, 필수·선택 Agent 작성 slot, 완전한 typed witness request를 도출합니다.
-각 form은 transition contract 검증, witness projection, semantic validation, 정확한 Rust
-decode, 고정 값 binding, 현재 project와 state version을 주입한 정확한 adapter request
-projection, 검증된 invocation을 사용하는 정확한 Core no-commit planner를 순서대로 통과해야
+각 form은 semantic schema 검증, 정확한 Rust decode, 고정 인자 binding, 현재 project와
+state version을 주입한 정확한 adapter request projection, transition admission, 검증된
+invocation을 사용하는 정확한 Core no-commit 메서드 planner를 순서대로 통과해야
 합니다. 이어서 Core가 정확히 허용한 `planned_branch`, transition effect, Store mutation 형태,
 실제 결과 상태를 검증합니다. 허용되는 branch는 `commit_mutation`,
 `normal_no_effect_result`, `read_only_result`, `artifact_staging`입니다. 정상 no-effect branch는
 정확히 `response_kind=result`이면서 `effect_kind=no_effect`인 응답이며 typed 메서드 거부가
-아닙니다. Adapter는 현재 Agent action key가 빠짐없이 정확히 한 번씩만 나타나고 다른 form이
-없음을 totality 검사로 확인한 뒤에만 catalog를 게시합니다.
+아닙니다. Adapter는 필수·허용 Agent form 모두 허용된 메서드 plan을 받고, 게시할 form action
+key가 현재 Agent transition action key 전체와 같은지 totality 검사로 확인한 뒤에만 catalog를
+게시합니다.
 
 `canonical_minimal_request`는 schema 검증을 통과하는 request-shape 시작점으로 유지됩니다.
 그 한정된 witness 값은 form 형태 검증용이며 사용자 권한이나 제품 결정을 주장하지 않고 권장
 입력도 아닙니다. Catalog 검증은 현재 Store snapshot을 읽기 전용으로 사용하며 Store나 Product
 Repository에 효과를 만들지 않습니다. 실패하면 catalog를 노출하지 않고 `committed=false`,
 알 수 있는 경우 한정된 실패 action key와 폐쇄형 검증 stage를 포함한
-`INTERNAL_CONTRACT_INCONSISTENT`를 반환하거나 기록합니다. 필수 form을 생략하거나 가까운 form을
+`INTERNAL_CONTRACT_INCONSISTENT`를 반환하거나 기록합니다. 일부 catalog를 게시하거나 가까운 form을
 선택하지 않습니다. 정확한 witness가 `response_kind=rejected`를 만들면 Core는 plan 대신
-`NoCommitSubmissionRejected`를 반환합니다. `core_planning` diagnostics는 표시 문구에서 메서드
+`NoCommitSubmissionRejected`를 반환합니다. `method_planning_rejected` 실패는 표시 문구에서 메서드
 의미를 복원하지 않고 메서드 오류 code와 typed details, 기준 state version,
-`state_change_applied=false`, `committed=false`를 보존합니다.
+`reached_core=true`, `state_change_applied=false`, `committed=false`를 보존합니다. 거부된 witness는
+유효하지 않고 실행할 수 없으므로 retry나 example로 반환하지 않으며 전체 catalog 게시를
+막습니다. Core 전 form 구성 실패는 `reached_core=false`를 유지합니다.
 
 정규 공개 메서드·도구 registry는 모든 호출 대상을 `read_only`,
 `not_task_state_bound`, `user_channel_authority`, `task_state_bound` 중 하나로 분류합니다.
@@ -804,6 +807,9 @@ McpToolErrorResponse:
   committed: boolean
   failed_action_key: WorkflowActionKey | null
   failed_stage: McpWorkflowContractStage | null
+  method_error_code: ErrorCode | null
+  method_error_details: object | null
+  state_change_applied: boolean
   reported_issue_count: integer
   truncated: boolean
   issues: McpToolErrorIssue[]
@@ -817,8 +823,8 @@ McpToolErrorResponse:
 ```
 
 `INTERNAL_CONTRACT_INCONSISTENT`에서는 고정된 tool-error byte 한도를 지키기 위해 더 큰
-`contract_diagnostics` projection을 생략하더라도 `failed_action_key`와 `failed_stage`가 한정된
-실패 위치로 남습니다.
+`contract_diagnostics` projection을 생략하더라도 `failed_action_key`, `failed_stage`,
+`method_error_code`, `method_error_details`, `state_change_applied`가 한정된 실패 사실로 남습니다.
 
 유효하지 않은 인자에서는 독립적으로 유효한 `project_selector`, `task_id`, 제공된
 action-form identity만 먼저 해석합니다. 이 값이 현재 Task를 식별하면 adapter는 한도가
@@ -1114,9 +1120,11 @@ McpWorkflowContractDiagnostics:
   scalar_contract_digest: RequestHash
 ```
 
-`McpWorkflowContractStage`는 `transition_contract`, `witness_projection`,
-`semantic_validation`, `exact_decode`, `fixed_binding`, `adapter_projection`,
-`core_planning`, `expected_result_validation`, `catalog_totality` 중 하나입니다.
+`McpWorkflowContractStage`는 `semantic_schema_validation`, `exact_decode`,
+`fixed_argument_binding`, `adapter_projection`, `transition_admission`, `core_planning`,
+`method_planning_rejected`, `expected_result_validation`, `catalog_totality` 중 하나입니다.
+`core_planning`은 infrastructure 또는 plan carrier 실패를 나타내며 typed 메서드 거부에는
+사용하지 않습니다.
 
 한도와 redaction을 적용한 이 fact는 workflow 거부와 contract inconsistency, 기존 session
 diagnostics 경로에서 사용하는 읽기 전용 projection입니다. 권한을 변경하거나 두 번째 workflow

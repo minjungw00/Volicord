@@ -3503,6 +3503,37 @@ impl WorkflowTransitionSubmissionContract {
         {
             return false;
         }
+        if let (
+            Self::UpdateScope { contract },
+            WorkflowActionAuthorityCoordinates::UpdateScope { baseline_ref, .. },
+        ) = (self, coordinates)
+        {
+            let witness = match contract {
+                WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::GeneralReplaceCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                } => required_agent_input_witness,
+            };
+            if witness.baseline_ref != *baseline_ref {
+                return false;
+            }
+        }
         match (self, coordinates) {
             (
                 Self::RecordShapingCheckpoint { contract },
@@ -3568,10 +3599,12 @@ impl WorkflowTransitionSubmissionContract {
                     contract:
                         WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit {
                             fixed_values,
+                            constraints,
                             ..
                         }
                         | WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit {
                             fixed_values,
+                            constraints,
                             ..
                         },
                 },
@@ -3582,6 +3615,12 @@ impl WorkflowTransitionSubmissionContract {
             ) => {
                 fixed_values.affected_paths.is_empty()
                     && fixed_values.effect_contract == advisor_observe_only_effect_contract()
+                    && *constraints
+                        == WorkflowAdvisorChangeUnitConstraints {
+                            product_repository_authority: FalseValue,
+                            affected_paths_agent_authored: FalseValue,
+                            effect_contract_agent_authored: FalseValue,
+                        }
             }
             (Self::UpdateScope { .. }, WorkflowActionAuthorityCoordinates::UpdateScope { .. }) => {
                 matches!(
@@ -3590,6 +3629,24 @@ impl WorkflowTransitionSubmissionContract {
                         contract: WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit { .. }
                     }
                 )
+            }
+            (
+                Self::RecordRun {
+                    required_agent_input_witness,
+                    ..
+                },
+                WorkflowActionAuthorityCoordinates::RecordRun {
+                    baseline_ref,
+                    run_kind,
+                    ..
+                },
+            ) => {
+                required_agent_input_witness.kind == *run_kind
+                    && required_agent_input_witness
+                        .observed_changes
+                        .baseline_ref
+                        .as_ref()
+                        == Some(baseline_ref)
             }
             _ => true,
         }

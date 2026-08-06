@@ -724,8 +724,11 @@ Agent 작성 값이 아니며 이 contract는 Product Repository 권한을 부�
 MCP는 각 Agent descriptor를 정확히 하나의 실행 가능한 variant별 action form으로
 투영하며 descriptor가 없으면 form도 투영하지 않습니다. Form 생성은 schema 경로, semantic
 값, submission contract의 입력 역할, 정확한 binding, 검증을 통과하는 canonical minimal
-request를 같은 snapshot에서 확인합니다. MCP form과 입력 slot은 Core 상태가
-아닙니다.
+request를 같은 snapshot에서 확인합니다. Submission contract는 현재 좌표와 다른 RecordRun
+witness kind·기준선, 선택된 동작과 다른 Change Unit·checkpoint contract variant, 비정규 Advisor
+고정 제약, 현재 stale 권한과 다른 stale-authority witness 개수처럼 중복 표현된 구조적 모순도
+거부합니다. 이 검사는 심층 방어이며 정확한 Core no-commit 메서드 planning이 계속 실행 가능한
+form 게시 gate를 담당합니다. MCP form과 입력 slot은 Core 상태가 아닙니다.
 
 Ancestor에서 호환되게 carry-forward된 shaping application은 source gap을 복사하지 않아도
 `applied`로 유지됩니다. Stale 권한은 permission을 부여하지 않고 정확한 ref를 가진 명시적

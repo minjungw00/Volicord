@@ -308,13 +308,13 @@ pub struct McpWorkflowContractDiagnostics {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpWorkflowContractStage {
-    TransitionContract,
-    WitnessProjection,
-    SemanticValidation,
+    SemanticSchemaValidation,
     ExactDecode,
-    FixedBinding,
+    FixedArgumentBinding,
     AdapterProjection,
+    TransitionAdmission,
     CorePlanning,
+    MethodPlanningRejected,
     ExpectedResultValidation,
     CatalogTotality,
 }
@@ -400,6 +400,9 @@ pub struct McpToolErrorResponse {
     pub committed: bool,
     pub failed_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub failed_stage: RequiredNullable<McpWorkflowContractStage>,
+    pub method_error_code: RequiredNullable<volicord_types::values::ErrorCode>,
+    pub method_error_details: RequiredNullable<JsonObject>,
+    pub state_change_applied: bool,
     #[schemars(range(min = 1, max = "MAX_VALIDATION_ISSUES"))]
     pub reported_issue_count: usize,
     pub truncated: bool,

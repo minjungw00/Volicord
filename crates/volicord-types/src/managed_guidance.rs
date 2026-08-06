@@ -15,7 +15,9 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "satisfy_task_mode_specific_required_and_optional_agent_inputs",
     "advisor_change_units_are_observe_only_and_pathless",
     "method_examples_are_not_authority_bearing_requests",
-    "use_only_action_forms_that_pass_exact_core_no_commit_planning",
+    "use_only_action_forms_with_accepted_exact_method_no_commit_plans",
+    "method_rejected_form_witness_is_invalid_and_non_executable",
+    "never_retry_a_method_rejected_form_witness",
     "action_form_never_authorizes_different_method_or_semantic_variant",
     "use_only_core_returned_recovery_action_and_form",
     "use_typed_rejection_attempt_details_for_recovery",
@@ -83,6 +85,7 @@ pub const WORKFLOW_CONTRACT_FACTS: &[&str] = &[
     "every_nonterminal_state_has_user_wait_agent_transition_or_terminal_path",
     "core_admission_consumes_exact_transition_descriptor",
     "every_transition_owns_a_method_and_state_specific_submission_contract",
+    "transition_submission_contract_rejects_duplicated_authority_semantic_mismatches",
     "advisor_scope_submission_fixes_empty_paths_and_canonical_observe_only_effects",
     "retry_contract_projects_only_typed_core_recovery",
     "current_submitted_canonicality_match_and_compatibility_remain_distinct",
@@ -97,6 +100,9 @@ pub const SUBMISSION_CONTRACT_FACTS: &[&str] = &[
     "submission_contract_witnesses_are_bounded_and_typed",
     "advisor_scope_submission_fixes_empty_paths_and_canonical_observe_only_effects",
     "record_run_submission_fixes_current_task_change_unit_and_baseline_and_authors_kind",
+    "record_run_validation_witness_kind_and_baseline_match_current_authority_coordinates",
+    "checkpoint_and_change_unit_submission_variants_match_current_authority_operations",
+    "checkpoint_stale_authority_witness_cardinality_matches_current_stale_authority",
     "method_examples_never_supply_submission_contract_values",
 ];
 
@@ -109,6 +115,9 @@ pub const ACTION_FORM_CONTRACT_FACTS: &[&str] = &[
     "canonical_minimal_request_uses_only_bounded_submission_contract_witness_values",
     "method_examples_never_supply_live_action_form_policy_or_witness_values",
     "canonical_minimal_request_passes_schema_and_binding_validation",
+    "complete_submission_witness_requires_an_accepted_exact_method_no_commit_plan",
+    "one_rejected_agent_transition_witness_suppresses_the_entire_action_form_catalog",
+    "published_action_form_keys_equal_all_current_agent_transition_keys",
     "task_bound_method_is_admitted_before_core",
     "allowed_task_bound_mutation_requires_exact_method_and_variant_form_ref",
     "action_form_never_authorizes_different_method_or_semantic_variant",
@@ -119,6 +128,7 @@ pub const ACTION_FORM_CONTRACT_FACTS: &[&str] = &[
     "invalid_arguments_load_only_independently_valid_authority_context",
     "missing_core_recovery_form_is_internal_contract_inconsistency",
     "pre_core_rejection_reports_no_commit_and_no_state_change",
+    "method_planning_rejection_reports_typed_method_error_without_retry",
     "authority_basis_mismatch_reports_typed_expected_and_received_values",
 ];
 
@@ -132,6 +142,7 @@ pub const MCP_SEMANTIC_SCHEMA_FACTS: &[&str] = &[
     "runtime_discovery_is_bounded",
     "runtime_discovery_preserves_load_bearing_semantic_annotations",
     "canonical_examples_validate_and_decode_through_one_descriptor",
+    "workflow_contract_failures_report_typed_stage_method_error_commit_and_side_effect_facts",
 ];
 
 #[derive(Serialize)]

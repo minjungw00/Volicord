@@ -739,8 +739,14 @@ authority. MCP projects
 each Agent descriptor into exactly one executable, variant-specific action form
 and projects no form without a descriptor. Form generation checks schema paths,
 semantic values, submission-contract input roles, exact binding, and a
-validating canonical minimal request against this same snapshot. MCP forms
-and input slots are not Core state.
+validating canonical minimal request against this same snapshot. Submission
+contracts also reject duplicated structural contradictions, including a
+RecordRun witness kind or baseline that differs from its current coordinates,
+a Change Unit or checkpoint contract variant that differs from its selected
+operation, noncanonical Advisor fixed constraints, and stale-authority witness
+cardinality that differs from current stale authority. These checks are defense
+in depth; exact Core no-commit method planning remains the executable-form
+publication gate. MCP forms and input slots are not Core state.
 
 A compatible shaping application carried from an ancestor remains `applied`
 without copying its source gap. Stale authority grants no permission and

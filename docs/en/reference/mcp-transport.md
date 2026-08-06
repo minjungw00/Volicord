@@ -717,17 +717,18 @@ catalog. A singular form is not independently authoritative.
 Before exposing a catalog, the adapter validates every current Agent
 transition. It derives fixed values, required or optional Agent-authored slots,
 and a complete typed witness request from the exact submission contract. Each
-form must pass, in order, transition-contract validation, witness projection,
-semantic validation, exact Rust decoding, fixed-value binding, exact adapter
-request projection with the current injected project and state version, and the
-exact Core no-commit planner under a verified invocation. Core then validates
+form must pass, in order, semantic-schema validation, exact Rust decoding,
+fixed-argument binding, exact adapter request projection with the current
+injected project and state version, transition admission, and the exact Core
+no-commit method planner under a verified invocation. Core then validates
 the exact accepted `planned_branch`, transition effect, Store mutation shape,
 and actual result state. Accepted branches are `commit_mutation`,
 `normal_no_effect_result`, `read_only_result`, and `artifact_staging`. A normal
 no-effect branch is specifically a `response_kind=result` response with
 `effect_kind=no_effect`; it is not a typed method rejection. The adapter
-publishes the catalog only after a totality check proves that every current
-Agent action key appears exactly once and no other form appears.
+publishes the catalog only after every required and allowed Agent form receives
+an accepted method plan and a totality check proves that the published form
+action keys equal all current Agent transition action keys.
 
 The `canonical_minimal_request` remains the schema-valid request-shape starting
 point. Its bounded witness values validate the form shape; they do not claim
@@ -735,12 +736,15 @@ user authority or a product decision and are not recommendations. Catalog
 validation uses the current Store snapshot read-only and creates no Store or
 Product Repository effect. Failure exposes no catalog and returns or records
 `INTERNAL_CONTRACT_INCONSISTENT` with `committed=false`, the bounded failed
-action key and closed validation stage when known; it never omits a required
-form or chooses a nearby form. If the exact witness produces
+action key and closed validation stage when known; it never publishes a partial
+catalog or chooses a nearby form. If the exact witness produces
 `response_kind=rejected`, Core returns `NoCommitSubmissionRejected` instead of a
-plan. The `core_planning` diagnostics preserve the method error code and typed
-details, basis state version, `state_change_applied=false`, and
-`committed=false` without reconstructing method semantics from display text.
+plan. The `method_planning_rejected` failure preserves the method error code and
+typed details, basis state version, `reached_core=true`,
+`state_change_applied=false`, and `committed=false` without reconstructing
+method semantics from display text. The rejected witness is invalid and
+non-executable, is not returned as a retry or example, and suppresses the whole
+catalog. Pre-Core form construction failures retain `reached_core=false`.
 
 The canonical public method/tool registries classify every callable as
 `read_only`, `not_task_state_bound`, `user_channel_authority`, or
@@ -916,6 +920,9 @@ McpToolErrorResponse:
   committed: boolean
   failed_action_key: WorkflowActionKey | null
   failed_stage: McpWorkflowContractStage | null
+  method_error_code: ErrorCode | null
+  method_error_details: object | null
+  state_change_applied: boolean
   reported_issue_count: integer
   truncated: boolean
   issues: McpToolErrorIssue[]
@@ -928,8 +935,9 @@ McpToolErrorResponse:
   contract_diagnostics: McpWorkflowContractDiagnostics | null
 ```
 
-For `INTERNAL_CONTRACT_INCONSISTENT`, `failed_action_key` and `failed_stage`
-remain the bounded failure locator even when the larger
+For `INTERNAL_CONTRACT_INCONSISTENT`, `failed_action_key`, `failed_stage`,
+`method_error_code`, `method_error_details`, and `state_change_applied` remain
+the bounded failure facts even when the larger
 `contract_diagnostics` projection is omitted to satisfy the fixed tool-error
 byte budget.
 
@@ -1251,10 +1259,12 @@ McpWorkflowContractDiagnostics:
   scalar_contract_digest: RequestHash
 ```
 
-`McpWorkflowContractStage` is one of `transition_contract`,
-`witness_projection`, `semantic_validation`, `exact_decode`, `fixed_binding`,
-`adapter_projection`, `core_planning`, `expected_result_validation`, or
-`catalog_totality`.
+`McpWorkflowContractStage` is one of `semantic_schema_validation`,
+`exact_decode`, `fixed_argument_binding`, `adapter_projection`,
+`transition_admission`, `core_planning`, `method_planning_rejected`,
+`expected_result_validation`, or `catalog_totality`. `core_planning` identifies
+an infrastructure or plan-carrier failure; it is never used for a typed method
+rejection.
 
 These bounded, redacted facts are a read-only projection used on workflow
 rejections and contract inconsistencies and by the existing session-diagnostic
