@@ -130,8 +130,11 @@ impl ReachabilityCoverage {
             match transition.actor {
                 WorkflowTransitionActor::Agent => {
                     agent_transition_count += 1;
-                    crate::model_check_current_transition(workflow, transition)
-                        .unwrap_or_else(|error| panic!("{label}: {error}"));
+                    assert_eq!(
+                        catalog.transition(&transition.action_key),
+                        Some(transition),
+                        "{label}: every enumerated Agent descriptor must retain exact catalog identity"
+                    );
                 }
                 WorkflowTransitionActor::User => {
                     user_transition_count += 1;

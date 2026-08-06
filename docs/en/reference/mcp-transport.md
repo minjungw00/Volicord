@@ -711,18 +711,26 @@ It appears in normal Task status, mutation success and rejection presentation,
 and authoritative argument context. Status with no active Task has a null
 catalog. A singular form is not independently authoritative.
 
-Before exposing a form, the adapter derives fixed values and required or
-optional Agent-authored slots from the exact submission contract through the
-wire semantic descriptors. It confirms that every fixed path exists in the
-selected method-and-variant schema, every fixed value has the declared
-semantic type, no fixed value is ignored, and `canonical_minimal_request`
-passes semantic validation, exact Rust decoding, fixed-value binding, and
-exact variant selection. The minimal request uses only bounded typed witness
-values from the submission contract. Those values validate the form shape;
-they do not claim user authority or a product decision and are not
-recommendations. Failure exposes
-no form and returns or records `INTERNAL_CONTRACT_INCONSISTENT`; it never chooses
-a nearby form.
+Before exposing a catalog, the adapter validates every current Agent
+transition. It derives fixed values, required or optional Agent-authored slots,
+and a complete typed witness request from the exact submission contract. Each
+form must pass, in order, transition-contract validation, witness projection,
+semantic validation, exact Rust decoding, fixed-value binding, exact adapter
+request projection with the current injected project and state version, and the
+exact Core no-commit planner under a verified invocation. Core then validates
+the planned transition effect and actual result state, or the exact typed
+no-effect result when current policy blocks that operation. The adapter publishes
+the catalog only after a totality check proves that every current Agent action
+key appears exactly once and no other form appears.
+
+The `canonical_minimal_request` remains the schema-valid request-shape starting
+point. Its bounded witness values validate the form shape; they do not claim
+user authority or a product decision and are not recommendations. Catalog
+validation uses the current Store snapshot read-only and creates no Store or
+Product Repository effect. Failure exposes no catalog and returns or records
+`INTERNAL_CONTRACT_INCONSISTENT` with `committed=false`, the bounded failed
+action key and closed validation stage when known; it never omits a required
+form or chooses a nearby form.
 
 The canonical public method/tool registries classify every callable as
 `read_only`, `not_task_state_bound`, `user_channel_authority`, or
@@ -891,6 +899,8 @@ McpToolErrorResponse:
   retryable: boolean
   reached_core: boolean
   committed: boolean
+  failed_action_key: WorkflowActionKey | null
+  failed_stage: McpWorkflowContractStage | null
   reported_issue_count: integer
   truncated: boolean
   issues: McpToolErrorIssue[]
@@ -902,6 +912,11 @@ McpToolErrorResponse:
   transition_rejection: TransitionRejection | null
   contract_diagnostics: McpWorkflowContractDiagnostics | null
 ```
+
+For `INTERNAL_CONTRACT_INCONSISTENT`, `failed_action_key` and `failed_stage`
+remain the bounded failure locator even when the larger
+`contract_diagnostics` projection is omitted to satisfy the fixed tool-error
+byte budget.
 
 Invalid arguments bootstrap only independently valid `project_selector`,
 `task_id`, and present action-form identity. When they identify a current Task,
@@ -1201,11 +1216,18 @@ McpWorkflowContractDiagnostics:
   attempted_action_key: WorkflowActionKey | null
   typed_rejection_reason: TransitionRejectionReason | null
   recovery_action_key: WorkflowActionKey | null
+  failed_action_key: WorkflowActionKey | null
+  failed_stage: McpWorkflowContractStage | null
   workflow_contract_digest: RequestHash
   action_form_contract_digest: RequestHash
   semantic_schema_digest: RequestHash
   scalar_contract_digest: RequestHash
 ```
+
+`McpWorkflowContractStage` is one of `transition_contract`,
+`witness_projection`, `semantic_validation`, `exact_decode`, `fixed_binding`,
+`adapter_projection`, `core_planning`, `expected_result_validation`, or
+`catalog_totality`.
 
 These bounded, redacted facts are a read-only projection used on workflow
 rejections and contract inconsistencies and by the existing session-diagnostic

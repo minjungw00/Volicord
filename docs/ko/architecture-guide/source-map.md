@@ -153,7 +153,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, Store 오류 세부사항 projection, 플랫폼 소유 Product Repository 관찰 실패의 중립 typed 운영 projection. |
+| `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, 정확한 typed no-commit transition-submission mode를 담당합니다. 이 mode는 읽기 전용 현재 Store를 대상으로 메서드 admission, 정규화, policy, semantic validation, mutation planning, effect 검증, 실제 결과 검증을 재사용하고 transaction과 모든 영속 또는 repository 효과 전에 멈춥니다. 또한 Store 오류 세부사항 projection과 플랫폼 소유 Product Repository 관찰 실패의 중립 typed 운영 projection을 담당합니다. |
 | `crates/volicord-core/src/operation_plan.rs` | Task와 선택적 Change Unit 식별자, 순서가 정해진 Store mutation, event payload로 구성된 메서드 중립 commit 연산 입력. 공개 메서드 결과 또는 응답 타입을 포함하지 않습니다. |
 | `crates/volicord-core/src/method_execution.rs` | 메서드 공통 요청 준비, mutation policy 선택, replay decoding, 저장 scalar 변환, generic method-plan 오류 carrier를 담당합니다. Aggregate policy나 source별 오류 매핑은 담당하지 않습니다. |
 | `crates/volicord-core/src/method_rejection.rs` | 공유 validation 및 rejection 응답 구성과 메서드 중립 dry-run summary를 담당합니다. |
@@ -167,7 +167,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-core/src/state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs` | Store와 독립적으로 typed fact를 공개 상태 summary와 증거 또는 보장 표시 값으로 투영합니다. |
 | `crates/volicord-core/src/guidance.rs` | Adapter-neutral typed blocker remediation, 표시 action 정규화, primary 표시 선택, 연산 범주 projection을 담당하며 workflow 권한은 담당하지 않습니다. |
 | `crates/volicord-core/src/workflow_projection.rs` | 현재 유효 graph에서 엄격한 정규화 `WorkflowSnapshot`을 구성하고 workflow kind, next actor, typed blocker, required ref, 별도 close readiness, 결정적 고정 좌표 `WorkflowTransitionCatalog`를 유일하게 선택하는 순수 `WorkflowMachine`. |
-| `crates/volicord-core/src/methods/tests/workflow_state_space.rs` | Catalog 고유성, required member 무결성, transition 소유 admission, nonterminal liveness, 정확한 typed recovery membership, Core/MCP action-form parity를 검사하는 결정적 reachable-state 탐색. |
+| `crates/volicord-core/src/methods/tests/workflow_state_space.rs` | Catalog 고유성, required member 무결성, transition 소유 admission identity, nonterminal liveness, 정확한 typed recovery membership을 검사하는 결정적 순수 reachable-state 탐색. 실제 form-to-Core no-commit 실행 가능성 coverage는 Store 기반 MCP journey test가 담당합니다. |
 | `crates/volicord-core/src/summary_text.rs` | CLI 문법, transport framing, Markdown, terminal rendering이 없는 adapter-neutral 공개 `SummaryCard` text projection을 담당합니다. |
 | `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | 집중된 state-record 참조 변환과 typed Task 상태 해석을 담당합니다. |
 | `crates/volicord-core/src/task_policy.rs` | Typed lifecycle 해석과 lifecycle mutation 계획을 포함하는 재사용 가능한 Task policy를 담당합니다. |
@@ -274,7 +274,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-mcp-wire/src/methods.rs` | 정확한 MCP 인자, 구조화 결과, workflow action form, 현재 권한 인자 맥락, retry contract, 운영 오류, 간결한 mutation, UserAction projection, 직렬화, 생성 요청/결과 schema 소유권. |
+| `crates/volicord-mcp-wire/src/methods.rs` | 정확한 MCP 인자, 구조화 결과, workflow action form, 현재 권한 인자 맥락, retry contract, 한정된 workflow-contract 실패 action·stage 진단, 운영 오류, 간결한 mutation, UserAction projection, 직렬화, 생성 요청/결과 schema 소유권. |
 | `crates/volicord-mcp-wire/src/action_form.rs` | 폐쇄형 transition submission-contract branch에서 MCP 요청 경로로 가는 정규 projection, 정확한 제출 variant selector, 필수·선택 Agent 경로와 고정 경로 소유권, descriptor 무결성 검사. |
 | `crates/volicord-mcp-wire/src/semantic_schema.rs` | 닫힌 타입 소유 semantic schema node, 일반 required-nullable 의미, 명시적 discriminator, branch-local semantic 검증 metadata, 한도 있고 annotation을 보존하는 runtime projection, 결정적 JSON Schema와 descriptor digest, canonical example, descriptor 무결성 검증. |
 | `crates/volicord-mcp-wire/src/tool_contracts.rs` | Input/output descriptor, description, typed canonical example, 정확한 request decoding, catalog 무결성을 묶는 단일 `AgentToolId` 기반 MCP 계약 entry. |
@@ -299,13 +299,13 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list`와 `tools/call` parameter 디코딩, 정규 도구 선택, adapter/Core 호출, 공유 정규 tool-result carrier 조립. Transport message framing이나 mutation, recovery, UserAction, metric projection은 담당하지 않습니다. |
 | `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail 선택, effect anchor 구성, 간결한 method-result projection, 새 authority 구성, capability 기반 정상 결과 예산 집행. |
 | `crates/volicord-mcp/src/authority_refresh.rs` | Mutation 뒤 Agent Session binding, 현재 authority 다시 읽기, 좌표 검증, 새 compact authority receipt와 tagged workflow 권한 추출. |
-| `crates/volicord-mcp/src/action_form.rs` | 중립 Agent `TransitionDescriptor`와 정확한 submission contract에서 결정적 메서드-variant MCP form catalog, 고정 binder, contract 소유 검증 witness, variant-aware 권한 전용 retry contract를 만드는 순수 descriptor 결속 projection. 메서드 example로 form을 채우거나 transition 가용성을 다시 계산하지 않습니다. |
+| `crates/volicord-mcp/src/action_form.rs` | 중립 Agent `TransitionDescriptor`와 정확한 submission contract에서 결정적 메서드-variant MCP form, 고정 binder, 완전한 contract 소유 검증 witness, variant-aware 권한 전용 retry contract, 정확한 catalog totality 검사를 만드는 descriptor 결속 projection. 주입된 validator를 통해 semantic, decode, binding, adapter, Core 검증을 순서대로 수행하며 메서드 example로 form을 채우거나 transition 가용성을 다시 계산하지 않습니다. |
 | `crates/volicord-mcp/src/committed_result_recovery.rs` | Mutation을 다시 시도하지 않으면서 committed mutation projection, refresh, post-effect failure 뒤 capability가 선택하는 authority 우선 bounded recovery. |
 | `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction 좌표 추출, neutral current fact 다시 읽기, adapter 소유 safe MCP 결과 구성, neutral failure mapping, 공유 CLI inbox fallback 부착. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding과 diagnostic event 영속화, 계약이 허용하는 diagnostic carrier failure의 한정된 best-effort 처리. |
 | `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic session 생성과 session 범위 tools-list, method-call, status-reread workflow metric. |
 | `crates/volicord-mcp/src/diagnostics.rs` | 폐쇄형 MCP diagnostic mapping, 공유 finding 구성, bootstrap 및 영속 terminal projection에서 플랫폼 담당 diagnostic code와 action class 보존. |
-| `crates/volicord-mcp/src/adapter.rs` | 유지되는 연산 전 routing identity, 유효하지 않은 인자를 위한 한도 있는 읽기 전용 현재 권한 bootstrap, mutation Core 진입 전 정확한 메서드·semantic variant·action-form-ref admission, 활성 mutation-context 상관관계, context에 결합된 Core 호출 API, Core 밖의 managed in-chat integration-verification 조율. |
+| `crates/volicord-mcp/src/adapter.rs` | 유지되는 연산 전 routing identity, 유효하지 않은 인자를 위한 한도 있는 읽기 전용 현재 권한 bootstrap, mutation Core 진입 전 정확한 메서드·semantic variant·action-form-ref admission, 활성 mutation-context 상관관계, context에 결합된 Core 호출 API를 담당합니다. Catalog를 게시할 때는 모든 완전한 witness를 정확한 메서드 adapter로 투영하고 읽기 전용 현재 권한에서 검증된 invocation을 파생한 뒤 대응하는 Core no-commit planner를 호출합니다. 또한 Core 밖의 managed in-chat begin/probe/get integration-verification를 조율합니다. |
 | `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청과 현재 managed workflow의 메서드 그룹·variant catalog admission, 정확한 메서드-variant form과 고정 권한 인자, 타입 소유 schema와 retry contract, 정직한 pre-Core 거부 보고, Store 유래 현재 권한, 변경 불가능한 이력 제외, 정확한 stale 복구, 새 UserAction identity, 명시적 shaping과 advance, implementation 보존 거부, rejection/recovery 표면화, close review, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Descriptor를 소비해 `AgentToolId` 정의, protocol profile용 schema 압축, annotation, 가시성, 명시적 server의 충돌 검사 Codex callable catalog를 조립합니다. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Wire 담당 semantic validator tree와 metadata를 통한 known-tool 인자 및 출력 검증. |

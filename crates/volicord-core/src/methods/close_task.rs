@@ -248,7 +248,7 @@ impl CoreService {
                     &prepared.context.project_state,
                     PlanError::Core(error),
                 )?;
-                return Ok(response.with_prepared_context(&prepared));
+                return self.complete_prepared_response(response, &prepared);
             }
         };
         let plan = match plan_close_task(
@@ -263,7 +263,7 @@ impl CoreService {
             Err(error) => {
                 let response =
                     plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
-                return Ok(response.with_prepared_context(&prepared));
+                return self.complete_prepared_response(response, &prepared);
             }
         };
         self.execute_prepared_request(
@@ -318,7 +318,7 @@ impl CoreService {
                     &prepared.context.project_state,
                     PlanError::Core(error),
                 )?;
-                return Ok(response.with_prepared_context(&prepared));
+                return self.complete_prepared_response(response, &prepared);
             }
         };
         let mut plan = match plan_close_task(
@@ -333,7 +333,7 @@ impl CoreService {
             Err(error) => {
                 let response =
                     plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
-                return Ok(response.with_prepared_context(&prepared));
+                return self.complete_prepared_response(response, &prepared);
             }
         };
 
@@ -356,7 +356,7 @@ impl CoreService {
             Err(error) => {
                 let response =
                     plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
-                return Ok(response.with_prepared_context(&prepared));
+                return self.complete_prepared_response(response, &prepared);
             }
         };
         if !continuity_plans.is_empty() {

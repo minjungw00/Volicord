@@ -22,6 +22,7 @@ use std::time::SystemTime;
 use volicord_core::pipeline::{
     CorePipelineError, CoreService, GitWorkspaceContext, InvocationContext, PipelineResponse,
 };
+use volicord_core::TransitionSubmission;
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_mcp_wire::{
     status_include, AuthoritativeArgumentContext, McpAdvanceTaskArguments,
@@ -31,7 +32,7 @@ use volicord_mcp_wire::{
     McpRecordRunArguments, McpRecordShapingCheckpointArguments, McpRequestUserActionArguments,
     McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments, McpToolErrorCode,
     McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments, McpWorkflowAdmissionRejection,
-    McpWorkflowContractDiagnostics, WorkflowActionForm,
+    McpWorkflowContractDiagnostics, McpWorkflowContractStage, WorkflowActionForm,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
@@ -65,7 +66,9 @@ use volicord_types::methods::{
     RequestUserActionRequest, RequestUserActionResponse, StageArtifactRequest, StatusRequest,
     UpdateScopeRequest, WorkflowActionAdmissionClass,
 };
-use volicord_types::schema::{RequiredNullable, ToolEnvelope, WorkflowProjection};
+use volicord_types::schema::{
+    RequiredNullable, ToolEnvelope, WorkflowActionKey, WorkflowProjection,
+};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
     IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
@@ -109,8 +112,15 @@ pub(crate) struct ManagedAgentSessionBinding {
 
 impl McpDerivedInvocationContext {
     fn core_invocation(&self) -> InvocationContext {
+        self.core_invocation_for_category(self.operation_category)
+    }
+
+    fn core_invocation_for_category(
+        &self,
+        operation_category: OperationCategory,
+    ) -> InvocationContext {
         let mut invocation = InvocationContext::agent_connection(
-            self.operation_category,
+            operation_category,
             self.validated_agent_session.clone(),
         );
         if let Some(workspace) = self.git_workspace_context.as_ref() {
@@ -127,6 +137,7 @@ pub struct McpAdapter {
     routing_runtime_home_identity: Result<CanonicalRuntimeHomePath, String>,
     pub(crate) context: McpConnectionContext,
     default_agent_session_binding: Option<ManagedAgentSessionBinding>,
+    planning_action_key: Option<WorkflowActionKey>,
 }
 
 impl PartialEq for McpAdapter {
@@ -135,6 +146,7 @@ impl PartialEq for McpAdapter {
             && self.routing_runtime_home_identity == other.routing_runtime_home_identity
             && self.context == other.context
             && self.default_agent_session_binding == other.default_agent_session_binding
+            && self.planning_action_key == other.planning_action_key
     }
 }
 
@@ -151,6 +163,7 @@ impl McpAdapter {
             routing_runtime_home_identity,
             context,
             default_agent_session_binding: None,
+            planning_action_key: None,
         }
     }
 
@@ -945,10 +958,16 @@ impl McpAdapter {
             .workflow
             .checkpoint()
             .map(|checkpoint| checkpoint.checkpoint_ref.clone());
-        let action_form_catalog = workflow_action_form_catalog(&project_id, &authority.workflow)
-            .map_err(|_| McpAdapterError::InternalContractInconsistent {
+        let action_form_catalog = self
+            .validated_workflow_action_form_catalog(
+                context,
+                &project_id,
+                &authority.workflow,
+                session,
+            )
+            .map_err(|failure| McpAdapterError::InternalContractInconsistent {
                 tool_name: "workflow_action_form_catalog".to_owned(),
-                reached_core: false,
+                reached_core: failure.reached_core(),
                 transition_rejection: None,
                 diagnostics: Box::new(McpWorkflowContractDiagnostics {
                     normalized_workflow_snapshot: authority.workflow.clone(),
@@ -957,6 +976,8 @@ impl McpAdapter {
                     attempted_action_key: RequiredNullable::null(),
                     typed_rejection_reason: RequiredNullable::null(),
                     recovery_action_key: RequiredNullable::null(),
+                    failed_action_key: RequiredNullable::new(failure.action_key),
+                    failed_stage: RequiredNullable::some(failure.stage),
                     workflow_contract_digest:
                         volicord_types::managed_guidance::workflow_contract_semantic_digest(),
                     action_form_contract_digest:
@@ -979,6 +1000,115 @@ impl McpAdapter {
             workflow: RequiredNullable::some(authority.workflow),
             action_form_catalog: RequiredNullable::some(action_form_catalog),
         }))
+    }
+
+    pub(crate) fn validated_workflow_action_form_catalog(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        project_id: &ProjectId,
+        workflow: &WorkflowProjection,
+        session: Option<AgentSessionCoordinates<'_>>,
+    ) -> Result<
+        volicord_mcp_wire::WorkflowActionFormCatalog,
+        crate::action_form::ActionFormCatalogError,
+    > {
+        workflow_action_form_catalog(project_id, workflow, |form, mut witness| {
+            witness
+                .as_object_mut()
+                .ok_or_else(|| {
+                    (
+                        McpWorkflowContractStage::AdapterProjection,
+                        "complete action-form witness is not an object".to_owned(),
+                    )
+                })?
+                .insert("project_selector".to_owned(), serde_json::json!(project_id));
+            self.plan_action_form_submission_no_commit(context, form, witness, session)
+        })
+    }
+
+    fn plan_action_form_submission_no_commit(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        form: &WorkflowActionForm,
+        witness: Value,
+        session: Option<AgentSessionCoordinates<'_>>,
+    ) -> Result<(), (McpWorkflowContractStage, String)> {
+        let mut planner = self.clone();
+        planner.planning_action_key = Some(form.action_key);
+        let tool = AgentToolId::from_method(form.action_key.method).ok_or_else(|| {
+            (
+                McpWorkflowContractStage::AdapterProjection,
+                "current action has no MCP adapter projection".to_owned(),
+            )
+        })?;
+        let tool_name = tool.wire_name();
+        let version = Some(form.expected_state_version);
+        let result = match form.action_key.method {
+            MethodName::UpdateScope => {
+                planner.call_update_scope(context, tool_name, witness, session, version)
+            }
+            MethodName::RecordShapingCheckpoint => planner
+                .call_record_shaping_checkpoint(context, tool_name, witness, session, version),
+            MethodName::FinalizeAdvice => {
+                planner.call_finalize_advice(context, tool_name, witness, session, version)
+            }
+            MethodName::AdvanceTask => {
+                planner.call_advance_task(context, tool_name, witness, session, version)
+            }
+            MethodName::PrepareEvidenceCapture => {
+                planner.call_prepare_evidence_capture(context, tool_name, witness, session, version)
+            }
+            MethodName::PrepareWrite => {
+                planner.call_prepare_write(context, tool_name, witness, session, version)
+            }
+            MethodName::StageArtifact => {
+                planner.call_stage_artifact(context, tool_name, witness, session, version)
+            }
+            MethodName::RecordRun => {
+                planner.call_record_run(context, tool_name, witness, session, version)
+            }
+            MethodName::RequestUserAction => {
+                planner.call_request_user_action(context, tool_name, witness, session, version)
+            }
+            MethodName::ReconcileChanges => {
+                planner.call_reconcile_changes(context, tool_name, witness, session, version)
+            }
+            MethodName::CheckClose => {
+                planner.call_check_close(context, tool_name, witness, session)
+            }
+            MethodName::CloseTask => {
+                planner.call_close_task(context, tool_name, witness, session, version)
+            }
+            MethodName::Intake
+            | MethodName::Status
+            | MethodName::GetOperationResult
+            | MethodName::ResolveUserAction => {
+                return Err((
+                    McpWorkflowContractStage::AdapterProjection,
+                    "current Agent transition has no exact state-bound adapter planner".to_owned(),
+                ));
+            }
+        };
+        result.map(|_| ()).map_err(|error| {
+            let (stage, detail) = match &error {
+                McpAdapterError::Core(CorePipelineError::Invariant { detail })
+                    if detail.contains("expected-result") || detail.contains("expected result") =>
+                {
+                    (
+                        McpWorkflowContractStage::ExpectedResultValidation,
+                        detail.clone(),
+                    )
+                }
+                McpAdapterError::Core(error) => {
+                    (McpWorkflowContractStage::CorePlanning, error.to_string())
+                }
+                _ => (
+                    McpWorkflowContractStage::AdapterProjection,
+                    error.to_string(),
+                ),
+            };
+            (stage, detail)
+        })
     }
 
     fn call_intake(
@@ -1682,7 +1812,11 @@ impl McpAdapter {
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError>
     where
-        T: MethodOperationCategory + MethodResponseContract + HasEnvelope,
+        T: MethodOperationCategory
+            + MethodResponseContract
+            + HasEnvelope
+            + IntoTransitionSubmission
+            + Clone,
         F: FnOnce(
             &CoreService,
             &RuntimeHomeMutationContext<'_>,
@@ -1690,9 +1824,11 @@ impl McpAdapter {
             InvocationContext,
         ) -> Result<PipelineResponse, CorePipelineError>,
     {
-        self.ensure_storage_writable_for_tool(context, tool_name)?;
         let operation_category = request.operation_category();
-        self.ensure_mode_allows(context, tool_name, operation_category)?;
+        if self.planning_action_key.is_none() {
+            self.ensure_storage_writable_for_tool(context, tool_name)?;
+            self.ensure_mode_allows(context, tool_name, operation_category)?;
+        }
         let owned_session = if session.is_none() {
             self.default_agent_session_binding
                 .as_ref()
@@ -1708,7 +1844,14 @@ impl McpAdapter {
             None
         };
         let session = session.or_else(|| owned_session.as_ref().map(|value| value.borrowed()));
-        let invocation = if operation_category == OperationCategory::Read {
+        let invocation = if self.planning_action_key.is_some() {
+            self.derive_read_only_invocation_context(
+                context,
+                request_envelope(&request),
+                OperationCategory::Read,
+                session,
+            )?
+        } else if operation_category == OperationCategory::Read {
             self.derive_read_only_invocation_context(
                 context,
                 request_envelope(&request),
@@ -1724,6 +1867,23 @@ impl McpAdapter {
             )?
         };
         let core = CoreService::for_mutation(context);
+        if let Some(action_key) = self.planning_action_key {
+            let submission = request
+                .clone()
+                .into_transition_submission()
+                .ok_or_else(|| McpAdapterError::SchemaContractFailure {
+                    tool_name: tool_name.to_owned(),
+                })?;
+            let plan = core
+                .plan_transition_submission_no_commit(
+                    context,
+                    action_key,
+                    submission,
+                    invocation.core_invocation_for_category(operation_category),
+                )
+                .map_err(McpAdapterError::Core)?;
+            return Ok(PipelineResponse::from_no_commit_transition_plan(plan));
+        }
         let response = call(&core, context, request, invocation.core_invocation())
             .map_err(McpAdapterError::Core)?;
         serde_json::from_value::<T::Response>(response.response_value.clone())
@@ -2239,6 +2399,51 @@ fn integration_verification_timestamp() -> String {
 trait HasEnvelope {
     fn envelope(&self) -> &ToolEnvelope;
 }
+
+trait IntoTransitionSubmission {
+    fn into_transition_submission(self) -> Option<TransitionSubmission>;
+}
+
+macro_rules! impl_transition_submission {
+    ($($request:ty => $variant:ident),* $(,)?) => {
+        $(
+            impl IntoTransitionSubmission for $request {
+                fn into_transition_submission(self) -> Option<TransitionSubmission> {
+                    Some(TransitionSubmission::$variant(self))
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_no_transition_submission {
+    ($($request:ty),* $(,)?) => {
+        $(
+            impl IntoTransitionSubmission for $request {
+                fn into_transition_submission(self) -> Option<TransitionSubmission> {
+                    None
+                }
+            }
+        )*
+    };
+}
+
+impl_transition_submission!(
+    UpdateScopeRequest => UpdateScope,
+    RecordShapingCheckpointRequest => RecordShapingCheckpoint,
+    FinalizeAdviceRequest => FinalizeAdvice,
+    AdvanceTaskRequest => AdvanceTask,
+    PrepareEvidenceCaptureRequest => PrepareEvidenceCapture,
+    PrepareWriteRequest => PrepareWrite,
+    StageArtifactRequest => StageArtifact,
+    RecordRunRequest => RecordRun,
+    RequestUserActionRequest => RequestUserAction,
+    ReconcileChangesRequest => ReconcileChanges,
+    CheckCloseRequest => CheckClose,
+    CloseTaskRequest => CloseTask,
+);
+
+impl_no_transition_submission!(IntakeRequest, StatusRequest, GetOperationResultRequest,);
 
 macro_rules! impl_has_envelope {
     ($($request:ty),* $(,)?) => {

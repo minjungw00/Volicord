@@ -292,6 +292,18 @@ pub(super) fn create_implementation_task(
 pub(super) fn create_ready_for_implementation_task(
     fixture: &CoreFixture,
 ) -> Result<(String, String, String, u64), Box<dyn Error>> {
+    let _planning_repository =
+        if volicord_platform_fs::capture_git_workspace_snapshot(&fixture.product_repo_path())?
+            .is_none()
+        {
+            Some(
+                volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+                    fixture.product_repo_path(),
+                )?,
+            )
+        } else {
+            None
+        };
     let core = CoreService::for_mutation(&fixture.mutation_context()?);
     let workspace = volicord_platform_fs::capture_git_workspace_snapshot(
         &fixture.product_repo_path(),
@@ -697,8 +709,24 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
     fixture: &CoreFixture,
     case: McpUserActionLeakageCase,
 ) -> Result<PreparedMcpUserActionLeakageCase, Box<dyn Error>> {
+    let _repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+        fixture.product_repo_path(),
+    )?;
+    let workspace =
+        volicord_platform_fs::capture_git_workspace_snapshot(&fixture.product_repo_path())?
+            .ok_or("UserAction leakage fixture must have a Git workspace")?;
+    let workspace = volicord_core::GitWorkspaceContext {
+        git_common_dir: workspace.layout.common_dir.display().to_string(),
+        worktree_id: workspace.worktree_id,
+        branch_ref: workspace.branch_ref,
+        head_sha: workspace.head_sha,
+        workspace_fingerprint: workspace.workspace_fingerprint,
+    };
     let core = CoreService::for_mutation(&fixture.mutation_context()?);
-    let invocation = || test_agent_invocation(fixture, OperationCategory::AgentWorkflow);
+    let invocation = || {
+        test_agent_invocation(fixture, OperationCategory::AgentWorkflow)
+            .with_git_workspace_context(workspace.clone())
+    };
     let intake = core.intake(
         &fixture.mutation_context()?,
         fixture.intake_request(
@@ -1225,8 +1253,9 @@ pub(super) fn action_form_for_variant(
         .as_ref()
         .ok_or("status should retain verified invocation")?
         .project_id;
-    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow)
-        .map_err(std::io::Error::other)?;
+    let catalog =
+        crate::action_form::workflow_action_form_catalog(project_id, &workflow, |_, _| Ok(()))
+            .map_err(std::io::Error::other)?;
     Ok(catalog
         .form(method, semantic_variant)
         .ok_or("workflow should expose the requested current action variant")?
@@ -1291,8 +1320,9 @@ fn current_action_form(
         .as_ref()
         .ok_or("status should retain verified invocation")?
         .project_id;
-    let catalog = crate::action_form::workflow_action_form_catalog(project_id, &workflow)
-        .map_err(std::io::Error::other)?;
+    let catalog =
+        crate::action_form::workflow_action_form_catalog(project_id, &workflow, |_, _| Ok(()))
+            .map_err(std::io::Error::other)?;
     let form = if let Some(method) = method {
         let forms = catalog.forms_for_method(method).collect::<Vec<_>>();
         match forms.as_slice() {

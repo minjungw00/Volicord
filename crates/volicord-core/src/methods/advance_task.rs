@@ -86,7 +86,7 @@ impl CoreService {
             Err(error) => {
                 let response =
                     plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
-                return Ok(response.with_prepared_context(&prepared));
+                return self.complete_prepared_response(response, &prepared);
             }
         };
         if request.envelope.dry_run.is_requested() {

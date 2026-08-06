@@ -131,6 +131,7 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowContractDiagnostics",
+          "McpWorkflowContractStage",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -232,7 +233,6 @@
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowCloseTaskRequiredWitness",
-          "WorkflowEvidenceObservationActionWitness",
           "WorkflowExpectedResultState",
           "WorkflowFinalizeAdviceOptionalWitness",
           "WorkflowFinalizeAdviceRequiredWitness",
@@ -260,6 +260,7 @@
           "WorkflowTransitionSubmissionContract",
           "WorkflowUpdateScopeRequiredWitness",
           "WorkflowUpdateScopeSubmissionContract",
+          "WorkflowUserActionChoiceWitness",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketId",
@@ -270,7 +271,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:27194d257fd063d64029ab1fd63e385607ea359ba405952b7739e0e428f0338d"
+        "sha256": "sha256:6991c1805ed0e0f80d2ecfdd23d9eb5a3cf345352cbe3a32ad10e3daf2ef510b"
       }
     },
     {
@@ -361,6 +362,7 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowContractDiagnostics",
+          "McpWorkflowContractStage",
           "MethodName",
           "NonGuarantee",
           "NotRequestedReadOnlyResultBase",
@@ -434,7 +436,6 @@
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowCloseTaskRequiredWitness",
-          "WorkflowEvidenceObservationActionWitness",
           "WorkflowExpectedResultState",
           "WorkflowFinalizeAdviceOptionalWitness",
           "WorkflowFinalizeAdviceRequiredWitness",
@@ -462,11 +463,12 @@
           "WorkflowTransitionSubmissionContract",
           "WorkflowUpdateScopeRequiredWitness",
           "WorkflowUpdateScopeSubmissionContract",
+          "WorkflowUserActionChoiceWitness",
           "WriteTicketId"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:92ecc484aa958dc37d815fe32cbb0edf79c74e7e2976fd5896d7c1de634f7af6"
+        "sha256": "sha256:65198ed96cdfbdd10f13e4d95422f2f60d141f0edc13d9e376fcff82c76235c8"
       }
     },
     {
@@ -576,6 +578,7 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowContractDiagnostics",
+          "McpWorkflowContractStage",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -671,7 +674,6 @@
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowCloseTaskRequiredWitness",
-          "WorkflowEvidenceObservationActionWitness",
           "WorkflowExpectedResultState",
           "WorkflowFinalizeAdviceOptionalWitness",
           "WorkflowFinalizeAdviceRequiredWitness",
@@ -699,6 +701,7 @@
           "WorkflowTransitionSubmissionContract",
           "WorkflowUpdateScopeRequiredWitness",
           "WorkflowUpdateScopeSubmissionContract",
+          "WorkflowUserActionChoiceWitness",
           "WorkspaceContext",
           "WorkspaceVcs",
           "WriteTicketId",
@@ -709,7 +712,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:20fa1daaf7d582b37c95ce8bf113eb02f9e0f1d5d64739f98e0b4b7c4f4aaa8e"
+        "sha256": "sha256:7b1be6cb8f0a200c47942840c0fff2c7f2703d808f45df4b646057ee90816b07"
       }
     },
     {
@@ -777,6 +780,7 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowContractDiagnostics",
+          "McpWorkflowContractStage",
           "MethodName",
           "ObservedChanges",
           "ProjectId",
@@ -844,7 +848,6 @@
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowCloseTaskRequiredWitness",
-          "WorkflowEvidenceObservationActionWitness",
           "WorkflowExpectedResultState",
           "WorkflowFinalizeAdviceOptionalWitness",
           "WorkflowFinalizeAdviceRequiredWitness",
@@ -872,11 +875,12 @@
           "WorkflowTransitionSubmissionContract",
           "WorkflowUpdateScopeRequiredWitness",
           "WorkflowUpdateScopeSubmissionContract",
+          "WorkflowUserActionChoiceWitness",
           "WriteTicketId"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c62a7ac474f075cd85aaf232c15b21e66f4caca59f30491aebd5475e4853eaf4"
+        "sha256": "sha256:2f563cf2ac73b32e6a070526739a742a3f6f27d321a0df09f44ae7188e739bbe"
       }
     },
     {
@@ -952,6 +956,7 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowContractDiagnostics",
+          "McpWorkflowContractStage",
           "MethodName",
           "ObservedChanges",
           "ProjectId",
@@ -1019,7 +1024,6 @@
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowCloseTaskRequiredWitness",
-          "WorkflowEvidenceObservationActionWitness",
           "WorkflowExpectedResultState",
           "WorkflowFinalizeAdviceOptionalWitness",
           "WorkflowFinalizeAdviceRequiredWitness",
@@ -1047,11 +1051,12 @@
           "WorkflowTransitionSubmissionContract",
           "WorkflowUpdateScopeRequiredWitness",
           "WorkflowUpdateScopeSubmissionContract",
+          "WorkflowUserActionChoiceWitness",
           "WriteTicketId"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b880c2185e8ebbc541968b38f1b24c26692983ffd1f92ab2c9273a2422f425fe"
+        "sha256": "sha256:16d7a89bac57259e442a663659bc9c5ab389a703aa6b56588b8ec0c510769851"
       }
     },
     {
@@ -1130,6 +1135,7 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowContractDiagnostics",
+          "McpWorkflowContractStage",
           "MethodName",
           "ObservedChanges",
           "ProjectId",
@@ -1197,7 +1203,6 @@
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowCloseTaskRequiredWitness",
-          "WorkflowEvidenceObservationActionWitness",
           "WorkflowExpectedResultState",
           "WorkflowFinalizeAdviceOptionalWitness",
           "WorkflowFinalizeAdviceRequiredWitness",
@@ -1225,11 +1230,12 @@
           "WorkflowTransitionSubmissionContract",
           "WorkflowUpdateScopeRequiredWitness",
           "WorkflowUpdateScopeSubmissionContract",
+          "WorkflowUserActionChoiceWitness",
           "WriteTicketId"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b43cd4acfe59612eb9de2c68803a0182c1cdc33dfc3339981ae990f3f17e466e"
+        "sha256": "sha256:d45e3daf1aca83329c5e6c622316ac0228c1b4989390451389b8417e20635554"
       }
     },
     {
@@ -1311,6 +1317,7 @@
           "McpToolIssueCode",
           "McpWorkflowAdmissionRejection",
           "McpWorkflowContractDiagnostics",
+          "McpWorkflowContractStage",
           "MethodName",
           "ObservedChanges",
           "ProjectId",
@@ -1378,7 +1385,6 @@
           "WorkflowCheckpointActionCoordinates",
           "WorkflowCloseReadiness",
           "WorkflowCloseTaskRequiredWitness",
-          "WorkflowEvidenceObservationActionWitness",
           "WorkflowExpectedResultState",
           "WorkflowFinalizeAdviceOptionalWitness",
           "WorkflowFinalizeAdviceRequiredWitness",
@@ -1406,11 +1412,12 @@
           "WorkflowTransitionSubmissionContract",
           "WorkflowUpdateScopeRequiredWitness",
           "WorkflowUpdateScopeSubmissionContract",
+          "WorkflowUserActionChoiceWitness",
           "WriteTicketId"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7c492f514dfcd2176862a15e13d05f780e053c3750208878bde2805b5b26c758"
+        "sha256": "sha256:37cab65db80adb22f477045b931d82cb01f5e27f05ebad97cb74f1856369bfef"
       }
     }
   ]

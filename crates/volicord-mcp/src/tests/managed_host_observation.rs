@@ -272,6 +272,9 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
 fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-nondesignated-read-only-round-trip")?;
+    let _repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+        fixture.product_repo_path(),
+    )?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, _, _) = create_implementation_task(&fixture)?;
     let update_form = action_form_for_variant(

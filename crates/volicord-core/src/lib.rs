@@ -48,28 +48,9 @@ pub use authority_status::{
 pub use pipeline::{
     dry_run_response, rejected_response, tool_error, Clock, CoreOperationalOperation,
     CoreOperationalResource, CoreOperationalUnavailable, CorePipelineError, CoreResult,
-    CoreService, GitWorkspaceContext, InvocationAuthority, InvocationContext, PipelineResponse,
-    SystemClock, VerifiedInvocationContext,
+    CoreService, GitWorkspaceContext, InvocationAuthority, InvocationContext,
+    NoCommitTransitionPlan, PipelineResponse, SystemClock, TransitionSubmission,
+    VerifiedInvocationContext,
 };
 pub use write_ticket::current_validity::StoredWriteTicketEvaluation;
 pub use write_ticket::service::load_evaluated_stored_write_tickets;
-
-/// Performs a no-commit model check against the exact current Core transition catalog.
-pub fn model_check_current_transition(
-    workflow: &volicord_types::schema::WorkflowProjection,
-    descriptor: &volicord_types::schema::TransitionDescriptor,
-) -> Result<(), &'static str> {
-    let Some(current) = workflow
-        .transition_catalog()
-        .transition(&descriptor.action_key)
-    else {
-        return Err("action-form transition is absent from the current Core catalog");
-    };
-    if current != descriptor {
-        return Err("action-form transition differs from the current Core descriptor");
-    }
-    if current.actor != volicord_types::values::WorkflowTransitionActor::Agent {
-        return Err("action-form transition is not Agent-owned");
-    }
-    Ok(())
-}

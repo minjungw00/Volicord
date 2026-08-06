@@ -492,8 +492,8 @@ documents:
   - api.schema.user_action
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   primary_audience:
   - agents
   - agent operators
@@ -726,8 +726,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-08-05'
-  last_verified_on: '2026-08-05'
+  last_updated_on: '2026-08-06'
+  last_verified_on: '2026-08-06'
   applies_to:
   - rust_workspace
   primary_audience:

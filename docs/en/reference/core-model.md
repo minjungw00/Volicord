@@ -695,13 +695,27 @@ exposes an explicit close, cancellation, or supersession path.
 
 The reachable workflow model preserves these liveness and recovery invariants
 for every explored current-state combination: action keys are unique; a
-required action is a catalog member; every advertised Agent transition passes
-the same Core admission against the source snapshot; no unadvertised variant
-passes; every nonterminal Agent-owned state has an executable or explicit
-terminal path; and every non-null recovery action is a current catalog member
-with an exact action form when MCP can execute it. The model also checks that
-catalog ordering, required roles, fixed coordinates, and projected forms are
-deterministic for the same snapshot.
+required action is a catalog member; each advertised Agent transition has its
+exact submission contract; no unadvertised variant passes transition
+admission; every nonterminal Agent-owned state has an executable or explicit
+terminal path; and every non-null recovery action is a current catalog member.
+The model also checks that catalog ordering, required roles, and fixed
+coordinates are deterministic for the same snapshot.
+
+Core exposes `plan_transition_submission_no_commit` as the current-snapshot
+executability check for an Agent transition. It consumes the exact
+`WorkflowActionKey`, its exact typed request, and a verified invocation, opens
+the current project Store read-only, and follows the selected public method's
+normal admission, normalization, policy, and semantic validation. When policy
+admits an effect, it continues through mutation planning, transition-effect
+validation, and actual expected-result validation.
+It does not perform replay lookup and returns only a typed no-commit plan. It
+stops before any transaction, mutation application, event or replay allocation,
+state-version change, Product Repository effect, Write Ticket, Run, evidence,
+artifact staging, or Unrecorded Change creation. A valid method-owned no-effect
+result, such as a blocked close review or an operation-specific unresolved
+decision, remains no-effect and is not presented as the descriptor's successful
+result state.
 
 The machine also owns all `volicord.update_scope` variant availability. Its
 coordinates select the exact `ChangeUnitOperation` against current Change Unit

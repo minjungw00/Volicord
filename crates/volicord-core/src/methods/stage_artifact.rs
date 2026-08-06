@@ -198,6 +198,10 @@ impl CoreService {
             );
         }
 
+        if let Some(response) = self.complete_stage_artifact_no_commit(&prepared)? {
+            return Ok(response);
+        }
+
         if let Err(error) = prepared
             .store
             .create_artifact_staging(ArtifactStagingInsert {

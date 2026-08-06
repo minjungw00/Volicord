@@ -286,10 +286,27 @@ pub struct McpWorkflowContractDiagnostics {
     pub attempted_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub typed_rejection_reason: RequiredNullable<volicord_types::values::TransitionRejectionReason>,
     pub recovery_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub failed_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub failed_stage: RequiredNullable<McpWorkflowContractStage>,
     pub workflow_contract_digest: RequestHash,
     pub action_form_contract_digest: RequestHash,
     pub semantic_schema_digest: RequestHash,
     pub scalar_contract_digest: RequestHash,
+}
+
+/// Bounded stage at which current action-form catalog validation failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpWorkflowContractStage {
+    TransitionContract,
+    WitnessProjection,
+    SemanticValidation,
+    ExactDecode,
+    FixedBinding,
+    AdapterProjection,
+    CorePlanning,
+    ExpectedResultValidation,
+    CatalogTotality,
 }
 
 /// Compact truth about a failed workflow-action attempt.
@@ -371,6 +388,8 @@ pub struct McpToolErrorResponse {
     pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,
+    pub failed_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub failed_stage: RequiredNullable<McpWorkflowContractStage>,
     #[schemars(range(min = 1, max = "MAX_VALIDATION_ISSUES"))]
     pub reported_issue_count: usize,
     pub truncated: bool,

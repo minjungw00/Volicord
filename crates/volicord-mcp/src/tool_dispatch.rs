@@ -1,6 +1,5 @@
 //! Public tool-call decoding, adapter dispatch, and shared tool-result carrier.
 
-use crate::action_form::workflow_action_form_catalog;
 use crate::adapter::{McpAdapter, OwnedAgentSessionCoordinates};
 use crate::authority_refresh::MutationRefreshContext;
 use crate::binding::{
@@ -378,7 +377,7 @@ pub(crate) fn call_tool_result(
                 ToolCallOutput::from_operation_result_response(&response, capabilities)?
             }
             Ok(response) if tool == AgentToolId::STATUS => {
-                ToolCallOutput::from_status_pipeline_response(&response)?
+                ToolCallOutput::from_status_pipeline_response(context, adapter, session, &response)?
             }
             Ok(response) => ToolCallOutput::from_pipeline_response(&response)?,
             Err(McpAdapterError::Core(CorePipelineError::OperationalUnavailable(failure))) => {
@@ -719,7 +718,12 @@ impl ToolCallOutput {
         Ok(output)
     }
 
-    fn from_status_pipeline_response(response: &PipelineResponse) -> Result<Self, McpAdapterError> {
+    fn from_status_pipeline_response(
+        context: &RuntimeHomeMutationContext<'_>,
+        adapter: &McpAdapter,
+        session: Option<crate::adapter::AgentSessionCoordinates<'_>>,
+        response: &PipelineResponse,
+    ) -> Result<Self, McpAdapterError> {
         let method_result = serde_json::from_value(response.response_value.clone())
             .map_err(McpAdapterError::Json)?;
         let workflow = response
@@ -731,7 +735,14 @@ impl ToolCallOutput {
             .map_err(McpAdapterError::Json)?;
         let action_form_catalog = match (response.verified_invocation.as_ref(), workflow) {
             (Some(invocation), Some(workflow)) => Some(
-                workflow_action_form_catalog(&invocation.project_id, &workflow).map_err(|_| {
+                adapter
+                    .validated_workflow_action_form_catalog(
+                        context,
+                        &invocation.project_id,
+                        &workflow,
+                        session,
+                    )
+                    .map_err(|failure| {
                     McpAdapterError::InternalContractInconsistent {
                         tool_name: AgentToolId::STATUS.wire_name().to_owned(),
                         reached_core: true,
@@ -743,6 +754,8 @@ impl ToolCallOutput {
                             attempted_action_key: RequiredNullable::null(),
                             typed_rejection_reason: RequiredNullable::null(),
                             recovery_action_key: RequiredNullable::null(),
+                            failed_action_key: RequiredNullable::new(failure.action_key),
+                            failed_stage: RequiredNullable::some(failure.stage),
                             workflow_contract_digest: volicord_types::managed_guidance::workflow_contract_semantic_digest(),
                             action_form_contract_digest: volicord_types::managed_guidance::action_form_contract_semantic_digest(),
                             semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
@@ -1080,6 +1093,8 @@ fn tool_execution_error_result_for_capabilities(
             retryable: true,
             reached_core: false,
             committed: false,
+            failed_action_key: RequiredNullable::null(),
+            failed_stage: RequiredNullable::null(),
             reported_issue_count: issues.len(),
             truncated: *truncated,
             issues: issues.clone(),
@@ -1110,6 +1125,8 @@ fn tool_execution_error_result_for_capabilities(
             retryable: false,
             reached_core: *reached_core,
             committed: false,
+            failed_action_key: diagnostics.failed_action_key.clone(),
+            failed_stage: diagnostics.failed_stage.clone(),
             reported_issue_count: 1,
             truncated: false,
             issues: vec![McpToolErrorIssue::new(
@@ -1150,6 +1167,8 @@ fn tool_execution_error_result_for_capabilities(
                 retryable: false,
                 reached_core: false,
                 committed: false,
+                failed_action_key: RequiredNullable::null(),
+                failed_stage: RequiredNullable::null(),
                 reported_issue_count: 1,
                 truncated: false,
                 issues: vec![McpToolErrorIssue::new(
@@ -1174,6 +1193,8 @@ fn tool_execution_error_result_for_capabilities(
             retryable: condition.retryable(),
             reached_core: false,
             committed: false,
+            failed_action_key: RequiredNullable::null(),
+            failed_stage: RequiredNullable::null(),
             reported_issue_count: 1,
             truncated: false,
             issues: vec![McpToolErrorIssue::new(
@@ -1197,6 +1218,8 @@ fn tool_execution_error_result_for_capabilities(
             retryable: false,
             reached_core: false,
             committed: false,
+            failed_action_key: RequiredNullable::null(),
+            failed_stage: RequiredNullable::null(),
             reported_issue_count: 1,
             truncated: false,
             issues: vec![McpToolErrorIssue::new(
@@ -1298,6 +1321,11 @@ fn bounded_tool_error_result(
         }
         if structured.retry_contract.is_some() {
             structured.retry_contract = RequiredNullable::null();
+            truncated = true;
+            continue;
+        }
+        if structured.contract_diagnostics.is_some() {
+            structured.contract_diagnostics = RequiredNullable::null();
             truncated = true;
             continue;
         }

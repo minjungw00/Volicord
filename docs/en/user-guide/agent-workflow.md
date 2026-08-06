@@ -63,10 +63,14 @@ only the listed `agent_authored_inputs`, and send that form's exact `form_ref` a
 starting point for the same action. Its filled Agent values are bounded
 contract-validation witnesses, not recommendations, user authority, or product
 decisions; replace them with the actual task-compatible values you intend to
-submit. A form never authorizes another method or
-variant. Preserve JSON types and array order, and never reconstruct coordinates
-listed as fixed. Project and expected state version are adapter-injected from
-current authority rather than copied into caller-controlled fields.
+submit. Before the catalog is shown, every current Agent form's complete
+witness has already passed exact adapter projection and the matching Core
+no-commit planner against the current Store snapshot. That check proves the
+form is executable as a contract; it does not make its witness values suitable
+for your Task. A form never authorizes another method or variant. Preserve JSON
+types and array order, and never reconstruct coordinates listed as fixed.
+Project and expected state version are adapter-injected from current authority
+rather than copied into caller-controlled fields.
 
 If a fixed value is altered or omitted, use only the exact current form returned
 for that same action. For a Core rejection, use only the exact

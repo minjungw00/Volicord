@@ -1,11 +1,14 @@
 //! Normal mutation result projection after authoritative refresh.
 
-use crate::action_form::{retry_contract, workflow_action_form_catalog};
+#[cfg(test)]
+use crate::action_form::workflow_action_form_catalog;
+use crate::action_form::{retry_contract, ActionFormCatalogError};
 use crate::adapter::McpAdapter;
 use crate::authority_refresh::{
     refresh_authority_status, validated_authority_refresh, MutationRefreshContext,
     ValidatedMutationAuthority,
 };
+use crate::binding::managed_agent_session_binding;
 use crate::committed_result_recovery::{
     authoritative_refresh_failure_output, bounded_mutation_compatibility_text,
     mutation_post_effect_failure_output, mutation_response_budget_exceeded_output,
@@ -113,6 +116,31 @@ pub(crate) fn finalize_mutation_output(
         detail,
         output,
         |context| refresh_authority_status(mutation_context, adapter, state, context),
+        |context, authority| {
+            let binding =
+                managed_agent_session_binding(&state.codex_binding, &state.runtime_session_id);
+            let coordinates = binding
+                .as_ref()
+                .map(|binding| {
+                    adapter.ensure_agent_session_binding(
+                        mutation_context,
+                        &context.project_id,
+                        binding,
+                    )
+                })
+                .transpose()
+                .map_err(|error| ActionFormCatalogError {
+                    action_key: None,
+                    stage: volicord_mcp_wire::McpWorkflowContractStage::AdapterProjection,
+                    detail: error.to_string(),
+                })?;
+            adapter.validated_workflow_action_form_catalog(
+                mutation_context,
+                &authority.receipt.project_id,
+                &authority.workflow,
+                coordinates.as_ref().map(|value| value.borrowed()),
+            )
+        },
     )
 }
 
@@ -134,18 +162,30 @@ where
         detail,
         output,
         refresh,
+        |_, authority| {
+            workflow_action_form_catalog(
+                &authority.receipt.project_id,
+                &authority.workflow,
+                |_, _| Ok(()),
+            )
+        },
     )
 }
 
-fn finalize_mutation_output_with_refresh_for_capabilities<F>(
+fn finalize_mutation_output_with_refresh_for_capabilities<F, G>(
     tool_name: &str,
     capabilities: McpProtocolCapabilities,
     detail: Option<MutationDetailLevel>,
     mut output: ToolCallOutput,
     refresh: F,
+    action_forms: G,
 ) -> Result<ToolCallOutput, McpAdapterError>
 where
     F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
+    G: FnOnce(
+        &MutationRefreshContext,
+        &ValidatedMutationAuthority,
+    ) -> Result<volicord_mcp_wire::WorkflowActionFormCatalog, ActionFormCatalogError>,
 {
     let Some(detail) = detail else {
         return Ok(output);
@@ -208,6 +248,18 @@ where
         None
     };
 
+    let action_form_catalog = match action_forms(&context, &authority) {
+        Ok(catalog) => catalog,
+        Err(failure) => {
+            let diagnostics = workflow_contract_diagnostics_with_failure(
+                &authority.workflow,
+                failure.action_key,
+                failure.stage,
+            );
+            return internal_contract_inconsistent_rejection(output, tool_name, None, diagnostics);
+        }
+    };
+
     let presentation = match workflow_presentation(
         tool_name,
         &response_kind,
@@ -217,6 +269,7 @@ where
             .as_ref()
             .expect("canonical mutation outcome requires an exact result"),
         &authority,
+        action_form_catalog,
     ) {
         Ok(presentation) => presentation,
         Err(McpAdapterError::SchemaContractFailure { .. }) if rejected_method_result.is_some() => {
@@ -438,6 +491,7 @@ fn workflow_presentation(
     replayed: bool,
     method_result: &Value,
     authority: &ValidatedMutationAuthority,
+    action_form_catalog: volicord_mcp_wire::WorkflowActionFormCatalog,
 ) -> Result<McpWorkflowPresentation, McpAdapterError> {
     let method = AgentToolId::from_wire_name(tool_name)
         .ok()
@@ -629,13 +683,7 @@ fn workflow_presentation(
         blocker_summary,
         required_user_action: required_user_action.into(),
         must_surface,
-        action_form_catalog: workflow_action_form_catalog(
-            &authority.receipt.project_id,
-            &authority.workflow,
-        )
-        .map_err(|_| McpAdapterError::SchemaContractFailure {
-            tool_name: tool_name.to_owned(),
-        })?,
+        action_form_catalog,
     })
 }
 
@@ -689,6 +737,8 @@ fn workflow_contract_diagnostics(
         recovery_action_key: RequiredNullable::new(
             rejection.and_then(|rejection| rejection.recovery_action_key.as_ref().copied()),
         ),
+        failed_action_key: RequiredNullable::null(),
+        failed_stage: RequiredNullable::null(),
         workflow_contract_digest: action_forms.map_or_else(
             volicord_types::managed_guidance::workflow_contract_semantic_digest,
             |forms| forms.workflow_contract_digest.clone(),
@@ -708,13 +758,24 @@ fn workflow_contract_diagnostics(
     }
 }
 
+fn workflow_contract_diagnostics_with_failure(
+    workflow: &volicord_types::schema::WorkflowProjection,
+    action_key: Option<volicord_types::schema::WorkflowActionKey>,
+    stage: volicord_mcp_wire::McpWorkflowContractStage,
+) -> McpWorkflowContractDiagnostics {
+    let mut diagnostics = workflow_contract_diagnostics(workflow, None, None);
+    diagnostics.failed_action_key = RequiredNullable::new(action_key);
+    diagnostics.failed_stage = RequiredNullable::some(stage);
+    diagnostics
+}
+
 fn internal_contract_inconsistent_rejection(
     mut output: ToolCallOutput,
     tool_name: &str,
     transition_rejection: Option<TransitionRejection>,
     diagnostics: McpWorkflowContractDiagnostics,
 ) -> Result<ToolCallOutput, McpAdapterError> {
-    let structured = McpToolErrorResponse {
+    let mut structured = McpToolErrorResponse {
         code: McpToolErrorCode::InternalContractInconsistent,
         tool_name: tool_name.to_owned(),
         selected_variant: RequiredNullable::null(),
@@ -722,6 +783,8 @@ fn internal_contract_inconsistent_rejection(
         retryable: false,
         reached_core: true,
         committed: false,
+        failed_action_key: diagnostics.failed_action_key.clone(),
+        failed_stage: diagnostics.failed_stage.clone(),
         reported_issue_count: 1,
         truncated: false,
         issues: vec![McpToolErrorIssue::new(
@@ -737,6 +800,14 @@ fn internal_contract_inconsistent_rejection(
         transition_rejection: RequiredNullable::new(transition_rejection),
         contract_diagnostics: RequiredNullable::some(diagnostics),
     };
+    if serde_json::to_vec(&structured)
+        .map_err(McpAdapterError::Json)?
+        .len()
+        > MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+    {
+        structured.contract_diagnostics = RequiredNullable::null();
+        structured.truncated = true;
+    }
     output.primary_text = "Volicord rejected the mutation and found an internal workflow-contract inconsistency; Core state is unchanged and no retry is suggested.".to_owned();
     output.structured_content = serde_json::to_value(
         McpMutationStructuredContent::<Value, Value>::AdapterError(Box::new(structured)),

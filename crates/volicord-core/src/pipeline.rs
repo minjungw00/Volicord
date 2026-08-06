@@ -32,10 +32,13 @@ use volicord_types::ids::{
     UserActionRequestId, UserActionResolutionId,
 };
 use volicord_types::methods::{
-    public_method_contract, AssembleMethodResult, DryRunRequestRoute, MethodResponseBranch,
-    MethodResponseContract, OperationResultRef, ResultBaseConstructionError, ResultEffectContract,
-    SupportsCoreCommittedResult, SupportsNoEffectResult, SupportsReadOnlyResult,
-    WorkflowActionAdmissionClass,
+    public_method_contract, AdvanceTaskRequest, AssembleMethodResult, CheckCloseRequest,
+    CloseTaskRequest, DryRunRequestRoute, FinalizeAdviceRequest, MethodResponseBranch,
+    MethodResponseContract, OperationResultRef, PrepareEvidenceCaptureRequest, PrepareWriteRequest,
+    ReconcileChangesRequest, RecordRunRequest, RecordShapingCheckpointRequest,
+    RequestUserActionRequest, ResultBaseConstructionError, ResultEffectContract,
+    StageArtifactRequest, SupportsCoreCommittedResult, SupportsNoEffectResult,
+    SupportsReadOnlyResult, UpdateScopeRequest, WorkflowActionAdmissionClass,
 };
 use volicord_types::schema::{
     DryRunIntent, DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, RequiredNullable,
@@ -45,7 +48,8 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     ActorSource, ChangeUnitOperation, EffectKind, ErrorCode, MethodName, OperationCategory,
-    RunKind, UserActionChannelKind, UtcTimestamp,
+    RunKind, UserActionChannelKind, UtcTimestamp, WorkflowActionSemanticVariant,
+    WorkflowExpectedResultState, WorkflowStateKind, WorkflowTransitionEffectClass,
 };
 
 use crate::policy::{
@@ -55,6 +59,108 @@ use crate::policy::{
 
 /// Result type for Core pipeline execution errors.
 pub type CoreResult<T> = Result<T, CorePipelineError>;
+
+/// Exact typed request submitted to the current-transition no-commit planner.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransitionSubmission {
+    RecordShapingCheckpoint(RecordShapingCheckpointRequest),
+    UpdateScope(UpdateScopeRequest),
+    FinalizeAdvice(FinalizeAdviceRequest),
+    AdvanceTask(AdvanceTaskRequest),
+    PrepareEvidenceCapture(PrepareEvidenceCaptureRequest),
+    PrepareWrite(PrepareWriteRequest),
+    StageArtifact(StageArtifactRequest),
+    RecordRun(RecordRunRequest),
+    RequestUserAction(RequestUserActionRequest),
+    ReconcileChanges(ReconcileChangesRequest),
+    CheckClose(CheckCloseRequest),
+    CloseTask(CloseTaskRequest),
+}
+
+impl TransitionSubmission {
+    fn action_key(&self) -> CoreResult<WorkflowActionKey> {
+        let (method, variant) = match self {
+            Self::RecordShapingCheckpoint(request) => (
+                MethodName::RecordShapingCheckpoint,
+                match request.checkpoint_operation {
+                    volicord_types::schema::ShapingCheckpointOperation::CreateInitial => {
+                        WorkflowActionSemanticVariant::CreateInitial
+                    }
+                    volicord_types::schema::ShapingCheckpointOperation::ReplaceCurrent {
+                        ..
+                    } => WorkflowActionSemanticVariant::ReplaceCurrent,
+                },
+            ),
+            Self::UpdateScope(request) => (
+                MethodName::UpdateScope,
+                match request.change_unit.operation {
+                    ChangeUnitOperation::KeepCurrent => {
+                        WorkflowActionSemanticVariant::KeepCurrentChangeUnit
+                    }
+                    ChangeUnitOperation::CreateCurrent => {
+                        WorkflowActionSemanticVariant::CreateCurrentChangeUnit
+                    }
+                    ChangeUnitOperation::ReplaceCurrent => {
+                        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit
+                    }
+                },
+            ),
+            Self::FinalizeAdvice(_) => (
+                MethodName::FinalizeAdvice,
+                WorkflowActionSemanticVariant::FinalizeAdvice,
+            ),
+            Self::AdvanceTask(_) => (
+                MethodName::AdvanceTask,
+                WorkflowActionSemanticVariant::AdvanceTask,
+            ),
+            Self::PrepareEvidenceCapture(_) => (
+                MethodName::PrepareEvidenceCapture,
+                WorkflowActionSemanticVariant::PrepareEvidenceCapture,
+            ),
+            Self::PrepareWrite(_) => (
+                MethodName::PrepareWrite,
+                WorkflowActionSemanticVariant::PrepareWrite,
+            ),
+            Self::StageArtifact(_) => (
+                MethodName::StageArtifact,
+                WorkflowActionSemanticVariant::StageArtifact,
+            ),
+            Self::RecordRun(_) => (
+                MethodName::RecordRun,
+                WorkflowActionSemanticVariant::RecordRun,
+            ),
+            Self::RequestUserAction(_) => (
+                MethodName::RequestUserAction,
+                WorkflowActionSemanticVariant::RequestUserAction,
+            ),
+            Self::ReconcileChanges(_) => (
+                MethodName::ReconcileChanges,
+                WorkflowActionSemanticVariant::ReconcileChanges,
+            ),
+            Self::CheckClose(_) => (
+                MethodName::CheckClose,
+                WorkflowActionSemanticVariant::CheckClose,
+            ),
+            Self::CloseTask(_) => (
+                MethodName::CloseTask,
+                WorkflowActionSemanticVariant::CloseTask,
+            ),
+        };
+        WorkflowActionKey::new(method, variant).map_err(|error| CorePipelineError::Invariant {
+            detail: format!("typed transition submission has an invalid action key: {error}"),
+        })
+    }
+}
+
+/// Verified output of the exact current-transition planner before any effect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoCommitTransitionPlan {
+    pub action_key: WorkflowActionKey,
+    pub basis_state_version: u64,
+    pub effect_class: WorkflowTransitionEffectClass,
+    pub expected_result_state: WorkflowExpectedResultState,
+}
 
 /// Typed Core operation that could not produce a method result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -734,6 +840,12 @@ impl PipelineResponse {
         self.resolved_task_id = prepared.context.resolved_task_id.clone();
         self
     }
+
+    /// Creates the adapter-internal marker returned after a verified no-commit plan.
+    /// This marker is not a public method response and must not be emitted on a transport.
+    pub fn from_no_commit_transition_plan(plan: NoCommitTransitionPlan) -> Self {
+        no_commit_pipeline_response(plan)
+    }
 }
 
 /// Runtime Home identity used by one Core service.
@@ -774,6 +886,13 @@ pub struct CoreService {
     runtime_home: CoreRuntimeHome,
     id_generator: Arc<dyn DurableIdGenerator>,
     clock: Arc<dyn Clock>,
+    execution_mode: CoreExecutionMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoreExecutionMode {
+    Execute,
+    PlanNoCommit(WorkflowActionKey),
 }
 
 impl fmt::Debug for CoreService {
@@ -783,6 +902,7 @@ impl fmt::Debug for CoreService {
             .field("runtime_home", &self.runtime_home)
             .field("id_generator", &self.id_generator)
             .field("clock", &self.clock)
+            .field("execution_mode", &self.execution_mode)
             .finish()
     }
 }
@@ -869,6 +989,7 @@ impl CoreService {
             runtime_home: CoreRuntimeHome::ReadOnly(runtime_home.as_ref().to_path_buf()),
             id_generator: Arc::new(id_generator),
             clock: Arc::new(clock),
+            execution_mode: CoreExecutionMode::Execute,
         }
     }
 
@@ -882,7 +1003,99 @@ impl CoreService {
             runtime_home: CoreRuntimeHome::Admitted(context.runtime_home().clone()),
             id_generator: Arc::new(id_generator),
             clock: Arc::new(clock),
+            execution_mode: CoreExecutionMode::Execute,
         }
+    }
+
+    /// Runs one exact typed current-transition request through its real method
+    /// planner while retaining a read-only Store handle and stopping before all
+    /// durable and transient effects.
+    pub fn plan_transition_submission_no_commit(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        action_key: WorkflowActionKey,
+        submission: TransitionSubmission,
+        invocation: InvocationContext,
+    ) -> CoreResult<NoCommitTransitionPlan> {
+        let submitted_key = submission.action_key()?;
+        if submitted_key != action_key {
+            return Err(CorePipelineError::Invariant {
+                detail: format!(
+                    "no-commit transition submission key {} {} differs from requested key {} {}",
+                    submitted_key.method.as_str(),
+                    submitted_key.semantic_variant.as_str(),
+                    action_key.method.as_str(),
+                    action_key.semantic_variant.as_str()
+                ),
+            });
+        }
+        self.ensure_mutation_context(context)?;
+        let mut planner = self.clone();
+        planner.execution_mode = CoreExecutionMode::PlanNoCommit(action_key);
+        let response = match submission {
+            TransitionSubmission::RecordShapingCheckpoint(request) => {
+                planner.record_shaping_checkpoint(context, request, invocation)
+            }
+            TransitionSubmission::UpdateScope(request) => {
+                planner.update_scope(context, request, invocation)
+            }
+            TransitionSubmission::FinalizeAdvice(request) => {
+                planner.finalize_advice(context, request, invocation)
+            }
+            TransitionSubmission::AdvanceTask(request) => {
+                planner.advance_task(context, request, invocation)
+            }
+            TransitionSubmission::PrepareEvidenceCapture(request) => {
+                planner.prepare_evidence_capture(context, request, invocation)
+            }
+            TransitionSubmission::PrepareWrite(request) => {
+                planner.prepare_write(context, request, invocation)
+            }
+            TransitionSubmission::StageArtifact(request) => {
+                planner.stage_artifact(context, request, invocation)
+            }
+            TransitionSubmission::RecordRun(request) => {
+                planner.record_run(context, request, invocation)
+            }
+            TransitionSubmission::RequestUserAction(request) => {
+                planner.request_user_action(context, request, invocation)
+            }
+            TransitionSubmission::ReconcileChanges(request) => {
+                planner.reconcile_changes(context, request, invocation)
+            }
+            TransitionSubmission::CheckClose(request) => planner.check_close(request, invocation),
+            TransitionSubmission::CloseTask(request) => {
+                planner.close_task(context, request, invocation)
+            }
+        }?;
+        if let Some(plan) = decode_no_commit_transition_plan(&response)? {
+            return Ok(plan);
+        }
+        Err({
+            let code = response
+                .response_value
+                .pointer("/errors/0/code")
+                .and_then(Value::as_str)
+                .unwrap_or("method_planner_rejected");
+            let message = response
+                .response_value
+                .pointer("/errors/0/message")
+                .and_then(Value::as_str)
+                .unwrap_or("no diagnostic message");
+            let field = response
+                .response_value
+                .pointer("/errors/0/details/field")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown_field");
+            CorePipelineError::Invariant {
+                detail: format!(
+                    "no-commit planner did not reach a valid exact method plan for {} {} at {code}:{field}:{}",
+                    action_key.method.as_str(),
+                    action_key.semantic_variant.as_str(),
+                    message.chars().take(160).collect::<String>()
+                ),
+            }
+        })
     }
 
     pub(crate) fn project_now(&self, store: &CoreProjectStore) -> CoreResult<UtcTimestamp> {
@@ -947,7 +1160,7 @@ impl CoreService {
         request: PipelineRequest<F, B>,
     ) -> CoreResult<PipelineResponse>
     where
-        F: AssembleMethodResult<B>,
+        F: AssembleMethodResult<B> + Serialize,
         F::Result: Serialize,
     {
         validate_branch_shape(&request.branch, request.envelope.dry_run)?;
@@ -1080,26 +1293,30 @@ impl CoreService {
             }
         };
 
-        let replay_response = match replay_preflight_response(
-            &store,
-            &request,
-            &request_hash,
-            &project_state,
-            &verified_invocation,
-        ) {
-            Ok(response) => response,
-            Err(CorePipelineError::Store(error)) => {
-                return response_outcome_from_rejected(
-                    rejected_response(
-                        request.envelope.dry_run,
-                        Some(project_state.state_version),
-                        vec![store_failure_error(error)],
-                    ),
-                    Some(verified_invocation),
-                    None,
-                );
+        let replay_response = if matches!(self.execution_mode, CoreExecutionMode::Execute) {
+            match replay_preflight_response(
+                &store,
+                &request,
+                &request_hash,
+                &project_state,
+                &verified_invocation,
+            ) {
+                Ok(response) => response,
+                Err(CorePipelineError::Store(error)) => {
+                    return response_outcome_from_rejected(
+                        rejected_response(
+                            request.envelope.dry_run,
+                            Some(project_state.state_version),
+                            vec![store_failure_error(error)],
+                        ),
+                        Some(verified_invocation),
+                        None,
+                    );
+                }
+                Err(error) => return Err(error),
             }
-            Err(error) => return Err(error),
+        } else {
+            None
         };
         if let Some(replay_response) = replay_response {
             return Ok(PipelinePreflightOutcome::Response(Box::new(
@@ -1312,12 +1529,29 @@ impl CoreService {
         branch: OwnerPipelineBranch<F, B>,
     ) -> CoreResult<PipelineResponse>
     where
-        F: AssembleMethodResult<B>,
+        F: AssembleMethodResult<B> + Serialize,
         F::Result: Serialize,
     {
         validate_branch_shape(&branch, prepared.envelope.dry_run)?;
         validate_method_response_branch(prepared.method_name, prepared.envelope.dry_run, &branch)?;
         validate_admitted_transition_branch(&prepared, &branch)?;
+        if let CoreExecutionMode::PlanNoCommit(action_key) = self.execution_mode {
+            let planned_fields = match &branch.kind {
+                OwnerPipelineBranchKind::ReadOnly { result_fields, .. }
+                | OwnerPipelineBranchKind::NoEffectResult { result_fields, .. }
+                | OwnerPipelineBranchKind::CommitMutation { result_fields, .. } => {
+                    Some(serde_json::to_value(result_fields)?)
+                }
+                OwnerPipelineBranchKind::DryRunPreview { .. } => None,
+            };
+            let plan = validate_no_commit_transition_plan(
+                action_key,
+                &prepared,
+                &branch,
+                planned_fields.as_ref(),
+            )?;
+            return Ok(no_commit_pipeline_response(plan));
+        }
         let project_state = prepared.context.project_state.clone();
         let verified_invocation = prepared.context.verified_invocation.clone();
         let resolved_task_id = prepared.context.resolved_task_id.clone();
@@ -1450,6 +1684,107 @@ impl CoreService {
             }
         }
     }
+
+    /// Completes a method-owned response produced after exact transition
+    /// admission. During no-commit planning, an exact method-owned rejection is
+    /// a valid no-effect plan: the advertised transition remains current while
+    /// the method's present policy or semantic state blocks an effect.
+    pub(crate) fn complete_prepared_response(
+        &self,
+        response: PipelineResponse,
+        prepared: &PreparedRequest<'_>,
+    ) -> CoreResult<PipelineResponse> {
+        let response = response.with_prepared_context(prepared);
+        let CoreExecutionMode::PlanNoCommit(action_key) = self.execution_mode else {
+            return Ok(response);
+        };
+        if response
+            .response_value
+            .pointer("/base/response_kind")
+            .and_then(Value::as_str)
+            != Some("rejected")
+        {
+            return Ok(response);
+        }
+        let rejected =
+            serde_json::from_value::<ToolRejectedResponse>(response.response_value.clone())?;
+        if rejected.errors().is_empty() {
+            return Err(CorePipelineError::Invariant {
+                detail: "no-commit method-owned rejection has no typed error".to_owned(),
+            });
+        }
+        let admission =
+            prepared
+                .admitted_transition
+                .as_ref()
+                .ok_or_else(|| CorePipelineError::Invariant {
+                    detail: "no-commit policy rejection has no exact transition admission"
+                        .to_owned(),
+                })?;
+        if admission.descriptor.action_key != action_key
+            || admission.descriptor.expected_state_version
+                != prepared.context.project_state.state_version
+            || rejected.base().dry_run_intent() != DryRunIntent::NotRequested
+            || rejected.base().state_version() != Some(prepared.context.project_state.state_version)
+            || !rejected.base().events().is_empty()
+            || response.operation_result_ref.is_some()
+            || response.replayed
+        {
+            return Err(CorePipelineError::Invariant {
+                detail: "no-commit policy rejection contradicts its admitted no-effect plan"
+                    .to_owned(),
+            });
+        }
+        validate_planned_expected_result(
+            true,
+            None,
+            &admission.workflow,
+            admission.descriptor.expected_result_state,
+        )?;
+        Ok(no_commit_pipeline_response(NoCommitTransitionPlan {
+            action_key,
+            basis_state_version: prepared.context.project_state.state_version,
+            effect_class: admission.descriptor.effect_class,
+            expected_result_state: admission.descriptor.expected_result_state,
+        }))
+    }
+
+    pub(crate) fn complete_stage_artifact_no_commit(
+        &self,
+        prepared: &PreparedRequest<'_>,
+    ) -> CoreResult<Option<PipelineResponse>> {
+        let CoreExecutionMode::PlanNoCommit(action_key) = self.execution_mode else {
+            return Ok(None);
+        };
+        let admission =
+            prepared
+                .admitted_transition
+                .as_ref()
+                .ok_or_else(|| CorePipelineError::Invariant {
+                    detail: "no-commit artifact planner lost exact transition admission".to_owned(),
+                })?;
+        if admission.descriptor.action_key != action_key
+            || admission.descriptor.effect_class != WorkflowTransitionEffectClass::ArtifactStaging
+        {
+            return Err(CorePipelineError::Invariant {
+                detail: "planned artifact branch contradicts current transition effect".to_owned(),
+            });
+        }
+        if !workflow_matches_expected_result(
+            &admission.workflow,
+            admission.descriptor.expected_result_state,
+        ) {
+            return Err(CorePipelineError::Invariant {
+                detail: "planned artifact authority contradicts expected-result family".to_owned(),
+            });
+        }
+        Ok(Some(no_commit_pipeline_response(NoCommitTransitionPlan {
+            action_key,
+            basis_state_version: prepared.context.project_state.state_version,
+            effect_class: admission.descriptor.effect_class,
+            expected_result_state: admission.descriptor.expected_result_state,
+        })))
+    }
 }
 
 fn open_store_for_policy<'mutation>(
@@ -1460,6 +1795,12 @@ fn open_store_for_policy<'mutation>(
 ) -> Result<CoreProjectStore<'mutation>, StoreError> {
     if policy.effect == MethodEffectPolicy::ReadOnly {
         CoreProjectStore::open_read_only(service.runtime_home(), project_id)
+    } else if matches!(service.execution_mode, CoreExecutionMode::PlanNoCommit(_)) {
+        let context = context.ok_or_else(|| StoreError::InvalidInput {
+            detail: "Core no-commit planning requires Runtime Home mutation admission".to_owned(),
+        })?;
+        service.ensure_mutation_context(context)?;
+        CoreProjectStore::open_read_only(service.runtime_home(), project_id)
     } else {
         let context = context.ok_or_else(|| StoreError::InvalidInput {
             detail: "Core mutation requires Runtime Home mutation admission".to_owned(),
@@ -1467,6 +1808,229 @@ fn open_store_for_policy<'mutation>(
         service.ensure_mutation_context(context)?;
         CoreProjectStore::open_for_mutation(context, project_id)
     }
+}
+
+fn validate_no_commit_transition_plan<F, B>(
+    action_key: WorkflowActionKey,
+    prepared: &PreparedRequest<'_>,
+    branch: &OwnerPipelineBranch<F, B>,
+    planned_fields: Option<&Value>,
+) -> CoreResult<NoCommitTransitionPlan> {
+    let admission =
+        prepared
+            .admitted_transition
+            .as_ref()
+            .ok_or_else(|| CorePipelineError::Invariant {
+                detail: "no-commit planner reached a method without exact transition admission"
+                    .to_owned(),
+            })?;
+    if admission.descriptor.action_key != action_key {
+        return Err(CorePipelineError::Invariant {
+            detail: "no-commit planner admitted a different current action key".to_owned(),
+        });
+    }
+    match &branch.kind {
+        OwnerPipelineBranchKind::CommitMutation {
+            storage_mutations, ..
+        } if !volicord_store::core_pipeline::transition_effect_matches_mutations(
+            action_key,
+            admission.descriptor.effect_class,
+            storage_mutations,
+        ) =>
+        {
+            return Err(CorePipelineError::Invariant {
+                detail: "planned mutation batch contradicts transition effect class".to_owned(),
+            });
+        }
+        OwnerPipelineBranchKind::DryRunPreview { .. } => {
+            return Err(CorePipelineError::Invariant {
+                detail: "no-commit transition planning cannot stop at a dry-run preview".to_owned(),
+            });
+        }
+        OwnerPipelineBranchKind::ReadOnly { .. }
+        | OwnerPipelineBranchKind::NoEffectResult { .. }
+        | OwnerPipelineBranchKind::CommitMutation { .. } => {}
+    }
+
+    let projected_workflow = planned_fields
+        .and_then(|fields| {
+            fields
+                .pointer("/state/workflow")
+                .or_else(|| fields.pointer("/workflow"))
+        })
+        .map(|workflow| serde_json::from_value::<WorkflowProjection>(workflow.clone()))
+        .transpose()?
+        .unwrap_or_else(|| admission.workflow.clone());
+    let no_effect_result = matches!(&branch.kind, OwnerPipelineBranchKind::NoEffectResult { .. });
+    validate_planned_expected_result(
+        no_effect_result,
+        planned_fields,
+        &projected_workflow,
+        admission.descriptor.expected_result_state,
+    )?;
+    Ok(NoCommitTransitionPlan {
+        action_key,
+        basis_state_version: prepared.context.project_state.state_version,
+        effect_class: admission.descriptor.effect_class,
+        expected_result_state: admission.descriptor.expected_result_state,
+    })
+}
+
+fn validate_planned_expected_result(
+    no_effect_result: bool,
+    planned_fields: Option<&Value>,
+    workflow: &WorkflowProjection,
+    expected: WorkflowExpectedResultState,
+) -> CoreResult<()> {
+    if no_effect_result || planned_fields_match_expected_result(planned_fields, workflow, expected)
+    {
+        return Ok(());
+    }
+    let observed_phase = planned_fields
+        .and_then(|fields| fields.pointer("/state/lifecycle/lifecycle_phase"))
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    Err(CorePipelineError::Invariant {
+        detail: format!(
+            "planned authority state contradicts transition expected-result family (workflow={:?}, lifecycle={observed_phase})",
+            workflow.kind()
+        ),
+    })
+}
+
+fn workflow_matches_expected_result(
+    workflow: &WorkflowProjection,
+    expected: WorkflowExpectedResultState,
+) -> bool {
+    match expected {
+        WorkflowExpectedResultState::ReevaluateCurrentAuthority => {
+            workflow.kind() != WorkflowStateKind::Terminal
+        }
+        WorkflowExpectedResultState::AwaitingUserAction => {
+            workflow.kind() == WorkflowStateKind::AwaitingUserAction
+        }
+        WorkflowExpectedResultState::Implementation => {
+            workflow.kind() == WorkflowStateKind::Implementation
+        }
+        WorkflowExpectedResultState::CloseReview => workflow_close_basis_present(workflow),
+        WorkflowExpectedResultState::Terminal => workflow.kind() == WorkflowStateKind::Terminal,
+    }
+}
+
+fn planned_fields_match_expected_result(
+    planned_fields: Option<&Value>,
+    workflow: &WorkflowProjection,
+    expected: WorkflowExpectedResultState,
+) -> bool {
+    let state = planned_fields.and_then(|fields| fields.get("state"));
+    match expected {
+        WorkflowExpectedResultState::Terminal => {
+            state
+                .and_then(|state| state.pointer("/lifecycle/lifecycle_phase"))
+                .and_then(Value::as_str)
+                .is_some_and(|phase| matches!(phase, "completed" | "cancelled" | "superseded"))
+                || workflow.kind() == WorkflowStateKind::Terminal
+        }
+        WorkflowExpectedResultState::Implementation => {
+            state
+                .and_then(|state| state.get("work_phase"))
+                .and_then(Value::as_str)
+                .is_some_and(|phase| phase == "implementation")
+                || workflow.kind() == WorkflowStateKind::Implementation
+        }
+        WorkflowExpectedResultState::AwaitingUserAction => {
+            state
+                .and_then(|state| state.get("pending_user_action_summaries"))
+                .and_then(Value::as_array)
+                .is_some_and(|pending| !pending.is_empty())
+                || workflow.kind() == WorkflowStateKind::AwaitingUserAction
+        }
+        WorkflowExpectedResultState::CloseReview => {
+            planned_fields
+                .and_then(|fields| fields.get("current_close_basis"))
+                .is_some_and(|basis| !basis.is_null())
+                || workflow_close_basis_present(workflow)
+        }
+        WorkflowExpectedResultState::ReevaluateCurrentAuthority => state
+            .and_then(|state| state.pointer("/lifecycle/lifecycle_phase"))
+            .and_then(Value::as_str)
+            .is_none_or(|phase| !matches!(phase, "completed" | "cancelled" | "superseded")),
+    }
+}
+
+fn workflow_close_basis_present(workflow: &WorkflowProjection) -> bool {
+    match workflow {
+        WorkflowProjection::NoActiveTask {
+            close_readiness, ..
+        }
+        | WorkflowProjection::ShapingRequired {
+            close_readiness, ..
+        }
+        | WorkflowProjection::AwaitingUserAction {
+            close_readiness, ..
+        }
+        | WorkflowProjection::DecisionRecoveryRequired {
+            close_readiness, ..
+        }
+        | WorkflowProjection::ReadyToApplyDecisions {
+            close_readiness, ..
+        }
+        | WorkflowProjection::ReadyForChangeUnit {
+            close_readiness, ..
+        }
+        | WorkflowProjection::ReadyToFinalizeAdvice {
+            close_readiness, ..
+        }
+        | WorkflowProjection::ReadyForImplementation {
+            close_readiness, ..
+        }
+        | WorkflowProjection::Implementation {
+            close_readiness, ..
+        }
+        | WorkflowProjection::CloseReview {
+            close_readiness, ..
+        }
+        | WorkflowProjection::Terminal {
+            close_readiness, ..
+        } => close_readiness.current_close_basis_present,
+    }
+}
+
+fn no_commit_pipeline_response(plan: NoCommitTransitionPlan) -> PipelineResponse {
+    let response_value = serde_json::to_value(NoCommitPipelineMarker {
+        no_commit_transition_plan: plan,
+    })
+    .expect("typed no-commit marker serialization must succeed");
+    PipelineResponse {
+        response_json: "null".to_owned(),
+        response_value,
+        operation_result_ref: None,
+        verified_invocation: None,
+        resolved_task_id: None,
+        replayed: false,
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NoCommitPipelineMarker {
+    no_commit_transition_plan: NoCommitTransitionPlan,
+}
+
+fn decode_no_commit_transition_plan(
+    response: &PipelineResponse,
+) -> CoreResult<Option<NoCommitTransitionPlan>> {
+    if response
+        .response_value
+        .get("no_commit_transition_plan")
+        .is_none()
+    {
+        return Ok(None);
+    }
+    Ok(Some(
+        serde_json::from_value::<NoCommitPipelineMarker>(response.response_value.clone())?
+            .no_commit_transition_plan,
+    ))
 }
 
 /// Injectable UTC clock used by Core authority checks.
@@ -3121,6 +3685,46 @@ mod tests {
     const PROJECT_ID: &str = "project_a";
     const TASK_ID: &str = "task_a";
     const CONNECTION_ID: &str = "connection_main";
+
+    #[test]
+    fn no_commit_expected_result_mismatch_fails_closed() {
+        let workflow = WorkflowProjection::Implementation {
+            next_actor: volicord_types::values::AuthorityNextActor::Agent,
+            required_refs: Vec::new(),
+            expected_state_version: 7,
+            blocking_reason: RequiredNullable::null(),
+            checkpoint: RequiredNullable::null(),
+            transition_catalog: volicord_types::schema::WorkflowTransitionCatalog::new(Vec::new())
+                .expect("empty test catalog"),
+            close_readiness: volicord_types::schema::WorkflowCloseReadiness {
+                assessment_required: true,
+                current_close_basis_present: false,
+            },
+        };
+        let planned_fields = json!({
+            "state": {
+                "work_phase": "implementation",
+                "lifecycle": { "lifecycle_phase": "executing" }
+            }
+        });
+
+        assert!(matches!(
+            validate_planned_expected_result(
+                false,
+                Some(&planned_fields),
+                &workflow,
+                WorkflowExpectedResultState::Terminal,
+            ),
+            Err(CorePipelineError::Invariant { .. })
+        ));
+        assert!(validate_planned_expected_result(
+            false,
+            Some(&planned_fields),
+            &workflow,
+            WorkflowExpectedResultState::Implementation,
+        )
+        .is_ok());
+    }
 
     #[test]
     fn write_ticket_invariant_corruption_projects_without_a_physical_column() {

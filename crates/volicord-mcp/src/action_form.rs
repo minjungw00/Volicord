@@ -5,17 +5,16 @@ use serde_json::{json, Map, Value};
 use volicord_mcp_wire::{
     action_form_request_projection, mcp_tool_contract, submitted_action_form_semantic_variant,
     ActionFormRequestProjectionDescriptor, McpActionFormArgumentMismatch,
-    McpInputContractValidation, RetryContract, SemanticSchemaDescriptor, WorkflowActionForm,
-    WorkflowActionFormCatalog, WorkflowActionInput, MAX_VALIDATION_ISSUES,
+    McpInputContractValidation, McpWorkflowContractStage, RetryContract, SemanticSchemaDescriptor,
+    WorkflowActionForm, WorkflowActionFormCatalog, WorkflowActionInput, MAX_VALIDATION_ISSUES,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
 use volicord_types::schema::{
-    JsonObject, RequiredNullable, TransitionDescriptor, UserActionDraft,
-    UserActionEvidenceObservationDraft, WorkflowActionAuthorityCoordinates, WorkflowActionKey,
-    WorkflowCheckpointActionCoordinates, WorkflowProjection,
-    WorkflowRecordShapingCheckpointSubmissionContract, WorkflowTransitionSubmissionContract,
-    WorkflowUpdateScopeSubmissionContract,
+    JsonObject, RequiredNullable, TransitionDescriptor, UserActionChoiceDraft, UserActionDraft,
+    WorkflowActionAuthorityCoordinates, WorkflowActionKey, WorkflowCheckpointActionCoordinates,
+    WorkflowProjection, WorkflowRecordShapingCheckpointSubmissionContract,
+    WorkflowTransitionSubmissionContract, WorkflowUpdateScopeSubmissionContract,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::MethodName;
@@ -517,20 +516,15 @@ fn submission_witnesses(contract: &WorkflowTransitionSubmissionContract) -> (Val
         } => (
             json!({
                 "request": {
-                    "action": UserActionDraft::EvidenceObservation(
-                        UserActionEvidenceObservationDraft {
-                            question: required_agent_input_witness.evidence_observation.prompt.clone(),
-                            context_summary: required_agent_input_witness.evidence_observation.context.clone(),
-                            target_candidates: required_agent_input_witness
-                                .evidence_observation
-                                .target_candidates
-                                .clone(),
-                            artifact_candidate_ids: required_agent_input_witness
-                                .evidence_observation
-                                .artifact_candidate_ids
-                                .clone(),
-                        }
-                    ),
+                    "action": UserActionDraft::Choice(Box::new(UserActionChoiceDraft {
+                        judgment_kind: required_agent_input_witness.choice.judgment_kind,
+                        presentation: required_agent_input_witness.choice.presentation,
+                        question: required_agent_input_witness.choice.prompt.clone(),
+                        options: required_agent_input_witness.choice.options.clone(),
+                        context: required_agent_input_witness.choice.context.clone(),
+                        affected_refs: required_agent_input_witness.choice.affected_refs.clone(),
+                        sensitive_action_scope: RequiredNullable::null(),
+                    })),
                     "required_for": required_agent_input_witness.required_for,
                     "expires_at": required_agent_input_witness.expires_at,
                 },
@@ -621,11 +615,11 @@ fn fixed_leaf_paths(value: &Value, prefix: &str, paths: &mut Vec<String>) {
 }
 
 /// Projects one current neutral transition through the canonical MCP descriptor.
-pub(crate) fn workflow_action_form(
+fn workflow_action_form(
     project_id: &ProjectId,
     workflow: &WorkflowProjection,
     transition: &TransitionDescriptor,
-) -> Result<Option<WorkflowActionForm>, String> {
+) -> Result<Option<ProjectedWorkflowActionForm>, String> {
     if transition.actor != volicord_types::values::WorkflowTransitionActor::Agent {
         return Ok(None);
     }
@@ -690,7 +684,13 @@ pub(crate) fn workflow_action_form(
             method.as_str()
         ));
     }
-    volicord_core::model_check_current_transition(workflow, transition).map_err(str::to_owned)?;
+    let current = workflow
+        .transition_catalog()
+        .transition(&transition.action_key)
+        .ok_or_else(|| "action-form transition is absent from the current catalog".to_owned())?;
+    if current != transition {
+        return Err("action-form transition differs from the current descriptor".to_owned());
+    }
     let form_ref = canonical_json_sha256(&WorkflowActionFormDigestBasis {
         domain: "volicord.mcp-workflow-action-form",
         project_id,
@@ -767,17 +767,25 @@ pub(crate) fn workflow_action_form(
             false,
         )?;
     }
-    if !matches!(
-        descriptor.validate_and_decode_input(&complete_validation_witness),
-        McpInputContractValidation::Valid
-    ) {
-        return Err(format!(
-            "{} complete submission witness failed semantic validation",
-            method.as_str()
-        ));
+    match descriptor.validate_and_decode_input(&complete_validation_witness) {
+        McpInputContractValidation::Valid => {}
+        McpInputContractValidation::Invalid(_) => {
+            return Err(format!(
+                "{} complete submission witness failed semantic validation",
+                method.as_str()
+            ));
+        }
+        McpInputContractValidation::SchemaContractFailure => {
+            return Err(format!(
+                "{} complete submission witness failed exact decoding",
+                method.as_str()
+            ));
+        }
     }
     if submitted_action_form_semantic_variant(method, &canonical_minimal_request)
         != Some(selected_semantic_variant)
+        || submitted_action_form_semantic_variant(method, &complete_validation_witness)
+            != Some(selected_semantic_variant)
     {
         return Err(format!(
             "{} canonical minimal request reaches another semantic variant",
@@ -791,7 +799,47 @@ pub(crate) fn workflow_action_form(
             method.as_str()
         ));
     }
-    Ok(Some(form))
+    let complete_binding = bind_fixed_arguments(&form, &complete_validation_witness)?;
+    if !complete_binding.mismatches.is_empty() {
+        return Err(format!(
+            "{} complete submission witness does not bind every fixed argument",
+            method.as_str()
+        ));
+    }
+    Ok(Some(ProjectedWorkflowActionForm {
+        form,
+        complete_validation_witness,
+    }))
+}
+
+pub(crate) struct ProjectedWorkflowActionForm {
+    pub form: WorkflowActionForm,
+    pub complete_validation_witness: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ActionFormCatalogError {
+    pub action_key: Option<WorkflowActionKey>,
+    pub stage: McpWorkflowContractStage,
+    pub detail: String,
+}
+
+impl std::fmt::Display for ActionFormCatalogError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:?}: {}", self.stage, self.detail)
+    }
+}
+
+impl std::error::Error for ActionFormCatalogError {}
+
+impl ActionFormCatalogError {
+    pub(crate) fn reached_core(&self) -> bool {
+        matches!(
+            self.stage,
+            McpWorkflowContractStage::CorePlanning
+                | McpWorkflowContractStage::ExpectedResultValidation
+        )
+    }
 }
 
 pub(crate) struct FixedArgumentBindingResult {
@@ -856,38 +904,44 @@ pub(crate) fn bind_fixed_arguments(
     })
 }
 
-pub(crate) fn workflow_action_form_catalog(
+pub(crate) fn workflow_action_form_catalog<F>(
     project_id: &ProjectId,
     workflow: &WorkflowProjection,
-) -> Result<WorkflowActionFormCatalog, String> {
+    mut validate_plan: F,
+) -> Result<WorkflowActionFormCatalog, ActionFormCatalogError>
+where
+    F: FnMut(&WorkflowActionForm, Value) -> Result<(), (McpWorkflowContractStage, String)>,
+{
     let mut forms = Vec::new();
     for transition in &workflow.transition_catalog().transitions {
         if transition.actor != volicord_types::values::WorkflowTransitionActor::Agent {
             continue;
         }
-        let form = workflow_action_form(project_id, workflow, transition)?.ok_or_else(|| {
-            format!(
-                "Agent transition {} {} did not produce an MCP action form",
-                transition.action_key.method.as_str(),
-                transition.action_key.semantic_variant.as_str()
-            )
-        })?;
-        forms.push(form);
+        let projected = workflow_action_form(project_id, workflow, transition)
+            .map_err(|detail| ActionFormCatalogError {
+                action_key: Some(transition.action_key),
+                stage: projection_failure_stage(&detail),
+                detail,
+            })?
+            .ok_or_else(|| ActionFormCatalogError {
+                action_key: Some(transition.action_key),
+                stage: McpWorkflowContractStage::CatalogTotality,
+                detail: format!(
+                    "Agent transition {} {} did not produce an MCP action form",
+                    transition.action_key.method.as_str(),
+                    transition.action_key.semantic_variant.as_str()
+                ),
+            })?;
+        validate_plan(&projected.form, projected.complete_validation_witness).map_err(
+            |(stage, detail)| ActionFormCatalogError {
+                action_key: Some(transition.action_key),
+                stage,
+                detail,
+            },
+        )?;
+        forms.push(projected.form);
     }
-    if forms.len()
-        != workflow
-            .transition_catalog()
-            .transitions
-            .iter()
-            .filter(|transition| {
-                transition.actor == volicord_types::values::WorkflowTransitionActor::Agent
-            })
-            .count()
-    {
-        return Err(
-            "the MCP action-form catalog is not a total Agent-transition projection".to_owned(),
-        );
-    }
+    validate_action_form_totality(workflow, &forms)?;
     Ok(WorkflowActionFormCatalog {
         required_action_key: RequiredNullable::new(
             workflow
@@ -907,6 +961,64 @@ pub(crate) fn workflow_action_form_catalog(
             volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest(),
         forms,
     })
+}
+
+fn projection_failure_stage(detail: &str) -> McpWorkflowContractStage {
+    if detail.contains("semantic validation") {
+        McpWorkflowContractStage::SemanticValidation
+    } else if detail.contains("exact decoding") {
+        McpWorkflowContractStage::ExactDecode
+    } else if detail.contains("bind") || detail.contains("fixed argument") {
+        McpWorkflowContractStage::FixedBinding
+    } else if detail.contains("transition") || detail.contains("descriptor") {
+        McpWorkflowContractStage::TransitionContract
+    } else {
+        McpWorkflowContractStage::WitnessProjection
+    }
+}
+
+fn validate_action_form_totality(
+    workflow: &WorkflowProjection,
+    forms: &[WorkflowActionForm],
+) -> Result<(), ActionFormCatalogError> {
+    for transition in workflow
+        .transition_catalog()
+        .transitions
+        .iter()
+        .filter(|transition| {
+            transition.actor == volicord_types::values::WorkflowTransitionActor::Agent
+        })
+    {
+        if !forms
+            .iter()
+            .any(|form| form.action_key == transition.action_key)
+        {
+            return Err(ActionFormCatalogError {
+                action_key: Some(transition.action_key),
+                stage: McpWorkflowContractStage::CatalogTotality,
+                detail: "a current Agent transition has no exact validated MCP action form"
+                    .to_owned(),
+            });
+        }
+    }
+    if forms.len()
+        != workflow
+            .transition_catalog()
+            .transitions
+            .iter()
+            .filter(|transition| {
+                transition.actor == volicord_types::values::WorkflowTransitionActor::Agent
+            })
+            .count()
+    {
+        return Err(ActionFormCatalogError {
+            action_key: None,
+            stage: McpWorkflowContractStage::CatalogTotality,
+            detail: "the MCP action-form catalog is not a one-to-one Agent-transition projection"
+                .to_owned(),
+        });
+    }
+    Ok(())
 }
 
 pub(crate) fn retry_contract(
@@ -969,6 +1081,7 @@ mod tests {
         let workflow = workflow_for_transitions(vec![transition.clone()]);
         super::workflow_action_form(project_id, &workflow, transition)
             .expect("valid action-form projection")
+            .map(|projected| projected.form)
     }
 
     fn workflow_for_transitions(mut transitions: Vec<TransitionDescriptor>) -> WorkflowProjection {
@@ -1705,7 +1818,8 @@ mod tests {
         })
         .collect::<Vec<_>>();
         let workflow = workflow_for_transitions(transitions.clone());
-        let catalog = workflow_action_form_catalog(&project_id, &workflow).expect("catalog");
+        let catalog =
+            workflow_action_form_catalog(&project_id, &workflow, |_, _| Ok(())).expect("catalog");
 
         assert_eq!(catalog.forms.len(), transitions.len());
         for transition in transitions {
@@ -1740,6 +1854,40 @@ mod tests {
     }
 
     #[test]
+    fn malformed_submission_contract_and_missing_required_form_fail_closed() {
+        let project_id = ProjectId::new("prj_invalid_catalog");
+        let task_id = TaskId::new("task_invalid_catalog");
+        let mut transition = agent_transition(
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+            WorkflowActionRole::Required,
+            3,
+            WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id,
+                scope_revision: 0,
+                baseline_ref: RequiredNullable::null(),
+                current_change_unit_id: RequiredNullable::null(),
+                related_scope_decision_refs: Vec::new(),
+                selected_change_unit_operation: ChangeUnitOperation::CreateCurrent,
+            },
+            Vec::new(),
+        );
+        let valid_workflow = workflow_for_transitions(vec![transition.clone()]);
+        let missing = validate_action_form_totality(&valid_workflow, &[])
+            .expect_err("required form omission must fail closed");
+        assert_eq!(missing.action_key, Some(transition.action_key));
+        assert_eq!(missing.stage, McpWorkflowContractStage::CatalogTotality);
+
+        transition.submission_contract = WorkflowTransitionSubmissionContract::CheckClose {
+            required_agent_input_witness: volicord_types::schema::WorkflowNoSubmissionValues {},
+            optional_agent_input_witness: volicord_types::schema::WorkflowNoSubmissionValues {},
+        };
+        assert!(volicord_types::schema::WorkflowTransitionCatalog::new(vec![transition]).is_err());
+
+        let _ = project_id;
+    }
+
+    #[test]
     fn retry_lookup_never_falls_back_and_external_close_has_no_form() {
         let project_id = ProjectId::new("prj_retry_projection");
         let task_id = TaskId::new("task_retry_projection");
@@ -1771,7 +1919,8 @@ mod tests {
             Vec::new(),
         );
         let workflow = workflow_for_transitions(vec![attempted.clone(), close.clone()]);
-        let mut catalog = workflow_action_form_catalog(&project_id, &workflow).expect("catalog");
+        let mut catalog =
+            workflow_action_form_catalog(&project_id, &workflow, |_, _| Ok(())).expect("catalog");
         let external_close = retry_contract(
             attempted.action_key,
             close.action_key,

@@ -214,7 +214,7 @@ fn execute_request_user_action(
         Err(error) => {
             let response =
                 plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
-            return Ok(response.with_prepared_context(&prepared));
+            return service.complete_prepared_response(response, &prepared);
         }
     };
     if request.envelope.dry_run.is_requested() {
@@ -789,7 +789,7 @@ fn execute_resolve_user_action(
         Err(error) => {
             let response =
                 plan_error_response(&request.envelope, &prepared.context.project_state, error)?;
-            return Ok(response.with_prepared_context(&prepared));
+            return service.complete_prepared_response(response, &prepared);
         }
     };
     prepared.admitted_transition = Some(plan.admitted_transition.clone());

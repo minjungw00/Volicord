@@ -2719,21 +2719,23 @@ pub struct WorkflowRecordRunOptionalWitness {
     pub evidence_observations: Vec<EvidenceObservationInput>,
 }
 
-/// Required user-action draft values for a submission witness.
+/// Agent-safe values used to construct a schema-valid choice-action witness.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct WorkflowEvidenceObservationActionWitness {
+pub struct WorkflowUserActionChoiceWitness {
+    pub judgment_kind: JudgmentKind,
+    pub presentation: JudgmentPresentation,
     pub prompt: String,
-    pub context: String,
-    pub target_candidates: Vec<EvidenceTarget>,
-    pub artifact_candidate_ids: Vec<ArtifactId>,
+    pub options: RequiredNullable<Vec<UserActionOptionInput>>,
+    pub context: UserActionContext,
+    pub affected_refs: Vec<StateRecordRef>,
 }
 
 /// Agent-safe values used to construct a schema-valid user-action draft witness.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowRequestUserActionRequiredWitness {
-    pub evidence_observation: WorkflowEvidenceObservationActionWitness,
+    pub choice: WorkflowUserActionChoiceWitness,
     pub required_for: Vec<UserActionRequiredFor>,
     pub expires_at: RequiredNullable<UtcTimestamp>,
 }
@@ -2987,11 +2989,29 @@ impl WorkflowTransitionSubmissionContract {
             WorkflowActionAuthorityCoordinates::RequestUserAction { .. } => {
                 Self::RequestUserAction {
                     required_agent_input_witness: WorkflowRequestUserActionRequiredWitness {
-                        evidence_observation: WorkflowEvidenceObservationActionWitness {
-                            prompt: "Submission-contract validation prompt.".to_owned(),
-                            context: "Submission-contract validation context.".to_owned(),
-                            target_candidates: Vec::new(),
-                            artifact_candidate_ids: Vec::new(),
+                        choice: WorkflowUserActionChoiceWitness {
+                            judgment_kind: JudgmentKind::TechnicalDecision,
+                            presentation: JudgmentPresentation::Short,
+                            prompt: "Choose the submission-contract validation outcome.".to_owned(),
+                            options: RequiredNullable::some(vec![UserActionOptionInput {
+                                option_id: UserActionOptionId::new(
+                                    "option_submission_contract_validation",
+                                ),
+                                label: "Continue".to_owned(),
+                                description: "Continue the current bounded task.".to_owned(),
+                                consequence: "The current task may continue.".to_owned(),
+                                is_default: true,
+                            }]),
+                            context: UserActionContext {
+                                summary: "A bounded validation decision is required.".to_owned(),
+                                related_refs: Vec::new(),
+                                artifact_refs: Vec::new(),
+                                visible_risks: Vec::new(),
+                                constraints: vec![
+                                    "The decision applies only to the current task.".to_owned()
+                                ],
+                            },
+                            affected_refs: Vec::new(),
                         },
                         required_for: vec![UserActionRequiredFor::Informational],
                         expires_at: RequiredNullable::null(),
@@ -3016,8 +3036,8 @@ impl WorkflowTransitionSubmissionContract {
             },
             WorkflowActionAuthorityCoordinates::CloseTask { .. } => Self::CloseTask {
                 required_agent_input_witness: WorkflowCloseTaskRequiredWitness {
-                    intent: crate::values::CloseMutationIntent::Complete,
-                    close_reason: RequiredNullable::null(),
+                    intent: crate::values::CloseMutationIntent::Cancel,
+                    close_reason: RequiredNullable::some(CloseReason::Cancelled),
                     superseding_task_id: RequiredNullable::null(),
                     user_note: RequiredNullable::null(),
                 },

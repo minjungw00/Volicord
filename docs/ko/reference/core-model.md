@@ -679,11 +679,21 @@ next actor, typed blocking reason, 정확한 required ref, 별도 close-readines
 
 도달 가능한 workflow model은 탐색한 모든 현재 상태 조합에서 다음 liveness와 recovery
 불변 조건을 보존합니다. Action key는 고유하고 required action은 catalog member이며, 광고한
-모든 Agent transition은 원본 snapshot에 대한 동일한 Core admission을 통과하고 광고하지 않은
-variant는 통과하지 않습니다. 종료되지 않은 모든 Agent 소유 상태에는 실행 가능한 경로나
-명시적 terminal 경로가 있고, non-null recovery action은 현재 catalog member이며 MCP가 실행할
-수 있으면 정확한 action form을 가집니다. 또한 같은 snapshot에서는 catalog 순서, required
-role, 고정 좌표, projected form이 결정적인지 검사합니다.
+각 Agent transition에는 정확한 submission contract가 있습니다. 광고하지 않은 variant는
+transition admission을 통과하지 않습니다. 종료되지 않은 모든 Agent 소유 상태에는 실행 가능한
+경로나 명시적 terminal 경로가 있고, non-null recovery action은 현재 catalog member입니다.
+또한 같은 snapshot에서는 catalog 순서, required role, 고정 좌표가 결정적인지 검사합니다.
+
+Core의 `plan_transition_submission_no_commit`은 현재 snapshot에서 Agent transition의 실행
+가능성을 검사합니다. 정확한 `WorkflowActionKey`, 그 key의 정확한 typed request, 검증된
+invocation을 받아 현재 project Store를 읽기 전용으로 열고, 선택한 공개 메서드의 정상 admission,
+정규화, policy, semantic validation을 그대로 수행합니다. Policy가 효과를 허용하면 mutation
+planning, transition effect 검증, 실제 예상 결과 검증까지 이어집니다. Replay lookup은 수행하지
+않고 typed no-commit plan만 반환합니다.
+Transaction 시작, mutation 적용, event·replay 할당, state-version 변경, Product Repository 효과,
+Write Ticket, Run, evidence, artifact staging, Unrecorded Change 생성 전에 멈춥니다. 닫기 검토가
+차단되거나 특정 operation에 필요한 결정이 미해결인 경우처럼 메서드가 정의한 유효한 no-effect
+결과는 그대로 no-effect이며 descriptor의 성공 결과 상태로 표현하지 않습니다.
 
 이 machine은 `volicord.update_scope` variant 가용성도 모두 소유합니다. 좌표는 현재
 Change Unit 권한에 맞는 정확한 `ChangeUnitOperation`을 선택하며 adapter나 projection이
