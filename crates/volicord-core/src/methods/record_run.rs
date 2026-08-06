@@ -26,7 +26,7 @@ use crate::write_ticket::WriteTicketInvalidReason;
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::methods::{MethodOperationCategory, RecordRunRequest, RecordRunResultFields};
-use volicord_types::schema::{RunSummary, ToolEnvelope};
+use volicord_types::schema::{RunSummary, ToolEnvelope, TransitionAttemptDetails};
 use volicord_types::values::{ErrorCode, MethodName, RunKind, TaskMode, WorkPhase};
 
 fn record_run_error_response(
@@ -90,6 +90,11 @@ fn record_run_rejection_response(
                 (TaskMode::Work, WorkPhase::Implementation) => vec![RunKind::Implementation],
                 _ => Vec::new(),
             };
+            let attempt_details =
+                TransitionAttemptDetails::record_run_kind(request.kind, allowed_run_kinds)
+                    .map_err(|detail| crate::pipeline::CorePipelineError::Invariant {
+                        detail: detail.to_owned(),
+                    })?;
             workflow_rejected_response(
                 store,
                 project_state,
@@ -98,8 +103,7 @@ fn record_run_rejection_response(
                 ErrorCode::RunKindIncompatible,
                 "kind is not compatible with the current Task mode and work phase",
                 MethodName::RecordRun,
-                Some(request.kind),
-                allowed_run_kinds,
+                attempt_details,
                 true,
             )
         }
@@ -111,8 +115,7 @@ fn record_run_rejection_response(
             ErrorCode::TaskPhaseTransitionRequired,
             "record_run requires the Task to enter implementation",
             MethodName::RecordRun,
-            Some(request.kind),
-            vec![RunKind::Implementation],
+            TransitionAttemptDetails::None,
             true,
         ),
         RecordingRejection::ChangeUnitRequired => workflow_rejected_response(
@@ -123,8 +126,7 @@ fn record_run_rejection_response(
             ErrorCode::ChangeUnitRequired,
             "record_run requires a current Change Unit",
             MethodName::RecordRun,
-            Some(request.kind),
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         ),
         RecordingRejection::ChangeUnitStale | RecordingRejection::BaselineStale => {
@@ -136,8 +138,7 @@ fn record_run_rejection_response(
                 ErrorCode::ChangeUnitStale,
                 "change_unit_id or baseline_ref does not match the current Change Unit",
                 MethodName::RecordRun,
-                Some(request.kind),
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             )
         }
@@ -149,8 +150,7 @@ fn record_run_rejection_response(
             ErrorCode::WorkspaceBasisStale,
             "current Git workspace context does not match the current Change Unit basis",
             MethodName::RecordRun,
-            Some(request.kind),
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         ),
         RecordingRejection::ProductPathContainment { message } => rejected_pipeline_response(
@@ -171,8 +171,7 @@ fn record_run_rejection_response(
             ErrorCode::UserDecisionUnresolved,
             message,
             MethodName::RecordRun,
-            Some(request.kind),
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         ),
         RecordingRejection::WriteTicketRequired => Ok(write_ticket_required_response(

@@ -51,8 +51,8 @@ use volicord_types::methods::{
 };
 use volicord_types::schema::{
     validate_channel_submission_id, AgentSafeUserActionRequestSummary, StateRecordRef,
-    StateSummary, ToolEnvelope, UserActionResolutionBody, WorkflowActionAuthorityCoordinates,
-    WorkflowActionKey,
+    StateSummary, ToolEnvelope, TransitionAttemptDetails, UserActionResolutionBody,
+    WorkflowActionAuthorityCoordinates, WorkflowActionKey,
 };
 use volicord_types::values::{
     evaluate_shaping_decision_authority, ActorSource, ErrorCode, JudgmentResolutionOutcome,
@@ -919,6 +919,7 @@ fn plan_resolve_user_action(
                 "the addressed UserAction is not a current workflow transition",
                 attempted_action_key,
                 reason,
+                TransitionAttemptDetails::None,
                 admission.retryable,
                 admission.recovery_action_key,
             )
@@ -944,6 +945,7 @@ fn plan_resolve_user_action(
             "the addressed UserAction is absent from current transition authority",
             attempted_action_key,
             TransitionRejectionReason::UserAuthorityMissing,
+            TransitionAttemptDetails::None,
             false,
             admission.recovery_action_key,
         )

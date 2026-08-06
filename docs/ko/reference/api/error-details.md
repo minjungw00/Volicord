@@ -70,13 +70,24 @@ contract 실패를 공개 API 오류로 바꾸지 않습니다.
 TransitionRejection:
   attempted_action_key: WorkflowActionKey
   reason: TransitionRejectionReason
+  attempt_details: TransitionAttemptDetails
   state_change_applied: false
   retryable: boolean
   recovery_action_key: WorkflowActionKey | null
   incompatible_submitted_paths: string[]
-  baseline_compatibility: BaselineTransitionCompatibility | null
   blocking_refs: StateRecordRef[]
   current_workflow_kind: WorkflowStateKind
+
+TransitionAttemptDetails:
+  none:
+    attempt_kind: none
+  record_run_kind:
+    attempt_kind: record_run_kind
+    received_run_kind: RunKind
+    allowed_run_kinds: RunKind[]
+  baseline_transition:
+    attempt_kind: baseline_transition
+    baseline_compatibility: BaselineTransitionCompatibility
 
 BaselineTransitionCompatibility:
   current_baseline_canonical: boolean
@@ -87,10 +98,19 @@ BaselineTransitionCompatibility:
 
 `attempted_action_key`는 admission에 실패한 정확한 메서드와 semantic variant를
 보존합니다. `reason`은 `action_not_current`, `variant_not_current`,
-`authority_basis_mismatch`, `implementation_authority_would_be_invalidated`,
+`run_kind_incompatible`, `authority_basis_mismatch`,
+`implementation_authority_would_be_invalidated`,
 `user_authority_missing`, `checkpoint_stale`, `change_unit_stale`,
 `workspace_basis_stale`, `close_precondition_missing` 중 하나입니다.
 `blocking_refs`는 중복 없이 정규화된 현재 권한 맥락입니다.
+
+`attempt_details`는 거부된 메서드 시도에 고유한 사실을 담당하는 폐쇄형 tagged
+객체입니다. `RUN_KIND_INCOMPATIBLE`에는 `record_run_kind`가 필수입니다.
+`received_run_kind`는 제출된 `record_run` kind이고, 비어 있지 않은
+`allowed_run_kinds`는 폐쇄형 `RunKind` 순서로 정렬되며 중복이 없습니다. 받은 kind는
+허용 kind에 포함되지 않습니다. Run kind 상세가 없거나 generic이거나 정규 형태가
+아니면 유효하지 않습니다. 다른 renderer는 이 객체를 구조적으로 보존하며
+`message`에서 메서드 사실을 복원하지 않습니다.
 
 `recovery_action_key`는 그 정확한 key가 같은 현재 `WorkflowTransitionCatalog`에 있을 때만
 non-null입니다. Core는 메서드 이름이나 표시 문구에서 복구 동작을 만들어 내지 않습니다.
@@ -98,10 +118,43 @@ non-null입니다. Core는 메서드 이름이나 표시 문구에서 복구 동
 적용된 mutation의 replay를 허가하지 않습니다. 바깥 거부는 계속 `no_effect`입니다.
 
 `incompatible_submitted_paths`에는 Core가 식별한 요청 경로만 들어갑니다.
-`baseline_compatibility`는 Core가 이 정확한 transition의 기준선 호환성을 평가했을 때만
-non-null입니다. 현재 값의 canonicality, 제출 값의 canonicality, 현재 권한과의 일치,
-선택한 transition과의 호환성은 서로 독립된 네 사실입니다. MCP와 다른 renderer는 이를
-복사할 뿐 `field`, 오류 문구, 메서드 이름에서 추론하지 않습니다.
+`baseline_transition.baseline_compatibility`는 Core가 이 정확한 transition의 기준선
+호환성을 평가했을 때만 존재합니다. 현재 값의 canonicality, 제출 값의 canonicality,
+현재 권한과의 일치, 선택한 transition과의 호환성은 서로 독립된 네 사실입니다. MCP와
+다른 renderer는 이를 복사할 뿐 `field`, 오류 문구, 메서드 이름에서 추론하지 않습니다.
+
+다음 canonical `ToolError` 예시는 현재 typed 거부로 decode되고 생성된 공개 schema를
+통과합니다.
+
+```json contract=api.schema.core shape=schema_object.ToolError
+{
+  "category": "rejected",
+  "code": "RUN_KIND_INCOMPATIBLE",
+  "message": "The submitted Run kind is incompatible with the current Task.",
+  "retryable": true,
+  "details": {
+    "attempted_action_key": {
+      "method": "volicord.record_run",
+      "semantic_variant": "record_run"
+    },
+    "reason": "run_kind_incompatible",
+    "attempt_details": {
+      "attempt_kind": "record_run_kind",
+      "received_run_kind": "implementation",
+      "allowed_run_kinds": ["direct"]
+    },
+    "state_change_applied": false,
+    "retryable": true,
+    "recovery_action_key": {
+      "method": "volicord.record_run",
+      "semantic_variant": "record_run"
+    },
+    "incompatible_submitted_paths": ["/kind"],
+    "blocking_refs": [],
+    "current_workflow_kind": "implementation"
+  }
+}
+```
 
 <a id="platform-diagnostic-detail-field"></a>
 

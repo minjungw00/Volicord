@@ -756,14 +756,17 @@ lineage; they are not duplicated as top-level mutation arguments.
 
 Workflow mutation rejection uses `TransitionRejection` with the exact attempted
 action key, closed reason, canonical blocking refs, current workflow kind,
-Core-identified incompatible submitted paths, and any typed baseline
-compatibility assessment. Current-value canonicality, submitted-value
-canonicality, equality with current authority, and transition compatibility are
-separate facts.
+Core-identified incompatible submitted paths, and one closed tagged
+`attempt_details` value. A Run-kind rejection carries its exact received kind
+and canonical allowed-kind set; a baseline-transition rejection carries its
+typed compatibility assessment. Current-value canonicality, submitted-value
+canonicality, equality with current authority, and transition compatibility
+are separate facts.
 A non-null `recovery_action_key` is valid only when it exists in this same
 catalog. Recovery is never reconstructed from the received payload, an error
 field, or display text, and MCP looks up only that exact current action form. A
-rejected request creates no replay row; action-key
+rejected request creates no replay row; the exact rejected method-result
+carrier preserves these facts when it is serialized or replayed. Action-key
 identity and fixed authority coordinates distinguish exact replay from a
 conflicting semantic variant.
 

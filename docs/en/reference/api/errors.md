@@ -4,7 +4,8 @@ Shaping methods reject stale Task, scope, baseline, checkpoint, Change Unit, and
 
 State-bound workflow admission failures use the closed
 `TransitionRejection` detail shape. Its nullable `recovery_action_key` is
-present only for an exact transition in the same current workflow catalog.
+present only for an exact transition in the same current workflow catalog;
+method-specific facts remain in its closed tagged `attempt_details` value.
 
 Use this page to find the focused API error Reference page for a question. It
 is a router, not a contract source; exact error contracts live in the linked

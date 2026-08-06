@@ -93,7 +93,12 @@ authority until `volicord.advance_task`. There is no advisor Run fallback.
 A Task whose current workflow catalog does not contain that exact transition
 receives the typed `TransitionRejection` before Run planning. Once admitted, a
 requested `kind` incompatible with the admitted transition receives
-`RUN_KIND_INCOMPATIBLE` with the received kind and the closed allowed-kind set.
+`RUN_KIND_INCOMPATIBLE`. Its required
+`attempt_details.attempt_kind=record_run_kind` preserves the submitted
+`received_run_kind` and the non-empty, sorted, duplicate-free
+`allowed_run_kinds` selected from the current transition. Core, the public
+method result, MCP retry and presentation structures, and MCP compact text
+project these same typed values without parsing the error message.
 
 Every Run also requires the verified current Git workspace context to match the
 current Change Unit write basis. This applies to non-write evidence and close
@@ -506,7 +511,8 @@ Those failures are rejected before commit.
 Returns `ToolRejectedResponse` for:
 
 - `TASK_PHASE_TRANSITION_REQUIRED` when a work Task is still in shaping
-- `RUN_KIND_INCOMPATIBLE` for every other `kind`, mode, or phase mismatch
+- `RUN_KIND_INCOMPATIBLE` for every other `kind`, mode, or phase mismatch; its
+  typed attempt details retain the received and current allowed Run kinds
 - stale `expected_state_version`
 - invalidated write-ticket validity basis
 - missing or mismatched write-ticket policy-authority binding

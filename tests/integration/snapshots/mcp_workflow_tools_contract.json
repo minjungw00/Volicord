@@ -243,6 +243,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -319,7 +320,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:cec99c15ded2d63983d203ca62c7a2629114d777cdc0d7f395522c51945f8ac6"
+        "sha256": "sha256:55d04c5bb789eefe101f5d5ddab25640ba096db4bb55cc735569467add460494"
       }
     },
     {
@@ -534,6 +535,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -612,7 +614,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5dedc492a5a2f630fb2351803756db540488cdb5cb4eba6c59076cc992510b17"
+        "sha256": "sha256:2ebeaf07befd76ee27701ffc3735691d8483e8fbe008d0ab9afc56d952ade795"
       }
     },
     {
@@ -852,6 +854,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -928,7 +931,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bc8c6c936e31f977b5baeacd18e86e67d03c06ee7670068a94fc2bc0b023eadf"
+        "sha256": "sha256:174bcc13a483e3370e2de7ecfb7312e79428929c7fc89c81491da2fd8f7a1a94"
       }
     },
     {
@@ -1140,6 +1143,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -1216,7 +1220,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c2bd82168ad378525c73a0a1dca10abd9615100e96f976d5857184e86a8478b2"
+        "sha256": "sha256:8fe34f84fc37d5798a4a78cbd28498f681179ba59003144d5d84a8b877402f4b"
       }
     },
     {
@@ -1416,6 +1420,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -1492,7 +1497,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:680018b2e46163a7ce91a818e4dbbabfe034fcb753afd2cfda07365c1e54a756"
+        "sha256": "sha256:5566630a06d51308d948860786d060eba6cee514ca049a274f3849ab70ab227c"
       }
     },
     {
@@ -1673,6 +1678,7 @@
           "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultOrRejected_for_StatusResult",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -1746,7 +1752,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6991c1805ed0e0f80d2ecfdd23d9eb5a3cf345352cbe3a32ad10e3daf2ef510b"
+        "sha256": "sha256:dac27ce2d53ed47e46fcbc5a30bf26e478338a2a32a5f868c310c909f6d647fe"
       }
     },
     {
@@ -1879,6 +1885,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -1943,7 +1950,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:65198ed96cdfbdd10f13e4d95422f2f60d141f0edc13d9e376fcff82c76235c8"
+        "sha256": "sha256:362cac13deaff52fe398cc885215edc91382fe54e28d46a408e61a9318a106b2"
       }
     },
     {
@@ -2121,6 +2128,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -2188,7 +2196,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c940cc62d47841e2a613de512033f0cf295c4438e6a984651cd776440eb50b7f"
+        "sha256": "sha256:38f2dcedf2f7494ea5ed0af1fd3a3751dc5e7e6e16d7692c4d7297b0aded3bc1"
       }
     },
     {
@@ -2389,6 +2397,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -2472,7 +2481,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c1e1a28b6310c9571478d67fe823524a61132d485db7606de9791b6d3433d0d0"
+        "sha256": "sha256:7bac66b6e4240743260fb4b1cc8d889666758ebc599f2e046d7aff15765c8309"
       }
     },
     {
@@ -2649,6 +2658,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -2716,7 +2726,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f60bf130d7000bf1b306b4db2911b4aaee5c748552378df8cead91782fdf7968"
+        "sha256": "sha256:c43f0ee8bd32bbf6afe9e271097ac66bba70cd9fa4bdf20e2002f6f014f33c91"
       }
     },
     {
@@ -2982,6 +2992,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -3058,7 +3069,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4f3e70b7e923050b00a819accaffe5d6db8c1cb297b294279fda9c2971d34386"
+        "sha256": "sha256:40ca9be4533ead9acfb165355da554d8e8678c54de456db1850cb6ad564c09fb"
       }
     },
     {
@@ -3277,6 +3288,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -3355,7 +3367,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:cd2979bc52a344a3bdcce7cde13c484492263087c44030af92f4057321f83e58"
+        "sha256": "sha256:5a9a60b441a688ef7d4c30e316284df156d9b171b41f20d55cee09b8f3f67477"
       }
     },
     {
@@ -3549,6 +3561,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -3629,7 +3642,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ff26c74528e4f06742bfa6756f008e124956e8711cd68965d70ee386dd360cff"
+        "sha256": "sha256:78bc4340570968d70574fd0ac769830f4302b8988e66247eda637ae3aa98eedc"
       }
     },
     {
@@ -3800,6 +3813,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -3873,7 +3887,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7b1be6cb8f0a200c47942840c0fff2c7f2703d808f45df4b646057ee90816b07"
+        "sha256": "sha256:2fac44e5e34d8291c71b581401c4f7fd30bc5939860f73c1751796fa0cf86394"
       }
     },
     {
@@ -4078,6 +4092,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -4154,7 +4169,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:55045b80f30603c86281984cb648bff0369b788173658cfa792a040138852cdf"
+        "sha256": "sha256:1104474f4182f79662e61347053b99973944f75381951f360bdde3df9c5f3df7"
       }
     },
     {
@@ -4258,6 +4273,7 @@
           "StorageRef",
           "TaskId",
           "TaskMode",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -4322,7 +4338,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2f563cf2ac73b32e6a070526739a742a3f6f27d321a0df09f44ae7188e739bbe"
+        "sha256": "sha256:83457ee195cbd147291f2deb2c165bb7cd4df594b75c767816267e38da71be80"
       }
     },
     {
@@ -4434,6 +4450,7 @@
           "StorageRef",
           "TaskId",
           "TaskMode",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -4498,7 +4515,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:16d7a89bac57259e442a663659bc9c5ab389a703aa6b56588b8ec0c510769851"
+        "sha256": "sha256:f50a45b2cfa84b92fbeb90d07cc4bc8ed63cb5c1d1acc4e191061994c257a781"
       }
     },
     {
@@ -4613,6 +4630,7 @@
           "StorageRef",
           "TaskId",
           "TaskMode",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -4677,7 +4695,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d45e3daf1aca83329c5e6c622316ac0228c1b4989390451389b8417e20635554"
+        "sha256": "sha256:1596d00ec7c91ebd67e6a64085af514f0637ec7db4e2e3a7732df9e770e623bb"
       }
     },
     {
@@ -4795,6 +4813,7 @@
           "StorageRef",
           "TaskId",
           "TaskMode",
+          "TransitionAttemptDetails",
           "TransitionDescriptor",
           "TransitionRejection",
           "TransitionRejectionReason",
@@ -4859,7 +4878,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:37cab65db80adb22f477045b931d82cb01f5e27f05ebad97cb74f1856369bfef"
+        "sha256": "sha256:339dbce173c6d415c2be0e372014e30a312c233134da09e598c44990c8855a77"
       }
     }
   ]

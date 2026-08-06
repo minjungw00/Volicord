@@ -10,7 +10,9 @@ use volicord_types::ids::shaping_decision_application_id;
 use volicord_types::methods::{
     AdvanceTaskRequest, AdvanceTaskResultFields, MethodOperationCategory,
 };
-use volicord_types::schema::{PersistedUserActionRequestMetadata, StateRecordRef};
+use volicord_types::schema::{
+    PersistedUserActionRequestMetadata, StateRecordRef, TransitionAttemptDetails,
+};
 use volicord_types::values::{
     ErrorCode, MethodName, ShapingCheckpointReadiness, ShapingDecisionApplicationOwner,
     ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, UserActionBasisStatus,
@@ -141,8 +143,7 @@ fn plan_advance_task(
             ErrorCode::WorkflowActionNotAllowed,
             "advance_task is not allowed for the current Task mode and work phase",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             false,
         );
     }
@@ -155,8 +156,7 @@ fn plan_advance_task(
             ErrorCode::ShapingCheckpointStale,
             "scope_revision does not match the current shaping checkpoint basis",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }
@@ -169,8 +169,7 @@ fn plan_advance_task(
             ErrorCode::ShapingCheckpointStale,
             "baseline_ref does not match the current shaping checkpoint basis",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }
@@ -198,8 +197,7 @@ fn plan_advance_task(
             ErrorCode::UserDecisionUnresolved,
             "task-wide UserAction authority required for advance_task is not accepted",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             false,
         );
     }
@@ -214,8 +212,7 @@ fn plan_advance_task(
                 ErrorCode::ShapingCheckpointRequired,
                 "a current shaping checkpoint is required before implementation",
                 MethodName::AdvanceTask,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             )
         }
@@ -233,8 +230,7 @@ fn plan_advance_task(
             ErrorCode::UserDecisionUnresolved,
             "the current shaping checkpoint has an unresolved User Channel decision",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }
@@ -257,8 +253,7 @@ fn plan_advance_task(
             ErrorCode::ShapingCheckpointStale,
             "shaping checkpoint is stale, structurally blocked, or has unapplied scope decisions",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }
@@ -273,8 +268,7 @@ fn plan_advance_task(
                 ErrorCode::ChangeUnitRequired,
                 "a current Change Unit is required before implementation",
                 MethodName::AdvanceTask,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             )
         }
@@ -291,8 +285,7 @@ fn plan_advance_task(
             ErrorCode::ChangeUnitStale,
             "Change Unit is stale, baseline-incompatible, or recovery-constrained",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }
@@ -312,8 +305,7 @@ fn plan_advance_task(
                 ErrorCode::UserDecisionUnresolved,
                 "every advance-owned shaping gap must be accepted and supplied exactly once",
                 MethodName::AdvanceTask,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             );
         }
@@ -332,8 +324,7 @@ fn plan_advance_task(
                 ErrorCode::UserDecisionUnresolved,
                 "an advance-owned shaping gap has no exact resolution",
                 MethodName::AdvanceTask,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             );
         };
@@ -384,8 +375,7 @@ fn plan_advance_task(
                 ErrorCode::UserDecisionUnresolved,
                 "an advance-owned resolution does not match the exact current checkpoint basis",
                 MethodName::AdvanceTask,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 false,
             );
         }
@@ -417,8 +407,7 @@ fn plan_advance_task(
             ErrorCode::UserDecisionUnresolved,
             "the exact current User Channel resolution set is required",
             MethodName::AdvanceTask,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }

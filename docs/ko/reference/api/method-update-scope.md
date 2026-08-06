@@ -201,6 +201,9 @@ baseline 권한 근거를 실제로 무효화할 때만 checkpoint를 supersede�
 Change Unit 갱신을 mutation 전에 거부합니다. 타입이 지정된 무효과 recovery는 영향받는
 application ref를 제시하고 Task가 소유된 close/supersede 전이를 통해 implementation을
 벗어나도록 요구합니다. 이 메서드는 Task를 shaping으로 조용히 되돌리지 않습니다.
+Core가 거부된 transition에 대해 제출 baseline을 평가하면 서로 독립된 네 compatibility
+fact는 `attempt_details.attempt_kind=baseline_transition`과 그 typed
+`baseline_compatibility` 값에 들어갑니다.
 
 거부, 보류, 만료, 불일치 상태의 shaping 결정은 scope 권한을 부여하지 않습니다. 이
 상태에서는 정규 machine이 시도한 Update Scope action을 생략하고 효과 없는

@@ -222,6 +222,10 @@ would make any current shaping application stale is rejected before mutation.
 The typed no-effect recovery names the affected application refs and requires
 the Task to leave implementation through its owned close/supersede transition;
 the method never silently returns the Task to shaping.
+When Core assesses a submitted baseline for the rejected transition, the four
+independent compatibility facts are carried by
+`attempt_details.attempt_kind=baseline_transition` and its typed
+`baseline_compatibility` value.
 
 A rejected, deferred, expired, or inconsistent shaping decision grants no
 scope authority. The canonical machine omits the attempted Update Scope action

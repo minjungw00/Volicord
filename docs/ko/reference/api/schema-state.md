@@ -738,14 +738,16 @@ MCP checkpoint 제출의 정규 compare-and-swap 좌표는
 않습니다.
 
 Workflow mutation 거부는 정확한 시도 action key, 폐쇄형 reason, 정규 blocking ref, 현재
-workflow kind, Core가 식별한 비호환 제출 경로, typed 기준선 compatibility assessment를 담은
-`TransitionRejection`을 사용합니다. 현재 값의 canonicality, 제출 값의 canonicality, 현재
-권한과의 일치, transition 호환성은 서로 다른 사실입니다. Non-null
+workflow kind, Core가 식별한 비호환 제출 경로, 하나의 폐쇄형 tagged `attempt_details` 값을
+담은 `TransitionRejection`을 사용합니다. Run kind 거부는 받은 정확한 kind와 정규 허용 kind
+집합을 담고, baseline transition 거부는 typed compatibility assessment를 담습니다. 현재 값의
+canonicality, 제출 값의 canonicality, 현재 권한과의 일치, transition 호환성은 서로 다른
+사실입니다. Non-null
 `recovery_action_key`는 같은 catalog 안에 실제로 있을 때만 유효합니다. 수신 payload, 오류
 field, 표시 문구에서 복구 동작을 재구성하지 않으며 MCP는 그 정확한 현재 action form만
-조회합니다. 거부된 요청은 replay row를 만들지
-않으며 action-key identity와 고정 권한 좌표가 exact replay와 충돌 semantic variant를
-구분합니다.
+조회합니다. 거부된 요청은 replay row를 만들지 않으며, 정확한 거부 메서드 결과 carrier는
+직렬화되거나 replay될 때 이 fact를 보존합니다. Action-key identity와 고정 권한 좌표가
+exact replay와 충돌 semantic variant를 구분합니다.
 
 담당 문서 링크:
 - 메서드 동작과 지속 효과: [API 메서드](methods.md)가 안내하는 메서드 담당 문서와 [저장 효과](../storage-effects.md)

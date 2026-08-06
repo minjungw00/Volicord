@@ -11,10 +11,11 @@ use volicord_mcp_wire::{
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
 use volicord_types::schema::{
-    JsonObject, RequiredNullable, TransitionDescriptor, UserActionChoiceDraft, UserActionDraft,
-    WorkflowActionAuthorityCoordinates, WorkflowActionKey, WorkflowCheckpointActionCoordinates,
-    WorkflowProjection, WorkflowRecordShapingCheckpointSubmissionContract,
-    WorkflowTransitionSubmissionContract, WorkflowUpdateScopeSubmissionContract,
+    JsonObject, RequiredNullable, TransitionAttemptDetails, TransitionDescriptor,
+    UserActionChoiceDraft, UserActionDraft, WorkflowActionAuthorityCoordinates, WorkflowActionKey,
+    WorkflowCheckpointActionCoordinates, WorkflowProjection,
+    WorkflowRecordShapingCheckpointSubmissionContract, WorkflowTransitionSubmissionContract,
+    WorkflowUpdateScopeSubmissionContract,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::MethodName;
@@ -1026,6 +1027,7 @@ pub(crate) fn retry_contract(
     recovery_action_key: WorkflowActionKey,
     workflow: &WorkflowProjection,
     catalog: &WorkflowActionFormCatalog,
+    attempt_details: TransitionAttemptDetails,
     invalid_or_incompatible_submitted_paths: Vec<String>,
 ) -> Result<RetryContract, String> {
     let transition = workflow
@@ -1055,6 +1057,7 @@ pub(crate) fn retry_contract(
     Ok(RetryContract {
         recovery_action_key: RequiredNullable::some(recovery_action_key),
         recovery_form: RequiredNullable::new(recovery_form),
+        attempt_details,
         invalid_or_incompatible_submitted_paths,
         retry_possible_in_current_task,
     })
@@ -1926,6 +1929,7 @@ mod tests {
             close.action_key,
             &workflow,
             &catalog,
+            TransitionAttemptDetails::None,
             vec!["/baseline_ref".to_owned()],
         )
         .expect("typed external close recovery");
@@ -1944,6 +1948,7 @@ mod tests {
             attempted.action_key,
             &workflow,
             &catalog,
+            TransitionAttemptDetails::None,
             Vec::new(),
         )
         .expect_err("missing exact recovery form must not fall back");

@@ -19,8 +19,9 @@ use volicord_types::schema::{
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceObservationInput, EvidenceTarget,
     EvidenceUpdateProvenance, JsonObject, ObservedChanges, RequiredNullable, ResidualRiskInput,
     ShapingCheckpointOperation, ShapingGapInput, SourceRef, StagedArtifactHandle, StateRecordRef,
-    ToolDryRunResponse, ToolRejectedResponse, UserActionDraft, WorkflowActionKey,
-    WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason, WriteTicket,
+    ToolDryRunResponse, ToolRejectedResponse, TransitionAttemptDetails, UserActionDraft,
+    WorkflowActionKey, WorkflowProjection, WorkflowRejectionUserAction, WriteDecisionReason,
+    WriteTicket,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -272,6 +273,7 @@ pub struct AuthoritativeArgumentContext {
 pub struct RetryContract {
     pub recovery_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub recovery_form: RequiredNullable<WorkflowActionForm>,
+    pub attempt_details: TransitionAttemptDetails,
     pub invalid_or_incompatible_submitted_paths: Vec<String>,
     pub retry_possible_in_current_task: bool,
 }
@@ -652,6 +654,10 @@ pub enum McpMustSurfaceFact {
     CurrentTaskPhase {
         mode: TaskMode,
         work_phase: WorkPhase,
+    },
+    RecordRunKindRejected {
+        received_run_kind: RunKind,
+        allowed_run_kinds: Vec<RunKind>,
     },
     RecoveryAction {
         action_key: WorkflowActionKey,

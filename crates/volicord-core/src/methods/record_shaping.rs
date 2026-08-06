@@ -20,7 +20,7 @@ use volicord_types::methods::{
 use volicord_types::schema::{
     advisor_compatible_change_unit, CurrentCloseBasis, PersistedUserActionRequestMetadata,
     RequiredNullable, ResidualRisk, ShapingCheckpoint, ShapingCheckpointOperation, ShapingGapInput,
-    StaleShapingAuthorityAction, StateRecordRef, WorkflowActionKey,
+    StaleShapingAuthorityAction, StateRecordRef, TransitionAttemptDetails, WorkflowActionKey,
 };
 use volicord_types::values::{
     ErrorCode, MethodName, ShapingAuthorityReauthorizationOutcome, ShapingCheckpointReadiness,
@@ -268,8 +268,7 @@ fn plan_record_shaping_checkpoint(
             ErrorCode::WorkflowActionNotAllowed,
             "record_shaping_checkpoint is not allowed for the current Task mode and work phase",
             attempted_action_key,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             false,
         );
     }
@@ -300,8 +299,7 @@ fn plan_record_shaping_checkpoint(
                     ErrorCode::ShapingCheckpointStale,
                     "create_initial requires that the Task have no current shaping checkpoint",
                     attempted_action_key,
-                    None,
-                    Vec::new(),
+                    TransitionAttemptDetails::None,
                     true,
                 );
             }
@@ -314,8 +312,7 @@ fn plan_record_shaping_checkpoint(
                     ErrorCode::ShapingCheckpointStale,
                     "stale shaping authority requires exact checkpoint replacement",
                     attempted_action_key,
-                    None,
-                    Vec::new(),
+                    TransitionAttemptDetails::None,
                     false,
                 );
             }
@@ -336,8 +333,7 @@ fn plan_record_shaping_checkpoint(
                     ErrorCode::ShapingCheckpointStale,
                     "replace_current requires an exact current shaping checkpoint",
                     attempted_action_key,
-                    None,
-                    Vec::new(),
+                    TransitionAttemptDetails::None,
                     true,
                 );
             };
@@ -350,8 +346,7 @@ fn plan_record_shaping_checkpoint(
                     ErrorCode::ShapingCheckpointStale,
                     "expected_current_checkpoint_id is not the exact current checkpoint",
                     attempted_action_key,
-                    None,
-                    Vec::new(),
+                    TransitionAttemptDetails::None,
                     true,
                 );
             }
@@ -393,8 +388,7 @@ fn plan_record_shaping_checkpoint(
                     ErrorCode::UserDecisionUnresolved,
                     "carry-forward refs must exactly match every current compatible shaping decision application",
                     attempted_action_key,
-                    None,
-                    Vec::new(),
+                    TransitionAttemptDetails::None,
                     true,
                 );
             }
@@ -511,8 +505,7 @@ fn plan_record_shaping_checkpoint(
                     ErrorCode::UserDecisionUnresolved,
                     "stale authority actions must exactly consume every stale shaping application",
                     attempted_action_key,
-                    None,
-                    Vec::new(),
+                    TransitionAttemptDetails::None,
                     true,
                 );
             }
@@ -545,8 +538,7 @@ fn plan_record_shaping_checkpoint(
                         ErrorCode::UserDecisionUnresolved,
                         "the current checkpoint contains stale or superseded shaping authority",
                         attempted_action_key,
-                        None,
-                        Vec::new(),
+                        TransitionAttemptDetails::None,
                         false,
                     );
                 }
@@ -571,8 +563,7 @@ fn plan_record_shaping_checkpoint(
                     ErrorCode::UserDecisionUnresolved,
                     "the current shaping checkpoint has live linked UserAction authority",
                     attempted_action_key,
-                    None,
-                    Vec::new(),
+                    TransitionAttemptDetails::None,
                     false,
                 );
             }
@@ -602,8 +593,7 @@ fn plan_record_shaping_checkpoint(
                         ErrorCode::UserDecisionUnresolved,
                         "retired request refs must exactly match every rejected, deferred, or expired predecessor decision",
                         attempted_action_key,
-                        None,
-                        Vec::new(),
+                        TransitionAttemptDetails::None,
                         true,
                     );
             }
@@ -1177,8 +1167,7 @@ fn plan_finalize_advice(
             ErrorCode::WorkflowActionNotAllowed,
             "finalize_advice requires an advisor Task in shaping",
             MethodName::FinalizeAdvice,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             false,
         );
     }
@@ -1234,8 +1223,7 @@ fn plan_finalize_advice(
             ErrorCode::ShapingCheckpointStale,
             "finalize_advice requires the exact structurally ready current checkpoint with no unresolved gap",
             MethodName::FinalizeAdvice,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }
@@ -1261,8 +1249,7 @@ fn plan_finalize_advice(
             ErrorCode::ChangeUnitStale,
             "finalize_advice requires the exact current observe-only Change Unit",
             MethodName::FinalizeAdvice,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             true,
         );
     }
@@ -1284,8 +1271,7 @@ fn plan_finalize_advice(
             ErrorCode::UserDecisionUnresolved,
             "task-wide UserAction authority required for advisor finalization is not accepted",
             MethodName::FinalizeAdvice,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             false,
         );
     }
@@ -1343,8 +1329,7 @@ fn plan_finalize_advice(
                 ErrorCode::UserDecisionUnresolved,
                 "an advisor scope decision must be applied by update_scope before finalization",
                 MethodName::FinalizeAdvice,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             );
         }
@@ -1362,8 +1347,7 @@ fn plan_finalize_advice(
                 ErrorCode::UserDecisionUnresolved,
                 "every advisor-owned decision must be accepted before finalization",
                 MethodName::FinalizeAdvice,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             );
         }
@@ -1419,8 +1403,7 @@ fn plan_finalize_advice(
                 ErrorCode::UserDecisionUnresolved,
                 "an advisor resolution is stale or does not match its exact current gap basis",
                 MethodName::FinalizeAdvice,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 false,
             );
         }

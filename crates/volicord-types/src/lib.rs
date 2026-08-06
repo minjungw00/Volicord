@@ -140,6 +140,7 @@ mod tests {
         assert!(TransitionRejection::new(
             keep_key,
             TransitionRejectionReason::AuthorityBasisMismatch,
+            TransitionAttemptDetails::None,
             true,
             Some(replace_key),
             Vec::new(),
@@ -155,6 +156,7 @@ mod tests {
         assert!(TransitionRejection::new(
             keep_key,
             TransitionRejectionReason::AuthorityBasisMismatch,
+            TransitionAttemptDetails::None,
             true,
             Some(absent_key),
             Vec::new(),
@@ -284,6 +286,76 @@ mod tests {
             serde_json::from_value::<WorkflowTransitionCatalog>(noncanonical_refs).is_err(),
             "required refs must use canonical deterministic order"
         );
+    }
+
+    #[test]
+    fn run_kind_attempt_details_are_required_canonical_and_lossless() {
+        let attempt_details = TransitionAttemptDetails::record_run_kind(
+            RunKind::Implementation,
+            vec![RunKind::Direct, RunKind::Direct],
+        )
+        .expect("duplicate allowed kinds should canonicalize");
+        assert_eq!(
+            attempt_details,
+            TransitionAttemptDetails::RecordRunKind {
+                received_run_kind: RunKind::Implementation,
+                allowed_run_kinds: vec![RunKind::Direct],
+            }
+        );
+        let canonical = serde_json::to_value(&attempt_details).expect("attempt details serialize");
+        assert_eq!(
+            serde_json::from_value::<TransitionAttemptDetails>(canonical.clone())
+                .expect("canonical attempt details decode"),
+            attempt_details
+        );
+        let mut duplicated = canonical;
+        duplicated["allowed_run_kinds"] = json!(["direct", "direct"]);
+        assert!(serde_json::from_value::<TransitionAttemptDetails>(duplicated).is_err());
+        assert!(
+            TransitionAttemptDetails::record_run_kind(RunKind::Implementation, Vec::new(),)
+                .is_err()
+        );
+
+        let action_key = WorkflowActionKey::new(
+            MethodName::RecordRun,
+            WorkflowActionSemanticVariant::RecordRun,
+        )
+        .expect("RecordRun action key");
+        let catalog = WorkflowTransitionCatalog::new(Vec::new()).expect("empty catalog");
+        assert!(TransitionRejection::new(
+            action_key,
+            TransitionRejectionReason::RunKindIncompatible,
+            TransitionAttemptDetails::None,
+            true,
+            None,
+            Vec::new(),
+            WorkflowStateKind::Implementation,
+            &catalog,
+        )
+        .is_err());
+
+        let schema = serde_json::to_value(schema_for!(ToolError))
+            .expect("ToolError schema should serialize");
+        let canonical_wire = json!({
+            "category": "rejected",
+            "code": "RUN_KIND_INCOMPATIBLE",
+            "message": "incompatible Run kind",
+            "retryable": true,
+            "details": workflow_rejection_details_json(ErrorCode::RunKindIncompatible)
+        });
+        assert!(validate_json_schema(&schema, &canonical_wire).is_ok());
+
+        let mut missing = workflow_rejection_details_json(ErrorCode::RunKindIncompatible);
+        missing["attempt_details"] = json!({"attempt_kind": "none"});
+        let wire = json!({
+            "category": "rejected",
+            "code": "RUN_KIND_INCOMPATIBLE",
+            "message": "incompatible Run kind",
+            "retryable": true,
+            "details": missing
+        });
+        assert!(serde_json::from_value::<ToolError>(wire.clone()).is_err());
+        assert!(validate_json_schema(&schema, &wire).is_err());
     }
 
     #[test]
@@ -1680,7 +1752,7 @@ mod tests {
 
         for contract in PUBLIC_ERROR_CODE_CONTRACTS {
             let details = if TransitionRejection::is_required_for(contract.code()) {
-                workflow_rejection_details_json()
+                workflow_rejection_details_json(contract.code())
             } else {
                 Value::Null
             };
@@ -3106,13 +3178,14 @@ mod tests {
         })
     }
 
-    fn workflow_rejection_details_json() -> Value {
-        json!({
+    fn workflow_rejection_details_json(code: ErrorCode) -> Value {
+        let mut details = json!({
             "attempted_action_key": {
                 "method": "volicord.advance_task",
                 "semantic_variant": "advance_task"
             },
             "reason": "action_not_current",
+            "attempt_details": { "attempt_kind": "none" },
             "state_change_applied": false,
             "retryable": true,
             "recovery_action_key": {
@@ -3120,10 +3193,23 @@ mod tests {
                 "semantic_variant": "create_initial"
             },
             "incompatible_submitted_paths": [],
-            "baseline_compatibility": null,
             "blocking_refs": [],
             "current_workflow_kind": "shaping_required"
-        })
+        });
+        if code == ErrorCode::RunKindIncompatible {
+            details["attempted_action_key"] = json!({
+                "method": "volicord.record_run",
+                "semantic_variant": "record_run"
+            });
+            details["reason"] = json!("run_kind_incompatible");
+            details["attempt_details"] = json!({
+                "attempt_kind": "record_run_kind",
+                "received_run_kind": "direct",
+                "allowed_run_kinds": ["implementation"]
+            });
+            details["incompatible_submitted_paths"] = json!(["/kind"]);
+        }
+        details
     }
 
     fn valid_dry_run_response_json() -> Value {

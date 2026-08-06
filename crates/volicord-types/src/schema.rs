@@ -3,8 +3,8 @@ use std::{borrow::Cow, collections::BTreeSet, fmt, ops::Deref};
 use schemars::{
     gen::SchemaGenerator,
     schema::{
-        InstanceType, Metadata, ObjectValidation, Schema, SchemaObject, SingleOrVec,
-        SubschemaValidation,
+        ArrayValidation, InstanceType, Metadata, ObjectValidation, Schema, SchemaObject,
+        SingleOrVec, SubschemaValidation,
     },
     JsonSchema,
 };
@@ -981,26 +981,136 @@ pub struct BaselineTransitionCompatibility {
     pub submitted_baseline_compatible_with_transition: bool,
 }
 
+/// Closed method-specific facts retained from one rejected transition attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(tag = "attempt_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TransitionAttemptDetails {
+    None,
+    RecordRunKind {
+        received_run_kind: RunKind,
+        allowed_run_kinds: Vec<RunKind>,
+    },
+    BaselineTransition {
+        baseline_compatibility: BaselineTransitionCompatibility,
+    },
+}
+
+impl TransitionAttemptDetails {
+    /// Builds canonical Run-kind attempt details for an incompatible submission.
+    pub fn record_run_kind(
+        received_run_kind: RunKind,
+        mut allowed_run_kinds: Vec<RunKind>,
+    ) -> Result<Self, &'static str> {
+        allowed_run_kinds.sort_by_key(|kind| match kind {
+            RunKind::Direct => 0,
+            RunKind::Implementation => 1,
+        });
+        allowed_run_kinds.dedup();
+        if allowed_run_kinds.is_empty() {
+            return Err("Run-kind rejection requires at least one allowed Run kind");
+        }
+        if allowed_run_kinds.contains(&received_run_kind) {
+            return Err("received Run kind cannot also be allowed");
+        }
+        Ok(Self::RecordRunKind {
+            received_run_kind,
+            allowed_run_kinds,
+        })
+    }
+
+    /// Builds a typed baseline-transition assessment for a rejected submission.
+    pub fn baseline_transition(
+        baseline_compatibility: BaselineTransitionCompatibility,
+    ) -> Result<Self, &'static str> {
+        if baseline_compatibility.submitted_baseline_compatible_with_transition {
+            return Err("a rejected baseline assessment cannot be transition-compatible");
+        }
+        Ok(Self::BaselineTransition {
+            baseline_compatibility,
+        })
+    }
+
+    /// Returns the baseline-transition facts when this attempt owns them.
+    pub const fn baseline_compatibility(&self) -> Option<&BaselineTransitionCompatibility> {
+        match self {
+            Self::BaselineTransition {
+                baseline_compatibility,
+            } => Some(baseline_compatibility),
+            Self::None | Self::RecordRunKind { .. } => None,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TransitionAttemptDetails {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(tag = "attempt_kind", rename_all = "snake_case", deny_unknown_fields)]
+        enum Wire {
+            None,
+            RecordRunKind {
+                received_run_kind: RunKind,
+                allowed_run_kinds: Vec<RunKind>,
+            },
+            BaselineTransition {
+                baseline_compatibility: BaselineTransitionCompatibility,
+            },
+        }
+
+        match Wire::deserialize(deserializer)? {
+            Wire::None => Ok(Self::None),
+            Wire::RecordRunKind {
+                received_run_kind,
+                allowed_run_kinds,
+            } => {
+                let canonical = Self::record_run_kind(received_run_kind, allowed_run_kinds.clone())
+                    .map_err(serde::de::Error::custom)?;
+                if let Self::RecordRunKind {
+                    allowed_run_kinds: canonical_allowed,
+                    ..
+                } = &canonical
+                {
+                    if canonical_allowed != &allowed_run_kinds {
+                        return Err(serde::de::Error::custom(
+                            "allowed Run kinds are duplicated or not in canonical order",
+                        ));
+                    }
+                }
+                Ok(canonical)
+            }
+            Wire::BaselineTransition {
+                baseline_compatibility,
+            } => {
+                Self::baseline_transition(baseline_compatibility).map_err(serde::de::Error::custom)
+            }
+        }
+    }
+}
+
 /// Core-owned rejection of one exact workflow action.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TransitionRejection {
     pub attempted_action_key: WorkflowActionKey,
     pub reason: crate::values::TransitionRejectionReason,
+    pub attempt_details: TransitionAttemptDetails,
     pub state_change_applied: FalseValue,
     pub retryable: bool,
     pub recovery_action_key: RequiredNullable<WorkflowActionKey>,
     pub incompatible_submitted_paths: Vec<String>,
-    pub baseline_compatibility: RequiredNullable<BaselineTransitionCompatibility>,
     pub blocking_refs: Vec<StateRecordRef>,
     pub current_workflow_kind: crate::values::WorkflowStateKind,
 }
 
 impl TransitionRejection {
     /// Constructs a rejection only when any recovery action is currently executable.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         attempted_action_key: WorkflowActionKey,
         reason: crate::values::TransitionRejectionReason,
+        attempt_details: TransitionAttemptDetails,
         retryable: bool,
         recovery_action_key: Option<WorkflowActionKey>,
         blocking_refs: Vec<StateRecordRef>,
@@ -1016,38 +1126,70 @@ impl TransitionRejection {
         if blocking_refs.windows(2).any(|pair| pair[0] >= pair[1]) {
             return Err("transition rejection blocking refs are duplicated or not canonical");
         }
-        Ok(Self {
+        let incompatible_submitted_paths = match &attempt_details {
+            TransitionAttemptDetails::None => Vec::new(),
+            TransitionAttemptDetails::RecordRunKind { .. } => vec!["/kind".to_owned()],
+            TransitionAttemptDetails::BaselineTransition { .. } => {
+                vec!["/baseline_ref".to_owned()]
+            }
+        };
+        let rejection = Self {
             attempted_action_key,
             reason,
+            attempt_details,
             state_change_applied: FalseValue,
             retryable,
             recovery_action_key: RequiredNullable::new(recovery_action_key),
-            incompatible_submitted_paths: Vec::new(),
-            baseline_compatibility: RequiredNullable::null(),
+            incompatible_submitted_paths,
             blocking_refs,
             current_workflow_kind,
-        })
+        };
+        rejection.validate_attempt_details()?;
+        Ok(rejection)
     }
 
-    /// Attaches the exact Core-owned baseline assessment for a rejection caused by
-    /// a submitted baseline mismatch.
-    pub fn with_baseline_compatibility(
-        mut self,
-        compatibility: BaselineTransitionCompatibility,
-    ) -> Result<Self, &'static str> {
-        if !matches!(
-            self.reason,
-            crate::values::TransitionRejectionReason::AuthorityBasisMismatch
-                | crate::values::TransitionRejectionReason::ImplementationAuthorityWouldBeInvalidated
-        ) {
-            return Err("baseline compatibility requires a baseline-incompatibility rejection");
+    /// Returns the Core-owned baseline assessment when this attempt carries one.
+    pub const fn baseline_compatibility(&self) -> Option<&BaselineTransitionCompatibility> {
+        self.attempt_details.baseline_compatibility()
+    }
+
+    fn validate_attempt_details(&self) -> Result<(), &'static str> {
+        match (&self.reason, &self.attempt_details) {
+            (
+                crate::values::TransitionRejectionReason::RunKindIncompatible,
+                TransitionAttemptDetails::RecordRunKind { .. },
+            ) if self.attempted_action_key.method == MethodName::RecordRun => Ok(()),
+            (crate::values::TransitionRejectionReason::RunKindIncompatible, _) => {
+                Err("Run-kind rejection requires typed RecordRun attempt details")
+            }
+            (_, TransitionAttemptDetails::RecordRunKind { .. }) => {
+                Err("RecordRun attempt details require a Run-kind rejection")
+            }
+            (
+                crate::values::TransitionRejectionReason::AuthorityBasisMismatch
+                | crate::values::TransitionRejectionReason::ImplementationAuthorityWouldBeInvalidated,
+                TransitionAttemptDetails::BaselineTransition { .. },
+            ) => Ok(()),
+            (_, TransitionAttemptDetails::BaselineTransition { .. }) => {
+                Err("baseline attempt details require a baseline-incompatibility rejection")
+            }
+            (_, TransitionAttemptDetails::None) => Ok(()),
         }
-        if compatibility.submitted_baseline_compatible_with_transition {
-            return Err("a rejected baseline assessment cannot be transition-compatible");
+    }
+
+    fn validate_for_error_code(&self, code: ErrorCode) -> Result<(), &'static str> {
+        self.validate_attempt_details()?;
+        if code == ErrorCode::RunKindIncompatible
+            && self.reason != crate::values::TransitionRejectionReason::RunKindIncompatible
+        {
+            return Err("RUN_KIND_INCOMPATIBLE requires a typed Run-kind rejection reason");
         }
-        self.incompatible_submitted_paths = vec!["/baseline_ref".to_owned()];
-        self.baseline_compatibility = RequiredNullable::some(compatibility);
-        Ok(self)
+        if code != ErrorCode::RunKindIncompatible
+            && self.reason == crate::values::TransitionRejectionReason::RunKindIncompatible
+        {
+            return Err("Run-kind rejection reason requires RUN_KIND_INCOMPATIBLE");
+        }
+        Ok(())
     }
 
     /// Confirms whether an error code requires this closed details object.
@@ -1067,6 +1209,44 @@ impl TransitionRejection {
     }
 }
 
+impl<'de> Deserialize<'de> for TransitionRejection {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            attempted_action_key: WorkflowActionKey,
+            reason: crate::values::TransitionRejectionReason,
+            attempt_details: TransitionAttemptDetails,
+            state_change_applied: FalseValue,
+            retryable: bool,
+            recovery_action_key: RequiredNullable<WorkflowActionKey>,
+            incompatible_submitted_paths: Vec<String>,
+            blocking_refs: Vec<StateRecordRef>,
+            current_workflow_kind: crate::values::WorkflowStateKind,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let rejection = Self {
+            attempted_action_key: wire.attempted_action_key,
+            reason: wire.reason,
+            attempt_details: wire.attempt_details,
+            state_change_applied: wire.state_change_applied,
+            retryable: wire.retryable,
+            recovery_action_key: wire.recovery_action_key,
+            incompatible_submitted_paths: wire.incompatible_submitted_paths,
+            blocking_refs: wire.blocking_refs,
+            current_workflow_kind: wire.current_workflow_kind,
+        };
+        rejection
+            .validate_attempt_details()
+            .map_err(serde::de::Error::custom)?;
+        Ok(rejection)
+    }
+}
+
 impl ToolError {
     /// Builds a public error and converts optional semantic details into the
     /// required-nullable wire field.
@@ -1080,8 +1260,13 @@ impl ToolError {
             let workflow_details = details
                 .as_ref()
                 .expect("workflow rejection ToolError requires typed details");
-            serde_json::from_value::<TransitionRejection>(Value::Object(workflow_details.clone()))
-                .expect("workflow rejection ToolError details must use the closed typed shape");
+            let details = serde_json::from_value::<TransitionRejection>(Value::Object(
+                workflow_details.clone(),
+            ))
+            .expect("workflow rejection ToolError details must use the closed typed shape");
+            details
+                .validate_for_error_code(code)
+                .expect("workflow rejection ToolError details must match the public error code");
         }
         Self {
             code,
@@ -1197,6 +1382,8 @@ impl<'de> Deserialize<'de> for ToolError {
                 )
             })?;
             serde_json::from_value::<TransitionRejection>(Value::Object(details.clone()))
+                .map_err(serde::de::Error::custom)?
+                .validate_for_error_code(wire.code)
                 .map_err(serde::de::Error::custom)?;
         }
         Ok(Self {
@@ -1229,7 +1416,11 @@ impl JsonSchema for ToolError {
                 if TransitionRejection::is_required_for(contract.code()) {
                     properties.insert(
                         "details".to_owned(),
-                        generator.subschema_for::<TransitionRejection>(),
+                        if contract.code() == ErrorCode::RunKindIncompatible {
+                            run_kind_transition_rejection_schema(generator)
+                        } else {
+                            generator.subschema_for::<TransitionRejection>()
+                        },
                     );
                 }
                 Schema::Object(SchemaObject {
@@ -1281,6 +1472,89 @@ impl JsonSchema for ToolError {
             ..Default::default()
         })
     }
+}
+
+fn run_kind_transition_rejection_schema(generator: &mut SchemaGenerator) -> Schema {
+    let run_kind_details = Schema::Object(SchemaObject {
+        instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::Object))),
+        object: Some(Box::new(ObjectValidation {
+            required: ["attempt_kind", "received_run_kind", "allowed_run_kinds"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            properties: [
+                (
+                    "attempt_kind".to_owned(),
+                    exact_string_schema("record_run_kind"),
+                ),
+                (
+                    "received_run_kind".to_owned(),
+                    generator.subschema_for::<RunKind>(),
+                ),
+                (
+                    "allowed_run_kinds".to_owned(),
+                    Schema::Object(SchemaObject {
+                        instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::Array))),
+                        array: Some(Box::new(ArrayValidation {
+                            items: Some(SingleOrVec::Single(Box::new(
+                                generator.subschema_for::<RunKind>(),
+                            ))),
+                            min_items: Some(1),
+                            unique_items: Some(true),
+                            ..Default::default()
+                        })),
+                        ..Default::default()
+                    }),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            additional_properties: Some(Box::new(Schema::Bool(false))),
+            ..Default::default()
+        })),
+        ..Default::default()
+    });
+    let run_kind_relation = Schema::Object(SchemaObject {
+        instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::Object))),
+        object: Some(Box::new(ObjectValidation {
+            properties: [
+                (
+                    "attempted_action_key".to_owned(),
+                    Schema::Object(SchemaObject {
+                        object: Some(Box::new(ObjectValidation {
+                            properties: [(
+                                "method".to_owned(),
+                                exact_string_schema(MethodName::RecordRun.as_str()),
+                            )]
+                            .into_iter()
+                            .collect(),
+                            ..Default::default()
+                        })),
+                        ..Default::default()
+                    }),
+                ),
+                (
+                    "reason".to_owned(),
+                    exact_string_schema("run_kind_incompatible"),
+                ),
+                ("attempt_details".to_owned(), run_kind_details),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        })),
+        ..Default::default()
+    });
+    Schema::Object(SchemaObject {
+        subschemas: Some(Box::new(SubschemaValidation {
+            all_of: Some(vec![
+                generator.subschema_for::<TransitionRejection>(),
+                run_kind_relation,
+            ]),
+            ..Default::default()
+        })),
+        ..Default::default()
+    })
 }
 
 fn exact_string_schema(value: &str) -> Schema {

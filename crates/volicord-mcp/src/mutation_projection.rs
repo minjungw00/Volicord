@@ -44,7 +44,7 @@ use volicord_types::methods::{
 };
 use volicord_types::schema::{
     AuthorityReceipt, PreviewableToolResponse, RequiredNullable, StateRecordRef,
-    ToolDryRunResponse, ToolRejectedResponse, TransitionRejection,
+    ToolDryRunResponse, ToolRejectedResponse, TransitionAttemptDetails, TransitionRejection,
 };
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{EffectKind, MethodName, MutationDetailLevel, StateRecordKind};
@@ -312,6 +312,7 @@ where
                         *recovery_action_key,
                         &authority.workflow,
                         &presentation.action_form_catalog,
+                        rejection.attempt_details.clone(),
                         rejection.incompatible_submitted_paths.clone(),
                     )
                 })
@@ -329,8 +330,13 @@ where
         };
         let baseline_compatibility = transition_rejection
             .as_ref()
-            .and_then(|rejection| rejection.baseline_compatibility.as_ref());
-        output.primary_text = rejected_compatibility_text(tool_name, &presentation, retry.as_ref());
+            .and_then(TransitionRejection::baseline_compatibility);
+        output.primary_text = rejected_compatibility_text(
+            tool_name,
+            &presentation,
+            transition_rejection.as_ref(),
+            retry.as_ref(),
+        );
         output.structured_content = serde_json::to_value(McpWorkflowRejectedResponse {
             method_result,
             authority_receipt: authority.receipt.clone(),
@@ -524,6 +530,16 @@ fn workflow_presentation(
                 serde_json::from_value::<TransitionRejection>(Value::Object(details.clone())).ok()
             })
         }) {
+            if let TransitionAttemptDetails::RecordRunKind {
+                received_run_kind,
+                allowed_run_kinds,
+            } = &details.attempt_details
+            {
+                must_surface.push(McpMustSurfaceFact::RecordRunKindRejected {
+                    received_run_kind: *received_run_kind,
+                    allowed_run_kinds: allowed_run_kinds.clone(),
+                });
+            }
             if let Some(recovery) = details.recovery_action_key.as_ref() {
                 must_surface.push(McpMustSurfaceFact::RecoveryAction {
                     action_key: *recovery,
@@ -824,6 +840,7 @@ fn internal_contract_inconsistent_rejection(
 fn rejected_compatibility_text(
     tool_name: &str,
     presentation: &McpWorkflowPresentation,
+    rejection: Option<&TransitionRejection>,
     retry: Option<&RetryContract>,
 ) -> String {
     let recovery = presentation
@@ -852,8 +869,26 @@ fn rejected_compatibility_text(
             }
         },
     );
+    let attempt_text = rejection
+        .and_then(|rejection| match &rejection.attempt_details {
+            TransitionAttemptDetails::RecordRunKind {
+                received_run_kind,
+                allowed_run_kinds,
+            } => Some(format!(
+                "received Run kind={}; allowed Run kinds=[{}]; ",
+                run_kind_text(*received_run_kind),
+                allowed_run_kinds
+                    .iter()
+                    .map(|kind| run_kind_text(*kind))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )),
+            TransitionAttemptDetails::None
+            | TransitionAttemptDetails::BaselineTransition { .. } => None,
+        })
+        .unwrap_or_default();
     bounded_mutation_compatibility_text(format!(
-        "Volicord {tool_name} rejected the mutation; Core state is unchanged; current Task phase={}/{}; {recovery_text}.",
+        "Volicord {tool_name} rejected the mutation; {attempt_text}current Task phase={}/{}; Core state is unchanged; {recovery_text}.",
         serde_json::to_value(presentation.task_phase.mode)
             .ok()
             .and_then(|value| value.as_str().map(str::to_owned))
@@ -863,6 +898,13 @@ fn rejected_compatibility_text(
             .and_then(|value| value.as_str().map(str::to_owned))
             .unwrap_or_else(|| "unknown".to_owned()),
     ))
+}
+
+const fn run_kind_text(kind: volicord_types::values::RunKind) -> &'static str {
+    match kind {
+        volicord_types::values::RunKind::Direct => "direct",
+        volicord_types::values::RunKind::Implementation => "implementation",
+    }
 }
 
 fn dry_run_compatibility_text(tool_name: &str, presentation: &McpWorkflowPresentation) -> String {
@@ -1198,22 +1240,26 @@ fn authority_receipt_compatibility_text(
 #[cfg(test)]
 mod tests {
     use serde_json::{json, Value};
-    use volicord_types::ids::TaskId;
+    use volicord_mcp_wire::{
+        McpAgentStateChange, McpMustSurfaceFact, McpTaskPhasePresentation, McpWorkflowPresentation,
+        RetryContract, WorkflowActionForm, WorkflowActionFormCatalog,
+    };
+    use volicord_types::ids::{RequestHash, TaskId};
     use volicord_types::schema::{
-        RequiredNullable, TransitionDescriptor, TransitionRejection,
+        RequiredNullable, TransitionAttemptDetails, TransitionDescriptor, TransitionRejection,
         WorkflowActionAuthorityCoordinates, WorkflowActionKey, WorkflowActionRole,
         WorkflowCloseReadiness, WorkflowProjection, WorkflowTransitionCatalog,
         WorkflowTransitionSubmissionContract,
     };
     use volicord_types::values::{
-        AuthorityNextActor, MethodName, TaskMode, TransitionRejectionReason,
+        AuthorityNextActor, MethodName, RunKind, TaskMode, TransitionRejectionReason, WorkPhase,
         WorkflowActionSemanticVariant, WorkflowAuthorityInvalidationPolicy,
         WorkflowExpectedResultState, WorkflowTransitionActor, WorkflowTransitionEffectClass,
     };
 
     use super::{
-        internal_contract_inconsistent_rejection, response_kind_from_structured_content,
-        workflow_contract_diagnostics,
+        internal_contract_inconsistent_rejection, rejected_compatibility_text,
+        response_kind_from_structured_content, workflow_contract_diagnostics,
     };
     use crate::tool_dispatch::ToolCallOutput;
 
@@ -1283,6 +1329,7 @@ mod tests {
         let rejection = TransitionRejection::new(
             action_key,
             TransitionRejectionReason::ClosePreconditionMissing,
+            volicord_types::schema::TransitionAttemptDetails::None,
             true,
             Some(action_key),
             Vec::new(),
@@ -1318,5 +1365,152 @@ mod tests {
             Value::Null
         );
         assert!(output.primary_text.len() <= 512);
+    }
+
+    #[test]
+    fn record_run_kind_rejection_structured_and_compact_projections_agree() {
+        let task_id = TaskId::new("task_record_run_kind_rejected");
+        let action_key = WorkflowActionKey {
+            method: MethodName::RecordRun,
+            semantic_variant: WorkflowActionSemanticVariant::RecordRun,
+        };
+        let coordinates = WorkflowActionAuthorityCoordinates::RecordRun {
+            task_id,
+            change_unit_id: volicord_types::ids::ChangeUnitId::new(
+                "change_unit_record_run_kind_rejected",
+            ),
+            baseline_ref: volicord_types::ids::BaselineRef::parse(
+                "baseline_record_run_kind_rejected",
+            )
+            .expect("canonical test baseline"),
+            run_kind: RunKind::Direct,
+        };
+        let transition_catalog = WorkflowTransitionCatalog::new(vec![TransitionDescriptor {
+            action_key,
+            actor: WorkflowTransitionActor::Agent,
+            role: WorkflowActionRole::Required,
+            expected_state_version: 7,
+            submission_contract: WorkflowTransitionSubmissionContract::for_current_transition(
+                TaskMode::Direct,
+                &coordinates,
+            ),
+            fixed_authority_coordinates: coordinates,
+            effect_class: WorkflowTransitionEffectClass::ExecutionRecording,
+            expected_result_state: WorkflowExpectedResultState::Implementation,
+            authority_invalidation: WorkflowAuthorityInvalidationPolicy::Permitted,
+            required_refs: Vec::new(),
+        }])
+        .expect("valid current RecordRun transition");
+        let attempt_details = TransitionAttemptDetails::record_run_kind(
+            RunKind::Implementation,
+            vec![RunKind::Direct, RunKind::Direct],
+        )
+        .expect("canonical Run-kind rejection details");
+        let rejection = TransitionRejection::new(
+            action_key,
+            TransitionRejectionReason::RunKindIncompatible,
+            attempt_details.clone(),
+            true,
+            Some(action_key),
+            Vec::new(),
+            volicord_types::values::WorkflowStateKind::Implementation,
+            &transition_catalog,
+        )
+        .expect("valid typed Run-kind rejection");
+
+        let form = WorkflowActionForm {
+            action_key,
+            form_ref: RequestHash::new("form_record_run_kind_rejected"),
+            expected_state_version: 7,
+            fixed_arguments: serde_json::Map::new(),
+            fixed_argument_paths: vec!["/kind".to_owned()],
+            agent_authored_inputs: Vec::new(),
+            canonical_minimal_request: serde_json::Map::new(),
+        };
+        let action_form_catalog = WorkflowActionFormCatalog {
+            required_action_key: RequiredNullable::some(action_key),
+            workflow_contract_digest: RequestHash::new("workflow_digest"),
+            action_form_contract_digest: RequestHash::new("action_form_digest"),
+            semantic_schema_digest: RequestHash::new("semantic_schema_digest"),
+            scalar_contract_digest: RequestHash::new("scalar_contract_digest"),
+            forms: vec![form.clone()],
+        };
+        let presentation = McpWorkflowPresentation {
+            headline: "volicord.record_run was rejected by current workflow".to_owned(),
+            state_change: McpAgentStateChange::Rejected,
+            task_phase: McpTaskPhasePresentation {
+                mode: TaskMode::Direct,
+                work_phase: WorkPhase::Implementation,
+            },
+            next_actor: AuthorityNextActor::Agent,
+            blocker_summary: Vec::new(),
+            required_user_action: RequiredNullable::null(),
+            must_surface: vec![
+                McpMustSurfaceFact::MethodRejected {
+                    method: MethodName::RecordRun,
+                    core_state_unchanged: volicord_types::schema::TrueValue,
+                },
+                McpMustSurfaceFact::CurrentTaskPhase {
+                    mode: TaskMode::Direct,
+                    work_phase: WorkPhase::Implementation,
+                },
+                McpMustSurfaceFact::RecordRunKindRejected {
+                    received_run_kind: RunKind::Implementation,
+                    allowed_run_kinds: vec![RunKind::Direct],
+                },
+                McpMustSurfaceFact::RecoveryAction { action_key },
+            ],
+            action_form_catalog,
+        };
+        let retry = RetryContract {
+            recovery_action_key: RequiredNullable::some(action_key),
+            recovery_form: RequiredNullable::some(form),
+            attempt_details,
+            invalid_or_incompatible_submitted_paths: vec!["/kind".to_owned()],
+            retry_possible_in_current_task: true,
+        };
+
+        let structured = serde_json::to_value(json!({
+            "transition_rejection": rejection,
+            "retry_contract": retry,
+            "presentation": presentation,
+        }))
+        .expect("structured MCP rejection");
+        assert_eq!(
+            structured["transition_rejection"]["attempt_details"],
+            structured["retry_contract"]["attempt_details"]
+        );
+        assert!(structured["presentation"]["must_surface"]
+            .as_array()
+            .expect("must-surface facts")
+            .iter()
+            .any(|fact| {
+                fact == &json!({
+                    "fact_kind": "record_run_kind_rejected",
+                    "received_run_kind": "implementation",
+                    "allowed_run_kinds": ["direct"]
+                })
+            }));
+
+        let rejection: TransitionRejection =
+            serde_json::from_value(structured["transition_rejection"].clone())
+                .expect("typed structured rejection");
+        let retry: RetryContract = serde_json::from_value(structured["retry_contract"].clone())
+            .expect("typed structured retry contract");
+        let presentation: McpWorkflowPresentation =
+            serde_json::from_value(structured["presentation"].clone())
+                .expect("typed structured presentation");
+        let compact = rejected_compatibility_text(
+            MethodName::RecordRun.as_str(),
+            &presentation,
+            Some(&rejection),
+            Some(&retry),
+        );
+        assert!(compact.contains("received Run kind=implementation"));
+        assert!(compact.contains("allowed Run kinds=[direct]"));
+        assert!(compact.contains("current Task phase=direct/implementation"));
+        assert!(compact.contains("Core state is unchanged"));
+        assert!(compact
+            .contains("retry with the exact current form for volicord.record_run/record_run"));
     }
 }

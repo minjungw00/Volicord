@@ -693,6 +693,7 @@ WorkflowActionFormCatalog:
 RetryContract:
   recovery_action_key: WorkflowActionKey | null
   recovery_form: WorkflowActionForm | null
+  attempt_details: TransitionAttemptDetails
   invalid_or_incompatible_submitted_paths: string[]
   retry_possible_in_current_task: boolean
 ```
@@ -1188,8 +1189,12 @@ otherwise remains the Core-produced object. Protocol capabilities select only
 the carrier and do not map the category or remove or rewrite those fields.
 
 When schema validation succeeds and Core returns a typed transition rejection,
-MCP preserves the exact rejection and any typed compatibility assessment. For
-keep-current baseline retargeting, Core supplies
+MCP preserves the exact rejection and its `attempt_details` through structured
+content, the retry contract, presentation facts, and compact text. For a
+`RUN_KIND_INCOMPATIBLE` rejection, the Core-supplied `received_run_kind` and
+canonical `allowed_run_kinds` are copied into each applicable projection; MCP
+does not reconstruct them from the error message. For keep-current baseline
+retargeting, Core supplies
 `current_baseline_canonical=true`, `submitted_baseline_canonical=true`,
 `submitted_baseline_matches_current=false`, and
 `submitted_baseline_compatible_with_transition=false`. MCP copies these four
@@ -1200,7 +1205,8 @@ reports persisted-data corruption or an explicit repair workflow.
 
 If Core supplies `recovery_action_key`, MCP looks up only that exact key in the
 same current catalog. The retry contract carries that key, its exact current
-form, Core-supplied incompatible paths, and the current-Task retry fact. A
+form, the typed attempt details, Core-supplied incompatible paths, and the
+current-Task retry fact. A
 User-owned recovery, or a close, cancellation, or supersession outside the
 attempted action, has no recovery form and is not retryable through the attempted
 action. If an Agent-owned recovery key has no exact current form, MCP returns
@@ -1298,7 +1304,10 @@ McpWorkflowPresentation:
 
 `must_surface` is a tagged fact set, not free-form prompting. Rejection facts
 identify the rejected method, unchanged Core state, current Task phase, and
-exact recovery action key. A blocker summary carries its effective UserAction facts,
+exact recovery action key. A rejected `record_run` kind adds
+`record_run_kind_rejected` with the same `received_run_kind` and
+`allowed_run_kinds` carried by the Core rejection and retry contract. A blocker
+summary carries its effective UserAction facts,
 including request ref, status, and required owner method. Unsatisfied
 implementation-gating UserAction authority adds
 `implementation_blocked_until_user_action_authority_satisfied` with the exact
@@ -1337,8 +1346,10 @@ ref for product-only or technical-only progression.
 Rejected and dry-run branches retain the exact raw Core response together with
 fresh workflow authority and presentation. Compact text distinguishes
 committed Core authority, staging, dry run, rejection, and read-only resume.
-Rejection text says Core state is unchanged and never uses completion,
-refresh-success, or commit language.
+Run-kind rejection text reports the received and allowed Run kinds, current
+Task mode and work phase, unchanged Core state, and the exact current recovery
+form. Other rejection text likewise says Core state is unchanged and never
+uses completion, refresh-success, or commit language.
 
 A delivery failure after a committed Core effect preserves operation-result
 coordinates. The adapter does not retry a mutation merely because response

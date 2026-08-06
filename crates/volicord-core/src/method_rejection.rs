@@ -6,10 +6,10 @@ use volicord_types::{
     schema::{
         AuthorityBasisMismatch, AuthorityBasisValue, BaselineTransitionCompatibility,
         DryRunSummary, FalseValue, NextActionSummary, PlannedEffect, ToolEnvelope,
-        TransitionRejection, WorkflowActionKey, WorkflowProjection,
+        TransitionAttemptDetails, TransitionRejection, WorkflowActionKey, WorkflowProjection,
     },
     values::{
-        ErrorCode, MethodName, RunKind, TransitionRejectionReason, UtcTimestamp,
+        ErrorCode, MethodName, TransitionRejectionReason, UtcTimestamp,
         WorkflowActionSemanticVariant,
     },
 };
@@ -48,8 +48,7 @@ pub(crate) fn workflow_rejected_response<A: Into<AttemptedWorkflowAction>>(
     code: ErrorCode,
     message: &'static str,
     received_action: A,
-    received_run_kind: Option<RunKind>,
-    allowed_run_kinds: Vec<RunKind>,
+    attempt_details: TransitionAttemptDetails,
     corrected_retry_allowed: bool,
 ) -> CoreResult<PipelineResponse> {
     let received_action = match received_action.into() {
@@ -72,8 +71,7 @@ pub(crate) fn workflow_rejected_response<A: Into<AttemptedWorkflowAction>>(
         code,
         message,
         received_action,
-        received_run_kind,
-        allowed_run_kinds,
+        attempt_details,
         corrected_retry_allowed,
     )
 }
@@ -89,20 +87,28 @@ pub(crate) fn transition_rejected_response(
     message: &'static str,
     attempted_action_key: WorkflowActionKey,
     reason: TransitionRejectionReason,
+    attempt_details: TransitionAttemptDetails,
     retryable: bool,
     recovery_action_key: Option<WorkflowActionKey>,
 ) -> CoreResult<PipelineResponse> {
-    transition_rejected_response_with_compatibility(
-        envelope,
-        project_state,
-        workflow,
-        code,
-        message,
+    let details = TransitionRejection::new(
         attempted_action_key,
         reason,
+        attempt_details,
         retryable,
         recovery_action_key,
-        None,
+        workflow.required_refs().to_vec(),
+        workflow.kind(),
+        workflow.transition_catalog(),
+    )
+    .map_err(|detail| crate::pipeline::CorePipelineError::Invariant {
+        detail: detail.to_owned(),
+    })?;
+    let details = object_from_value(serde_json::to_value(details)?)?;
+    rejected_pipeline_response(
+        envelope.dry_run,
+        Some(project_state.state_version),
+        vec![tool_error(code, message, retryable, Some(details))],
     )
 }
 
@@ -120,30 +126,24 @@ pub(crate) fn transition_rejected_response_with_compatibility(
     recovery_action_key: Option<WorkflowActionKey>,
     baseline_compatibility: Option<BaselineTransitionCompatibility>,
 ) -> CoreResult<PipelineResponse> {
-    let mut details = TransitionRejection::new(
+    let attempt_details = baseline_compatibility
+        .map(TransitionAttemptDetails::baseline_transition)
+        .transpose()
+        .map_err(|detail| crate::pipeline::CorePipelineError::Invariant {
+            detail: detail.to_owned(),
+        })?
+        .unwrap_or(TransitionAttemptDetails::None);
+    transition_rejected_response(
+        envelope,
+        project_state,
+        workflow,
+        code,
+        message,
         attempted_action_key,
         reason,
+        attempt_details,
         retryable,
         recovery_action_key,
-        workflow.required_refs().to_vec(),
-        workflow.kind(),
-        workflow.transition_catalog(),
-    )
-    .map_err(|detail| crate::pipeline::CorePipelineError::Invariant {
-        detail: detail.to_owned(),
-    })?;
-    if let Some(compatibility) = baseline_compatibility {
-        details = details
-            .with_baseline_compatibility(compatibility)
-            .map_err(|detail| crate::pipeline::CorePipelineError::Invariant {
-                detail: detail.to_owned(),
-            })?;
-    }
-    let details = object_from_value(serde_json::to_value(details)?)?;
-    rejected_pipeline_response(
-        envelope.dry_run,
-        Some(project_state.state_version),
-        vec![tool_error(code, message, retryable, Some(details))],
     )
 }
 
@@ -156,8 +156,7 @@ fn workflow_rejected_response_from_current_catalog(
     code: ErrorCode,
     message: &'static str,
     attempted_action_key: WorkflowActionKey,
-    received_run_kind: Option<RunKind>,
-    allowed_run_kinds: Vec<RunKind>,
+    attempt_details: TransitionAttemptDetails,
     corrected_retry_allowed: bool,
 ) -> CoreResult<PipelineResponse> {
     if !TransitionRejection::is_required_for(code) {
@@ -172,7 +171,6 @@ fn workflow_rejected_response_from_current_catalog(
         .required_transition()
         .map(|transition| transition.action_key);
     let reason = transition_reason_for_code(code);
-    let _ = (received_run_kind, allowed_run_kinds);
     transition_rejected_response(
         envelope,
         project_state,
@@ -181,6 +179,7 @@ fn workflow_rejected_response_from_current_catalog(
         message,
         attempted_action_key,
         reason,
+        attempt_details,
         corrected_retry_allowed,
         recovery_action_key,
     )
@@ -196,9 +195,10 @@ fn transition_reason_for_code(code: ErrorCode) -> TransitionRejectionReason {
             TransitionRejectionReason::ImplementationAuthorityWouldBeInvalidated
         }
         ErrorCode::WorkflowActionNotAllowed => TransitionRejectionReason::ActionNotCurrent,
-        ErrorCode::RunKindIncompatible
-        | ErrorCode::ShapingCheckpointRequired
-        | ErrorCode::ChangeUnitRequired => TransitionRejectionReason::AuthorityBasisMismatch,
+        ErrorCode::RunKindIncompatible => TransitionRejectionReason::RunKindIncompatible,
+        ErrorCode::ShapingCheckpointRequired | ErrorCode::ChangeUnitRequired => {
+            TransitionRejectionReason::AuthorityBasisMismatch
+        }
         _ => TransitionRejectionReason::AuthorityBasisMismatch,
     }
 }
@@ -213,8 +213,7 @@ pub(crate) fn workflow_rejection_plan_error<T, A: Into<AttemptedWorkflowAction>>
     code: ErrorCode,
     message: &'static str,
     received_action: A,
-    received_run_kind: Option<RunKind>,
-    allowed_run_kinds: Vec<RunKind>,
+    attempt_details: TransitionAttemptDetails,
     corrected_retry_allowed: bool,
 ) -> Result<T, PlanError> {
     let response = workflow_rejected_response(
@@ -225,8 +224,7 @@ pub(crate) fn workflow_rejection_plan_error<T, A: Into<AttemptedWorkflowAction>>
         code,
         message,
         received_action,
-        received_run_kind,
-        allowed_run_kinds,
+        attempt_details,
         corrected_retry_allowed,
     )
     .map_err(PlanError::Core)?;

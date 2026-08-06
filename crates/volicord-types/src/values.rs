@@ -1791,6 +1791,7 @@ pub enum WorkflowAuthorityInvalidationPolicy {
 pub enum TransitionRejectionReason {
     ActionNotCurrent,
     VariantNotCurrent,
+    RunKindIncompatible,
     AuthorityBasisMismatch,
     ImplementationAuthorityWouldBeInvalidated,
     UserAuthorityMissing,

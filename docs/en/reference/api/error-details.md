@@ -72,13 +72,24 @@ closed non-null detail shape:
 TransitionRejection:
   attempted_action_key: WorkflowActionKey
   reason: TransitionRejectionReason
+  attempt_details: TransitionAttemptDetails
   state_change_applied: false
   retryable: boolean
   recovery_action_key: WorkflowActionKey | null
   incompatible_submitted_paths: string[]
-  baseline_compatibility: BaselineTransitionCompatibility | null
   blocking_refs: StateRecordRef[]
   current_workflow_kind: WorkflowStateKind
+
+TransitionAttemptDetails:
+  none:
+    attempt_kind: none
+  record_run_kind:
+    attempt_kind: record_run_kind
+    received_run_kind: RunKind
+    allowed_run_kinds: RunKind[]
+  baseline_transition:
+    attempt_kind: baseline_transition
+    baseline_compatibility: BaselineTransitionCompatibility
 
 BaselineTransitionCompatibility:
   current_baseline_canonical: boolean
@@ -89,11 +100,19 @@ BaselineTransitionCompatibility:
 
 `attempted_action_key` preserves the exact method and semantic variant that
 failed admission. `reason` is one of `action_not_current`,
-`variant_not_current`, `authority_basis_mismatch`,
+`variant_not_current`, `run_kind_incompatible`, `authority_basis_mismatch`,
 `implementation_authority_would_be_invalidated`, `user_authority_missing`,
 `checkpoint_stale`, `change_unit_stale`, `workspace_basis_stale`, or
 `close_precondition_missing`. `blocking_refs` is canonical, duplicate-free
 current authority context.
+
+`attempt_details` is the closed tagged owner of facts specific to the rejected
+method attempt. `RUN_KIND_INCOMPATIBLE` requires `record_run_kind`: its
+`received_run_kind` is the submitted `record_run` kind and its non-empty
+`allowed_run_kinds` is sorted in closed `RunKind` order and contains no
+duplicates. The received kind is not an allowed kind. Missing, generic, or
+non-canonical Run-kind details are invalid. Other renderers preserve this
+object structurally; they do not recover method facts from `message`.
 
 `recovery_action_key` is non-null only when that exact key is a member of the
 same current `WorkflowTransitionCatalog`; Core never fabricates a method-only
@@ -102,11 +121,44 @@ by `ToolError.retryable`; neither permits replaying an applied mutation. The
 enclosing rejection remains `no_effect`.
 
 `incompatible_submitted_paths` contains only Core-identified request paths.
-`baseline_compatibility` is non-null only when Core assessed baseline
-compatibility for this exact transition. Canonicality of the current and
-submitted values, equality with current authority, and compatibility with the
-selected transition remain four independent facts. MCP and other renderers copy
-them and do not infer them from `field`, message text, or a method name.
+`baseline_transition.baseline_compatibility` is present only when Core assessed
+baseline compatibility for this exact transition. Canonicality of the current
+and submitted values, equality with current authority, and compatibility with
+the selected transition remain four independent facts. MCP and other renderers
+copy them and do not infer them from `field`, message text, or a method name.
+
+This canonical `ToolError` example decodes as the current typed rejection and
+validates against the generated public schema:
+
+```json contract=api.schema.core shape=schema_object.ToolError
+{
+  "category": "rejected",
+  "code": "RUN_KIND_INCOMPATIBLE",
+  "message": "The submitted Run kind is incompatible with the current Task.",
+  "retryable": true,
+  "details": {
+    "attempted_action_key": {
+      "method": "volicord.record_run",
+      "semantic_variant": "record_run"
+    },
+    "reason": "run_kind_incompatible",
+    "attempt_details": {
+      "attempt_kind": "record_run_kind",
+      "received_run_kind": "implementation",
+      "allowed_run_kinds": ["direct"]
+    },
+    "state_change_applied": false,
+    "retryable": true,
+    "recovery_action_key": {
+      "method": "volicord.record_run",
+      "semantic_variant": "record_run"
+    },
+    "incompatible_submitted_paths": ["/kind"],
+    "blocking_refs": [],
+    "current_workflow_kind": "implementation"
+  }
+}
+```
 
 <a id="platform-diagnostic-detail-field"></a>
 

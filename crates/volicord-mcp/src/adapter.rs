@@ -67,7 +67,7 @@ use volicord_types::methods::{
     UpdateScopeRequest, WorkflowActionAdmissionClass,
 };
 use volicord_types::schema::{
-    RequiredNullable, ToolEnvelope, WorkflowActionKey, WorkflowProjection,
+    RequiredNullable, ToolEnvelope, TransitionAttemptDetails, WorkflowActionKey, WorkflowProjection,
 };
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
@@ -495,6 +495,7 @@ impl McpAdapter {
                                 }
                             })?,
                             catalog,
+                            TransitionAttemptDetails::None,
                             binding
                                 .mismatches
                                 .iter()
@@ -629,6 +630,7 @@ impl McpAdapter {
                     form.action_key,
                     workflow,
                     catalog,
+                    TransitionAttemptDetails::None,
                     invalid_paths,
                 ) {
                     Ok(contract) => Some(Box::new(contract)),
@@ -804,6 +806,7 @@ impl McpAdapter {
                             form.action_key,
                             workflow,
                             catalog,
+                            TransitionAttemptDetails::None,
                             vec!["/action_form_ref".to_owned()],
                         )
                         .map(Box::new)
@@ -883,6 +886,7 @@ impl McpAdapter {
                     called_method_form.action_key,
                     workflow,
                     catalog,
+                    TransitionAttemptDetails::None,
                     vec!["/action_form_ref".to_owned()],
                 )
                 .map_err(|_| McpAdapterError::SchemaContractFailure {

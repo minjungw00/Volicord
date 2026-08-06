@@ -88,7 +88,11 @@ Core는 그 밖의 모드, 단계, 종류 조합을 커밋 전에 거절합니�
 
 현재 workflow catalog에 그 정확한 전이가 없는 Task는 Run planning 전에 typed
 `TransitionRejection`을 받습니다. 허용된 뒤 요청 `kind`가 허용된 전이와 호환되지 않으면
-수신한 kind와 폐쇄형 허용 kind 집합을 포함한 `RUN_KIND_INCOMPATIBLE`를 반환합니다.
+`RUN_KIND_INCOMPATIBLE`를 반환합니다. 필수
+`attempt_details.attempt_kind=record_run_kind`는 제출된 `received_run_kind`와 현재
+transition이 선택한 비어 있지 않고 정렬되고 중복이 없는 `allowed_run_kinds`를 보존합니다.
+Core, 공개 메서드 결과, MCP retry와 presentation 구조, MCP compact text는 오류 문구를
+parse하지 않고 같은 typed 값을 projection합니다.
 
 모든 Run은 확인된 현재 Git 작업 공간 맥락이 현재 Change Unit 쓰기 근거와 일치해야
 합니다. 이 규칙은 제품 쓰기 Run뿐 아니라 쓰기가 없는 증거와 닫기 평가 Run에도
@@ -476,7 +480,8 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 아래 경우는 `ToolRejectedResponse`를 반환합니다.
 
 - work Task가 아직 shaping이면 `TASK_PHASE_TRANSITION_REQUIRED`
-- 그 밖의 `kind`, mode, phase 불일치에는 `RUN_KIND_INCOMPATIBLE`
+- 그 밖의 `kind`, mode, phase 불일치에는 `RUN_KIND_INCOMPATIBLE`. Typed attempt 상세가
+  수신한 Run kind와 현재 허용된 Run kind를 보존합니다.
 - 오래된 `expected_state_version`
 - 무효화된 쓰기 티켓 유효성 근거
 - 누락되거나 일치하지 않는 쓰기 티켓 정책 권한 결속

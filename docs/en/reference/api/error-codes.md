@@ -106,8 +106,9 @@ does not create a committed replay row.
 ### `RUN_KIND_INCOMPATIBLE`
 
 The received `record_run` kind is incompatible with the current Task mode or
-work phase. `received_run_kind` and `allowed_run_kinds` preserve the closed
-current values.
+work phase. Required `attempt_details` with
+`attempt_kind=record_run_kind` preserves `received_run_kind` and the non-empty,
+sorted, duplicate-free `allowed_run_kinds` selected by the current transition.
 
 <a id="errorcode-task-phase-transition-required"></a>
 ### `TASK_PHASE_TRANSITION_REQUIRED`

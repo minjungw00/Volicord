@@ -208,6 +208,11 @@ pub const MCP_TAGGED_UNION_CONTRACTS: &[McpTaggedUnionContract] = &[
         ),
     },
     McpTaggedUnionContract {
+        semantic_type_patterns: &["TransitionAttemptDetails"],
+        discriminator_path: "/attempt_kind",
+        variants: semantic_variants!("none", "record_run_kind", "baseline_transition"),
+    },
+    McpTaggedUnionContract {
         semantic_type_patterns: &["WorkflowActionAuthorityCoordinates"],
         discriminator_path: "/coordinate_kind",
         variants: semantic_variants!(
@@ -271,6 +276,7 @@ pub const MCP_TAGGED_UNION_CONTRACTS: &[McpTaggedUnionContract] = &[
         variants: semantic_variants!(
             "method_rejected",
             "current_task_phase",
+            "record_run_kind_rejected",
             "recovery_action",
             "shaping_decision_outcome",
             "non_authorizing_shaping_decision",

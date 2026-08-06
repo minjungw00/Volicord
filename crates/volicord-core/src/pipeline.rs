@@ -43,8 +43,8 @@ use volicord_types::methods::{
 use volicord_types::schema::{
     DryRunIntent, DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, RequiredNullable,
     StateRecordRef, ToolDryRunResponse, ToolEnvelope, ToolError, ToolRejectedResponse,
-    TransitionDescriptor, WorkflowActionAuthorityCoordinates, WorkflowActionKey,
-    WorkflowCheckpointActionCoordinates, WorkflowProjection,
+    TransitionAttemptDetails, TransitionDescriptor, WorkflowActionAuthorityCoordinates,
+    WorkflowActionKey, WorkflowCheckpointActionCoordinates, WorkflowProjection,
 };
 use volicord_types::values::{
     ActorSource, ChangeUnitOperation, EffectKind, ErrorCode, MethodName, OperationCategory,
@@ -1441,6 +1441,7 @@ impl CoreService {
                             "exact workflow action is not current",
                             attempted_action_key,
                             reason,
+                            TransitionAttemptDetails::None,
                             admission.retryable,
                             admission.recovery_action_key,
                         )?;
@@ -1467,6 +1468,12 @@ impl CoreService {
                             &request.request_json,
                             &descriptor.fixed_authority_coordinates,
                         )?;
+                        let attempt_details = request_coordinate_mismatch_attempt_details(
+                            request.method_name,
+                            &request.request_json,
+                            &descriptor.fixed_authority_coordinates,
+                            code,
+                        )?;
                         let mut response = crate::method_rejection::transition_rejected_response(
                             &prepared_envelope,
                             &project_state,
@@ -1475,6 +1482,7 @@ impl CoreService {
                             "request authority coordinates do not match the current transition",
                             attempted_action_key,
                             reason,
+                            attempt_details,
                             true,
                             Some(descriptor.action_key),
                         )?;
@@ -2768,7 +2776,7 @@ fn request_coordinate_mismatch_rejection(
             } else {
                 (
                     ErrorCode::RunKindIncompatible,
-                    TransitionRejectionReason::AuthorityBasisMismatch,
+                    TransitionRejectionReason::RunKindIncompatible,
                 )
             }
         }
@@ -2778,6 +2786,33 @@ fn request_coordinate_mismatch_rejection(
         ),
     };
     Ok(rejection)
+}
+
+fn request_coordinate_mismatch_attempt_details(
+    method: MethodName,
+    request_json: &Value,
+    coordinates: &WorkflowActionAuthorityCoordinates,
+    code: ErrorCode,
+) -> CoreResult<TransitionAttemptDetails> {
+    if code != ErrorCode::RunKindIncompatible {
+        return Ok(TransitionAttemptDetails::None);
+    }
+    let (MethodName::RecordRun, WorkflowActionAuthorityCoordinates::RecordRun { run_kind, .. }) =
+        (method, coordinates)
+    else {
+        return Err(CorePipelineError::Invariant {
+            detail: "Run-kind mismatch is not owned by a RecordRun transition".to_owned(),
+        });
+    };
+    let request: SubmittedRecordRunCoordinates = serde_json::from_value(request_json.clone())
+        .map_err(|error| CorePipelineError::Invariant {
+            detail: format!("typed RecordRun request failed attempt-detail projection: {error}"),
+        })?;
+    TransitionAttemptDetails::record_run_kind(request.kind, vec![*run_kind]).map_err(|detail| {
+        CorePipelineError::Invariant {
+            detail: detail.to_owned(),
+        }
+    })
 }
 
 fn replay_preflight_response(

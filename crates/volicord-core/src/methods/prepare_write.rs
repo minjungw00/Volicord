@@ -57,8 +57,8 @@ use volicord_types::methods::{
 use volicord_types::product_path::WriteTicketPathScope;
 use volicord_types::schema::{
     DryRunSummary, GuaranteeDisplay, JsonObject, PlannedBlocker, PlannedEffect, StateRecordRef,
-    StateSummary, WriteDecisionReason as PublicWriteDecisionReason, WriteTicket,
-    WriteTicketPathPatterns, WriteTicketScope, WriteTicketStateSummary,
+    StateSummary, TransitionAttemptDetails, WriteDecisionReason as PublicWriteDecisionReason,
+    WriteTicket, WriteTicketPathPatterns, WriteTicketScope, WriteTicketStateSummary,
 };
 use volicord_types::values::{
     CloseState, ErrorCode, MethodName, PlannedBlockerSourceKind, PrepareWriteDecision,
@@ -372,8 +372,7 @@ fn plan_prepare_write(
                 ErrorCode::UserDecisionUnresolved,
                 "write preparation requires a current progressable shaping authority graph",
                 MethodName::PrepareWrite,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 false,
             )
             .map_err(PlanError::Core)?;
@@ -431,8 +430,7 @@ fn prepare_write_planning_error(
                 ErrorCode::ChangeUnitRequired,
                 "write preparation requires a current Change Unit",
                 MethodName::PrepareWrite,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             ) {
                 Ok(response) => PlanError::Response(Box::new(response)),
@@ -448,8 +446,7 @@ fn prepare_write_planning_error(
                 ErrorCode::TaskPhaseTransitionRequired,
                 "write preparation requires work_phase=implementation",
                 MethodName::PrepareWrite,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 true,
             ) {
                 Ok(response) => PlanError::Response(Box::new(response)),
@@ -465,8 +462,7 @@ fn prepare_write_planning_error(
                 ErrorCode::WorkflowActionNotAllowed,
                 "write preparation is not allowed for the current Task mode",
                 MethodName::PrepareWrite,
-                None,
-                Vec::new(),
+                TransitionAttemptDetails::None,
                 false,
             ) {
                 Ok(response) => PlanError::Response(Box::new(response)),

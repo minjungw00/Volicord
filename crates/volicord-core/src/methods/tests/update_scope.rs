@@ -143,15 +143,14 @@ fn implementation_scope_invalidation_is_rejected_before_mutation_with_close_reco
         assert!(!details.retryable, "{coordinate}");
         if coordinate == "baseline" {
             let compatibility = details
-                .baseline_compatibility
-                .as_ref()
+                .baseline_compatibility()
                 .expect("implementation baseline rejection compatibility");
             assert!(compatibility.current_baseline_canonical);
             assert!(compatibility.submitted_baseline_canonical);
             assert!(!compatibility.submitted_baseline_matches_current);
             assert!(!compatibility.submitted_baseline_compatible_with_transition);
         } else {
-            assert!(details.baseline_compatibility.as_ref().is_none());
+            assert!(details.baseline_compatibility().is_none());
         }
         assert!(
             details.blocking_refs.contains(&application_ref),
@@ -843,6 +842,15 @@ fn keep_current_rejects_task_baseline_retarget_with_current_change_unit(
                 "semantic_variant": "keep_current_change_unit"
             },
             "reason": "authority_basis_mismatch",
+            "attempt_details": {
+                "attempt_kind": "baseline_transition",
+                "baseline_compatibility": {
+                    "current_baseline_canonical": true,
+                    "submitted_baseline_canonical": true,
+                    "submitted_baseline_matches_current": false,
+                    "submitted_baseline_compatible_with_transition": false
+                }
+            },
             "state_change_applied": false,
             "retryable": true,
             "recovery_action_key": {
@@ -851,13 +859,7 @@ fn keep_current_rejects_task_baseline_retarget_with_current_change_unit(
             },
             "blocking_refs": response.response_value["errors"][0]["details"]["blocking_refs"].clone(),
             "current_workflow_kind": "implementation",
-            "incompatible_submitted_paths": ["/baseline_ref"],
-            "baseline_compatibility": {
-                "current_baseline_canonical": true,
-                "submitted_baseline_canonical": true,
-                "submitted_baseline_matches_current": false,
-                "submitted_baseline_compatible_with_transition": false
-            }
+            "incompatible_submitted_paths": ["/baseline_ref"]
         })
     );
     assert_eq!(harness.counts()?, before);

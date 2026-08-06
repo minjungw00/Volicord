@@ -94,6 +94,34 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
                 "RUN_KIND_INCOMPATIBLE"
             };
             assert_eq!(response.response_value["errors"][0]["code"], expected_code);
+            if expected_code == "RUN_KIND_INCOMPATIBLE" {
+                let details: TransitionRejection = serde_json::from_value(
+                    response.response_value["errors"][0]["details"].clone(),
+                )?;
+                assert_eq!(
+                    details.reason,
+                    TransitionRejectionReason::RunKindIncompatible
+                );
+                let expected_allowed = if task_mode == "direct" {
+                    vec![RunKind::Direct]
+                } else {
+                    vec![RunKind::Implementation]
+                };
+                assert_eq!(
+                    details.attempt_details,
+                    TransitionAttemptDetails::record_run_kind(run_kind, expected_allowed)?
+                );
+                assert_eq!(details.incompatible_submitted_paths, vec!["/kind"]);
+                let replay_carrier: ToolRejectedResponse =
+                    serde_json::from_str(&response.response_json)?;
+                assert_eq!(
+                    serde_json::to_value(replay_carrier)?,
+                    response.response_value,
+                    "exact response bytes must preserve typed rejection facts"
+                );
+                assert!(response.operation_result_ref.is_none());
+                assert!(!response.replayed);
+            }
             assert_eq!(after, before, "{suffix} must have no storage effect");
         }
     }

@@ -608,6 +608,7 @@ WorkflowActionFormCatalog:
 RetryContract:
   recovery_action_key: WorkflowActionKey | null
   recovery_form: WorkflowActionForm | null
+  attempt_details: TransitionAttemptDetails
   invalid_or_incompatible_submitted_paths: string[]
   retry_possible_in_current_task: boolean
 ```
@@ -1058,7 +1059,10 @@ capability는 carrier만 선택하며 범주를 따로 변환하거나 이 필�
 다시 쓰지 않습니다.
 
 Schema 검증이 성공한 뒤 Core가 typed transition rejection을 반환하면 MCP는 정확한 거부와
-typed compatibility assessment를 보존합니다. Keep-current 기준선 retargeting에서는 Core가
+그 `attempt_details`를 structured content, retry contract, presentation fact, compact text에
+걸쳐 보존합니다. `RUN_KIND_INCOMPATIBLE` 거부에서는 Core가 제공한
+`received_run_kind`와 정규 `allowed_run_kinds`를 적용 가능한 각 projection으로 복사하며,
+오류 문구에서 복원하지 않습니다. Keep-current 기준선 retargeting에서는 Core가
 `current_baseline_canonical=true`, `submitted_baseline_canonical=true`,
 `submitted_baseline_matches_current=false`,
 `submitted_baseline_compatible_with_transition=false`를 제공합니다. MCP는 이 네 사실을 서로
@@ -1067,8 +1071,9 @@ typed compatibility assessment를 보존합니다. Keep-current 기준선 retarg
 데이터 손상이나 명시적 복구 workflow를 보고하지 않는 한 repair는 false입니다.
 
 Core가 `recovery_action_key`를 제공하면 MCP는 같은 현재 catalog에서 그 정확한 key만
-조회합니다. Retry contract는 그 key, 정확히 대응하는 현재 form, Core가 제공한 비호환 경로,
-현재 Task에서의 retry 가능 여부를 담습니다. User 소유 recovery 또는 시도한 action 밖의 close,
+조회합니다. Retry contract는 그 key, 정확히 대응하는 현재 form, typed attempt 상세,
+Core가 제공한 비호환 경로, 현재 Task에서의 retry 가능 여부를 담습니다. User 소유 recovery
+또는 시도한 action 밖의 close,
 cancellation, supersession은 recovery form이 없고 시도한 action을 통해 retry할 수 없습니다.
 Agent 소유 recovery key에 정확한 현재 form이 없으면 MCP는
 `INTERNAL_CONTRACT_INCONSISTENT`, `committed=false`, 추측 retry 없음, 원래 typed rejection,
@@ -1160,6 +1165,8 @@ McpWorkflowPresentation:
 
 `must_surface`는 free-form prompting이 아니라 tagged fact 집합입니다. 거부 fact는 거부된
 method, 변경되지 않은 Core state, 현재 Task phase, 정확한 recovery action key를 식별합니다.
+거부된 `record_run` kind는 Core 거부와 retry contract에 있는 것과 같은
+`received_run_kind`와 `allowed_run_kinds`를 담은 `record_run_kind_rejected`를 추가합니다.
 Blocker summary는 request ref, status, 필요한 owner method를 포함한 effective UserAction
 fact를 담습니다. 충족되지 않은 implementation-gating UserAction authority는 정확한 request
 ref와 함께 `implementation_blocked_until_user_action_authority_satisfied`를 추가합니다.
@@ -1191,8 +1198,10 @@ scope-decision ref를 합성하지 않습니다.
 
 Rejected와 dry-run 분기는 정확한 raw Core 응답을 새 workflow authority 및 presentation과
 함께 보존합니다. Compact text는 committed Core authority, staging, dry run, rejection,
-read-only resume를 구분합니다. Rejection text는 Core state가 unchanged라고 말하며 completion,
-refresh 성공 또는 commit 표현을 사용하지 않습니다.
+read-only resume를 구분합니다. Run kind rejection text는 수신하고 허용된 Run kind, 현재
+Task mode와 work phase, 변경되지 않은 Core state, 정확한 현재 recovery form을 알립니다.
+다른 rejection text도 Core state가 unchanged라고 말하며 completion, refresh 성공 또는
+commit 표현을 사용하지 않습니다.
 
 Core 효과를 커밋한 뒤 전달이 실패하면 operation-result 좌표를 보존합니다. 응답 직렬화나
 전송이 실패했다는 이유로 mutation을 다시 시도하지 않습니다.

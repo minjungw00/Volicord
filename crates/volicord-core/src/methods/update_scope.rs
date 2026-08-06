@@ -63,7 +63,8 @@ use volicord_types::methods::{
 };
 use volicord_types::schema::{
     advisor_compatible_change_unit, AcceptanceCriterion, JsonObject,
-    PersistedUserActionRequestMetadata, StateRecordRef, UserActionBasis, WorkflowActionKey,
+    PersistedUserActionRequestMetadata, StateRecordRef, TransitionAttemptDetails, UserActionBasis,
+    WorkflowActionKey,
 };
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
@@ -339,8 +340,7 @@ fn decide_update_scope_policy(
             ErrorCode::UserDecisionUnresolved,
             "scope updates cannot apply a rejected, deferred, or expired shaping decision",
             attempted_action_key,
-            None,
-            Vec::new(),
+            TransitionAttemptDetails::None,
             false,
         );
     }

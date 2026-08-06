@@ -103,7 +103,8 @@
 ### `RUN_KIND_INCOMPATIBLE`
 
 수신한 `record_run` kind가 현재 Task mode 또는 work phase와 호환되지 않습니다.
-`received_run_kind`와 `allowed_run_kinds`가 현재 폐쇄형 값을 보존합니다.
+`attempt_kind=record_run_kind`인 필수 `attempt_details`가 `received_run_kind`와 현재
+transition이 선택한 비어 있지 않고 정렬되고 중복이 없는 `allowed_run_kinds`를 보존합니다.
 
 <a id="errorcode-task-phase-transition-required"></a>
 ### `TASK_PHASE_TRANSITION_REQUIRED`

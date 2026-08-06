@@ -52,6 +52,14 @@ fn every_workflow_rejection_code_preserves_authority_without_an_effect(
     .enumerate()
     {
         let request_id = format!("req_workflow_rejection_{index}");
+        let attempt_details = if code == ErrorCode::RunKindIncompatible {
+            TransitionAttemptDetails::record_run_kind(
+                RunKind::Direct,
+                vec![RunKind::Implementation],
+            )?
+        } else {
+            TransitionAttemptDetails::None
+        };
         let response = crate::method_rejection::workflow_rejected_response(
             &store,
             &project_state,
@@ -66,8 +74,7 @@ fn every_workflow_rejection_code_preserves_authority_without_an_effect(
             code,
             "current workflow rejected the semantic request",
             MethodName::RecordRun,
-            Some(RunKind::Direct),
-            vec![RunKind::Implementation],
+            attempt_details,
             code != ErrorCode::WorkflowActionNotAllowed,
         )?;
 
