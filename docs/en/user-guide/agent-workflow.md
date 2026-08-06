@@ -59,8 +59,11 @@ replace current workflow progression.
 For a Task-state-bound action, use the exact catalog entry whose `action_key`
 matches the selected Core transition. Copy `fixed_arguments` exactly, supply
 only the listed `agent_authored_inputs`, and send that form's exact `form_ref` as
-`action_form_ref`; `canonical_minimal_request` is a schema-valid executable
-starting point for the same action. A form never authorizes another method or
+`action_form_ref`; `canonical_minimal_request` is a schema-valid request-shape
+starting point for the same action. Its filled Agent values are bounded
+contract-validation witnesses, not recommendations, user authority, or product
+decisions; replace them with the actual task-compatible values you intend to
+submit. A form never authorizes another method or
 variant. Preserve JSON types and array order, and never reconstruct coordinates
 listed as fixed. Project and expected state version are adapter-injected from
 current authority rather than copied into caller-controlled fields.

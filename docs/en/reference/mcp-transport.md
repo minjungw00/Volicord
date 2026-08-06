@@ -76,7 +76,7 @@ This table is generated from the canonical MCP semantic descriptors. Required-nu
 | Tool | Input semantic type | Required nullable root fields | Typed examples | Output semantic type | Output discriminator |
 |---|---|---|---|---|---|
 | `volicord.intake` | `McpIntakeArguments` | `acceptance_policy`: `AcceptancePolicy`<br>`lineage`: `TaskLineageInput` | `create_new`<br>`resume_active`<br>`supersede_active`<br>`reject_if_active` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_IntakeResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit`<br>`advisor_create_current_change_unit`<br>`advisor_replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | none | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.advance_task` | `McpAdvanceTaskArguments` | none | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
@@ -678,6 +678,7 @@ WorkflowActionForm:
   form_ref: RequestHash
   expected_state_version: integer
   fixed_arguments: object
+  fixed_argument_paths: string[]
   agent_authored_inputs: WorkflowActionInput[]
   canonical_minimal_request: object
 
@@ -698,7 +699,8 @@ RetryContract:
 
 `form_ref` is the opaque canonical digest of project, Task, complete
 `action_key`, expected state version, exact fixed authority coordinates, the
-complete `fixed_arguments` object and descriptor-owned fixed paths, the current
+exact `WorkflowTransitionSubmissionContract`, complete `fixed_arguments`
+object and descriptor-owned fixed paths, the current
 workflow-contract, action-form-contract, semantic-schema, and scalar-contract
 digests. It is not a numeric workflow or action-form version. The form catalog
 preserves Core transition-catalog ordering.
@@ -709,12 +711,16 @@ It appears in normal Task status, mutation success and rejection presentation,
 and authoritative argument context. Status with no active Task has a null
 catalog. A singular form is not independently authoritative.
 
-Before exposing a form, the adapter confirms that every fixed path exists in
-the selected method-and-variant schema, every fixed value has the declared
-semantic type, required Agent-authored inputs are identified, no fixed value is
-ignored, and `canonical_minimal_request` passes semantic validation, exact Rust
-decoding, fixed-value binding, exact variant selection, and a no-commit Core
-transition admission check against the same workflow snapshot. Failure exposes
+Before exposing a form, the adapter derives fixed values and required or
+optional Agent-authored slots from the exact submission contract through the
+wire semantic descriptors. It confirms that every fixed path exists in the
+selected method-and-variant schema, every fixed value has the declared
+semantic type, no fixed value is ignored, and `canonical_minimal_request`
+passes semantic validation, exact Rust decoding, fixed-value binding, and
+exact variant selection. The minimal request uses only bounded typed witness
+values from the submission contract. Those values validate the form shape;
+they do not claim user authority or a product decision and are not
+recommendations. Failure exposes
 no form and returns or records `INTERNAL_CONTRACT_INCONSISTENT`; it never chooses
 a nearby form.
 
@@ -737,8 +743,8 @@ and the current valid variants and form refs, with `reached_core=false` and
 omission or required-form fallback. Read-only `volicord.status` observes the
 catalog but creates no mutation authority.
 
-After form admission, one descriptor-driven binder resolves every fixed path
-through the selected method and semantic variant.
+After form admission, one descriptor-driven binder consumes the exact
+`fixed_argument_paths` projected for that form.
 Every caller-visible fixed value must be present and deeply equal to the form
 value before method decoding or Core entry. JSON primitive types and array
 order are exact; object member order is irrelevant. JSON null does not equal
@@ -786,13 +792,17 @@ next baseline. They fix the exact scope-owned resolution refs and one of the
 closed method-owned operations. `keep_current_change_unit` fixes
 `keep_current` and leaves only baseline and optional scope edits authored.
 `create_current_change_unit` and `replace_current_change_unit` fix their exact
-operation and require authored `scope_summary`, `affected_paths`, and baseline,
-while preserving the optional Change Unit fields and effect contract. No
+operation. General `direct` and `work` forms require authored `scope_summary`,
+`affected_paths`, and baseline while preserving optional `affected_areas`,
+`constraints`, and effect contract. Advisor create and replace instead fix
+`affected_paths=[]` and the canonical observe-only effect contract; neither is
+Agent-authored, and only `scope_summary`, baseline, required-nullable scope
+fields, and optional non-authorizing Change Unit description fields remain
+authored. These Advisor forms grant no Product Repository authority. No
 current Change Unit produces only create; an existing current Change Unit
 produces keep and, when Core policy permits replacement, replace, never create.
 Implementation replacement is absent when it would invalidate current shaping
-applications. Advisor create and replace remain subject to Core's canonical
-non-write predicate. Current baseline and scope revision remain Core-current
+applications. Current baseline and scope revision remain Core-current
 authority covered by each admitted form and injected expected state version.
 
 If any caller-visible fixed value is altered or omitted, the adapter returns
@@ -846,7 +856,9 @@ through that same entry. After descriptor validation succeeds, the exact Rust
 request decoder must also succeed. Disagreement is an internal schema-contract
 failure (`-32603`), records an adapter diagnostic, and reaches neither Core nor
 the user-field issue path. Conformance runs this validation/decode parity check
-against the canonical registry.
+against the canonical registry. Canonical examples document and test complete
+method requests; action-form generation never copies values from them and uses
+only the current transition submission contract's typed witnesses.
 
 ```schema
 McpToolErrorIssue:

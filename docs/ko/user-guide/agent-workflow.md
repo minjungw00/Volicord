@@ -54,7 +54,9 @@ implementation 작업, close review 중 하나를 요구할 수 있습니다. �
 Task 상태 결속 action에는 선택한 Core transition과 `action_key`가 일치하는 catalog entry를
 정확히 사용합니다. `fixed_arguments`를 그대로 복사하고 표시된 `agent_authored_inputs`만 채운
 뒤 form의 정확한 `form_ref`를 `action_form_ref`로 보냅니다. 같은 action의
-`canonical_minimal_request`는 schema 검증을 통과하는 실행 가능한 시작점입니다. Form은 다른
+`canonical_minimal_request`는 schema 검증을 통과하는 request-shape 시작점입니다. 채워진 Agent 값은 한정된 contract 검증
+witness이며 권장 입력, 사용자 권한, 제품 결정이 아닙니다. 실제로 제출할 Task 호환 값으로
+바꾸십시오. Form은 다른
 메서드나 variant에 권한을 주지 않습니다. JSON 타입과 배열 순서를 보존하고 고정 좌표를 다시
 조립하지 않습니다. 프로젝트와 예상 상태 버전은 호출자가 보내는 field가 아니라 현재 권한에서
 adapter가 주입합니다.

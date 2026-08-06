@@ -27,18 +27,19 @@ use volicord_types::ids::{
 };
 use volicord_types::methods::StatusRequest;
 use volicord_types::schema::{
-    ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
-    EvidenceObservationInput, EvidenceTarget, JsonObject, RequiredNullable, ResidualRiskInput,
-    ShapingCheckpointOperation, ShapingGapInput, StagedArtifactHandle, StaleShapingAuthorityAction,
-    StateRecordRef, UserActionBasis, UserActionRequestBody, UserActionResolutionBody,
+    advisor_observe_only_effect_contract, ArtifactInput, ArtifactRef, ChangeUnitEffectContract,
+    CloseAssessmentInput, EvidenceObservationInput, EvidenceTarget, JsonObject, RequiredNullable,
+    ResidualRiskInput, ShapingCheckpointOperation, ShapingGapInput, StagedArtifactHandle,
+    StaleShapingAuthorityAction, StateRecordRef, UserActionBasis, UserActionRequestBody,
+    UserActionResolutionBody,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
-    ArtifactInputSourceKind, ChangeUnitEffectKind, ChangeUnitOperation, CloseIntent, CloseReason,
-    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind,
-    JudgmentKind, JudgmentResolutionOutcome, OperationCategory, RequestedMode, ResponseKind,
-    ShapingGapKind, StateRecordKind, UserActionChannelKind, UserActionOptionAction,
-    UserActionRequiredFor, UtcTimestamp,
+    ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
+    EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
+    JudgmentResolutionOutcome, OperationCategory, RequestedMode, ResponseKind, ShapingGapKind,
+    StateRecordKind, UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor,
+    UtcTimestamp,
 };
 use volicord_user_action_service::PendingUserActionFactsRequest;
 
@@ -143,25 +144,7 @@ fn canonical_mcp_semantic_cases_are_the_conformance_fixtures() -> Result<(), Box
 fn public_scope_rebaseline_replaces_current_change_unit_in_each_supported_mode(
 ) -> Result<(), Box<dyn Error>> {
     fn advisor_contract() -> ChangeUnitEffectContract {
-        ChangeUnitEffectContract {
-            allowed_effects: vec![
-                ChangeUnitEffectKind::ArtifactRegistration,
-                ChangeUnitEffectKind::UserActionRequest,
-                ChangeUnitEffectKind::EvidenceUpdate,
-            ],
-            forbidden_effects: vec![
-                ChangeUnitEffectKind::ProductFileWrite,
-                ChangeUnitEffectKind::RunRecording,
-                ChangeUnitEffectKind::SensitiveAction,
-                ChangeUnitEffectKind::ExternalNetwork,
-                ChangeUnitEffectKind::SecretAccess,
-            ],
-            allowed_paths: Vec::new(),
-            expected_outputs: vec!["Bounded advice".to_owned()],
-            invariants: vec!["Observe only".to_owned()],
-            evidence_expectations: Vec::new(),
-            sensitive_action_expectations: Vec::new(),
-        }
+        advisor_observe_only_effect_contract()
     }
 
     for (label, mode) in [

@@ -1752,24 +1752,6 @@ pub enum WorkflowTransitionActor {
     System,
 }
 
-/// Closed Agent-authored input family for one workflow transition.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowAgentInputRequirement {
-    ShapingCheckpoint,
-    ScopeAndChangeUnit,
-    AdviceResult,
-    EvidenceCapture,
-    ProposedWrite,
-    Artifact,
-    RunObservation,
-    UserActionDraft,
-    ChangeReconciliation,
-    CloseIntent,
-}
-
 /// Observable effect family for one workflow transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

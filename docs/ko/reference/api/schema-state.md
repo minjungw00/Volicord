@@ -477,6 +477,7 @@ TaskLifecycleState:
 - `lifecycle_phase`, `close_reason`, `result`의 지원 값: [`Task` 생명주기 값](schema-value-sets.md#task-lifecycle-values)
 - 생명주기 영역의 제품 의미: [Core 모델의 `Task` 생명주기](../core-model.md#6-task-lifecycle)
 
+<a id="workflow-projection-and-shaping-checkpoints"></a>
 ## `WorkflowProjection`과 shaping checkpoint
 
 `StateSummary.workflow`는 단일 태그형 진행 권한입니다. `kind` 값은 `no_active_task`, `shaping_required`, `awaiting_user_action`, `decision_recovery_required`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, `terminal` 중 하나입니다.
@@ -501,9 +502,10 @@ TransitionDescriptor:
   role: required | allowed
   expected_state_version: integer
   fixed_authority_coordinates: WorkflowActionAuthorityCoordinates
-  agent_input_requirements: string[]
+  submission_contract: WorkflowTransitionSubmissionContract
   effect_class: string
   expected_result_state: string
+  authority_invalidation: permitted | forbidden
   required_refs: StateRecordRef[]
 
 WorkflowActionKey:
@@ -522,6 +524,25 @@ WorkflowActionAuthorityCoordinates.update_scope:
   current_change_unit_id: ChangeUnitId | null
   related_scope_decision_refs: StateRecordRef[]
   selected_change_unit_operation: keep_current | create_current | replace_current
+
+WorkflowTransitionSubmissionContract:
+  submission_method: string
+  # record_shaping_checkpoint 및 update_scope branch
+  contract: WorkflowRecordShapingCheckpointSubmissionContract | WorkflowUpdateScopeSubmissionContract
+  # 나머지 Agent 소유 메서드 branch
+  required_agent_input_witness: object
+  optional_agent_input_witness: object
+  # resolve_user_action branch
+  user_channel_submission_required: true
+
+WorkflowUpdateScopeSubmissionContract:
+  submission_variant: keep_current_change_unit | general_create_current_change_unit | general_replace_current_change_unit | advisor_create_current_change_unit | advisor_replace_current_change_unit
+  required_agent_input_witness: WorkflowUpdateScopeRequiredWitness
+  required_change_unit_witness: object
+  optional_agent_input_witness: object
+  # Advisor create/replace 전용
+  fixed_values: WorkflowAdvisorChangeUnitFixedValues
+  constraints: WorkflowAdvisorChangeUnitConstraints
 
 ShapingUserActionDraft:
   action: UserActionDraft
@@ -679,8 +700,12 @@ transition을 선택하거나 재정렬하지 않습니다. `close_readiness`는
 순서로 결정적으로 정렬됩니다. 각 `WorkflowActionKey`는 최대 한 번 나타나며 정확히 0개
 또는 1개의 descriptor가 `role=required`입니다. 필수 descriptor는 반드시 catalog에
 포함됩니다. 각 descriptor는 하나의 폐쇄형 actor, 정확한 state version, Core 고정 권한
-좌표, actor가 `agent`일 때의 Agent 입력 요구사항 묶음, effect class, 예상 결과 상태,
-권한 무효화 정책, 필수 ref를 결속합니다. User 대기 상태에는 정확한 현재 `volicord.resolve_user_action`
+좌표, 폐쇄형 메서드·상태별 `WorkflowTransitionSubmissionContract`, effect class, 예상 결과
+상태, 권한 무효화 정책, 필수 ref를 결속합니다. Submission contract의 메서드와 semantic
+variant는 `action_key`와 고정 좌표 모두에 일치해야 합니다. 이 contract는 권한 고정 값,
+필수 Agent 작성 값, 선택적 Agent 작성 값, 한정된 typed witness 값을 구분합니다. Witness
+값은 form contract 검증에만 쓰며 추천, 사용자 권한, 제품 결정을 나타내지 않습니다.
+User 대기 상태에는 정확한 현재 `volicord.resolve_user_action`
 transition과 요청 ref가 들어갑니다. 종료되지 않은 Agent 소유 상태는 적어도 하나의 실행
 가능한 Agent transition 또는 명시적인 close, cancellation, supersession 경로를 제공합니다.
 
@@ -691,10 +716,14 @@ resolution, 메서드 내부 권한 사실에 결속됩니다. 같은 machine �
 가용성도 소유합니다. 현재 Change Unit이 없으면 `create_current_change_unit`만 허용하고,
 현재 Change Unit이 있으면 `keep_current_change_unit`와 현재 권한이 허용할 때의
 `replace_current_change_unit`만 허용하며 `create_current_change_unit`는 허용하지
-않습니다. MCP는 각 Agent descriptor를 정확히 하나의 실행 가능한 variant별 action form으로
+않습니다. Update-scope submission contract는 keep, `direct`·`work`용 일반
+create/replace, Advisor create/replace를 구분합니다. Advisor create/replace는
+`affected_paths=[]`와 정규 observe-only `ChangeUnitEffectContract`를 고정합니다. 두 필드는
+Agent 작성 값이 아니며 이 contract는 Product Repository 권한을 부여하지 않습니다.
+MCP는 각 Agent descriptor를 정확히 하나의 실행 가능한 variant별 action form으로
 투영하며 descriptor가 없으면 form도 투영하지 않습니다. Form 생성은 schema 경로, semantic
-값, 필수 Agent 입력, 정확한 binding, 검증을 통과하는 canonical minimal request, 같은
-snapshot에 대한 commit 없는 admission을 확인합니다. MCP form과 입력 slot은 Core 상태가
+값, submission contract의 입력 역할, 정확한 binding, 검증을 통과하는 canonical minimal
+request를 같은 snapshot에서 확인합니다. MCP form과 입력 slot은 Core 상태가
 아닙니다.
 
 Ancestor에서 호환되게 carry-forward된 shaping application은 source gap을 복사하지 않아도

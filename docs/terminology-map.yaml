@@ -927,7 +927,14 @@ terms:
       - "WorkflowActionSemanticVariant"
       - "WorkflowTransitionActor"
       - "WorkflowActionRole"
-      - "WorkflowAgentInputRequirement"
+      - "WorkflowTransitionSubmissionContract"
+      - "WorkflowRecordShapingCheckpointSubmissionContract"
+      - "WorkflowUpdateScopeSubmissionContract"
+      - "submission_contract"
+      - "submission_method"
+      - "submission_variant"
+      - "required_agent_input_witness"
+      - "optional_agent_input_witness"
       - "WorkflowTransitionEffectClass"
       - "WorkflowExpectedResultState"
       - "WorkflowAuthorityInvalidationPolicy"
@@ -963,8 +970,9 @@ terms:
       - en: "docs/en/reference/mcp-transport.md"
         ko: "docs/ko/reference/mcp-transport.md"
     notes:
-      - "Use for the Core-owned catalog of every currently executable Task transition, its closed method-owned variant, actor, and `required` or `allowed` role."
+      - "Use for the Core-owned catalog of every currently executable Task transition, its closed method-owned variant, actor, `required` or `allowed` role, and exact state-specific submission contract."
       - "Transition identity and canonical ordering use method plus semantic variant; each key appears at most once and at most one descriptor is required."
+      - "The submission contract distinguishes authority-fixed, required Agent-authored, and optional Agent-authored values; its bounded witnesses validate forms without claiming user authority or product decisions."
       - "The catalog admits mutations; read-only observations and methods absent from the current catalog grant no mutation authority."
   workflow_action_form:
     category: "api_concept"
@@ -987,8 +995,8 @@ terms:
       - "selected_semantic_variant"
       - "fixed_arguments"
       - "fixed_argument_paths"
-      - "required_inputs"
-      - "optional_inputs"
+      - "agent_authored_inputs"
+      - "canonical_minimal_request"
       - "AuthoritativeArgumentContext"
       - "RetryContract"
     primary_owner:
@@ -1002,6 +1010,7 @@ terms:
     notes:
       - "Use for one current adapter projection that authorizes its exact method and semantic variant only."
       - "Agent-authored inputs remain distinct from authority-owned fixed arguments, which callers copy without omission or alteration."
+      - "The form derives those roles and its bounded validation witness from the exact transition submission contract; canonical method examples do not supply live form policy."
       - "Authoritative argument context and retry contracts return current bounded authority; they do not make another method or variant's form interchangeable."
   baseline_ref:
     category: "api_concept"

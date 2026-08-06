@@ -24,11 +24,12 @@ use volicord_types::methods::{
     StageArtifactResponse, UpdateScopeResponse,
 };
 use volicord_types::schema::{
-    AcceptanceCriterionInput, AcceptanceCriterionReplacement, CloseAssessmentInput, EvidenceTarget,
-    ObservedChanges, RepositoryFileSource, RequiredNullable, ResidualRiskInput,
-    SensitiveActionScope, ShapingCheckpointOperation, ShapingGapInput, ShapingUserActionDraft,
-    SourceLineRange, SourceRef, StaleShapingAuthorityAction, StateRecordRef, UserActionChoiceDraft,
-    UserActionContext, UserActionDraft, UserActionOptionInput,
+    advisor_observe_only_effect_contract, AcceptanceCriterionInput, AcceptanceCriterionReplacement,
+    CloseAssessmentInput, EvidenceTarget, ObservedChanges, RepositoryFileSource, RequiredNullable,
+    ResidualRiskInput, SensitiveActionScope, ShapingCheckpointOperation, ShapingGapInput,
+    ShapingUserActionDraft, SourceLineRange, SourceRef, StaleShapingAuthorityAction,
+    StateRecordRef, UserActionChoiceDraft, UserActionContext, UserActionDraft,
+    UserActionOptionInput,
 };
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{
@@ -704,6 +705,33 @@ fn update_scope_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
             related_scope_decision_refs: Vec::new(),
         })
     };
+    let advisor_changed = |task: &str, operation| -> Result<McpUpdateScopeArguments, String> {
+        let mut fields = Map::new();
+        fields.insert(
+            "scope_summary".to_owned(),
+            Value::String("Bounded observe-only advice.".to_owned()),
+        );
+        fields.insert("affected_paths".to_owned(), Value::Array(Vec::new()));
+        Ok(McpUpdateScopeArguments {
+            action_form_ref: example_action_form_ref(),
+            project_selector: None,
+            detail: MutationDetailLevel::Summary,
+            task_id: TaskId::new(task),
+            goal_summary: RequiredNullable::null(),
+            scope_update: RequiredNullable::null(),
+            scope_boundary: RequiredNullable::null(),
+            non_goals: RequiredNullable::null(),
+            acceptance_criteria: RequiredNullable::null(),
+            autonomy_boundary: RequiredNullable::null(),
+            baseline_ref: RequiredNullable::some(example_baseline_ref(format!("baseline_{task}"))?),
+            change_unit: ChangeUnitUpdate {
+                operation,
+                effect_contract: Some(advisor_observe_only_effect_contract()),
+                fields,
+            },
+            related_scope_decision_refs: Vec::new(),
+        })
+    };
     Ok(vec![
         typed_example(
             UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
@@ -730,6 +758,24 @@ fn update_scope_examples() -> Result<Vec<CanonicalSchemaExample>, String> {
                 ChangeUnitOperation::ReplaceCurrent,
                 "Saved-filter owner, label, and visibility edits.",
                 "src/search/saved-filters.ts",
+            )?,
+            Vec::new(),
+        ),
+        typed_example(
+            "advisor_create_current_change_unit",
+            "Create the canonical observe-only Advisor Change Unit.",
+            &advisor_changed(
+                "task_advisor_filter_001",
+                ChangeUnitOperation::CreateCurrent,
+            )?,
+            Vec::new(),
+        ),
+        typed_example(
+            "advisor_replace_current_change_unit",
+            "Replace the current Advisor Change Unit with the canonical observe-only boundary.",
+            &advisor_changed(
+                "task_advisor_filter_002",
+                ChangeUnitOperation::ReplaceCurrent,
             )?,
             Vec::new(),
         ),

@@ -670,7 +670,9 @@ next actor, typed blocking reason, 정확한 required ref, 별도 close-readines
 `WorkflowTransitionCatalog` 하나로 평가합니다. 각 `TransitionDescriptor`는 메서드와
 메서드 소유 폐쇄형 semantic variant로 이루어진 고유 `WorkflowActionKey`, 폐쇄형
 `agent`·`user`·`system` actor, `required`·`allowed` 역할, 정확한 고정 권한 좌표,
-Agent 입력 요구사항 묶음, effect class, 예상 결과 상태를 가집니다. 정확히 0개 또는
+폐쇄형 메서드·상태별 `WorkflowTransitionSubmissionContract`, effect class, 예상 결과
+상태를 가집니다. 이 contract는 고정 값, 필수 Agent 작성 값, 선택적 Agent 작성 값을
+구분하고 한정된 typed form 검증 witness를 담습니다. 정확히 0개 또는
 1개의 descriptor만 required이고 필수 descriptor는 항상 catalog에 포함됩니다. 종료되지
 않은 모든 상태는 정확한 현재 UserAction을 기다리거나 실행 가능한 Agent transition을
 제공하거나 명시적인 close, cancellation, supersession 경로를 제공합니다.
@@ -686,7 +688,10 @@ role, 고정 좌표, projected form이 결정적인지 검사합니다.
 이 machine은 `volicord.update_scope` variant 가용성도 모두 소유합니다. 좌표는 현재
 Change Unit 권한에 맞는 정확한 `ChangeUnitOperation`을 선택하며 adapter나 projection이
 create, keep, replace 가용성을 다시 계산하지 않습니다. Core는 MCP JSON 입력 slot이나
-action-form digest를 소유하지 않습니다. Schema 검증 뒤 권한 좌표가 다르면 typed `expected`와
+action-form digest를 소유하지 않습니다. Advisor create/replace에서 Core는 빈 affected
+path와 정규 observe-only effect contract를 고정하고 Product Repository 권한을 부여하지
+않는 contract를 선택합니다. 한정된 witness 값은 projected form 검증에만 쓰며 사용자 권한,
+제품 결정, 권장 입력을 나타내지 않습니다. Schema 검증 뒤 권한 좌표가 다르면 typed `expected`와
 `received`를 가진 효과 없는 `AuthorityBasisMismatch`이며, 그 사실만으로 유효한 Task가
 손상된 것은 아닙니다.
 

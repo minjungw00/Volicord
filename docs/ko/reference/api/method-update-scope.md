@@ -48,14 +48,18 @@ effect contract는 `artifact_registration`, `user_action_request`, `evidence_upd
 sensitive expectation은 없고 `product_file_write`, `run_recording`, `sensitive_action`,
 `external_network`, `secret_access`를 명시적으로 금지합니다. Core는 쓰기 가능하거나 그 밖에
 호환되지 않는 advisor Change Unit을 만들거나 유지하는 갱신을 scope 효과 커밋 전에
-거부합니다.
+거부합니다. 정규 contract의 expected output, invariant, evidence expectation,
+sensitive-action expectation은 모두 비어 있습니다.
 
 현재 MCP action form은 Task, scope 소유 gap에 해당하는 완전한
 `related_scope_decision_refs`, 현재 Change Unit 권한이 선택한 정확한
 `change_unit.operation`을 고정합니다. 요청의 `baseline_ref`는 현재 nullable 기준선의
 복사본이 아니라 에이전트가 작성하는 다음 기준선입니다. 현재 기준선과 범위 리비전은
-허용된 form과 예상 상태 버전이 포괄하는 Core 현재 권한으로 남습니다. Scope 내용과
-operation별 Change Unit 필드도 에이전트 작성 slot입니다. 프로젝트와 예상 상태 버전은
+허용된 form과 예상 상태 버전이 포괄하는 Core 현재 권한으로 남습니다. Scope 내용은
+에이전트 작성 slot입니다. 일반 `direct`·`work` create/replace form에서는 Change Unit scope와
+effect 내용도 에이전트가 작성합니다. Advisor create/replace form은
+`affected_paths=[]`와 완전한 정규 observe-only effect contract를 고정하므로 두 값은
+에이전트 작성 값이 아니며 form은 Product Repository 권한을 부여하지 않습니다. 프로젝트와 예상 상태 버전은
 adapter가 주입하며 일반 binder는 호출자에게 보이는 고정 값이 바뀌거나 빠지면 Core 전에
 거부합니다.
 
@@ -64,9 +68,11 @@ Core는 폐쇄형 action variant `keep_current_change_unit`,
 `ChangeUnitOperation`에 정확히 매핑됩니다. 현재 Change Unit이 없으면 create만 현재
 variant입니다. 현재 Change Unit이 있으면 keep과 Core 정책에 호환되는 replace가 현재이고
 create는 아닙니다. 현재 shaping application을 stale로 만들 implementation replacement는
-게시하지 않습니다. Keep form은 `keep_current`를 고정합니다. Create와 replace form은 각
-동작을 고정하고 에이전트가 작성하는 `scope_summary`, `affected_paths`, 다음 기준선을
-필수로 하면서 선택적 Change Unit 필드와 effect contract를 유지합니다.
+게시하지 않습니다. Keep form은 `keep_current`를 고정합니다. 일반 create와 replace form은
+각 동작을 고정하고 에이전트가 작성하는 `scope_summary`, `affected_paths`, 다음 기준선을
+필수로 하면서 선택적 Change Unit 필드와 effect contract를 유지합니다. Advisor create와
+replace는 에이전트가 작성하는 `scope_summary`와 다음 기준선을 요구하지만 빈 affected path와
+정규 observe-only effect contract를 고정합니다.
 
 제출된 범위 내용을 검증하기 전에 Core는 정규화된 `WorkflowSnapshot`을 평가하고 선택한
 `ChangeUnitOperation`의 정확한 `WorkflowActionKey`를 소비합니다. 메서드 이름만 일치해서는
@@ -88,7 +94,9 @@ create는 아닙니다. 현재 shaping application을 stale로 만들 implementa
   폐기됩니다. 알 수 없거나, 폐기되었거나, 다른 `Task`에 속하거나, 중복된
   ID는 커밋 전에 거절합니다.
 - `change_unit.operation`과 그 작업에 필요한 필드. 지원되는 작업 값과 그 의미는 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다.
-- 현재 적용 Change Unit을 만들거나 교체할 때 선택적으로 쓰는 `change_unit.effect_contract`. 값이 있으면 `ChangeUnitEffectContract`를 사용합니다. 생략하면 그 Change Unit에는 추가 효과 계약이 없습니다.
+- 일반 `direct`·`work` create/replace에서는 `change_unit.effect_contract`가 선택적입니다.
+  Advisor create/replace에서는 action form이 필수 정규 observe-only contract를 권한 고정 값으로
+  제공하며 호출자는 이를 작성하거나 생략하지 않습니다.
 - `related_scope_decision_refs`는 현재 checkpoint의 accepted 범위 owner gap을 정확히 모두
   포함해야 합니다. 그런 gap이 없으면 제품 전용·기술 전용 진행을 포함해 빈 배열입니다.
 
@@ -252,7 +260,7 @@ application ref를 제시하고 Task가 소유된 close/supersede 전이를 통�
 
 지원되는 `change_unit.operation` 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. 이 메서드는 각 작업이 `change_unit_ref`, `state.active_change_unit_ref`, 오래된 쓰기 티켓 참조, 차단 사유 참조, 태그 기반 `state.workflow` projection에 어떻게 반영되는지를 담당합니다.
 
-`change_unit.operation=create_current` 또는 `change_unit.operation=replace_current`일 때 `change_unit.effect_contract`를 새 현재 적용 Change Unit에 기록할 수 있습니다. 효과 계약은 선택적 Core 상태입니다. 워크플로 엔진을 만들거나 사용자 소유 권한 기록을 대신하지 않으면서 허용 효과, 금지 효과, 허용 Product Repository 경로, 기대 출력, 불변 조건, 증거 기대, 민감 동작 기대를 표현할 수 있습니다. 같은 작업은 이후 쓰기 준비에 사용할 확인된 작업 공간 좌표도 기록합니다. Git 저장소가 아니면 VCS 결합을 기록하지 않고 Git 전용 비교 검사도 적용하지 않습니다.
+`change_unit.operation=create_current` 또는 `change_unit.operation=replace_current`일 때 일반 form이 제공한 `change_unit.effect_contract`는 값이 있으면 기록하고, Advisor form에서는 고정된 정규 contract를 항상 기록합니다. 효과 계약은 워크플로 엔진을 만들거나 사용자 소유 권한 기록을 대신하지 않으면서 허용 효과, 금지 효과, 허용 Product Repository 경로, 기대 출력, 불변 조건, 증거 기대, 민감 동작 기대를 표현할 수 있습니다. 같은 작업은 이후 쓰기 준비에 사용할 확인된 작업 공간 좌표도 기록합니다. Git 저장소가 아니면 VCS 결합을 기록하지 않고 Git 전용 비교 검사도 적용하지 않습니다.
 
 `applied_shaping_gap_refs`와 `applied_scope_decision_refs`는 이 호출이 적용한 정확한 scope
 gap과 resolution만 식별합니다. 제품·기술·민감 gap은 각자의 application owner를 위해

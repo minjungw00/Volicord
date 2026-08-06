@@ -194,7 +194,23 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
                     "scope_revision": 0,
                     "baseline_ref": null
                 },
-                "agent_input_requirements": ["shaping_checkpoint"],
+                "submission_contract": {
+                    "submission_method": "record_shaping_checkpoint",
+                    "contract": {
+                        "submission_variant": "create_initial",
+                        "required_agent_input_witness": {
+                            "summary": "Current shaping checkpoint.",
+                            "implementation_boundary": null,
+                            "gaps": [],
+                            "stale_authority_actions": []
+                        },
+                        "optional_agent_input_witness": {
+                            "source_refs": [],
+                            "evidence_refs": [],
+                            "stale_successor_gap": null
+                        }
+                    }
+                },
                 "effect_class": "core_state_mutation",
                 "expected_result_state": "reevaluate_current_authority",
                 "authority_invalidation": "permitted",
@@ -223,6 +239,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
             "form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "expected_state_version": 7,
             "fixed_arguments": {"task_id": "task_current"},
+            "fixed_argument_paths": ["/task_id"],
             "agent_authored_inputs": [],
             "canonical_minimal_request": {
                 "action_form_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

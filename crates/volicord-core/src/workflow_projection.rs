@@ -14,6 +14,7 @@ use volicord_types::schema::{
     TransitionDescriptor, UserActionResolutionBody, WorkflowActionAuthorityCoordinates,
     WorkflowActionKey, WorkflowActionRole, WorkflowCheckpointActionCoordinates,
     WorkflowCloseReadiness, WorkflowProjection, WorkflowTransitionCatalog,
+    WorkflowTransitionSubmissionContract,
 };
 use volicord_types::values::{
     evaluate_shaping_decision_authority, ActorSource, AuthorityNextActor, ChangeUnitOperation,
@@ -21,9 +22,9 @@ use volicord_types::values::{
     ShapingDecisionApplicationOwner, ShapingDecisionAuthorityFacts, ShapingDecisionAuthorityState,
     ShapingGapStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, TransitionRejectionReason,
     UserActionRequiredFor, UserActionStatus, UtcTimestamp, WorkPhase,
-    WorkflowActionSemanticVariant, WorkflowAgentInputRequirement,
-    WorkflowAuthorityInvalidationPolicy, WorkflowBlockingReason, WorkflowExpectedResultState,
-    WorkflowStateKind, WorkflowTransitionActor, WorkflowTransitionEffectClass,
+    WorkflowActionSemanticVariant, WorkflowAuthorityInvalidationPolicy, WorkflowBlockingReason,
+    WorkflowExpectedResultState, WorkflowStateKind, WorkflowTransitionActor,
+    WorkflowTransitionEffectClass,
 };
 
 use crate::pipeline::{CorePipelineError, CoreResult};
@@ -1247,29 +1248,10 @@ fn transition_descriptor(
     } else {
         WorkflowTransitionActor::Agent
     };
-    let mut agent_input_requirements = match method {
-        MethodName::RecordShapingCheckpoint => {
-            vec![WorkflowAgentInputRequirement::ShapingCheckpoint]
-        }
-        MethodName::UpdateScope => vec![WorkflowAgentInputRequirement::ScopeAndChangeUnit],
-        MethodName::FinalizeAdvice => vec![WorkflowAgentInputRequirement::AdviceResult],
-        MethodName::AdvanceTask | MethodName::CheckClose | MethodName::ResolveUserAction => {
-            Vec::new()
-        }
-        MethodName::PrepareEvidenceCapture => {
-            vec![WorkflowAgentInputRequirement::EvidenceCapture]
-        }
-        MethodName::PrepareWrite => vec![WorkflowAgentInputRequirement::ProposedWrite],
-        MethodName::StageArtifact => vec![WorkflowAgentInputRequirement::Artifact],
-        MethodName::RecordRun => vec![WorkflowAgentInputRequirement::RunObservation],
-        MethodName::RequestUserAction => vec![WorkflowAgentInputRequirement::UserActionDraft],
-        MethodName::ReconcileChanges => {
-            vec![WorkflowAgentInputRequirement::ChangeReconciliation]
-        }
-        MethodName::CloseTask => vec![WorkflowAgentInputRequirement::CloseIntent],
-        MethodName::Intake | MethodName::Status | MethodName::GetOperationResult => Vec::new(),
-    };
-    agent_input_requirements.sort();
+    let submission_contract = WorkflowTransitionSubmissionContract::for_current_transition(
+        task.mode,
+        &fixed_authority_coordinates,
+    );
     let effect_class = match method {
         MethodName::ResolveUserAction => WorkflowTransitionEffectClass::UserChannelMutation,
         MethodName::PrepareEvidenceCapture => WorkflowTransitionEffectClass::EvidenceCapture,
@@ -1317,7 +1299,7 @@ fn transition_descriptor(
         role,
         expected_state_version: state_version,
         fixed_authority_coordinates,
-        agent_input_requirements,
+        submission_contract,
         effect_class,
         expected_result_state,
         authority_invalidation,

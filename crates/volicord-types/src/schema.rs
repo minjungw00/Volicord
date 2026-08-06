@@ -2073,36 +2073,36 @@ pub struct ChangeUnitEffectContract {
     pub sensitive_action_expectations: Vec<String>,
 }
 
+/// Returns the one canonical observe-only effect boundary for an Advisor Change Unit.
+pub fn advisor_observe_only_effect_contract() -> ChangeUnitEffectContract {
+    ChangeUnitEffectContract {
+        allowed_effects: vec![
+            ChangeUnitEffectKind::ArtifactRegistration,
+            ChangeUnitEffectKind::UserActionRequest,
+            ChangeUnitEffectKind::EvidenceUpdate,
+        ],
+        forbidden_effects: vec![
+            ChangeUnitEffectKind::ProductFileWrite,
+            ChangeUnitEffectKind::RunRecording,
+            ChangeUnitEffectKind::SensitiveAction,
+            ChangeUnitEffectKind::ExternalNetwork,
+            ChangeUnitEffectKind::SecretAccess,
+        ],
+        allowed_paths: Vec::new(),
+        expected_outputs: Vec::new(),
+        invariants: Vec::new(),
+        evidence_expectations: Vec::new(),
+        sensitive_action_expectations: Vec::new(),
+    }
+}
+
 /// Returns whether a Change Unit is a bounded observe-only authority boundary
 /// that an advisor Task may retain as current.
 pub fn advisor_compatible_change_unit(
     affected_paths: &[String],
     effect_contract: Option<&ChangeUnitEffectContract>,
 ) -> bool {
-    let Some(contract) = effect_contract else {
-        return false;
-    };
-    const FORBIDDEN: [ChangeUnitEffectKind; 5] = [
-        ChangeUnitEffectKind::ProductFileWrite,
-        ChangeUnitEffectKind::RunRecording,
-        ChangeUnitEffectKind::SensitiveAction,
-        ChangeUnitEffectKind::ExternalNetwork,
-        ChangeUnitEffectKind::SecretAccess,
-    ];
-    affected_paths.is_empty()
-        && contract.allowed_paths.is_empty()
-        && contract.sensitive_action_expectations.is_empty()
-        && contract.allowed_effects.iter().all(|effect| {
-            matches!(
-                effect,
-                ChangeUnitEffectKind::ArtifactRegistration
-                    | ChangeUnitEffectKind::UserActionRequest
-                    | ChangeUnitEffectKind::EvidenceUpdate
-            )
-        })
-        && FORBIDDEN
-            .iter()
-            .all(|effect| contract.forbidden_effects.contains(effect))
+    affected_paths.is_empty() && effect_contract == Some(&advisor_observe_only_effect_contract())
 }
 
 /// Task lifecycle state shape.
@@ -2480,6 +2480,717 @@ impl WorkflowActionKey {
     }
 }
 
+/// Empty typed witness for a submission contract with no values in that role.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowNoSubmissionValues {}
+
+/// Required Agent-authored values for a shaping-checkpoint submission witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowShapingCheckpointRequiredWitness {
+    pub summary: String,
+    pub implementation_boundary: RequiredNullable<String>,
+    pub gaps: Vec<ShapingGapInput>,
+    pub stale_authority_actions: Vec<WorkflowStaleAuthorityActionWitness>,
+}
+
+/// Optional Agent-authored values used to validate a shaping-checkpoint form.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowShapingCheckpointOptionalWitness {
+    pub source_refs: Vec<SourceRef>,
+    pub evidence_refs: Vec<StateRecordRef>,
+    pub stale_successor_gap: RequiredNullable<ShapingGapInput>,
+}
+
+/// Bounded action value for one stale shaping-application witness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowStaleAuthorityActionWitness {
+    Retire,
+}
+
+/// State-specific shaping-checkpoint submission contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "submission_variant",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum WorkflowRecordShapingCheckpointSubmissionContract {
+    CreateInitial {
+        required_agent_input_witness: WorkflowShapingCheckpointRequiredWitness,
+        optional_agent_input_witness: WorkflowShapingCheckpointOptionalWitness,
+    },
+    ReplaceCurrent {
+        required_agent_input_witness: WorkflowShapingCheckpointRequiredWitness,
+        optional_agent_input_witness: WorkflowShapingCheckpointOptionalWitness,
+    },
+}
+
+/// Required nullable Task-scope values for an update-scope submission witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowUpdateScopeRequiredWitness {
+    pub goal_summary: RequiredNullable<String>,
+    pub scope_update: RequiredNullable<WorkflowScopeUpdateWitness>,
+    pub scope_boundary: RequiredNullable<String>,
+    pub non_goals: RequiredNullable<Vec<String>>,
+    pub acceptance_criteria: RequiredNullable<Vec<AcceptanceCriterionReplacement>>,
+    pub autonomy_boundary: RequiredNullable<String>,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+}
+
+/// Typed include/exclude witness for an optional Task scope update.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowScopeUpdateWitness {
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
+}
+
+/// Required Agent-authored Change Unit values for create or replace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowChangeUnitRequiredWitness {
+    pub scope_summary: String,
+    pub affected_paths: Vec<String>,
+}
+
+/// Required Agent-authored Advisor Change Unit values for create or replace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowAdvisorChangeUnitRequiredWitness {
+    pub scope_summary: String,
+}
+
+/// Optional Agent-authored general Change Unit values used for form validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowGeneralChangeUnitOptionalWitness {
+    pub affected_areas: Vec<String>,
+    pub constraints: Vec<String>,
+    pub effect_contract: RequiredNullable<ChangeUnitEffectContract>,
+}
+
+/// Optional Agent-authored Advisor Change Unit values used for form validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowAdvisorChangeUnitOptionalWitness {
+    pub affected_areas: Vec<String>,
+    pub constraints: Vec<String>,
+}
+
+/// Authority-owned request values for an Advisor Change Unit submission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowAdvisorChangeUnitFixedValues {
+    pub affected_paths: Vec<String>,
+    pub effect_contract: ChangeUnitEffectContract,
+}
+
+/// Explicit non-write constraints on an Advisor Change Unit submission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowAdvisorChangeUnitConstraints {
+    pub product_repository_authority: FalseValue,
+    pub affected_paths_agent_authored: FalseValue,
+    pub effect_contract_agent_authored: FalseValue,
+}
+
+/// Product-capable Task modes admitted by a general Change Unit form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowProductTaskMode {
+    Direct,
+    Work,
+}
+
+/// State-specific update-scope submission contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "submission_variant",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum WorkflowUpdateScopeSubmissionContract {
+    KeepCurrentChangeUnit {
+        required_agent_input_witness: WorkflowUpdateScopeRequiredWitness,
+        optional_agent_input_witness: WorkflowNoSubmissionValues,
+    },
+    GeneralCreateCurrentChangeUnit {
+        task_mode: WorkflowProductTaskMode,
+        required_agent_input_witness: WorkflowUpdateScopeRequiredWitness,
+        required_change_unit_witness: WorkflowChangeUnitRequiredWitness,
+        optional_agent_input_witness: WorkflowGeneralChangeUnitOptionalWitness,
+    },
+    GeneralReplaceCurrentChangeUnit {
+        task_mode: WorkflowProductTaskMode,
+        required_agent_input_witness: WorkflowUpdateScopeRequiredWitness,
+        required_change_unit_witness: WorkflowChangeUnitRequiredWitness,
+        optional_agent_input_witness: WorkflowGeneralChangeUnitOptionalWitness,
+    },
+    AdvisorCreateCurrentChangeUnit {
+        required_agent_input_witness: WorkflowUpdateScopeRequiredWitness,
+        required_change_unit_witness: WorkflowAdvisorChangeUnitRequiredWitness,
+        optional_agent_input_witness: WorkflowAdvisorChangeUnitOptionalWitness,
+        fixed_values: WorkflowAdvisorChangeUnitFixedValues,
+        constraints: WorkflowAdvisorChangeUnitConstraints,
+    },
+    AdvisorReplaceCurrentChangeUnit {
+        required_agent_input_witness: WorkflowUpdateScopeRequiredWitness,
+        required_change_unit_witness: WorkflowAdvisorChangeUnitRequiredWitness,
+        optional_agent_input_witness: WorkflowAdvisorChangeUnitOptionalWitness,
+        fixed_values: WorkflowAdvisorChangeUnitFixedValues,
+        constraints: WorkflowAdvisorChangeUnitConstraints,
+    },
+}
+
+/// Required and optional Advice-result values for a finalization witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowFinalizeAdviceRequiredWitness {
+    pub result_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowFinalizeAdviceOptionalWitness {
+    pub result_refs: Vec<StateRecordRef>,
+    pub evidence_refs: Vec<StateRecordRef>,
+    pub residual_risks: Vec<ResidualRiskInput>,
+    pub recovery_constraints: Vec<String>,
+}
+
+/// Required evidence-capture values for a submission witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowPrepareEvidenceCaptureRequiredWitness {
+    pub target: EvidenceTarget,
+    pub capture: EvidenceCaptureSpec,
+}
+
+/// Required proposed-write values for a submission witness.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowPrepareWriteRequiredWitness {
+    pub intended_operation: String,
+    pub intended_paths: Vec<String>,
+    pub product_file_write_intended: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowPrepareWriteOptionalWitness {
+    pub sensitive_categories: Vec<String>,
+}
+
+/// Required staged-artifact values for a submission witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowStageArtifactRequiredWitness {
+    pub display_name: String,
+    pub content_type: String,
+    pub redaction_state: RedactionState,
+    pub safe_bytes_or_notice: String,
+    pub expected_sha256: RequiredNullable<String>,
+    pub expected_size_bytes: RequiredNullable<u64>,
+    pub relation_hint: RequiredNullable<String>,
+}
+
+/// Required run-observation values for a submission witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRecordRunRequiredWitness {
+    pub run_id: RequiredNullable<RunId>,
+    pub write_ticket_id: RequiredNullable<WriteTicketId>,
+    pub performed_operation: RequiredNullable<String>,
+    pub summary: String,
+    pub observed_changes: ObservedChanges,
+    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRecordRunOptionalWitness {
+    pub artifact_inputs: Vec<ArtifactInput>,
+    pub evidence_updates: Vec<EvidenceCoverageUpdate>,
+    pub evidence_observations: Vec<EvidenceObservationInput>,
+}
+
+/// Required user-action draft values for a submission witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowEvidenceObservationActionWitness {
+    pub prompt: String,
+    pub context: String,
+    pub target_candidates: Vec<EvidenceTarget>,
+    pub artifact_candidate_ids: Vec<ArtifactId>,
+}
+
+/// Agent-safe values used to construct a schema-valid user-action draft witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRequestUserActionRequiredWitness {
+    pub evidence_observation: WorkflowEvidenceObservationActionWitness,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Optional reconciliation values used to validate a submission form.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowReconcileChangesOptionalWitness {
+    pub resolution_requests: Vec<crate::methods::UnrecordedChangeResolutionRequest>,
+}
+
+/// Required close-intent values for a submission witness.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowCloseTaskRequiredWitness {
+    pub intent: crate::values::CloseMutationIntent,
+    pub close_reason: RequiredNullable<CloseReason>,
+    pub superseding_task_id: RequiredNullable<TaskId>,
+    pub user_note: RequiredNullable<String>,
+}
+
+/// Core-owned, method-specific submission contract for one exact transition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "submission_method",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum WorkflowTransitionSubmissionContract {
+    RecordShapingCheckpoint {
+        contract: WorkflowRecordShapingCheckpointSubmissionContract,
+    },
+    UpdateScope {
+        contract: WorkflowUpdateScopeSubmissionContract,
+    },
+    FinalizeAdvice {
+        required_agent_input_witness: WorkflowFinalizeAdviceRequiredWitness,
+        optional_agent_input_witness: WorkflowFinalizeAdviceOptionalWitness,
+    },
+    AdvanceTask {
+        required_agent_input_witness: WorkflowNoSubmissionValues,
+        optional_agent_input_witness: WorkflowNoSubmissionValues,
+    },
+    PrepareEvidenceCapture {
+        required_agent_input_witness: WorkflowPrepareEvidenceCaptureRequiredWitness,
+        optional_agent_input_witness: WorkflowNoSubmissionValues,
+    },
+    PrepareWrite {
+        required_agent_input_witness: WorkflowPrepareWriteRequiredWitness,
+        optional_agent_input_witness: WorkflowPrepareWriteOptionalWitness,
+    },
+    StageArtifact {
+        required_agent_input_witness: WorkflowStageArtifactRequiredWitness,
+        optional_agent_input_witness: WorkflowNoSubmissionValues,
+    },
+    RecordRun {
+        required_agent_input_witness: WorkflowRecordRunRequiredWitness,
+        optional_agent_input_witness: WorkflowRecordRunOptionalWitness,
+    },
+    RequestUserAction {
+        required_agent_input_witness: WorkflowRequestUserActionRequiredWitness,
+        optional_agent_input_witness: WorkflowNoSubmissionValues,
+    },
+    ResolveUserAction {
+        user_channel_submission_required: TrueValue,
+    },
+    ReconcileChanges {
+        required_agent_input_witness: WorkflowNoSubmissionValues,
+        optional_agent_input_witness: WorkflowReconcileChangesOptionalWitness,
+    },
+    CheckClose {
+        required_agent_input_witness: WorkflowNoSubmissionValues,
+        optional_agent_input_witness: WorkflowNoSubmissionValues,
+    },
+    CloseTask {
+        required_agent_input_witness: WorkflowCloseTaskRequiredWitness,
+        optional_agent_input_witness: WorkflowNoSubmissionValues,
+    },
+}
+
+impl WorkflowTransitionSubmissionContract {
+    /// Builds the exact contract for current Task mode and authority coordinates.
+    pub fn for_current_transition(
+        task_mode: TaskMode,
+        coordinates: &WorkflowActionAuthorityCoordinates,
+    ) -> Self {
+        let none = WorkflowNoSubmissionValues {};
+        match coordinates {
+            WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                checkpoint_operation,
+                ..
+            } => {
+                let stale_count = match checkpoint_operation {
+                    WorkflowCheckpointActionCoordinates::CreateInitial => 0,
+                    WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                        stale_application_refs,
+                        ..
+                    } => stale_application_refs.len(),
+                };
+                let required_agent_input_witness = WorkflowShapingCheckpointRequiredWitness {
+                    summary: "Current shaping checkpoint.".to_owned(),
+                    implementation_boundary: RequiredNullable::null(),
+                    gaps: Vec::new(),
+                    stale_authority_actions: vec![
+                        WorkflowStaleAuthorityActionWitness::Retire;
+                        stale_count
+                    ],
+                };
+                let optional_agent_input_witness = WorkflowShapingCheckpointOptionalWitness {
+                    source_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    stale_successor_gap: RequiredNullable::null(),
+                };
+                let contract = match checkpoint_operation {
+                    WorkflowCheckpointActionCoordinates::CreateInitial => {
+                        WorkflowRecordShapingCheckpointSubmissionContract::CreateInitial {
+                            required_agent_input_witness,
+                            optional_agent_input_witness,
+                        }
+                    }
+                    WorkflowCheckpointActionCoordinates::ReplaceCurrent { .. } => {
+                        WorkflowRecordShapingCheckpointSubmissionContract::ReplaceCurrent {
+                            required_agent_input_witness,
+                            optional_agent_input_witness,
+                        }
+                    }
+                };
+                Self::RecordShapingCheckpoint { contract }
+            }
+            WorkflowActionAuthorityCoordinates::UpdateScope {
+                baseline_ref,
+                selected_change_unit_operation,
+                ..
+            } => {
+                let required_agent_input_witness = WorkflowUpdateScopeRequiredWitness {
+                    goal_summary: RequiredNullable::null(),
+                    scope_update: RequiredNullable::null(),
+                    scope_boundary: RequiredNullable::null(),
+                    non_goals: RequiredNullable::null(),
+                    acceptance_criteria: RequiredNullable::null(),
+                    autonomy_boundary: RequiredNullable::null(),
+                    baseline_ref: baseline_ref.clone(),
+                };
+                let contract = match (task_mode, selected_change_unit_operation) {
+                    (_, crate::values::ChangeUnitOperation::KeepCurrent) => {
+                        WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit {
+                            required_agent_input_witness,
+                            optional_agent_input_witness: none,
+                        }
+                    }
+                    (TaskMode::Advisor, crate::values::ChangeUnitOperation::CreateCurrent) => {
+                        Self::advisor_update_scope_contract(required_agent_input_witness, false)
+                    }
+                    (TaskMode::Advisor, crate::values::ChangeUnitOperation::ReplaceCurrent) => {
+                        Self::advisor_update_scope_contract(required_agent_input_witness, true)
+                    }
+                    (mode, crate::values::ChangeUnitOperation::CreateCurrent) => {
+                        WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit {
+                            task_mode: Self::product_task_mode(mode),
+                            required_agent_input_witness,
+                            required_change_unit_witness: Self::general_change_unit_witness(),
+                            optional_agent_input_witness:
+                                Self::general_change_unit_optional_witness(),
+                        }
+                    }
+                    (mode, crate::values::ChangeUnitOperation::ReplaceCurrent) => {
+                        WorkflowUpdateScopeSubmissionContract::GeneralReplaceCurrentChangeUnit {
+                            task_mode: Self::product_task_mode(mode),
+                            required_agent_input_witness,
+                            required_change_unit_witness: Self::general_change_unit_witness(),
+                            optional_agent_input_witness:
+                                Self::general_change_unit_optional_witness(),
+                        }
+                    }
+                };
+                Self::UpdateScope { contract }
+            }
+            WorkflowActionAuthorityCoordinates::FinalizeAdvice { .. } => Self::FinalizeAdvice {
+                required_agent_input_witness: WorkflowFinalizeAdviceRequiredWitness {
+                    result_summary: "Current advice result.".to_owned(),
+                },
+                optional_agent_input_witness: WorkflowFinalizeAdviceOptionalWitness {
+                    result_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                    residual_risks: Vec::new(),
+                    recovery_constraints: Vec::new(),
+                },
+            },
+            WorkflowActionAuthorityCoordinates::AdvanceTask { .. } => Self::AdvanceTask {
+                required_agent_input_witness: none,
+                optional_agent_input_witness: none,
+            },
+            WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture { .. } => {
+                Self::PrepareEvidenceCapture {
+                    required_agent_input_witness: WorkflowPrepareEvidenceCaptureRequiredWitness {
+                        target: EvidenceTarget::SupplementalClaim {
+                            evidence_claim_id: EvidenceClaimId::new("workflow_form_witness"),
+                            statement: "Submission-contract validation witness.".to_owned(),
+                        },
+                        capture: EvidenceCaptureSpec::VerifiedCommandExecution {
+                            command_sha256: "0".repeat(64),
+                            command_label: "submission-contract witness".to_owned(),
+                            expected_exit_code: RequiredNullable::null(),
+                        },
+                    },
+                    optional_agent_input_witness: none,
+                }
+            }
+            WorkflowActionAuthorityCoordinates::PrepareWrite { .. } => Self::PrepareWrite {
+                required_agent_input_witness: WorkflowPrepareWriteRequiredWitness {
+                    intended_operation: "Submission-contract validation witness.".to_owned(),
+                    intended_paths: Vec::new(),
+                    product_file_write_intended: false,
+                },
+                optional_agent_input_witness: WorkflowPrepareWriteOptionalWitness {
+                    sensitive_categories: Vec::new(),
+                },
+            },
+            WorkflowActionAuthorityCoordinates::StageArtifact { .. } => Self::StageArtifact {
+                required_agent_input_witness: WorkflowStageArtifactRequiredWitness {
+                    display_name: "Submission-contract witness".to_owned(),
+                    content_type: "text/plain".to_owned(),
+                    redaction_state: RedactionState::Redacted,
+                    safe_bytes_or_notice: "Validation witness; no artifact content.".to_owned(),
+                    expected_sha256: RequiredNullable::null(),
+                    expected_size_bytes: RequiredNullable::null(),
+                    relation_hint: RequiredNullable::null(),
+                },
+                optional_agent_input_witness: none,
+            },
+            WorkflowActionAuthorityCoordinates::RecordRun { baseline_ref, .. } => Self::RecordRun {
+                required_agent_input_witness: WorkflowRecordRunRequiredWitness {
+                    run_id: RequiredNullable::null(),
+                    write_ticket_id: RequiredNullable::null(),
+                    performed_operation: RequiredNullable::null(),
+                    summary: "Submission-contract validation witness.".to_owned(),
+                    observed_changes: ObservedChanges {
+                        changed_paths: Vec::new(),
+                        product_file_write_observed: false,
+                        sensitive_categories: Vec::new(),
+                        baseline_ref: RequiredNullable::some(baseline_ref.clone()),
+                    },
+                    close_assessment: RequiredNullable::null(),
+                },
+                optional_agent_input_witness: WorkflowRecordRunOptionalWitness {
+                    artifact_inputs: Vec::new(),
+                    evidence_updates: Vec::new(),
+                    evidence_observations: Vec::new(),
+                },
+            },
+            WorkflowActionAuthorityCoordinates::RequestUserAction { .. } => {
+                Self::RequestUserAction {
+                    required_agent_input_witness: WorkflowRequestUserActionRequiredWitness {
+                        evidence_observation: WorkflowEvidenceObservationActionWitness {
+                            prompt: "Submission-contract validation prompt.".to_owned(),
+                            context: "Submission-contract validation context.".to_owned(),
+                            target_candidates: Vec::new(),
+                            artifact_candidate_ids: Vec::new(),
+                        },
+                        required_for: vec![UserActionRequiredFor::Informational],
+                        expires_at: RequiredNullable::null(),
+                    },
+                    optional_agent_input_witness: none,
+                }
+            }
+            WorkflowActionAuthorityCoordinates::ResolveUserAction { .. } => {
+                Self::ResolveUserAction {
+                    user_channel_submission_required: TrueValue,
+                }
+            }
+            WorkflowActionAuthorityCoordinates::ReconcileChanges { .. } => Self::ReconcileChanges {
+                required_agent_input_witness: none,
+                optional_agent_input_witness: WorkflowReconcileChangesOptionalWitness {
+                    resolution_requests: Vec::new(),
+                },
+            },
+            WorkflowActionAuthorityCoordinates::CheckClose { .. } => Self::CheckClose {
+                required_agent_input_witness: none,
+                optional_agent_input_witness: none,
+            },
+            WorkflowActionAuthorityCoordinates::CloseTask { .. } => Self::CloseTask {
+                required_agent_input_witness: WorkflowCloseTaskRequiredWitness {
+                    intent: crate::values::CloseMutationIntent::Complete,
+                    close_reason: RequiredNullable::null(),
+                    superseding_task_id: RequiredNullable::null(),
+                    user_note: RequiredNullable::null(),
+                },
+                optional_agent_input_witness: none,
+            },
+        }
+    }
+
+    fn product_task_mode(mode: TaskMode) -> WorkflowProductTaskMode {
+        match mode {
+            TaskMode::Direct => WorkflowProductTaskMode::Direct,
+            TaskMode::Work => WorkflowProductTaskMode::Work,
+            TaskMode::Advisor => unreachable!("Advisor uses its dedicated submission contract"),
+        }
+    }
+
+    fn general_change_unit_witness() -> WorkflowChangeUnitRequiredWitness {
+        WorkflowChangeUnitRequiredWitness {
+            scope_summary: "Bounded current work.".to_owned(),
+            affected_paths: Vec::new(),
+        }
+    }
+
+    fn general_change_unit_optional_witness() -> WorkflowGeneralChangeUnitOptionalWitness {
+        WorkflowGeneralChangeUnitOptionalWitness {
+            affected_areas: Vec::new(),
+            constraints: Vec::new(),
+            effect_contract: RequiredNullable::null(),
+        }
+    }
+
+    fn advisor_update_scope_contract(
+        required_agent_input_witness: WorkflowUpdateScopeRequiredWitness,
+        replace: bool,
+    ) -> WorkflowUpdateScopeSubmissionContract {
+        let required_change_unit_witness = WorkflowAdvisorChangeUnitRequiredWitness {
+            scope_summary: "Bounded observe-only advice.".to_owned(),
+        };
+        let optional_agent_input_witness = WorkflowAdvisorChangeUnitOptionalWitness {
+            affected_areas: Vec::new(),
+            constraints: Vec::new(),
+        };
+        let fixed_values = WorkflowAdvisorChangeUnitFixedValues {
+            affected_paths: Vec::new(),
+            effect_contract: advisor_observe_only_effect_contract(),
+        };
+        let constraints = WorkflowAdvisorChangeUnitConstraints {
+            product_repository_authority: FalseValue,
+            affected_paths_agent_authored: FalseValue,
+            effect_contract_agent_authored: FalseValue,
+        };
+        if replace {
+            WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit {
+                required_agent_input_witness,
+                required_change_unit_witness,
+                optional_agent_input_witness,
+                fixed_values,
+                constraints,
+            }
+        } else {
+            WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit {
+                required_agent_input_witness,
+                required_change_unit_witness,
+                optional_agent_input_witness,
+                fixed_values,
+                constraints,
+            }
+        }
+    }
+
+    pub const fn method(&self) -> MethodName {
+        match self {
+            Self::RecordShapingCheckpoint { .. } => MethodName::RecordShapingCheckpoint,
+            Self::UpdateScope { .. } => MethodName::UpdateScope,
+            Self::FinalizeAdvice { .. } => MethodName::FinalizeAdvice,
+            Self::AdvanceTask { .. } => MethodName::AdvanceTask,
+            Self::PrepareEvidenceCapture { .. } => MethodName::PrepareEvidenceCapture,
+            Self::PrepareWrite { .. } => MethodName::PrepareWrite,
+            Self::StageArtifact { .. } => MethodName::StageArtifact,
+            Self::RecordRun { .. } => MethodName::RecordRun,
+            Self::RequestUserAction { .. } => MethodName::RequestUserAction,
+            Self::ResolveUserAction { .. } => MethodName::ResolveUserAction,
+            Self::ReconcileChanges { .. } => MethodName::ReconcileChanges,
+            Self::CheckClose { .. } => MethodName::CheckClose,
+            Self::CloseTask { .. } => MethodName::CloseTask,
+        }
+    }
+
+    pub const fn semantic_variant(&self) -> crate::values::WorkflowActionSemanticVariant {
+        use crate::values::WorkflowActionSemanticVariant as Variant;
+        match self {
+            Self::RecordShapingCheckpoint {
+                contract: WorkflowRecordShapingCheckpointSubmissionContract::CreateInitial { .. },
+            } => Variant::CreateInitial,
+            Self::RecordShapingCheckpoint {
+                contract: WorkflowRecordShapingCheckpointSubmissionContract::ReplaceCurrent { .. },
+            } => Variant::ReplaceCurrent,
+            Self::UpdateScope {
+                contract: WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit { .. },
+            } => Variant::KeepCurrentChangeUnit,
+            Self::UpdateScope {
+                contract:
+                    WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit { .. }
+                    | WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit { .. },
+            } => Variant::CreateCurrentChangeUnit,
+            Self::UpdateScope {
+                contract:
+                    WorkflowUpdateScopeSubmissionContract::GeneralReplaceCurrentChangeUnit { .. }
+                    | WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit { .. },
+            } => Variant::ReplaceCurrentChangeUnit,
+            Self::FinalizeAdvice { .. } => Variant::FinalizeAdvice,
+            Self::AdvanceTask { .. } => Variant::AdvanceTask,
+            Self::PrepareEvidenceCapture { .. } => Variant::PrepareEvidenceCapture,
+            Self::PrepareWrite { .. } => Variant::PrepareWrite,
+            Self::StageArtifact { .. } => Variant::StageArtifact,
+            Self::RecordRun { .. } => Variant::RecordRun,
+            Self::RequestUserAction { .. } => Variant::RequestUserAction,
+            Self::ResolveUserAction { .. } => Variant::ResolveUserAction,
+            Self::ReconcileChanges { .. } => Variant::ReconcileChanges,
+            Self::CheckClose { .. } => Variant::CheckClose,
+            Self::CloseTask { .. } => Variant::CloseTask,
+        }
+    }
+
+    fn is_well_formed_for(&self, coordinates: &WorkflowActionAuthorityCoordinates) -> bool {
+        if self.method() != coordinates.method()
+            || self.semantic_variant() != coordinates.semantic_variant()
+        {
+            return false;
+        }
+        match (self, coordinates) {
+            (
+                Self::RecordShapingCheckpoint {
+                    contract:
+                        WorkflowRecordShapingCheckpointSubmissionContract::ReplaceCurrent {
+                            required_agent_input_witness,
+                            ..
+                        },
+                },
+                WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
+                    checkpoint_operation:
+                        WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                            stale_application_refs,
+                            ..
+                        },
+                    ..
+                },
+            ) => {
+                required_agent_input_witness.stale_authority_actions.len()
+                    == stale_application_refs.len()
+            }
+            (
+                Self::UpdateScope {
+                    contract:
+                        WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit {
+                            fixed_values,
+                            ..
+                        }
+                        | WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit {
+                            fixed_values,
+                            ..
+                        },
+                },
+                _,
+            ) => {
+                fixed_values.affected_paths.is_empty()
+                    && fixed_values.effect_contract == advisor_observe_only_effect_contract()
+            }
+            _ => true,
+        }
+    }
+}
+
 /// Core-owned transition plus fixed authority an adapter may project.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -2489,7 +3200,7 @@ pub struct TransitionDescriptor {
     pub role: WorkflowActionRole,
     pub expected_state_version: u64,
     pub fixed_authority_coordinates: WorkflowActionAuthorityCoordinates,
-    pub agent_input_requirements: Vec<crate::values::WorkflowAgentInputRequirement>,
+    pub submission_contract: WorkflowTransitionSubmissionContract,
     pub effect_class: crate::values::WorkflowTransitionEffectClass,
     pub expected_result_state: crate::values::WorkflowExpectedResultState,
     pub authority_invalidation: crate::values::WorkflowAuthorityInvalidationPolicy,
@@ -2554,20 +3265,12 @@ impl WorkflowTransitionCatalog {
                         .to_owned(),
                 );
             }
-            if transition.actor != crate::values::WorkflowTransitionActor::Agent
-                && !transition.agent_input_requirements.is_empty()
+            if !transition
+                .submission_contract
+                .is_well_formed_for(&transition.fixed_authority_coordinates)
             {
                 return Err(
-                    "non-Agent workflow transition cannot require Agent-authored input".to_owned(),
-                );
-            }
-            if transition
-                .agent_input_requirements
-                .windows(2)
-                .any(|pair| pair[0] >= pair[1])
-            {
-                return Err(
-                    "workflow Agent input requirements are duplicated or not in canonical order"
+                    "workflow transition submission contract does not match current authority"
                         .to_owned(),
                 );
             }
@@ -2582,32 +3285,8 @@ impl WorkflowTransitionCatalog {
                 );
             }
             use crate::values::{
-                WorkflowAgentInputRequirement as Input, WorkflowExpectedResultState as ResultState,
-                WorkflowTransitionEffectClass as Effect,
+                WorkflowExpectedResultState as ResultState, WorkflowTransitionEffectClass as Effect,
             };
-            let inputs = transition.agent_input_requirements.as_slice();
-            let inputs_match = match method {
-                MethodName::RecordShapingCheckpoint => inputs == [Input::ShapingCheckpoint],
-                MethodName::UpdateScope => inputs == [Input::ScopeAndChangeUnit],
-                MethodName::FinalizeAdvice => inputs == [Input::AdviceResult],
-                MethodName::AdvanceTask
-                | MethodName::CheckClose
-                | MethodName::ResolveUserAction => inputs.is_empty(),
-                MethodName::PrepareEvidenceCapture => inputs == [Input::EvidenceCapture],
-                MethodName::PrepareWrite => inputs == [Input::ProposedWrite],
-                MethodName::StageArtifact => inputs == [Input::Artifact],
-                MethodName::RecordRun => inputs == [Input::RunObservation],
-                MethodName::RequestUserAction => inputs == [Input::UserActionDraft],
-                MethodName::ReconcileChanges => inputs == [Input::ChangeReconciliation],
-                MethodName::CloseTask => inputs == [Input::CloseIntent],
-                MethodName::Intake | MethodName::Status | MethodName::GetOperationResult => false,
-            };
-            if !inputs_match {
-                return Err(
-                    "workflow transition Agent input requirements do not match its method"
-                        .to_owned(),
-                );
-            }
             let expected_effect = match method {
                 MethodName::ResolveUserAction => Effect::UserChannelMutation,
                 MethodName::PrepareEvidenceCapture => Effect::EvidenceCapture,

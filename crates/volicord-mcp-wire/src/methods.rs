@@ -201,6 +201,7 @@ pub struct WorkflowActionForm {
     pub form_ref: RequestHash,
     pub expected_state_version: u64,
     pub fixed_arguments: JsonObject,
+    pub fixed_argument_paths: Vec<String>,
     pub agent_authored_inputs: Vec<WorkflowActionInput>,
     pub canonical_minimal_request: JsonObject,
 }

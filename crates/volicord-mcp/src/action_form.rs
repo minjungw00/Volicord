@@ -4,18 +4,21 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 use volicord_mcp_wire::{
     action_form_request_projection, mcp_tool_contract, submitted_action_form_semantic_variant,
-    McpActionFormArgumentMismatch, McpInputContractValidation, RetryContract,
-    SemanticSchemaDescriptor, WorkflowActionForm, WorkflowActionFormCatalog, WorkflowActionInput,
-    MAX_VALIDATION_ISSUES,
+    ActionFormRequestProjectionDescriptor, McpActionFormArgumentMismatch,
+    McpInputContractValidation, RetryContract, SemanticSchemaDescriptor, WorkflowActionForm,
+    WorkflowActionFormCatalog, WorkflowActionInput, MAX_VALIDATION_ISSUES,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
 use volicord_types::schema::{
-    JsonObject, RequiredNullable, TransitionDescriptor, WorkflowActionAuthorityCoordinates,
-    WorkflowActionKey, WorkflowCheckpointActionCoordinates, WorkflowProjection,
+    JsonObject, RequiredNullable, TransitionDescriptor, UserActionDraft,
+    UserActionEvidenceObservationDraft, WorkflowActionAuthorityCoordinates, WorkflowActionKey,
+    WorkflowCheckpointActionCoordinates, WorkflowProjection,
+    WorkflowRecordShapingCheckpointSubmissionContract, WorkflowTransitionSubmissionContract,
+    WorkflowUpdateScopeSubmissionContract,
 };
 use volicord_types::tool_names::AgentToolId;
-use volicord_types::values::{ChangeUnitOperation, MethodName};
+use volicord_types::values::MethodName;
 
 #[derive(Serialize)]
 struct WorkflowActionFormDigestBasis<'a> {
@@ -25,6 +28,7 @@ struct WorkflowActionFormDigestBasis<'a> {
     action_key: WorkflowActionKey,
     expected_state_version: u64,
     fixed_authority_coordinates: &'a WorkflowActionAuthorityCoordinates,
+    submission_contract: &'a WorkflowTransitionSubmissionContract,
     fixed_arguments: &'a JsonObject,
     fixed_argument_paths: &'a [String],
     semantic_schema_digest: &'a RequestHash,
@@ -33,24 +37,16 @@ struct WorkflowActionFormDigestBasis<'a> {
     action_form_contract_digest: &'a RequestHash,
 }
 
-fn input(path: &str, semantic_type: &str) -> WorkflowActionInput {
-    WorkflowActionInput {
-        path: path.to_owned(),
-        semantic_type: semantic_type.to_owned(),
-        required: false,
-    }
-}
-
 fn descriptor_owned_inputs(
     descriptor: &SemanticSchemaDescriptor,
-    required: Vec<WorkflowActionInput>,
-    optional: Vec<WorkflowActionInput>,
-) -> Option<(Vec<WorkflowActionInput>, Vec<WorkflowActionInput>)> {
+    projection: &ActionFormRequestProjectionDescriptor,
+) -> Option<Vec<WorkflowActionInput>> {
     fn typed_input(
         descriptor: &SemanticSchemaDescriptor,
-        authored: WorkflowActionInput,
-    ) -> Option<(WorkflowActionInput, bool)> {
-        let contracts = descriptor.field_contracts_at_pointer_pattern(&authored.path);
+        path: &str,
+        required: bool,
+    ) -> Option<WorkflowActionInput> {
+        let contracts = descriptor.field_contracts_at_pointer_pattern(path);
         if contracts.is_empty() {
             return None;
         }
@@ -61,45 +57,29 @@ fn descriptor_owned_inputs(
             .into_iter()
             .collect::<Vec<_>>()
             .join(" | ");
-        let required = contracts.iter().all(|field| field.required);
-        Some((
-            WorkflowActionInput {
-                path: authored.path,
-                semantic_type: semantic_types,
-                required,
-            },
+        Some(WorkflowActionInput {
+            path: path.to_owned(),
+            semantic_type: semantic_types,
             required,
-        ))
+        })
     }
 
-    let mut descriptor_required = Vec::new();
-    for authored in required {
-        let mut authored = typed_input(descriptor, authored)?.0;
-        authored.required = true;
-        descriptor_required.push(authored);
+    let mut inputs = Vec::new();
+    for authored in projection.required_agent_inputs {
+        inputs.push(typed_input(descriptor, authored.path_pattern, true)?);
     }
-    let mut descriptor_optional = Vec::new();
-    for authored in optional {
-        let (mut authored, is_required) = typed_input(descriptor, authored)?;
-        if is_required && !authored.path.ends_with("/successor_gap") {
-            descriptor_required.push(authored);
-        } else {
-            authored.required = false;
-            descriptor_optional.push(authored);
-        }
+    for authored in projection.optional_agent_inputs {
+        inputs.push(typed_input(descriptor, authored.path_pattern, false)?);
     }
-    Some((descriptor_required, descriptor_optional))
+    inputs.sort_by(|left, right| left.path.cmp(&right.path));
+    Some(inputs)
 }
 
-fn checkpoint_operation(
-    operation: &WorkflowCheckpointActionCoordinates,
-) -> (Value, Vec<WorkflowActionInput>, Vec<WorkflowActionInput>) {
+fn checkpoint_operation(operation: &WorkflowCheckpointActionCoordinates) -> Value {
     match operation {
-        WorkflowCheckpointActionCoordinates::CreateInitial => (
-            json!({ "operation": "create_initial" }),
-            Vec::new(),
-            Vec::new(),
-        ),
+        WorkflowCheckpointActionCoordinates::CreateInitial => {
+            json!({ "operation": "create_initial" })
+        }
         WorkflowCheckpointActionCoordinates::ReplaceCurrent {
             current_checkpoint_ref,
             predecessor_checkpoint_ref: _,
@@ -116,80 +96,37 @@ fn checkpoint_operation(
                     })
                 })
                 .collect::<Vec<_>>();
-            let required = stale_application_refs
-                .iter()
-                .enumerate()
-                .map(|(index, _)| {
-                    input(
-                        &format!("/checkpoint_operation/stale_authority_actions/{index}/action"),
-                        "retire | reauthorize",
-                    )
-                })
-                .collect::<Vec<_>>();
-            let optional = if stale_application_refs.is_empty() {
-                Vec::new()
-            } else {
-                vec![input(
-                    "/checkpoint_operation/stale_authority_actions/*/successor_gap",
-                    "ShapingGapInput when action=reauthorize",
-                )]
-            };
-            (
-                json!({
-                    "operation": "replace_current",
-                    "expected_current_checkpoint_id": current_checkpoint_ref.record_id.as_str(),
-                    "retired_non_authorizing_request_refs": retired_non_authorizing_request_refs,
-                    "carry_forward_application_refs": carry_forward_application_refs,
-                    "stale_authority_actions": stale_authority_actions,
-                }),
-                required,
-                optional,
-            )
+            json!({
+                "operation": "replace_current",
+                "expected_current_checkpoint_id": current_checkpoint_ref.record_id.as_str(),
+                "retired_non_authorizing_request_refs": retired_non_authorizing_request_refs,
+                "carry_forward_application_refs": carry_forward_application_refs,
+                "stale_authority_actions": stale_authority_actions,
+            })
         }
     }
 }
 
 fn project_fixed_arguments(
-    _project_id: &ProjectId,
     coordinates: &WorkflowActionAuthorityCoordinates,
-) -> (
-    TaskId,
-    JsonObject,
-    Vec<WorkflowActionInput>,
-    Vec<WorkflowActionInput>,
-) {
+    submission_contract: &WorkflowTransitionSubmissionContract,
+) -> Result<(TaskId, JsonObject), String> {
     let mut fixed = Map::new();
-    match coordinates {
+    let task_id = match coordinates {
         WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
             task_id,
             checkpoint_operation: operation,
             scope_revision,
             baseline_ref,
         } => {
-            let (operation_value, mut conditional_inputs, conditional_optional_inputs) =
-                checkpoint_operation(operation);
             fixed.insert("task_id".to_owned(), json!(task_id));
-            fixed.insert("checkpoint_operation".to_owned(), operation_value);
+            fixed.insert(
+                "checkpoint_operation".to_owned(),
+                checkpoint_operation(operation),
+            );
             fixed.insert("scope_revision".to_owned(), json!(scope_revision));
             fixed.insert("baseline_ref".to_owned(), json!(baseline_ref));
-            let mut required = vec![
-                input("/summary", "string"),
-                input("/implementation_boundary", "string | null"),
-                input("/gaps", "array<ShapingGapInput>"),
-            ];
-            required.append(&mut conditional_inputs);
-            (
-                task_id.clone(),
-                fixed,
-                required,
-                vec![
-                    input("/source_refs", "array<SourceRef>"),
-                    input("/evidence_refs", "array<StateRecordRef>"),
-                ]
-                .into_iter()
-                .chain(conditional_optional_inputs)
-                .collect(),
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::UpdateScope {
             task_id,
@@ -207,37 +144,33 @@ fn project_fixed_arguments(
                         .collect(),
                 ),
             );
-            let mut required = vec![input("/baseline_ref", "string | null")];
-            fixed.insert(
-                "change_unit".to_owned(),
-                json!({ "operation": selected_change_unit_operation }),
-            );
-            if matches!(
-                selected_change_unit_operation,
-                ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
-            ) {
-                required.extend([
-                    input("/change_unit/scope_summary", "string"),
-                    input("/change_unit/affected_paths", "array<string>"),
-                ]);
-            }
-            (
-                task_id.clone(),
-                fixed,
-                required,
-                vec![
-                    input("/change_unit/effect_contract", "ChangeUnitEffectContract"),
-                    input("/goal_summary", "string | null"),
-                    input("/scope_update", "ScopeUpdate | null"),
-                    input("/scope_boundary", "string | null"),
-                    input("/non_goals", "array<string> | null"),
-                    input(
-                        "/acceptance_criteria",
-                        "array<AcceptanceCriterionReplacement> | null",
-                    ),
-                    input("/autonomy_boundary", "string | null"),
-                ],
-            )
+            let change_unit = match submission_contract {
+                WorkflowTransitionSubmissionContract::UpdateScope {
+                    contract:
+                        WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit {
+                            fixed_values,
+                            ..
+                        }
+                        | WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit {
+                            fixed_values,
+                            ..
+                        },
+                } => json!({
+                    "operation": selected_change_unit_operation,
+                    "affected_paths": fixed_values.affected_paths,
+                    "effect_contract": fixed_values.effect_contract,
+                }),
+                WorkflowTransitionSubmissionContract::UpdateScope { .. } => {
+                    json!({ "operation": selected_change_unit_operation })
+                }
+                _ => {
+                    return Err(
+                        "update-scope coordinates have another submission contract".to_owned()
+                    )
+                }
+            };
+            fixed.insert("change_unit".to_owned(), change_unit);
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::FinalizeAdvice {
             task_id,
@@ -261,17 +194,7 @@ fn project_fixed_arguments(
                     json!(user_action_resolution_ids),
                 ),
             ]);
-            (
-                task_id.clone(),
-                fixed,
-                vec![input("/result_summary", "string")],
-                vec![
-                    input("/result_refs", "array<StateRecordRef>"),
-                    input("/evidence_refs", "array<StateRecordRef>"),
-                    input("/residual_risks", "array<ResidualRiskInput>"),
-                    input("/recovery_constraints", "array<string>"),
-                ],
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::AdvanceTask {
             task_id,
@@ -295,7 +218,7 @@ fn project_fixed_arguments(
                     json!(user_action_resolution_ids),
                 ),
             ]);
-            (task_id.clone(), fixed, Vec::new(), Vec::new())
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::PrepareEvidenceCapture {
             task_id,
@@ -307,15 +230,7 @@ fn project_fixed_arguments(
                 ("change_unit_id".to_owned(), json!(change_unit_id)),
                 ("baseline_ref".to_owned(), json!(baseline_ref)),
             ]);
-            (
-                task_id.clone(),
-                fixed,
-                vec![
-                    input("/target", "EvidenceTarget"),
-                    input("/capture", "McpEvidenceCaptureSpec"),
-                ],
-                Vec::new(),
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::PrepareWrite {
             task_id,
@@ -327,34 +242,11 @@ fn project_fixed_arguments(
                 ("change_unit_id".to_owned(), json!(change_unit_id)),
                 ("baseline_ref".to_owned(), json!(baseline_ref)),
             ]);
-            (
-                task_id.clone(),
-                fixed,
-                vec![
-                    input("/intended_operation", "string"),
-                    input("/intended_paths", "array<string>"),
-                    input("/product_file_write_intended", "boolean"),
-                ],
-                vec![input("/sensitive_categories", "array<string>")],
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::StageArtifact { task_id } => {
             fixed.insert("task_id".to_owned(), json!(task_id));
-            (
-                task_id.clone(),
-                fixed,
-                vec![
-                    input("/display_name", "string"),
-                    input("/content_type", "string"),
-                    input("/redaction_state", "RedactionState"),
-                    input("/safe_bytes_or_notice", "string"),
-                ],
-                vec![
-                    input("/expected_sha256", "string | null"),
-                    input("/expected_size_bytes", "integer | null"),
-                    input("/relation_hint", "string | null"),
-                ],
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::RecordRun {
             task_id,
@@ -368,26 +260,7 @@ fn project_fixed_arguments(
                 ("baseline_ref".to_owned(), json!(baseline_ref)),
                 ("kind".to_owned(), json!(run_kind)),
             ]);
-            (
-                task_id.clone(),
-                fixed,
-                vec![
-                    input("/summary", "string"),
-                    input("/observed_changes", "ObservedChanges"),
-                ],
-                vec![
-                    input("/run_id", "RunId | null"),
-                    input("/write_ticket_id", "WriteTicketId | null"),
-                    input("/performed_operation", "string | null"),
-                    input("/artifact_inputs", "array<ArtifactInput>"),
-                    input("/evidence_updates", "array<McpEvidenceCoverageUpdate>"),
-                    input(
-                        "/evidence_observations",
-                        "array<McpEvidenceObservationInput>",
-                    ),
-                    input("/close_assessment", "CloseAssessmentInput | null"),
-                ],
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::RequestUserAction {
             task_id,
@@ -401,15 +274,7 @@ fn project_fixed_arguments(
                     "change_unit_id": change_unit_id,
                 }),
             );
-            (
-                task_id.clone(),
-                fixed,
-                vec![
-                    input("/request/action", "UserActionDraft"),
-                    input("/request/required_for", "array<UserActionRequiredFor>"),
-                ],
-                vec![input("/request/expires_at", "UtcTimestamp | null")],
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::ResolveUserAction {
             task_id,
@@ -420,38 +285,22 @@ fn project_fixed_arguments(
                 "user_action_request_refs".to_owned(),
                 json!(user_action_request_refs),
             );
-            (task_id.clone(), fixed, Vec::new(), Vec::new())
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::ReconcileChanges { task_id } => {
             fixed.insert("task_id".to_owned(), json!(task_id));
-            (
-                task_id.clone(),
-                fixed,
-                Vec::new(),
-                vec![input(
-                    "/resolution_requests",
-                    "array<UnrecordedChangeResolutionRequest>",
-                )],
-            )
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::CheckClose { task_id } => {
             fixed.insert("task_id".to_owned(), json!(task_id));
-            (task_id.clone(), fixed, Vec::new(), Vec::new())
+            task_id.clone()
         }
         WorkflowActionAuthorityCoordinates::CloseTask { task_id } => {
             fixed.insert("task_id".to_owned(), json!(task_id));
-            (
-                task_id.clone(),
-                fixed,
-                vec![input("/intent", "CloseMutationIntent")],
-                vec![
-                    input("/close_reason", "CloseReason | null"),
-                    input("/superseding_task_id", "TaskId | null"),
-                    input("/user_note", "string | null"),
-                ],
-            )
+            task_id.clone()
         }
-    }
+    };
+    Ok((task_id, fixed))
 }
 
 fn insert_pointer(request: &mut Value, pointer: &str, value: Value) -> Result<(), String> {
@@ -483,10 +332,238 @@ fn insert_pointer(request: &mut Value, pointer: &str, value: Value) -> Result<()
     }
 }
 
-fn copy_required_authored_input(
+fn submission_witnesses(contract: &WorkflowTransitionSubmissionContract) -> (Value, Value) {
+    let empty = || Value::Object(Map::new());
+    match contract {
+        WorkflowTransitionSubmissionContract::RecordShapingCheckpoint { contract } => {
+            let (required, optional) = match contract {
+                WorkflowRecordShapingCheckpointSubmissionContract::CreateInitial {
+                    required_agent_input_witness,
+                    optional_agent_input_witness,
+                }
+                | WorkflowRecordShapingCheckpointSubmissionContract::ReplaceCurrent {
+                    required_agent_input_witness,
+                    optional_agent_input_witness,
+                } => (required_agent_input_witness, optional_agent_input_witness),
+            };
+            (
+                json!({
+                    "summary": required.summary,
+                    "implementation_boundary": required.implementation_boundary,
+                    "gaps": required.gaps,
+                    "checkpoint_operation": {
+                        "stale_authority_actions": required
+                            .stale_authority_actions
+                            .iter()
+                            .map(|_| json!({"action": "retire"}))
+                            .collect::<Vec<_>>(),
+                    },
+                }),
+                json!({
+                    "source_refs": optional.source_refs,
+                    "evidence_refs": optional.evidence_refs,
+                }),
+            )
+        }
+        WorkflowTransitionSubmissionContract::UpdateScope { contract } => {
+            let common = match contract {
+                WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::GeneralReplaceCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit {
+                    required_agent_input_witness,
+                    ..
+                } => required_agent_input_witness,
+            };
+            let mut required = json!({
+                "goal_summary": common.goal_summary,
+                "scope_update": common.scope_update,
+                "scope_boundary": common.scope_boundary,
+                "non_goals": common.non_goals,
+                "acceptance_criteria": common.acceptance_criteria,
+                "autonomy_boundary": common.autonomy_boundary,
+                "baseline_ref": common.baseline_ref,
+                "change_unit": {},
+            });
+            let mut optional = json!({"change_unit": {}});
+            match contract {
+                WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit { .. } => {}
+                WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit {
+                    required_change_unit_witness,
+                    optional_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::GeneralReplaceCurrentChangeUnit {
+                    required_change_unit_witness,
+                    optional_agent_input_witness,
+                    ..
+                } => {
+                    required["change_unit"] = json!({
+                        "scope_summary": required_change_unit_witness.scope_summary,
+                        "affected_paths": required_change_unit_witness.affected_paths,
+                    });
+                    optional["change_unit"] = json!({
+                        "affected_areas": optional_agent_input_witness.affected_areas,
+                        "constraints": optional_agent_input_witness.constraints,
+                        "effect_contract": optional_agent_input_witness.effect_contract,
+                    });
+                }
+                WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit {
+                    required_change_unit_witness,
+                    optional_agent_input_witness,
+                    ..
+                }
+                | WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit {
+                    required_change_unit_witness,
+                    optional_agent_input_witness,
+                    ..
+                } => {
+                    required["change_unit"] = json!({
+                        "scope_summary": required_change_unit_witness.scope_summary,
+                    });
+                    optional["change_unit"] = json!({
+                        "affected_areas": optional_agent_input_witness.affected_areas,
+                        "constraints": optional_agent_input_witness.constraints,
+                    });
+                }
+            }
+            (required, optional)
+        }
+        WorkflowTransitionSubmissionContract::FinalizeAdvice {
+            required_agent_input_witness,
+            optional_agent_input_witness,
+        } => (
+            json!({"result_summary": required_agent_input_witness.result_summary}),
+            json!({
+                "result_refs": optional_agent_input_witness.result_refs,
+                "evidence_refs": optional_agent_input_witness.evidence_refs,
+                "residual_risks": optional_agent_input_witness.residual_risks,
+                "recovery_constraints": optional_agent_input_witness.recovery_constraints,
+            }),
+        ),
+        WorkflowTransitionSubmissionContract::AdvanceTask { .. }
+        | WorkflowTransitionSubmissionContract::ResolveUserAction { .. }
+        | WorkflowTransitionSubmissionContract::CheckClose { .. } => (empty(), empty()),
+        WorkflowTransitionSubmissionContract::PrepareEvidenceCapture {
+            required_agent_input_witness,
+            ..
+        } => (
+            json!({
+                "target": required_agent_input_witness.target,
+                "capture": required_agent_input_witness.capture,
+            }),
+            empty(),
+        ),
+        WorkflowTransitionSubmissionContract::PrepareWrite {
+            required_agent_input_witness,
+            optional_agent_input_witness,
+        } => (
+            json!({
+                "intended_operation": required_agent_input_witness.intended_operation,
+                "intended_paths": required_agent_input_witness.intended_paths,
+                "product_file_write_intended": required_agent_input_witness.product_file_write_intended,
+            }),
+            json!({"sensitive_categories": optional_agent_input_witness.sensitive_categories}),
+        ),
+        WorkflowTransitionSubmissionContract::StageArtifact {
+            required_agent_input_witness,
+            ..
+        } => (
+            json!({
+                "display_name": required_agent_input_witness.display_name,
+                "content_type": required_agent_input_witness.content_type,
+                "redaction_state": required_agent_input_witness.redaction_state,
+                "safe_bytes_or_notice": required_agent_input_witness.safe_bytes_or_notice,
+                "expected_sha256": required_agent_input_witness.expected_sha256,
+                "expected_size_bytes": required_agent_input_witness.expected_size_bytes,
+                "relation_hint": required_agent_input_witness.relation_hint,
+            }),
+            empty(),
+        ),
+        WorkflowTransitionSubmissionContract::RecordRun {
+            required_agent_input_witness,
+            optional_agent_input_witness,
+        } => (
+            json!({
+                "run_id": required_agent_input_witness.run_id,
+                "write_ticket_id": required_agent_input_witness.write_ticket_id,
+                "performed_operation": required_agent_input_witness.performed_operation,
+                "summary": required_agent_input_witness.summary,
+                "observed_changes": required_agent_input_witness.observed_changes,
+                "close_assessment": required_agent_input_witness.close_assessment,
+            }),
+            json!({
+                "artifact_inputs": optional_agent_input_witness.artifact_inputs,
+                "evidence_updates": optional_agent_input_witness.evidence_updates,
+                "evidence_observations": optional_agent_input_witness.evidence_observations,
+            }),
+        ),
+        WorkflowTransitionSubmissionContract::RequestUserAction {
+            required_agent_input_witness,
+            ..
+        } => (
+            json!({
+                "request": {
+                    "action": UserActionDraft::EvidenceObservation(
+                        UserActionEvidenceObservationDraft {
+                            question: required_agent_input_witness.evidence_observation.prompt.clone(),
+                            context_summary: required_agent_input_witness.evidence_observation.context.clone(),
+                            target_candidates: required_agent_input_witness
+                                .evidence_observation
+                                .target_candidates
+                                .clone(),
+                            artifact_candidate_ids: required_agent_input_witness
+                                .evidence_observation
+                                .artifact_candidate_ids
+                                .clone(),
+                        }
+                    ),
+                    "required_for": required_agent_input_witness.required_for,
+                    "expires_at": required_agent_input_witness.expires_at,
+                },
+            }),
+            empty(),
+        ),
+        WorkflowTransitionSubmissionContract::ReconcileChanges {
+            optional_agent_input_witness,
+            ..
+        } => (
+            empty(),
+            json!({"resolution_requests": optional_agent_input_witness.resolution_requests}),
+        ),
+        WorkflowTransitionSubmissionContract::CloseTask {
+            required_agent_input_witness,
+            ..
+        } => (
+            json!({
+                "intent": required_agent_input_witness.intent,
+                "close_reason": required_agent_input_witness.close_reason,
+                "superseding_task_id": required_agent_input_witness.superseding_task_id,
+                "user_note": required_agent_input_witness.user_note,
+            }),
+            empty(),
+        ),
+    }
+}
+
+fn copy_submission_witness_input(
     request: &mut Value,
-    examples: &[&Value],
+    witness: &Value,
     authored: &WorkflowActionInput,
+    required: bool,
 ) -> Result<(), String> {
     let pattern = authored.path.as_str();
     if let Some((prefix, suffix)) = pattern.split_once("/*") {
@@ -495,26 +572,35 @@ fn copy_required_authored_input(
             .and_then(Value::as_array)
             .map(Vec::len)
             .ok_or_else(|| format!("action-form authored wildcard prefix {prefix} is absent"))?;
-        let example_values = examples
-            .iter()
-            .filter_map(|example| example.pointer(prefix).and_then(Value::as_array))
-            .find(|values| !values.is_empty())
-            .ok_or_else(|| format!("canonical example wildcard prefix {prefix} is absent"))?;
+        let Some(witness_values) = witness.pointer(prefix).and_then(Value::as_array) else {
+            return if required {
+                Err(format!(
+                    "required submission witness prefix {prefix} is absent"
+                ))
+            } else {
+                Ok(())
+            };
+        };
         for index in 0..current_len {
             let source_pointer = suffix.strip_prefix('/').unwrap_or(suffix);
-            let value = example_values
-                .first()
+            let value = witness_values
+                .get(index)
                 .and_then(|source| source.pointer(&format!("/{source_pointer}")))
                 .cloned()
-                .ok_or_else(|| format!("canonical example omits authored input {pattern}"))?;
+                .ok_or_else(|| format!("submission witness omits authored input {pattern}"))?;
             insert_pointer(request, &format!("{prefix}/{index}{suffix}"), value)?;
         }
         return Ok(());
     }
-    let value = examples
-        .iter()
-        .find_map(|example| example.pointer(pattern).cloned())
-        .ok_or_else(|| format!("canonical example omits authored input {pattern}"))?;
+    let Some(value) = witness.pointer(pattern).cloned() else {
+        return if required {
+            Err(format!(
+                "required submission witness omits authored input {pattern}"
+            ))
+        } else {
+            Ok(())
+        };
+    };
     insert_pointer(request, pattern, value)
 }
 
@@ -555,29 +641,24 @@ pub(crate) fn workflow_action_form(
         volicord_types::managed_guidance::action_form_contract_semantic_digest();
     let scalar_contract_digest =
         volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest();
-    let (task_id, fixed_arguments, required_inputs, optional_inputs) =
-        project_fixed_arguments(project_id, &transition.fixed_authority_coordinates);
-    let (required_inputs, optional_inputs) = descriptor_owned_inputs(
-        descriptor.input_descriptor(),
-        required_inputs,
-        optional_inputs,
-    )
-    .ok_or_else(|| {
-        format!(
-            "{} authored input descriptor is incomplete",
-            method.as_str()
-        )
-    })?;
-    let mut agent_authored_inputs = required_inputs;
-    agent_authored_inputs.extend(optional_inputs);
-    agent_authored_inputs.sort_by(|left, right| left.path.cmp(&right.path));
     let selected_semantic_variant = transition.action_key.semantic_variant;
     let projection =
-        action_form_request_projection(method, selected_semantic_variant).ok_or_else(|| {
+        action_form_request_projection(&transition.submission_contract).ok_or_else(|| {
             format!(
                 "{} {} has no action-form request projection",
                 method.as_str(),
                 selected_semantic_variant.as_str()
+            )
+        })?;
+    let (task_id, fixed_arguments) = project_fixed_arguments(
+        &transition.fixed_authority_coordinates,
+        &transition.submission_contract,
+    )?;
+    let agent_authored_inputs = descriptor_owned_inputs(descriptor.input_descriptor(), projection)
+        .ok_or_else(|| {
+            format!(
+                "{} authored input descriptor is incomplete",
+                method.as_str()
             )
         })?;
     let fixed_argument_paths = projection
@@ -617,6 +698,7 @@ pub(crate) fn workflow_action_form(
         action_key: transition.action_key,
         expected_state_version: transition.expected_state_version,
         fixed_authority_coordinates: &transition.fixed_authority_coordinates,
+        submission_contract: &transition.submission_contract,
         fixed_arguments: &fixed_arguments,
         fixed_argument_paths: &fixed_argument_paths,
         semantic_schema_digest: &semantic_schema_digest,
@@ -625,25 +707,16 @@ pub(crate) fn workflow_action_form(
         action_form_contract_digest: &action_form_contract_digest,
     })
     .map_err(|error| error.to_string())?;
-    let matching_examples = descriptor
-        .canonical_examples()
-        .iter()
-        .filter(|example| {
-            submitted_action_form_semantic_variant(method, example.value())
-                == Some(selected_semantic_variant)
-        })
-        .map(|example| example.value())
-        .collect::<Vec<_>>();
-    if matching_examples.is_empty() {
-        return Err(format!(
-            "{} {} has no canonical semantic example",
-            method.as_str(),
-            selected_semantic_variant.as_str()
-        ));
-    }
+    let (required_witness, optional_witness) =
+        submission_witnesses(&transition.submission_contract);
     let mut canonical_minimal_request = fixed;
     for authored in agent_authored_inputs.iter().filter(|input| input.required) {
-        copy_required_authored_input(&mut canonical_minimal_request, &matching_examples, authored)?;
+        copy_submission_witness_input(
+            &mut canonical_minimal_request,
+            &required_witness,
+            authored,
+            true,
+        )?;
     }
     canonical_minimal_request
         .as_object_mut()
@@ -654,6 +727,7 @@ pub(crate) fn workflow_action_form(
         form_ref,
         expected_state_version: transition.expected_state_version,
         fixed_arguments,
+        fixed_argument_paths,
         agent_authored_inputs,
         canonical_minimal_request: canonical_minimal_request
             .as_object()
@@ -679,6 +753,28 @@ pub(crate) fn workflow_action_form(
                 method.as_str()
             ));
         }
+    }
+    let mut complete_validation_witness = canonical_minimal_request.clone();
+    for authored in form
+        .agent_authored_inputs
+        .iter()
+        .filter(|input| !input.required)
+    {
+        copy_submission_witness_input(
+            &mut complete_validation_witness,
+            &optional_witness,
+            authored,
+            false,
+        )?;
+    }
+    if !matches!(
+        descriptor.validate_and_decode_input(&complete_validation_witness),
+        McpInputContractValidation::Valid
+    ) {
+        return Err(format!(
+            "{} complete submission witness failed semantic validation",
+            method.as_str()
+        ));
     }
     if submitted_action_form_semantic_variant(method, &canonical_minimal_request)
         != Some(selected_semantic_variant)
@@ -709,15 +805,7 @@ pub(crate) fn bind_fixed_arguments(
     submitted: &Value,
 ) -> Result<FixedArgumentBindingResult, String> {
     let method = form.action_key.method;
-    let semantic_variant = form.action_key.semantic_variant;
-    let projection = action_form_request_projection(method, semantic_variant).ok_or_else(|| {
-        format!(
-            "{} {} has no request projection descriptor",
-            method.as_str(),
-            semantic_variant.as_str()
-        )
-    })?;
-    let expected_paths = projection.concrete_fixed_argument_paths(&form.fixed_arguments)?;
+    let expected_paths = &form.fixed_argument_paths;
 
     let fixed = Value::Object(form.fixed_arguments.clone());
     let tool = AgentToolId::from_method(method)
@@ -725,7 +813,7 @@ pub(crate) fn bind_fixed_arguments(
     let request = mcp_tool_contract(tool)
         .ok_or_else(|| format!("{} has no semantic request descriptor", method.as_str()))?;
     let mut mismatches = Vec::new();
-    for path in &expected_paths {
+    for path in expected_paths {
         let expected_value = fixed.pointer(path).ok_or_else(|| {
             format!(
                 "{} current form omits fixed value {}",
@@ -870,7 +958,8 @@ mod tests {
     };
     use volicord_types::schema::{StateRecordRef, WorkflowActionRole};
     use volicord_types::values::{
-        AuthorityNextActor, RunKind, StateRecordKind, WorkflowActionSemanticVariant,
+        AuthorityNextActor, ChangeUnitOperation, RunKind, StateRecordKind, TaskMode,
+        WorkflowActionSemanticVariant,
     };
 
     fn workflow_action_form(
@@ -914,10 +1003,7 @@ mod tests {
     }
 
     fn fixed_argument_paths(form: &WorkflowActionForm) -> Vec<String> {
-        action_form_request_projection(form.action_key.method, form.action_key.semantic_variant)
-            .expect("test form projection")
-            .concrete_fixed_argument_paths(&form.fixed_arguments)
-            .expect("test fixed paths")
+        form.fixed_argument_paths.clone()
     }
 
     fn reference(
@@ -945,22 +1031,8 @@ mod tests {
         required_refs: Vec<StateRecordRef>,
     ) -> TransitionDescriptor {
         use volicord_types::values::{
-            WorkflowAgentInputRequirement as Input, WorkflowExpectedResultState as ResultState,
+            TaskMode, WorkflowExpectedResultState as ResultState,
             WorkflowTransitionEffectClass as Effect,
-        };
-        let agent_input_requirements = match method {
-            MethodName::RecordShapingCheckpoint => vec![Input::ShapingCheckpoint],
-            MethodName::UpdateScope => vec![Input::ScopeAndChangeUnit],
-            MethodName::FinalizeAdvice => vec![Input::AdviceResult],
-            MethodName::AdvanceTask | MethodName::CheckClose => Vec::new(),
-            MethodName::PrepareEvidenceCapture => vec![Input::EvidenceCapture],
-            MethodName::PrepareWrite => vec![Input::ProposedWrite],
-            MethodName::StageArtifact => vec![Input::Artifact],
-            MethodName::RecordRun => vec![Input::RunObservation],
-            MethodName::RequestUserAction => vec![Input::UserActionDraft],
-            MethodName::ReconcileChanges => vec![Input::ChangeReconciliation],
-            MethodName::CloseTask => vec![Input::CloseIntent],
-            _ => panic!("test helper requires an Agent transition method"),
         };
         let effect_class = match method {
             MethodName::PrepareEvidenceCapture => Effect::EvidenceCapture,
@@ -982,6 +1054,10 @@ mod tests {
             MethodName::CloseTask => ResultState::Terminal,
             _ => ResultState::ReevaluateCurrentAuthority,
         };
+        let submission_contract = WorkflowTransitionSubmissionContract::for_current_transition(
+            TaskMode::Work,
+            &fixed_authority_coordinates,
+        );
         TransitionDescriptor {
             action_key: volicord_types::schema::WorkflowActionKey::new(method, semantic_variant)
                 .expect("test transition key"),
@@ -989,7 +1065,7 @@ mod tests {
             role,
             expected_state_version,
             fixed_authority_coordinates,
-            agent_input_requirements,
+            submission_contract,
             effect_class,
             expected_result_state,
             authority_invalidation:
@@ -1081,11 +1157,11 @@ mod tests {
                 "{path} must be required-nullable"
             );
         }
-        let optional = authored_inputs(&form, false);
-        assert_eq!(
-            optional.get("/change_unit/effect_contract"),
-            Some(&"ChangeUnitEffectContract | null")
-        );
+        assert!(!form
+            .agent_authored_inputs
+            .iter()
+            .any(|input| input.path.starts_with("/change_unit/")
+                && input.path != "/change_unit/operation"));
     }
 
     #[test]
@@ -1113,6 +1189,126 @@ mod tests {
         assert_eq!(
             required.get("/change_unit/affected_paths"),
             Some(&"array<string>")
+        );
+        assert_eq!(
+            form.canonical_minimal_request["change_unit"]["scope_summary"],
+            "Bounded current work."
+        );
+    }
+
+    #[test]
+    fn advisor_create_and_replace_forms_fix_the_canonical_observe_only_boundary() {
+        let project_id = ProjectId::new("prj_advisor_scope_forms");
+        for operation in [
+            ChangeUnitOperation::CreateCurrent,
+            ChangeUnitOperation::ReplaceCurrent,
+        ] {
+            let coordinates = WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id: TaskId::new("task_advisor_scope_forms"),
+                scope_revision: 2,
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse("baseline_advisor_scope_forms").expect("baseline"),
+                ),
+                current_change_unit_id: match operation {
+                    ChangeUnitOperation::CreateCurrent => RequiredNullable::null(),
+                    ChangeUnitOperation::ReplaceCurrent => {
+                        RequiredNullable::some(ChangeUnitId::new("cu_advisor_scope_forms"))
+                    }
+                    ChangeUnitOperation::KeepCurrent => unreachable!(),
+                },
+                related_scope_decision_refs: Vec::new(),
+                selected_change_unit_operation: operation,
+            };
+            let mut transition = agent_transition(
+                MethodName::UpdateScope,
+                WorkflowActionSemanticVariant::for_change_unit_operation(operation),
+                WorkflowActionRole::Allowed,
+                4,
+                coordinates,
+                Vec::new(),
+            );
+            transition.submission_contract =
+                WorkflowTransitionSubmissionContract::for_current_transition(
+                    TaskMode::Advisor,
+                    &transition.fixed_authority_coordinates,
+                );
+
+            let form = workflow_action_form(&project_id, &transition).expect("advisor form");
+            assert_eq!(
+                form.fixed_arguments["change_unit"]["affected_paths"],
+                json!([])
+            );
+            assert_eq!(
+                form.fixed_arguments["change_unit"]["effect_contract"],
+                json!(volicord_types::schema::advisor_observe_only_effect_contract())
+            );
+            assert!(form
+                .fixed_argument_paths
+                .contains(&"/change_unit/affected_paths".to_owned()));
+            assert!(form
+                .fixed_argument_paths
+                .contains(&"/change_unit/effect_contract".to_owned()));
+            assert!(!form.agent_authored_inputs.iter().any(|input| matches!(
+                input.path.as_str(),
+                "/change_unit/affected_paths" | "/change_unit/effect_contract"
+            )));
+            assert_eq!(
+                form.canonical_minimal_request["change_unit"]["affected_paths"],
+                json!([])
+            );
+            assert_eq!(
+                form.canonical_minimal_request["change_unit"]["effect_contract"],
+                form.fixed_arguments["change_unit"]["effect_contract"]
+            );
+            let mut custom = Value::Object(form.canonical_minimal_request.clone());
+            custom["change_unit"]["effect_contract"]["expected_outputs"] =
+                json!(["Caller-authored output"]);
+            let mismatches = bind_fixed_arguments(&form, &custom)
+                .expect("Advisor fixed binding")
+                .mismatches;
+            assert_eq!(mismatches.len(), 1);
+            assert_eq!(mismatches[0].path, "/change_unit/effect_contract");
+            assert!(!mismatches[0].reached_core);
+            assert!(!mismatches[0].state_change_applied);
+        }
+    }
+
+    #[test]
+    fn form_digest_and_witness_change_with_the_submission_contract() {
+        let project_id = ProjectId::new("prj_submission_digest");
+        let mut transition = agent_transition(
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+            WorkflowActionRole::Allowed,
+            3,
+            WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id: TaskId::new("task_submission_digest"),
+                scope_revision: 1,
+                baseline_ref: RequiredNullable::null(),
+                current_change_unit_id: RequiredNullable::null(),
+                related_scope_decision_refs: Vec::new(),
+                selected_change_unit_operation: ChangeUnitOperation::CreateCurrent,
+            },
+            Vec::new(),
+        );
+        let first = workflow_action_form(&project_id, &transition).expect("first form");
+        let WorkflowTransitionSubmissionContract::UpdateScope {
+            contract:
+                WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit {
+                    required_change_unit_witness,
+                    ..
+                },
+        } = &mut transition.submission_contract
+        else {
+            panic!("general create contract")
+        };
+        required_change_unit_witness.scope_summary = "Alternate bounded witness.".to_owned();
+        let second = workflow_action_form(&project_id, &transition).expect("second form");
+        assert_eq!(first.fixed_arguments, second.fixed_arguments);
+        assert_ne!(first.form_ref, second.form_ref);
+        assert_ne!(
+            first.canonical_minimal_request,
+            second.canonical_minimal_request
         );
     }
 

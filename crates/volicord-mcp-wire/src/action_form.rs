@@ -4,7 +4,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 use volicord_types::methods::{WorkflowActionAdmissionClass, PUBLIC_METHOD_CONTRACTS};
-use volicord_types::schema::JsonObject;
+use volicord_types::schema::{
+    JsonObject, WorkflowRecordShapingCheckpointSubmissionContract,
+    WorkflowTransitionSubmissionContract, WorkflowUpdateScopeSubmissionContract,
+};
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::MethodName;
 use volicord_types::values::WorkflowActionSemanticVariant;
@@ -34,13 +37,36 @@ pub struct ActionFormInjectedAuthorityDescriptor {
 /// One exact semantic-variant projection from an action form to an MCP request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionFormRequestProjectionDescriptor {
+    submission_variant: ActionFormSubmissionVariant,
     pub method: MethodName,
     pub selected_semantic_variant: WorkflowActionSemanticVariant,
     pub semantic_variant_selector: Option<ActionFormSemanticVariantSelector>,
     pub fixed_arguments: &'static [ActionFormFixedArgumentDescriptor],
-    pub authored_inputs: &'static [ActionFormAuthoredInputDescriptor],
+    pub required_agent_inputs: &'static [ActionFormAuthoredInputDescriptor],
+    pub optional_agent_inputs: &'static [ActionFormAuthoredInputDescriptor],
     pub injected_authorities: &'static [ActionFormInjectedAuthorityDescriptor],
     pub core_current_authorities: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ActionFormSubmissionVariant {
+    CheckpointCreate,
+    CheckpointReplace,
+    UpdateKeep,
+    UpdateGeneralCreate,
+    UpdateGeneralReplace,
+    UpdateAdvisorCreate,
+    UpdateAdvisorReplace,
+    FinalizeAdvice,
+    AdvanceTask,
+    PrepareEvidenceCapture,
+    PrepareWrite,
+    StageArtifact,
+    RecordRun,
+    RequestUserAction,
+    ReconcileChanges,
+    CheckClose,
+    CloseTask,
 }
 
 /// Exact public discriminator value selecting one method-owned semantic variant.
@@ -140,7 +166,7 @@ const CHECKPOINT_REPLACE_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
         path_pattern: "/baseline_ref",
     },
 ];
-const CHECKPOINT_CREATE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const CHECKPOINT_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/summary",
     },
@@ -150,6 +176,22 @@ const CHECKPOINT_CREATE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/gaps",
     },
+];
+const CHECKPOINT_REPLACE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/summary",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/implementation_boundary",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/gaps",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/checkpoint_operation/stale_authority_actions/*/action",
+    },
+];
+const CHECKPOINT_OPTIONAL: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/source_refs",
     },
@@ -157,24 +199,12 @@ const CHECKPOINT_CREATE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
         path_pattern: "/evidence_refs",
     },
 ];
-const CHECKPOINT_REPLACE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
-    ActionFormAuthoredInputDescriptor {
-        path_pattern: "/summary",
-    },
-    ActionFormAuthoredInputDescriptor {
-        path_pattern: "/implementation_boundary",
-    },
-    ActionFormAuthoredInputDescriptor {
-        path_pattern: "/gaps",
-    },
+const CHECKPOINT_REPLACE_OPTIONAL: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/source_refs",
     },
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/evidence_refs",
-    },
-    ActionFormAuthoredInputDescriptor {
-        path_pattern: "/checkpoint_operation/stale_authority_actions/*/action",
     },
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/checkpoint_operation/stale_authority_actions/*/successor_gap",
@@ -192,7 +222,49 @@ const UPDATE_SCOPE_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
         path_pattern: "/change_unit/operation",
     },
 ];
-const UPDATE_SCOPE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const ADVISOR_UPDATE_SCOPE_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
+    TASK,
+    ActionFormFixedArgumentDescriptor {
+        authority: "scope_decision_resolutions",
+        path_pattern: "/related_scope_decision_refs",
+    },
+    ActionFormFixedArgumentDescriptor {
+        authority: "change_unit.operation",
+        path_pattern: "/change_unit/operation",
+    },
+    ActionFormFixedArgumentDescriptor {
+        authority: "advisor.affected_paths",
+        path_pattern: "/change_unit/affected_paths",
+    },
+    ActionFormFixedArgumentDescriptor {
+        authority: "advisor.effect_contract",
+        path_pattern: "/change_unit/effect_contract",
+    },
+];
+const UPDATE_SCOPE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/baseline_ref",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/goal_summary",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/scope_update",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/scope_boundary",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/non_goals",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/acceptance_criteria",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/autonomy_boundary",
+    },
+];
+const GENERAL_UPDATE_SCOPE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/baseline_ref",
     },
@@ -218,16 +290,52 @@ const UPDATE_SCOPE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
         path_pattern: "/change_unit/scope_summary",
     },
     ActionFormAuthoredInputDescriptor {
-        path_pattern: "/change_unit/affected_areas",
+        path_pattern: "/change_unit/affected_paths",
+    },
+];
+const ADVISOR_UPDATE_SCOPE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/baseline_ref",
     },
     ActionFormAuthoredInputDescriptor {
-        path_pattern: "/change_unit/affected_paths",
+        path_pattern: "/goal_summary",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/scope_update",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/scope_boundary",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/non_goals",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/acceptance_criteria",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/autonomy_boundary",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/change_unit/scope_summary",
+    },
+];
+const GENERAL_UPDATE_SCOPE_OPTIONAL: &[ActionFormAuthoredInputDescriptor] = &[
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/change_unit/affected_areas",
     },
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/change_unit/constraints",
     },
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/change_unit/effect_contract",
+    },
+];
+const ADVISOR_UPDATE_SCOPE_OPTIONAL: &[ActionFormAuthoredInputDescriptor] = &[
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/change_unit/affected_areas",
+    },
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/change_unit/constraints",
     },
 ];
 
@@ -254,10 +362,11 @@ const FINALIZE_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
         path_pattern: "/user_action_resolution_ids",
     },
 ];
-const FINALIZE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
-    ActionFormAuthoredInputDescriptor {
+const FINALIZE_REQUIRED: &[ActionFormAuthoredInputDescriptor] =
+    &[ActionFormAuthoredInputDescriptor {
         path_pattern: "/result_summary",
-    },
+    }];
+const FINALIZE_OPTIONAL: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/result_refs",
     },
@@ -272,7 +381,7 @@ const FINALIZE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
     },
 ];
 
-const ADVANCE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[];
+const NO_INPUTS: &[ActionFormAuthoredInputDescriptor] = &[];
 const IMPLEMENTATION_BASIS_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
     TASK,
     ActionFormFixedArgumentDescriptor {
@@ -284,7 +393,7 @@ const IMPLEMENTATION_BASIS_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
         path_pattern: "/baseline_ref",
     },
 ];
-const PREPARE_EVIDENCE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const PREPARE_EVIDENCE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/target",
     },
@@ -292,7 +401,7 @@ const PREPARE_EVIDENCE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
         path_pattern: "/capture",
     },
 ];
-const PREPARE_WRITE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const PREPARE_WRITE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/intended_operation",
     },
@@ -302,12 +411,13 @@ const PREPARE_WRITE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/product_file_write_intended",
     },
-    ActionFormAuthoredInputDescriptor {
-        path_pattern: "/sensitive_categories",
-    },
 ];
+const PREPARE_WRITE_OPTIONAL: &[ActionFormAuthoredInputDescriptor] =
+    &[ActionFormAuthoredInputDescriptor {
+        path_pattern: "/sensitive_categories",
+    }];
 const TASK_FIXED: &[ActionFormFixedArgumentDescriptor] = &[TASK];
-const STAGE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const STAGE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/display_name",
     },
@@ -345,7 +455,7 @@ const RECORD_RUN_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
         path_pattern: "/kind",
     },
 ];
-const RECORD_RUN_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const RECORD_RUN_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/run_id",
     },
@@ -362,6 +472,11 @@ const RECORD_RUN_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
         path_pattern: "/observed_changes",
     },
     ActionFormAuthoredInputDescriptor {
+        path_pattern: "/close_assessment",
+    },
+];
+const RECORD_RUN_OPTIONAL: &[ActionFormAuthoredInputDescriptor] = &[
+    ActionFormAuthoredInputDescriptor {
         path_pattern: "/artifact_inputs",
     },
     ActionFormAuthoredInputDescriptor {
@@ -369,9 +484,6 @@ const RECORD_RUN_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
     },
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/evidence_observations",
-    },
-    ActionFormAuthoredInputDescriptor {
-        path_pattern: "/close_assessment",
     },
 ];
 const REQUEST_USER_ACTION_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
@@ -388,7 +500,7 @@ const REQUEST_USER_ACTION_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
         path_pattern: "/request/change_unit_id",
     },
 ];
-const REQUEST_USER_ACTION_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const REQUEST_USER_ACTION_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/request/action",
     },
@@ -399,11 +511,11 @@ const REQUEST_USER_ACTION_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
         path_pattern: "/request/expires_at",
     },
 ];
-const RECONCILE_AUTHORED: &[ActionFormAuthoredInputDescriptor] =
+const RECONCILE_OPTIONAL: &[ActionFormAuthoredInputDescriptor] =
     &[ActionFormAuthoredInputDescriptor {
         path_pattern: "/resolution_requests",
     }];
-const CLOSE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
+const CLOSE_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/intent",
     },
@@ -417,141 +529,191 @@ const CLOSE_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[
         path_pattern: "/user_note",
     },
 ];
-const NO_AUTHORED: &[ActionFormAuthoredInputDescriptor] = &[];
-
 const PROJECTIONS: &[ActionFormRequestProjectionDescriptor] = &[
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::CheckpointCreate,
         method: MethodName::RecordShapingCheckpoint,
         selected_semantic_variant: WorkflowActionSemanticVariant::CreateInitial,
         semantic_variant_selector: Some(CHECKPOINT_CREATE_SELECTOR),
         fixed_arguments: CHECKPOINT_CREATE_FIXED,
-        authored_inputs: CHECKPOINT_CREATE_AUTHORED,
+        required_agent_inputs: CHECKPOINT_REQUIRED,
+        optional_agent_inputs: CHECKPOINT_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::CheckpointReplace,
         method: MethodName::RecordShapingCheckpoint,
         selected_semantic_variant: WorkflowActionSemanticVariant::ReplaceCurrent,
         semantic_variant_selector: Some(CHECKPOINT_REPLACE_SELECTOR),
         fixed_arguments: CHECKPOINT_REPLACE_FIXED,
-        authored_inputs: CHECKPOINT_REPLACE_AUTHORED,
+        required_agent_inputs: CHECKPOINT_REPLACE_REQUIRED,
+        optional_agent_inputs: CHECKPOINT_REPLACE_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &["checkpoint.predecessor_lineage"],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::UpdateKeep,
         method: MethodName::UpdateScope,
         selected_semantic_variant: WorkflowActionSemanticVariant::KeepCurrentChangeUnit,
         semantic_variant_selector: Some(UPDATE_SCOPE_KEEP_SELECTOR),
         fixed_arguments: UPDATE_SCOPE_FIXED,
-        authored_inputs: UPDATE_SCOPE_AUTHORED,
+        required_agent_inputs: UPDATE_SCOPE_REQUIRED,
+        optional_agent_inputs: NO_INPUTS,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &["scope_revision", "current_change_unit", "current_baseline"],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::UpdateGeneralCreate,
         method: MethodName::UpdateScope,
         selected_semantic_variant: WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
         semantic_variant_selector: Some(UPDATE_SCOPE_CREATE_SELECTOR),
         fixed_arguments: UPDATE_SCOPE_FIXED,
-        authored_inputs: UPDATE_SCOPE_AUTHORED,
+        required_agent_inputs: GENERAL_UPDATE_SCOPE_REQUIRED,
+        optional_agent_inputs: GENERAL_UPDATE_SCOPE_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &["scope_revision", "current_change_unit", "current_baseline"],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::UpdateGeneralReplace,
         method: MethodName::UpdateScope,
         selected_semantic_variant: WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
         semantic_variant_selector: Some(UPDATE_SCOPE_REPLACE_SELECTOR),
         fixed_arguments: UPDATE_SCOPE_FIXED,
-        authored_inputs: UPDATE_SCOPE_AUTHORED,
+        required_agent_inputs: GENERAL_UPDATE_SCOPE_REQUIRED,
+        optional_agent_inputs: GENERAL_UPDATE_SCOPE_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &["scope_revision", "current_change_unit", "current_baseline"],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::UpdateAdvisorCreate,
+        method: MethodName::UpdateScope,
+        selected_semantic_variant: WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+        semantic_variant_selector: Some(UPDATE_SCOPE_CREATE_SELECTOR),
+        fixed_arguments: ADVISOR_UPDATE_SCOPE_FIXED,
+        required_agent_inputs: ADVISOR_UPDATE_SCOPE_REQUIRED,
+        optional_agent_inputs: ADVISOR_UPDATE_SCOPE_OPTIONAL,
+        injected_authorities: COMMON_INJECTED,
+        core_current_authorities: &["scope_revision", "current_change_unit", "current_baseline"],
+    },
+    ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::UpdateAdvisorReplace,
+        method: MethodName::UpdateScope,
+        selected_semantic_variant: WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+        semantic_variant_selector: Some(UPDATE_SCOPE_REPLACE_SELECTOR),
+        fixed_arguments: ADVISOR_UPDATE_SCOPE_FIXED,
+        required_agent_inputs: ADVISOR_UPDATE_SCOPE_REQUIRED,
+        optional_agent_inputs: ADVISOR_UPDATE_SCOPE_OPTIONAL,
+        injected_authorities: COMMON_INJECTED,
+        core_current_authorities: &["scope_revision", "current_change_unit", "current_baseline"],
+    },
+    ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::FinalizeAdvice,
         method: MethodName::FinalizeAdvice,
         selected_semantic_variant: WorkflowActionSemanticVariant::FinalizeAdvice,
         semantic_variant_selector: None,
         fixed_arguments: FINALIZE_FIXED,
-        authored_inputs: FINALIZE_AUTHORED,
+        required_agent_inputs: FINALIZE_REQUIRED,
+        optional_agent_inputs: FINALIZE_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::AdvanceTask,
         method: MethodName::AdvanceTask,
         selected_semantic_variant: WorkflowActionSemanticVariant::AdvanceTask,
         semantic_variant_selector: None,
         fixed_arguments: FINALIZE_FIXED,
-        authored_inputs: ADVANCE_AUTHORED,
+        required_agent_inputs: NO_INPUTS,
+        optional_agent_inputs: NO_INPUTS,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::PrepareEvidenceCapture,
         method: MethodName::PrepareEvidenceCapture,
         selected_semantic_variant: WorkflowActionSemanticVariant::PrepareEvidenceCapture,
         semantic_variant_selector: None,
         fixed_arguments: IMPLEMENTATION_BASIS_FIXED,
-        authored_inputs: PREPARE_EVIDENCE_AUTHORED,
+        required_agent_inputs: PREPARE_EVIDENCE_REQUIRED,
+        optional_agent_inputs: NO_INPUTS,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::PrepareWrite,
         method: MethodName::PrepareWrite,
         selected_semantic_variant: WorkflowActionSemanticVariant::PrepareWrite,
         semantic_variant_selector: None,
         fixed_arguments: IMPLEMENTATION_BASIS_FIXED,
-        authored_inputs: PREPARE_WRITE_AUTHORED,
+        required_agent_inputs: PREPARE_WRITE_REQUIRED,
+        optional_agent_inputs: PREPARE_WRITE_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::StageArtifact,
         method: MethodName::StageArtifact,
         selected_semantic_variant: WorkflowActionSemanticVariant::StageArtifact,
         semantic_variant_selector: None,
         fixed_arguments: TASK_FIXED,
-        authored_inputs: STAGE_AUTHORED,
+        required_agent_inputs: STAGE_REQUIRED,
+        optional_agent_inputs: NO_INPUTS,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::RecordRun,
         method: MethodName::RecordRun,
         selected_semantic_variant: WorkflowActionSemanticVariant::RecordRun,
         semantic_variant_selector: None,
         fixed_arguments: RECORD_RUN_FIXED,
-        authored_inputs: RECORD_RUN_AUTHORED,
+        required_agent_inputs: RECORD_RUN_REQUIRED,
+        optional_agent_inputs: RECORD_RUN_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::RequestUserAction,
         method: MethodName::RequestUserAction,
         selected_semantic_variant: WorkflowActionSemanticVariant::RequestUserAction,
         semantic_variant_selector: None,
         fixed_arguments: REQUEST_USER_ACTION_FIXED,
-        authored_inputs: REQUEST_USER_ACTION_AUTHORED,
+        required_agent_inputs: REQUEST_USER_ACTION_REQUIRED,
+        optional_agent_inputs: NO_INPUTS,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::ReconcileChanges,
         method: MethodName::ReconcileChanges,
         selected_semantic_variant: WorkflowActionSemanticVariant::ReconcileChanges,
         semantic_variant_selector: None,
         fixed_arguments: TASK_FIXED,
-        authored_inputs: RECONCILE_AUTHORED,
+        required_agent_inputs: NO_INPUTS,
+        optional_agent_inputs: RECONCILE_OPTIONAL,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::CheckClose,
         method: MethodName::CheckClose,
         selected_semantic_variant: WorkflowActionSemanticVariant::CheckClose,
         semantic_variant_selector: None,
         fixed_arguments: TASK_FIXED,
-        authored_inputs: NO_AUTHORED,
+        required_agent_inputs: NO_INPUTS,
+        optional_agent_inputs: NO_INPUTS,
         injected_authorities: READ_INJECTED,
         core_current_authorities: &["project_state.state_version"],
     },
     ActionFormRequestProjectionDescriptor {
+        submission_variant: ActionFormSubmissionVariant::CloseTask,
         method: MethodName::CloseTask,
         selected_semantic_variant: WorkflowActionSemanticVariant::CloseTask,
         semantic_variant_selector: None,
         fixed_arguments: TASK_FIXED,
-        authored_inputs: CLOSE_AUTHORED,
+        required_agent_inputs: CLOSE_REQUIRED,
+        optional_agent_inputs: NO_INPUTS,
         injected_authorities: COMMON_INJECTED,
         core_current_authorities: &[],
     },
@@ -563,13 +725,65 @@ pub fn action_form_request_projection_descriptors(
 }
 
 pub fn action_form_request_projection(
-    method: MethodName,
-    selected_semantic_variant: WorkflowActionSemanticVariant,
+    contract: &WorkflowTransitionSubmissionContract,
 ) -> Option<&'static ActionFormRequestProjectionDescriptor> {
-    PROJECTIONS.iter().find(|descriptor| {
-        descriptor.method == method
-            && descriptor.selected_semantic_variant == selected_semantic_variant
-    })
+    let submission_variant = match contract {
+        WorkflowTransitionSubmissionContract::RecordShapingCheckpoint {
+            contract: WorkflowRecordShapingCheckpointSubmissionContract::CreateInitial { .. },
+        } => ActionFormSubmissionVariant::CheckpointCreate,
+        WorkflowTransitionSubmissionContract::RecordShapingCheckpoint {
+            contract: WorkflowRecordShapingCheckpointSubmissionContract::ReplaceCurrent { .. },
+        } => ActionFormSubmissionVariant::CheckpointReplace,
+        WorkflowTransitionSubmissionContract::UpdateScope {
+            contract: WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit { .. },
+        } => ActionFormSubmissionVariant::UpdateKeep,
+        WorkflowTransitionSubmissionContract::UpdateScope {
+            contract: WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit { .. },
+        } => ActionFormSubmissionVariant::UpdateGeneralCreate,
+        WorkflowTransitionSubmissionContract::UpdateScope {
+            contract: WorkflowUpdateScopeSubmissionContract::GeneralReplaceCurrentChangeUnit { .. },
+        } => ActionFormSubmissionVariant::UpdateGeneralReplace,
+        WorkflowTransitionSubmissionContract::UpdateScope {
+            contract: WorkflowUpdateScopeSubmissionContract::AdvisorCreateCurrentChangeUnit { .. },
+        } => ActionFormSubmissionVariant::UpdateAdvisorCreate,
+        WorkflowTransitionSubmissionContract::UpdateScope {
+            contract: WorkflowUpdateScopeSubmissionContract::AdvisorReplaceCurrentChangeUnit { .. },
+        } => ActionFormSubmissionVariant::UpdateAdvisorReplace,
+        WorkflowTransitionSubmissionContract::FinalizeAdvice { .. } => {
+            ActionFormSubmissionVariant::FinalizeAdvice
+        }
+        WorkflowTransitionSubmissionContract::AdvanceTask { .. } => {
+            ActionFormSubmissionVariant::AdvanceTask
+        }
+        WorkflowTransitionSubmissionContract::PrepareEvidenceCapture { .. } => {
+            ActionFormSubmissionVariant::PrepareEvidenceCapture
+        }
+        WorkflowTransitionSubmissionContract::PrepareWrite { .. } => {
+            ActionFormSubmissionVariant::PrepareWrite
+        }
+        WorkflowTransitionSubmissionContract::StageArtifact { .. } => {
+            ActionFormSubmissionVariant::StageArtifact
+        }
+        WorkflowTransitionSubmissionContract::RecordRun { .. } => {
+            ActionFormSubmissionVariant::RecordRun
+        }
+        WorkflowTransitionSubmissionContract::RequestUserAction { .. } => {
+            ActionFormSubmissionVariant::RequestUserAction
+        }
+        WorkflowTransitionSubmissionContract::ResolveUserAction { .. } => return None,
+        WorkflowTransitionSubmissionContract::ReconcileChanges { .. } => {
+            ActionFormSubmissionVariant::ReconcileChanges
+        }
+        WorkflowTransitionSubmissionContract::CheckClose { .. } => {
+            ActionFormSubmissionVariant::CheckClose
+        }
+        WorkflowTransitionSubmissionContract::CloseTask { .. } => {
+            ActionFormSubmissionVariant::CloseTask
+        }
+    };
+    PROJECTIONS
+        .iter()
+        .find(|descriptor| descriptor.submission_variant == submission_variant)
 }
 
 /// Selects the submitted method-owned semantic variant through the canonical
@@ -647,15 +861,11 @@ impl ActionFormRequestProjectionDescriptor {
 pub fn action_form_request_projection_integrity_errors() -> Vec<String> {
     let mut errors = Vec::new();
     let mut variants = BTreeSet::new();
-    let mut selectors = BTreeSet::new();
     let mut projected_methods = BTreeSet::new();
     for projection in PROJECTIONS {
-        if !variants.insert((
-            projection.method.as_str(),
-            projection.selected_semantic_variant,
-        )) {
+        if !variants.insert(projection.submission_variant) {
             errors.push(format!(
-                "duplicate action-form projection for {} {}",
+                "duplicate action-form submission projection for {} {}",
                 projection.method.as_str(),
                 projection.selected_semantic_variant.as_str()
             ));
@@ -664,7 +874,9 @@ pub fn action_form_request_projection_integrity_errors() -> Vec<String> {
         let method_projection_count = PROJECTIONS
             .iter()
             .filter(|candidate| candidate.method == projection.method)
-            .count();
+            .map(|candidate| candidate.selected_semantic_variant)
+            .collect::<BTreeSet<_>>()
+            .len();
         match (
             method_projection_count,
             projection.semantic_variant_selector,
@@ -678,26 +890,17 @@ pub fn action_form_request_projection_integrity_errors() -> Vec<String> {
                 projection.method.as_str(),
                 projection.selected_semantic_variant.as_str()
             )),
-            (_, Some(selector)) => {
-                if !selectors.insert((projection.method.as_str(), selector.path, selector.value)) {
-                    errors.push(format!(
-                        "duplicate action-form selector for {} {}={}",
-                        projection.method.as_str(),
-                        selector.path,
-                        selector.value
-                    ));
-                }
+            (_, Some(selector))
                 if !projection
                     .fixed_arguments
                     .iter()
-                    .any(|fixed| fixed.path_pattern == selector.path)
-                {
-                    errors.push(format!(
-                        "{} semantic-variant selector {} is not a fixed argument",
-                        projection.method.as_str(),
-                        selector.path
-                    ));
-                }
+                    .any(|fixed| fixed.path_pattern == selector.path) =>
+            {
+                errors.push(format!(
+                    "{} semantic-variant selector {} is not a fixed argument",
+                    projection.method.as_str(),
+                    selector.path
+                ));
             }
             _ => {}
         }
@@ -738,7 +941,11 @@ pub fn action_form_request_projection_integrity_errors() -> Vec<String> {
                     fixed.path_pattern
                 ));
             }
-            for authored in projection.authored_inputs {
+            for authored in projection
+                .required_agent_inputs
+                .iter()
+                .chain(projection.optional_agent_inputs)
+            {
                 if paths_overlap(fixed.path_pattern, authored.path_pattern) {
                     errors.push(format!(
                         "{} fixed pointer {} overlaps Agent-authored slot {}",
@@ -749,7 +956,11 @@ pub fn action_form_request_projection_integrity_errors() -> Vec<String> {
                 }
             }
         }
-        for authored in projection.authored_inputs {
+        for authored in projection
+            .required_agent_inputs
+            .iter()
+            .chain(projection.optional_agent_inputs)
+        {
             if contract
                 .input_descriptor()
                 .semantic_types_at_pointer_pattern(authored.path_pattern)

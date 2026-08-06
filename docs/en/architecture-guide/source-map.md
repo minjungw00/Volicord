@@ -17,7 +17,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-types/src/lib.rs` | Public owner-module routing. Shared definitions are public through their owning modules. |
-| `crates/volicord-types/src/schema.rs` | Shared request, response, and stored-record shapes. |
+| `crates/volicord-types/src/schema.rs` | Shared request, response, and stored-record shapes, including the closed state-specific `WorkflowTransitionSubmissionContract`, bounded typed form witnesses, and the canonical Advisor observe-only effect contract. |
 | `crates/volicord-types/src/methods.rs` | Public method request and result schemas, method-operation mappings, and exact typed accessors for method-owned `ChangeUnitUpdate` object members. |
 | `crates/volicord-types/src/product_path.rs` | Platform-neutral Product Repository relative-path value, lexical validation, pure component-aware containment relationships, and immutable `WriteTicketPathScope` uniqueness and disjointness; no filesystem observation. |
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
@@ -277,7 +277,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-mcp-wire/src/methods.rs` | Exact MCP argument, structured result, workflow action form, authoritative argument context, retry contract, operational error, compact mutation, UserAction projection, serialization, and generated request/result schema ownership. |
-| `crates/volicord-mcp-wire/src/action_form.rs` | The canonical method-and-semantic-variant action-form projection descriptors, exact submitted-variant selectors, fixed and Agent-authored path ownership, and descriptor integrity checks. |
+| `crates/volicord-mcp-wire/src/action_form.rs` | Canonical projection from closed transition submission-contract branches to MCP request paths, exact submitted-variant selectors, required/optional Agent and fixed path ownership, and descriptor integrity checks. |
 | `crates/volicord-mcp-wire/src/semantic_schema.rs` | Closed type-owned semantic schema nodes, generic required-nullable semantics, explicit discriminators, branch-local semantic validation metadata, bounded annotation-preserving runtime projection, deterministic JSON Schema and descriptor digests, canonical examples, and descriptor integrity checks. |
 | `crates/volicord-mcp-wire/src/tool_contracts.rs` | The single `AgentToolId`-keyed MCP contract entries for input/output descriptors, descriptions, typed canonical examples, exact request decoding, and catalog integrity. |
 | `crates/volicord-mcp-wire/src/tools.rs` | Exact capability-field names, tool annotations, and capability-selected tool-definition and tool-result envelopes. |
@@ -301,7 +301,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list` and `tools/call` parameter decoding, canonical tool selection, adapter/Core invocation, and shared canonical tool-result carrier assembly. It does not frame transport messages or own mutation, recovery, UserAction, or metric projection. |
 | `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail selection, effect anchoring, compact method-result projection, fresh-authority composition, and capability-driven normal result-budget enforcement. |
 | `crates/volicord-mcp/src/authority_refresh.rs` | Post-mutation Agent Session binding, current authority reread, coordinate validation, and extraction of the fresh compact authority receipt plus tagged workflow authority. |
-| `crates/volicord-mcp/src/action_form.rs` | Pure descriptor-bound projection from neutral Agent `TransitionDescriptor` values to deterministic method-and-variant MCP form catalogs and variant-aware authority-only retry contracts; it does not recalculate transition availability or maintain a second method/variant selector. |
+| `crates/volicord-mcp/src/action_form.rs` | Pure descriptor-bound projection from neutral Agent `TransitionDescriptor` values and their exact submission contracts to deterministic method-and-variant MCP form catalogs, fixed binders, contract-owned validation witnesses, and variant-aware authority-only retry contracts; it does not hydrate forms from method examples or recalculate transition availability. |
 | `crates/volicord-mcp/src/committed_result_recovery.rs` | Capability-selected, authority-first bounded recovery after committed mutation projection, refresh, or post-effect failures without mutation retry. |
 | `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction coordinate extraction, neutral current-fact reread, adapter-owned safe MCP result construction, neutral failure mapping, and shared CLI inbox fallback attachment. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime-session finding and diagnostic-event persistence plus bounded best-effort handling for diagnostic-carrier failures where the contract permits it. |

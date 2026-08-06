@@ -684,8 +684,11 @@ required refs, separate close-readiness facts, and one deterministic
 `WorkflowTransitionCatalog`. Every `TransitionDescriptor` carries a unique
 `WorkflowActionKey` of method plus closed method-owned semantic variant, a
 closed `agent`, `user`, or `system` actor, `required` or `allowed` role, exact
-fixed authority coordinates, Agent input requirement families, effect class,
-and expected result state. Exactly zero or one descriptor is required, and a
+fixed authority coordinates, a closed method- and state-specific
+`WorkflowTransitionSubmissionContract`, effect class, and expected result
+state. The contract distinguishes fixed, required Agent-authored, and optional
+Agent-authored values and carries bounded typed form-validation witnesses.
+Exactly zero or one descriptor is required, and a
 required descriptor is always a catalog member. Every nonterminal state waits
 for an exact current UserAction, exposes an executable Agent transition, or
 exposes an explicit close, cancellation, or supersession path.
@@ -704,6 +707,10 @@ The machine also owns all `volicord.update_scope` variant availability. Its
 coordinates select the exact `ChangeUnitOperation` against current Change Unit
 authority; no adapter or projection recalculates create, keep, or replace
 availability. Core does not own MCP JSON input slots or action-form digests.
+For Advisor create/replace, Core selects the contract that fixes empty affected
+paths and the canonical observe-only effect contract and grants no Product
+Repository authority. The bounded witness values validate a projected form;
+they never stand for user authority, a product decision, or recommended input.
 An authority-coordinate mismatch after schema validation
 is a no-effect `AuthorityBasisMismatch` with typed `expected` and `received`
 values; it does not make an otherwise valid Task corrupt.

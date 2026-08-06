@@ -429,10 +429,8 @@ close_task
 ```
 
 `TransitionDescriptor.actor` uses `agent`, `user`, or `system`, and `role`
-uses `required` or `allowed`. Agent input requirements use
-`shaping_checkpoint`, `scope_and_change_unit`, `advice_result`,
-`evidence_capture`, `proposed_write`, `artifact`, `run_observation`,
-`user_action_draft`, `change_reconciliation`, or `close_intent`.
+uses `required` or `allowed`. The closed method-specific submission-contract
+branches and their exact input roles are owned by [API State Schemas](schema-state.md#workflow-projection-and-shaping-checkpoints).
 `effect_class` uses `core_state_mutation`, `user_channel_mutation`,
 `write_authorization`, `artifact_staging`, `evidence_capture`,
 `execution_recording`, `read_only_assessment`, or `terminal_mutation`.

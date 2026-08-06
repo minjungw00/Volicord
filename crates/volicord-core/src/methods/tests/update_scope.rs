@@ -341,6 +341,51 @@ fn advisor_current_change_unit_requires_explicit_shaping_checkpoint() -> Result<
 }
 
 #[test]
+fn advisor_rejects_a_custom_effect_contract_without_state_change() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let intake = harness.service.intake(
+        intake_request(
+            "req_advisor_custom_contract",
+            "idem_advisor_custom_contract",
+            false,
+            Some(0),
+            RequestedMode::Advisor,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = response_record_id(&intake.response_value, "task_ref");
+    let before = harness.counts()?;
+    let mut request = advisor_update_scope_request(
+        "req_advisor_custom_contract_scope",
+        "idem_advisor_custom_contract_scope",
+        false,
+        Some(before.state_version),
+        &task_id,
+        ChangeUnitOperation::CreateCurrent,
+        "Attempt a custom Advisor effect contract.",
+    );
+    request
+        .change_unit
+        .effect_contract
+        .as_mut()
+        .expect("Advisor contract")
+        .expected_outputs
+        .push("Caller-authored output".to_owned());
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn ready_without_change_unit_catalog_exposes_only_create_variant() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(

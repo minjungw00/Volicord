@@ -70,7 +70,7 @@ profile의 semantic capability로만 결정합니다.
 | 도구 | 입력 의미 type | 필수 nullable 최상위 field | Typed example | 출력 의미 type | 출력 discriminator |
 |---|---|---|---|---|---|
 | `volicord.intake` | `McpIntakeArguments` | `acceptance_policy`: `AcceptancePolicy`<br>`lineage`: `TaskLineageInput` | `create_new`<br>`resume_active`<br>`supersede_active`<br>`reject_if_active` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_IntakeResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit`<br>`advisor_create_current_change_unit`<br>`advisor_replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | 없음 | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
 | `volicord.advance_task` | `McpAdvanceTaskArguments` | 없음 | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
@@ -593,6 +593,7 @@ WorkflowActionForm:
   form_ref: RequestHash
   expected_state_version: integer
   fixed_arguments: object
+  fixed_argument_paths: string[]
   agent_authored_inputs: WorkflowActionInput[]
   canonical_minimal_request: object
 
@@ -612,7 +613,7 @@ RetryContract:
 ```
 
 `form_ref`는 프로젝트, Task, 완전한 `action_key`, 예상 상태 버전, 정확한 고정 권한 좌표,
-완전한 `fixed_arguments` 객체와 descriptor 소유 고정 경로, 현재 workflow-contract,
+정확한 `WorkflowTransitionSubmissionContract`, 완전한 `fixed_arguments` 객체와 descriptor 소유 고정 경로, 현재 workflow-contract,
 action-form-contract, semantic-schema, scalar-contract digest의 불투명 canonical digest입니다.
 숫자 workflow 또는 action-form 버전이 아닙니다.
 Form catalog는 Core transition catalog의 순서를 보존합니다. 각 Agent
@@ -622,11 +623,13 @@ form도 없습니다. 현재 Task가 있는 일반 status, mutation 성공과 �
 인자 context에 나타납니다. 활성 Task가 없는 status의 catalog는 null입니다. 단일 form은
 독립된 권한 계약이 아닙니다.
 
-Adapter는 form을 노출하기 전에 모든 고정 경로가 선택한 메서드-variant schema에 존재하는지,
-각 고정 값이 선언된 semantic type과 일치하는지, 필수 Agent 작성 입력을 식별했는지, 고정
-값이 하나도 무시되지 않는지 확인합니다. 또한 `canonical_minimal_request`가 같은 workflow
-snapshot에서 semantic 검증, 정확한 Rust decode, 고정 값 binding, 정확한 variant 선택,
-commit 없는 Core transition admission 검사를 모두 통과해야 합니다. 실패하면 form을 노출하지
+Adapter는 정확한 submission contract와 wire semantic descriptor로 고정 값과 필수·선택
+Agent 작성 slot을 도출합니다. Form을 노출하기 전에 모든 고정 경로가 선택한 메서드-variant
+schema에 존재하는지, 각 고정 값이 선언된 semantic type과 일치하는지, 고정 값이 하나도
+무시되지 않는지 확인합니다. 또한 `canonical_minimal_request`가 semantic 검증, 정확한 Rust
+decode, 고정 값 binding, 정확한 variant 선택을 모두 통과해야 합니다. Minimal request는
+submission contract의 한정된 typed witness 값만 사용합니다. 이 값은 form 형태 검증용이며
+사용자 권한이나 제품 결정을 주장하지 않고 권장 입력도 아닙니다. 실패하면 form을 노출하지
 않고 `INTERNAL_CONTRACT_INCONSISTENT`를 반환하거나 기록하며 가까운 form을 선택하지 않습니다.
 
 정규 공개 메서드·도구 registry는 모든 호출 대상을 `read_only`,
@@ -646,8 +649,8 @@ stale이거나, 다른 Task·프로젝트·메서드에 속한 ref는 Core 전�
 fallback이나 필수 form fallback은 없습니다.
 읽기 전용 `volicord.status`는 catalog를 관찰할 뿐 mutation 권한을 만들지 않습니다.
 
-Form admission 뒤에는 descriptor 기반 binder 하나가 선택된 메서드와 semantic variant에서
-모든 고정 경로를 해석합니다. 호출자에게 보이는 고정 값은 메서드
+Form admission 뒤에는 descriptor 기반 binder 하나가 그 form에 투영된 정확한
+`fixed_argument_paths`를 사용합니다. 호출자에게 보이는 고정 값은 메서드
 decode나 Core 진입 전에 모두 존재하고 form 값과 깊은 동등성을 만족해야 합니다. JSON
 원시 타입과 배열 순서는 정확히 일치해야 하며 객체 member 순서는 무관합니다. JSON
 null은 문자열 `"null"`이나 빈 문자열과 같지 않습니다. 프로젝트와 예상 상태 버전은
@@ -689,12 +692,16 @@ checkpoint, 비쓰기 Change Unit,
 이 form은 scope 소유 resolution ref와 메서드 소유 폐쇄형 동작 하나를 정확히 고정합니다.
 `keep_current_change_unit`은 `keep_current`를 고정하고 기준선과 선택적 scope edit만 작성
 입력으로 남깁니다. `create_current_change_unit`과 `replace_current_change_unit`은 각 동작을
-고정하고 작성하는 `scope_summary`, `affected_paths`, 기준선을 필수로 하며 선택적 Change
-Unit 필드와 effect contract를 유지합니다. 현재 Change Unit이 없으면 create만, 있으면
+고정합니다. 일반 `direct`·`work` form은 작성하는 `scope_summary`, `affected_paths`, 기준선을
+필수로 하고 선택적 `affected_areas`, `constraints`, effect contract를 유지합니다. Advisor
+create와 replace는 `affected_paths=[]`와 정규 observe-only effect contract를 고정하므로 두
+필드는 Agent 작성 값이 아닙니다. `scope_summary`, 기준선, 필수 nullable scope 필드, 권한을
+만들지 않는 선택적 Change Unit 설명 필드만 작성 값으로 남으며 Product Repository 권한을
+부여하지 않습니다. 현재 Change Unit이 없으면 create만, 있으면
 keep과 Core 정책이 교체를 허용할 때의 replace만 만들고 create는 만들지 않습니다.
 현재 shaping application을 무효화할 implementation replacement는 form을 만들지 않습니다.
-Advisor create와 replace에는 Core의 정규 비쓰기 조건이 그대로 적용됩니다. 현재 기준선과
-범위 리비전은 각 허용 form과 주입된 예상 상태 버전이 포괄하는 Core 현재 권한으로 둡니다.
+현재 기준선과 범위 리비전은 각 허용 form과 주입된 예상 상태 버전이 포괄하는 Core 현재
+권한으로 둡니다.
 
 호출자에게 보이는 고정 값을 하나라도 바꾸거나 생략하면 adapter는 결정적으로 정렬되고
 개수가 제한된 mismatch entry와 함께 `ACTION_FORM_ARGUMENT_MISMATCH`를 반환합니다. 각
@@ -739,7 +746,9 @@ Typed canonical example은 request 값에서 직렬화되고 같은 entry를 통
 Descriptor 검증이 성공하면 정확한 Rust request decoder도 성공해야 합니다. 둘의 불일치는
 내부 schema contract 실패(`-32603`)이며 adapter diagnostic을 기록하고 Core나 사용자 field
 issue 경로에 도달하지 않습니다. Conformance는 정규 registry에 이 검증/decode parity를
-적용합니다.
+적용합니다. Canonical example은 완전한 메서드 요청을 문서화하고 시험하지만 action form
+생성은 그 값을 복사하지 않으며 현재 transition submission contract의 typed witness만
+사용합니다.
 
 ```schema
 McpToolErrorIssue:

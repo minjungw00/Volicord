@@ -935,6 +935,8 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
                 UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
                 "create_current_change_unit",
                 "replace_current_change_unit",
+                "advisor_create_current_change_unit",
+                "advisor_replace_current_change_unit",
             ],
         ),
         (

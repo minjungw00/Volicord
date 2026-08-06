@@ -482,6 +482,7 @@ Owner links:
 - Supported values for `lifecycle_phase`, `close_reason`, and `result`: [task lifecycle values](schema-value-sets.md#task-lifecycle-values)
 - Product meaning of lifecycle areas: [Core Model task lifecycle](../core-model.md#6-task-lifecycle)
 
+<a id="workflow-projection-and-shaping-checkpoints"></a>
 ## `WorkflowProjection` and shaping checkpoints
 
 `StateSummary.workflow` is the single tagged progression authority. Its `kind` is one of `no_active_task`, `shaping_required`, `awaiting_user_action`, `decision_recovery_required`, `ready_to_apply_decisions`, `ready_for_change_unit`, `ready_to_finalize_advice`, `ready_for_implementation`, `implementation`, `close_review`, or `terminal`.
@@ -506,9 +507,10 @@ TransitionDescriptor:
   role: required | allowed
   expected_state_version: integer
   fixed_authority_coordinates: WorkflowActionAuthorityCoordinates
-  agent_input_requirements: string[]
+  submission_contract: WorkflowTransitionSubmissionContract
   effect_class: string
   expected_result_state: string
+  authority_invalidation: permitted | forbidden
   required_refs: StateRecordRef[]
 
 WorkflowActionKey:
@@ -527,6 +529,25 @@ WorkflowActionAuthorityCoordinates.update_scope:
   current_change_unit_id: ChangeUnitId | null
   related_scope_decision_refs: StateRecordRef[]
   selected_change_unit_operation: keep_current | create_current | replace_current
+
+WorkflowTransitionSubmissionContract:
+  submission_method: string
+  # record_shaping_checkpoint and update_scope branches
+  contract: WorkflowRecordShapingCheckpointSubmissionContract | WorkflowUpdateScopeSubmissionContract
+  # other Agent-owned method branches
+  required_agent_input_witness: object
+  optional_agent_input_witness: object
+  # resolve_user_action branch
+  user_channel_submission_required: true
+
+WorkflowUpdateScopeSubmissionContract:
+  submission_variant: keep_current_change_unit | general_create_current_change_unit | general_replace_current_change_unit | advisor_create_current_change_unit | advisor_replace_current_change_unit
+  required_agent_input_witness: WorkflowUpdateScopeRequiredWitness
+  required_change_unit_witness: object
+  optional_agent_input_witness: object
+  # Advisor create/replace only
+  fixed_values: WorkflowAdvisorChangeUnitFixedValues
+  constraints: WorkflowAdvisorChangeUnitConstraints
 
 ShapingUserActionDraft:
   action: UserActionDraft
@@ -688,9 +709,14 @@ transition. `close_readiness` is a separate completion assessment.
 method and closed method-owned semantic variant. Each `WorkflowActionKey`
 appears at most once and exactly zero or one descriptor has `role=required`.
 Every required descriptor is a catalog member. Each descriptor binds one
-closed actor, exact state version, fixed Core authority coordinates, Agent
-input requirement families when the actor is `agent`, effect class, expected
-result state, authority-invalidation policy, and required refs. A User wait contains the exact current
+closed actor, exact state version, fixed Core authority coordinates, a closed
+method- and state-specific `WorkflowTransitionSubmissionContract`, effect
+class, expected result state, authority-invalidation policy, and required refs.
+The submission contract's method and semantic variant must match both
+`action_key` and the fixed coordinates. It separates authority-fixed values,
+required Agent-authored values, optional Agent-authored values, and bounded
+typed witness values. Witness values validate the form contract only; they are
+not recommendations, user authority, or product decisions. A User wait contains the exact current
 `volicord.resolve_user_action` transition and request refs. Every nonterminal
 Agent-owned state exposes at least one executable Agent transition or an
 explicit close, cancellation, or supersession path.
@@ -703,11 +729,16 @@ revision, baseline, resolution, and method-local authority facts. The same
 machine decision owns update-scope availability: no current Change Unit admits
 only `create_current_change_unit`; a current Change Unit admits
 `keep_current_change_unit` and, when current authority permits it,
-`replace_current_change_unit`, never `create_current_change_unit`. MCP projects
+`replace_current_change_unit`, never `create_current_change_unit`. Update-scope
+submission contracts distinguish keep, general create/replace for `direct` or
+`work`, and Advisor create/replace. Advisor create/replace fix
+`affected_paths=[]` and the canonical observe-only `ChangeUnitEffectContract`;
+neither field is Agent-authored and the contract grants no Product Repository
+authority. MCP projects
 each Agent descriptor into exactly one executable, variant-specific action form
 and projects no form without a descriptor. Form generation checks schema paths,
-semantic values, required Agent inputs, exact binding, a validating canonical
-minimal request, and no-commit admission against this same snapshot. MCP forms
+semantic values, submission-contract input roles, exact binding, and a
+validating canonical minimal request against this same snapshot. MCP forms
 and input slots are not Core state.
 
 A compatible shaping application carried from an ancestor remains `applied`

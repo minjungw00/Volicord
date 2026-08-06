@@ -88,6 +88,41 @@ macro_rules! semantic_variants {
 /// verify the declared discriminator without using constants for selection.
 pub const MCP_TAGGED_UNION_CONTRACTS: &[McpTaggedUnionContract] = &[
     McpTaggedUnionContract {
+        semantic_type_patterns: &["WorkflowTransitionSubmissionContract"],
+        discriminator_path: "/submission_method",
+        variants: semantic_variants!(
+            "record_shaping_checkpoint",
+            "update_scope",
+            "finalize_advice",
+            "advance_task",
+            "prepare_evidence_capture",
+            "prepare_write",
+            "stage_artifact",
+            "record_run",
+            "request_user_action",
+            "resolve_user_action",
+            "reconcile_changes",
+            "check_close",
+            "close_task"
+        ),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["WorkflowRecordShapingCheckpointSubmissionContract"],
+        discriminator_path: "/submission_variant",
+        variants: semantic_variants!("create_initial", "replace_current"),
+    },
+    McpTaggedUnionContract {
+        semantic_type_patterns: &["WorkflowUpdateScopeSubmissionContract"],
+        discriminator_path: "/submission_variant",
+        variants: semantic_variants!(
+            "keep_current_change_unit",
+            "general_create_current_change_unit",
+            "general_replace_current_change_unit",
+            "advisor_create_current_change_unit",
+            "advisor_replace_current_change_unit"
+        ),
+    },
+    McpTaggedUnionContract {
         semantic_type_patterns: &["StaleShapingAuthorityAction"],
         discriminator_path: "/action",
         variants: semantic_variants!(

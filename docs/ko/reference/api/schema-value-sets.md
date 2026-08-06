@@ -433,9 +433,8 @@ close_task
 ```
 
 `TransitionDescriptor.actor`는 `agent`, `user`, `system`을 사용하고 `role`은
-`required`, `allowed`를 사용합니다. Agent 입력 요구사항은 `shaping_checkpoint`,
-`scope_and_change_unit`, `advice_result`, `evidence_capture`, `proposed_write`, `artifact`,
-`run_observation`, `user_action_draft`, `change_reconciliation`, `close_intent`를 사용합니다.
+`required`, `allowed`를 사용합니다. 폐쇄형 메서드별 submission contract branch와 정확한
+입력 역할은 [API 상태 schema](schema-state.md#workflow-projection-and-shaping-checkpoints)가 담당합니다.
 `effect_class`는 `core_state_mutation`, `user_channel_mutation`, `write_authorization`,
 `artifact_staging`, `evidence_capture`, `execution_recording`, `read_only_assessment`,
 `terminal_mutation`을 사용합니다. `expected_result_state`는

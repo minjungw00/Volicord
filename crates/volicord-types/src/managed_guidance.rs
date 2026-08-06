@@ -76,6 +76,8 @@ pub const WORKFLOW_CONTRACT_FACTS: &[&str] = &[
     "catalog_contains_no_non_executable_task_bound_transition",
     "every_nonterminal_state_has_user_wait_agent_transition_or_terminal_path",
     "core_admission_consumes_exact_transition_descriptor",
+    "every_transition_owns_a_method_and_state_specific_submission_contract",
+    "advisor_scope_submission_fixes_empty_paths_and_canonical_observe_only_effects",
     "retry_contract_projects_only_typed_core_recovery",
     "current_submitted_canonicality_match_and_compatibility_remain_distinct",
 ];
@@ -83,9 +85,12 @@ pub const WORKFLOW_CONTRACT_FACTS: &[&str] = &[
 /// Closed semantics whose change invalidates MCP action-form identity.
 pub const ACTION_FORM_CONTRACT_FACTS: &[&str] = &[
     "mcp_projects_each_descriptor_bound_action_form",
-    "form_ref_binds_project_task_action_state_coordinates_workflow_action_form_semantic_schema_and_scalar_contracts",
+    "form_ref_binds_project_task_action_state_coordinates_submission_workflow_action_form_semantic_schema_and_scalar_contracts",
     "every_agent_transition_has_exactly_one_executable_form",
-    "canonical_minimal_request_passes_schema_binding_and_no_commit_admission",
+    "fixed_and_agent_authored_inputs_derive_from_the_exact_submission_contract",
+    "canonical_minimal_request_uses_only_bounded_submission_contract_witness_values",
+    "method_examples_never_supply_live_action_form_policy_or_witness_values",
+    "canonical_minimal_request_passes_schema_and_binding_validation",
     "task_bound_method_is_admitted_before_core",
     "allowed_task_bound_mutation_requires_exact_method_and_variant_form_ref",
     "action_form_never_authorizes_different_method_or_semantic_variant",

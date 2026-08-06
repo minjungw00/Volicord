@@ -81,6 +81,27 @@ mod tests {
     #[test]
     fn workflow_transition_catalog_rejects_duplicate_or_incoherent_keys() {
         let transition = |variant: &str, operation: &str, role: &str| {
+            let operation = match operation {
+                "keep_current" => ChangeUnitOperation::KeepCurrent,
+                "replace_current" => ChangeUnitOperation::ReplaceCurrent,
+                other => panic!("unsupported test operation {other}"),
+            };
+            let coordinates = WorkflowActionAuthorityCoordinates::UpdateScope {
+                task_id: TaskId::new("task_catalog"),
+                scope_revision: 2,
+                baseline_ref: RequiredNullable::some(
+                    BaselineRef::parse("baseline_catalog").expect("baseline"),
+                ),
+                current_change_unit_id: RequiredNullable::some(ChangeUnitId::new(
+                    "change_unit_catalog",
+                )),
+                related_scope_decision_refs: Vec::new(),
+                selected_change_unit_operation: operation,
+            };
+            let submission_contract = WorkflowTransitionSubmissionContract::for_current_transition(
+                TaskMode::Work,
+                &coordinates,
+            );
             json!({
                 "action_key": {
                     "method": "volicord.update_scope",
@@ -89,16 +110,8 @@ mod tests {
                 "actor": "agent",
                 "role": role,
                 "expected_state_version": 7,
-                "fixed_authority_coordinates": {
-                    "coordinate_kind": "update_scope",
-                    "task_id": "task_catalog",
-                    "scope_revision": 2,
-                    "baseline_ref": "baseline_catalog",
-                    "current_change_unit_id": "change_unit_catalog",
-                    "related_scope_decision_refs": [],
-                    "selected_change_unit_operation": operation
-                },
-                "agent_input_requirements": ["scope_and_change_unit"],
+                "fixed_authority_coordinates": coordinates,
+                "submission_contract": submission_contract,
                 "effect_class": "core_state_mutation",
                 "expected_result_state": "reevaluate_current_authority",
                 "authority_invalidation": "permitted",
@@ -189,7 +202,7 @@ mod tests {
 
         for (field, wrong_value) in [
             ("actor", json!("system")),
-            ("agent_input_requirements", json!([])),
+            ("submission_contract", json!(null)),
             ("effect_class", json!("terminal_mutation")),
             ("expected_result_state", json!("terminal")),
         ] {
@@ -200,6 +213,47 @@ mod tests {
                 "incoherent {field} must fail strict catalog decoding"
             );
         }
+
+        let close_coordinates = WorkflowActionAuthorityCoordinates::CheckClose {
+            task_id: TaskId::new("task_catalog"),
+        };
+        let mut wrong_contract_method = valid.clone();
+        wrong_contract_method["transitions"][0]["submission_contract"] = json!(
+            WorkflowTransitionSubmissionContract::for_current_transition(
+                TaskMode::Work,
+                &close_coordinates,
+            )
+        );
+        assert!(
+            serde_json::from_value::<WorkflowTransitionCatalog>(wrong_contract_method).is_err()
+        );
+
+        let replace_coordinates = WorkflowActionAuthorityCoordinates::UpdateScope {
+            task_id: TaskId::new("task_catalog"),
+            scope_revision: 2,
+            baseline_ref: RequiredNullable::some(
+                BaselineRef::parse("baseline_catalog").expect("baseline"),
+            ),
+            current_change_unit_id: RequiredNullable::some(ChangeUnitId::new(
+                "change_unit_catalog",
+            )),
+            related_scope_decision_refs: Vec::new(),
+            selected_change_unit_operation: ChangeUnitOperation::ReplaceCurrent,
+        };
+        let mut advisor_transition = valid["transitions"][1].clone();
+        advisor_transition["submission_contract"] = json!(
+            WorkflowTransitionSubmissionContract::for_current_transition(
+                TaskMode::Advisor,
+                &replace_coordinates,
+            )
+        );
+        let valid_advisor = json!({"transitions": [advisor_transition]});
+        serde_json::from_value::<WorkflowTransitionCatalog>(valid_advisor.clone())
+            .expect("canonical Advisor submission contract");
+        let mut malformed_advisor = valid_advisor;
+        malformed_advisor["transitions"][0]["submission_contract"]["contract"]["fixed_values"]
+            ["affected_paths"] = json!(["src/lib.rs"]);
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(malformed_advisor).is_err());
 
         let mut mixed_state_versions = valid.clone();
         mixed_state_versions["transitions"][1]["expected_state_version"] = json!(8);

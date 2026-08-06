@@ -45,7 +45,8 @@ use volicord_types::ids::{
 use volicord_types::methods::{ChangeUnitUpdate, InitialScope, ScopeUpdate};
 use volicord_types::product_path::{ProductRelativePath, WriteTicketPathScope};
 use volicord_types::schema::{
-    ChangeUnitEffectContract, EvidenceUpdateProvenance, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
+    advisor_observe_only_effect_contract, ChangeUnitEffectContract, EvidenceUpdateProvenance,
+    BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
 };
 use volicord_types::values::CloseMutationIntent;
 use volicord_types::values::{
@@ -1091,25 +1092,7 @@ fn advisor_update_scope_request(
         .change_unit
         .fields
         .insert("affected_paths".to_owned(), json!([]));
-    request.change_unit.effect_contract = Some(ChangeUnitEffectContract {
-        allowed_effects: vec![
-            ChangeUnitEffectKind::ArtifactRegistration,
-            ChangeUnitEffectKind::UserActionRequest,
-            ChangeUnitEffectKind::EvidenceUpdate,
-        ],
-        forbidden_effects: vec![
-            ChangeUnitEffectKind::ProductFileWrite,
-            ChangeUnitEffectKind::RunRecording,
-            ChangeUnitEffectKind::SensitiveAction,
-            ChangeUnitEffectKind::ExternalNetwork,
-            ChangeUnitEffectKind::SecretAccess,
-        ],
-        allowed_paths: Vec::new(),
-        expected_outputs: vec!["Advice result".to_owned()],
-        invariants: vec!["Observe only".to_owned()],
-        evidence_expectations: Vec::new(),
-        sensitive_action_expectations: Vec::new(),
-    });
+    request.change_unit.effect_contract = Some(advisor_observe_only_effect_contract());
     request
 }
 

@@ -15,7 +15,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-types/src/lib.rs` | 공개 담당 모듈 경로. 공유 정의는 각 담당 모듈을 통해 공개됩니다. |
-| `crates/volicord-types/src/schema.rs` | 공유 요청, 응답, 저장 레코드 형태. |
+| `crates/volicord-types/src/schema.rs` | 공유 요청, 응답, 저장 레코드 형태와 폐쇄형 상태별 `WorkflowTransitionSubmissionContract`, 한정된 typed form witness, 정규 Advisor observe-only effect contract. |
 | `crates/volicord-types/src/methods.rs` | 공개 메서드 요청 및 결과 schema, 메서드-연산 매핑, 메서드 소유 `ChangeUnitUpdate` object member의 정확한 typed accessor. |
 | `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계, 불변 `WriteTicketPathScope`의 고유성과 분리 조건. 파일시스템은 관찰하지 않습니다. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
@@ -275,7 +275,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-mcp-wire/src/methods.rs` | 정확한 MCP 인자, 구조화 결과, workflow action form, 현재 권한 인자 맥락, retry contract, 운영 오류, 간결한 mutation, UserAction projection, 직렬화, 생성 요청/결과 schema 소유권. |
-| `crates/volicord-mcp-wire/src/action_form.rs` | 정규 메서드-semantic-variant action-form projection descriptor, 정확한 제출 variant selector, 고정 경로와 Agent 작성 경로 소유권, descriptor 무결성 검사. |
+| `crates/volicord-mcp-wire/src/action_form.rs` | 폐쇄형 transition submission-contract branch에서 MCP 요청 경로로 가는 정규 projection, 정확한 제출 variant selector, 필수·선택 Agent 경로와 고정 경로 소유권, descriptor 무결성 검사. |
 | `crates/volicord-mcp-wire/src/semantic_schema.rs` | 닫힌 타입 소유 semantic schema node, 일반 required-nullable 의미, 명시적 discriminator, branch-local semantic 검증 metadata, 한도 있고 annotation을 보존하는 runtime projection, 결정적 JSON Schema와 descriptor digest, canonical example, descriptor 무결성 검증. |
 | `crates/volicord-mcp-wire/src/tool_contracts.rs` | Input/output descriptor, description, typed canonical example, 정확한 request decoding, catalog 무결성을 묶는 단일 `AgentToolId` 기반 MCP 계약 entry. |
 | `crates/volicord-mcp-wire/src/tools.rs` | 정확한 capability field 이름, tool annotation, capability가 선택하는 tool-definition 및 tool-result envelope. |
@@ -299,7 +299,7 @@ schema, 공유 public type, MCP wire/adapter/registry module에 구현됩니다.
 | `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list`와 `tools/call` parameter 디코딩, 정규 도구 선택, adapter/Core 호출, 공유 정규 tool-result carrier 조립. Transport message framing이나 mutation, recovery, UserAction, metric projection은 담당하지 않습니다. |
 | `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail 선택, effect anchor 구성, 간결한 method-result projection, 새 authority 구성, capability 기반 정상 결과 예산 집행. |
 | `crates/volicord-mcp/src/authority_refresh.rs` | Mutation 뒤 Agent Session binding, 현재 authority 다시 읽기, 좌표 검증, 새 compact authority receipt와 tagged workflow 권한 추출. |
-| `crates/volicord-mcp/src/action_form.rs` | 중립 Agent `TransitionDescriptor` 값에서 결정적 메서드-variant MCP form catalog와 variant-aware 권한 전용 retry contract를 만드는 순수 descriptor 결속 projection. Transition 가용성을 다시 계산하거나 두 번째 메서드/variant selector를 유지하지 않습니다. |
+| `crates/volicord-mcp/src/action_form.rs` | 중립 Agent `TransitionDescriptor`와 정확한 submission contract에서 결정적 메서드-variant MCP form catalog, 고정 binder, contract 소유 검증 witness, variant-aware 권한 전용 retry contract를 만드는 순수 descriptor 결속 projection. 메서드 example로 form을 채우거나 transition 가용성을 다시 계산하지 않습니다. |
 | `crates/volicord-mcp/src/committed_result_recovery.rs` | Mutation을 다시 시도하지 않으면서 committed mutation projection, refresh, post-effect failure 뒤 capability가 선택하는 authority 우선 bounded recovery. |
 | `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction 좌표 추출, neutral current fact 다시 읽기, adapter 소유 safe MCP 결과 구성, neutral failure mapping, 공유 CLI inbox fallback 부착. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding과 diagnostic event 영속화, 계약이 허용하는 diagnostic carrier failure의 한정된 best-effort 처리. |

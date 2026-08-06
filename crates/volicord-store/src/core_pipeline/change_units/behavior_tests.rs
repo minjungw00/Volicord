@@ -2,7 +2,7 @@ use std::error::Error;
 
 use rusqlite::params;
 use volicord_types::ids::{BaselineRef, IdempotencyKey, ProjectId, RequestHash, TaskId};
-use volicord_types::schema::ChangeUnitEffectContract;
+use volicord_types::schema::{advisor_observe_only_effect_contract, ChangeUnitEffectContract};
 use volicord_types::values::{ChangeUnitEffectKind, MethodName, TaskMode};
 
 use super::{
@@ -190,21 +190,7 @@ fn advisor_current_change_unit_is_observe_only_at_write_and_read_boundaries(
 }
 
 fn advisor_effect_contract() -> ChangeUnitEffectContract {
-    ChangeUnitEffectContract {
-        allowed_effects: vec![ChangeUnitEffectKind::ArtifactRegistration],
-        forbidden_effects: vec![
-            ChangeUnitEffectKind::ProductFileWrite,
-            ChangeUnitEffectKind::RunRecording,
-            ChangeUnitEffectKind::SensitiveAction,
-            ChangeUnitEffectKind::ExternalNetwork,
-            ChangeUnitEffectKind::SecretAccess,
-        ],
-        allowed_paths: Vec::new(),
-        expected_outputs: Vec::new(),
-        invariants: Vec::new(),
-        evidence_expectations: Vec::new(),
-        sensitive_action_expectations: Vec::new(),
-    }
+    advisor_observe_only_effect_contract()
 }
 
 fn change_unit_insert(

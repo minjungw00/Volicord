@@ -1132,10 +1132,11 @@ mod tests {
         RequiredNullable, TransitionDescriptor, TransitionRejection,
         WorkflowActionAuthorityCoordinates, WorkflowActionKey, WorkflowActionRole,
         WorkflowCloseReadiness, WorkflowProjection, WorkflowTransitionCatalog,
+        WorkflowTransitionSubmissionContract,
     };
     use volicord_types::values::{
-        AuthorityNextActor, MethodName, TransitionRejectionReason, WorkflowActionSemanticVariant,
-        WorkflowAgentInputRequirement, WorkflowAuthorityInvalidationPolicy,
+        AuthorityNextActor, MethodName, TaskMode, TransitionRejectionReason,
+        WorkflowActionSemanticVariant, WorkflowAuthorityInvalidationPolicy,
         WorkflowExpectedResultState, WorkflowTransitionActor, WorkflowTransitionEffectClass,
     };
 
@@ -1179,13 +1180,17 @@ mod tests {
             method: MethodName::CloseTask,
             semantic_variant: WorkflowActionSemanticVariant::CloseTask,
         };
+        let coordinates = WorkflowActionAuthorityCoordinates::CloseTask { task_id };
         let transition_catalog = WorkflowTransitionCatalog::new(vec![TransitionDescriptor {
             action_key,
             actor: WorkflowTransitionActor::Agent,
             role: WorkflowActionRole::Required,
             expected_state_version: 7,
-            fixed_authority_coordinates: WorkflowActionAuthorityCoordinates::CloseTask { task_id },
-            agent_input_requirements: vec![WorkflowAgentInputRequirement::CloseIntent],
+            submission_contract: WorkflowTransitionSubmissionContract::for_current_transition(
+                TaskMode::Work,
+                &coordinates,
+            ),
+            fixed_authority_coordinates: coordinates,
             effect_class: WorkflowTransitionEffectClass::TerminalMutation,
             expected_result_state: WorkflowExpectedResultState::Terminal,
             authority_invalidation: WorkflowAuthorityInvalidationPolicy::Permitted,

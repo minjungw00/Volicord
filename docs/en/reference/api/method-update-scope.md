@@ -50,6 +50,8 @@ no affected or allowed paths, its effect contract allows only
 `artifact_registration`, `user_action_request`, and `evidence_update`, has no
 sensitive expectation, and explicitly forbids `product_file_write`,
 `run_recording`, `sensitive_action`, `external_network`, and `secret_access`.
+The canonical contract's expected outputs, invariants, evidence expectations,
+and sensitive-action expectations are empty.
 Core rejects an update that would create or retain any write-capable or
 otherwise incompatible advisor Change Unit before committing scope effects.
 
@@ -58,8 +60,12 @@ The current MCP action form fixes the Task, complete scope-owned
 from current Change Unit authority. The request's `baseline_ref` is the
 Agent-authored next baseline, not a copy of the current nullable baseline.
 Current baseline and scope revision remain Core-current authority covered by
-the admitted form and expected state version. Scope content and the
-operation-specific Change Unit fields are also Agent-authored slots. The
+the admitted form and expected state version. Scope content remains
+Agent-authored. General `direct` and `work` create/replace forms also leave
+Change Unit scope and effect content Agent-authored. Advisor create/replace
+forms instead fix `affected_paths=[]` and the complete canonical observe-only
+effect contract; neither value is Agent-authored and the form grants no Product
+Repository authority. The
 adapter injects project and expected state version; the generic binder rejects
 any altered or omitted caller-visible fixed value before Core.
 
@@ -69,9 +75,12 @@ exactly to the correspondingly named `ChangeUnitOperation`. With no current
 Change Unit, only create is current. With a current Change Unit, keep and a
 Core-policy-compatible replace are current, and create is not. An
 implementation replacement that would stale current shaping applications is
-not published. Keep fixes `keep_current`; create and replace fix their
+not published. Keep fixes `keep_current`. General create and replace fix their
 operation and require Agent-authored `scope_summary`, `affected_paths`, and
 next baseline while retaining optional Change Unit fields and effect contract.
+Advisor create and replace require Agent-authored `scope_summary` and next
+baseline but fix empty affected paths and the canonical observe-only effect
+contract.
 
 Before validating submitted scope content, Core evaluates the normalized
 `WorkflowSnapshot` and consumes the exact `WorkflowActionKey` for the selected
@@ -96,7 +105,10 @@ variant is not current.
   omitted current criterion is retired. Unknown, retired, cross-Task, and
   duplicate IDs reject before commit.
 - `change_unit.operation` and the fields needed by that operation; supported operation values and their meanings are owned by [API Value Sets](schema-value-sets.md#method-local-values).
-- Optional `change_unit.effect_contract` when creating or replacing the current Change Unit. When present, the object uses `ChangeUnitEffectContract`; when absent, the Change Unit has no extra effect contract.
+- For general `direct` and `work` create/replace, optional
+  `change_unit.effect_contract`. For Advisor create/replace, the action form
+  supplies the required canonical observe-only contract as an authority-fixed
+  value; callers neither author nor omit it.
 - `related_scope_decision_refs` must exactly cover the current checkpoint's
   accepted scope-owned gaps. It is empty when there is no such gap, including
   product-only and technical-only progression.
@@ -270,7 +282,7 @@ The response descriptor defines success, rejection, and preview as an exact `any
 
 The supported `change_unit.operation` values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how each operation is reflected in `change_unit_ref`, `state.active_change_unit_ref`, stale write-ticket refs, blocker refs, and the tagged `state.workflow` projection.
 
-When `change_unit.operation=create_current` or `change_unit.operation=replace_current`, `change_unit.effect_contract` may be recorded on the new current Change Unit. The effect contract is optional Core state. It can express allowed effects, forbidden effects, allowed Product Repository paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations without creating a workflow engine or replacing user-owned authority records. The same operation records the verified workspace coordinate used by later write preparation. A non-Git repository records no VCS binding and does not receive Git-specific comparison checks.
+When `change_unit.operation=create_current` or `change_unit.operation=replace_current`, `change_unit.effect_contract` is recorded when supplied by a general form and is always recorded from the fixed canonical contract for an Advisor form. It can express allowed effects, forbidden effects, allowed Product Repository paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations without creating a workflow engine or replacing user-owned authority records. The same operation records the verified workspace coordinate used by later write preparation. A non-Git repository records no VCS binding and does not receive Git-specific comparison checks.
 
 `applied_shaping_gap_refs` and `applied_scope_decision_refs` identify only the
 exact scope gaps and resolutions applied by this call. Product, technical, and

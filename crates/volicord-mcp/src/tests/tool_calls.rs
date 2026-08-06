@@ -1220,13 +1220,7 @@ fn implementation_forms_reject_every_tampered_fixed_coordinate_before_core(
         } else {
             action_form_for_method(&adapter, &task_id, method)?
         };
-        let fixed_argument_paths = volicord_mcp_wire::action_form_request_projection(
-            form.action_key.method,
-            form.action_key.semantic_variant,
-        )
-        .ok_or("action form request projection")?
-        .concrete_fixed_argument_paths(&form.fixed_arguments)
-        .map_err(std::io::Error::other)?;
+        let fixed_argument_paths = form.fixed_argument_paths.clone();
         assert_eq!(form.expected_state_version, fixture.counts()?.state_version);
         assert!(!fixed_argument_paths.is_empty());
 
@@ -2949,6 +2943,27 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
     let task_id = intake.response_value["task_ref"]["record_id"]
         .as_str()
         .ok_or("advisor intake Task")?;
+    let assert_advisor_scope_form = |form: &volicord_mcp_wire::WorkflowActionForm| {
+        assert_eq!(
+            form.fixed_arguments["change_unit"]["affected_paths"],
+            json!([])
+        );
+        assert_eq!(
+            form.fixed_arguments["change_unit"]["effect_contract"],
+            json!(volicord_types::schema::advisor_observe_only_effect_contract())
+        );
+        assert!(!form.agent_authored_inputs.iter().any(|input| matches!(
+            input.path.as_str(),
+            "/change_unit/affected_paths" | "/change_unit/effect_contract"
+        )));
+    };
+    let create_form = action_form_for_variant(
+        &adapter,
+        task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+    )?;
+    assert_advisor_scope_form(&create_form);
     let context = fixture.mutation_context()?;
     let mut scope_request = fixture.update_scope_request(UpdateScopeFixture {
         request_id: "req_mcp_advisor_guidance_scope",
@@ -2964,31 +2979,20 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         .fields
         .insert("affected_paths".to_owned(), json!([]));
     scope_request.change_unit.effect_contract =
-        Some(volicord_types::schema::ChangeUnitEffectContract {
-            allowed_effects: vec![
-                volicord_types::values::ChangeUnitEffectKind::ArtifactRegistration,
-                volicord_types::values::ChangeUnitEffectKind::UserActionRequest,
-                volicord_types::values::ChangeUnitEffectKind::EvidenceUpdate,
-            ],
-            forbidden_effects: vec![
-                volicord_types::values::ChangeUnitEffectKind::ProductFileWrite,
-                volicord_types::values::ChangeUnitEffectKind::RunRecording,
-                volicord_types::values::ChangeUnitEffectKind::SensitiveAction,
-                volicord_types::values::ChangeUnitEffectKind::ExternalNetwork,
-                volicord_types::values::ChangeUnitEffectKind::SecretAccess,
-            ],
-            allowed_paths: Vec::new(),
-            expected_outputs: vec!["Advice result".to_owned()],
-            invariants: vec!["Observe only".to_owned()],
-            evidence_expectations: Vec::new(),
-            sensitive_action_expectations: Vec::new(),
-        });
+        Some(volicord_types::schema::advisor_observe_only_effect_contract());
     let scope = CoreService::for_mutation(&context).update_scope(
         &context,
         scope_request,
         test_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(scope.response_value["base"]["response_kind"], "result");
+    let replace_form = action_form_for_variant(
+        &adapter,
+        task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+    )?;
+    assert_advisor_scope_form(&replace_form);
     let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
         .as_str()
         .ok_or("advisor scope should expose its Change Unit")?;
