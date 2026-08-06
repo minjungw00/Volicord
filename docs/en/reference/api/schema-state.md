@@ -524,6 +524,7 @@ WorkflowCloseReadiness:
 WorkflowActionAuthorityCoordinates.update_scope:
   coordinate_kind: update_scope
   task_id: TaskId
+  task_mode: advisor | direct | work
   scope_revision: integer
   baseline_ref: BaselineRef | null
   current_change_unit_id: ChangeUnitId | null
@@ -724,7 +725,7 @@ explicit close, cancellation, or supersession path.
 Initial checkpoint coordinates preserve an actual null baseline; replacement
 coordinates carry the exact current and predecessor checkpoint refs,
 retirement refs, compatible application refs, and stale-application refs.
-Other coordinates bind the exact current Task, checkpoint, Change Unit, scope
+Other coordinates bind the exact current Task and Task mode, checkpoint, Change Unit, scope
 revision, baseline, resolution, and method-local authority facts. The same
 machine decision owns update-scope availability: no current Change Unit admits
 only `create_current_change_unit`; a current Change Unit admits

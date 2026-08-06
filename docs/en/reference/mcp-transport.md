@@ -813,6 +813,11 @@ produces keep and, when Core policy permits replacement, replace, never create.
 Implementation replacement is absent when it would invalidate current shaping
 applications. Current baseline and scope revision remain Core-current
 authority covered by each admitted form and injected expected state version.
+Record-run forms fix the current Task, Change Unit, and baseline while leaving
+`kind` Agent-authored. Their canonical witness uses the compatible current Run
+kind, but a schema-valid incompatible kind reaches Core and returns the typed
+received and allowed Run-kind details without committing a Run or related
+authority.
 
 If any caller-visible fixed value is altered or omitted, the adapter returns
 `ACTION_FORM_ARGUMENT_MISMATCH` with deterministically ordered, bounded

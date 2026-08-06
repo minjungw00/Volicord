@@ -1259,7 +1259,7 @@ mod tests {
 
     use super::{
         internal_contract_inconsistent_rejection, rejected_compatibility_text,
-        response_kind_from_structured_content, workflow_contract_diagnostics,
+        response_kind_from_structured_content, workflow_contract_diagnostics_with_failure,
     };
     use crate::tool_dispatch::ToolCallOutput;
 
@@ -1337,7 +1337,11 @@ mod tests {
             &transition_catalog,
         )
         .expect("valid typed rejection");
-        let diagnostics = workflow_contract_diagnostics(&workflow, None, Some(&rejection));
+        let diagnostics = workflow_contract_diagnostics_with_failure(
+            &workflow,
+            Some(action_key),
+            volicord_mcp_wire::McpWorkflowContractStage::CatalogTotality,
+        );
         let output = internal_contract_inconsistent_rejection(
             ToolCallOutput::success("{}".to_owned()).expect("empty test output"),
             MethodName::CloseTask.as_str(),
@@ -1363,6 +1367,22 @@ mod tests {
         assert_eq!(
             output.structured_content["contract_diagnostics"]["current_action_forms"],
             Value::Null
+        );
+        assert_eq!(
+            output.structured_content["failed_action_key"],
+            json!(action_key)
+        );
+        assert_eq!(
+            output.structured_content["failed_stage"],
+            "catalog_totality"
+        );
+        assert_eq!(
+            output.structured_content["contract_diagnostics"]["failed_action_key"],
+            json!(action_key)
+        );
+        assert_eq!(
+            output.structured_content["contract_diagnostics"]["failed_stage"],
+            "catalog_totality"
         );
         assert!(output.primary_text.len() <= 512);
     }

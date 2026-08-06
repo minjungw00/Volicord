@@ -2355,6 +2355,7 @@ fn planning_product_explicit_shaping_journey() -> Result<(), Box<dyn Error>> {
             json!({
                 "project_selector": project_id,
                 "detail": "workflow",
+                "kind": "implementation",
                 "run_id": null,
                 "write_ticket_id": write_ticket_id,
                 "performed_operation": "Create the bounded release-preparation note.",

@@ -88,6 +88,7 @@ mod tests {
             };
             let coordinates = WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: TaskId::new("task_catalog"),
+                task_mode: TaskMode::Work,
                 scope_revision: 2,
                 baseline_ref: RequiredNullable::some(
                     BaselineRef::parse("baseline_catalog").expect("baseline"),
@@ -232,6 +233,7 @@ mod tests {
 
         let replace_coordinates = WorkflowActionAuthorityCoordinates::UpdateScope {
             task_id: TaskId::new("task_catalog"),
+            task_mode: TaskMode::Advisor,
             scope_revision: 2,
             baseline_ref: RequiredNullable::some(
                 BaselineRef::parse("baseline_catalog").expect("baseline"),
@@ -243,6 +245,7 @@ mod tests {
             selected_change_unit_operation: ChangeUnitOperation::ReplaceCurrent,
         };
         let mut advisor_transition = valid["transitions"][1].clone();
+        advisor_transition["fixed_authority_coordinates"] = json!(replace_coordinates);
         advisor_transition["submission_contract"] = json!(
             WorkflowTransitionSubmissionContract::for_current_transition(
                 TaskMode::Advisor,
@@ -256,6 +259,45 @@ mod tests {
         malformed_advisor["transitions"][0]["submission_contract"]["contract"]["fixed_values"]
             ["affected_paths"] = json!(["src/lib.rs"]);
         assert!(serde_json::from_value::<WorkflowTransitionCatalog>(malformed_advisor).is_err());
+
+        let mut missing_observe_only_effect = valid["transitions"][1].clone();
+        missing_observe_only_effect["fixed_authority_coordinates"] = json!(replace_coordinates);
+        missing_observe_only_effect["submission_contract"] = json!(
+            WorkflowTransitionSubmissionContract::for_current_transition(
+                TaskMode::Advisor,
+                &replace_coordinates,
+            )
+        );
+        missing_observe_only_effect["submission_contract"]["contract"]["fixed_values"]
+            ["effect_contract"]["forbidden_effects"] = json!([]);
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [missing_observe_only_effect]
+        }))
+        .is_err());
+
+        let mut wrong_product_mode = valid["transitions"][1].clone();
+        let work_coordinates: WorkflowActionAuthorityCoordinates =
+            serde_json::from_value(wrong_product_mode["fixed_authority_coordinates"].clone())
+                .expect("Work update-scope coordinates");
+        wrong_product_mode["submission_contract"] = json!(
+            WorkflowTransitionSubmissionContract::for_current_transition(
+                TaskMode::Direct,
+                &work_coordinates,
+            )
+        );
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [wrong_product_mode]
+        }))
+        .is_err());
+
+        let mut advisor_with_general_contract = valid["transitions"][1].clone();
+        advisor_with_general_contract["fixed_authority_coordinates"] = json!(replace_coordinates);
+        advisor_with_general_contract["submission_contract"] =
+            valid["transitions"][1]["submission_contract"].clone();
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [advisor_with_general_contract]
+        }))
+        .is_err());
 
         let mut mixed_state_versions = valid.clone();
         mixed_state_versions["transitions"][1]["expected_state_version"] = json!(8);

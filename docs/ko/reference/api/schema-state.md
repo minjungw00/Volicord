@@ -519,6 +519,7 @@ WorkflowCloseReadiness:
 WorkflowActionAuthorityCoordinates.update_scope:
   coordinate_kind: update_scope
   task_id: TaskId
+  task_mode: advisor | direct | work
   scope_revision: integer
   baseline_ref: BaselineRef | null
   current_change_unit_id: ChangeUnitId | null
@@ -711,7 +712,7 @@ transition과 요청 ref가 들어갑니다. 종료되지 않은 Agent 소유 �
 
 첫 checkpoint 좌표는 실제 null 기준선을 보존합니다. 교체 좌표는 정확한 현재·선행
 checkpoint 참조, retirement 참조, 호환 application 참조, stale application 참조를
-담습니다. 다른 좌표는 현재 Task, checkpoint, Change Unit, 범위 리비전, 기준선,
+담습니다. 다른 좌표는 현재 Task와 Task mode, checkpoint, Change Unit, 범위 리비전, 기준선,
 resolution, 메서드 내부 권한 사실에 결속됩니다. 같은 machine 결정이 update-scope
 가용성도 소유합니다. 현재 Change Unit이 없으면 `create_current_change_unit`만 허용하고,
 현재 Change Unit이 있으면 `keep_current_change_unit`와 현재 권한이 허용할 때의

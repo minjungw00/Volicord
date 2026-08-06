@@ -192,7 +192,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
                     "task_id": "task_current",
                     "checkpoint_operation": {"operation": "create_initial"},
                     "scope_revision": 0,
-                    "baseline_ref": null
+                    "baseline_ref": "baseline_current"
                 },
                 "submission_contract": {
                     "submission_method": "record_shaping_checkpoint",
@@ -200,7 +200,7 @@ fn mcp_structured_output_rejects_malformed_public_response_branches() {
                         "submission_variant": "create_initial",
                         "required_agent_input_witness": {
                             "summary": "Current shaping checkpoint.",
-                            "implementation_boundary": null,
+                            "implementation_boundary": "Keep execution inside the current bounded task.",
                             "gaps": [],
                             "stale_authority_actions": []
                         },

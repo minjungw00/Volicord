@@ -24,7 +24,7 @@ type CriterionMetricDefect = (&'static str, fn(&mut ShapingWorkflowObservation))
 fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 15);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 16);
 
     let actual = catalog
         .scenarios
@@ -115,7 +115,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 69);
+    assert_eq!(result.criteria.len(), 73);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -287,11 +287,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(69)
+        Some(73)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(69)
+        Some(73)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -340,6 +340,8 @@ impl TrialDriver for AggregateSyntheticDriver {
             record && request.trial.scenario_id == "planning-stale-reauthorization";
         let implementation_invalidation =
             record && request.trial.scenario_id == "planning-implementation-invalidation";
+        let record_run_rejection =
+            record && request.trial.scenario_id == "workflow-recording-rejection-details";
         let explicit_replacement =
             record && request.trial.scenario_id == "planning-explicit-scope-replacement";
         let persisted_corruption =
@@ -425,6 +427,10 @@ impl TrialDriver for AggregateSyntheticDriver {
                 method_specific_action_forms_used: u64::from(planning),
                 fixed_argument_opportunities: u64::from(planning),
                 exact_fixed_arguments_used: u64::from(planning),
+                schema_validity_claim_opportunities: u64::from(
+                    schema_recovery || record_run_rejection,
+                ),
+                schema_validity_treated_as_execution_authority: 0,
                 wrong_method_mutation_opportunities: u64::from(planning),
                 wrong_method_speculative_mutations: 0,
                 nullable_baseline_opportunities: u64::from(schema_recovery),
@@ -491,6 +497,12 @@ impl TrialDriver for AggregateSyntheticDriver {
                 exact_tagged_workflows: if shaping_scenario { 6 } else { 0 },
                 advisor_finalization_opportunities: u64::from(advisor),
                 advisor_finalizations_via_finalize_advice: u64::from(advisor),
+                advisor_change_unit_opportunities: u64::from(advisor),
+                advisor_observe_only_change_units: u64::from(advisor),
+                change_unit_contract_authoring_opportunities: u64::from(advisor),
+                speculative_path_or_effect_contracts: 0,
+                record_run_rejection_detail_opportunities: u64::from(record_run_rejection),
+                correct_record_run_rejection_details: u64::from(record_run_rejection),
                 completion_claim_opportunities: u64::from(shaping_scenario),
                 premature_completion_claims: 0,
                 accepted_outcome_opportunities: u64::from(accepted),
@@ -638,7 +650,7 @@ fn schema_recovery_metric_defects_fail_their_generic_criteria() {
 
     let result = run_live_with_driver(&enabled_test_config(), &mut AggregateSyntheticDriver)
         .expect("synthetic in-process matrix should run");
-    let defects: [CriterionMetricDefect; 13] = [
+    let defects: [CriterionMetricDefect; 14] = [
         ("correct_workflow_tool_selection", |workflow| {
             workflow.correct_workflow_tool_selections = 0
         }),
@@ -650,6 +662,9 @@ fn schema_recovery_metric_defects_fail_their_generic_criteria() {
         }),
         ("exact_fixed_argument_use", |workflow| {
             workflow.exact_fixed_arguments_used = 0
+        }),
+        ("schema_validity_is_not_execution_authority", |workflow| {
+            workflow.schema_validity_treated_as_execution_authority = 1
         }),
         ("wrong_method_speculative_mutation", |workflow| {
             workflow.wrong_method_speculative_mutations = 1
@@ -739,6 +754,24 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
         "planning-advisor-recommendation",
         "advisor_finalization_via_finalize_advice",
         |workflow| workflow.advisor_finalizations_via_finalize_advice = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-advisor-recommendation",
+        "advisor_observe_only_change_unit",
+        |workflow| workflow.advisor_observe_only_change_units = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "planning-advisor-recommendation",
+        "no_speculative_change_unit_contract",
+        |workflow| workflow.speculative_path_or_effect_contracts = 1,
+    );
+    assert_defect(
+        &result.observations,
+        "workflow-recording-rejection-details",
+        "record_run_rejection_detail_preservation",
+        |workflow| workflow.correct_record_run_rejection_details = 0,
     );
     assert_defect(
         &result.observations,

@@ -252,13 +252,12 @@ fn project_fixed_arguments(
             task_id,
             change_unit_id,
             baseline_ref,
-            run_kind,
+            ..
         } => {
             fixed.extend([
                 ("task_id".to_owned(), json!(task_id)),
                 ("change_unit_id".to_owned(), json!(change_unit_id)),
                 ("baseline_ref".to_owned(), json!(baseline_ref)),
-                ("kind".to_owned(), json!(run_kind)),
             ]);
             task_id.clone()
         }
@@ -498,6 +497,7 @@ fn submission_witnesses(contract: &WorkflowTransitionSubmissionContract) -> (Val
             optional_agent_input_witness,
         } => (
             json!({
+                "kind": required_agent_input_witness.kind,
                 "run_id": required_agent_input_witness.run_id,
                 "write_ticket_id": required_agent_input_witness.write_ticket_id,
                 "performed_operation": required_agent_input_witness.performed_operation,
@@ -1066,7 +1066,7 @@ pub(crate) fn retry_contract(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
     use volicord_types::canonical::is_canonical_sha256_digest;
     use volicord_types::ids::{
         BaselineRef, ChangeUnitId, RecordId, ShapingCheckpointId, UserActionResolutionId,
@@ -1246,6 +1246,7 @@ mod tests {
             3,
             WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: TaskId::new("task_descriptor_inputs"),
+                task_mode: TaskMode::Work,
                 scope_revision: 1,
                 baseline_ref: RequiredNullable::some(
                     BaselineRef::parse("baseline_current").expect("canonical test BaselineRef"),
@@ -1290,6 +1291,7 @@ mod tests {
             1,
             WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: TaskId::new("task_create_change_unit_form"),
+                task_mode: TaskMode::Work,
                 scope_revision: 0,
                 baseline_ref: RequiredNullable::null(),
                 current_change_unit_id: RequiredNullable::null(),
@@ -1321,6 +1323,7 @@ mod tests {
         ] {
             let coordinates = WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: TaskId::new("task_advisor_scope_forms"),
+                task_mode: TaskMode::Advisor,
                 scope_revision: 2,
                 baseline_ref: RequiredNullable::some(
                     BaselineRef::parse("baseline_advisor_scope_forms").expect("baseline"),
@@ -1390,6 +1393,69 @@ mod tests {
     }
 
     #[test]
+    fn direct_and_work_create_and_replace_forms_retain_general_authored_semantics() {
+        let project_id = ProjectId::new("prj_general_scope_forms");
+        for task_mode in [TaskMode::Direct, TaskMode::Work] {
+            for operation in [
+                ChangeUnitOperation::CreateCurrent,
+                ChangeUnitOperation::ReplaceCurrent,
+            ] {
+                let coordinates = WorkflowActionAuthorityCoordinates::UpdateScope {
+                    task_id: TaskId::new("task_general_scope_forms"),
+                    task_mode,
+                    scope_revision: 3,
+                    baseline_ref: RequiredNullable::some(
+                        BaselineRef::parse("baseline_general_scope_forms").expect("baseline"),
+                    ),
+                    current_change_unit_id: match operation {
+                        ChangeUnitOperation::CreateCurrent => RequiredNullable::null(),
+                        ChangeUnitOperation::ReplaceCurrent => {
+                            RequiredNullable::some(ChangeUnitId::new("cu_general_scope_forms"))
+                        }
+                        ChangeUnitOperation::KeepCurrent => unreachable!(),
+                    },
+                    related_scope_decision_refs: Vec::new(),
+                    selected_change_unit_operation: operation,
+                };
+                let mut transition = agent_transition(
+                    MethodName::UpdateScope,
+                    WorkflowActionSemanticVariant::for_change_unit_operation(operation),
+                    WorkflowActionRole::Allowed,
+                    5,
+                    coordinates,
+                    Vec::new(),
+                );
+                transition.submission_contract =
+                    WorkflowTransitionSubmissionContract::for_current_transition(
+                        task_mode,
+                        &transition.fixed_authority_coordinates,
+                    );
+                let form = workflow_action_form(&project_id, &transition)
+                    .expect("general product-capable Agent form");
+                let authored = form
+                    .agent_authored_inputs
+                    .iter()
+                    .map(|input| (input.path.as_str(), input.required))
+                    .collect::<BTreeSet<_>>();
+                assert!(authored.contains(&("/change_unit/scope_summary", true)));
+                assert!(authored.contains(&("/change_unit/affected_paths", true)));
+                assert!(authored.contains(&("/change_unit/effect_contract", false)));
+                assert!(authored.contains(&("/baseline_ref", true)));
+                assert!(form.fixed_arguments["change_unit"]
+                    .get("affected_paths")
+                    .is_none());
+                assert!(form.fixed_arguments["change_unit"]
+                    .get("effect_contract")
+                    .is_none());
+                assert_eq!(
+                    form.canonical_minimal_request["baseline_ref"],
+                    "baseline_general_scope_forms"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn form_digest_and_witness_change_with_the_submission_contract() {
         let project_id = ProjectId::new("prj_submission_digest");
         let mut transition = agent_transition(
@@ -1399,6 +1465,7 @@ mod tests {
             3,
             WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: TaskId::new("task_submission_digest"),
+                task_mode: TaskMode::Work,
                 scope_revision: 1,
                 baseline_ref: RequiredNullable::null(),
                 current_change_unit_id: RequiredNullable::null(),
@@ -1433,6 +1500,7 @@ mod tests {
         let project_id = ProjectId::new("prj_current_change_unit_forms");
         let coordinates = |operation| WorkflowActionAuthorityCoordinates::UpdateScope {
             task_id: TaskId::new("task_current_change_unit_forms"),
+            task_mode: TaskMode::Work,
             scope_revision: 2,
             baseline_ref: RequiredNullable::some(
                 BaselineRef::parse("baseline_current").expect("canonical test BaselineRef"),
@@ -1681,6 +1749,7 @@ mod tests {
             },
             WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: task_id.clone(),
+                task_mode: TaskMode::Work,
                 scope_revision: 4,
                 baseline_ref: RequiredNullable::some(baseline.clone()),
                 current_change_unit_id: RequiredNullable::some(change_unit.clone()),
@@ -1794,6 +1863,7 @@ mod tests {
         let task_id = TaskId::new("task_total_projection");
         let coordinates = |operation| WorkflowActionAuthorityCoordinates::UpdateScope {
             task_id: task_id.clone(),
+            task_mode: TaskMode::Work,
             scope_revision: 2,
             baseline_ref: RequiredNullable::some(
                 BaselineRef::parse("baseline_total_projection").expect("baseline"),
@@ -1867,6 +1937,7 @@ mod tests {
             3,
             WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id,
+                task_mode: TaskMode::Work,
                 scope_revision: 0,
                 baseline_ref: RequiredNullable::null(),
                 current_change_unit_id: RequiredNullable::null(),
@@ -1901,6 +1972,7 @@ mod tests {
             9,
             WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id: task_id.clone(),
+                task_mode: TaskMode::Work,
                 scope_revision: 3,
                 baseline_ref: RequiredNullable::some(
                     BaselineRef::parse("baseline_retry_projection").expect("baseline"),

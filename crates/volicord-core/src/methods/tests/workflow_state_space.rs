@@ -30,6 +30,7 @@ struct ReachabilityCoverage {
     workflow_states: BTreeSet<String>,
     checkpoint_readiness: BTreeSet<String>,
     action_variants: BTreeSet<WorkflowActionSemanticVariant>,
+    agent_submission_contracts: BTreeSet<WorkflowActionSemanticVariant>,
     next_actors: BTreeSet<String>,
     user_action_statuses: BTreeSet<String>,
     decision_dispositions: BTreeSet<String>,
@@ -130,11 +131,34 @@ impl ReachabilityCoverage {
             match transition.actor {
                 WorkflowTransitionActor::Agent => {
                     agent_transition_count += 1;
+                    self.agent_submission_contracts
+                        .insert(transition.submission_contract.semantic_variant());
                     assert_eq!(
                         catalog.transition(&transition.action_key),
                         Some(transition),
                         "{label}: every enumerated Agent descriptor must retain exact catalog identity"
                     );
+                    assert_eq!(
+                        transition.submission_contract.method(),
+                        transition.action_key.method,
+                        "{label}: every Agent descriptor needs a method-compatible submission contract"
+                    );
+                    assert_eq!(
+                        transition.submission_contract.semantic_variant(),
+                        transition.action_key.semantic_variant,
+                        "{label}: every Agent descriptor needs a variant-compatible submission contract"
+                    );
+                    assert_eq!(
+                        transition.fixed_authority_coordinates.method(),
+                        transition.action_key.method,
+                        "{label}: every Agent descriptor must bind its current method authority"
+                    );
+                    assert_eq!(
+                        transition.fixed_authority_coordinates.semantic_variant(),
+                        transition.action_key.semantic_variant,
+                        "{label}: every Agent descriptor must bind its current variant authority"
+                    );
+                    assert_transition_effect_and_result_family(transition, label);
                 }
                 WorkflowTransitionActor::User => {
                     user_transition_count += 1;
@@ -268,8 +292,68 @@ impl ReachabilityCoverage {
                 expected.as_str(),
                 self.action_variants
             );
+            if expected != WorkflowActionSemanticVariant::ResolveUserAction {
+                assert!(
+                    self.agent_submission_contracts.contains(&expected),
+                    "missing Agent submission contract for {}; saw {:?}",
+                    expected.as_str(),
+                    self.agent_submission_contracts
+                );
+            }
         }
     }
+}
+
+fn assert_transition_effect_and_result_family(
+    transition: &volicord_types::schema::TransitionDescriptor,
+    label: &str,
+) {
+    use volicord_types::values::{
+        MethodName, WorkflowExpectedResultState as ResultState,
+        WorkflowTransitionEffectClass as Effect,
+    };
+
+    let expected_effect = match transition.action_key.method {
+        MethodName::PrepareEvidenceCapture => Effect::EvidenceCapture,
+        MethodName::PrepareWrite => Effect::WriteAuthorization,
+        MethodName::StageArtifact => Effect::ArtifactStaging,
+        MethodName::RecordRun => Effect::ExecutionRecording,
+        MethodName::CheckClose => Effect::ReadOnlyAssessment,
+        MethodName::CloseTask => Effect::TerminalMutation,
+        _ => Effect::CoreStateMutation,
+    };
+    assert_eq!(
+        transition.effect_class, expected_effect,
+        "{label}: Agent transition effect must match its method family"
+    );
+
+    let expected_result_matches = match transition.action_key.method {
+        MethodName::AdvanceTask => transition.expected_result_state == ResultState::Implementation,
+        MethodName::FinalizeAdvice => transition.expected_result_state == ResultState::CloseReview,
+        MethodName::CheckClose => matches!(
+            transition.expected_result_state,
+            ResultState::CloseReview | ResultState::ReevaluateCurrentAuthority
+        ),
+        MethodName::RequestUserAction => {
+            transition.expected_result_state == ResultState::AwaitingUserAction
+        }
+        MethodName::CloseTask => transition.expected_result_state == ResultState::Terminal,
+        MethodName::PrepareEvidenceCapture
+        | MethodName::PrepareWrite
+        | MethodName::RecordRun
+        | MethodName::ReconcileChanges => {
+            transition.expected_result_state == ResultState::Implementation
+        }
+        MethodName::StageArtifact => matches!(
+            transition.expected_result_state,
+            ResultState::Implementation | ResultState::ReevaluateCurrentAuthority
+        ),
+        _ => transition.expected_result_state == ResultState::ReevaluateCurrentAuthority,
+    };
+    assert!(
+        expected_result_matches,
+        "{label}: Agent transition result must match its method family"
+    );
 }
 
 fn checkpoint_request(

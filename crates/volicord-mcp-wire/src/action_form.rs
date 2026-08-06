@@ -450,12 +450,11 @@ const RECORD_RUN_FIXED: &[ActionFormFixedArgumentDescriptor] = &[
         authority: "baseline",
         path_pattern: "/baseline_ref",
     },
-    ActionFormFixedArgumentDescriptor {
-        authority: "run_kind",
-        path_pattern: "/kind",
-    },
 ];
 const RECORD_RUN_REQUIRED: &[ActionFormAuthoredInputDescriptor] = &[
+    ActionFormAuthoredInputDescriptor {
+        path_pattern: "/kind",
+    },
     ActionFormAuthoredInputDescriptor {
         path_pattern: "/run_id",
     },

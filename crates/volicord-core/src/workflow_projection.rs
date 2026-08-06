@@ -1117,6 +1117,7 @@ fn transition_descriptor(
                 })?;
             WorkflowActionAuthorityCoordinates::UpdateScope {
                 task_id,
+                task_mode: task.mode,
                 scope_revision: task.scope_revision,
                 baseline_ref,
                 current_change_unit_id: RequiredNullable::new(

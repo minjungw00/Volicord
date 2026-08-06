@@ -2586,6 +2586,7 @@ pub enum WorkflowActionAuthorityCoordinates {
     },
     UpdateScope {
         task_id: TaskId,
+        task_mode: TaskMode,
         scope_revision: u64,
         baseline_ref: RequiredNullable<BaselineRef>,
         current_change_unit_id: RequiredNullable<ChangeUnitId>,
@@ -2977,6 +2978,7 @@ pub struct WorkflowStageArtifactRequiredWitness {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowRecordRunRequiredWitness {
+    pub kind: RunKind,
     pub run_id: RequiredNullable<RunId>,
     pub write_ticket_id: RequiredNullable<WriteTicketId>,
     pub performed_operation: RequiredNullable<String>,
@@ -3100,6 +3102,7 @@ impl WorkflowTransitionSubmissionContract {
         match coordinates {
             WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
                 checkpoint_operation,
+                baseline_ref,
                 ..
             } => {
                 let stale_count = match checkpoint_operation {
@@ -3109,10 +3112,63 @@ impl WorkflowTransitionSubmissionContract {
                         ..
                     } => stale_application_refs.len(),
                 };
+                let ready_witness = baseline_ref.as_ref().is_some();
                 let required_agent_input_witness = WorkflowShapingCheckpointRequiredWitness {
                     summary: "Current shaping checkpoint.".to_owned(),
-                    implementation_boundary: RequiredNullable::null(),
-                    gaps: Vec::new(),
+                    implementation_boundary: if ready_witness {
+                        RequiredNullable::some(
+                            "Keep execution inside the current bounded task.".to_owned(),
+                        )
+                    } else {
+                        RequiredNullable::null()
+                    },
+                    gaps: if ready_witness {
+                        Vec::new()
+                    } else {
+                        vec![ShapingGapInput {
+                            gap_kind: crate::values::ShapingGapKind::UserTechnicalDecisionRequired,
+                            summary: "Choose the bounded direction needed to establish the current baseline."
+                                .to_owned(),
+                            affected_refs: Vec::new(),
+                            user_action: RequiredNullable::some(ShapingUserActionDraft {
+                                action: UserActionDraft::Choice(Box::new(
+                                    UserActionChoiceDraft {
+                                        judgment_kind: JudgmentKind::TechnicalDecision,
+                                        presentation: JudgmentPresentation::Short,
+                                        question: "Which bounded direction should establish the current baseline?"
+                                            .to_owned(),
+                                        options: RequiredNullable::some(vec![
+                                            UserActionOptionInput {
+                                                option_id: UserActionOptionId::new(
+                                                    "option_establish_current_baseline",
+                                                ),
+                                                label: "Use current direction".to_owned(),
+                                                description: "Accept the current bounded direction."
+                                                    .to_owned(),
+                                                consequence: "Shaping may continue on the accepted direction."
+                                                    .to_owned(),
+                                                is_default: true,
+                                            },
+                                        ]),
+                                        context: UserActionContext {
+                                            summary: "A current baseline cannot be established without this bounded decision."
+                                                .to_owned(),
+                                            related_refs: Vec::new(),
+                                            artifact_refs: Vec::new(),
+                                            visible_risks: Vec::new(),
+                                            constraints: vec![
+                                                "The decision applies only to the current task."
+                                                    .to_owned(),
+                                            ],
+                                        },
+                                        affected_refs: Vec::new(),
+                                        sensitive_action_scope: RequiredNullable::null(),
+                                    },
+                                )),
+                                expires_at: RequiredNullable::null(),
+                            }),
+                        }]
+                    },
                     stale_authority_actions: vec![
                         WorkflowStaleAuthorityActionWitness::Retire;
                         stale_count
@@ -3240,8 +3296,13 @@ impl WorkflowTransitionSubmissionContract {
                 },
                 optional_agent_input_witness: none,
             },
-            WorkflowActionAuthorityCoordinates::RecordRun { baseline_ref, .. } => Self::RecordRun {
+            WorkflowActionAuthorityCoordinates::RecordRun {
+                baseline_ref,
+                run_kind,
+                ..
+            } => Self::RecordRun {
                 required_agent_input_witness: WorkflowRecordRunRequiredWitness {
+                    kind: *run_kind,
                     run_id: RequiredNullable::null(),
                     write_ticket_id: RequiredNullable::null(),
                     performed_operation: RequiredNullable::null(),
@@ -3444,25 +3505,64 @@ impl WorkflowTransitionSubmissionContract {
         }
         match (self, coordinates) {
             (
-                Self::RecordShapingCheckpoint {
-                    contract:
-                        WorkflowRecordShapingCheckpointSubmissionContract::ReplaceCurrent {
-                            required_agent_input_witness,
-                            ..
-                        },
-                },
+                Self::RecordShapingCheckpoint { contract },
                 WorkflowActionAuthorityCoordinates::RecordShapingCheckpoint {
-                    checkpoint_operation:
-                        WorkflowCheckpointActionCoordinates::ReplaceCurrent {
-                            stale_application_refs,
-                            ..
-                        },
+                    checkpoint_operation,
+                    baseline_ref,
                     ..
                 },
             ) => {
-                required_agent_input_witness.stale_authority_actions.len()
-                    == stale_application_refs.len()
+                let required = match contract {
+                    WorkflowRecordShapingCheckpointSubmissionContract::CreateInitial {
+                        required_agent_input_witness,
+                        ..
+                    }
+                    | WorkflowRecordShapingCheckpointSubmissionContract::ReplaceCurrent {
+                        required_agent_input_witness,
+                        ..
+                    } => required_agent_input_witness,
+                };
+                let stale_count_matches = match checkpoint_operation {
+                    WorkflowCheckpointActionCoordinates::CreateInitial => {
+                        required.stale_authority_actions.is_empty()
+                    }
+                    WorkflowCheckpointActionCoordinates::ReplaceCurrent {
+                        stale_application_refs,
+                        ..
+                    } => required.stale_authority_actions.len() == stale_application_refs.len(),
+                };
+                let readiness_witness_is_committable = if required.gaps.is_empty() {
+                    baseline_ref.as_ref().is_some()
+                        && required
+                            .implementation_boundary
+                            .as_ref()
+                            .is_some_and(|value| !value.trim().is_empty())
+                } else {
+                    true
+                };
+                stale_count_matches && readiness_witness_is_committable
             }
+            (
+                Self::UpdateScope {
+                    contract:
+                        WorkflowUpdateScopeSubmissionContract::GeneralCreateCurrentChangeUnit {
+                            task_mode,
+                            ..
+                        }
+                        | WorkflowUpdateScopeSubmissionContract::GeneralReplaceCurrentChangeUnit {
+                            task_mode,
+                            ..
+                        },
+                },
+                WorkflowActionAuthorityCoordinates::UpdateScope {
+                    task_mode: coordinate_mode,
+                    ..
+                },
+            ) => matches!(
+                (task_mode, coordinate_mode),
+                (WorkflowProductTaskMode::Direct, TaskMode::Direct)
+                    | (WorkflowProductTaskMode::Work, TaskMode::Work)
+            ),
             (
                 Self::UpdateScope {
                     contract:
@@ -3475,10 +3575,21 @@ impl WorkflowTransitionSubmissionContract {
                             ..
                         },
                 },
-                _,
+                WorkflowActionAuthorityCoordinates::UpdateScope {
+                    task_mode: TaskMode::Advisor,
+                    ..
+                },
             ) => {
                 fixed_values.affected_paths.is_empty()
                     && fixed_values.effect_contract == advisor_observe_only_effect_contract()
+            }
+            (Self::UpdateScope { .. }, WorkflowActionAuthorityCoordinates::UpdateScope { .. }) => {
+                matches!(
+                    self,
+                    Self::UpdateScope {
+                        contract: WorkflowUpdateScopeSubmissionContract::KeepCurrentChangeUnit { .. }
+                    }
+                )
             }
             _ => true,
         }

@@ -20,7 +20,8 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use volicord_core::pipeline::{
-    CorePipelineError, CoreService, GitWorkspaceContext, InvocationContext, PipelineResponse,
+    CorePipelineError, CoreService, GitWorkspaceContext, InvocationContext, NoCommitTransitionPlan,
+    PipelineResponse,
 };
 use volicord_core::TransitionSubmission;
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
@@ -1026,7 +1027,35 @@ impl McpAdapter {
                     )
                 })?
                 .insert("project_selector".to_owned(), serde_json::json!(project_id));
-            self.plan_action_form_submission_no_commit(context, form, witness, session)
+            let plan =
+                self.plan_action_form_submission_no_commit(context, form, witness, session)?;
+            let transition = workflow
+                .transition_catalog()
+                .transition(&form.action_key)
+                .ok_or_else(|| {
+                    (
+                        McpWorkflowContractStage::CatalogTotality,
+                        "planned action form lost its exact current transition".to_owned(),
+                    )
+                })?;
+            if plan.action_key != transition.action_key
+                || plan.basis_state_version != transition.expected_state_version
+            {
+                return Err((
+                    McpWorkflowContractStage::CorePlanning,
+                    "Core no-commit plan changed the action key or authority version".to_owned(),
+                ));
+            }
+            if plan.effect_class != transition.effect_class
+                || plan.expected_result_state != transition.expected_result_state
+            {
+                return Err((
+                    McpWorkflowContractStage::ExpectedResultValidation,
+                    "Core no-commit plan changed the expected effect or result-state family"
+                        .to_owned(),
+                ));
+            }
+            Ok(())
         })
     }
 
@@ -1036,7 +1065,7 @@ impl McpAdapter {
         form: &WorkflowActionForm,
         witness: Value,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<(), (McpWorkflowContractStage, String)> {
+    ) -> Result<NoCommitTransitionPlan, (McpWorkflowContractStage, String)> {
         let mut planner = self.clone();
         planner.planning_action_key = Some(form.action_key);
         let tool = AgentToolId::from_method(form.action_key.method).ok_or_else(|| {
@@ -1093,26 +1122,38 @@ impl McpAdapter {
                 ));
             }
         };
-        result.map(|_| ()).map_err(|error| {
-            let (stage, detail) = match &error {
-                McpAdapterError::Core(CorePipelineError::Invariant { detail })
-                    if detail.contains("expected-result") || detail.contains("expected result") =>
-                {
-                    (
-                        McpWorkflowContractStage::ExpectedResultValidation,
-                        detail.clone(),
-                    )
-                }
-                McpAdapterError::Core(error) => {
-                    (McpWorkflowContractStage::CorePlanning, error.to_string())
-                }
-                _ => (
-                    McpWorkflowContractStage::AdapterProjection,
-                    error.to_string(),
-                ),
-            };
-            (stage, detail)
-        })
+        result
+            .and_then(|response| {
+                response
+                    .response_value
+                    .get("no_commit_transition_plan")
+                    .cloned()
+                    .ok_or_else(|| McpAdapterError::SchemaContractFailure {
+                        tool_name: tool_name.to_owned(),
+                    })
+                    .and_then(|plan| serde_json::from_value(plan).map_err(McpAdapterError::Json))
+            })
+            .map_err(|error| {
+                let (stage, detail) = match &error {
+                    McpAdapterError::Core(CorePipelineError::Invariant { detail })
+                        if detail.contains("expected-result")
+                            || detail.contains("expected result") =>
+                    {
+                        (
+                            McpWorkflowContractStage::ExpectedResultValidation,
+                            detail.clone(),
+                        )
+                    }
+                    McpAdapterError::Core(error) => {
+                        (McpWorkflowContractStage::CorePlanning, error.to_string())
+                    }
+                    _ => (
+                        McpWorkflowContractStage::AdapterProjection,
+                        error.to_string(),
+                    ),
+                };
+                (stage, detail)
+            })
     }
 
     fn call_intake(

@@ -712,6 +712,10 @@ keep과 Core 정책이 교체를 허용할 때의 replace만 만들고 create는
 현재 shaping application을 무효화할 implementation replacement는 form을 만들지 않습니다.
 현재 기준선과 범위 리비전은 각 허용 form과 주입된 예상 상태 버전이 포괄하는 Core 현재
 권한으로 둡니다.
+Record-run form은 현재 Task, Change Unit, 기준선을 고정하고 `kind`는 Agent 작성 값으로
+남깁니다. 정규 witness는 현재 호환 Run kind를 사용하지만, 스키마에 유효한 비호환 kind도
+Core에 도달하여 Run이나 관련 권한을 커밋하지 않은 채 받은 Run kind와 허용 Run kind의
+타입이 정해진 상세를 반환합니다.
 
 호출자에게 보이는 고정 값을 하나라도 바꾸거나 생략하면 adapter는 결정적으로 정렬되고
 개수가 제한된 mismatch entry와 함께 `ACTION_FORM_ARGUMENT_MISMATCH`를 반환합니다. 각

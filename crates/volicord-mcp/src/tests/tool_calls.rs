@@ -106,10 +106,30 @@ fn assert_action_forms_are_a_total_core_projection(
             contract.validate_and_decode_input(&minimal),
             volicord_mcp_wire::McpInputContractValidation::Valid
         );
-        assert!(crate::action_form::bind_fixed_arguments(form, &minimal)
-            .map_err(std::io::Error::other)?
-            .mismatches
-            .is_empty());
+        let exactly_decoded = contract
+            .decode_input(&minimal)
+            .map_err(std::io::Error::other)?;
+        assert_eq!(
+            volicord_mcp_wire::submitted_action_form_semantic_variant(
+                transition.action_key.method,
+                &exactly_decoded,
+            ),
+            Some(transition.action_key.semantic_variant)
+        );
+        assert_eq!(
+            transition.submission_contract.method(),
+            transition.action_key.method
+        );
+        assert_eq!(
+            transition.submission_contract.semantic_variant(),
+            transition.action_key.semantic_variant
+        );
+        assert!(
+            crate::action_form::bind_fixed_arguments(form, &exactly_decoded)
+                .map_err(std::io::Error::other)?
+                .mismatches
+                .is_empty()
+        );
     }
     assert_eq!(
         fixture.counts()?,
@@ -262,6 +282,88 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
     .map(|(method, variant)| (method.as_str().to_owned(), variant.as_str().to_owned()))
     .collect::<BTreeSet<_>>();
     assert_eq!(covered_forms, expected_forms);
+    Ok(())
+}
+
+#[test]
+fn incompatible_record_run_kind_reaches_core_with_lossless_public_mcp_details(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-record-run-kind-rejection")?;
+    let repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+        fixture.product_repo_path(),
+    )?;
+    let repository_before = repository.status_bytes()?;
+    let (task_id, _, _) = create_implementation_task(&fixture)?;
+    let form = action_form_for_method(&adapter(&fixture)?, &task_id, MethodName::RecordRun)?;
+    assert_eq!(form.canonical_minimal_request["kind"], "implementation");
+    assert!(!form.fixed_argument_paths.contains(&"/kind".to_owned()));
+    assert!(form
+        .agent_authored_inputs
+        .iter()
+        .any(|input| input.required && input.path == "/kind"));
+
+    let before = fixture.counts()?;
+    let close_basis_before: (u64, Option<String>) = fixture.conn()?.query_row(
+        "SELECT close_basis_revision, close_basis_json
+           FROM tasks
+          WHERE project_id = ?1 AND task_id = ?2",
+        [fixture.project_id(), task_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let mut incompatible = Value::Object(form.canonical_minimal_request);
+    incompatible["kind"] = json!("direct");
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(2, AgentToolId::RECORD_RUN.wire_name(), incompatible),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let result = &responses[1]["result"];
+    assert_eq!(result["isError"], false);
+    let structured = &result["structuredContent"];
+    assert_eq!(structured["result_type"], "rejected");
+    assert_eq!(
+        structured["method_result"]["errors"][0]["code"],
+        "RUN_KIND_INCOMPATIBLE"
+    );
+    for details in [
+        &structured["transition_rejection"]["attempt_details"],
+        &structured["retry_contract"]["attempt_details"],
+    ] {
+        assert_eq!(details["attempt_kind"], "record_run_kind");
+        assert_eq!(details["received_run_kind"], "direct");
+        assert_eq!(details["allowed_run_kinds"], json!(["implementation"]));
+    }
+    assert!(structured["presentation"]["must_surface"]
+        .as_array()
+        .expect("must-surface facts")
+        .contains(&json!({
+            "fact_kind": "record_run_kind_rejected",
+            "received_run_kind": "direct",
+            "allowed_run_kinds": ["implementation"]
+        })));
+    assert_eq!(structured["failure"]["reached_core"], true);
+    assert_eq!(structured["failure"]["method_committed"], false);
+    let compact = result["content"][0]["text"]
+        .as_str()
+        .ok_or("Run-kind rejection compact response")?;
+    assert!(compact.contains("received Run kind=direct"));
+    assert!(compact.contains("allowed Run kinds=[implementation]"));
+    assert!(compact.contains("Core state is unchanged"));
+
+    assert_eq!(fixture.counts()?, before);
+    let close_basis_after: (u64, Option<String>) = fixture.conn()?.query_row(
+        "SELECT close_basis_revision, close_basis_json
+           FROM tasks
+          WHERE project_id = ?1 AND task_id = ?2",
+        [fixture.project_id(), task_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(close_basis_after, close_basis_before);
+    assert_eq!(repository.status_bytes()?, repository_before);
     Ok(())
 }
 
@@ -3077,6 +3179,314 @@ fn product_and_technical_only_shaping_outputs_do_not_fabricate_scope_gaps(
             "{label}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn direct_and_work_general_scope_forms_commit_their_canonical_create_and_replace_witnesses(
+) -> Result<(), Box<dyn Error>> {
+    for mode in ["direct", "work"] {
+        let fixture = CoreFixture::new(&format!("mcp-{mode}-canonical-scope-forms"))?;
+        let repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+            fixture.product_repo_path(),
+        )?;
+        let repository_before = repository.status_bytes()?;
+        let adapter = adapter(&fixture)?;
+        let mut intake = intake_args(None);
+        intake["requested_mode"] = json!(mode);
+        intake["initial_scope"]["acceptance_criteria"][0]["evidence_requirement"] =
+            json!("not_required");
+        let intake = adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake)?;
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .ok_or("product-capable intake Task")?;
+
+        let create_form = action_form_for_variant(
+            &adapter,
+            task_id,
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+        )?;
+        for path in [
+            "/change_unit/scope_summary",
+            "/change_unit/affected_paths",
+            "/baseline_ref",
+        ] {
+            assert!(create_form
+                .agent_authored_inputs
+                .iter()
+                .any(|input| input.required && input.path == path));
+        }
+        assert!(create_form
+            .agent_authored_inputs
+            .iter()
+            .any(|input| !input.required && input.path == "/change_unit/effect_contract"));
+        assert!(create_form.fixed_arguments["change_unit"]
+            .get("affected_paths")
+            .is_none());
+        assert!(create_form.fixed_arguments["change_unit"]
+            .get("effect_contract")
+            .is_none());
+        let created = adapter.call_tool(
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+            Value::Object(create_form.canonical_minimal_request),
+        )?;
+        let created_id = created.response_value["state"]["active_change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or("created general Change Unit")?
+            .to_owned();
+
+        let replace_form = action_form_for_variant(
+            &adapter,
+            task_id,
+            MethodName::UpdateScope,
+            WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+        )?;
+        let replaced = adapter.call_tool(
+            AgentToolId::UPDATE_SCOPE.wire_name(),
+            Value::Object(replace_form.canonical_minimal_request),
+        )?;
+        let replaced_id = replaced.response_value["state"]["active_change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or("replacement general Change Unit")?;
+        assert_ne!(replaced_id, created_id);
+        let status = adapter.call_tool(
+            AgentToolId::STATUS.wire_name(),
+            json!({"task_id": task_id, "detail": "full"}),
+        )?;
+        assert_eq!(
+            status.response_value["active_task"]["active_change_unit_ref"],
+            replaced.response_value["state"]["active_change_unit_ref"]
+        );
+        assert_eq!(repository.status_bytes()?, repository_before);
+    }
+    Ok(())
+}
+
+#[test]
+fn advisor_create_and_replace_forms_commit_canonical_observe_only_witnesses(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-advisor-canonical-scope-forms")?;
+    let repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+        fixture.product_repo_path(),
+    )?;
+    let repository_before = repository.status_bytes()?;
+    let adapter = adapter(&fixture)?;
+    let mut intake = intake_args(None);
+    intake["requested_mode"] = json!("advisor");
+    intake["initial_scope"]["acceptance_criteria"][0]["evidence_requirement"] =
+        json!("not_required");
+    let intake = adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake)?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .ok_or("Advisor intake Task")?;
+
+    let checkpoint_form = action_form_for_variant(
+        &adapter,
+        task_id,
+        MethodName::RecordShapingCheckpoint,
+        WorkflowActionSemanticVariant::CreateInitial,
+    )?;
+    let checkpoint = adapter.call_tool(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        Value::Object(checkpoint_form.canonical_minimal_request),
+    )?;
+    let request_id = checkpoint.response_value["created_user_action_request_refs"][0]["record_id"]
+        .as_str()
+        .ok_or("canonical checkpoint UserAction")?;
+    assert_eq!(
+        checkpoint.response_value["workflow"]["kind"],
+        "awaiting_user_action"
+    );
+    let context = fixture.mutation_context()?;
+    let resolved = CoreService::for_mutation(&context).resolve_user_action(
+        &context,
+        fixture.resolve_user_action_request(ResolveUserActionFixture {
+            request_id: "req_mcp_advisor_canonical_checkpoint_resolution",
+            task_id,
+            user_action_request_id: request_id,
+            channel_submission_id: "submission_mcp_advisor_canonical_checkpoint_resolution",
+            resolution: volicord_types::schema::UserActionResolutionInput::Choice {
+                selected_option_id: volicord_types::ids::UserActionOptionId::new(
+                    "option_establish_current_baseline",
+                ),
+                note: None.into(),
+            },
+        }),
+        InvocationContext::local_user(
+            ProjectId::new(fixture.project_id()),
+            OperationCategory::UserOnly,
+            volicord_types::values::UserActionChannelKind::Cli,
+        ),
+    )?;
+    assert_eq!(
+        resolved.response_value["state"]["workflow"]["kind"],
+        "ready_for_change_unit"
+    );
+    let checkpoint_id = checkpoint.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
+        .as_str()
+        .ok_or("Advisor shaping checkpoint")?
+        .to_owned();
+
+    let assert_observe_only = |form: &volicord_mcp_wire::WorkflowActionForm| {
+        assert_eq!(
+            form.fixed_arguments["change_unit"]["affected_paths"],
+            json!([])
+        );
+        assert_eq!(
+            form.fixed_arguments["change_unit"]["effect_contract"],
+            json!(volicord_types::schema::advisor_observe_only_effect_contract())
+        );
+        assert!(form
+            .fixed_argument_paths
+            .contains(&"/change_unit/affected_paths".to_owned()));
+        assert!(form
+            .fixed_argument_paths
+            .contains(&"/change_unit/effect_contract".to_owned()));
+        assert!(!form.agent_authored_inputs.iter().any(|input| matches!(
+            input.path.as_str(),
+            "/change_unit/affected_paths" | "/change_unit/effect_contract"
+        )));
+    };
+
+    let create_form = action_form_for_variant(
+        &adapter,
+        task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+    )?;
+    assert_observe_only(&create_form);
+    let created = adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        Value::Object(create_form.canonical_minimal_request),
+    )?;
+    let predecessor_id = created.response_value["state"]["active_change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("created Advisor Change Unit")?
+        .to_owned();
+    let after_create = fixture.counts()?;
+    assert_eq!(after_create.write_tickets, 0);
+    assert_eq!(after_create.runs, 0);
+    let created_status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "full"}),
+    )?;
+    assert_eq!(
+        created_status.response_value["active_task"]["active_change_unit_ref"],
+        created.response_value["state"]["active_change_unit_ref"]
+    );
+    assert_eq!(
+        created_status.response_value["active_task"]["scope_revision"],
+        created.response_value["state"]["scope_revision"]
+    );
+    assert_eq!(
+        created_status.response_value["active_task"]["workflow"]["kind"],
+        "shaping_required"
+    );
+    let created_change_unit: (String, String) = fixture.conn()?.query_row(
+        "SELECT bounded_paths_json, effect_contract_json
+           FROM change_units
+          WHERE project_id = ?1 AND change_unit_id = ?2",
+        [fixture.project_id(), predecessor_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let created_paths = serde_json::from_str::<Vec<String>>(&created_change_unit.0)?;
+    let created_effect = serde_json::from_str::<volicord_types::schema::ChangeUnitEffectContract>(
+        &created_change_unit.1,
+    )?;
+    assert!(volicord_types::schema::advisor_compatible_change_unit(
+        &created_paths,
+        Some(&created_effect),
+    ));
+    assert!(created_effect
+        .forbidden_effects
+        .contains(&volicord_types::values::ChangeUnitEffectKind::ProductFileWrite));
+    let advisor_mode: String = fixture.conn()?.query_row(
+        "SELECT mode FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        [fixture.project_id(), task_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(advisor_mode, "advisor");
+
+    let replace_form = action_form_for_variant(
+        &adapter,
+        task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::ReplaceCurrentChangeUnit,
+    )?;
+    assert_observe_only(&replace_form);
+    let authority_before_replace = fixture.counts()?;
+    let replaced = adapter.call_tool(
+        AgentToolId::UPDATE_SCOPE.wire_name(),
+        Value::Object(replace_form.canonical_minimal_request),
+    )?;
+    let current_id = replaced.response_value["state"]["active_change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("replacement Advisor Change Unit")?
+        .to_owned();
+    assert_ne!(current_id, predecessor_id);
+
+    let conn = fixture.conn()?;
+    let predecessor: (String, i64, String, String) = conn.query_row(
+        "SELECT status, is_current, bounded_paths_json, effect_contract_json
+               FROM change_units
+              WHERE project_id = ?1 AND change_unit_id = ?2",
+        [fixture.project_id(), predecessor_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    assert_eq!(predecessor.0, "replaced");
+    assert_eq!(predecessor.1, 0);
+    let current: (String, i64, String, String) = conn.query_row(
+        "SELECT status, is_current, bounded_paths_json, effect_contract_json
+           FROM change_units
+          WHERE project_id = ?1 AND change_unit_id = ?2",
+        [fixture.project_id(), current_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    assert_eq!(current.0, "active");
+    assert_eq!(current.1, 1);
+    assert_eq!(serde_json::from_str::<Value>(&current.2)?, json!([]));
+    assert_eq!(
+        serde_json::from_str::<Value>(&current.3)?,
+        json!(volicord_types::schema::advisor_observe_only_effect_contract())
+    );
+
+    let after_replace = fixture.counts()?;
+    assert_eq!(after_replace.write_tickets, 0);
+    assert_eq!(after_replace.runs, 0);
+    assert_eq!(
+        after_replace.shaping_checkpoints,
+        authority_before_replace.shaping_checkpoints
+    );
+    assert_eq!(
+        after_replace.shaping_decision_applications,
+        authority_before_replace.shaping_decision_applications
+    );
+    let replaced_status = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": task_id, "detail": "full"}),
+    )?;
+    assert_eq!(
+        replaced_status.response_value["active_task"]["active_change_unit_ref"],
+        replaced.response_value["state"]["active_change_unit_ref"]
+    );
+    assert_eq!(
+        replaced_status.response_value["active_task"]["workflow"]["checkpoint"],
+        Value::Null
+    );
+    let checkpoint_readiness: String = conn.query_row(
+        "SELECT readiness
+           FROM shaping_checkpoints
+          WHERE project_id = ?1 AND shaping_checkpoint_id = ?2",
+        [fixture.project_id(), checkpoint_id.as_str()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(checkpoint_readiness, "superseded");
+    assert_eq!(
+        replaced_status.response_value["active_task"]["workflow"]["kind"],
+        "shaping_required"
+    );
+    assert_eq!(repository.status_bytes()?, repository_before);
     Ok(())
 }
 

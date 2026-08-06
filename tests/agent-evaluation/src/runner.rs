@@ -499,6 +499,12 @@ fn validate_observation(
                 .method_specific_form_opportunities
         || observation.shaping_workflow.exact_fixed_arguments_used
             > observation.shaping_workflow.fixed_argument_opportunities
+        || observation
+            .shaping_workflow
+            .schema_validity_treated_as_execution_authority
+            > observation
+                .shaping_workflow
+                .schema_validity_claim_opportunities
         || observation.shaping_workflow.replace_current_forms_selected
             > observation
                 .shaping_workflow
@@ -609,6 +615,24 @@ fn validate_observation(
             > observation
                 .shaping_workflow
                 .advisor_finalization_opportunities
+        || observation
+            .shaping_workflow
+            .advisor_observe_only_change_units
+            > observation
+                .shaping_workflow
+                .advisor_change_unit_opportunities
+        || observation
+            .shaping_workflow
+            .speculative_path_or_effect_contracts
+            > observation
+                .shaping_workflow
+                .change_unit_contract_authoring_opportunities
+        || observation
+            .shaping_workflow
+            .correct_record_run_rejection_details
+            > observation
+                .shaping_workflow
+                .record_run_rejection_detail_opportunities
         || observation.shaping_workflow.premature_completion_claims
             > observation.shaping_workflow.completion_claim_opportunities
         || observation.shaping_workflow.accepted_outcomes_surfaced
@@ -741,7 +765,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(69);
+    let mut criteria = Vec::with_capacity(73);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -897,6 +921,12 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         wrong_completions == 0.0,
     ));
 
+    let all_shaping_totals = |field: fn(&crate::model::ShapingWorkflowObservation) -> u64| {
+        modified_conditions
+            .iter()
+            .map(|observation| u128::from(field(&observation.shaping_workflow)))
+            .sum::<u128>()
+    };
     let planning = modified_conditions
         .iter()
         .filter(|item| item.task_group == TaskGroup::PlanningOnlyDevelopment)
@@ -932,6 +962,11 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         "exact_fixed_argument_use",
         totals(|value| value.fixed_argument_opportunities),
         totals(|value| value.exact_fixed_arguments_used),
+    ));
+    criteria.push(zero_rate(
+        "schema_validity_is_not_execution_authority",
+        all_shaping_totals(|value| value.schema_validity_claim_opportunities),
+        all_shaping_totals(|value| value.schema_validity_treated_as_execution_authority),
     ));
     criteria.push(zero_rate(
         "wrong_method_speculative_mutation",
@@ -1072,12 +1107,6 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         totals(|value| value.guarantee_wording_checks),
         totals(|value| value.accurate_cooperative_guarantee_wording),
     ));
-    let all_shaping_totals = |field: fn(&crate::model::ShapingWorkflowObservation) -> u64| {
-        modified_conditions
-            .iter()
-            .map(|observation| u128::from(field(&observation.shaping_workflow)))
-            .sum::<u128>()
-    };
     criteria.push(zero_rate(
         "impossible_retry_instruction",
         all_shaping_totals(|value| value.impossible_retry_instruction_opportunities),
@@ -1122,6 +1151,21 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         "advisor_finalization_via_finalize_advice",
         all_shaping_totals(|value| value.advisor_finalization_opportunities),
         all_shaping_totals(|value| value.advisor_finalizations_via_finalize_advice),
+    ));
+    criteria.push(complete_rate(
+        "advisor_observe_only_change_unit",
+        all_shaping_totals(|value| value.advisor_change_unit_opportunities),
+        all_shaping_totals(|value| value.advisor_observe_only_change_units),
+    ));
+    criteria.push(zero_rate(
+        "no_speculative_change_unit_contract",
+        all_shaping_totals(|value| value.change_unit_contract_authoring_opportunities),
+        all_shaping_totals(|value| value.speculative_path_or_effect_contracts),
+    ));
+    criteria.push(complete_rate(
+        "record_run_rejection_detail_preservation",
+        all_shaping_totals(|value| value.record_run_rejection_detail_opportunities),
+        all_shaping_totals(|value| value.correct_record_run_rejection_details),
     ));
     criteria.push(zero_rate(
         "premature_completion_claim",
@@ -1364,7 +1408,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 69] {
+fn criterion_definitions() -> [CriterionDefinition; 73] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1439,6 +1483,11 @@ fn criterion_definitions() -> [CriterionDefinition; 69] {
         CriterionDefinition {
             id: "exact_fixed_argument_use",
             target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "schema_validity_is_not_execution_authority",
+            target: "= 0",
             unit: "percent",
         },
         CriterionDefinition {
@@ -1613,6 +1662,21 @@ fn criterion_definitions() -> [CriterionDefinition; 69] {
         },
         CriterionDefinition {
             id: "advisor_finalization_via_finalize_advice",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "advisor_observe_only_change_unit",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "no_speculative_change_unit_contract",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "record_run_rejection_detail_preservation",
             target: "= 100",
             unit: "percent",
         },
