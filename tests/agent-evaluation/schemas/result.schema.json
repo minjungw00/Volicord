@@ -66,8 +66,8 @@
     },
     "criteria": {
       "type": "array",
-      "minItems": 73,
-      "maxItems": 73,
+      "minItems": 76,
+      "maxItems": 76,
       "items": {"$ref": "#/$defs/criterion"}
     },
     "privacy": {

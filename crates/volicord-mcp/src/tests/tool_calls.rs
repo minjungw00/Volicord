@@ -35,23 +35,136 @@ fn assert_transition_catalog_is_canonical(workflow: &Value) {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct NoCommitEffectSnapshot {
+    counts: volicord_store::core_pipeline::StorageEffectCounts,
+    authority: volicord_test_support::core_fixtures::ProjectAuthoritySnapshot,
+    repository_status: Vec<u8>,
+}
+
+type FormPlanningCoverage = (
+    BTreeSet<(String, String)>,
+    std::collections::HashSet<volicord_types::values::NoCommitPlannedBranch>,
+);
+
+fn no_commit_effect_snapshot(
+    fixture: &CoreFixture,
+    repository: &volicord_test_support::core_fixtures::PlanningRepository,
+) -> Result<NoCommitEffectSnapshot, Box<dyn Error>> {
+    Ok(NoCommitEffectSnapshot {
+        counts: fixture.counts()?,
+        authority: fixture.authority_snapshot()?,
+        repository_status: repository.status_bytes()?,
+    })
+}
+
+fn branch_matches_transition(
+    branch: volicord_types::values::NoCommitPlannedBranch,
+    method: MethodName,
+) -> bool {
+    use volicord_types::values::NoCommitPlannedBranch as Branch;
+
+    match method {
+        MethodName::StageArtifact => branch == Branch::ArtifactStaging,
+        MethodName::CheckClose | MethodName::ReconcileChanges => branch == Branch::ReadOnlyResult,
+        MethodName::CloseTask => matches!(
+            branch,
+            Branch::CommitMutation | Branch::NormalNoEffectResult
+        ),
+        _ => branch == Branch::CommitMutation,
+    }
+}
+
 fn assert_action_forms_are_a_total_core_projection(
     fixture: &CoreFixture,
+    repository: &volicord_test_support::core_fixtures::PlanningRepository,
     workflow_value: &Value,
-) -> Result<BTreeSet<(String, String)>, Box<dyn Error>> {
-    let before = fixture.counts()?;
+) -> Result<FormPlanningCoverage, Box<dyn Error>> {
+    let before = no_commit_effect_snapshot(fixture, repository)?;
     let workflow: volicord_types::schema::WorkflowProjection =
         serde_json::from_value(workflow_value.clone())?;
     let adapter = adapter(fixture)?;
     let mutation_context = fixture.mutation_context()?;
-    let catalog = adapter
-        .validated_workflow_action_form_catalog(
-            &mutation_context,
-            &ProjectId::new(fixture.project_id()),
-            &workflow,
-            None,
-        )
-        .map_err(std::io::Error::other)?;
+    let mut planned_branches = std::collections::HashSet::new();
+    let catalog = crate::action_form::workflow_action_form_catalog(
+        &ProjectId::new(fixture.project_id()),
+        &workflow,
+        |form, mut complete_witness| {
+            let transition = workflow
+                .transition_catalog()
+                .transition(&form.action_key)
+                .expect("projected form must retain its exact current transition");
+            let tool = AgentToolId::from_method(form.action_key.method)
+                .expect("Agent transition method must have an MCP tool");
+            let contract = volicord_mcp_wire::mcp_tool_contract(tool)
+                .expect("Agent transition method must have an MCP contract");
+            assert_eq!(
+                contract.validate_and_decode_input(&complete_witness),
+                volicord_mcp_wire::McpInputContractValidation::Valid
+            );
+            let exactly_decoded = contract
+                .decode_input(&complete_witness)
+                .expect("complete witness must deserialize through the exact MCP request");
+            assert_eq!(
+                volicord_mcp_wire::submitted_action_form_semantic_variant(
+                    form.action_key.method,
+                    &exactly_decoded,
+                ),
+                Some(form.action_key.semantic_variant)
+            );
+            assert!(
+                crate::action_form::bind_fixed_arguments(form, &exactly_decoded)
+                    .expect("fixed authority binder")
+                    .mismatches
+                    .is_empty()
+            );
+            complete_witness
+                .as_object_mut()
+                .expect("complete witness object")
+                .insert(
+                    "project_selector".to_owned(),
+                    json!(fixture.project_id()),
+                );
+            let form_before = no_commit_effect_snapshot(fixture, repository)
+                .expect("pre-plan effect snapshot");
+            let plan = adapter
+                .plan_action_form_submission_no_commit_for_test(
+                    &mutation_context,
+                    form,
+                    complete_witness,
+                )
+                .expect("every advertised form must reach an accepted exact Core plan");
+            assert_eq!(plan.action_key, transition.action_key);
+            assert_eq!(plan.basis_state_version, transition.expected_state_version);
+            assert_eq!(plan.effect_class, transition.effect_class);
+            assert_eq!(plan.expected_result_state, transition.expected_result_state);
+            assert!(
+                branch_matches_transition(plan.planned_branch, transition.action_key.method),
+                "unexpected {:?} branch for {:?}",
+                plan.planned_branch,
+                transition.action_key
+            );
+            if transition.action_key.method == MethodName::CloseTask
+                && exactly_decoded["intent"] == "cancel"
+            {
+                assert_eq!(
+                    plan.planned_branch,
+                    volicord_types::values::NoCommitPlannedBranch::NormalNoEffectResult,
+                    "a close witness without current close authority must remain an accepted blocked no-effect plan"
+                );
+            }
+            planned_branches.insert(plan.planned_branch);
+            assert_eq!(
+                no_commit_effect_snapshot(fixture, repository)
+                    .expect("post-plan effect snapshot"),
+                form_before,
+                "exact no-commit planning changed state for {:?}",
+                form.action_key
+            );
+            Ok(())
+        },
+    )
+    .map_err(std::io::Error::other)?;
     let core_keys = workflow
         .transition_catalog()
         .transitions
@@ -132,18 +245,19 @@ fn assert_action_forms_are_a_total_core_projection(
         );
     }
     assert_eq!(
-        fixture.counts()?,
+        no_commit_effect_snapshot(fixture, repository)?,
         before,
         "catalog planning must have no effects"
     );
-    Ok(form_keys)
+    Ok((form_keys, planned_branches))
 }
 
 #[test]
 fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(), Box<dyn Error>> {
     let mut covered_forms = BTreeSet::new();
+    let mut covered_branches = std::collections::HashSet::new();
     let shaping_fixture = CoreFixture::new("mcp-reachable-form-shaping")?;
-    let _shaping_repository =
+    let shaping_repository =
         volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
             shaping_fixture.product_repo_path(),
         )?;
@@ -153,10 +267,13 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
         AgentToolId::STATUS.wire_name(),
         json!({"task_id": shaping_task_id, "detail": "workflow"}),
     )?;
-    covered_forms.extend(assert_action_forms_are_a_total_core_projection(
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
         &shaping_fixture,
+        &shaping_repository,
         &shaping.response_value["active_task"]["workflow"],
-    )?);
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
 
     let ready_fixture = CoreFixture::new("mcp-reachable-form-ready")?;
     let ready_repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
@@ -169,14 +286,17 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
         AgentToolId::STATUS.wire_name(),
         json!({"task_id": ready_task_id, "detail": "workflow"}),
     )?;
-    covered_forms.extend(assert_action_forms_are_a_total_core_projection(
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
         &ready_fixture,
+        &ready_repository,
         &ready.response_value["active_task"]["workflow"],
-    )?);
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
     assert_eq!(ready_repository.status_bytes()?, ready_repository_before);
 
     let implementation_fixture = CoreFixture::new("mcp-reachable-form-implementation")?;
-    let _implementation_repository =
+    let implementation_repository =
         volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
             implementation_fixture.product_repo_path(),
         )?;
@@ -186,13 +306,16 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
         AgentToolId::STATUS.wire_name(),
         json!({"task_id": implementation_task_id, "detail": "workflow"}),
     )?;
-    covered_forms.extend(assert_action_forms_are_a_total_core_projection(
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
         &implementation_fixture,
+        &implementation_repository,
         &implementation.response_value["active_task"]["workflow"],
-    )?);
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
 
     let pending_fixture = CoreFixture::new("mcp-reachable-form-pending")?;
-    let _pending_repository =
+    let pending_repository =
         volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
             pending_fixture.product_repo_path(),
         )?;
@@ -202,13 +325,16 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
         AgentToolId::STATUS.wire_name(),
         json!({"task_id": pending_task_id, "detail": "workflow"}),
     )?;
-    covered_forms.extend(assert_action_forms_are_a_total_core_projection(
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
         &pending_fixture,
+        &pending_repository,
         &pending.response_value["active_task"]["workflow"],
-    )?);
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
 
     let direct_fixture = CoreFixture::new("mcp-reachable-form-direct")?;
-    let _direct_repository =
+    let direct_repository =
         volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
             direct_fixture.product_repo_path(),
         )?;
@@ -216,10 +342,151 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
     let mut direct_request = intake_args(None);
     direct_request["requested_mode"] = json!("direct");
     let direct = direct_adapter.call_tool(AgentToolId::INTAKE.wire_name(), direct_request)?;
-    covered_forms.extend(assert_action_forms_are_a_total_core_projection(
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
         &direct_fixture,
+        &direct_repository,
         &direct.response_value["state"]["workflow"],
-    )?);
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
+
+    let advisor_fixture = CoreFixture::new("mcp-reachable-form-advisor")?;
+    let advisor_repository =
+        volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+            advisor_fixture.product_repo_path(),
+        )?;
+    let advisor_adapter = adapter(&advisor_fixture)?;
+    let mut advisor_request = intake_args(None);
+    advisor_request["requested_mode"] = json!("advisor");
+    advisor_request["initial_scope"]["acceptance_criteria"][0]["evidence_requirement"] =
+        json!("not_required");
+    let advisor_intake =
+        advisor_adapter.call_tool(AgentToolId::INTAKE.wire_name(), advisor_request)?;
+    let advisor_task_id = advisor_intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .ok_or("Advisor explorer Task")?;
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
+        &advisor_fixture,
+        &advisor_repository,
+        &advisor_intake.response_value["state"]["workflow"],
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
+
+    let advisor_checkpoint_form = action_form_for_variant(
+        &advisor_adapter,
+        advisor_task_id,
+        MethodName::RecordShapingCheckpoint,
+        WorkflowActionSemanticVariant::CreateInitial,
+    )?;
+    let advisor_checkpoint = advisor_adapter.call_tool(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        Value::Object(advisor_checkpoint_form.canonical_minimal_request),
+    )?;
+    let advisor_user_action_id = advisor_checkpoint.response_value
+        ["created_user_action_request_refs"][0]["record_id"]
+        .as_str()
+        .ok_or("Advisor explorer UserAction")?;
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
+        &advisor_fixture,
+        &advisor_repository,
+        &advisor_checkpoint.response_value["workflow"],
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
+
+    let advisor_context = advisor_fixture.mutation_context()?;
+    let advisor_resolved = CoreService::for_mutation(&advisor_context).resolve_user_action(
+        &advisor_context,
+        advisor_fixture.resolve_user_action_request(ResolveUserActionFixture {
+            request_id: "req_mcp_reachable_advisor_resolution",
+            task_id: advisor_task_id,
+            user_action_request_id: advisor_user_action_id,
+            channel_submission_id: "submission_mcp_reachable_advisor_resolution",
+            resolution: volicord_types::schema::UserActionResolutionInput::Choice {
+                selected_option_id: volicord_types::ids::UserActionOptionId::new(
+                    "option_establish_current_baseline",
+                ),
+                note: None.into(),
+            },
+        }),
+        InvocationContext::local_user(
+            ProjectId::new(advisor_fixture.project_id()),
+            OperationCategory::UserOnly,
+            volicord_types::values::UserActionChannelKind::Cli,
+        ),
+    )?;
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
+        &advisor_fixture,
+        &advisor_repository,
+        &advisor_resolved.response_value["state"]["workflow"],
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
+
+    let advisor_scope_form = action_form_for_variant(
+        &advisor_adapter,
+        advisor_task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+    )?;
+    let mut advisor_scope_request = Value::Object(advisor_scope_form.canonical_minimal_request);
+    advisor_scope_request["baseline_ref"] =
+        json!(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF);
+    let advisor_scoped =
+        advisor_adapter.call_tool(AgentToolId::UPDATE_SCOPE.wire_name(), advisor_scope_request)?;
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
+        &advisor_fixture,
+        &advisor_repository,
+        &advisor_scoped.response_value["state"]["workflow"],
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
+
+    let advisor_ready_form = action_form_for_variant(
+        &advisor_adapter,
+        advisor_task_id,
+        MethodName::RecordShapingCheckpoint,
+        WorkflowActionSemanticVariant::CreateInitial,
+    )?;
+    let advisor_ready = advisor_adapter.call_tool(
+        AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+        Value::Object(advisor_ready_form.canonical_minimal_request),
+    )?;
+    assert_eq!(
+        advisor_ready.response_value["workflow"]["kind"],
+        "ready_to_finalize_advice"
+    );
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
+        &advisor_fixture,
+        &advisor_repository,
+        &advisor_ready.response_value["workflow"],
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
+
+    let advisor_finalize_form = action_form_for_variant(
+        &advisor_adapter,
+        advisor_task_id,
+        MethodName::FinalizeAdvice,
+        WorkflowActionSemanticVariant::FinalizeAdvice,
+    )?;
+    let advisor_finalized = advisor_adapter.call_tool(
+        AgentToolId::FINALIZE_ADVICE.wire_name(),
+        Value::Object(advisor_finalize_form.canonical_minimal_request),
+    )?;
+    assert_eq!(
+        advisor_finalized.response_value["workflow"]["kind"],
+        "close_review"
+    );
+    let (forms, branches) = assert_action_forms_are_a_total_core_projection(
+        &advisor_fixture,
+        &advisor_repository,
+        &advisor_finalized.response_value["workflow"],
+    )?;
+    covered_forms.extend(forms);
+    covered_branches.extend(branches);
+
     let expected_forms = [
         (
             MethodName::RecordShapingCheckpoint,
@@ -244,6 +511,10 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
         (
             MethodName::AdvanceTask,
             WorkflowActionSemanticVariant::AdvanceTask,
+        ),
+        (
+            MethodName::FinalizeAdvice,
+            WorkflowActionSemanticVariant::FinalizeAdvice,
         ),
         (
             MethodName::PrepareEvidenceCapture,
@@ -282,6 +553,17 @@ fn reachable_action_form_catalogs_are_total_no_commit_core_plans() -> Result<(),
     .map(|(method, variant)| (method.as_str().to_owned(), variant.as_str().to_owned()))
     .collect::<BTreeSet<_>>();
     assert_eq!(covered_forms, expected_forms);
+    assert_eq!(
+        covered_branches,
+        [
+            volicord_types::values::NoCommitPlannedBranch::CommitMutation,
+            volicord_types::values::NoCommitPlannedBranch::NormalNoEffectResult,
+            volicord_types::values::NoCommitPlannedBranch::ReadOnlyResult,
+            volicord_types::values::NoCommitPlannedBranch::ArtifactStaging,
+        ]
+        .into_iter()
+        .collect()
+    );
     Ok(())
 }
 
@@ -488,6 +770,303 @@ fn exact_method_rejection_suppresses_form_and_preserves_bounded_failure_facts(
         .is_some_and(|message| message.contains("internally inconsistent")));
     assert_eq!(fixture.counts()?, before);
     assert_eq!(repository.status_bytes()?, repository_before);
+    Ok(())
+}
+
+fn assert_mutated_catalog_fails_closed(
+    fixture: &CoreFixture,
+    repository: &volicord_test_support::core_fixtures::PlanningRepository,
+    workflow_value: &Value,
+    target_key: volicord_types::schema::WorkflowActionKey,
+    expected_code: ErrorCode,
+    mut mutate: impl FnMut(&mut Value),
+) -> Result<(), Box<dyn Error>> {
+    let workflow: volicord_types::schema::WorkflowProjection =
+        serde_json::from_value(workflow_value.clone())?;
+    let adapter = adapter(fixture)?;
+    let context = fixture.mutation_context()?;
+    let before = no_commit_effect_snapshot(fixture, repository)?;
+    let mut target_seen = false;
+    let result = crate::action_form::workflow_action_form_catalog(
+        &ProjectId::new(fixture.project_id()),
+        &workflow,
+        |form, mut witness| {
+            if form.action_key == target_key {
+                target_seen = true;
+                mutate(&mut witness);
+                let tool = AgentToolId::from_method(form.action_key.method)
+                    .expect("mutated Agent transition method must retain its MCP tool");
+                let contract = volicord_mcp_wire::mcp_tool_contract(tool)
+                    .expect("mutated Agent transition method must retain its MCP contract");
+                assert_eq!(
+                    contract.validate_and_decode_input(&witness),
+                    volicord_mcp_wire::McpInputContractValidation::Valid,
+                    "bounded drift must remain schema-valid for {:?}",
+                    form.action_key
+                );
+                let decoded = contract
+                    .decode_input(&witness)
+                    .expect("schema-valid drift must exactly deserialize");
+                assert_eq!(
+                    volicord_mcp_wire::submitted_action_form_semantic_variant(
+                        form.action_key.method,
+                        &decoded,
+                    ),
+                    Some(form.action_key.semantic_variant),
+                    "bounded drift must retain semantic variant"
+                );
+            }
+            witness
+                .as_object_mut()
+                .expect("complete witness object")
+                .insert("project_selector".to_owned(), json!(fixture.project_id()));
+            let form_before = no_commit_effect_snapshot(fixture, repository)
+                .expect("pre-drift plan effect snapshot");
+            let planned =
+                adapter.plan_action_form_submission_no_commit_for_test(&context, form, witness);
+            assert_eq!(
+                no_commit_effect_snapshot(fixture, repository)
+                    .expect("post-drift plan effect snapshot"),
+                form_before,
+                "drift planning changed state for {:?}",
+                form.action_key
+            );
+            planned.map(|_| ())
+        },
+    );
+    assert!(target_seen, "target form was not reachable: {target_key:?}");
+    let failure = result.expect_err("method-rejected witness must suppress the entire catalog");
+    assert_eq!(failure.action_key, Some(target_key));
+    assert_eq!(
+        failure.stage,
+        volicord_mcp_wire::McpWorkflowContractStage::MethodPlanningRejected
+    );
+    assert_eq!(failure.method_error_code, Some(expected_code));
+    assert!(failure.method_error_details.is_some());
+    assert!(failure.reached_core());
+    assert!(!failure.committed);
+    assert!(!failure.state_change_applied);
+
+    let projected = structured_error_result(&crate::tool_dispatch::tool_execution_error_result(
+        AgentToolId::STATUS.wire_name(),
+        &McpAdapterError::InternalContractInconsistent {
+            tool_name: AgentToolId::STATUS.wire_name().to_owned(),
+            reached_core: failure.reached_core(),
+            transition_rejection: None,
+            diagnostics: Box::new(failure.diagnostics(&workflow)),
+        },
+    ));
+    assert_eq!(projected["code"], "INTERNAL_CONTRACT_INCONSISTENT");
+    assert_eq!(projected["failed_action_key"], json!(target_key));
+    assert_eq!(projected["failed_stage"], "method_planning_rejected");
+    assert_eq!(projected["method_error_code"], expected_code.as_str());
+    assert!(projected["method_error_details"].is_object());
+    assert_eq!(projected["current_action_forms"], Value::Null);
+    assert_eq!(projected["retryable"], false);
+    assert_eq!(projected["retry_contract"], Value::Null);
+    assert!(projected.get("action_form_catalog").is_none());
+    assert!(projected.get("fallback_form").is_none());
+    assert_eq!(no_commit_effect_snapshot(fixture, repository)?, before);
+    Ok(())
+}
+
+fn action_key(
+    method: MethodName,
+    semantic_variant: WorkflowActionSemanticVariant,
+) -> volicord_types::schema::WorkflowActionKey {
+    volicord_types::schema::WorkflowActionKey::new(method, semantic_variant)
+        .expect("test action key")
+}
+
+#[test]
+fn same_variant_method_drift_fails_closed_without_any_effect() -> Result<(), Box<dyn Error>> {
+    let implementation_fixture = CoreFixture::new("mcp-form-drift-implementation")?;
+    let implementation_repository =
+        volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+            implementation_fixture.product_repo_path(),
+        )?;
+    let (implementation_task_id, _, _) = create_implementation_task(&implementation_fixture)?;
+    let implementation_status = adapter(&implementation_fixture)?.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": implementation_task_id, "detail": "workflow"}),
+    )?;
+    let implementation_workflow = &implementation_status.response_value["active_task"]["workflow"];
+    assert_mutated_catalog_fails_closed(
+        &implementation_fixture,
+        &implementation_repository,
+        implementation_workflow,
+        action_key(
+            MethodName::RecordRun,
+            WorkflowActionSemanticVariant::RecordRun,
+        ),
+        ErrorCode::RunKindIncompatible,
+        |witness| witness["kind"] = json!("direct"),
+    )?;
+    assert_mutated_catalog_fails_closed(
+        &implementation_fixture,
+        &implementation_repository,
+        implementation_workflow,
+        action_key(
+            MethodName::PrepareWrite,
+            WorkflowActionSemanticVariant::PrepareWrite,
+        ),
+        ErrorCode::ValidationFailed,
+        |witness| witness["intended_paths"] = json!(["../outside.rs"]),
+    )?;
+    assert_mutated_catalog_fails_closed(
+        &implementation_fixture,
+        &implementation_repository,
+        implementation_workflow,
+        action_key(
+            MethodName::StageArtifact,
+            WorkflowActionSemanticVariant::StageArtifact,
+        ),
+        ErrorCode::ValidationFailed,
+        |witness| witness["expected_size_bytes"] = json!(1),
+    )?;
+
+    let direct_fixture = CoreFixture::new("mcp-form-drift-direct")?;
+    let direct_repository =
+        volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+            direct_fixture.product_repo_path(),
+        )?;
+    let direct_adapter = adapter(&direct_fixture)?;
+    let mut direct_request = intake_args(None);
+    direct_request["requested_mode"] = json!("direct");
+    let direct = direct_adapter.call_tool(AgentToolId::INTAKE.wire_name(), direct_request)?;
+    let direct_task_id = direct.response_value["task_ref"]["record_id"]
+        .as_str()
+        .ok_or("direct intake Task")?;
+    let direct_scope_form = action_form_for_variant(
+        &direct_adapter,
+        direct_task_id,
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+    )?;
+    let mut direct_scope = Value::Object(direct_scope_form.canonical_minimal_request);
+    direct_scope["baseline_ref"] =
+        json!(volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF);
+    let direct_scoped =
+        direct_adapter.call_tool(AgentToolId::UPDATE_SCOPE.wire_name(), direct_scope)?;
+    assert_mutated_catalog_fails_closed(
+        &direct_fixture,
+        &direct_repository,
+        &direct_scoped.response_value["state"]["workflow"],
+        action_key(
+            MethodName::RecordRun,
+            WorkflowActionSemanticVariant::RecordRun,
+        ),
+        ErrorCode::RunKindIncompatible,
+        |witness| witness["kind"] = json!("implementation"),
+    )?;
+
+    let shaping_fixture = CoreFixture::new("mcp-form-drift-shaping")?;
+    let shaping_repository =
+        volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+            shaping_fixture.product_repo_path(),
+        )?;
+    let shaping_adapter = adapter(&shaping_fixture)?;
+    let (shaping_task_id, _) = create_task(&shaping_adapter)?;
+    let shaping = shaping_adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({"task_id": shaping_task_id, "detail": "workflow"}),
+    )?;
+    assert_mutated_catalog_fails_closed(
+        &shaping_fixture,
+        &shaping_repository,
+        &shaping.response_value["active_task"]["workflow"],
+        action_key(
+            MethodName::RecordShapingCheckpoint,
+            WorkflowActionSemanticVariant::CreateInitial,
+        ),
+        ErrorCode::ValidationFailed,
+        |witness| {
+            witness["gaps"][0]["user_action"] = Value::Null;
+        },
+    )?;
+
+    let advisor_fixture = CoreFixture::new("mcp-form-drift-advisor")?;
+    let advisor_repository =
+        volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+            advisor_fixture.product_repo_path(),
+        )?;
+    let advisor_adapter = adapter(&advisor_fixture)?;
+    let mut advisor_request = intake_args(None);
+    advisor_request["requested_mode"] = json!("advisor");
+    let advisor = advisor_adapter.call_tool(AgentToolId::INTAKE.wire_name(), advisor_request)?;
+    let advisor_workflow = &advisor.response_value["state"]["workflow"];
+    let advisor_key = action_key(
+        MethodName::UpdateScope,
+        WorkflowActionSemanticVariant::CreateCurrentChangeUnit,
+    );
+    for mutation in [
+        "affected_paths",
+        "missing_contract",
+        "product_write",
+        "network",
+        "secret",
+        "allowed_path",
+    ] {
+        assert_mutated_catalog_fails_closed(
+            &advisor_fixture,
+            &advisor_repository,
+            advisor_workflow,
+            advisor_key,
+            ErrorCode::ValidationFailed,
+            |witness| match mutation {
+                "affected_paths" => {
+                    witness["change_unit"]["affected_paths"] = json!(["plans/product.md"])
+                }
+                "missing_contract" => witness["change_unit"]["effect_contract"] = Value::Null,
+                "product_write" => {
+                    witness["change_unit"]["effect_contract"]["allowed_effects"] = json!([
+                        "artifact_registration",
+                        "user_action_request",
+                        "evidence_update",
+                        "product_file_write"
+                    ]);
+                    witness["change_unit"]["effect_contract"]["forbidden_effects"] = json!([
+                        "run_recording",
+                        "sensitive_action",
+                        "external_network",
+                        "secret_access"
+                    ]);
+                }
+                "network" => {
+                    witness["change_unit"]["effect_contract"]["allowed_effects"] = json!([
+                        "artifact_registration",
+                        "user_action_request",
+                        "evidence_update",
+                        "external_network"
+                    ]);
+                    witness["change_unit"]["effect_contract"]["forbidden_effects"] = json!([
+                        "product_file_write",
+                        "run_recording",
+                        "sensitive_action",
+                        "secret_access"
+                    ]);
+                }
+                "secret" => {
+                    witness["change_unit"]["effect_contract"]["allowed_effects"] = json!([
+                        "artifact_registration",
+                        "user_action_request",
+                        "evidence_update",
+                        "secret_access"
+                    ]);
+                    witness["change_unit"]["effect_contract"]["forbidden_effects"] = json!([
+                        "product_file_write",
+                        "run_recording",
+                        "sensitive_action",
+                        "external_network"
+                    ]);
+                }
+                "allowed_path" => {
+                    witness["change_unit"]["effect_contract"]["allowed_paths"] = json!(["plans/**"])
+                }
+                _ => unreachable!(),
+            },
+        )?;
+    }
     Ok(())
 }
 
@@ -3412,6 +3991,11 @@ fn advisor_create_and_replace_forms_commit_canonical_observe_only_witnesses(
         resolved.response_value["state"]["workflow"]["kind"],
         "ready_for_change_unit"
     );
+    assert_action_forms_are_a_total_core_projection(
+        &fixture,
+        &repository,
+        &resolved.response_value["state"]["workflow"],
+    )?;
     let checkpoint_id = checkpoint.response_value["shaping_checkpoint"]["shaping_checkpoint_id"]
         .as_str()
         .ok_or("Advisor shaping checkpoint")?
@@ -3472,6 +4056,11 @@ fn advisor_create_and_replace_forms_commit_canonical_observe_only_witnesses(
         created_status.response_value["active_task"]["workflow"]["kind"],
         "shaping_required"
     );
+    assert_action_forms_are_a_total_core_projection(
+        &fixture,
+        &repository,
+        &created_status.response_value["active_task"]["workflow"],
+    )?;
     let created_change_unit: (String, String) = fixture.conn()?.query_row(
         "SELECT bounded_paths_json, effect_contract_json
            FROM change_units
@@ -3583,7 +4172,7 @@ fn advisor_create_and_replace_forms_commit_canonical_observe_only_witnesses(
 fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("mcp-advisor-close-guidance")?;
-    let _repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
+    let repository = volicord_test_support::core_fixtures::PlanningRepository::initialize_at(
         fixture.product_repo_path(),
     )?;
     let adapter = adapter(&fixture)?;
@@ -3597,6 +4186,7 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
         .ok_or("advisor intake Task")?;
     assert_action_forms_are_a_total_core_projection(
         &fixture,
+        &repository,
         &intake.response_value["state"]["workflow"],
     )?;
     let assert_advisor_scope_form = |form: &volicord_mcp_wire::WorkflowActionForm| {
@@ -3644,6 +4234,7 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
     assert_eq!(scope.response_value["base"]["response_kind"], "result");
     assert_action_forms_are_a_total_core_projection(
         &fixture,
+        &repository,
         &scope.response_value["state"]["workflow"],
     )?;
     let replace_form = action_form_for_variant(
@@ -3678,8 +4269,10 @@ fn advisor_close_guidance_names_finalize_advice_and_never_record_run() -> Result
     );
     let advisor_finalize_forms = assert_action_forms_are_a_total_core_projection(
         &fixture,
+        &repository,
         &shaped.response_value["workflow"],
-    )?;
+    )?
+    .0;
     assert!(advisor_finalize_forms.contains(&(
         MethodName::FinalizeAdvice.as_str().to_owned(),
         WorkflowActionSemanticVariant::FinalizeAdvice

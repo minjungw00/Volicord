@@ -416,6 +416,16 @@ mod tests {
         }))
         .is_err());
 
+        let mut wrong_implementation_boundary = checkpoint_transition.clone();
+        wrong_implementation_boundary["submission_contract"]["contract"]
+            ["required_agent_input_witness"]["gaps"] = json!([]);
+        wrong_implementation_boundary["submission_contract"]["contract"]
+            ["required_agent_input_witness"]["implementation_boundary"] = Value::Null;
+        assert!(serde_json::from_value::<WorkflowTransitionCatalog>(json!({
+            "transitions": [wrong_implementation_boundary]
+        }))
+        .is_err());
+
         let mut wrong_stale_cardinality = checkpoint_transition;
         wrong_stale_cardinality["submission_contract"]["contract"]
             ["required_agent_input_witness"]["stale_authority_actions"] = json!([]);

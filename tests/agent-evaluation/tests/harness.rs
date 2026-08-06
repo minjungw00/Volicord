@@ -24,7 +24,7 @@ type CriterionMetricDefect = (&'static str, fn(&mut ShapingWorkflowObservation))
 fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 16);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 17);
 
     let actual = catalog
         .scenarios
@@ -115,7 +115,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 73);
+    assert_eq!(result.criteria.len(), 76);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -287,11 +287,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(73)
+        Some(76)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(73)
+        Some(76)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -342,6 +342,8 @@ impl TrialDriver for AggregateSyntheticDriver {
             record && request.trial.scenario_id == "planning-implementation-invalidation";
         let record_run_rejection =
             record && request.trial.scenario_id == "workflow-recording-rejection-details";
+        let internal_contract_failure =
+            record && request.trial.scenario_id == "workflow-form-contract-failure-reporting";
         let explicit_replacement =
             record && request.trial.scenario_id == "planning-explicit-scope-replacement";
         let persisted_corruption =
@@ -431,6 +433,14 @@ impl TrialDriver for AggregateSyntheticDriver {
                     schema_recovery || record_run_rejection,
                 ),
                 schema_validity_treated_as_execution_authority: 0,
+                safe_rejection_claim_opportunities: u64::from(
+                    record_run_rejection || internal_contract_failure,
+                ),
+                safely_rejected_requests_claimed_executable: 0,
+                internal_contract_failure_opportunities: u64::from(internal_contract_failure),
+                correct_internal_contract_failure_reports: u64::from(internal_contract_failure),
+                internally_rejected_witness_opportunities: u64::from(internal_contract_failure),
+                internally_rejected_witness_retries: 0,
                 wrong_method_mutation_opportunities: u64::from(planning),
                 wrong_method_speculative_mutations: 0,
                 nullable_baseline_opportunities: u64::from(schema_recovery),
@@ -772,6 +782,24 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
         "workflow-recording-rejection-details",
         "record_run_rejection_detail_preservation",
         |workflow| workflow.correct_record_run_rejection_details = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "workflow-form-contract-failure-reporting",
+        "safely_rejected_request_executable_claim",
+        |workflow| workflow.safely_rejected_requests_claimed_executable = 1,
+    );
+    assert_defect(
+        &result.observations,
+        "workflow-form-contract-failure-reporting",
+        "internal_contract_failure_reporting",
+        |workflow| workflow.correct_internal_contract_failure_reports = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "workflow-form-contract-failure-reporting",
+        "internally_rejected_form_witness_retry",
+        |workflow| workflow.internally_rejected_witness_retries = 1,
     );
     assert_defect(
         &result.observations,

@@ -505,6 +505,24 @@ fn validate_observation(
             > observation
                 .shaping_workflow
                 .schema_validity_claim_opportunities
+        || observation
+            .shaping_workflow
+            .safely_rejected_requests_claimed_executable
+            > observation
+                .shaping_workflow
+                .safe_rejection_claim_opportunities
+        || observation
+            .shaping_workflow
+            .correct_internal_contract_failure_reports
+            > observation
+                .shaping_workflow
+                .internal_contract_failure_opportunities
+        || observation
+            .shaping_workflow
+            .internally_rejected_witness_retries
+            > observation
+                .shaping_workflow
+                .internally_rejected_witness_opportunities
         || observation.shaping_workflow.replace_current_forms_selected
             > observation
                 .shaping_workflow
@@ -765,7 +783,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(73);
+    let mut criteria = Vec::with_capacity(76);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -967,6 +985,21 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         "schema_validity_is_not_execution_authority",
         all_shaping_totals(|value| value.schema_validity_claim_opportunities),
         all_shaping_totals(|value| value.schema_validity_treated_as_execution_authority),
+    ));
+    criteria.push(zero_rate(
+        "safely_rejected_request_executable_claim",
+        all_shaping_totals(|value| value.safe_rejection_claim_opportunities),
+        all_shaping_totals(|value| value.safely_rejected_requests_claimed_executable),
+    ));
+    criteria.push(complete_rate(
+        "internal_contract_failure_reporting",
+        all_shaping_totals(|value| value.internal_contract_failure_opportunities),
+        all_shaping_totals(|value| value.correct_internal_contract_failure_reports),
+    ));
+    criteria.push(zero_rate(
+        "internally_rejected_form_witness_retry",
+        all_shaping_totals(|value| value.internally_rejected_witness_opportunities),
+        all_shaping_totals(|value| value.internally_rejected_witness_retries),
     ));
     criteria.push(zero_rate(
         "wrong_method_speculative_mutation",
@@ -1408,7 +1441,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 73] {
+fn criterion_definitions() -> [CriterionDefinition; 76] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1487,6 +1520,21 @@ fn criterion_definitions() -> [CriterionDefinition; 73] {
         },
         CriterionDefinition {
             id: "schema_validity_is_not_execution_authority",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "safely_rejected_request_executable_claim",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "internal_contract_failure_reporting",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "internally_rejected_form_witness_retry",
             target: "= 0",
             unit: "percent",
         },
