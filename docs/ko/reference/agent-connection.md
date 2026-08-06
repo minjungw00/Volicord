@@ -704,7 +704,9 @@ Storage-manifest digest는 contract identity, 정규 DDL 및 무결성
 MCP schema 탐색 경계, Core 전·Core 거부·영속 손상 결과의 구분된 보고가 포함되며 프로젝트별
 prose의 hash가 아닙니다. Workflow-contract digest는 정규 snapshot, 순수 machine, 완전한
 transition catalog, 정확한 action key, actor와 role, transition 소유 Core admission, typed 현재
-recovery를 포함합니다. Submission-contract digest는 상태·semantic variant별 고정 값, 필수
+recovery와 정확한 no-commit planning 의미를 포함합니다. 폐쇄형인 네 가지 수락 branch만 plan을
+만들고, 거부는 typed planning failure이며, 어느 결과도 효과를 만들지 않습니다.
+Submission-contract digest는 상태·semantic variant별 고정 값, 필수
 Agent 작성 값, 선택적 Agent 작성 값, 한정된 typed witness, Task mode 제약, Advisor
 observe-only 고정 값을 포함합니다. Action-form digest는 descriptor에서 파생한 Agent form, 정확한 form
 identity, 고정 인자와 Agent 작성 인자 구분, canonical minimal request 무결성, 현재 권한

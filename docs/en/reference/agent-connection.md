@@ -788,8 +788,11 @@ recovery, form isolation, MCP schema discovery boundaries, and distinct
 pre-Core, Core-rejected, and persisted-corruption reporting; it is not a hash
 of project-specific prose. The workflow-contract digest covers the normalized
 snapshot, pure machine, complete transition catalog, exact action keys, actor
-and role, transition-owned Core admission, and typed current recovery. The
-submission-contract digest covers state- and semantic-variant-specific fixed,
+and role, transition-owned Core admission, typed current recovery, and exact
+no-commit planning semantics: only the four closed accepted branches produce a
+plan, rejection is a typed planning failure, and neither outcome produces an
+effect. The submission-contract digest covers
+state- and semantic-variant-specific fixed,
 required Agent-authored, and optional Agent-authored values, bounded typed
 witnesses, Task-mode constraints, and Advisor observe-only fixed values. The
 action-form digest covers descriptor-derived Agent forms, exact form identity,

@@ -370,6 +370,9 @@ pub enum CorePipelineError {
     InvalidDispatch {
         detail: String,
     },
+    /// Internal accepted completion intercepted by
+    /// `plan_transition_submission_no_commit` before it can cross the Core boundary.
+    NoCommitTransitionPlanned(NoCommitTransitionPlan),
     NoCommitSubmissionRejected(NoCommitSubmissionRejected),
     Invariant {
         detail: String,
@@ -390,6 +393,13 @@ impl fmt::Display for CorePipelineError {
             Self::InvalidDispatch { detail } => {
                 write!(formatter, "invalid pipeline dispatch: {detail}")
             }
+            Self::NoCommitTransitionPlanned(plan) => write!(
+                formatter,
+                "no-commit transition planned for {} {} at state version {}",
+                plan.action_key.method.as_str(),
+                plan.action_key.semantic_variant.as_str(),
+                plan.basis_state_version
+            ),
             Self::NoCommitSubmissionRejected(rejection) => write!(
                 formatter,
                 "no-commit submission rejected for {} {} at state version {} with {}",
@@ -412,6 +422,7 @@ impl Error for CorePipelineError {
             Self::DurableId(error) => Some(error),
             Self::GeneratedIdCollision { .. }
             | Self::InvalidDispatch { .. }
+            | Self::NoCommitTransitionPlanned(_)
             | Self::NoCommitSubmissionRejected(_)
             | Self::Invariant { .. } => None,
         }
@@ -904,12 +915,6 @@ impl PipelineResponse {
         self.resolved_task_id = prepared.context.resolved_task_id.clone();
         self
     }
-
-    /// Creates the adapter-internal marker returned after a verified no-commit plan.
-    /// This marker is not a public method response and must not be emitted on a transport.
-    pub fn from_no_commit_transition_plan(plan: NoCommitTransitionPlan) -> Self {
-        no_commit_pipeline_response(plan)
-    }
 }
 
 /// Runtime Home identity used by one Core service.
@@ -1101,7 +1106,7 @@ impl CoreService {
                 .state_version;
         let mut planner = self.clone();
         planner.execution_mode = CoreExecutionMode::PlanNoCommit(action_key);
-        let response = match submission {
+        let outcome = match submission {
             TransitionSubmission::RecordShapingCheckpoint(request) => {
                 planner.record_shaping_checkpoint(context, request, invocation)
             }
@@ -1136,14 +1141,19 @@ impl CoreService {
             TransitionSubmission::CloseTask(request) => {
                 planner.close_task(context, request, invocation)
             }
-        }?;
-        if let Some(rejection) =
-            decode_no_commit_submission_rejection(action_key, basis_state_version, &response)?
-        {
-            return Err(CorePipelineError::NoCommitSubmissionRejected(rejection));
-        }
-        if let Some(plan) = decode_no_commit_transition_plan(&response)? {
-            return Ok(plan);
+        };
+        match outcome {
+            Err(CorePipelineError::NoCommitTransitionPlanned(plan)) => return Ok(plan),
+            Err(error) => return Err(error),
+            Ok(response) => {
+                if let Some(rejection) = decode_no_commit_submission_rejection(
+                    action_key,
+                    basis_state_version,
+                    &response,
+                )? {
+                    return Err(CorePipelineError::NoCommitSubmissionRejected(rejection));
+                }
+            }
         }
         Err(CorePipelineError::Invariant {
             detail: format!(
@@ -1614,7 +1624,7 @@ impl CoreService {
                 &branch,
                 planned_fields.as_ref(),
             )?;
-            return Ok(no_commit_pipeline_response(plan));
+            return Err(CorePipelineError::NoCommitTransitionPlanned(plan));
         }
         let project_state = prepared.context.project_state.clone();
         let verified_invocation = prepared.context.verified_invocation.clone();
@@ -1798,9 +1808,9 @@ impl CoreService {
     pub(crate) fn complete_stage_artifact_no_commit(
         &self,
         prepared: &PreparedRequest<'_>,
-    ) -> CoreResult<Option<PipelineResponse>> {
+    ) -> CoreResult<()> {
         let CoreExecutionMode::PlanNoCommit(action_key) = self.execution_mode else {
-            return Ok(None);
+            return Ok(());
         };
         let admission =
             prepared
@@ -1831,13 +1841,15 @@ impl CoreService {
                 detail: "planned artifact authority contradicts expected-result family".to_owned(),
             });
         }
-        Ok(Some(no_commit_pipeline_response(NoCommitTransitionPlan {
-            action_key,
-            basis_state_version: prepared.context.project_state.state_version,
-            effect_class: admission.descriptor.effect_class,
-            expected_result_state: admission.descriptor.expected_result_state,
-            planned_branch: NoCommitPlannedBranch::ArtifactStaging,
-        })))
+        Err(CorePipelineError::NoCommitTransitionPlanned(
+            NoCommitTransitionPlan {
+                action_key,
+                basis_state_version: prepared.context.project_state.state_version,
+                effect_class: admission.descriptor.effect_class,
+                expected_result_state: admission.descriptor.expected_result_state,
+                planned_branch: NoCommitPlannedBranch::ArtifactStaging,
+            },
+        ))
     }
 }
 
@@ -2119,43 +2131,6 @@ fn workflow_close_basis_present(workflow: &WorkflowProjection) -> bool {
     }
 }
 
-fn no_commit_pipeline_response(plan: NoCommitTransitionPlan) -> PipelineResponse {
-    let response_value = serde_json::to_value(NoCommitPipelineMarker {
-        no_commit_transition_plan: plan,
-    })
-    .expect("typed no-commit marker serialization must succeed");
-    PipelineResponse {
-        response_json: "null".to_owned(),
-        response_value,
-        operation_result_ref: None,
-        verified_invocation: None,
-        resolved_task_id: None,
-        replayed: false,
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct NoCommitPipelineMarker {
-    no_commit_transition_plan: NoCommitTransitionPlan,
-}
-
-fn decode_no_commit_transition_plan(
-    response: &PipelineResponse,
-) -> CoreResult<Option<NoCommitTransitionPlan>> {
-    if response
-        .response_value
-        .get("no_commit_transition_plan")
-        .is_none()
-    {
-        return Ok(None);
-    }
-    Ok(Some(
-        serde_json::from_value::<NoCommitPipelineMarker>(response.response_value.clone())?
-            .no_commit_transition_plan,
-    ))
-}
-
 fn decode_no_commit_submission_rejection(
     action_key: WorkflowActionKey,
     basis_state_version: u64,
@@ -2185,7 +2160,8 @@ fn decode_no_commit_submission_rejection(
         || response.replayed
     {
         return Err(CorePipelineError::Invariant {
-            detail: "no-commit typed rejection contradicts its no-effect planning basis".to_owned(),
+            detail: "no-commit typed rejection contradicts its effect-free rejection basis"
+                .to_owned(),
         });
     }
     Ok(Some(NoCommitSubmissionRejected {

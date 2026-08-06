@@ -113,6 +113,22 @@ fn no_commit_branch_matches_transition(
     )
 }
 
+enum CoreRequestOutcome {
+    Response(Box<PipelineResponse>),
+    NoCommitPlan(NoCommitTransitionPlan),
+}
+
+impl CoreRequestOutcome {
+    fn into_response(self, tool_name: &str) -> Result<PipelineResponse, McpAdapterError> {
+        match self {
+            Self::Response(response) => Ok(*response),
+            Self::NoCommitPlan(_) => Err(McpAdapterError::SchemaContractFailure {
+                tool_name: tool_name.to_owned(),
+            }),
+        }
+    }
+}
+
 /// Invocation context derived for one tool call before entering Core.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct McpDerivedInvocationContext {
@@ -562,7 +578,7 @@ impl McpAdapter {
         let bound_state_version = current_action_form
             .as_ref()
             .map(|form| form.expected_state_version);
-        match tool.method() {
+        let outcome = match tool.method() {
             Some(MethodName::Intake) => self.call_intake(context, tool_name, params, session),
             Some(MethodName::UpdateScope) => {
                 self.call_update_scope(context, tool_name, params, session, bound_state_version)
@@ -623,7 +639,8 @@ impl McpAdapter {
             None | Some(MethodName::ResolveUserAction) => {
                 Err(McpAdapterError::UnknownTool(tool_name.to_owned()))
             }
-        }
+        }?;
+        outcome.into_response(tool_name)
     }
 
     fn enrich_invalid_arguments(
@@ -1159,7 +1176,7 @@ impl McpAdapter {
                 ));
             }
         };
-        let response = result.map_err(|error| match &error {
+        let outcome = result.map_err(|error| match &error {
             McpAdapterError::Core(CorePipelineError::NoCommitSubmissionRejected(rejection)) => {
                 ActionFormCatalogError {
                     action_key: Some(rejection.action_key()),
@@ -1184,24 +1201,14 @@ impl McpAdapter {
                 error.to_string(),
             ),
         })?;
-        let plan = response
-            .response_value
-            .get("no_commit_transition_plan")
-            .cloned()
-            .ok_or_else(|| {
-                ActionFormCatalogError::contract(
-                    Some(form.action_key),
-                    McpWorkflowContractStage::CorePlanning,
-                    "accepted Core no-commit planning omitted its typed plan",
-                )
-            })?;
-        serde_json::from_value(plan).map_err(|error| {
-            ActionFormCatalogError::contract(
+        match outcome {
+            CoreRequestOutcome::NoCommitPlan(plan) => Ok(plan),
+            CoreRequestOutcome::Response(_) => Err(ActionFormCatalogError::contract(
                 Some(form.action_key),
                 McpWorkflowContractStage::CorePlanning,
-                error.to_string(),
-            )
-        })
+                "accepted Core no-commit planning omitted its typed plan",
+            )),
+        }
     }
 
     #[cfg(test)]
@@ -1220,7 +1227,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpIntakeArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let envelope = self.generated_envelope(
@@ -1259,7 +1266,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1299,7 +1306,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStatusArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1332,7 +1339,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordShapingCheckpointArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1372,7 +1379,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpFinalizeAdviceArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1414,7 +1421,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpAdvanceTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1450,7 +1457,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpGetOperationResultArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let envelope = self.generated_envelope(
@@ -1510,7 +1517,8 @@ impl McpAdapter {
             },
             |core, _, request, invocation| core.status(request, invocation),
             session,
-        )
+        )?
+        .into_response(status_tool_name)
     }
 
     pub(crate) fn default_agent_session_coordinates_for_tool(
@@ -1535,7 +1543,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareEvidenceCaptureArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1571,7 +1579,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1609,7 +1617,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1648,7 +1656,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordRunArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1700,7 +1708,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRequestUserActionArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         match prepared.arguments.request {
@@ -1784,7 +1792,7 @@ impl McpAdapter {
                     response.response_value.clone(),
                 )
                 .map_err(McpAdapterError::Json)?;
-                Ok(response)
+                Ok(CoreRequestOutcome::Response(Box::new(response)))
             }
         }
     }
@@ -1796,7 +1804,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1828,7 +1836,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1856,7 +1864,7 @@ impl McpAdapter {
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
         bound_expected_state_version: Option<u64>,
-    ) -> Result<PipelineResponse, McpAdapterError> {
+    ) -> Result<CoreRequestOutcome, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
             self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
@@ -1913,7 +1921,7 @@ impl McpAdapter {
         request: T,
         call: F,
         session: Option<AgentSessionCoordinates<'_>>,
-    ) -> Result<PipelineResponse, McpAdapterError>
+    ) -> Result<CoreRequestOutcome, McpAdapterError>
     where
         T: MethodOperationCategory
             + MethodResponseContract
@@ -1985,13 +1993,13 @@ impl McpAdapter {
                     invocation.core_invocation_for_category(operation_category),
                 )
                 .map_err(McpAdapterError::Core)?;
-            return Ok(PipelineResponse::from_no_commit_transition_plan(plan));
+            return Ok(CoreRequestOutcome::NoCommitPlan(plan));
         }
         let response = call(&core, context, request, invocation.core_invocation())
             .map_err(McpAdapterError::Core)?;
         serde_json::from_value::<T::Response>(response.response_value.clone())
             .map_err(McpAdapterError::Json)?;
-        Ok(response)
+        Ok(CoreRequestOutcome::Response(Box::new(response)))
     }
 
     pub(crate) fn call_adapter_tool(

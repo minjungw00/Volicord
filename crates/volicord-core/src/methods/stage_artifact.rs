@@ -198,9 +198,7 @@ impl CoreService {
             );
         }
 
-        if let Some(response) = self.complete_stage_artifact_no_commit(&prepared)? {
-            return Ok(response);
-        }
+        self.complete_stage_artifact_no_commit(&prepared)?;
 
         if let Err(error) = prepared
             .store

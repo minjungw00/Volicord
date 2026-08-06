@@ -694,8 +694,11 @@ workspace fact로 엄격한 `WorkflowSnapshot` 하나를 만듭니다. 현재 �
 방식으로 실패합니다. Store가 보존하는 superseded 이력은 진행 입력이 아닙니다. 순수
 `WorkflowMachine`이 이 snapshot을 이 projection으로 평가합니다. 최대 한 transition만
 `required` 역할을 가집니다. 최상위 action 배열이나 close blocker 순서가 아니라 catalog
-소속과 역할이 진행 권한입니다. Close blocker는 로컬 remediation fact를 유지하지만
-transition을 선택하거나 재정렬하지 않습니다. `close_readiness`는 별도 완료 평가입니다.
+소속과 역할이 진행을 선택합니다. 그러나 그것만으로 form의 의미적 실행 가능성이 증명되지는
+않습니다. Agent descriptor는 완전한 witness가 정확한 메서드의 Core no-commit plan에서
+수락된 뒤에만 게시된 실행 가능 form을 얻습니다. Close blocker는 로컬 remediation fact를
+유지하지만 transition을 선택하거나 재정렬하지 않습니다. `close_readiness`는 별도 완료
+평가입니다.
 
 `transition_catalog.transitions`는 정규 메서드와 메서드 소유 폐쇄형 semantic variant
 순서로 결정적으로 정렬됩니다. 각 `WorkflowActionKey`는 최대 한 번 나타나며 정확히 0개

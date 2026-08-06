@@ -702,9 +702,12 @@ recovery, and workspace facts. Contradictory current coordinates fail closed;
 superseded history is retained by Store but is not progression input. The pure
 `WorkflowMachine` evaluates that snapshot into this projection. It selects at
 most one `required` transition. Catalog membership and role, rather than a
-top-level action array or close-blocker order, are progression authority.
-Close blockers retain local remediation facts but never select or reorder a
-transition. `close_readiness` is a separate completion assessment.
+top-level action array or close-blocker order, select progression. They do not
+by themselves prove executable-form semantics: an Agent descriptor receives a
+published executable form only after its complete witness reaches an accepted
+exact-method Core no-commit plan. Close blockers retain local remediation facts
+but never select or reorder a transition. `close_readiness` is a separate
+completion assessment.
 
 `transition_catalog.transitions` is deterministically ordered by canonical
 method and closed method-owned semantic variant. Each `WorkflowActionKey`
