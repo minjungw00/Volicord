@@ -675,6 +675,14 @@ Agent 입력 요구사항 묶음, effect class, 예상 결과 상태를 가집�
 않은 모든 상태는 정확한 현재 UserAction을 기다리거나 실행 가능한 Agent transition을
 제공하거나 명시적인 close, cancellation, supersession 경로를 제공합니다.
 
+도달 가능한 workflow model은 탐색한 모든 현재 상태 조합에서 다음 liveness와 recovery
+불변 조건을 보존합니다. Action key는 고유하고 required action은 catalog member이며, 광고한
+모든 Agent transition은 원본 snapshot에 대한 동일한 Core admission을 통과하고 광고하지 않은
+variant는 통과하지 않습니다. 종료되지 않은 모든 Agent 소유 상태에는 실행 가능한 경로나
+명시적 terminal 경로가 있고, non-null recovery action은 현재 catalog member이며 MCP가 실행할
+수 있으면 정확한 action form을 가집니다. 또한 같은 snapshot에서는 catalog 순서, required
+role, 고정 좌표, projected form이 결정적인지 검사합니다.
+
 이 machine은 `volicord.update_scope` variant 가용성도 모두 소유합니다. 좌표는 현재
 Change Unit 권한에 맞는 정확한 `ChangeUnitOperation`을 선택하며 adapter나 projection이
 create, keep, replace 가용성을 다시 계산하지 않습니다. Core는 MCP JSON 입력 slot이나

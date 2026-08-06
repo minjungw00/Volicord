@@ -302,10 +302,14 @@ pub(crate) fn validated_agent_session_for_test_with_project_session(
                 "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             managed_guidance_semantic_digest:
                 "sha256:5555555555555555555555555555555555555555555555555555555555555555",
-            workflow_action_contract_semantic_digest:
+            workflow_contract_semantic_digest:
                 "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            action_form_contract_semantic_digest:
+                "sha256:9999999999999999999999999999999999999999999999999999999999999999",
             mcp_semantic_schema_digest:
                 "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+            scalar_contract_semantic_digest:
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         },
     )
     .expect("test project revision must be valid");

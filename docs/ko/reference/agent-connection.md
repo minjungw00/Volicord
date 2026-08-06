@@ -694,18 +694,21 @@ Connection report context는 finding correlation뿐 아니라 check evidence에�
 fingerprint, 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
 부재, 저장소 관찰자 semantic contract digest, 정규 Product Repository effect-catalog
 digest를 더합니다. 또한 완전한 현재 `StorageManifest`의 digest와 managed agent
-guidance, workflow transition contract, MCP semantic schema라는 세 가지 현재 semantic
-digest를 결속합니다. Storage-manifest digest는 contract identity, 정규 DDL 및 무결성
+guidance, workflow transition contract, action-form contract, MCP semantic schema,
+canonical scalar contract라는 서로 다른 다섯 가지 현재 semantic digest를 결속합니다.
+Storage-manifest digest는 contract identity, 정규 DDL 및 무결성
 제약 digest, 완전한 capability 집합을 포함합니다. Guidance digest는 managed
 `AGENTS.md` block과 MCP server instruction에 rendering하는 폐쇄형 현재 workflow fact를
 포함합니다. 여기에는 정확한 transition과 action form 사용, Core 소유 recovery, form 격리,
 MCP schema 탐색 경계, Core 전·Core 거부·영속 손상 결과의 구분된 보고가 포함되며 프로젝트별
-prose의 hash가 아닙니다. Action-contract digest는 완전한 Agent transition projection,
-정확한 action-key form identity, 고정 인자와 Agent 작성 인자 구분, canonical minimal request
-무결성, 현재 권한 context, 정확한 typed recovery, canonicality와 compatibility 사실의 분리를
-포함합니다. Semantic-schema digest는
-checked 정규 `BaselineRef` 제약, 일반 required-nullable 의미, 명시적 discriminator,
-branch-local 검증, 한도 있는 runtime semantic projection을 포함합니다. Hook 명령 text가
+prose의 hash가 아닙니다. Workflow-contract digest는 정규 snapshot, 순수 machine, 완전한
+transition catalog, 정확한 action key, actor와 role, transition 소유 Core admission, typed 현재
+recovery를 포함합니다. Action-form digest는 descriptor에서 파생한 Agent form, 정확한 form
+identity, 고정 인자와 Agent 작성 인자 구분, canonical minimal request 무결성, 현재 권한
+context, form 격리를 포함합니다. Semantic-schema digest는 일반 required-nullable 의미,
+명시적 discriminator, branch-local 검증, 한도 있는 runtime semantic projection을 포함합니다.
+Scalar-contract digest는 길이, alphabet, 금지된 전체 값을 포함한 정확한 `BaselineRef` 허용
+byte 문법에서 직접 파생합니다. Hook 명령 text가
 같아도 storage manifest나 이 semantic digest 중 하나가 바뀌면 관리형 통합 revision이
 바뀝니다. 과거 Guard event는 기록 당시 revision의 증거로 남지만 현재
 정의의 coverage를 만족하지 못합니다. `host_sessions`는 revision 범위 로컬 session ID, Connection, 정확한

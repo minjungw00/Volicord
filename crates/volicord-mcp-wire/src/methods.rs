@@ -211,7 +211,9 @@ pub struct WorkflowActionForm {
 pub struct WorkflowActionFormCatalog {
     pub required_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub workflow_contract_digest: RequestHash,
+    pub action_form_contract_digest: RequestHash,
     pub semantic_schema_digest: RequestHash,
+    pub scalar_contract_digest: RequestHash,
     pub forms: Vec<WorkflowActionForm>,
 }
 
@@ -284,7 +286,9 @@ pub struct McpWorkflowContractDiagnostics {
     pub typed_rejection_reason: RequiredNullable<volicord_types::values::TransitionRejectionReason>,
     pub recovery_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub workflow_contract_digest: RequestHash,
+    pub action_form_contract_digest: RequestHash,
     pub semantic_schema_digest: RequestHash,
+    pub scalar_contract_digest: RequestHash,
 }
 
 /// Compact truth about a failed workflow-action attempt.

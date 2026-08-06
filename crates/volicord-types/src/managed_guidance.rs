@@ -66,16 +66,24 @@ pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
     "close_readiness_only_during_close_review",
 ];
 
-/// Closed semantics whose change invalidates state-bound workflow action contracts.
-pub const WORKFLOW_ACTION_CONTRACT_FACTS: &[&str] = &[
+/// Closed semantics whose change invalidates the Core workflow contract.
+pub const WORKFLOW_CONTRACT_FACTS: &[&str] = &[
     "core_owns_workflow_machine_and_transition_catalog",
     "catalog_contains_every_current_executable_transition",
     "catalog_contains_every_current_method_owned_semantic_variant",
     "catalog_contains_zero_or_one_required_transition",
     "required_transition_is_a_catalog_member",
     "catalog_contains_no_non_executable_task_bound_transition",
+    "every_nonterminal_state_has_user_wait_agent_transition_or_terminal_path",
+    "core_admission_consumes_exact_transition_descriptor",
+    "retry_contract_projects_only_typed_core_recovery",
+    "current_submitted_canonicality_match_and_compatibility_remain_distinct",
+];
+
+/// Closed semantics whose change invalidates MCP action-form identity.
+pub const ACTION_FORM_CONTRACT_FACTS: &[&str] = &[
     "mcp_projects_each_descriptor_bound_action_form",
-    "form_ref_binds_project_task_action_state_coordinates_semantic_schema_and_workflow_contract",
+    "form_ref_binds_project_task_action_state_coordinates_workflow_action_form_semantic_schema_and_scalar_contracts",
     "every_agent_transition_has_exactly_one_executable_form",
     "canonical_minimal_request_passes_schema_binding_and_no_commit_admission",
     "task_bound_method_is_admitted_before_core",
@@ -86,9 +94,7 @@ pub const WORKFLOW_ACTION_CONTRACT_FACTS: &[&str] = &[
     "authority_mirror_fields_are_not_public_mutation_inputs",
     "read_only_status_grants_no_mutation_authority",
     "invalid_arguments_load_only_independently_valid_authority_context",
-    "retry_contract_projects_only_typed_core_recovery",
     "missing_core_recovery_form_is_internal_contract_inconsistency",
-    "current_submitted_canonicality_match_and_compatibility_remain_distinct",
     "pre_core_rejection_reports_no_commit_and_no_state_change",
     "authority_basis_mismatch_reports_typed_expected_and_received_values",
 ];
@@ -96,9 +102,7 @@ pub const WORKFLOW_ACTION_CONTRACT_FACTS: &[&str] = &[
 /// Closed semantics whose change invalidates MCP semantic-schema identity.
 pub const MCP_SEMANTIC_SCHEMA_FACTS: &[&str] = &[
     "rust_types_own_mcp_field_semantics",
-    "baseline_ref_is_checked_canonical_semantic_type",
-    "nullable_baseline_absence_is_json_null",
-    "baseline_literal_null_string_is_forbidden",
+    "type_owned_scalar_contracts_are_preserved",
     "required_nullable_semantics_are_generic",
     "tagged_unions_declare_explicit_discriminators",
     "validation_is_local_to_the_selected_union_branch",
@@ -122,13 +126,22 @@ pub fn managed_guidance_semantic_digest() -> RequestHash {
     .expect("static managed guidance semantics always serialize")
 }
 
-/// Returns the canonical semantic digest for current workflow action contracts.
-pub fn workflow_action_contract_semantic_digest() -> RequestHash {
+/// Returns the canonical semantic digest for the current Core workflow contract.
+pub fn workflow_contract_semantic_digest() -> RequestHash {
     canonical_json_sha256(&SemanticDigestBasis {
-        domain: "volicord.workflow-action-contract",
-        facts: WORKFLOW_ACTION_CONTRACT_FACTS,
+        domain: "volicord.workflow-contract",
+        facts: WORKFLOW_CONTRACT_FACTS,
     })
-    .expect("static workflow action contract semantics always serialize")
+    .expect("static workflow contract semantics always serialize")
+}
+
+/// Returns the canonical semantic digest for current MCP action-form behavior.
+pub fn action_form_contract_semantic_digest() -> RequestHash {
+    canonical_json_sha256(&SemanticDigestBasis {
+        domain: "volicord.action-form-contract",
+        facts: ACTION_FORM_CONTRACT_FACTS,
+    })
+    .expect("static action-form contract semantics always serialize")
 }
 
 /// Returns the canonical semantic digest for current MCP schema behavior.
@@ -159,16 +172,30 @@ mod tests {
     }
 
     #[test]
-    fn action_contract_semantic_digest_is_canonical_and_fact_bound() {
-        let digest = workflow_action_contract_semantic_digest();
+    fn workflow_contract_semantic_digest_is_canonical_and_fact_bound() {
+        let digest = workflow_contract_semantic_digest();
         assert!(crate::canonical::is_canonical_sha256_digest(
             digest.as_str()
         ));
         let changed = canonical_json_sha256(&SemanticDigestBasis {
-            domain: "volicord.workflow-action-contract",
-            facts: &WORKFLOW_ACTION_CONTRACT_FACTS[..WORKFLOW_ACTION_CONTRACT_FACTS.len() - 1],
+            domain: "volicord.workflow-contract",
+            facts: &WORKFLOW_CONTRACT_FACTS[..WORKFLOW_CONTRACT_FACTS.len() - 1],
         })
-        .expect("test semantics serialize");
+        .expect("test workflow semantics serialize");
+        assert_ne!(digest, changed);
+    }
+
+    #[test]
+    fn action_form_contract_semantic_digest_is_canonical_and_fact_bound() {
+        let digest = action_form_contract_semantic_digest();
+        assert!(crate::canonical::is_canonical_sha256_digest(
+            digest.as_str()
+        ));
+        let changed = canonical_json_sha256(&SemanticDigestBasis {
+            domain: "volicord.action-form-contract",
+            facts: &ACTION_FORM_CONTRACT_FACTS[..ACTION_FORM_CONTRACT_FACTS.len() - 1],
+        })
+        .expect("test action-form semantics serialize");
         assert_ne!(digest, changed);
     }
 

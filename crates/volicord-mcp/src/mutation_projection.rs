@@ -690,12 +690,20 @@ fn workflow_contract_diagnostics(
             rejection.and_then(|rejection| rejection.recovery_action_key.as_ref().copied()),
         ),
         workflow_contract_digest: action_forms.map_or_else(
-            volicord_types::managed_guidance::workflow_action_contract_semantic_digest,
+            volicord_types::managed_guidance::workflow_contract_semantic_digest,
             |forms| forms.workflow_contract_digest.clone(),
+        ),
+        action_form_contract_digest: action_forms.map_or_else(
+            volicord_types::managed_guidance::action_form_contract_semantic_digest,
+            |forms| forms.action_form_contract_digest.clone(),
         ),
         semantic_schema_digest: action_forms.map_or_else(
             volicord_types::managed_guidance::mcp_semantic_schema_digest,
             |forms| forms.semantic_schema_digest.clone(),
+        ),
+        scalar_contract_digest: action_forms.map_or_else(
+            volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest,
+            |forms| forms.scalar_contract_digest.clone(),
         ),
     }
 }

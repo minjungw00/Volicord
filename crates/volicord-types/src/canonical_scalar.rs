@@ -1,8 +1,12 @@
 //! Reusable byte-level contracts for canonical scalar values.
 
+use serde::Serialize;
+
+use crate::{canonical::canonical_json_sha256, ids::RequestHash};
+
 /// Input categories expanded into the differential invalid corpus for one
 /// canonical scalar specification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct CanonicalScalarInvalidCorpus {
     /// ASCII space cases, including surrounding and embedded space.
     pub ascii_space_cases: &'static [&'static str],
@@ -17,7 +21,7 @@ pub struct CanonicalScalarInvalidCorpus {
 }
 
 /// One portable byte-level canonical scalar contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct CanonicalScalarSpec {
     /// Stable semantic type name.
     pub semantic_name: &'static str,
@@ -251,6 +255,29 @@ pub const BASELINE_REF_SPEC: CanonicalScalarSpec = CanonicalScalarSpec {
     },
 };
 
+#[derive(Serialize)]
+struct ScalarContractDigestBasis<'a> {
+    domain: &'static str,
+    semantic_name: &'a str,
+    minimum_length: usize,
+    maximum_length: usize,
+    allowed_ascii_bytes: &'a [u8],
+    forbidden_complete_values: &'a [&'a str],
+}
+
+/// Returns the canonical semantic digest of the accepted `BaselineRef` value set.
+pub fn baseline_ref_scalar_contract_digest() -> RequestHash {
+    canonical_json_sha256(&ScalarContractDigestBasis {
+        domain: "volicord.scalar-contract",
+        semantic_name: BASELINE_REF_SPEC.semantic_name,
+        minimum_length: BASELINE_REF_SPEC.minimum_length,
+        maximum_length: BASELINE_REF_SPEC.maximum_length,
+        allowed_ascii_bytes: BASELINE_REF_SPEC.allowed_ascii_bytes,
+        forbidden_complete_values: BASELINE_REF_SPEC.forbidden_complete_values,
+    })
+    .expect("static BaselineRef scalar contract always serializes")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +318,23 @@ mod tests {
         assert!(invalid
             .iter()
             .any(|value| value.len() > BASELINE_REF_SPEC.maximum_length));
+    }
+
+    #[test]
+    fn baseline_ref_scalar_contract_digest_is_canonical_and_value_set_bound() {
+        let digest = baseline_ref_scalar_contract_digest();
+        assert!(crate::canonical::is_canonical_sha256_digest(
+            digest.as_str()
+        ));
+        let changed = canonical_json_sha256(&ScalarContractDigestBasis {
+            domain: "volicord.scalar-contract",
+            semantic_name: BASELINE_REF_SPEC.semantic_name,
+            minimum_length: BASELINE_REF_SPEC.minimum_length,
+            maximum_length: BASELINE_REF_SPEC.maximum_length - 1,
+            allowed_ascii_bytes: BASELINE_REF_SPEC.allowed_ascii_bytes,
+            forbidden_complete_values: BASELINE_REF_SPEC.forbidden_complete_values,
+        })
+        .expect("test scalar contract serializes");
+        assert_ne!(digest, changed);
     }
 }

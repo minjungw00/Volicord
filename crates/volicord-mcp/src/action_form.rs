@@ -3,19 +3,19 @@
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use volicord_mcp_wire::{
-    action_form_request_projection, mcp_tool_contract, McpActionFormArgumentMismatch,
-    McpInputContractValidation, RetryContract, SemanticSchemaDescriptor, WorkflowActionForm,
-    WorkflowActionFormCatalog, WorkflowActionInput, MAX_VALIDATION_ISSUES,
+    action_form_request_projection, mcp_tool_contract, submitted_action_form_semantic_variant,
+    McpActionFormArgumentMismatch, McpInputContractValidation, RetryContract,
+    SemanticSchemaDescriptor, WorkflowActionForm, WorkflowActionFormCatalog, WorkflowActionInput,
+    MAX_VALIDATION_ISSUES,
 };
 use volicord_types::canonical::canonical_json_sha256;
 use volicord_types::ids::{ProjectId, RequestHash, TaskId};
 use volicord_types::schema::{
-    JsonObject, RequiredNullable, ShapingCheckpointOperation, TransitionDescriptor,
-    WorkflowActionAuthorityCoordinates, WorkflowActionKey, WorkflowCheckpointActionCoordinates,
-    WorkflowProjection,
+    JsonObject, RequiredNullable, TransitionDescriptor, WorkflowActionAuthorityCoordinates,
+    WorkflowActionKey, WorkflowCheckpointActionCoordinates, WorkflowProjection,
 };
 use volicord_types::tool_names::AgentToolId;
-use volicord_types::values::{ChangeUnitOperation, MethodName, WorkflowActionSemanticVariant};
+use volicord_types::values::{ChangeUnitOperation, MethodName};
 
 #[derive(Serialize)]
 struct WorkflowActionFormDigestBasis<'a> {
@@ -28,7 +28,9 @@ struct WorkflowActionFormDigestBasis<'a> {
     fixed_arguments: &'a JsonObject,
     fixed_argument_paths: &'a [String],
     semantic_schema_digest: &'a RequestHash,
+    scalar_contract_digest: &'a RequestHash,
     workflow_contract_digest: &'a RequestHash,
+    action_form_contract_digest: &'a RequestHash,
 }
 
 fn input(path: &str, semantic_type: &str) -> WorkflowActionInput {
@@ -452,25 +454,6 @@ fn project_fixed_arguments(
     }
 }
 
-fn request_semantic_variant(
-    method: MethodName,
-    request: &Value,
-) -> Option<WorkflowActionSemanticVariant> {
-    match method {
-        MethodName::UpdateScope => request
-            .pointer("/change_unit/operation")
-            .cloned()
-            .and_then(|value| serde_json::from_value::<ChangeUnitOperation>(value).ok())
-            .map(WorkflowActionSemanticVariant::for_change_unit_operation),
-        MethodName::RecordShapingCheckpoint => request
-            .get("checkpoint_operation")
-            .cloned()
-            .and_then(|value| serde_json::from_value::<ShapingCheckpointOperation>(value).ok())
-            .map(|operation| operation.semantic_variant()),
-        _ => WorkflowActionSemanticVariant::for_single_variant_method(method),
-    }
-}
-
 fn insert_pointer(request: &mut Value, pointer: &str, value: Value) -> Result<(), String> {
     let (parent_pointer, leaf) = pointer
         .rsplit_once('/')
@@ -567,7 +550,11 @@ pub(crate) fn workflow_action_form(
         .ok_or_else(|| format!("{} has no semantic request descriptor", method.as_str()))?;
     let semantic_schema_digest = volicord_types::managed_guidance::mcp_semantic_schema_digest();
     let workflow_contract_digest =
-        volicord_types::managed_guidance::workflow_action_contract_semantic_digest();
+        volicord_types::managed_guidance::workflow_contract_semantic_digest();
+    let action_form_contract_digest =
+        volicord_types::managed_guidance::action_form_contract_semantic_digest();
+    let scalar_contract_digest =
+        volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest();
     let (task_id, fixed_arguments, required_inputs, optional_inputs) =
         project_fixed_arguments(project_id, &transition.fixed_authority_coordinates);
     let (required_inputs, optional_inputs) = descriptor_owned_inputs(
@@ -633,14 +620,17 @@ pub(crate) fn workflow_action_form(
         fixed_arguments: &fixed_arguments,
         fixed_argument_paths: &fixed_argument_paths,
         semantic_schema_digest: &semantic_schema_digest,
+        scalar_contract_digest: &scalar_contract_digest,
         workflow_contract_digest: &workflow_contract_digest,
+        action_form_contract_digest: &action_form_contract_digest,
     })
     .map_err(|error| error.to_string())?;
     let matching_examples = descriptor
         .canonical_examples()
         .iter()
         .filter(|example| {
-            request_semantic_variant(method, example.value()) == Some(selected_semantic_variant)
+            submitted_action_form_semantic_variant(method, example.value())
+                == Some(selected_semantic_variant)
         })
         .map(|example| example.value())
         .collect::<Vec<_>>();
@@ -690,7 +680,7 @@ pub(crate) fn workflow_action_form(
             ));
         }
     }
-    if request_semantic_variant(method, &canonical_minimal_request)
+    if submitted_action_form_semantic_variant(method, &canonical_minimal_request)
         != Some(selected_semantic_variant)
     {
         return Err(format!(
@@ -821,8 +811,12 @@ pub(crate) fn workflow_action_form_catalog(
                 .map(|transition| transition.action_key),
         ),
         workflow_contract_digest:
-            volicord_types::managed_guidance::workflow_action_contract_semantic_digest(),
+            volicord_types::managed_guidance::workflow_contract_semantic_digest(),
+        action_form_contract_digest:
+            volicord_types::managed_guidance::action_form_contract_semantic_digest(),
         semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
+        scalar_contract_digest:
+            volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest(),
         forms,
     })
 }
@@ -875,7 +869,9 @@ mod tests {
         BaselineRef, ChangeUnitId, RecordId, ShapingCheckpointId, UserActionResolutionId,
     };
     use volicord_types::schema::{StateRecordRef, WorkflowActionRole};
-    use volicord_types::values::{AuthorityNextActor, RunKind, StateRecordKind};
+    use volicord_types::values::{
+        AuthorityNextActor, RunKind, StateRecordKind, WorkflowActionSemanticVariant,
+    };
 
     fn workflow_action_form(
         project_id: &ProjectId,
@@ -1525,7 +1521,7 @@ mod tests {
                 .expect("one exact form per Agent transition");
             assert_eq!(form.action_key, transition.action_key);
             assert_eq!(
-                request_semantic_variant(
+                submitted_action_form_semantic_variant(
                     form.action_key.method,
                     &Value::Object(form.canonical_minimal_request.clone()),
                 ),

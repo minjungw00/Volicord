@@ -65,13 +65,10 @@ use volicord_types::methods::{
     RequestUserActionRequest, RequestUserActionResponse, StageArtifactRequest, StatusRequest,
     UpdateScopeRequest, WorkflowActionAdmissionClass,
 };
-use volicord_types::schema::{
-    RequiredNullable, ShapingCheckpointOperation, ToolEnvelope, WorkflowProjection,
-};
+use volicord_types::schema::{RequiredNullable, ToolEnvelope, WorkflowProjection};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
-    ChangeUnitOperation, IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel,
-    UtcTimestamp, WorkflowActionSemanticVariant,
+    IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
 };
 
 /// Invocation context derived for one tool call before entering Core.
@@ -608,7 +605,7 @@ impl McpAdapter {
                 .zip(authoritative_context.workflow.as_ref())
                 .and_then(|(catalog, workflow)| {
                     tool.method().and_then(|method| {
-                        submitted_workflow_action_variant(method, params)
+                        volicord_mcp_wire::submitted_action_form_semantic_variant(method, params)
                             .and_then(|variant| catalog.form(method, variant))
                             .map(|form| (form, catalog, workflow))
                     })
@@ -690,14 +687,16 @@ impl McpAdapter {
             .get("action_form_ref")
             .cloned()
             .and_then(|value| serde_json::from_value::<RequestHash>(value).ok());
-        let called_semantic_variant =
-            submitted_workflow_action_variant(method, params).or_else(|| {
-                supplied
-                    .as_ref()
-                    .and_then(|form_ref| catalog.form_by_ref(form_ref))
-                    .filter(|form| form.action_key.method == method)
-                    .map(|form| form.action_key.semantic_variant)
-            });
+        let called_semantic_variant = volicord_mcp_wire::submitted_action_form_semantic_variant(
+            method, params,
+        )
+        .or_else(|| {
+            supplied
+                .as_ref()
+                .and_then(|form_ref| catalog.form_by_ref(form_ref))
+                .filter(|form| form.action_key.method == method)
+                .map(|form| form.action_key.semantic_variant)
+        });
         let method_forms = catalog
             .forms_for_method(method)
             .cloned()
@@ -958,8 +957,14 @@ impl McpAdapter {
                     attempted_action_key: RequiredNullable::null(),
                     typed_rejection_reason: RequiredNullable::null(),
                     recovery_action_key: RequiredNullable::null(),
-                    workflow_contract_digest: volicord_types::managed_guidance::workflow_action_contract_semantic_digest(),
-                    semantic_schema_digest: volicord_types::managed_guidance::mcp_semantic_schema_digest(),
+                    workflow_contract_digest:
+                        volicord_types::managed_guidance::workflow_contract_semantic_digest(),
+                    action_form_contract_digest:
+                        volicord_types::managed_guidance::action_form_contract_semantic_digest(),
+                    semantic_schema_digest:
+                        volicord_types::managed_guidance::mcp_semantic_schema_digest(),
+                    scalar_contract_digest:
+                        volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest(),
                 }),
             })?;
         Ok(Some(AuthoritativeArgumentContext {
@@ -2281,25 +2286,6 @@ fn admission_task_id(params: &Value) -> Option<TaskId> {
         .or_else(|| params.pointer("/request/task_id"))
         .and_then(Value::as_str)
         .map(TaskId::new)
-}
-
-pub(crate) fn submitted_workflow_action_variant(
-    method: MethodName,
-    params: &Value,
-) -> Option<WorkflowActionSemanticVariant> {
-    match method {
-        MethodName::UpdateScope => params
-            .pointer("/change_unit/operation")
-            .cloned()
-            .and_then(|value| serde_json::from_value::<ChangeUnitOperation>(value).ok())
-            .map(WorkflowActionSemanticVariant::for_change_unit_operation),
-        MethodName::RecordShapingCheckpoint => params
-            .get("checkpoint_operation")
-            .cloned()
-            .and_then(|value| serde_json::from_value::<ShapingCheckpointOperation>(value).ok())
-            .map(|operation| operation.semantic_variant()),
-        _ => WorkflowActionSemanticVariant::for_single_variant_method(method),
-    }
 }
 
 fn unloaded_authoritative_argument_context() -> AuthoritativeArgumentContext {

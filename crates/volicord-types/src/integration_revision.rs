@@ -88,8 +88,10 @@ pub struct ProjectIntegrationRevisionBasis<'a> {
     pub product_repository_effect_catalog_digest: &'a str,
     pub storage_manifest_digest: &'a str,
     pub managed_guidance_semantic_digest: &'a str,
-    pub workflow_action_contract_semantic_digest: &'a str,
+    pub workflow_contract_semantic_digest: &'a str,
+    pub action_form_contract_semantic_digest: &'a str,
     pub mcp_semantic_schema_digest: &'a str,
+    pub scalar_contract_semantic_digest: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -226,8 +228,10 @@ fn validate_project_basis(
         || !is_canonical_sha256_digest(basis.product_repository_effect_catalog_digest)
         || !is_canonical_sha256_digest(basis.storage_manifest_digest)
         || !is_canonical_sha256_digest(basis.managed_guidance_semantic_digest)
-        || !is_canonical_sha256_digest(basis.workflow_action_contract_semantic_digest)
+        || !is_canonical_sha256_digest(basis.workflow_contract_semantic_digest)
+        || !is_canonical_sha256_digest(basis.action_form_contract_semantic_digest)
         || !is_canonical_sha256_digest(basis.mcp_semantic_schema_digest)
+        || !is_canonical_sha256_digest(basis.scalar_contract_semantic_digest)
     {
         return Err(IntegrationRevisionError::InvalidDigest);
     }
@@ -316,8 +320,10 @@ mod tests {
         let effect_digest = format!("sha256:{}", "d".repeat(64));
         let storage_manifest_digest = format!("sha256:{}", "4".repeat(64));
         let guidance_digest = format!("sha256:{}", "e".repeat(64));
-        let action_contract_digest = format!("sha256:{}", "f".repeat(64));
+        let workflow_contract_digest = format!("sha256:{}", "f".repeat(64));
+        let action_form_contract_digest = format!("sha256:{}", "6".repeat(64));
         let semantic_schema_digest = format!("sha256:{}", "0".repeat(64));
+        let scalar_contract_digest = format!("sha256:{}", "7".repeat(64));
         let project_basis = ProjectIntegrationRevisionBasis {
             connection_integration_revision: first.as_str(),
             project_id: "project.alpha",
@@ -328,8 +334,10 @@ mod tests {
             product_repository_effect_catalog_digest: &effect_digest,
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
-            workflow_action_contract_semantic_digest: &action_contract_digest,
+            workflow_contract_semantic_digest: &workflow_contract_digest,
+            action_form_contract_semantic_digest: &action_form_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
+            scalar_contract_semantic_digest: &scalar_contract_digest,
         };
         let project =
             IntegrationRevision::for_project(project_basis.clone()).expect("valid project basis");
@@ -359,24 +367,38 @@ mod tests {
             ..project_basis.clone()
         })
         .expect("changed guidance semantics");
-        let changed_action_contract =
+        let changed_workflow_contract =
             IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
-                workflow_action_contract_semantic_digest: &format!("sha256:{}", "2".repeat(64)),
+                workflow_contract_semantic_digest: &format!("sha256:{}", "2".repeat(64)),
                 ..project_basis.clone()
             })
-            .expect("changed action contract semantics");
+            .expect("changed workflow contract semantics");
+        let changed_action_form_contract =
+            IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+                action_form_contract_semantic_digest: &format!("sha256:{}", "8".repeat(64)),
+                ..project_basis.clone()
+            })
+            .expect("changed action-form contract semantics");
         let changed_semantic_schema =
             IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
                 mcp_semantic_schema_digest: &format!("sha256:{}", "3".repeat(64)),
-                ..project_basis
+                ..project_basis.clone()
             })
             .expect("changed MCP semantic schema semantics");
+        let changed_scalar_contract =
+            IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+                scalar_contract_semantic_digest: &format!("sha256:{}", "9".repeat(64)),
+                ..project_basis
+            })
+            .expect("changed scalar contract semantics");
         assert_ne!(project, changed_observer);
         assert_ne!(project, changed_effect_catalog);
         assert_ne!(project, changed_storage_manifest);
         assert_ne!(project, changed_guidance);
-        assert_ne!(project, changed_action_contract);
+        assert_ne!(project, changed_workflow_contract);
+        assert_ne!(project, changed_action_form_contract);
         assert_ne!(project, changed_semantic_schema);
+        assert_ne!(project, changed_scalar_contract);
         let recreated_project = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
             connection_integration_revision: recreated.as_str(),
             project_id: "project.alpha",
@@ -387,8 +409,10 @@ mod tests {
             product_repository_effect_catalog_digest: &effect_digest,
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
-            workflow_action_contract_semantic_digest: &action_contract_digest,
+            workflow_contract_semantic_digest: &workflow_contract_digest,
+            action_form_contract_semantic_digest: &action_form_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
+            scalar_contract_semantic_digest: &scalar_contract_digest,
         })
         .expect("recreated project basis");
         let other_project = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
@@ -401,8 +425,10 @@ mod tests {
             product_repository_effect_catalog_digest: &effect_digest,
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
-            workflow_action_contract_semantic_digest: &action_contract_digest,
+            workflow_contract_semantic_digest: &workflow_contract_digest,
+            action_form_contract_semantic_digest: &action_form_contract_digest,
             mcp_semantic_schema_digest: &semantic_schema_digest,
+            scalar_contract_semantic_digest: &scalar_contract_digest,
         })
         .expect("other project basis");
         let native_session = "native.session.same";

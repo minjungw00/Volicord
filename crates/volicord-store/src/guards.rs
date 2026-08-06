@@ -593,9 +593,13 @@ pub fn current_project_agent_session_coordinates(
             }
         })?;
     let guidance_digest = volicord_types::managed_guidance::managed_guidance_semantic_digest();
-    let action_contract_digest =
-        volicord_types::managed_guidance::workflow_action_contract_semantic_digest();
+    let workflow_contract_digest =
+        volicord_types::managed_guidance::workflow_contract_semantic_digest();
+    let action_form_contract_digest =
+        volicord_types::managed_guidance::action_form_contract_semantic_digest();
     let semantic_schema_digest = volicord_types::managed_guidance::mcp_semantic_schema_digest();
+    let scalar_contract_digest =
+        volicord_types::canonical_scalar::baseline_ref_scalar_contract_digest();
     let project_revision = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
         connection_integration_revision: connection_revision.as_str(),
         project_id: &project.project.project_id,
@@ -606,8 +610,10 @@ pub fn current_project_agent_session_coordinates(
         product_repository_effect_catalog_digest: effect_catalog_digest.as_str(),
         storage_manifest_digest: storage_manifest_digest.as_str(),
         managed_guidance_semantic_digest: guidance_digest.as_str(),
-        workflow_action_contract_semantic_digest: action_contract_digest.as_str(),
+        workflow_contract_semantic_digest: workflow_contract_digest.as_str(),
+        action_form_contract_semantic_digest: action_form_contract_digest.as_str(),
         mcp_semantic_schema_digest: semantic_schema_digest.as_str(),
+        scalar_contract_semantic_digest: scalar_contract_digest.as_str(),
     })
     .map_err(|error| StoreError::InvalidInput {
         detail: format!("project integration revision could not be derived: {error}"),

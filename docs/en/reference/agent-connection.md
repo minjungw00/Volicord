@@ -776,22 +776,25 @@ current project workflow-policy fingerprint, current Guard installation
 identity/policy hash or explicit absence of Guard ownership, the repository
 observer semantic contract digest, and the canonical Product Repository
 effect-catalog digest. It also binds the digest of the complete current
-`StorageManifest` and three current semantic digests: managed agent guidance,
-the workflow transition contract, and the MCP semantic schema. The storage-manifest
+`StorageManifest` and five distinct current semantic digests: managed agent
+guidance, the workflow transition contract, the action-form contract, the MCP
+semantic schema, and the canonical scalar contract. The storage-manifest
 digest covers its contract identity, canonical DDL and integrity-constraint
 digests, and complete capability set. The guidance digest covers the closed
 current workflow facts rendered into the managed `AGENTS.md` block and MCP
 server instructions, including exact transition and action-form use, Core-owned
 recovery, form isolation, MCP schema discovery boundaries, and distinct
 pre-Core, Core-rejected, and persisted-corruption reporting; it is not a hash
-of project-specific prose. The action-contract digest covers complete Agent
-transition projection, exact action-key form identity, fixed versus
-Agent-authored arguments, canonical-minimal-request integrity, authoritative
-context, exact typed recovery, and separate canonicality and compatibility
-facts. The
-semantic-schema digest covers checked canonical `BaselineRef` constraints,
+of project-specific prose. The workflow-contract digest covers the normalized
+snapshot, pure machine, complete transition catalog, exact action keys, actor
+and role, transition-owned Core admission, and typed current recovery. The
+action-form digest covers descriptor-derived Agent forms, exact form identity,
+fixed versus Agent-authored arguments, canonical-minimal-request integrity,
+authoritative context, and form isolation. The semantic-schema digest covers
 generic required-nullable semantics, explicit discriminators, branch-local
-validation, and bounded runtime semantic projection. A change to the storage
+validation, and bounded runtime semantic projection. The scalar-contract
+digest derives directly from the exact accepted `BaselineRef` byte grammar,
+including its length, alphabet, and forbidden complete values. A change to the storage
 manifest or any of these semantic digests changes the managed integration
 revision even when the hook command text is unchanged. Historical
 Guard events remain evidence for their recorded revision and cannot satisfy

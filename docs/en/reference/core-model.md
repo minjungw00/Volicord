@@ -690,6 +690,16 @@ required descriptor is always a catalog member. Every nonterminal state waits
 for an exact current UserAction, exposes an executable Agent transition, or
 exposes an explicit close, cancellation, or supersession path.
 
+The reachable workflow model preserves these liveness and recovery invariants
+for every explored current-state combination: action keys are unique; a
+required action is a catalog member; every advertised Agent transition passes
+the same Core admission against the source snapshot; no unadvertised variant
+passes; every nonterminal Agent-owned state has an executable or explicit
+terminal path; and every non-null recovery action is a current catalog member
+with an exact action form when MCP can execute it. The model also checks that
+catalog ordering, required roles, fixed coordinates, and projected forms are
+deterministic for the same snapshot.
+
 The machine also owns all `volicord.update_scope` variant availability. Its
 coordinates select the exact `ChangeUnitOperation` against current Change Unit
 authority; no adapter or projection recalculates create, keep, or replace

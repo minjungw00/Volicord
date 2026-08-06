@@ -1250,8 +1250,9 @@ pub(super) fn bind_action_form_arguments(
         }
     }
 
-    let semantic_variant = crate::adapter::submitted_workflow_action_variant(method, &arguments)
-        .ok_or("arguments do not identify one exact semantic variant")?;
+    let semantic_variant =
+        volicord_mcp_wire::submitted_action_form_semantic_variant(method, &arguments)
+            .ok_or("arguments do not identify one exact semantic variant")?;
     let form = action_form_for_variant(adapter, task_id, method, semantic_variant)?;
     arguments["action_form_ref"] = json!(form.form_ref);
     merge(&mut arguments, &Value::Object(form.fixed_arguments));
