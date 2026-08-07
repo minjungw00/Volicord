@@ -100,14 +100,16 @@ Document: [Installation](../user-guide/installation.md)
   checkpoints.
 - Should not own: Environment applicability classifications, full
   administrative CLI contracts, host configuration procedures, exhaustive
-  recovery guidance, MCP protocol behavior, or storage effects.
+  recovery guidance, source-bundle production instructions, MCP protocol
+  behavior, or storage effects.
 - Acceptable diagrams: Usually none. A compact install-to-verify sequence is
   acceptable if it makes the tutorial clearer.
 - Link deeper by: Sending environment classification to
   [System Requirements](../reference/system-requirements.md), command
   semantics to [Administrative CLI](../reference/admin-cli.md), MCP process
   requirements to [MCP Transport](../reference/mcp-transport.md), and first host
-  use to [Quickstart](../user-guide/quickstart.md).
+  use to [Quickstart](../user-guide/quickstart.md). Route maintainer
+  source-bundle production to [Validation](validation.md#release-and-host-smoke-validation).
 
 ## Quickstart
 

@@ -25,6 +25,18 @@ Validate the current workspace package graph with:
 cargo run -p xtask -- architecture-check
 ```
 
+## xtask Maintenance Help
+
+Use `cargo run --locked -p xtask -- --help` for the top-level maintenance
+command list and `<command> --help` for command-specific usage and purpose.
+The help makes the boundary explicit: xtask maintains the Volicord source
+repository. It does not validate a Volicord Runtime Home, Agent Connection,
+Product Repository workflow, or product correctness.
+
+That boundary applies to help and command results alike. Repository checks can
+protect maintained sources, fixtures, workflows, and release artifacts without
+becoming product acceptance, runtime conformance, or workflow authority.
+
 ## Changed-Owner Routing
 
 Before broad discovery, derive the bounded route for the current Git changes:
@@ -516,6 +528,7 @@ Record results outside maintained documentation. Do not commit participant
 notes, screenshots, recordings, credentials, transcripts, Runtime Homes, or
 fabricated completion claims.
 
+<a id="release-and-host-smoke-validation"></a>
 ## Release And Host Smoke Validation
 
 Volicord release validation covers the ordinary five-target build, package,
@@ -536,8 +549,9 @@ semantics. Workflow validation inspects parsed action identity, matrix inputs,
 step ordering, and invocation counts; it does not compare one complete shell
 command.
 
-For the committed source distribution, use the canonical creation and
-validation commands:
+Source-bundle creation belongs to repository maintenance and release
+packaging, not ordinary installation. For the committed source distribution,
+use the canonical creation and validation commands:
 
 ```sh
 cargo run --locked -p xtask -- source-bundle --output /tmp/volicord-source.zip

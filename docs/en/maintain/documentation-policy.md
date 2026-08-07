@@ -252,7 +252,9 @@ Request and response field, requiredness, nullability, and type tables in API
 method Reference pages are generated from semantic request and response
 descriptors selected by the resolved document bindings through
 `cargo run -p xtask -- docs-sync`. Stable generated-region markers bind each
-table to exact contract IDs and shapes. Multi-method pages generate every owned
+table to exact contract IDs and shapes. Their reader-facing notice stays
+implementation-neutral; this maintenance owner carries the regeneration
+command. Multi-method pages generate every owned
 method binding in normalized binding order. API Schema Core generates the
 effect-specific metadata structures plus the shared `ToolRejectedBase`,
 `ToolDryRunBase`, `ToolRejectedResponse`, and `ToolDryRunResponse` structures.

@@ -89,13 +89,15 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   실행 파일 발견, 설치 프로필 준비, 자동화에서 결과가 일정한 설정 옵션, 검증
   체크포인트입니다.
 - 담당하지 않아야 하는 정보: 환경 적용 가능성 분류, 전체 관리 CLI 계약, 호스트
-  설정 절차, 포괄적 복구 안내, MCP 프로토콜 동작, 저장 효과입니다.
+  설정 절차, 포괄적 복구 안내, 소스 번들 생성 지침, MCP 프로토콜 동작, 저장
+  효과입니다.
 - 허용되는 그림: 보통 필요하지 않습니다. 튜토리얼이 더 분명해진다면 설치에서
   검증으로 이어지는 간결한 순서 그림은 허용됩니다.
 - 더 깊은 문서로 연결하는 방식: 환경 분류는 [시스템 요구사항](../reference/system-requirements.md),
   명령 의미는 [관리 CLI](../reference/admin-cli.md), MCP 프로세스 요구사항은
   [MCP 전송](../reference/mcp-transport.md), 첫 호스트 사용은
-  [빠른 시작](../user-guide/quickstart.md)으로 보냅니다.
+  [빠른 시작](../user-guide/quickstart.md)으로 보냅니다. 유지보수자용 소스 번들
+  생성은 [검증](validation.md#release-and-host-smoke-validation)으로 보냅니다.
 
 ## 빠른 시작
 

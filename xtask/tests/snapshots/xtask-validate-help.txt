@@ -1,0 +1,15 @@
+validate — Plan and run repository-owned validation with durable results.
+
+Usage:
+  cargo run --locked -p xtask -- validate <focused|final> --base REVISION [--json]
+
+Purpose:
+  Use focused for intermediate commits. Use final once after the complete series; it owns the exact workspace aggregate and bounded diagnostics.
+
+Options:
+  --base REVISION Use REVISION as the explicit change-series base.
+  --json           Emit the completed run summary as JSON.
+  -h, --help      Print this command-specific help.
+
+Repository boundary:
+  xtask maintains the Volicord source repository. It does not validate a Volicord Runtime Home, Agent Connection, Product Repository workflow, or product correctness.

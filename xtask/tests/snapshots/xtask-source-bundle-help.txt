@@ -1,0 +1,15 @@
+source-bundle — Create and validate a deterministic source archive from one committed Git tree.
+
+Usage:
+  cargo run --locked -p xtask -- source-bundle --output PATH [--commit COMMIT]
+
+Purpose:
+  This is a maintenance and release-packaging command, not an ordinary installation step.
+
+Options:
+  --output PATH    Write the completed ZIP to PATH.
+  --commit COMMIT Select COMMIT instead of HEAD.
+  -h, --help      Print this command-specific help.
+
+Repository boundary:
+  xtask maintains the Volicord source repository. It does not validate a Volicord Runtime Home, Agent Connection, Product Repository workflow, or product correctness.

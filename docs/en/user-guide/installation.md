@@ -43,24 +43,11 @@ This path requires the Rust toolchain named in
 [System Requirements](../reference/system-requirements.md#toolchain-requirements).
 It does not depend on a published release host.
 
-## Build A Source Bundle
+## Maintainer Source Bundles
 
-The repository-supported source distribution is a ZIP created from one
-committed Git tree:
-
-```sh
-cargo run --locked -p xtask -- source-bundle --output /tmp/volicord-source.zip
-cargo run --locked -p xtask -- source-bundle-validate --input /tmp/volicord-source.zip
-```
-
-The default selected commit is `HEAD`. Tracked index or working-tree changes
-make the creation command fail; untracked files do not enter the bundle.
-Maintainers can select another exact commit by passing `--commit <commit>` to
-both commands. The ZIP contains the selected tree's files and directories,
-preserves regular, executable, and symbolic-link types and modes, and is
-byte-for-byte deterministic for the same selected commit and packaging
-implementation. The maintenance checks are detailed in
-[Validation](../maintain/validation.md).
+Source-bundle creation is repository maintenance, not an ordinary installation
+step. Maintainers use the commands and checks owned by
+[Validation](../maintain/validation.md#release-and-host-smoke-validation).
 
 ## Install Published Release Assets
 

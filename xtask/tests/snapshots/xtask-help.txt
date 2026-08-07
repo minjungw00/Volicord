@@ -1,0 +1,23 @@
+Volicord repository maintenance
+
+xtask maintains the Volicord source repository. It does not validate a Volicord Runtime Home, Agent Connection, Product Repository workflow, or product correctness.
+
+Usage:
+  cargo run --locked -p xtask -- <COMMAND> [OPTIONS]
+  cargo run --locked -p xtask -- <COMMAND> --help
+
+Commands:
+  owner-route               Resolve maintenance owners and validation classes for changed repository paths.
+  validate                  Plan and run repository-owned validation with durable results.
+  validation-plan           Inspect the current Linux repository-validation command plan without executing it.
+  architecture-check        Check the maintained Rust workspace package and dependency architecture.
+  docs-check                Check maintained documentation structure and generated-region drift.
+  docs-sync                 Regenerate marked documentation regions from maintained sources.
+  maintainability-report    Render diagnostic maintainability signals for repository review.
+  mcp-spec-check            Check the integrity of pinned MCP specification fixtures offline.
+  mcp-spec-sync             Refresh pinned MCP specification fixtures as an explicit maintenance action.
+  release-version-check     Check workspace and optional release-tag version consistency.
+  source-bundle             Create and validate a deterministic source archive from one committed Git tree.
+  source-bundle-validate    Compare a source archive with the complete selected Git tree.
+
+Use `<COMMAND> --help` for command-specific maintenance help.

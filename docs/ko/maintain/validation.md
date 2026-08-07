@@ -24,6 +24,17 @@ cargo run -p xtask -- docs-sync
 cargo run -p xtask -- architecture-check
 ```
 
+## xtask 유지보수 도움말
+
+최상위 유지보수 명령 목록은 `cargo run --locked -p xtask -- --help`로 보고, 각 명령의
+사용법과 목적은 `<command> --help`로 확인합니다. 도움말은 경계를 명확히 밝힙니다.
+xtask는 Volicord 소스 저장소를 유지보수합니다. Volicord Runtime Home, Agent
+Connection, Product Repository workflow 또는 제품 정확성을 검증하지 않습니다.
+
+이 경계는 도움말과 명령 결과에 똑같이 적용됩니다. 저장소 점검은 유지되는 원본,
+fixture, workflow, 릴리스 산출물을 보호할 수 있지만 제품 수락, 런타임 적합성 또는
+workflow 권한이 되지는 않습니다.
+
 ## 변경된 파일의 담당 경로 지정
 
 넓은 범위를 탐색하기 전에 현재 Git 변경에 필요한 한정된 경로를 도출합니다.
@@ -459,6 +470,7 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 결과는 유지 문서 밖에 기록합니다. 참여자 메모, 스크린샷, 녹화, 자격 증명, 대화
 기록, Runtime Home, 꾸며 낸 완료 주장을 커밋하지 않습니다.
 
+<a id="release-and-host-smoke-validation"></a>
 ## 릴리스와 호스트 스모크 검증
 
 Volicord 릴리스 검증은 일반적인 다섯 target 빌드, 패키지, checksum, binary smoke,
@@ -477,6 +489,7 @@ binary identity, checksum 출력, workflow 의미를 보호합니다. Workflow �
 action identity, matrix input, step 순서, 호출 수를 검사하며 완전한 shell 명령 하나를
 비교하지 않습니다.
 
+소스 번들 생성은 일반 설치가 아니라 저장소 유지보수와 릴리스 패키징에 속합니다.
 commit된 소스 배포본에는 다음 정규 생성 및 검증 명령을 사용합니다.
 
 ```sh

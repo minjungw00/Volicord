@@ -2,8 +2,23 @@ use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
+mod maintenance_help;
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
+
+    if let Some(help) = maintenance_help::requested_help(&args) {
+        return match help {
+            Ok(help) => {
+                print!("{help}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::from(2)
+            }
+        };
+    }
 
     match args.as_slice() {
         [command, rest @ ..] if command == "owner-route" => run_owner_route_command(rest),
@@ -113,9 +128,7 @@ fn main() -> ExitCode {
             run_source_bundle_validate_command(Path::new(input), Some(commit))
         }
         _ => {
-            eprintln!(
-                "usage: cargo run -p xtask -- <owner-route --changed [--base REVISION] [--json]|validate <focused|final> --base REVISION [--json]|validation-plan [--json]|architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
-            );
+            eprintln!("{}", maintenance_help::short_usage());
             ExitCode::from(2)
         }
     }

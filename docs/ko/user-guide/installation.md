@@ -40,21 +40,11 @@ volicord --version
 이 경로에는 [시스템 요구사항](../reference/system-requirements.md#toolchain-requirements)에
 적힌 Rust 도구 체인이 필요합니다. 게시 릴리스 호스트에는 의존하지 않습니다.
 
-## 소스 번들 만들기
+## 유지보수자용 소스 번들
 
-저장소가 지원하는 소스 배포본은 commit된 Git tree 하나에서 만드는 ZIP입니다.
-
-```sh
-cargo run --locked -p xtask -- source-bundle --output /tmp/volicord-source.zip
-cargo run --locked -p xtask -- source-bundle-validate --input /tmp/volicord-source.zip
-```
-
-기본 선택 commit은 `HEAD`입니다. 추적 중인 index나 working tree에 변경이 있으면
-생성 명령이 실패하며, untracked 파일은 번들에 들어가지 않습니다. 유지보수자는 두
-명령에 `--commit <commit>`을 전달해 다른 정확한 commit을 선택할 수 있습니다. ZIP은
-선택한 tree의 파일과 directory를 담고 일반 파일, 실행 파일, symlink의 형식과 mode를
-보존합니다. 같은 선택 commit과 패키징 구현에서는 바이트 단위로 결정적입니다. 자세한
-유지보수 점검은 [검증](../maintain/validation.md)을 보세요.
+소스 번들 생성은 일반 설치 단계가 아니라 저장소 유지보수 작업입니다. 유지보수자는
+[검증](../maintain/validation.md#release-and-host-smoke-validation)이 담당하는 명령과
+점검을 사용합니다.
 
 ## 게시된 릴리스 자산 설치하기
 

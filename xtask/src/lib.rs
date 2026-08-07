@@ -42,6 +42,8 @@ pub use validation::{
 };
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";
+const GENERATED_DOC_REGION_NOTICE: &str =
+    "<!-- This region is generated from maintained sources; do not edit it directly. -->";
 
 pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
     let root = repository::normalize_existing_root(root)?;
