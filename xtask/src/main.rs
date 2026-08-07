@@ -8,6 +8,22 @@ fn main() -> ExitCode {
     match args.as_slice() {
         [command, rest @ ..] if command == "owner-route" => run_owner_route_command(rest),
         [command, rest @ ..] if command == "validate" => run_validate_command(rest),
+        [command] if command == "validation-plan" => {
+            print!("{}", xtask::current_linux_validation_plan().render_human());
+            ExitCode::SUCCESS
+        }
+        [command, option] if command == "validation-plan" && option == "--json" => {
+            match serde_json::to_string_pretty(&xtask::current_linux_validation_plan()) {
+                Ok(rendered) => {
+                    println!("{rendered}");
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("validation-plan failed to render JSON: {error}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         [command] if command == "docs-check" => {
             let result = match env::current_dir() {
                 Ok(root) => xtask::run_docs_check(&root),
@@ -98,7 +114,7 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: cargo run -p xtask -- <owner-route --changed [--base REVISION] [--json]|validate <focused|final> --base REVISION [--json]|architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
+                "usage: cargo run -p xtask -- <owner-route --changed [--base REVISION] [--json]|validate <focused|final> --base REVISION [--json]|validation-plan [--json]|architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
             );
             ExitCode::from(2)
         }

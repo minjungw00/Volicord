@@ -205,6 +205,12 @@ Runner는 정확한 호출, timestamp, exit code를 담는 기계 판독 summary
 결과를 checkpoint하므로 terminal handle을 잃어도 완료된 결과를 확인할 수
 있습니다.
 
+`xtask::validation::current_plan`은 이 완전한 계획의 명령 구성과 순서를 담당하는
+현재의 typed 원본입니다. `validation-plan --json`은 실행 없이 Linux 형태를 표시합니다.
+로컬 최종 검증은 series 전용 사전 점검 뒤에 이 원본을 사용하고, 주 Linux CI job은
+별도 YAML 명령 목록을 유지하지 않고 같은 최종 profile을 `--base HEAD`로 호출합니다.
+네이티브 운영 job에는 플랫폼별 점검만 따로 남습니다.
+
 검증 runner 테스트는 두 번째 검증 엔진을 호출하지 않고 주입한 명령 결과를
 사용합니다. 집중 계획, 변경 패키지 선택, 문서 경로, 명령 실행 전 run 찾기 정보,
 동시 활성 record, 오래 남는 log와 복구, exit code 보존, 생략 명령, 사람용/JSON
@@ -606,8 +612,9 @@ symlink의 mode는 Git tree에서 가져옵니다. 포함 대상을 정할 때 f
 열고 선택한 Git tree와 경로, 파일 형식, mode, link target, 내용을 대조합니다. 집중
 테스트는 폐기 가능한 Git 저장소에서 추적 상태 변경, untracked 내용, 일반 파일,
 실행 파일, symlink, 안전하지 않거나 중복된 ZIP 경로, 압축 해제, 바이트 단위 반복
-생성을 다룹니다. 현재 tree 전체 테스트는 같은 구현을 이 저장소에 적용합니다. 일반
-CI와 태그 릴리스 게시는 정규 생성 명령을 호출합니다.
+생성을 다룹니다. 현재 tree 전체 테스트는 같은 구현을 이 저장소에 적용합니다. 현재
+Linux 검증 계획은 일반 CI에서 정규 생성 명령을 호출하고 태그 릴리스 게시는 게시
+archive에 그 명령을 호출합니다.
 
 `cargo run -p volicord-release-smoke -- --bin <path>`는 게시하지 않는 전용 플랫폼
 공통 실제 바이너리 스모크 패키지를 호출합니다. 폐기 가능한 Git Product Repository,
@@ -624,14 +631,15 @@ operation이 없음을 증명합니다. Codex fixture는 스모크 실행 파일
 담당합니다. Lifecycle 및 수집 한도를 `volicord-test-process`에 전달하며, 이 공유
 경계는 재사용 가능한 한도 자식 실행, 프로세스 트리 정리, 직접 자식 회수를 담당합니다.
 
-`.github/actions/volicord-release-smoke`는 재사용 workflow 호출 경계입니다. 일반 CI는
-로컬 debug `volicord` 바이너리를 빌드한 뒤 action을 정확히 한 번 호출합니다. 네이티브
-릴리스 matrix의 각 항목도 artifact staging 전에 같은 action을 정확히 한 번 호출하여
-이미 빌드한 정확한 Linux, macOS, Windows 바이너리를 전달합니다. Release-integrity
-테스트는 완전한 shell 명령 형식 대신 YAML 의미를 기준으로 build, smoke, staging
-순서, matrix target과 binary 참조, 정확히 한 번인 호출 수를 검증합니다. 이 프로세스는
-공개 수동 전송이므로 `manual_cli`로 남습니다. 숨은 managed-host launcher를 호출하지
-않으며 managed-host 증거를 제공하지 않습니다.
+현재 Linux 검증 계획은 일반 CI에서 로컬 debug `volicord` 바이너리를 빌드하고 그
+바이너리로 패키지를 정확히 한 번 호출합니다.
+`.github/actions/volicord-release-smoke`는 재사용 가능한 네이티브 릴리스 workflow
+경계로 남습니다. 네이티브 릴리스 matrix의 각 항목은 artifact staging 전에 같은
+action을 정확히 한 번 호출하여 이미 빌드한 정확한 Linux, macOS, Windows 바이너리를
+전달합니다. 계약 테스트는 계획 구성과 build에서 smoke로 이어지는 순서, CI 위임,
+릴리스 matrix target과 binary 참조, staging 순서, 정확히 한 번인 호출 수를 검증합니다.
+이 프로세스는 공개 수동 전송이므로 `manual_cli`로 남습니다. 숨은 managed-host
+launcher를 호출하지 않으며 managed-host 증거를 제공하지 않습니다.
 
 일반 릴리스 무결성 테스트는 Volicord 플랫폼 빌드, 패키지 artifact, 소스 번들
 workflow 경로를 다룹니다. 운영 Codex 상호운용성 테스트는

@@ -920,7 +920,7 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Test-layer selection, changed-owner routing, focused/final validation and durable command results,
+  summary: Test-layer selection, changed-owner routing, one current Linux command plan shared by CI and final validation, and durable command results,
     machine-checked workspace architecture, strict contract and corruption
     coverage, pinned MCP specification inputs and offline integrity, documentation validation,
     committed-tree source-bundle integrity, cross-platform actual-binary smoke, generic release integrity,
@@ -3556,7 +3556,7 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for changed-owner routing, sequential focused/final profiles, durable command results,
+  summary: Maintenance policy for changed-owner routing, sequential focused/final profiles, the current Linux validation plan shared by CI and final validation, durable command results,
     bounded aggregate decomposition, commit-type scope, owner-derived structure, links, terminology, bilingual parity,
     workspace architecture enforcement, generated CLI synchronization and source drift, tracked artifact hygiene, onboarding usability,
     deterministic committed-tree source bundles, dedicated cross-platform release-binary smoke, semantic release
@@ -3584,13 +3584,14 @@ documents:
   - contract-boundary and generated-source drift checks
   - durable repository-test selection and reporting boundaries
   - sequential change-series focused and final validation profiles
+  - one typed current Linux repository-validation command plan shared by local final validation and the main CI job
   - durable command logs, result records, run summaries, and lost-terminal-handle recovery
   - bounded exact workspace aggregate retry and truthful decomposition reporting
   - practical test and documentation commit-type scope checks
   - representative-user Codex onboarding usability validation
   - deterministic committed-tree source-bundle generation and complete Git-tree validation
   - generic five-target, version, canonical-byte, package, checksum, and workflow integrity validation
-  - one dedicated cross-platform actual-binary smoke package and reusable action shared exactly once by ordinary CI and each native release target
+  - one dedicated cross-platform actual-binary smoke package used exactly once by the ordinary CI plan and through one reusable action for each native release target
   - optional real-Codex smoke as an operational observation outside the ordinary release result
   - behavioral host verification through configuration, MCP initialization, required tools, safe tool round trips, Guard observations, and session/revision isolation
   - diagnostic host-version changes as a reason to renew operational observation

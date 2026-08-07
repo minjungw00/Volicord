@@ -79,9 +79,18 @@ cargo run -p xtask -- validate final --base <revision>
 저장소 정책을 담당합니다. 실패한 최종 session은 실패로 남습니다. 분해 결과를
 완료로 설명하지 말고 보고한 뒤 수정된 series를 시작합니다.
 
-아래에 문서화된 직접 명령은 안정적인 집중 점검 및 CI 구성 요소로 남습니다.
-Series 수준 선택, 순서, 오래 남는 결과 수집, aggregate 처리, summary 상태는 검증
-profile이 권위 있게 담당합니다.
+`xtask::validation::current_plan`은 Linux 저장소 점검의 구성과 순서를 담당하는 현재의
+typed 원본 하나입니다. 실행하지 않고 기계 판독 형태를 확인할 수 있습니다.
+
+```sh
+cargo run -p xtask -- validation-plan --json
+```
+
+최종 profile은 series 사전 점검 뒤에 이 계획을 사용합니다. 주 Linux CI job은 workflow
+YAML에 명령을 반복하지 않고 `validate final --base HEAD`를 한 번 호출합니다. 플랫폼별
+네이티브 운영 job은 별도로 유지합니다. 아래에 문서화된 직접 명령은 안정적인 집중 및
+진단 점검으로 남고, profile이 series 수준 선택, 순서, 오래 남는 결과 수집, aggregate
+처리, summary 상태를 담당합니다.
 
 ## 오래 남는 명령 결과
 
@@ -487,16 +496,18 @@ commit과 패키징 구현에서는 entry 순서, 내용, mode, link target, ZIP
 검증 명령은 ZIP entry 전체 집합, 파일 형식, mode, 일반 파일 내용, symlink target을
 Git tree와 대조합니다. 포함 대상은 Git tree entry에서만 오므로 `.git` metadata,
 untracked 파일, 로컬 database, log, runtime data, 빌드 및 scratch 출력, 이전에 생성한
-untracked archive는 소스 번들 입력이 아닙니다. 일반 CI와 태그 릴리스 게시는 같은
-생성 명령을 실행하며 release-integrity 테스트가 그 workflow 경로를 검증합니다.
+untracked archive는 소스 번들 입력이 아닙니다. 현재 Linux 검증 계획은 일반 CI에서
+같은 생성 명령을 실행하고 태그 릴리스 게시는 게시 archive에 그 명령을 호출합니다.
+Release-integrity 테스트는 두 경로를 모두 검증합니다.
 
 게시하지 않는 `tests/release-smoke` 패키지는 플랫폼 공통 실제 바이너리 하네스를
 담당합니다. 폐기 가능한 Product Repository, Runtime Home, 안정적인 테스트 소유 Codex
 fixture를 사용하며 한도가 있는 프로세스 실행과 정리는 `volicord-test-process`에
-위임합니다. 로컬 composite action `.github/actions/volicord-release-smoke`가 하나뿐인
-workflow 호출 경계입니다. 일반 CI는 빌드한 debug 바이너리를 정확히 한 번 전달합니다.
-네이티브 릴리스 패키징 matrix의 각 항목도 artifact staging 전에 해당 target용으로 이미
-빌드한 정확한 Linux, macOS, Windows 바이너리를 정확히 한 번 전달합니다. 스모크는 공개
+위임합니다. 현재 Linux 검증 계획은 일반 CI에서 로컬 debug 바이너리를 빌드하고 그
+바이너리로 패키지를 정확히 한 번 호출합니다. 로컬 composite action
+`.github/actions/volicord-release-smoke`는 네이티브 릴리스 workflow 경계로 남습니다.
+네이티브 패키징 matrix의 각 항목은 artifact staging 전에 해당 target용으로 이미 빌드한
+정확한 Linux, macOS, Windows 바이너리를 정확히 한 번 전달합니다. 스모크는 공개
 `volicord mcp serve`를 사용하므로 session은 `manual_cli`로 남으며 managed-host 증거가
 아닙니다.
 

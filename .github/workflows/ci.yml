@@ -61,55 +61,8 @@ jobs:
           rustup default "${{ env.RUST_VERSION }}"
           rustup component add rustfmt clippy
 
-      - name: Check formatting
-        run: cargo fmt --check
-
-      - name: Check workspace architecture
-        run: cargo run --locked -p xtask -- architecture-check
-
-      - name: Run clippy
-        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-
-      - name: Run documentation checks
-        run: cargo run --locked -p xtask -- docs-check
-
-      - name: Build and validate the committed source bundle
-        run: cargo run --locked -p xtask -- source-bundle --output "$RUNNER_TEMP/volicord-source.zip"
-
-      - name: Check pinned MCP specification fixtures
-        run: cargo run --locked -p xtask -- mcp-spec-check
-
-      - name: Check registry-driven MCP protocol conformance
-        run: cargo test --locked -p volicord-mcp --test protocol_conformance
-
-      - name: Run maintainability report
-        run: cargo run --locked -p xtask -- maintainability-report
-
-      - name: Check public contract snapshots
-        run: cargo test --locked -p volicord-integration-tests --test public_contract_snapshots
-
-      - name: Check storage DDL contract
-        run: cargo test --locked -p volicord-store --test storage_ddl_contract
-
-      - name: Check MCP stdio contract
-        run: cargo test --locked -p volicord-cli --test mcp_transport
-
-      - name: Check MCP Agent Connection contract
-        run: cargo test --locked -p volicord-integration-tests --test mcp_connection
-
-      - name: Build local Volicord binary for smoke validation
-        run: cargo build --locked -p volicord-cli --bin volicord
-
-      - name: Smoke test local Volicord binary
-        uses: ./.github/actions/volicord-release-smoke
-        with:
-          binary-path: target/debug/volicord
-
-      - name: Check release integrity
-        run: cargo test --locked -p volicord-release-integrity-tests --all-targets --all-features
-
-      - name: Run workspace tests
-        run: cargo test --locked --workspace --all-targets --all-features
+      - name: Run current Linux repository validation plan
+        run: cargo run --locked -p xtask -- validate final --base HEAD
 
   operational-host-native-platforms:
     name: Operational host tests (${{ matrix.platform }})

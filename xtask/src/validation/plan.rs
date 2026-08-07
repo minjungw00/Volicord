@@ -1,3 +1,6 @@
+use super::current_plan::{
+    current_platform_validation_plan, CurrentValidationCommand, CurrentValidationCommandKind,
+};
 use super::{CommandInvocation, ValidationProfile};
 use crate::architecture::{derive_workspace_package_inputs, WorkspacePackageInput};
 use crate::owner_route::OwnerRouteReport;
@@ -207,208 +210,28 @@ fn focused_specs(
 }
 
 fn final_specs(root: &Path, base: &str) -> Vec<CommandSpec> {
-    let source_bundle_output = format!("{RUN_DIRECTORY_PLACEHOLDER}/volicord-source.zip");
-    let binary = if cfg!(windows) {
-        "target/debug/volicord.exe"
-    } else {
-        "target/debug/volicord"
-    };
-    let mut specs = vec![
-        process(
-            root,
-            "change-series diff hygiene",
-            "git",
-            &["diff", "--check", base, "--"],
-        ),
-        process(
-            root,
-            "Rust formatting",
-            "cargo",
-            &["fmt", "--all", "--check"],
-        ),
-        process(
-            root,
-            "workspace architecture",
-            "cargo",
-            &["run", "--locked", "-p", "xtask", "--", "architecture-check"],
-        ),
-        process(
-            root,
-            "workspace lint",
-            "cargo",
-            &[
-                "clippy",
-                "--locked",
-                "--workspace",
-                "--all-targets",
-                "--all-features",
-                "--",
-                "-D",
-                "warnings",
-            ],
-        ),
-        process(
-            root,
-            "documentation owners and generated drift",
-            "cargo",
-            &["run", "--locked", "-p", "xtask", "--", "docs-check"],
-        ),
-        process_owned(
-            root,
-            "committed source bundle",
-            "cargo",
-            vec![
-                "run".to_owned(),
-                "--locked".to_owned(),
-                "-p".to_owned(),
-                "xtask".to_owned(),
-                "--".to_owned(),
-                "source-bundle".to_owned(),
-                "--output".to_owned(),
-                source_bundle_output,
-            ],
-        ),
-        process(
-            root,
-            "pinned MCP specification fixtures",
-            "cargo",
-            &["run", "--locked", "-p", "xtask", "--", "mcp-spec-check"],
-        ),
-        process(
-            root,
-            "maintainability report",
-            "cargo",
-            &[
-                "run",
-                "--locked",
-                "-p",
-                "xtask",
-                "--",
-                "maintainability-report",
-            ],
-        ),
-        process(
-            root,
-            "registry-driven MCP protocol conformance",
-            "cargo",
-            &[
-                "test",
-                "--locked",
-                "-p",
-                "volicord-mcp",
-                "--test",
-                "protocol_conformance",
-            ],
-        ),
-        process(
-            root,
-            "public contract snapshots",
-            "cargo",
-            &[
-                "test",
-                "--locked",
-                "-p",
-                "volicord-integration-tests",
-                "--test",
-                "public_contract_snapshots",
-            ],
-        ),
-        process(
-            root,
-            "storage DDL contract",
-            "cargo",
-            &[
-                "test",
-                "--locked",
-                "-p",
-                "volicord-store",
-                "--test",
-                "storage_ddl_contract",
-            ],
-        ),
-        process(
-            root,
-            "MCP stdio contract",
-            "cargo",
-            &[
-                "test",
-                "--locked",
-                "-p",
-                "volicord-cli",
-                "--test",
-                "mcp_transport",
-            ],
-        ),
-        process(
-            root,
-            "MCP Agent Connection contract",
-            "cargo",
-            &[
-                "test",
-                "--locked",
-                "-p",
-                "volicord-integration-tests",
-                "--test",
-                "mcp_connection",
-            ],
-        ),
-        process(
-            root,
-            "local Volicord binary build",
-            "cargo",
-            &[
-                "build",
-                "--locked",
-                "-p",
-                "volicord-cli",
-                "--bin",
-                "volicord",
-            ],
-        ),
-        process(
-            root,
-            "local Volicord binary smoke",
-            "cargo",
-            &[
-                "run",
-                "--locked",
-                "-p",
-                "volicord-release-smoke",
-                "--",
-                "--bin",
-                binary,
-            ],
-        ),
-        process(
-            root,
-            "release integrity",
-            "cargo",
-            &[
-                "test",
-                "--locked",
-                "-p",
-                "volicord-release-integrity-tests",
-                "--all-targets",
-                "--all-features",
-            ],
-        ),
-    ];
-    let mut aggregate = process(
+    let mut specs = vec![process(
         root,
-        "exact workspace aggregate",
-        "cargo",
-        &[
-            "test",
-            "--locked",
-            "--workspace",
-            "--all-targets",
-            "--all-features",
-        ],
+        "change-series diff hygiene",
+        "git",
+        &["diff", "--check", base, "--"],
+    )];
+    specs.extend(
+        current_platform_validation_plan()
+            .commands
+            .into_iter()
+            .map(|command| current_command_spec(root, command)),
     );
-    aggregate.kind = CommandKind::ExactAggregate;
-    aggregate.aggregate_attempt = Some(1);
-    specs.push(aggregate);
     specs
+}
+
+fn current_command_spec(root: &Path, command: CurrentValidationCommand) -> CommandSpec {
+    let mut spec = process_owned(root, &command.label, &command.program, command.args);
+    if command.kind == CurrentValidationCommandKind::ExactAggregate {
+        spec.kind = CommandKind::ExactAggregate;
+        spec.aggregate_attempt = Some(1);
+    }
+    spec
 }
 
 fn internal_owner_routing_spec(root: &Path, unknown_paths: &[String]) -> CommandSpec {
@@ -921,6 +744,17 @@ mod tests {
     #[test]
     fn final_plan_contains_one_exact_aggregate_and_no_global_serialization() {
         let specs = final_specs(Path::new("/repository"), "base");
+        let current = current_platform_validation_plan();
+        assert_eq!(specs.len(), current.commands.len() + 1);
+        for (spec, command) in specs.iter().skip(1).zip(&current.commands) {
+            assert_eq!(spec.label, command.label);
+            assert_eq!(spec.invocation.program, command.program);
+            assert_eq!(spec.invocation.args, command.args);
+            assert_eq!(
+                matches!(spec.kind, CommandKind::ExactAggregate),
+                command.kind == CurrentValidationCommandKind::ExactAggregate
+            );
+        }
         let aggregates = specs
             .iter()
             .filter(|spec| matches!(spec.kind, CommandKind::ExactAggregate))

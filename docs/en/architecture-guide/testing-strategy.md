@@ -234,6 +234,13 @@ machine-readable summary and per-command result with the exact invocation,
 timestamps, and exit code so completed results survive loss of a terminal
 handle.
 
+`xtask::validation::current_plan` is the typed current owner for command
+membership and ordering in that complete plan. `validation-plan --json` renders
+the Linux form without executing it. Local final validation consumes the owner
+after series-only preflights, and the main Linux CI job calls the same final
+profile with `--base HEAD` rather than maintaining a parallel YAML command
+list. Native operational jobs retain only their platform-specific checks.
+
 Validation-runner tests use injected command outcomes rather than invoking a
 second validation engine. They cover focused planning, changed-package
 selection, documentation routing, pre-command run discovery, concurrent active
@@ -720,8 +727,9 @@ contents with the selected Git tree. Focused tests use disposable Git
 repositories for dirty tracked state, untracked content, regular files,
 executables, symbolic links, unsafe or duplicate ZIP paths, extraction, and
 byte-for-byte repeated generation. A complete-current-tree test exercises the
-same implementation against this repository. Ordinary CI and tagged release
-publication invoke the canonical creation command.
+same implementation against this repository. The current Linux validation plan
+invokes the canonical creation command for ordinary CI, and tagged release
+publication invokes it for the published archive.
 
 `cargo run -p volicord-release-smoke -- --bin <path>` invokes the dedicated
 publish-disabled cross-platform actual-binary smoke package. It creates a
@@ -741,15 +749,16 @@ setup, and result reporting. It supplies lifecycle and capture limits to
 `volicord-test-process`, which owns reusable bounded child execution, process
 tree cleanup, and direct-child reaping.
 
-`.github/actions/volicord-release-smoke` is the reusable workflow invocation
-boundary. Ordinary CI builds the local debug `volicord` binary and invokes the
-action exactly once. Every native release matrix entry invokes the same action
+The current Linux validation plan builds the local debug `volicord` binary and
+invokes the package exactly once with that binary for ordinary CI.
+`.github/actions/volicord-release-smoke` remains the reusable native
+release-workflow boundary. Every native release matrix entry invokes the action
 exactly once with the exact Linux, macOS, or Windows binary it already built,
-before artifact staging. Release-integrity tests validate build, smoke, and
-staging order, matrix target and binary references, and exactly-once counts as
-YAML semantics rather than complete shell-command formatting. These processes
-are public manual transport and remain `manual_cli`; they do not call the
-hidden managed-host launcher or provide managed-host evidence.
+before artifact staging. Contract tests validate plan membership and build to
+smoke order, CI delegation, release matrix target and binary references,
+staging order, and exactly-once counts. These processes are public manual
+transport and remain `manual_cli`; they do not call the hidden managed-host
+launcher or provide managed-host evidence.
 
 Generic release-integrity tests cover Volicord platform build and package
 artifacts plus source-bundle workflow routing. Operational Codex

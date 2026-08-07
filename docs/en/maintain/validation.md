@@ -85,9 +85,20 @@ including the exact aggregate and its bounded diagnostics. A failed final
 session remains failed; report it and begin a corrected series instead of
 describing decomposed results as closure.
 
-The direct commands documented below remain stable focused checks and CI
-building blocks. The validation profiles are authoritative for series-level
-selection, sequencing, durable capture, aggregate handling, and summary status.
+`xtask::validation::current_plan` is the one typed current owner for Linux
+repository-check membership and ordering. Inspect its machine-readable view
+without executing it:
+
+```sh
+cargo run -p xtask -- validation-plan --json
+```
+
+The final profile consumes that plan after its series preflights. The main
+Linux CI job invokes `validate final --base HEAD` once instead of repeating the
+commands in workflow YAML. Platform-specific native operational jobs remain
+separate. The direct commands documented below remain stable focused and
+diagnostic checks; the profiles own series-level selection, sequencing, durable
+capture, aggregate handling, and summary status.
 
 ## Durable Command Results
 
@@ -547,20 +558,22 @@ The validator compares the complete ZIP entry set, file types, modes, regular
 file content, and symbolic-link targets with the Git tree. Because inclusion
 comes only from Git tree entries, `.git` metadata, untracked files, local
 databases, logs, runtime data, build and scratch output, and previously
-generated untracked archives are not source-bundle inputs. Ordinary CI and
-tagged release publication run the same creation command; release-integrity
-tests verify that workflow routing.
+generated untracked archives are not source-bundle inputs. The current Linux
+validation plan runs the same creation command for ordinary CI; tagged release
+publication invokes it for the published archive. Release-integrity tests
+verify both routes.
 
 The publish-disabled `tests/release-smoke` package owns the cross-platform
 actual-binary harness. It uses a disposable Product Repository, Runtime Home,
 and stable test-owned Codex fixture while delegating bounded process execution
-and cleanup to `volicord-test-process`. The local composite action
-`.github/actions/volicord-release-smoke` is the single workflow invocation
-boundary. Ordinary CI passes its built debug binary exactly once. Every native
-release packaging matrix entry passes the exact Linux, macOS, or Windows binary
-already built for that target exactly once, before artifact staging. The smoke
-uses public `volicord mcp serve`, so its session remains `manual_cli` and is not
-managed-host evidence.
+and cleanup to `volicord-test-process`. The current Linux validation plan builds
+the local debug binary and invokes the package exactly once with that binary in
+ordinary CI. The local composite action
+`.github/actions/volicord-release-smoke` remains the native release-workflow
+boundary: every native packaging matrix entry passes the exact Linux, macOS, or
+Windows binary already built for that target exactly once before artifact
+staging. The smoke uses public `volicord mcp serve`, so its session remains
+`manual_cli` and is not managed-host evidence.
 
 An optional smoke run with a real Codex installation may exercise managed
 configuration, MCP initialization, required-tool discovery, safe tool round

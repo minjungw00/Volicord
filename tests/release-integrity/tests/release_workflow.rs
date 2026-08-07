@@ -138,24 +138,14 @@ fn release_workflow_smokes_every_published_binary_once_before_staging() {
 }
 
 #[test]
-fn ordinary_ci_builds_then_smokes_the_debug_binary_exactly_once() {
+fn ordinary_ci_delegates_build_smoke_and_aggregate_to_the_shared_final_plan() {
     let workflow = read_yaml(".github/workflows/ci.yml");
     let steps = workflow["jobs"]["checks"]["steps"]
         .as_sequence()
         .expect("CI check steps");
-    let build_index = steps
-        .iter()
-        .position(is_debug_binary_build)
-        .expect("local Volicord debug binary build step");
-    let smoke_indices = smoke_action_indices(steps);
-    assert_eq!(smoke_indices.len(), 1);
-    let smoke_index = smoke_indices[0];
-    assert!(build_index < smoke_index);
-    let binary_input = steps[smoke_index]["with"][RELEASE_SMOKE_INPUT]
-        .as_str()
-        .expect("smoke binary input");
-    assert!(binary_input.contains("target/debug"));
-    assert!(binary_input.ends_with("volicord"));
+    assert_eq!(shared_final_plan_invocations(steps).len(), 1);
+    assert!(smoke_action_indices(steps).is_empty());
+    assert!(steps.iter().all(|step| !is_debug_binary_build(step)));
     assert_no_direct_smoke_invocation(steps);
 }
 
@@ -165,9 +155,8 @@ fn ci_and_release_publish_use_the_canonical_source_bundle_command() {
     let ci_steps = ci["jobs"]["checks"]["steps"]
         .as_sequence()
         .expect("CI check steps");
-    let ci_invocations = source_bundle_invocations(ci_steps);
-    assert_eq!(ci_invocations.len(), 1);
-    assert!(ci_invocations[0].contains("$RUNNER_TEMP/volicord-source.zip"));
+    assert_eq!(shared_final_plan_invocations(ci_steps).len(), 1);
+    assert!(source_bundle_invocations(ci_steps).is_empty());
 
     let release = read_yaml(".github/workflows/release.yml");
     let publish_steps = release["jobs"]["publish-release"]["steps"]
@@ -189,17 +178,10 @@ fn ci_runs_the_complete_activation_journey_on_every_native_runtime_platform() {
     let workflow = read_yaml(".github/workflows/ci.yml");
     let linux = &workflow["jobs"]["checks"];
     assert_eq!(linux["runs-on"].as_str(), Some("ubuntu-24.04"));
-    assert!(linux["steps"]
-        .as_sequence()
-        .expect("Linux CI steps")
-        .iter()
-        .filter_map(|step| step["run"].as_str())
-        .any(|run| {
-            run.contains("cargo test")
-                && run.contains("--workspace")
-                && run.contains("--all-targets")
-                && run.contains("--all-features")
-        }));
+    assert_eq!(
+        shared_final_plan_invocations(linux["steps"].as_sequence().expect("Linux CI steps")).len(),
+        1
+    );
 
     let native = &workflow["jobs"]["operational-host-native-platforms"];
     let matrix = native["strategy"]["matrix"]["include"]
@@ -331,6 +313,20 @@ fn source_bundle_invocations(steps: &[Value]) -> Vec<&str> {
                 && run.contains("--locked")
                 && run.contains("-p xtask")
                 && run.contains(SOURCE_BUNDLE_COMMAND)
+        })
+        .collect()
+}
+
+fn shared_final_plan_invocations(steps: &[Value]) -> Vec<&str> {
+    steps
+        .iter()
+        .filter_map(|step| step["run"].as_str())
+        .filter(|run| {
+            run.contains("cargo run")
+                && run.contains("--locked")
+                && run.contains("-p xtask")
+                && run.contains("validate final")
+                && run.contains("--base HEAD")
         })
         .collect()
 }

@@ -1,3 +1,4 @@
+mod current_plan;
 mod plan;
 mod runner;
 
@@ -5,6 +6,10 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+pub use current_plan::{
+    current_linux_validation_plan, CurrentValidationCommand, CurrentValidationCommandKind,
+    CurrentValidationPlan,
+};
 pub use runner::run_validation;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
