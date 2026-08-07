@@ -188,8 +188,15 @@ revision, 안정적인 정렬, 사람용/JSON 일치, 읽기 전용 working tree
 
 `cargo run -p xtask -- validate focused --base <revision>`은 그 경로를 중간 명령
 계획으로 바꿉니다. 변경된 워크스페이스 패키지와 직접 적용되는 문서, 아키텍처,
-MCP specification, release/workflow, 위생 점검만 선택하며 정확한 workspace
-aggregate는 계획하지 않습니다.
+MCP specification, release/workflow, 위생 점검만 선택합니다. 알 수 없는 경로는 담당
+경로 사전 점검에서 실패합니다. 루트 workspace manifest나 lockfile 변경은 해당 루트
+파일을 담당하는 패키지가 없어도 아키텍처와 workspace 컴파일 점검을 추가합니다.
+집중 계획은 정확한 workspace aggregate를 계획하지 않습니다.
+
+Commit 범위 사전 점검은 평범한 형식, scope가 있는 형식, breaking 형식의 Conventional
+Commit header를 해석합니다. `test` commit의 프로덕션 패키지 manifest는 commit 전후의
+의미 기반 TOML을 비교하고 test target과 개발 의존성 변경만 허용합니다. 연관된
+lockfile은 같은 commit의 나머지 경로가 모두 test 전용일 때만 허용합니다.
 
 `cargo run -p xtask -- validate final --base <revision>`은 series의 모든 commit이
 준비된 뒤 완전한 저장소 정책을 계획합니다. 각 자식 프로세스는 실행 중에 stdout과

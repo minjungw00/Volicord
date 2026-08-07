@@ -58,6 +58,7 @@ pub(crate) fn build_validation_plan(
     let validation_classes = route.validation_classes.clone();
     let scope_issues = commit_scope_issues(root, &base_revision)?;
     let mut raw = Vec::new();
+    raw.push(internal_owner_routing_spec(root, &route.unknown_paths));
     raw.push(internal_commit_scope_spec(
         root,
         &base_revision,
@@ -70,6 +71,7 @@ pub(crate) fn build_validation_plan(
                 &base_revision,
                 &changed_packages,
                 &validation_classes,
+                &route.changed_paths,
             ));
         }
         ValidationProfile::Final => raw.extend(final_specs(root, &base_revision)),
@@ -91,11 +93,15 @@ fn focused_specs(
     base: &str,
     changed_packages: &[String],
     validation_classes: &[String],
+    changed_paths: &[String],
 ) -> Vec<CommandSpec> {
     let classes = validation_classes
         .iter()
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
+    let workspace_inputs_changed = changed_paths
+        .iter()
+        .any(|path| matches!(path.as_str(), "Cargo.toml" | "Cargo.lock"));
     let mut specs = Vec::new();
     if classes.contains("repository-hygiene") {
         specs.push(process(
@@ -113,12 +119,26 @@ fn focused_specs(
             &["fmt", "--all", "--check"],
         ));
     }
-    if classes.contains("architecture") {
+    if classes.contains("architecture") || workspace_inputs_changed {
         specs.push(process(
             root,
             "workspace architecture",
             "cargo",
             &["run", "--locked", "-p", "xtask", "--", "architecture-check"],
+        ));
+    }
+    if workspace_inputs_changed {
+        specs.push(process(
+            root,
+            "workspace compilation",
+            "cargo",
+            &[
+                "check",
+                "--locked",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+            ],
         ));
     }
     if classes.contains("documentation") {
@@ -391,6 +411,41 @@ fn final_specs(root: &Path, base: &str) -> Vec<CommandSpec> {
     specs
 }
 
+fn internal_owner_routing_spec(root: &Path, unknown_paths: &[String]) -> CommandSpec {
+    let (stdout, stderr, exit_code) = if unknown_paths.is_empty() {
+        (
+            "owner-routing coverage check passed\n".to_owned(),
+            String::new(),
+            0,
+        )
+    } else {
+        (
+            String::new(),
+            format!(
+                "focused validation cannot route changed path(s): {}. Add or correct a maintained path route in docs/owner-routing.yaml before relying on focused validation.\n",
+                unknown_paths.join(", ")
+            ),
+            1,
+        )
+    };
+    CommandSpec {
+        id: String::new(),
+        label: "owner-routing coverage".to_owned(),
+        invocation: CommandInvocation {
+            program: "repository-policy".to_owned(),
+            args: vec!["owner-routing-coverage".to_owned()],
+            working_directory: root.display().to_string(),
+        },
+        kind: CommandKind::Internal {
+            stdout,
+            stderr,
+            exit_code,
+        },
+        decomposed: false,
+        aggregate_attempt: None,
+    }
+}
+
 fn internal_commit_scope_spec(root: &Path, base: &str, issues: Vec<String>) -> CommandSpec {
     let (stdout, stderr, exit_code) = if issues.is_empty() {
         (
@@ -510,7 +565,15 @@ fn commit_scope_issues(root: &Path, base: &str) -> Result<Vec<String>> {
                 &commit,
             ],
         )?;
-        for issue in scope_issues_for_commit(&subject, &paths, &packages, &production) {
+        let manifest_test_only =
+            production_manifest_classifications(root, &commit, &paths, &packages, &production)?;
+        for issue in scope_issues_for_commit(
+            &subject,
+            &paths,
+            &packages,
+            &production,
+            &manifest_test_only,
+        ) {
             issues.push(format!("commit {commit} ({subject}): {issue}"));
         }
     }
@@ -522,22 +585,76 @@ fn scope_issues_for_commit(
     paths: &[String],
     packages: &[WorkspacePackageInput],
     production: &BTreeMap<String, bool>,
+    manifest_test_only: &BTreeMap<String, bool>,
 ) -> Vec<String> {
-    if subject.starts_with("docs:") {
+    let Some(commit_type) = conventional_commit_type(subject) else {
+        return Vec::new();
+    };
+    if commit_type == "docs" {
         return paths
             .iter()
             .filter(|path| docs_commit_changes_implementation(path))
             .map(|path| format!("docs: commit changes implementation path {path}"))
             .collect();
     }
-    if subject.starts_with("test:") {
-        return paths
+    if commit_type == "test" {
+        let non_lock = paths
             .iter()
-            .filter(|path| test_commit_changes_production(path, packages, production))
+            .filter(|path| path.as_str() != "Cargo.lock")
+            .collect::<Vec<_>>();
+        let mut issues = non_lock
+            .iter()
+            .filter(|path| {
+                !test_commit_path_scope(path, packages, production, manifest_test_only).allowed
+            })
             .map(|path| format!("test: commit changes production path {path}"))
-            .collect();
+            .collect::<Vec<_>>();
+        if paths.iter().any(|path| path == "Cargo.lock")
+            && (non_lock.is_empty()
+                || non_lock.iter().any(|path| {
+                    !test_commit_path_scope(path, packages, production, manifest_test_only)
+                        .test_only
+                }))
+        {
+            issues.push(
+                "test: commit changes Cargo.lock without only associated test-target, test-path, dev-dependency, or non-production-package changes"
+                    .to_owned(),
+            );
+        }
+        return issues;
     }
     Vec::new()
+}
+
+fn conventional_commit_type(subject: &str) -> Option<&str> {
+    let (header, description) = subject.split_once(": ")?;
+    if description.trim().is_empty() {
+        return None;
+    }
+    let header = header.strip_suffix('!').unwrap_or(header);
+    let (commit_type, has_scope) = match header.split_once('(') {
+        Some((commit_type, scope)) => {
+            let scope = scope.strip_suffix(')')?;
+            if scope.is_empty()
+                || scope
+                    .chars()
+                    .any(|character| matches!(character, '(' | ')' | ':'))
+            {
+                return None;
+            }
+            (commit_type, true)
+        }
+        None => (header, false),
+    };
+    if commit_type.is_empty()
+        || !commit_type.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
+        || (!has_scope && header.contains(')'))
+    {
+        return None;
+    }
+    Some(commit_type)
 }
 
 fn docs_commit_changes_implementation(path: &str) -> bool {
@@ -552,27 +669,134 @@ fn docs_commit_changes_implementation(path: &str) -> bool {
         || path.starts_with(".github/")
 }
 
-fn test_commit_changes_production(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TestCommitPathScope {
+    allowed: bool,
+    test_only: bool,
+}
+
+fn test_commit_path_scope(
     path: &str,
     packages: &[WorkspacePackageInput],
     production: &BTreeMap<String, bool>,
-) -> bool {
+    manifest_test_only: &BTreeMap<String, bool>,
+) -> TestCommitPathScope {
     if is_test_only_path(path) {
-        return false;
+        return TestCommitPathScope {
+            allowed: true,
+            test_only: true,
+        };
     }
     let package = packages
         .iter()
         .find(|package| package_contains(package, path));
     match package {
-        Some(package) => production.get(package.name()).copied().unwrap_or(true),
-        None => {
-            matches!(
+        Some(package) if !production.get(package.name()).copied().unwrap_or(true) => {
+            TestCommitPathScope {
+                allowed: true,
+                test_only: true,
+            }
+        }
+        Some(package) if path == package.manifest_path() => {
+            let test_only = manifest_test_only.get(path).copied().unwrap_or(false);
+            TestCommitPathScope {
+                allowed: test_only,
+                test_only,
+            }
+        }
+        Some(_) => TestCommitPathScope {
+            allowed: false,
+            test_only: false,
+        },
+        None => TestCommitPathScope {
+            allowed: !(matches!(
                 path,
                 "Cargo.toml" | "Cargo.lock" | "Dockerfile" | "Dockerfile.release"
             ) || path.starts_with("scripts/")
-                || path.starts_with(".github/")
-        }
+                || path.starts_with(".github/")),
+            test_only: false,
+        },
     }
+}
+
+fn production_manifest_classifications(
+    root: &Path,
+    commit: &str,
+    paths: &[String],
+    packages: &[WorkspacePackageInput],
+    production: &BTreeMap<String, bool>,
+) -> Result<BTreeMap<String, bool>> {
+    let mut classifications = BTreeMap::new();
+    for package in packages {
+        let path = package.manifest_path();
+        if !paths.iter().any(|changed| changed == path)
+            || !production.get(package.name()).copied().unwrap_or(true)
+        {
+            continue;
+        }
+        let parent = format!("{commit}^");
+        let before = git_file(root, &parent, path)?;
+        let after = git_file(root, commit, path)?;
+        let test_only = match (before, after) {
+            (Some(before), Some(after)) => manifest_change_is_test_only(&before, &after)
+                .with_context(|| format!("failed to classify test commit manifest {path}"))?,
+            _ => false,
+        };
+        classifications.insert(path.to_owned(), test_only);
+    }
+    Ok(classifications)
+}
+
+fn manifest_change_is_test_only(before: &str, after: &str) -> Result<bool> {
+    let mut before = toml_edit::de::from_str::<serde_json::Value>(before)?;
+    let mut after = toml_edit::de::from_str::<serde_json::Value>(after)?;
+    remove_test_only_manifest_fields(&mut before);
+    remove_test_only_manifest_fields(&mut after);
+    Ok(before == after)
+}
+
+fn remove_test_only_manifest_fields(value: &mut serde_json::Value) {
+    let Some(root) = value.as_object_mut() else {
+        return;
+    };
+    root.remove("dev-dependencies");
+    root.remove("test");
+    let remove_target = if let Some(targets) = root
+        .get_mut("target")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        targets.retain(|_, target| {
+            if let Some(table) = target.as_object_mut() {
+                table.remove("dev-dependencies");
+                !table.is_empty()
+            } else {
+                true
+            }
+        });
+        targets.is_empty()
+    } else {
+        false
+    };
+    if remove_target {
+        root.remove("target");
+    }
+}
+
+fn git_file(root: &Path, revision: &str, path: &str) -> Result<Option<String>> {
+    let object = format!("{revision}:{path}");
+    let output = Command::new("git")
+        .current_dir(root)
+        .args(["show", &object])
+        .output()
+        .with_context(|| format!("failed to execute git show {object}"))?;
+    if output.status.success() {
+        return Ok(Some(String::from_utf8(output.stdout)?));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("does not exist in") || stderr.contains("exists on disk, but not in") {
+        return Ok(None);
+    }
+    bail!("git show {object} failed: {}", stderr.trim())
 }
 
 fn is_test_only_path(path: &str) -> bool {
@@ -679,6 +903,7 @@ mod tests {
                 "repository-hygiene".to_owned(),
                 "rust".to_owned(),
             ],
+            &["xtask/src/validation/plan.rs".to_owned()],
         );
         let invocations = specs
             .iter()
@@ -715,28 +940,181 @@ mod tests {
     fn commit_type_scope_rejects_production_changes_but_accepts_tests() {
         let packages = packages();
         let production = BTreeMap::from([("production".to_owned(), true)]);
+        let manifests = BTreeMap::new();
         assert!(scope_issues_for_commit(
-            "test: add cases",
+            "test(core)!: add cases",
             &["crates/production/src/lib.rs".to_owned()],
             &packages,
             &production,
+            &manifests,
         )
         .iter()
         .any(|issue| issue.contains("production path")));
         assert!(scope_issues_for_commit(
-            "test: add cases",
+            "test(core): add cases",
             &["crates/production/tests/case.rs".to_owned()],
             &packages,
             &production,
+            &manifests,
         )
         .is_empty());
         assert!(scope_issues_for_commit(
-            "docs: update policy",
+            "docs(validation)!: update policy",
             &["crates/production/src/lib.rs".to_owned()],
             &packages,
             &production,
+            &manifests,
         )
         .iter()
         .any(|issue| issue.contains("implementation path")));
+    }
+
+    #[test]
+    fn conventional_commit_subject_parser_accepts_scoped_and_breaking_forms() {
+        assert_eq!(
+            conventional_commit_type("test(scope): cover it"),
+            Some("test")
+        );
+        assert_eq!(conventional_commit_type("docs!: explain it"), Some("docs"));
+        assert_eq!(
+            conventional_commit_type("fix(scope)!: repair it"),
+            Some("fix")
+        );
+        assert_eq!(conventional_commit_type("test: "), None);
+        assert_eq!(conventional_commit_type("test(scope: broken"), None);
+    }
+
+    #[test]
+    fn production_manifest_allows_only_test_targets_and_dev_dependencies() {
+        let before = r#"[package]
+name = "production"
+version = "0.1.0"
+
+[dependencies]
+serde = "1"
+"#;
+        let test_only = r#"[package]
+name = "production"
+version = "0.1.0"
+
+[dependencies]
+serde = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "contract"
+path = "tests/contract.rs"
+"#;
+        let runtime = r#"[package]
+name = "production"
+version = "0.1.0"
+
+[dependencies]
+serde = "1"
+anyhow = "1"
+"#;
+        assert!(manifest_change_is_test_only(before, test_only).expect("classify test manifest"));
+        assert!(!manifest_change_is_test_only(before, runtime).expect("classify runtime manifest"));
+    }
+
+    #[test]
+    fn lockfile_requires_only_associated_test_changes() {
+        let packages = packages();
+        let production = BTreeMap::from([("production".to_owned(), true)]);
+        let manifests = BTreeMap::from([("crates/production/Cargo.toml".to_owned(), true)]);
+        assert!(scope_issues_for_commit(
+            "test(deps): add test dependency",
+            &[
+                "Cargo.lock".to_owned(),
+                "crates/production/Cargo.toml".to_owned(),
+            ],
+            &packages,
+            &production,
+            &manifests,
+        )
+        .is_empty());
+        assert!(scope_issues_for_commit(
+            "test(deps): update lock",
+            &["Cargo.lock".to_owned(), "docs/note.md".to_owned()],
+            &packages,
+            &production,
+            &manifests,
+        )
+        .iter()
+        .any(|issue| issue.contains("without only associated")));
+    }
+
+    #[test]
+    fn workspace_inputs_select_architecture_and_compilation_without_test_aggregate() {
+        for path in ["Cargo.toml", "Cargo.lock"] {
+            let specs = focused_specs(
+                Path::new("/repository"),
+                "base",
+                &[],
+                &["rust".to_owned()],
+                &[path.to_owned()],
+            );
+            let invocations = specs
+                .iter()
+                .map(|spec| spec.invocation.args.join(" "))
+                .collect::<Vec<_>>();
+            assert!(invocations
+                .iter()
+                .any(|args| args == "run --locked -p xtask -- architecture-check"));
+            assert!(invocations
+                .iter()
+                .any(|args| args == "check --locked --workspace --all-targets --all-features"));
+            assert!(!invocations
+                .iter()
+                .any(|args| args.starts_with("test --locked --workspace")));
+        }
+    }
+
+    #[test]
+    fn unknown_paths_create_an_actionable_failed_preflight() {
+        let spec = internal_owner_routing_spec(
+            Path::new("/repository"),
+            &["unrouted/input.bin".to_owned()],
+        );
+        let CommandKind::Internal {
+            stderr, exit_code, ..
+        } = spec.kind
+        else {
+            panic!("routing preflight must be internal");
+        };
+        assert_eq!(exit_code, 1);
+        assert!(stderr.contains("docs/owner-routing.yaml"));
+        assert!(stderr.contains("unrouted/input.bin"));
+    }
+
+    #[test]
+    fn focused_plan_order_is_deterministic() {
+        let changed = vec!["Cargo.lock".to_owned(), "Cargo.toml".to_owned()];
+        let first = focused_specs(
+            Path::new("/repository"),
+            "base",
+            &[],
+            &["rust".to_owned(), "architecture".to_owned()],
+            &changed,
+        );
+        let second = focused_specs(
+            Path::new("/repository"),
+            "base",
+            &[],
+            &["architecture".to_owned(), "rust".to_owned()],
+            &changed,
+        );
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| (&spec.label, &spec.invocation.args))
+                .collect::<Vec<_>>(),
+            second
+                .iter()
+                .map(|spec| (&spec.label, &spec.invocation.args))
+                .collect::<Vec<_>>()
+        );
     }
 }

@@ -215,7 +215,16 @@ inventory or discover owner routes by scanning prose.
 `cargo run -p xtask -- validate focused --base <revision>` turns that route
 into an intermediate command plan. It selects only changed workspace packages,
 direct documentation, architecture, MCP specification, release/workflow, and
-hygiene checks. It never schedules the exact workspace aggregate.
+hygiene checks. Unknown paths fail an owner-routing preflight. Root workspace
+manifest or lockfile changes add architecture and workspace compilation even
+when no package owns those root files. The focused plan never schedules the
+exact workspace aggregate.
+
+The commit-scope preflight parses plain, scoped, and breaking Conventional
+Commit headers. For production package manifests in a `test` commit, it compares
+the semantic TOML before and after the commit and permits only test-target and
+development-dependency changes. An associated lockfile is permitted only when
+all other paths in that commit are test-only.
 
 `cargo run -p xtask -- validate final --base <revision>` schedules the complete
 repository policy once all series commits are present. Every child process

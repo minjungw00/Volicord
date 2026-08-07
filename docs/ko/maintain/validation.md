@@ -45,6 +45,12 @@ tree 경로를 함께 포함하려면 `--base <revision>`을 사용합니다. �
 중복이 없습니다. 이 명령은 읽기 전용이며 임의 산문을 검색해 담당 범위를 추론하지
 않습니다.
 
+집중 검증은 담당 경로가 없는 모든 변경 경로를 담당 경로 사전 점검 실패로 처리하고
+유지보수자에게 `docs/owner-routing.yaml`을 안내합니다. 알 수 없는 경로가 사실상 빈
+성공 계획을 받을 수 없습니다. 루트 `Cargo.toml`이나 `Cargo.lock` 변경에는 항상
+워크스페이스 아키텍처와 워크스페이스 컴파일 점검을 추가하지만, 집중 profile에
+정확한 test aggregate를 추가하지는 않습니다.
+
 ## 검증 profile과 순차 series
 
 순차 change series의 첫 commit 전에 그 상위 commit을 series 기준으로 기록합니다.
@@ -117,11 +123,19 @@ workspace와 그 전체 패키지를 따로 실행한 뒤 멈춥니다. 영구�
 
 ## Commit 종류 범위
 
-검증 사전 점검은 명시적 기준과 `HEAD` 사이의 commit subject와 기계로 확인 가능한
-파일 범위를 검사합니다. `test:` commit은 프로덕션 동작을 바꾸면 안 됩니다.
-`docs:` commit은 프로덕션 코드나 런타임 계약을 바꾸면 안 됩니다. 파일 범위로
-구분할 수 있는 프로덕션 구현 경로는 자동 점검이 거부하며 유지 문서 안의 계약
-의미는 계속 의미 검토가 담당합니다.
+검증 사전 점검은 Conventional Commit subject를
+`type[(scope)][!]: description` 형식으로 해석하고 명시적 기준과 `HEAD` 사이에서
+기계로 확인 가능한 파일 범위를 검사합니다. 따라서 평범한 형식, scope가 있는 형식,
+breaking 형식의 `test`와 `docs` subject에 같은 규칙을 적용합니다. `test` commit은
+프로덕션 동작을 바꾸면 안 되고 `docs` commit은 프로덕션 코드나 런타임 계약을
+바꾸면 안 됩니다. 파일 범위로 구분할 수 있는 프로덕션 구현 경로는 자동 점검이
+거부하며 유지 문서 안의 계약 의미는 계속 의미 검토가 담당합니다.
+
+프로덕션 패키지 manifest에서 `test` commit은 명시적 test target과 target별 항목을
+포함한 개발 의존성만 바꿀 수 있습니다. Runtime target, 일반 또는 build 의존성,
+feature, package metadata, workspace 구성, profile은 프로덕션 변경으로 남습니다.
+같은 commit에서 `Cargo.lock`을 함께 바꾸려면 나머지 모든 변경 경로가 test 경로,
+허용되는 test 전용 manifest 변경, 또는 비프로덕션 패키지 변경이어야 합니다.
 
 테스트나 문서 작업 중 프로덕션 공백을 찾았다면 프로덕션 변경을 앞선 `feat:`,
 `fix:`, `refactor:` commit에 둡니다. 그 공백을 `test:` 또는 `docs:` commit 안에

@@ -48,6 +48,13 @@ classes, and paths not covered by a maintained route. Results are sorted and
 duplicate-free. The command is read-only and does not infer ownership by
 scanning arbitrary prose.
 
+Focused validation treats every uncovered changed path as a failed
+owner-routing preflight and points maintainers to `docs/owner-routing.yaml`.
+An unknown path cannot receive an otherwise empty successful plan. A root
+`Cargo.toml` or `Cargo.lock` change always adds workspace architecture and
+workspace compilation checks; it does not add the exact test aggregate to the
+focused profile.
+
 ## Validation Profiles And Sequential Series
 
 Before the first commit in a sequential change series, record its parent commit
@@ -125,12 +132,22 @@ are rendered from the same command records and category lists.
 
 ## Commit-Type Scope
 
-The validation preflight checks commit subjects and practical file-scope
-boundaries between the explicit base and `HEAD`. A `test:` commit must not
-change production behavior. A `docs:` commit must not change production code or
-runtime contracts. File-scope checks reject production implementation paths
-where that distinction is machine-checkable; semantic review remains
-responsible for contract meaning inside maintained documentation.
+The validation preflight parses Conventional Commit subjects as
+`type[(scope)][!]: description` and checks practical file-scope boundaries
+between the explicit base and `HEAD`. The same rules therefore apply to plain,
+scoped, and breaking `test` and `docs` subjects. A `test` commit must not change
+production behavior. A `docs` commit must not change production code or runtime
+contracts. File-scope checks reject production implementation paths where that
+distinction is machine-checkable; semantic review remains responsible for
+contract meaning inside maintained documentation.
+
+For a production package manifest, a `test` commit may change only explicit
+test targets and development dependencies, including target-specific
+development dependencies. Runtime targets, normal or build dependencies,
+features, package metadata, workspace configuration, and profiles remain
+production changes. The same commit may carry `Cargo.lock` only when every
+other changed path is a test path, an allowed test-only manifest change, or a
+non-production package change.
 
 If test or documentation work exposes a production gap, put the production
 change in a preceding `feat:`, `fix:`, or `refactor:` commit. Do not hide the
