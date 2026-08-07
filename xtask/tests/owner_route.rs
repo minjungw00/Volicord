@@ -90,12 +90,31 @@ path_routes:
   - path: AGENTS.md
     owner_doc_ids: [maintain.validation]
     validation_classes: [documentation, repository-hygiene]
+  - path: Cargo.lock
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [repository-hygiene, rust]
+  - path: Cargo.toml
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [architecture, repository-hygiene, rust]
+  - path: .dockerignore
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [release, repository-hygiene]
+  - path: .gitattributes
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [release, repository-hygiene]
+  - path: Dockerfile
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [release, repository-hygiene, workflow]
+  - path: Dockerfile.release
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [release, repository-hygiene, workflow]
   - path_prefix: ".github/"
     owner_doc_ids: [maintain.validation]
     validation_classes: [workflow]
   - path_prefix: "docs/"
     owner_doc_ids: [maintain.validation]
     validation_classes: [documentation]
+tracked_path_exemptions: []
 package_defaults:
   instruction_paths: [crates/AGENTS.md]
   owner_doc_ids: [maintain.validation]
@@ -106,6 +125,10 @@ package_routes:
     validation_classes: [architecture]
 "#,
         );
+        write(&root, ".dockerignore", "target\n");
+        write(&root, ".gitattributes", "* text=auto\n");
+        write(&root, "Dockerfile", "FROM scratch\n");
+        write(&root, "Dockerfile.release", "FROM scratch\n");
         write(&root, ".github/workflows/ci.yml", "name: CI\n");
 
         git(&root, &["init", "-q"]);
@@ -133,6 +156,62 @@ package_routes:
     fn status(&self) -> Vec<u8> {
         git_bytes(self.root(), &["status", "--porcelain", "-z"])
     }
+}
+
+#[test]
+fn tracked_root_maintenance_files_have_owner_and_validation_routes() {
+    let fixture = Fixture::new();
+    for path in [
+        ".dockerignore",
+        ".gitattributes",
+        "Dockerfile",
+        "Dockerfile.release",
+    ] {
+        write(fixture.root(), path, "changed\n");
+    }
+
+    let report = xtask::run_owner_route(fixture.root(), None).expect("route root maintenance");
+    let human = report.render_human();
+    let json = serde_json::to_string_pretty(&report).expect("render JSON");
+
+    assert_eq!(
+        report.changed_paths,
+        [
+            ".dockerignore",
+            ".gitattributes",
+            "Dockerfile",
+            "Dockerfile.release",
+        ]
+    );
+    assert!(report.unknown_paths.is_empty());
+    assert!(!report.owner_documents.is_empty());
+    assert!(report.validation_classes.contains(&"release".to_owned()));
+    assert!(report
+        .validation_classes
+        .contains(&"repository-hygiene".to_owned()));
+    assert!(report.validation_classes.contains(&"workflow".to_owned()));
+    for path in &report.changed_paths {
+        assert!(human.contains(path));
+        assert!(json.contains(path));
+    }
+}
+
+#[test]
+fn tracked_unrouted_paths_fail_metadata_validation_in_stable_path_order() {
+    let fixture = Fixture::new();
+    write(fixture.root(), "z-root-maintenance", "z\n");
+    write(fixture.root(), "a-root-maintenance", "a\n");
+    git(
+        fixture.root(),
+        &["add", "z-root-maintenance", "a-root-maintenance"],
+    );
+
+    let error = xtask::run_owner_route(fixture.root(), None)
+        .expect_err("tracked unrouted paths must fail")
+        .to_string();
+    assert!(error.contains(
+        "tracked path(s) without a maintained document, workspace package, explicit route, or justified current exemption: a-root-maintenance, z-root-maintenance"
+    ));
 }
 
 #[test]

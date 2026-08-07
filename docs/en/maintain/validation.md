@@ -60,6 +60,13 @@ classes, and paths not covered by a maintained route. Results are sorted and
 duplicate-free. The command is read-only and does not infer ownership by
 scanning arbitrary prose.
 
+The same recognition model validates the complete current tracked Git index.
+Every tracked path must be a maintained document, belong to a current workspace
+package, match an explicit path route, or have an exact current exemption with
+a non-empty justification. Unknown tracked paths fail metadata validation in
+sorted path order. Untracked files, including ignored generated build output
+and validation-result files, are not inputs to this inventory.
+
 Focused validation treats every uncovered changed path as a failed
 owner-routing preflight and points maintainers to `docs/owner-routing.yaml`.
 An unknown path cannot receive an otherwise empty successful plan. A root
@@ -346,6 +353,9 @@ read-only and verifies the machine-checkable shape:
 - `docs/owner-routing.yaml` resolves every instruction path, direct owner
   `doc_id`, workspace package, and supported validation class exactly once
   against the current instruction files, document index, and Cargo workspace.
+  Its tracked-path inventory also classifies every path returned by
+  `git ls-files`; an unknown tracked path or stale, empty, duplicate, or
+  redundant exemption is invalid.
 
 `docs-check` does not search Rust or Markdown lines for prohibited words or
 phrases. Prose quality, brand claims, security wording, and host-support wording

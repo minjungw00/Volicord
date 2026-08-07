@@ -160,6 +160,7 @@ struct RoutingMetadata {
     validation_classes: BTreeMap<String, String>,
     instruction_scopes: Vec<InstructionScope>,
     path_routes: Vec<PathRoute>,
+    tracked_path_exemptions: Vec<TrackedPathExemption>,
     package_defaults: PackageRoute,
     package_routes: BTreeMap<String, PackageRoute>,
 }
@@ -182,6 +183,13 @@ struct PathRoute {
     owner_doc_ids: Vec<String>,
     #[serde(default)]
     validation_classes: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TrackedPathExemption {
+    path: String,
+    reason: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -289,7 +297,14 @@ fn route_paths(
     let mut unknown_paths = BTreeSet::new();
 
     for path in &changed_paths {
-        let mut recognized = false;
+        let recognized = classify_path(
+            path,
+            &document_by_path,
+            &packages,
+            &metadata.path_routes,
+            &metadata.tracked_path_exemptions,
+        )
+        .is_recognized();
         for scope in &metadata.instruction_scopes {
             if path_matches_prefix(path, &scope.path_prefix) {
                 instruction_reasons
@@ -299,7 +314,6 @@ fn route_paths(
             }
         }
         if let Some(doc_id) = document_by_path.get(path) {
-            recognized = true;
             document_paths
                 .entry(doc_id.clone())
                 .or_default()
@@ -307,7 +321,6 @@ fn route_paths(
         }
         for package in &packages {
             if package_contains_path(package, path) {
-                recognized = true;
                 package_paths
                     .entry(package.name().to_owned())
                     .or_default()
@@ -316,7 +329,6 @@ fn route_paths(
         }
         for route in &metadata.path_routes {
             if route.matches(path) {
-                recognized = true;
                 add_route(
                     &mut owner_reasons,
                     &mut validation_classes,
@@ -410,6 +422,40 @@ fn route_paths(
         validation_classes: validation_classes.into_iter().collect(),
         unknown_paths: unknown_paths.into_iter().collect(),
     })
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct PathClassification {
+    maintained_document: bool,
+    workspace_package: bool,
+    explicit_route: bool,
+    tracked_exemption: bool,
+}
+
+impl PathClassification {
+    const fn is_recognized(self) -> bool {
+        self.maintained_document
+            || self.workspace_package
+            || self.explicit_route
+            || self.tracked_exemption
+    }
+}
+
+fn classify_path(
+    path: &str,
+    document_by_path: &BTreeMap<String, String>,
+    packages: &[WorkspacePackageInput],
+    path_routes: &[PathRoute],
+    exemptions: &[TrackedPathExemption],
+) -> PathClassification {
+    PathClassification {
+        maintained_document: document_by_path.contains_key(path),
+        workspace_package: packages
+            .iter()
+            .any(|package| package_contains_path(package, path)),
+        explicit_route: path_routes.iter().any(|route| route.matches(path)),
+        tracked_exemption: exemptions.iter().any(|item| item.path == path),
+    }
 }
 
 impl PathRoute {
@@ -619,6 +665,68 @@ fn validate_routing_metadata(
             documents,
         )?;
     }
+    let tracked_paths = tracked_git_paths(root)?;
+    let document_by_path = documents
+        .values()
+        .flat_map(|document| {
+            document
+                .paths
+                .iter()
+                .map(move |path| (path.clone(), document.doc_id.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut exemption_paths = BTreeSet::new();
+    for exemption in &metadata.tracked_path_exemptions {
+        validate_relative_path(&exemption.path, "tracked path exemption")?;
+        if exemption.reason.trim().is_empty() {
+            bail!(
+                "tracked path exemption {} must have a non-empty reason",
+                exemption.path
+            );
+        }
+        if !exemption_paths.insert(exemption.path.clone()) {
+            bail!("tracked path exemption {} is duplicated", exemption.path);
+        }
+        if !tracked_paths.contains(&exemption.path) {
+            bail!(
+                "tracked path exemption {} does not name a current tracked path",
+                exemption.path
+            );
+        }
+        let classification = classify_path(
+            &exemption.path,
+            &document_by_path,
+            packages,
+            &metadata.path_routes,
+            &[],
+        );
+        if classification.is_recognized() {
+            bail!(
+                "tracked path exemption {} is redundant because the path already has a maintained route",
+                exemption.path
+            );
+        }
+    }
+    let unknown_tracked_paths = tracked_paths
+        .iter()
+        .filter(|path| {
+            !classify_path(
+                path,
+                &document_by_path,
+                packages,
+                &metadata.path_routes,
+                &metadata.tracked_path_exemptions,
+            )
+            .is_recognized()
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unknown_tracked_paths.is_empty() {
+        bail!(
+            "{OWNER_ROUTING_PATH} has tracked path(s) without a maintained document, workspace package, explicit route, or justified current exemption: {}",
+            unknown_tracked_paths.join(", ")
+        );
+    }
     validate_package_route(&metadata.package_defaults, documents, &instruction_paths)?;
     for route in metadata.package_routes.values() {
         validate_package_route(route, documents, &instruction_paths)?;
@@ -640,6 +748,20 @@ fn validate_routing_metadata(
         );
     }
     Ok(())
+}
+
+fn tracked_git_paths(root: &Path) -> Result<BTreeSet<String>> {
+    let output = git_output(root, &["ls-files", "-z", "--"])?;
+    let mut paths = BTreeSet::new();
+    for raw in output.split(|byte| *byte == 0) {
+        if raw.is_empty() {
+            continue;
+        }
+        let path = std::str::from_utf8(raw).context("Git returned a non-UTF-8 tracked path")?;
+        validate_relative_path(path, "tracked path")?;
+        paths.insert(path.to_owned());
+    }
+    Ok(paths)
 }
 
 fn validate_package_route(

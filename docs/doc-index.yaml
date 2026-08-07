@@ -261,6 +261,7 @@ shared_documents:
   - implement
   canonical_for:
   - Changed-path instruction, workspace-package, direct-owner, and validation-class routing metadata.
+  - Complete tracked-Git-path recognition through maintained documents, workspace packages, explicit routes, or justified current exemptions.
   depends_on:
   - agents.root
   - agents.docs
@@ -3557,7 +3558,7 @@ documents:
   kind: maintenance
   summary: Maintenance policy for xtask help boundaries, changed-owner routing, sequential focused/final profiles, the current Linux validation plan shared by CI and final validation, durable command results,
     bounded aggregate decomposition, commit-type scope, owner-derived structure, links, terminology, bilingual parity,
-    workspace architecture enforcement, generated CLI synchronization and source drift, tracked artifact hygiene, onboarding usability,
+    workspace architecture enforcement, generated CLI synchronization and source drift, complete tracked-path routing, tracked artifact hygiene, onboarding usability,
     deterministic committed-tree source bundles, dedicated cross-platform release-binary smoke, semantic release
     integrity, optional host smoke, Rust checks, and result reporting.
   normative_level: maintenance
@@ -3578,6 +3579,7 @@ documents:
   canonical_for:
   - xtask repository-maintenance help and its non-product-validation boundary
   - documentation metadata, path, link, terminology, parity, example, stability-label, and reporting validation
+  - complete tracked-Git-path routing and justified current-exemption validation
   - workspace package declaration and internal dependency-direction validation
   - deterministic Administrative CLI syntax synchronization and executable CLI-example validation
   - tracked-file artifact exclusion derived from repository ignore rules

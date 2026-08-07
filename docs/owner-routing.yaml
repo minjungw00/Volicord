@@ -20,6 +20,18 @@ instruction_scopes:
     instruction: crates/AGENTS.md
 
 path_routes:
+  - path: .dockerignore
+    owner_doc_ids:
+      - maintain.validation
+    validation_classes:
+      - release
+      - repository-hygiene
+  - path: .gitattributes
+    owner_doc_ids:
+      - maintain.validation
+    validation_classes:
+      - release
+      - repository-hygiene
   - path: AGENTS.md
     owner_doc_ids:
       - maintain.documentation-policy
@@ -76,6 +88,22 @@ path_routes:
       - maintain.validation
     validation_classes:
       - repository-hygiene
+  - path: Dockerfile
+    owner_doc_ids:
+      - maintain.validation
+      - user-guide.installation
+    validation_classes:
+      - release
+      - repository-hygiene
+      - workflow
+  - path: Dockerfile.release
+    owner_doc_ids:
+      - maintain.validation
+      - user-guide.installation
+    validation_classes:
+      - release
+      - repository-hygiene
+      - workflow
   - path_prefix: ".github/"
     owner_doc_ids:
       - architecture-guide.testing-strategy
@@ -134,6 +162,8 @@ path_routes:
       - reference.mcp-transport
     validation_classes:
       - mcp-spec
+
+tracked_path_exemptions: []
 
 package_defaults:
   instruction_paths:
