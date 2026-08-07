@@ -1,7 +1,5 @@
 //! Public tool-call decoding, adapter dispatch, and shared tool-result carrier.
 
-#[cfg(test)]
-use crate::action_form::ActionFormCatalogError;
 use crate::adapter::{McpAdapter, OwnedAgentSessionCoordinates};
 use crate::authority_refresh::MutationRefreshContext;
 use crate::binding::{
@@ -23,9 +21,9 @@ use crate::json_rpc::{
 use crate::lifecycle::SessionRuntime;
 #[cfg(test)]
 use crate::mutation_projection::{
-    compact_mutation_method_result, finalize_mutation_output_with_refresh,
-    finalize_mutation_output_with_refresh_and_action_form_failure,
-    MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+    compact_mutation_method_result, finalize_mutation_output_with_injected_failure,
+    finalize_mutation_output_with_refresh, InjectedMutationFinalizationFailure,
+    InjectedMutationFinalizationFailureKind, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
 };
 use crate::mutation_projection::{
     finalize_mutation_output, mutation_detail_for_tool, mutation_effect_anchor,
@@ -999,6 +997,11 @@ fn semantic_result_type(
         };
     }
     if code == Some("MCP_RESPONSE_BUDGET_EXCEEDED") {
+        if structured_content.get("response_kind").is_some()
+            && structured_content.get("effect_applied") == Some(&Value::Bool(false))
+        {
+            return "finalization_failure";
+        }
         return "response_budget_exceeded";
     }
     if matches!(
@@ -1009,6 +1012,11 @@ fn semantic_result_type(
                 | "MCP_POST_EFFECT_ADAPTER_FAILED"
         )
     ) {
+        if structured_content.get("response_kind").is_some()
+            && structured_content.get("effect_applied") == Some(&Value::Bool(false))
+        {
+            return "finalization_failure";
+        }
         return "post_effect_failure";
     }
     if is_error {
@@ -1386,12 +1394,12 @@ mod mutation_projection_and_recovery_tests {
         EvidenceCaptureReceiptInsert, StoredEvidenceCaptureReceiptMetadata,
     };
     use volicord_test_support::core_fixtures::{
-        CoreFixture, UpdateScopeFixture, UserActionFixture,
+        CloseTaskFixture, CoreFixture, UpdateScopeFixture, UserActionFixture,
     };
     use volicord_types::canonical::canonical_json_bare_sha256;
     use volicord_types::ids::{
         AcceptanceCriterionId, BaselineRef, ChangeUnitId, EvidenceCaptureIntentId, RecordId,
-        ShapingCheckpointId,
+        ShapingCheckpointId, TaskId,
     };
     use volicord_types::methods::{
         AdvanceTaskRequest, RecordShapingCheckpointRequest, MAX_OPERATION_RESULT_PAGE_BYTES,
@@ -1402,8 +1410,9 @@ mod mutation_projection_and_recovery_tests {
         EVIDENCE_CAPTURE_COMMAND_LIMITATION,
     };
     use volicord_types::values::{
-        ActorSource, ChangeUnitOperation, EvidenceAssuranceLevel, EvidenceProducerKind,
-        EvidenceSourceKind, JudgmentKind, RedactionState, StateRecordKind, UtcTimestamp,
+        ActorSource, ChangeUnitOperation, CloseIntent, CloseReason, EvidenceAssuranceLevel,
+        EvidenceProducerKind, EvidenceSourceKind, JudgmentKind, RedactionState, StateRecordKind,
+        UtcTimestamp,
     };
 
     fn pad_valid_intake_result(result: &mut Value, bytes: usize) {
@@ -1902,7 +1911,13 @@ mod mutation_projection_and_recovery_tests {
     fn assert_compact_budget(output: ToolCallOutput) -> Result<(), Box<dyn Error>> {
         assert!(!output.is_error);
         assert_eq!(output.structured_content["retryable"], false);
+        assert_eq!(output.structured_content["committed"], true);
+        assert_eq!(output.structured_content["replayed"], false);
+        assert_eq!(output.structured_content["effect_kind"], "core_committed");
         assert_eq!(output.structured_content["effect_applied"], true);
+        assert_eq!(output.structured_content["state_change_applied"], true);
+        assert_eq!(output.structured_content["status_read_required"], true);
+        assert_eq!(output.structured_content["completion_claim_withheld"], true);
         assert_eq!(
             output.structured_content["effect_anchor"],
             "authority_event:event_recovery_order"
@@ -2879,18 +2894,20 @@ mod mutation_projection_and_recovery_tests {
             .first()
             .expect("post-intake workflow exposes a transition")
             .action_key;
-        let mut failure = ActionFormCatalogError::contract(
-            Some(action_key),
-            McpWorkflowContractStage::CatalogTotality,
-            "injected action-form contract failure",
-        );
-        failure.method_error_code = Some(ErrorCode::PersistedDataCorrupt);
-        failure.method_error_details = Some(
-            json!({"reason": "injected and redacted"})
-                .as_object()
-                .expect("object details")
-                .clone(),
-        );
+        let failure = InjectedMutationFinalizationFailure {
+            stage: McpMutationFinalizationStage::ActionFormCatalog,
+            kind: InjectedMutationFinalizationFailureKind::WorkflowContract {
+                failed_action_key: Some(action_key),
+                failed_stage: McpWorkflowContractStage::CatalogTotality,
+                method_error_code: Some(ErrorCode::PersistedDataCorrupt),
+                method_error_details: Some(
+                    json!({"reason": "injected and redacted"})
+                        .as_object()
+                        .expect("object details")
+                        .clone(),
+                ),
+            },
+        };
 
         let original_output = ToolCallOutput::from_pipeline_response(&committed)?;
         let original_facts = original_output.diagnostic_facts.clone();
@@ -2898,7 +2915,7 @@ mod mutation_projection_and_recovery_tests {
             .operation_result_ref
             .clone()
             .expect("committed intake retains an operation-result reference");
-        let output = finalize_mutation_output_with_refresh_and_action_form_failure(
+        let output = finalize_mutation_output_with_injected_failure(
             AgentToolId::INTAKE.wire_name(),
             Some(MutationDetailLevel::Summary),
             original_output,
@@ -3404,6 +3421,887 @@ mod mutation_projection_and_recovery_tests {
         );
         assert!(
             serde_json::to_vec(&tool_call_result_from_output(output))?.len()
+                <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+        );
+        Ok(())
+    }
+
+    fn repository_observation_safety_snapshot(
+        fixture: &CoreFixture,
+    ) -> Result<(u64, u64, u64), Box<dyn Error>> {
+        let conn = fixture.conn()?;
+        let observations = conn.query_row(
+            "SELECT COUNT(*) FROM repository_observations WHERE project_id = ?1",
+            [fixture.project_id()],
+            |row| row.get(0),
+        )?;
+        let open_observations = conn.query_row(
+            "SELECT COUNT(*) FROM repository_observations WHERE project_id = ?1 AND state = 'open'",
+            [fixture.project_id()],
+            |row| row.get(0),
+        )?;
+        let unrecorded_changes = conn.query_row(
+            "SELECT COUNT(*) FROM unrecorded_changes WHERE project_id = ?1",
+            [fixture.project_id()],
+            |row| row.get(0),
+        )?;
+        Ok((observations, open_observations, unrecorded_changes))
+    }
+
+    fn workflow_action_key_from_status(
+        status: &PipelineResponse,
+    ) -> Result<volicord_types::schema::WorkflowActionKey, Box<dyn Error>> {
+        Ok(serde_json::from_value(
+            status.response_value["active_task"]["workflow"]["transition_catalog"]["transitions"]
+                [0]["action_key"]
+                .clone(),
+        )?)
+    }
+
+    fn injected_workflow_failure(
+        stage: McpMutationFinalizationStage,
+        failed_action_key: volicord_types::schema::WorkflowActionKey,
+    ) -> InjectedMutationFinalizationFailure {
+        let failed_stage = match stage {
+            McpMutationFinalizationStage::ActionFormCatalog => {
+                McpWorkflowContractStage::CatalogTotality
+            }
+            McpMutationFinalizationStage::WorkflowPresentation => {
+                McpWorkflowContractStage::AdapterProjection
+            }
+            McpMutationFinalizationStage::ResponseProjection => {
+                McpWorkflowContractStage::ExpectedResultValidation
+            }
+            McpMutationFinalizationStage::PostEffectAdapter => {
+                McpWorkflowContractStage::AdapterProjection
+            }
+        };
+        InjectedMutationFinalizationFailure {
+            stage,
+            kind: InjectedMutationFinalizationFailureKind::WorkflowContract {
+                failed_action_key: Some(failed_action_key),
+                failed_stage,
+                method_error_code: Some(ErrorCode::PersistedDataCorrupt),
+                method_error_details: Some(
+                    json!({"reason": "bounded injected finalization failure"})
+                        .as_object()
+                        .expect("injected details are an object")
+                        .clone(),
+                ),
+            },
+        }
+    }
+
+    fn fixture_adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
+        let context =
+            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+        let guard = guard_health_record(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+        )?;
+        let session = volicord_test_support::seed_test_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+            guard
+                .guard_installation
+                .as_ref()
+                .map(|installation| installation.guard_installation_id.as_str()),
+        )?;
+        Ok(McpAdapter::new(fixture.runtime_home_path(), context)
+            .with_managed_agent_session_binding(crate::adapter::ManagedAgentSessionBinding {
+                runtime_session_id: session.runtime_session_id.as_str().to_owned(),
+                correlation: volicord_host_contract::CodexMcpCorrelation {
+                    session_id: volicord_host_contract::HostSessionId::parse(
+                        session.host_session_id,
+                    )?,
+                    thread_id: volicord_host_contract::HostThreadId::parse(session.host_thread_id)?,
+                    turn_id: volicord_host_contract::HostTurnId::parse(session.host_turn_id)?,
+                },
+            }))
+    }
+
+    fn assert_committed_finalization_recovery(
+        fixture: &CoreFixture,
+        tool: AgentToolId,
+        committed: &PipelineResponse,
+        refreshed: PipelineResponse,
+        stage: McpMutationFinalizationStage,
+        before_finalization: &volicord_store::core_pipeline::StorageEffectCounts,
+    ) -> Result<(), Box<dyn Error>> {
+        let action_key = workflow_action_key_from_status(&refreshed)?;
+        let committed_version = committed.response_value["base"]["state_version"]
+            .as_u64()
+            .ok_or("committed method result must expose state_version")?;
+        let exact_method_result = committed.response_value.clone();
+        let expected_operation_result_ref = committed
+            .operation_result_ref
+            .clone()
+            .ok_or("committed mutation must expose operation_result_ref")?;
+        let observation_before = repository_observation_safety_snapshot(fixture)?;
+        assert_eq!(
+            observation_before.1, 0,
+            "fixture observations must be terminal"
+        );
+
+        let mut recovery = finalize_mutation_output_with_injected_failure(
+            tool.wire_name(),
+            Some(MutationDetailLevel::Summary),
+            ToolCallOutput::from_pipeline_response(committed)?,
+            |_| Ok(refreshed.clone()),
+            injected_workflow_failure(stage, action_key),
+        )?;
+        tag_tool_call_output(tool.wire_name(), &mut recovery)?;
+        validate_mcp_tool_output(tool.wire_name(), &recovery.structured_content)?;
+
+        assert!(!recovery.is_error);
+        assert_eq!(
+            recovery.structured_content["result_type"],
+            "post_effect_failure"
+        );
+        assert_eq!(recovery.structured_content["committed"], true);
+        assert_eq!(recovery.structured_content["replayed"], false);
+        assert_eq!(recovery.structured_content["effect_kind"], "core_committed");
+        assert_eq!(recovery.structured_content["effect_applied"], true);
+        assert_eq!(recovery.structured_content["state_change_applied"], true);
+        assert_eq!(recovery.structured_content["retryable"], false);
+        assert_eq!(recovery.structured_content["status_read_required"], true);
+        assert_eq!(
+            recovery.structured_content["completion_claim_withheld"],
+            true
+        );
+        assert_eq!(
+            recovery.structured_content["operation_result_ref"],
+            serde_json::to_value(&expected_operation_result_ref)?
+        );
+        assert_eq!(
+            recovery.structured_content["authority_receipt"]["state_version"],
+            committed_version
+        );
+        if recovery.structured_content["method_result"] != exact_method_result {
+            assert_eq!(
+                recovery.structured_content["method_result"],
+                compact_mutation_method_result(tool.wire_name(), &exact_method_result)?
+            );
+            let mut exact_candidate = recovery.clone();
+            exact_candidate.structured_content["method_result"] = exact_method_result.clone();
+            let capabilities = ProtocolRegistry::production()
+                .preferred_server_profile()
+                .capabilities();
+            assert!(
+                rendered_tool_call_output_size_for_capabilities(&exact_candidate, capabilities)?
+                    > MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+                "compact recovery is allowed only when the exact result exceeds the fixed budget"
+            );
+        }
+        assert_eq!(
+            recovery.structured_content["failed_stage"],
+            serde_json::to_value(stage)?
+        );
+        assert_eq!(
+            recovery.structured_content["failed_action_key"],
+            serde_json::to_value(action_key)?
+        );
+        assert_eq!(
+            recovery.structured_content["contract_diagnostics"]["failed_action_key"],
+            serde_json::to_value(action_key)?
+        );
+        assert!(recovery.primary_text.contains("Do not retry"));
+        assert!(!recovery.primary_text.contains("state is unchanged"));
+        assert!(!recovery.primary_text.contains("Core state is unchanged"));
+        assert_eq!(&fixture.counts()?, before_finalization);
+
+        let adapter = fixture_adapter(fixture)?;
+        let status = adapter.call_tool(
+            AgentToolId::STATUS.wire_name(),
+            json!({
+                "detail": "full",
+                "task_id": committed.resolved_task_id.as_ref().map(TaskId::as_str)
+            }),
+        )?;
+        assert_eq!(
+            status.response_value["base"]["state_version"],
+            committed_version
+        );
+        assert_eq!(
+            status.response_value["authority_receipt"]["state_version"],
+            committed_version
+        );
+        let mut cursor = Value::Null;
+        let mut exact_result = String::new();
+        loop {
+            let retrieved = adapter.call_tool(
+                AgentToolId::GET_OPERATION_RESULT.wire_name(),
+                json!({
+                    "operation_result_ref": expected_operation_result_ref,
+                    "cursor": cursor
+                }),
+            )?;
+            exact_result.push_str(
+                retrieved.response_value["chunk_utf8"]
+                    .as_str()
+                    .ok_or("operation-result page must expose a UTF-8 chunk")?,
+            );
+            if retrieved.response_value["complete"] == true {
+                break;
+            }
+            cursor = retrieved.response_value["next_cursor"].clone();
+            if cursor.is_null() {
+                return Err("incomplete operation-result page must expose a cursor".into());
+            }
+        }
+        assert_eq!(exact_result, committed.response_json);
+        assert_eq!(&fixture.counts()?, before_finalization);
+        assert_eq!(
+            repository_observation_safety_snapshot(fixture)?,
+            observation_before,
+            "finalization, status, and exact-result reads must not fabricate repository observations or Unrecorded Changes"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_finalization_seam_preserves_real_commits_across_methods_and_stages(
+    ) -> Result<(), Box<dyn Error>> {
+        {
+            let fixture = CoreFixture::new("mcp-finalization-matrix-intake")?;
+            let core = CoreService::for_mutation(&fixture.mutation_context()?);
+            let before = fixture.counts()?;
+            let committed = core.intake(
+                &fixture.mutation_context()?,
+                fixture.intake_request(
+                    "req_finalization_matrix_intake",
+                    "idem_finalization_matrix_intake",
+                    false,
+                    Some(0),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
+            )?;
+            let after = fixture.counts()?;
+            assert_eq!(after.state_version, before.state_version + 1);
+            assert_eq!(after.tasks, before.tasks + 1);
+            assert_eq!(after.authority_events, before.authority_events + 1);
+            let task_id = committed.resolved_task_id.as_ref().expect("intake Task");
+            let refreshed = core.status(
+                fixture.status_request(
+                    "req_finalization_matrix_intake_status",
+                    Some(task_id.as_str()),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::Read),
+            )?;
+            assert_committed_finalization_recovery(
+                &fixture,
+                AgentToolId::INTAKE,
+                &committed,
+                refreshed,
+                McpMutationFinalizationStage::ActionFormCatalog,
+                &after,
+            )?;
+        }
+
+        {
+            let fixture = CoreFixture::new("mcp-finalization-matrix-scope")?;
+            let core = CoreService::for_mutation(&fixture.mutation_context()?);
+            let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
+            let intake = core.intake(
+                &fixture.mutation_context()?,
+                fixture.intake_request(
+                    "req_finalization_matrix_scope_intake",
+                    "idem_finalization_matrix_scope_intake",
+                    false,
+                    Some(0),
+                ),
+                invocation(),
+            )?;
+            let task_id = intake.resolved_task_id.as_ref().expect("scope Task");
+            let before = fixture.counts()?;
+            let committed = core.update_scope(
+                &fixture.mutation_context()?,
+                fixture.update_scope_request(UpdateScopeFixture {
+                    request_id: "req_finalization_matrix_scope",
+                    idempotency_key: "idem_finalization_matrix_scope",
+                    dry_run: false,
+                    expected_state_version: Some(before.state_version),
+                    task_id: task_id.as_str(),
+                    operation: ChangeUnitOperation::CreateCurrent,
+                    scope_summary: "Exercise the generic finalization seam.",
+                }),
+                invocation(),
+            )?;
+            let after = fixture.counts()?;
+            assert_eq!(after.state_version, before.state_version + 1);
+            assert_eq!(after.change_units, before.change_units + 1);
+            assert_eq!(after.authority_events, before.authority_events + 1);
+            let refreshed = core.status(
+                fixture.status_request(
+                    "req_finalization_matrix_scope_status",
+                    Some(task_id.as_str()),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::Read),
+            )?;
+            assert_committed_finalization_recovery(
+                &fixture,
+                AgentToolId::UPDATE_SCOPE,
+                &committed,
+                refreshed,
+                McpMutationFinalizationStage::WorkflowPresentation,
+                &after,
+            )?;
+        }
+
+        {
+            let fixture = CoreFixture::new("mcp-finalization-matrix-checkpoint")?;
+            let core = CoreService::for_mutation(&fixture.mutation_context()?);
+            let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
+            let intake = core.intake(
+                &fixture.mutation_context()?,
+                fixture.intake_request(
+                    "req_finalization_matrix_checkpoint_intake",
+                    "idem_finalization_matrix_checkpoint_intake",
+                    false,
+                    Some(0),
+                ),
+                invocation(),
+            )?;
+            let task_id = intake.resolved_task_id.as_ref().expect("checkpoint Task");
+            core.update_scope(
+                &fixture.mutation_context()?,
+                fixture.update_scope_request(UpdateScopeFixture {
+                    request_id: "req_finalization_matrix_checkpoint_scope",
+                    idempotency_key: "idem_finalization_matrix_checkpoint_scope",
+                    dry_run: false,
+                    expected_state_version: Some(1),
+                    task_id: task_id.as_str(),
+                    operation: ChangeUnitOperation::CreateCurrent,
+                    scope_summary: "Prepare a checkpoint finalization failure.",
+                }),
+                invocation(),
+            )?;
+            let before = fixture.counts()?;
+            let committed = core.record_shaping_checkpoint(
+                &fixture.mutation_context()?,
+                RecordShapingCheckpointRequest {
+                    envelope: fixture.envelope(
+                        "req_finalization_matrix_checkpoint",
+                        Some("idem_finalization_matrix_checkpoint"),
+                        false,
+                        Some(before.state_version),
+                        Some(task_id.as_str()),
+                    ),
+                    task_id: task_id.clone(),
+                    checkpoint_operation:
+                        volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                    scope_revision: 1,
+                    baseline_ref: RequiredNullable::some(BaselineRef::parse(
+                        volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                    )?),
+                    summary: "The generic finalization matrix is ready.".to_owned(),
+                    implementation_boundary: RequiredNullable::some(
+                        "Only the finalization matrix is in scope.".to_owned(),
+                    ),
+                    gaps: Vec::new(),
+                    source_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                },
+                invocation(),
+            )?;
+            let after = fixture.counts()?;
+            assert_eq!(after.state_version, before.state_version + 1);
+            assert_eq!(after.shaping_checkpoints, before.shaping_checkpoints + 1);
+            assert_eq!(after.authority_events, before.authority_events + 1);
+            let refreshed = core.status(
+                fixture.status_request(
+                    "req_finalization_matrix_checkpoint_status",
+                    Some(task_id.as_str()),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::Read),
+            )?;
+            assert_committed_finalization_recovery(
+                &fixture,
+                AgentToolId::RECORD_SHAPING_CHECKPOINT,
+                &committed,
+                refreshed,
+                McpMutationFinalizationStage::ResponseProjection,
+                &after,
+            )?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staging_and_replay_finalization_failures_preserve_their_distinct_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        {
+            let fixture = CoreFixture::new("mcp-finalization-matrix-staging")?;
+            let core = CoreService::for_mutation(&fixture.mutation_context()?);
+            let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
+            let intake = core.intake(
+                &fixture.mutation_context()?,
+                fixture.intake_request(
+                    "req_finalization_matrix_staging_intake",
+                    "idem_finalization_matrix_staging_intake",
+                    false,
+                    Some(0),
+                ),
+                invocation(),
+            )?;
+            let task_id = intake.resolved_task_id.as_ref().expect("staging Task");
+            let before = fixture.counts()?;
+            let staged = core.stage_artifact(
+                &fixture.mutation_context()?,
+                fixture.stage_artifact_request(
+                    "req_finalization_matrix_staging",
+                    None,
+                    false,
+                    Some(before.state_version),
+                    task_id.as_str(),
+                ),
+                invocation(),
+            )?;
+            let handle = staged.response_value["staged_artifact_handle"].clone();
+            let after = fixture.counts()?;
+            assert_eq!(after.state_version, before.state_version);
+            assert_eq!(after.artifact_staging, before.artifact_staging + 1);
+            let refreshed = core.status(
+                fixture.status_request(
+                    "req_finalization_matrix_staging_status",
+                    Some(task_id.as_str()),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::Read),
+            )?;
+            let action_key = workflow_action_key_from_status(&refreshed)?;
+            let observation_before = repository_observation_safety_snapshot(&fixture)?;
+            let mut recovery = finalize_mutation_output_with_injected_failure(
+                AgentToolId::STAGE_ARTIFACT.wire_name(),
+                Some(MutationDetailLevel::Summary),
+                ToolCallOutput::from_pipeline_response(&staged)?,
+                |_| Ok(refreshed),
+                injected_workflow_failure(
+                    McpMutationFinalizationStage::WorkflowPresentation,
+                    action_key,
+                ),
+            )?;
+            tag_tool_call_output(AgentToolId::STAGE_ARTIFACT.wire_name(), &mut recovery)?;
+            assert_eq!(
+                recovery.structured_content["result_type"],
+                "post_effect_failure"
+            );
+            assert_eq!(recovery.structured_content["committed"], false);
+            assert_eq!(recovery.structured_content["replayed"], false);
+            assert_eq!(
+                recovery.structured_content["effect_kind"],
+                "staging_created"
+            );
+            assert_eq!(recovery.structured_content["effect_applied"], true);
+            assert_eq!(recovery.structured_content["state_change_applied"], false);
+            assert_eq!(
+                recovery.structured_content["method_result"]["staged_artifact_handle"],
+                handle
+            );
+            assert!(recovery.primary_text.contains("staging effect was created"));
+            assert!(recovery.primary_text.contains("Do not stage"));
+            assert!(!recovery.primary_text.contains("mutation was committed"));
+            assert_eq!(fixture.counts()?, after);
+            let status = fixture_adapter(&fixture)?.call_tool(
+                AgentToolId::STATUS.wire_name(),
+                json!({"detail": "full", "task_id": task_id}),
+            )?;
+            assert_eq!(
+                status.response_value["base"]["state_version"],
+                after.state_version
+            );
+            assert_eq!(fixture.counts()?, after);
+            assert_eq!(
+                repository_observation_safety_snapshot(&fixture)?,
+                observation_before
+            );
+        }
+
+        {
+            let fixture = CoreFixture::new("mcp-finalization-matrix-replay")?;
+            let core = CoreService::for_mutation(&fixture.mutation_context()?);
+            let request = fixture.intake_request(
+                "req_finalization_matrix_replay",
+                "idem_finalization_matrix_replay",
+                false,
+                Some(0),
+            );
+            let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
+            let committed =
+                core.intake(&fixture.mutation_context()?, request.clone(), invocation())?;
+            let after_commit = fixture.counts()?;
+            let replayed = core.intake(&fixture.mutation_context()?, request, invocation())?;
+            assert!(replayed.replayed);
+            assert_eq!(fixture.counts()?, after_commit);
+            assert_eq!(replayed.response_json, committed.response_json);
+            assert_eq!(
+                replayed.operation_result_ref,
+                committed.operation_result_ref
+            );
+            let task_id = replayed.resolved_task_id.as_ref().expect("replayed Task");
+            let refreshed = core.status(
+                fixture.status_request(
+                    "req_finalization_matrix_replay_status",
+                    Some(task_id.as_str()),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::Read),
+            )?;
+            let observation_before = repository_observation_safety_snapshot(&fixture)?;
+            let mut recovery = finalize_mutation_output_with_injected_failure(
+                AgentToolId::INTAKE.wire_name(),
+                Some(MutationDetailLevel::Summary),
+                ToolCallOutput::from_pipeline_response(&replayed)?,
+                |_| Ok(refreshed),
+                InjectedMutationFinalizationFailure {
+                    stage: McpMutationFinalizationStage::ResponseProjection,
+                    kind: InjectedMutationFinalizationFailureKind::ResponseProjection,
+                },
+            )?;
+            tag_tool_call_output(AgentToolId::INTAKE.wire_name(), &mut recovery)?;
+            assert_eq!(
+                recovery.structured_content["result_type"],
+                "post_effect_failure"
+            );
+            assert_eq!(recovery.structured_content["committed"], false);
+            assert_eq!(recovery.structured_content["replayed"], true);
+            assert_eq!(recovery.structured_content["effect_kind"], "core_committed");
+            assert_eq!(recovery.structured_content["effect_applied"], true);
+            assert_eq!(recovery.structured_content["state_change_applied"], false);
+            assert_eq!(
+                recovery.structured_content["operation_result_ref"],
+                serde_json::to_value(committed.operation_result_ref)?
+            );
+            assert_eq!(recovery.structured_content["retryable"], false);
+            assert!(recovery.primary_text.contains("Do not retry"));
+            assert!(!recovery.primary_text.contains("mutation was committed"));
+            let status = fixture_adapter(&fixture)?.call_tool(
+                AgentToolId::STATUS.wire_name(),
+                json!({"detail": "full", "task_id": task_id}),
+            )?;
+            assert_eq!(
+                status.response_value["base"]["state_version"],
+                after_commit.state_version
+            );
+            assert_eq!(fixture.counts()?, after_commit);
+            assert_eq!(
+                repository_observation_safety_snapshot(&fixture)?,
+                observation_before
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn normal_no_effect_and_typed_rejection_keep_their_method_branches_when_finalization_fails(
+    ) -> Result<(), Box<dyn Error>> {
+        {
+            let fixture = CoreFixture::new("mcp-finalization-normal-no-effect")?;
+            let core = CoreService::for_mutation(&fixture.mutation_context()?);
+            let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
+            let intake = core.intake(
+                &fixture.mutation_context()?,
+                fixture.intake_request(
+                    "req_finalization_normal_no_effect_intake",
+                    "idem_finalization_normal_no_effect_intake",
+                    false,
+                    Some(0),
+                ),
+                invocation(),
+            )?;
+            let task_id = intake.resolved_task_id.as_ref().expect("no-effect Task");
+            core.update_scope(
+                &fixture.mutation_context()?,
+                fixture.update_scope_request(UpdateScopeFixture {
+                    request_id: "req_finalization_normal_no_effect_scope",
+                    idempotency_key: "idem_finalization_normal_no_effect_scope",
+                    dry_run: false,
+                    expected_state_version: Some(1),
+                    task_id: task_id.as_str(),
+                    operation: ChangeUnitOperation::CreateCurrent,
+                    scope_summary: "Prepare a blocked close result.",
+                }),
+                invocation(),
+            )?;
+            core.record_shaping_checkpoint(
+                &fixture.mutation_context()?,
+                RecordShapingCheckpointRequest {
+                    envelope: fixture.envelope(
+                        "req_finalization_normal_no_effect_checkpoint",
+                        Some("idem_finalization_normal_no_effect_checkpoint"),
+                        false,
+                        Some(2),
+                        Some(task_id.as_str()),
+                    ),
+                    task_id: task_id.clone(),
+                    checkpoint_operation:
+                        volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                    scope_revision: 1,
+                    baseline_ref: RequiredNullable::some(BaselineRef::parse(
+                        volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                    )?),
+                    summary: "The blocked-close fixture is shaped.".to_owned(),
+                    implementation_boundary: RequiredNullable::some(
+                        "Keep the blocked close no-effect.".to_owned(),
+                    ),
+                    gaps: Vec::new(),
+                    source_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                },
+                invocation(),
+            )?;
+            let before = fixture.counts()?;
+            let no_effect = core.close_task(
+                &fixture.mutation_context()?,
+                fixture.close_task_request(CloseTaskFixture {
+                    request_id: "req_finalization_normal_no_effect_close",
+                    idempotency_key: Some("idem_finalization_normal_no_effect_close"),
+                    dry_run: false,
+                    expected_state_version: Some(before.state_version),
+                    task_id: task_id.as_str(),
+                    intent: CloseIntent::Complete,
+                    close_reason: Some(CloseReason::CompletedSelfChecked),
+                    superseding_task_id: None,
+                }),
+                invocation(),
+            )?;
+            assert_eq!(no_effect.response_value["base"]["response_kind"], "result");
+            assert_eq!(no_effect.response_value["base"]["effect_kind"], "no_effect");
+            assert_eq!(fixture.counts()?, before);
+            let refreshed = core.status(
+                fixture.status_request(
+                    "req_finalization_normal_no_effect_status",
+                    Some(task_id.as_str()),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::Read),
+            )?;
+            let action_key = workflow_action_key_from_status(&refreshed)?;
+            let exact = no_effect.response_value.clone();
+            let observation_before = repository_observation_safety_snapshot(&fixture)?;
+            let mut failure = finalize_mutation_output_with_injected_failure(
+                AgentToolId::CLOSE_TASK.wire_name(),
+                Some(MutationDetailLevel::Summary),
+                ToolCallOutput::from_pipeline_response(&no_effect)?,
+                |_| Ok(refreshed),
+                injected_workflow_failure(
+                    McpMutationFinalizationStage::ResponseProjection,
+                    action_key,
+                ),
+            )?;
+            tag_tool_call_output(AgentToolId::CLOSE_TASK.wire_name(), &mut failure)?;
+            validate_mcp_tool_output(
+                AgentToolId::CLOSE_TASK.wire_name(),
+                &failure.structured_content,
+            )?;
+            assert!(failure.is_error);
+            assert_eq!(
+                failure.structured_content["result_type"],
+                "finalization_failure"
+            );
+            assert_eq!(failure.structured_content["response_kind"], "result");
+            assert_eq!(failure.structured_content["effect_kind"], "no_effect");
+            assert_eq!(failure.structured_content["effect_applied"], false);
+            assert_eq!(failure.structured_content["committed"], false);
+            assert_eq!(failure.structured_content["method_result"], exact);
+            assert!(failure.primary_text.contains("normal no-effect result"));
+            assert!(!failure.primary_text.contains("applied mutation effect"));
+            assert!(failure
+                .primary_text
+                .contains("No commit or staging effect occurred"));
+            assert_eq!(fixture.counts()?, before);
+            let status = fixture_adapter(&fixture)?.call_tool(
+                AgentToolId::STATUS.wire_name(),
+                json!({"detail": "full", "task_id": task_id}),
+            )?;
+            assert_eq!(
+                status.response_value["base"]["state_version"],
+                before.state_version
+            );
+            assert_eq!(fixture.counts()?, before);
+            assert_eq!(
+                repository_observation_safety_snapshot(&fixture)?,
+                observation_before
+            );
+        }
+
+        {
+            let fixture = CoreFixture::new("mcp-finalization-typed-rejection")?;
+            let core = CoreService::for_mutation(&fixture.mutation_context()?);
+            let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
+            let intake = core.intake(
+                &fixture.mutation_context()?,
+                fixture.intake_request(
+                    "req_finalization_typed_rejection_intake",
+                    "idem_finalization_typed_rejection_intake",
+                    false,
+                    Some(0),
+                ),
+                invocation(),
+            )?;
+            let task_id = intake.resolved_task_id.as_ref().expect("rejection Task");
+            let before = fixture.counts()?;
+            let rejected = core.record_shaping_checkpoint(
+                &fixture.mutation_context()?,
+                RecordShapingCheckpointRequest {
+                    envelope: fixture.envelope(
+                        "req_finalization_typed_rejection",
+                        Some("idem_finalization_typed_rejection"),
+                        false,
+                        Some(before.state_version),
+                        Some(task_id.as_str()),
+                    ),
+                    task_id: task_id.clone(),
+                    checkpoint_operation:
+                        volicord_types::schema::ShapingCheckpointOperation::CreateInitial,
+                    scope_revision: 1,
+                    baseline_ref: RequiredNullable::null(),
+                    summary: "This call is intentionally not current.".to_owned(),
+                    implementation_boundary: RequiredNullable::some(
+                        "Preserve the typed rejection.".to_owned(),
+                    ),
+                    gaps: Vec::new(),
+                    source_refs: Vec::new(),
+                    evidence_refs: Vec::new(),
+                },
+                invocation(),
+            )?;
+            assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+            assert_eq!(rejected.response_value["base"]["effect_kind"], "no_effect");
+            assert_eq!(fixture.counts()?, before);
+            let refreshed = core.status(
+                fixture.status_request(
+                    "req_finalization_typed_rejection_status",
+                    Some(task_id.as_str()),
+                ),
+                test_agent_invocation(&fixture, OperationCategory::Read),
+            )?;
+            let action_key = workflow_action_key_from_status(&refreshed)?;
+            let exact = rejected.response_value.clone();
+            let observation_before = repository_observation_safety_snapshot(&fixture)?;
+            let mut failure = finalize_mutation_output_with_injected_failure(
+                AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+                Some(MutationDetailLevel::Summary),
+                ToolCallOutput::from_pipeline_response(&rejected)?,
+                |_| Ok(refreshed),
+                injected_workflow_failure(
+                    McpMutationFinalizationStage::ActionFormCatalog,
+                    action_key,
+                ),
+            )?;
+            tag_tool_call_output(
+                AgentToolId::RECORD_SHAPING_CHECKPOINT.wire_name(),
+                &mut failure,
+            )?;
+            assert!(failure.is_error);
+            assert_eq!(
+                failure.structured_content["result_type"],
+                "finalization_failure"
+            );
+            assert_eq!(failure.structured_content["response_kind"], "rejected");
+            assert_eq!(failure.structured_content["effect_kind"], "no_effect");
+            assert_eq!(failure.structured_content["effect_applied"], false);
+            assert_eq!(failure.structured_content["committed"], false);
+            assert_eq!(failure.structured_content["method_result"], exact);
+            assert!(failure.structured_content["transition_rejection"].is_object());
+            assert_ne!(
+                failure.structured_content["result_type"],
+                "post_effect_failure"
+            );
+            assert!(failure.primary_text.contains("typed method rejection"));
+            assert_eq!(fixture.counts()?, before);
+            let status = fixture_adapter(&fixture)?.call_tool(
+                AgentToolId::STATUS.wire_name(),
+                json!({"detail": "full", "task_id": task_id}),
+            )?;
+            assert_eq!(
+                status.response_value["base"]["state_version"],
+                before.state_version
+            );
+            assert_eq!(fixture.counts()?, before);
+            assert_eq!(
+                repository_observation_safety_snapshot(&fixture)?,
+                observation_before
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_contract_diagnostics_fall_back_without_losing_effect_truth(
+    ) -> Result<(), Box<dyn Error>> {
+        let (fixture, committed, _) =
+            committed_intake_with_receipt("mcp-finalization-oversized-diagnostics")?;
+        let task_id = committed.resolved_task_id.as_ref().expect("committed Task");
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
+        let refreshed = core.status(
+            fixture.status_request(
+                "req_finalization_oversized_diagnostics_status",
+                Some(task_id.as_str()),
+            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
+        )?;
+        let action_key = workflow_action_key_from_status(&refreshed)?;
+        let mut failure = finalize_mutation_output_with_injected_failure(
+            AgentToolId::INTAKE.wire_name(),
+            Some(MutationDetailLevel::Summary),
+            ToolCallOutput::from_pipeline_response(&committed)?,
+            |_| Ok(refreshed),
+            InjectedMutationFinalizationFailure {
+                stage: McpMutationFinalizationStage::ActionFormCatalog,
+                kind: InjectedMutationFinalizationFailureKind::WorkflowContract {
+                    failed_action_key: Some(action_key),
+                    failed_stage: McpWorkflowContractStage::CatalogTotality,
+                    method_error_code: Some(ErrorCode::PersistedDataCorrupt),
+                    method_error_details: Some(
+                        json!({
+                            "bounded_padding": "x".repeat(
+                                MAX_MCP_COMPACT_MUTATION_RESULT_BYTES * 2
+                            )
+                        })
+                        .as_object()
+                        .expect("oversized diagnostics are an object")
+                        .clone(),
+                    ),
+                },
+            },
+        )?;
+        tag_tool_call_output(AgentToolId::INTAKE.wire_name(), &mut failure)?;
+        validate_mcp_tool_output(AgentToolId::INTAKE.wire_name(), &failure.structured_content)?;
+
+        assert_eq!(
+            failure.structured_content["result_type"],
+            "post_effect_failure"
+        );
+        assert_eq!(failure.structured_content["committed"], true);
+        assert_eq!(failure.structured_content["replayed"], false);
+        assert_eq!(failure.structured_content["effect_kind"], "core_committed");
+        assert_eq!(failure.structured_content["effect_applied"], true);
+        assert_eq!(failure.structured_content["state_change_applied"], true);
+        assert_eq!(failure.structured_content["retryable"], false);
+        assert_eq!(failure.structured_content["status_read_required"], true);
+        assert_eq!(
+            failure.structured_content["completion_claim_withheld"],
+            true
+        );
+        assert!(failure.structured_content["authority_receipt"].is_object());
+        assert_eq!(
+            failure.structured_content["method_result"],
+            committed.response_value
+        );
+        assert_eq!(
+            failure.structured_content["operation_result_ref"],
+            serde_json::to_value(committed.operation_result_ref)?
+        );
+        assert_eq!(
+            failure.structured_content["failed_action_key"],
+            json!(action_key)
+        );
+        assert_eq!(
+            failure.structured_content["method_error_details"],
+            Value::Null
+        );
+        assert!(
+            serde_json::to_vec(&tool_call_result_from_output(failure))?.len()
                 <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
         );
         Ok(())

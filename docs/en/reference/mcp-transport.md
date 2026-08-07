@@ -75,21 +75,21 @@ This table is generated from the canonical MCP semantic descriptors. Required-nu
 
 | Tool | Input semantic type | Required nullable root fields | Typed examples | Output semantic type | Output discriminator |
 |---|---|---|---|---|---|
-| `volicord.intake` | `McpIntakeArguments` | `acceptance_policy`: `AcceptancePolicy`<br>`lineage`: `TaskLineageInput` | `create_new`<br>`resume_active`<br>`supersede_active`<br>`reject_if_active` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_IntakeResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit`<br>`advisor_create_current_change_unit`<br>`advisor_replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | none | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.advance_task` | `McpAdvanceTaskArguments` | none | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.intake` | `McpIntakeArguments` | `acceptance_policy`: `AcceptancePolicy`<br>`lineage`: `TaskLineageInput` | `create_new`<br>`resume_active`<br>`supersede_active`<br>`reject_if_active` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_IntakeResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.update_scope` | `McpUpdateScopeArguments` | `acceptance_criteria`: `array<AcceptanceCriterionReplacement>`<br>`autonomy_boundary`: `string`<br>`baseline_ref`: `BaselineRef`<br>`goal_summary`: `string`<br>`non_goals`: `array<string>`<br>`scope_boundary`: `string`<br>`scope_update`: `ScopeUpdate` | `keep_current_change_unit`<br>`create_current_change_unit`<br>`replace_current_change_unit`<br>`advisor_create_current_change_unit`<br>`advisor_replace_current_change_unit` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_UpdateScopeResult_and_McpUpdateScopeCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.record_shaping_checkpoint` | `McpRecordShapingCheckpointArguments` | `baseline_ref`: `BaselineRef`<br>`implementation_boundary`: `string` | `create_initial_null_baseline`<br>`create_initial_with_baseline`<br>`replace_current`<br>`structural_gap`<br>`product_decision_gap`<br>`technical_decision_gap`<br>`scope_decision_gap`<br>`sensitive_approval_gap`<br>`repository_file_source_ref`<br>`exact_stale_authority_recovery` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordShapingCheckpointResult_and_McpRecordShapingCheckpointCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.finalize_advice` | `McpFinalizeAdviceArguments` | none | `advisor_without_user_decisions`<br>`advisor_with_accepted_resolution_refs`<br>`advisor_with_evidence_and_residual_risks` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_FinalizeAdviceResult_and_McpFinalizeAdviceCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.advance_task` | `McpAdvanceTaskArguments` | none | `enter_implementation` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_AdvanceTaskResult_and_McpAdvanceTaskCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
 | `volicord.status` | `McpStatusArguments` | `task_id`: `TaskId` | `summary_status`<br>`read_only_status`<br>`full_status` | `McpReadOnlyToolStructuredContent_for_McpStatusResponse` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
 | `volicord.get_operation_result` | `McpGetOperationResultArguments` | `cursor`: `string` | `first_operation_result_page` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_GetOperationResultResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
-| `volicord.prepare_evidence_capture` | `McpPrepareEvidenceCaptureArguments` | none | `verified_command_capture`<br>`verified_tool_capture` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult_and_McpPrepareEvidenceCaptureCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.prepare_write` | `McpPrepareWriteArguments` | none | `simple_prepare_write` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareWriteResult_and_McpPrepareWriteCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.stage_artifact` | `McpStageArtifactArguments` | `expected_sha256`: `string`<br>`expected_size_bytes`: `integer`<br>`relation_hint`: `string` | `stage_safe_text` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_StageArtifactResult_and_McpStageArtifactCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.record_run` | `McpRecordRunArguments` | `close_assessment`: `CloseAssessmentInput`<br>`performed_operation`: `string`<br>`run_id`: `RunId`<br>`write_ticket_id`: `WriteTicketId` | `evidence_bearing_record_run` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordRunResult_and_McpRecordRunCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.request_user_action` | `McpRequestUserActionArguments` | none | `final_acceptance_request`<br>`resume_user_action` | `McpMutationStructuredContent_for_McpRequestUserActionResponse_and_McpRequestUserActionCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
-| `volicord.reconcile_changes` | `McpReconcileChangesArguments` | none | `reconcile_current_task` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_ReconcileChangesResult_and_McpReconcileChangesCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.prepare_evidence_capture` | `McpPrepareEvidenceCaptureArguments` | none | `verified_command_capture`<br>`verified_tool_capture` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult_and_McpPrepareEvidenceCaptureCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.prepare_write` | `McpPrepareWriteArguments` | none | `simple_prepare_write` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_PrepareWriteResult_and_McpPrepareWriteCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.stage_artifact` | `McpStageArtifactArguments` | `expected_sha256`: `string`<br>`expected_size_bytes`: `integer`<br>`relation_hint`: `string` | `stage_safe_text` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_StageArtifactResult_and_McpStageArtifactCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.record_run` | `McpRecordRunArguments` | `close_assessment`: `CloseAssessmentInput`<br>`performed_operation`: `string`<br>`run_id`: `RunId`<br>`write_ticket_id`: `WriteTicketId` | `evidence_bearing_record_run` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_RecordRunResult_and_McpRecordRunCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.request_user_action` | `McpRequestUserActionArguments` | none | `final_acceptance_request`<br>`resume_user_action` | `McpMutationStructuredContent_for_McpRequestUserActionResponse_and_McpRequestUserActionCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
+| `volicord.reconcile_changes` | `McpReconcileChangesArguments` | none | `reconcile_current_task` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_ReconcileChangesResult_and_McpReconcileChangesCompactResult` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
 | `volicord.check_close` | `McpCheckCloseArguments` | none | `check_close_missing_final_acceptance` | `McpReadOnlyToolStructuredContent_for_ToolResultOrRejected_for_CheckCloseResult` | `/result_type`: `response`, `operational_failure`, `adapter_error` |
-| `volicord.close_task` | `McpCloseTaskArguments` | `close_reason`: `CloseReason`<br>`superseding_task_id`: `TaskId`<br>`user_note`: `string` | `close_complete`<br>`close_cancel`<br>`close_supersede` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_CloseTaskResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `adapter_error` |
+| `volicord.close_task` | `McpCloseTaskArguments` | `close_reason`: `CloseReason`<br>`superseding_task_id`: `TaskId`<br>`user_note`: `string` | `close_complete`<br>`close_cancel`<br>`close_supersede` | `McpMutationStructuredContent_for_PreviewableToolResponse_for_CloseTaskResult_and_McpMutationEffectSummary` | `/result_type`: `rejected`, `dry_run`, `full`, `summary`, `workflow`, `operational_failure`, `refresh_failure`, `response_budget_exceeded`, `post_effect_failure`, `finalization_failure`, `adapter_error` |
 | `volicord.list_projects` | `McpListProjectsArguments` | none | none | `McpToolStructuredContent_for_McpListProjectsResult` | `/result_type`: `response`, `adapter_error` |
 | `volicord.begin_integration_verification` | `BeginIntegrationVerificationArguments` | none | none | `McpToolStructuredContent_for_BeginIntegrationVerificationResult` | `/result_type`: `response`, `adapter_error` |
 | `volicord.guard_probe` | `IntegrationVerificationIdArguments` | none | none | `McpToolStructuredContent_for_GuardProbeResult` | `/result_type`: `response`, `adapter_error` |
@@ -1312,6 +1312,35 @@ McpMutationPostEffectFailure:
   response_projection_omitted: true
   status_read_required: true
   completion_claim_withheld: true
+
+McpMutationNoEffectFinalizationFailure:
+  code: MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED |
+    MCP_RESPONSE_PROJECTION_FAILED |
+    MCP_RESPONSE_BUDGET_EXCEEDED
+  tool_name: MethodName
+  requested_detail: MutationDetailLevel
+  response_kind: result | rejected | dry_run
+  retryable: false
+  reached_core: true
+  committed: false
+  replayed: false
+  effect_kind: no_effect
+  effect_applied: false
+  state_change_applied: false
+  effect_anchor: null
+  operation_result_ref: OperationResultRef | null
+  authority_receipt: AuthorityReceipt | null
+  method_result: object | null
+  transition_rejection: TransitionRejection | null
+  failed_action_key: WorkflowActionKey | null
+  failed_stage: McpMutationFinalizationStage
+  method_error_code: ErrorCode | null
+  method_error_details: object | null
+  contract_diagnostics: McpWorkflowContractDiagnostics | null
+  authoritative_refresh_succeeded: true
+  response_projection_omitted: true
+  status_read_required: true
+  completion_claim_withheld: true
 ```
 
 `MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED` identifies a failure to project the
@@ -1330,7 +1359,13 @@ The effect combinations are exact. A new Core commit has `committed=true`,
 `effect_applied=true`, and `state_change_applied=false`. A rejected or other
 no-effect result remains `committed=false`, `effect_applied=false`, and
 `state_change_applied=false`; a projection failure on a normal no-effect result
-does not turn that result into either a commit or a method rejection.
+does not turn that result into either a commit or a method rejection. After Core
+has produced a legitimate no-effect method result and authority refresh has
+succeeded, such a failure uses the error-class `finalization_failure` branch,
+not success-class `post_effect_failure` or pre-Core `adapter_error`. It preserves
+`response_kind`, the exact or bounded method result, and a typed transition
+rejection when safely available. It is non-retryable, requires a status read,
+and withholds any completion claim without implying an applied effect.
 
 ```schema
 McpArgumentFailurePresentation:

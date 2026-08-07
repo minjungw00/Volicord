@@ -721,6 +721,30 @@ fn validate_observation(
             > observation
                 .shaping_workflow
                 .implementation_invalidation_opportunities
+        || observation
+            .shaping_workflow
+            .correct_mutation_effect_branches
+            > observation
+                .shaping_workflow
+                .mutation_finalization_failure_opportunities
+        || observation.shaping_workflow.mutation_finalization_retries
+            > observation
+                .shaping_workflow
+                .mutation_finalization_retry_opportunities
+        || observation.shaping_workflow.post_failure_status_reads
+            > observation
+                .shaping_workflow
+                .post_failure_status_read_opportunities
+        || observation
+            .shaping_workflow
+            .exact_operation_results_retrieved
+            > observation
+                .shaping_workflow
+                .operation_result_retrieval_opportunities
+        || observation.shaping_workflow.post_commit_unchanged_claims
+            > observation
+                .shaping_workflow
+                .post_commit_unchanged_claim_opportunities
     {
         return Err(HarnessError::new(
             "driver observation contains an impossible aggregate count",
@@ -783,7 +807,7 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         })
         .collect::<Vec<_>>();
 
-    let mut criteria = Vec::with_capacity(76);
+    let mut criteria = Vec::with_capacity(81);
     criteria.push(
         match median_u64(
             low_risk_light
@@ -1295,6 +1319,31 @@ pub fn evaluate_live_criteria(observations: &[DriverObservation]) -> Vec<Criteri
         all_shaping_totals(|value| value.implementation_invalidation_opportunities),
         all_shaping_totals(|value| value.correct_implementation_invalidation_rejections),
     ));
+    criteria.push(complete_rate(
+        "correct_mutation_finalization_effect_branch",
+        all_shaping_totals(|value| value.mutation_finalization_failure_opportunities),
+        all_shaping_totals(|value| value.correct_mutation_effect_branches),
+    ));
+    criteria.push(zero_rate(
+        "mutation_finalization_retry",
+        all_shaping_totals(|value| value.mutation_finalization_retry_opportunities),
+        all_shaping_totals(|value| value.mutation_finalization_retries),
+    ));
+    criteria.push(complete_rate(
+        "post_failure_status_read",
+        all_shaping_totals(|value| value.post_failure_status_read_opportunities),
+        all_shaping_totals(|value| value.post_failure_status_reads),
+    ));
+    criteria.push(complete_rate(
+        "exact_operation_result_retrieval",
+        all_shaping_totals(|value| value.operation_result_retrieval_opportunities),
+        all_shaping_totals(|value| value.exact_operation_results_retrieved),
+    ));
+    criteria.push(zero_rate(
+        "post_commit_state_unchanged_claim",
+        all_shaping_totals(|value| value.post_commit_unchanged_claim_opportunities),
+        all_shaping_totals(|value| value.post_commit_unchanged_claims),
+    ));
     criteria
 }
 
@@ -1441,7 +1490,7 @@ struct CriterionDefinition {
     unit: &'static str,
 }
 
-fn criterion_definitions() -> [CriterionDefinition; 76] {
+fn criterion_definitions() -> [CriterionDefinition; 81] {
     [
         CriterionDefinition {
             id: "low_risk_median_intermediate_calls",
@@ -1821,6 +1870,31 @@ fn criterion_definitions() -> [CriterionDefinition; 76] {
         CriterionDefinition {
             id: "implementation_phase_invalidation_rejection",
             target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "correct_mutation_finalization_effect_branch",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "mutation_finalization_retry",
+            target: "= 0",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "post_failure_status_read",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "exact_operation_result_retrieval",
+            target: "= 100",
+            unit: "percent",
+        },
+        CriterionDefinition {
+            id: "post_commit_state_unchanged_claim",
+            target: "= 0",
             unit: "percent",
         },
     ]

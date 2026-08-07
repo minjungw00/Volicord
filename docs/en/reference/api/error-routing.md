@@ -88,7 +88,10 @@ carrier preserves that committed, staged, or replayed effect through its
 success-class non-retryable recovery; it must not manufacture a
 `ToolRejectedResponse` or claim that Core state is unchanged. A corresponding
 failure before any authoritative effect remains an adapter-owned internal
-contract failure with no committed operation. Exact carrier fields and
+contract failure with no committed operation. A failure after Core returned a
+legitimate normal or rejected no-effect result instead uses MCP's distinct
+error-class `finalization_failure` carrier; it preserves that method branch and
+must not be described as post-effect recovery. Exact carrier fields and
 operation-result recovery belong to [MCP Transport](../mcp-transport.md#mutation-authority-receipt-projection).
 
 <a id="error-vs-blocker-blocked-result"></a>

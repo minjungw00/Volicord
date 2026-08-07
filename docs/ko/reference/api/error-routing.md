@@ -80,7 +80,9 @@ variant가 현재 상태가 아니면 `WORKFLOW_ACTION_VARIANT_NOT_ALLOWED`를 �
 이 거부 분기 밖에 있습니다. MCP carrier는 success-class 재시도 불가 복구로 commit, staging,
 replay 효과를 보존하며 `ToolRejectedResponse`를 만들거나 Core 상태가 바뀌지 않았다고 주장하면 안
 됩니다. 권위 있는 효과 전에 일어난 대응 실패는 커밋된 동작이 없는 adapter 소유 내부 contract
-실패로 남습니다. 정확한 carrier field와 operation-result 복구는 [MCP 전송](../mcp-transport.md#mutation-authority-receipt-projection)이
+실패로 남습니다. Core가 정상 또는 거부 no-effect 결과를 반환한 뒤 생긴 실패는 MCP의 별도
+error-class `finalization_failure` carrier를 사용합니다. 이 carrier는 해당 메서드 branch를 보존하며
+post-effect 복구로 설명하면 안 됩니다. 정확한 carrier field와 operation-result 복구는 [MCP 전송](../mcp-transport.md#mutation-authority-receipt-projection)이
 담당합니다.
 
 <a id="error-vs-blocker-blocked-result"></a>

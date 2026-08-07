@@ -11,17 +11,18 @@ use crate::tool_registry::method_name_for_tool;
 use serde_json::Value;
 use volicord_mcp_protocol::{CommittedResultRecovery, McpProtocolCapabilities};
 use volicord_mcp_wire::{
-    McpAuthoritativeRefreshFailure, McpMutationFinalizationStage, McpMutationPostEffectFailure,
+    McpAuthoritativeRefreshFailure, McpMutationFinalizationStage,
+    McpMutationNoEffectFinalizationFailure, McpMutationPostEffectFailure,
     McpMutationProjectionErrorCode, McpMutationResponseBudgetExceeded,
-    McpMutationStructuredContent, McpOperationalErrorCode, McpPostEffectFailureCode,
-    McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode,
-    McpWorkflowContractDiagnostics,
+    McpMutationStructuredContent, McpNoEffectFinalizationFailureCode, McpOperationalErrorCode,
+    McpPostEffectFailureCode, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
+    McpToolIssueCode, McpWorkflowContractDiagnostics,
 };
 use volicord_types::methods::OperationResultRef;
 use volicord_types::schema::{
     AuthorityReceipt, RequiredNullable, TransitionRejection, WorkflowProjection,
 };
-use volicord_types::values::{EffectKind, MutationDetailLevel};
+use volicord_types::values::{EffectKind, MutationDetailLevel, ResponseKind};
 
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
 
@@ -123,6 +124,20 @@ impl CanonicalMcpMutationOutcome {
 
     fn state_change_applied(&self) -> bool {
         self.facts.core_committed
+    }
+
+    fn response_kind(&self) -> Option<ResponseKind> {
+        let value = self
+            .exact_method_result
+            .as_ref()?
+            .pointer("/agent_workflow_result/base/response_kind")
+            .or_else(|| {
+                self.exact_method_result
+                    .as_ref()?
+                    .pointer("/base/response_kind")
+            })?
+            .clone();
+        serde_json::from_value(value).ok()
     }
 
     fn validate_effect_facts(&self) -> Result<(), McpAdapterError> {
@@ -232,6 +247,26 @@ impl MutationFinalizationFailure {
         }
     }
 
+    fn no_effect_finalization_code(&self) -> Option<McpNoEffectFinalizationFailureCode> {
+        match self.failure_kind {
+            MutationFinalizationFailureKind::Projection {
+                post_effect_code: McpPostEffectFailureCode::McpWorkflowContractProjectionFailed,
+                ..
+            } => Some(McpNoEffectFinalizationFailureCode::McpWorkflowContractProjectionFailed),
+            MutationFinalizationFailureKind::Projection {
+                post_effect_code: McpPostEffectFailureCode::McpResponseProjectionFailed,
+                ..
+            } => Some(McpNoEffectFinalizationFailureCode::McpResponseProjectionFailed),
+            MutationFinalizationFailureKind::ResponseBudgetExceeded(
+                McpMutationProjectionErrorCode::McpResponseBudgetExceeded,
+            ) => Some(McpNoEffectFinalizationFailureCode::McpResponseBudgetExceeded),
+            MutationFinalizationFailureKind::Projection {
+                post_effect_code: McpPostEffectFailureCode::McpPostEffectAdapterFailed,
+                ..
+            } => None,
+        }
+    }
+
     fn transition_rejection(&self) -> Option<&TransitionRejection> {
         match &self.failure_kind {
             MutationFinalizationFailureKind::Projection {
@@ -301,6 +336,14 @@ pub(crate) fn project_mutation_finalization_failure(
 ) -> Result<ToolCallOutput, McpAdapterError> {
     outcome.validate_effect_facts()?;
     match (&failure.failure_kind, outcome.facts.effect_applied) {
+        (_, false)
+            if outcome.facts.core_reached
+                && outcome.facts.effect_kind == Some(EffectKind::NoEffect)
+                && outcome.response_kind().is_some()
+                && failure.no_effect_finalization_code().is_some() =>
+        {
+            mutation_no_effect_finalization_failure_output(outcome, failure)
+        }
         (_, false) => pre_effect_internal_contract_rejection(outcome, failure),
         (MutationFinalizationFailureKind::ResponseBudgetExceeded(code), true) => {
             mutation_response_budget_exceeded_output(outcome, *code)
@@ -309,6 +352,135 @@ pub(crate) fn project_mutation_finalization_failure(
             mutation_post_effect_failure_output(outcome, failure)
         }
     }
+}
+
+fn bounded_failure_diagnostics(
+    diagnostics: Option<McpWorkflowContractDiagnostics>,
+) -> Option<McpWorkflowContractDiagnostics> {
+    let mut diagnostics = diagnostics?;
+    let diagnostics_budget = MAX_MCP_COMPACT_MUTATION_RESULT_BYTES.saturating_sub(12 * 1024);
+    if serde_json::to_vec(&diagnostics).is_ok_and(|encoded| encoded.len() <= diagnostics_budget) {
+        return Some(diagnostics);
+    }
+    diagnostics.method_error_details = RequiredNullable::null();
+    serde_json::to_vec(&diagnostics)
+        .is_ok_and(|encoded| encoded.len() <= diagnostics_budget)
+        .then_some(diagnostics)
+}
+
+fn mutation_no_effect_finalization_failure_output(
+    outcome: &CanonicalMcpMutationOutcome,
+    failure: &MutationFinalizationFailure,
+) -> Result<ToolCallOutput, McpAdapterError> {
+    let tool_name = outcome.tool_name.as_str();
+    let method_name = method_name_for_tool(tool_name).ok_or_else(|| {
+        McpAdapterError::Protocol(format!(
+            "missing MethodName mapping for mutation tool {tool_name}"
+        ))
+    })?;
+    let response_kind = outcome.response_kind().ok_or_else(|| {
+        McpAdapterError::Protocol(
+            "no-effect finalization recovery requires an exact response_kind".to_owned(),
+        )
+    })?;
+    let code = failure.no_effect_finalization_code().ok_or_else(|| {
+        McpAdapterError::Protocol(
+            "no-effect finalization recovery requires a bounded failure code".to_owned(),
+        )
+    })?;
+    let complete_diagnostics = aligned_workflow_contract_diagnostics(outcome, failure);
+    let failed_action_key = complete_diagnostics
+        .as_ref()
+        .map(|diagnostics| diagnostics.failed_action_key.clone())
+        .unwrap_or_else(RequiredNullable::null);
+    let method_error_code = complete_diagnostics
+        .as_ref()
+        .map(|diagnostics| diagnostics.method_error_code.clone())
+        .unwrap_or_else(RequiredNullable::null);
+    let method_error_details: RequiredNullable<serde_json::Map<String, Value>> =
+        complete_diagnostics
+            .as_ref()
+            .and_then(|diagnostics| {
+                diagnostics
+                    .method_error_details
+                    .as_ref()
+                    .and_then(|details| {
+                        serde_json::to_vec(details)
+                            .is_ok_and(|encoded| {
+                                encoded.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES / 8
+                            })
+                            .then(|| details.clone())
+                    })
+            })
+            .into();
+    let contract_diagnostics = bounded_failure_diagnostics(complete_diagnostics);
+    let transition_rejection = failure.transition_rejection().cloned();
+    let mut facts = outcome.facts.clone();
+    facts.authoritative_refresh_failure = false;
+    let build_output =
+        |candidate: &MutationRecoveryCandidate<'_>| -> Result<ToolCallOutput, McpAdapterError> {
+            let method_result = candidate
+                .method_result
+                .map(|method_result| {
+                    method_result.as_object().cloned().ok_or_else(|| {
+                        McpAdapterError::Protocol(
+                            "no-effect method_result must remain a JSON object".to_owned(),
+                        )
+                    })
+                })
+                .transpose()?;
+            let structured_content = serde_json::to_value(McpMutationNoEffectFinalizationFailure {
+                code,
+                tool_name: method_name,
+                requested_detail: outcome.requested_detail,
+                response_kind,
+                retryable: false,
+                reached_core: facts.core_reached,
+                committed: false,
+                replayed: false,
+                effect_kind: EffectKind::NoEffect,
+                effect_applied: false,
+                state_change_applied: false,
+                effect_anchor: RequiredNullable::null(),
+                operation_result_ref: outcome.operation_result_ref.clone().into(),
+                authority_receipt: candidate.authority_receipt.cloned().into(),
+                method_result: method_result.into(),
+                transition_rejection: transition_rejection.clone().into(),
+                failed_action_key: failed_action_key.clone(),
+                failed_stage: failure.stage,
+                method_error_code: method_error_code.clone(),
+                method_error_details: method_error_details.clone(),
+                contract_diagnostics: contract_diagnostics.clone().into(),
+                authoritative_refresh_succeeded: true,
+                response_projection_omitted: true,
+                status_read_required: true,
+                completion_claim_withheld: true,
+            })
+            .map_err(McpAdapterError::Json)?;
+            let branch = match response_kind {
+                ResponseKind::Result => "a normal no-effect result",
+                ResponseKind::Rejected => "a typed method rejection with no effect",
+                ResponseKind::DryRun => "a no-effect dry-run result",
+            };
+            Ok(ToolCallOutput {
+                primary_text: bounded_mutation_compatibility_text(format!(
+                    "Volicord {tool_name} produced {branch}, but MCP finalization failed after current authority was refreshed. No commit or staging effect occurred. Do not retry because of this projection failure; read volicord.status before continuing."
+                )),
+                structured_content,
+                extra_texts: Vec::new(),
+                is_error: true,
+                diagnostic_facts: facts.clone(),
+                operation_result_ref: outcome.operation_result_ref.clone(),
+                mutation_refresh_context: None,
+                post_effect_failure: None,
+            })
+        };
+    select_bounded_mutation_recovery(
+        outcome,
+        true,
+        "bounded no-effect finalization recovery exceeded its fixed output budget",
+        build_output,
+    )
 }
 
 fn pre_effect_internal_contract_rejection(
@@ -508,19 +680,32 @@ fn mutation_post_effect_failure_output(
             "post-effect recovery requires a post-effect failure code".to_owned(),
         )
     })?;
-    let contract_diagnostics = aligned_workflow_contract_diagnostics(outcome, failure);
-    let failed_action_key = contract_diagnostics
+    let complete_diagnostics = aligned_workflow_contract_diagnostics(outcome, failure);
+    let failed_action_key = complete_diagnostics
         .as_ref()
         .map(|diagnostics| diagnostics.failed_action_key.clone())
         .unwrap_or_else(RequiredNullable::null);
-    let method_error_code = contract_diagnostics
+    let method_error_code = complete_diagnostics
         .as_ref()
         .map(|diagnostics| diagnostics.method_error_code.clone())
         .unwrap_or_else(RequiredNullable::null);
-    let method_error_details = contract_diagnostics
-        .as_ref()
-        .map(|diagnostics| diagnostics.method_error_details.clone())
-        .unwrap_or_else(RequiredNullable::null);
+    let method_error_details: RequiredNullable<serde_json::Map<String, Value>> =
+        complete_diagnostics
+            .as_ref()
+            .and_then(|diagnostics| {
+                diagnostics
+                    .method_error_details
+                    .as_ref()
+                    .and_then(|details| {
+                        serde_json::to_vec(details)
+                            .is_ok_and(|encoded| {
+                                encoded.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES / 8
+                            })
+                            .then(|| details.clone())
+                    })
+            })
+            .into();
+    let contract_diagnostics = bounded_failure_diagnostics(complete_diagnostics);
     let build_output =
         |candidate: &MutationRecoveryCandidate<'_>| -> Result<ToolCallOutput, McpAdapterError> {
             let method_result = candidate
@@ -690,7 +875,7 @@ pub(crate) fn bounded_mutation_compatibility_text(text: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{json, Value};
+    use serde_json::json;
     use volicord_mcp_protocol::ProtocolRegistry;
     use volicord_mcp_wire::{McpMutationFinalizationStage, McpWorkflowContractDiagnostics};
     use volicord_types::schema::RequiredNullable;
@@ -821,7 +1006,7 @@ mod tests {
     }
 
     #[test]
-    fn no_effect_projection_failure_remains_an_internal_error_not_a_method_rejection() {
+    fn normal_no_effect_projection_failure_preserves_the_exact_method_branch() {
         let facts = ToolDiagnosticFacts {
             core_reached: true,
             effect_kind: Some(EffectKind::NoEffect),
@@ -830,26 +1015,56 @@ mod tests {
         let outcome = outcome(facts.clone());
 
         let projected = project_mutation_finalization_failure(&outcome, &finalization_failure())
-            .expect("no-effect internal error");
+            .expect("no-effect finalization failure");
 
         assert!(projected.is_error);
         assert_eq!(
             projected.structured_content["code"],
-            "INTERNAL_CONTRACT_INCONSISTENT"
+            "MCP_RESPONSE_PROJECTION_FAILED"
         );
+        assert_eq!(projected.structured_content["response_kind"], "result");
+        assert_eq!(projected.structured_content["effect_kind"], "no_effect");
+        assert_eq!(projected.structured_content["effect_applied"], false);
         assert_eq!(projected.structured_content["committed"], false);
         assert_eq!(projected.structured_content["state_change_applied"], false);
         assert_eq!(projected.structured_content["retryable"], false);
         assert_eq!(
-            projected.structured_content["transition_rejection"],
-            Value::Null
+            projected.structured_content["method_result"]["effect_kind"],
+            "no_effect"
         );
         assert!(projected.operation_result_ref.is_none());
         assert_eq!(projected.diagnostic_facts, facts);
-        assert!(projected
-            .primary_text
-            .contains("No authoritative effect was applied"));
+        assert!(projected.primary_text.contains("normal no-effect result"));
         assert!(!projected.primary_text.contains("mutation was rejected"));
+        assert!(!projected.primary_text.contains("applied mutation effect"));
+    }
+
+    #[test]
+    fn normal_no_effect_budget_failure_preserves_the_exact_method_branch() {
+        let facts = ToolDiagnosticFacts {
+            core_reached: true,
+            effect_kind: Some(EffectKind::NoEffect),
+            ..ToolDiagnosticFacts::default()
+        };
+        let outcome = outcome(facts);
+
+        let projected = project_mutation_finalization_failure(
+            &outcome,
+            &MutationFinalizationFailure::response_budget_exceeded(),
+        )
+        .expect("no-effect response-budget finalization failure");
+
+        assert!(projected.is_error);
+        assert_eq!(
+            projected.structured_content["code"],
+            "MCP_RESPONSE_BUDGET_EXCEEDED"
+        );
+        assert_eq!(projected.structured_content["response_kind"], "result");
+        assert_eq!(projected.structured_content["effect_kind"], "no_effect");
+        assert_eq!(projected.structured_content["effect_applied"], false);
+        assert_eq!(projected.structured_content["committed"], false);
+        assert_eq!(projected.structured_content["retryable"], false);
+        assert!(projected.primary_text.contains("normal no-effect result"));
     }
 
     #[test]

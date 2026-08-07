@@ -65,7 +65,10 @@ workflow-form contract 실패를 보고합니다. 현재 호출이 이미 commit
 committed result replay를 마친 뒤 같은 다음 상태 projection이 실패했다면 효과를 보존하는 복구
 사실을 신뢰합니다. Mutation을 다시 시도하지 말고 `volicord.status`를 읽으며 operation result
 ref가 있으면 `volicord.get_operation_result`를 사용합니다. 이 검사는 게시된 form이 contract로서
-실행 가능함을 입증하지만 witness 값을 해당 Task에 적합하게 만들지는 않습니다. Form은 다른 메서드나 variant에 권한을 주지 않습니다. JSON 타입과
+실행 가능함을 입증하지만 witness 값을 해당 Task에 적합하게 만들지는 않습니다. 정상 또는 거부
+no-effect finalization 실패는 post-effect 복구가 아닙니다. 정확한 메서드 branch를 보존하고 status를
+읽으며 projection 실패만을 이유로 재시도하지 않고 완료 주장을 보류합니다. Form은 다른 메서드나
+variant에 권한을 주지 않습니다. JSON 타입과
 배열 순서를 보존하고 고정 좌표를 다시 조립하지 않습니다. 프로젝트와 예상 상태 버전은 호출자가
 보내는 field가 아니라 현재 권한에서 adapter가 주입합니다.
 

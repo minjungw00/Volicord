@@ -76,6 +76,9 @@ effect-preserving recovery facts instead: do not retry the mutation, read
 `volicord.status`, and use `volicord.get_operation_result` when an operation
 result ref is present. That check proves a published form is executable as a
 contract; it does not make its witness values suitable for your Task. A
+normal or rejected no-effect finalization failure is not post-effect recovery:
+preserve its exact method branch, read status, do not retry merely because
+projection failed, and keep the completion claim withheld. A
 form never authorizes another method or variant. Preserve JSON
 types and array order, and never reconstruct coordinates listed as fixed.
 Project and expected state version are adapter-injected from current authority

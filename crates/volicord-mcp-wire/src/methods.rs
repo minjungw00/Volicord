@@ -819,6 +819,16 @@ pub enum McpPostEffectFailureCode {
     McpPostEffectAdapterFailed,
 }
 
+/// Stable MCP adapter code for a failure while finalizing a legitimate
+/// no-effect mutation result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum McpNoEffectFinalizationFailureCode {
+    McpWorkflowContractProjectionFailed,
+    McpResponseProjectionFailed,
+    McpResponseBudgetExceeded,
+}
+
 /// Closed mutation-finalization boundary at which the normal response failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -848,6 +858,38 @@ pub struct McpMutationPostEffectFailure {
     pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: RequiredNullable<AuthorityReceipt>,
     pub method_result: RequiredNullable<JsonObject>,
+    pub failed_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub failed_stage: McpMutationFinalizationStage,
+    pub method_error_code: RequiredNullable<volicord_types::values::ErrorCode>,
+    pub method_error_details: RequiredNullable<JsonObject>,
+    pub contract_diagnostics: RequiredNullable<McpWorkflowContractDiagnostics>,
+    pub authoritative_refresh_succeeded: bool,
+    pub response_projection_omitted: bool,
+    pub status_read_required: bool,
+    pub completion_claim_withheld: bool,
+}
+
+/// Bounded error-class carrier used when finalization fails after Core returned
+/// a legitimate no-effect method result and authoritative refresh succeeded.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpMutationNoEffectFinalizationFailure {
+    pub code: McpNoEffectFinalizationFailureCode,
+    pub tool_name: MethodName,
+    pub requested_detail: MutationDetailLevel,
+    pub response_kind: volicord_types::values::ResponseKind,
+    pub retryable: bool,
+    pub reached_core: bool,
+    pub committed: bool,
+    pub replayed: bool,
+    pub effect_kind: EffectKind,
+    pub effect_applied: bool,
+    pub state_change_applied: bool,
+    pub effect_anchor: RequiredNullable<String>,
+    pub operation_result_ref: RequiredNullable<OperationResultRef>,
+    pub authority_receipt: RequiredNullable<AuthorityReceipt>,
+    pub method_result: RequiredNullable<JsonObject>,
+    pub transition_rejection: RequiredNullable<volicord_types::schema::TransitionRejection>,
     pub failed_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
     pub failed_stage: McpMutationFinalizationStage,
     pub method_error_code: RequiredNullable<volicord_types::values::ErrorCode>,
@@ -896,6 +938,7 @@ pub enum McpMutationStructuredContent<T, C> {
     RefreshFailure(McpAuthoritativeRefreshFailure<C>),
     ResponseBudgetExceeded(McpMutationResponseBudgetExceeded<C>),
     PostEffectFailure(Box<McpMutationPostEffectFailure>),
+    FinalizationFailure(Box<McpMutationNoEffectFinalizationFailure>),
     AdapterError(Box<McpToolErrorResponse>),
 }
 

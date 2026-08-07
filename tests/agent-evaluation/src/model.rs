@@ -152,6 +152,8 @@ pub struct FixtureExpectation {
     pub shaping_authority_recovery: Option<ShapingAuthorityRecoveryExpectation>,
     #[serde(default)]
     pub scope_retarget_recovery: Option<ScopeRetargetRecoveryExpectation>,
+    #[serde(default)]
+    pub mutation_finalization_outcome: Option<MutationFinalizationOutcomeExpectation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -184,6 +186,16 @@ pub enum ShapingAuthorityRecoveryExpectation {
 pub enum ScopeRetargetRecoveryExpectation {
     ExplicitReplacement,
     PersistedCorruption,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MutationFinalizationOutcomeExpectation {
+    Committed,
+    Staged,
+    Replayed,
+    Rejected,
+    NormalNoEffect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -380,6 +392,16 @@ pub struct ShapingWorkflowObservation {
     pub correct_record_run_rejection_details: u64,
     pub completion_claim_opportunities: u64,
     pub premature_completion_claims: u64,
+    pub mutation_finalization_failure_opportunities: u64,
+    pub correct_mutation_effect_branches: u64,
+    pub mutation_finalization_retry_opportunities: u64,
+    pub mutation_finalization_retries: u64,
+    pub post_failure_status_read_opportunities: u64,
+    pub post_failure_status_reads: u64,
+    pub operation_result_retrieval_opportunities: u64,
+    pub exact_operation_results_retrieved: u64,
+    pub post_commit_unchanged_claim_opportunities: u64,
+    pub post_commit_unchanged_claims: u64,
     pub accepted_outcome_opportunities: u64,
     pub accepted_outcomes_surfaced: u64,
     pub rejected_outcome_opportunities: u64,

@@ -356,16 +356,17 @@ pub const MCP_TAGGED_UNION_CONTRACTS: &[McpTaggedUnionContract] = &[
         semantic_type_patterns: &["McpMutationStructuredContent_for_*"],
         discriminator_path: "/result_type",
         variants: semantic_variants!(
-            "rejected" => "Method rejection.",
-            "dry_run" => "Non-committing preview.",
-            "full" => "Full result and receipt.",
-            "summary" => "Compact result and receipt.",
-            "workflow" => "Result with refreshed workflow.",
-            "operational_failure" => "Pre-effect operational failure.",
-            "refresh_failure" => "Post-effect refresh failure.",
-            "response_budget_exceeded" => "Applied result too large to inline.",
+            "rejected" => "Rejected.",
+            "dry_run" => "Preview only.",
+            "full" => "Full result.",
+            "summary" => "Compact result.",
+            "workflow" => "Refreshed workflow.",
+            "operational_failure" => "Pre-effect failure.",
+            "refresh_failure" => "Refresh failed.",
+            "response_budget_exceeded" => "Applied result omitted.",
             "post_effect_failure" => "Post-effect failure.",
-            "adapter_error" => "Pre-Core adapter failure."
+            "finalization_failure" => "No-effect finalization failed.",
+            "adapter_error" => "Pre-Core failure."
         ),
     },
     McpTaggedUnionContract {
@@ -799,7 +800,7 @@ impl SemanticSchemaDescriptor {
                 .iter()
                 .map(|variant| format!("{}={}", variant.discriminator_value, variant.meaning))
                 .collect::<Vec<_>>()
-                .join("; ");
+                .join(";");
             object.insert(
                 "properties".to_owned(),
                 Value::Object(Map::from_iter([(
@@ -811,7 +812,7 @@ impl SemanticSchemaDescriptor {
                             .iter()
                             .map(|variant| variant.discriminator_value.clone())
                             .collect::<Vec<_>>(),
-                        "description": format!("Allowed result variants: {meanings}"),
+                        "description": format!("Variants: {meanings}"),
                     }),
                 )])),
             );

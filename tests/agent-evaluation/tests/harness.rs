@@ -24,7 +24,7 @@ type CriterionMetricDefect = (&'static str, fn(&mut ShapingWorkflowObservation))
 fn catalog_covers_the_three_condition_evaluation_surface_and_shaping_variants() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
     assert_eq!(EvaluationCondition::ALL.len(), 3);
-    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 17);
+    assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len() + 22);
 
     let actual = catalog
         .scenarios
@@ -115,7 +115,7 @@ fn fixture_result_leaves_all_quantitative_live_criteria_measurement_pending() {
     assert!(result.model_host.is_none());
     assert!(result.observations.is_empty());
     assert!(result.trial_failures.is_empty());
-    assert_eq!(result.criteria.len(), 76);
+    assert_eq!(result.criteria.len(), 81);
     assert!(result.criteria.iter().all(|criterion| {
         criterion.status == CriterionStatus::MeasurementPending
             && criterion.measured_value.is_none()
@@ -287,11 +287,11 @@ fn result_schema_and_disabled_live_example_are_parseable() {
     );
     assert_eq!(
         schema["properties"]["criteria"]["minItems"].as_u64(),
-        Some(76)
+        Some(81)
     );
     assert_eq!(
         schema["properties"]["criteria"]["maxItems"].as_u64(),
-        Some(76)
+        Some(81)
     );
 
     let config = load_live_config(&live_config_example_path())
@@ -348,6 +348,18 @@ impl TrialDriver for AggregateSyntheticDriver {
             record && request.trial.scenario_id == "planning-explicit-scope-replacement";
         let persisted_corruption =
             record && request.trial.scenario_id == "read-only-persisted-baseline-corruption";
+        let mutation_finalization = record
+            && request
+                .trial
+                .scenario_id
+                .starts_with("mutation-finalization-");
+        let operation_result_recovery = mutation_finalization
+            && matches!(
+                request.trial.scenario_id.as_str(),
+                "mutation-finalization-committed" | "mutation-finalization-replayed"
+            );
+        let post_commit_finalization =
+            record && request.trial.scenario_id == "mutation-finalization-committed";
         let authority_recovery =
             superseded_history || stale_reauthorization || implementation_invalidation;
         let retry_guidance =
@@ -484,8 +496,10 @@ impl TrialDriver for AggregateSyntheticDriver {
                 explicit_task_advances: u64::from(planning),
                 mutation_calls: if planning { 10 } else { 0 },
                 hidden_mutation_rejections: 0,
-                final_answers: u64::from(planning || persisted_corruption),
-                concise_user_readable_outputs: u64::from(planning || persisted_corruption),
+                final_answers: u64::from(planning || persisted_corruption || mutation_finalization),
+                concise_user_readable_outputs: u64::from(
+                    planning || persisted_corruption || mutation_finalization,
+                ),
                 raw_mcp_json_repetitions: 0,
                 guarantee_wording_checks: u64::from(planning),
                 accurate_cooperative_guarantee_wording: u64::from(planning),
@@ -493,10 +507,12 @@ impl TrialDriver for AggregateSyntheticDriver {
                 impossible_retry_instructions: 0,
                 canonicality_compatibility_wording_opportunities: u64::from(canonicality_wording),
                 accurate_canonicality_compatibility_wording: u64::from(canonicality_wording),
-                mutation_reporting_opportunities: u64::from(planning),
-                accurate_mutation_reports: u64::from(planning),
-                completion_reporting_opportunities: u64::from(shaping_scenario),
-                accurate_completion_reports: u64::from(shaping_scenario),
+                mutation_reporting_opportunities: u64::from(planning || mutation_finalization),
+                accurate_mutation_reports: u64::from(planning || mutation_finalization),
+                completion_reporting_opportunities: u64::from(
+                    shaping_scenario || mutation_finalization,
+                ),
+                accurate_completion_reports: u64::from(shaping_scenario || mutation_finalization),
                 product_only_decision_opportunities: u64::from(product_only),
                 product_only_decisions_applied_exactly: u64::from(product_only),
                 technical_only_decision_opportunities: u64::from(technical_only),
@@ -513,8 +529,20 @@ impl TrialDriver for AggregateSyntheticDriver {
                 speculative_path_or_effect_contracts: 0,
                 record_run_rejection_detail_opportunities: u64::from(record_run_rejection),
                 correct_record_run_rejection_details: u64::from(record_run_rejection),
-                completion_claim_opportunities: u64::from(shaping_scenario),
+                completion_claim_opportunities: u64::from(
+                    shaping_scenario || mutation_finalization,
+                ),
                 premature_completion_claims: 0,
+                mutation_finalization_failure_opportunities: u64::from(mutation_finalization),
+                correct_mutation_effect_branches: u64::from(mutation_finalization),
+                mutation_finalization_retry_opportunities: u64::from(mutation_finalization),
+                mutation_finalization_retries: 0,
+                post_failure_status_read_opportunities: u64::from(mutation_finalization),
+                post_failure_status_reads: u64::from(mutation_finalization),
+                operation_result_retrieval_opportunities: u64::from(operation_result_recovery),
+                exact_operation_results_retrieved: u64::from(operation_result_recovery),
+                post_commit_unchanged_claim_opportunities: u64::from(post_commit_finalization),
+                post_commit_unchanged_claims: 0,
                 accepted_outcome_opportunities: u64::from(accepted),
                 accepted_outcomes_surfaced: u64::from(accepted),
                 rejected_outcome_opportunities: u64::from(rejected),
@@ -970,6 +998,64 @@ fn shaping_authority_metric_defects_fail_their_focused_criteria() {
     for (scenario_id, criterion_id, mutate) in reporting_defects {
         assert_defect(&result.observations, scenario_id, criterion_id, mutate);
     }
+}
+
+#[test]
+fn mutation_finalization_metric_defects_fail_generic_cross_method_criteria() {
+    fn assert_defect(
+        baseline: &[DriverObservation],
+        scenario_id: &str,
+        criterion_id: &str,
+        mutate: impl FnOnce(&mut ShapingWorkflowObservation),
+    ) {
+        let mut observations = baseline.to_vec();
+        let observation = observations
+            .iter_mut()
+            .find(|observation| {
+                observation.condition == EvaluationCondition::RecordLight
+                    && observation.scenario_id == scenario_id
+            })
+            .expect("focused mutation-finalization observation");
+        mutate(&mut observation.shaping_workflow);
+        assert_eq!(
+            status_for(&evaluate_live_criteria(&observations), criterion_id),
+            CriterionStatus::Failed,
+            "{criterion_id}"
+        );
+    }
+
+    let result = run_live_with_driver(&enabled_test_config(), &mut AggregateSyntheticDriver)
+        .expect("synthetic in-process matrix should run");
+    assert_defect(
+        &result.observations,
+        "mutation-finalization-normal-no-effect",
+        "correct_mutation_finalization_effect_branch",
+        |workflow| workflow.correct_mutation_effect_branches = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "mutation-finalization-staged",
+        "mutation_finalization_retry",
+        |workflow| workflow.mutation_finalization_retries = 1,
+    );
+    assert_defect(
+        &result.observations,
+        "mutation-finalization-rejected",
+        "post_failure_status_read",
+        |workflow| workflow.post_failure_status_reads = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "mutation-finalization-replayed",
+        "exact_operation_result_retrieval",
+        |workflow| workflow.exact_operation_results_retrieved = 0,
+    );
+    assert_defect(
+        &result.observations,
+        "mutation-finalization-committed",
+        "post_commit_state_unchanged_claim",
+        |workflow| workflow.post_commit_unchanged_claims = 1,
+    );
 }
 
 struct MissingDirtyAttributionDriver;

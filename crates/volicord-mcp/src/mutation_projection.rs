@@ -52,6 +52,25 @@ use volicord_user_action_presentation::canonical_user_channel_instructions;
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
 
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(crate) enum InjectedMutationFinalizationFailureKind {
+    WorkflowContract {
+        failed_action_key: Option<volicord_types::schema::WorkflowActionKey>,
+        failed_stage: volicord_mcp_wire::McpWorkflowContractStage,
+        method_error_code: Option<volicord_types::values::ErrorCode>,
+        method_error_details: Option<serde_json::Map<String, Value>>,
+    },
+    ResponseProjection,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(crate) struct InjectedMutationFinalizationFailure {
+    pub(crate) stage: McpMutationFinalizationStage,
+    pub(crate) kind: InjectedMutationFinalizationFailureKind,
+}
+
 pub(crate) fn mutation_detail_for_tool(
     tool: AgentToolId,
     arguments: &Value,
@@ -142,6 +161,7 @@ pub(crate) fn finalize_mutation_output(
                 coordinates.as_ref().map(|value| value.borrowed()),
             )
         },
+        |_, _, _, _| None,
     )
 }
 
@@ -170,16 +190,17 @@ where
                 |_, _| Ok(()),
             )
         },
+        |_, _, _, _| None,
     )
 }
 
 #[cfg(test)]
-pub(crate) fn finalize_mutation_output_with_refresh_and_action_form_failure<F>(
+pub(crate) fn finalize_mutation_output_with_injected_failure<F>(
     tool_name: &str,
     detail: Option<MutationDetailLevel>,
     output: ToolCallOutput,
     refresh: F,
-    failure: ActionFormCatalogError,
+    injection: InjectedMutationFinalizationFailure,
 ) -> Result<ToolCallOutput, McpAdapterError>
 where
     F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
@@ -192,17 +213,58 @@ where
         detail,
         output,
         refresh,
-        |_, _| Err(failure),
+        |_, authority| {
+            workflow_action_form_catalog(
+                &authority.receipt.project_id,
+                &authority.workflow,
+                |_, _| Ok(()),
+            )
+        },
+        move |stage, authority, action_forms, transition_rejection| {
+            if stage != injection.stage {
+                return None;
+            }
+            match &injection.kind {
+                InjectedMutationFinalizationFailureKind::WorkflowContract {
+                    failed_action_key,
+                    failed_stage,
+                    method_error_code,
+                    method_error_details,
+                } => {
+                    let mut diagnostics = workflow_contract_diagnostics(
+                        &authority.workflow,
+                        action_forms,
+                        transition_rejection,
+                    );
+                    diagnostics.failed_action_key = RequiredNullable::new(*failed_action_key);
+                    diagnostics.failed_stage = RequiredNullable::some(*failed_stage);
+                    diagnostics.method_error_code = RequiredNullable::new(*method_error_code);
+                    diagnostics.method_error_details =
+                        RequiredNullable::new(method_error_details.clone());
+                    diagnostics.basis_state_version =
+                        RequiredNullable::some(authority.receipt.state_version);
+                    Some(MutationFinalizationFailure::workflow_contract(
+                        stage,
+                        diagnostics,
+                        transition_rejection.cloned(),
+                    ))
+                }
+                InjectedMutationFinalizationFailureKind::ResponseProjection => {
+                    Some(MutationFinalizationFailure::response_projection(stage))
+                }
+            }
+        },
     )
 }
 
-fn finalize_mutation_output_with_refresh_for_capabilities<F, G>(
+fn finalize_mutation_output_with_refresh_for_capabilities<F, G, H>(
     tool_name: &str,
     capabilities: McpProtocolCapabilities,
     detail: Option<MutationDetailLevel>,
     mut output: ToolCallOutput,
     refresh: F,
     action_forms: G,
+    mut injected_failure: H,
 ) -> Result<ToolCallOutput, McpAdapterError>
 where
     F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
@@ -210,6 +272,12 @@ where
         &MutationRefreshContext,
         &ValidatedMutationAuthority,
     ) -> Result<volicord_mcp_wire::WorkflowActionFormCatalog, ActionFormCatalogError>,
+    H: FnMut(
+        McpMutationFinalizationStage,
+        &ValidatedMutationAuthority,
+        Option<&volicord_mcp_wire::WorkflowActionFormCatalog>,
+        Option<&TransitionRejection>,
+    ) -> Option<MutationFinalizationFailure>,
 {
     let Some(detail) = detail else {
         return Ok(output);
@@ -291,6 +359,17 @@ where
         None
     };
 
+    if let Some(failure) = injected_failure(
+        McpMutationFinalizationStage::ActionFormCatalog,
+        &authority,
+        None,
+        rejected_method_result
+            .as_ref()
+            .and_then(|(_, rejection)| rejection.as_ref()),
+    ) {
+        return project_mutation_finalization_failure(&outcome, &failure);
+    }
+
     let action_form_catalog = match action_forms(&context, &authority) {
         Ok(catalog) => catalog,
         Err(failure) => {
@@ -305,6 +384,17 @@ where
             );
         }
     };
+
+    if let Some(failure) = injected_failure(
+        McpMutationFinalizationStage::WorkflowPresentation,
+        &authority,
+        Some(&action_form_catalog),
+        rejected_method_result
+            .as_ref()
+            .and_then(|(_, rejection)| rejection.as_ref()),
+    ) {
+        return project_mutation_finalization_failure(&outcome, &failure);
+    }
 
     let presentation = match workflow_presentation(
         tool_name,
@@ -345,6 +435,17 @@ where
             );
         }
     };
+
+    if let Some(failure) = injected_failure(
+        McpMutationFinalizationStage::ResponseProjection,
+        &authority,
+        Some(&presentation.action_form_catalog),
+        rejected_method_result
+            .as_ref()
+            .and_then(|(_, rejection)| rejection.as_ref()),
+    ) {
+        return project_mutation_finalization_failure(&outcome, &failure);
+    }
 
     if let Some((method_result, transition_rejection)) = rejected_method_result {
         let diagnostics = workflow_contract_diagnostics(

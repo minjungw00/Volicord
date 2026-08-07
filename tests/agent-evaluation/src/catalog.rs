@@ -5,10 +5,10 @@ use std::{
 
 use crate::{
     model::{
-        CheckStatus, EvaluationCondition, FixtureCatalog, FixtureCheck, ScenarioFixture,
-        ScopeRetargetRecoveryExpectation, ShapingApplicationOwnerExpectation,
-        ShapingAuthorityRecoveryExpectation, ShapingOutcomeExpectation, TaskGroup,
-        FIXTURE_CATALOG_SCHEMA,
+        CheckStatus, EvaluationCondition, FixtureCatalog, FixtureCheck,
+        MutationFinalizationOutcomeExpectation, ScenarioFixture, ScopeRetargetRecoveryExpectation,
+        ShapingApplicationOwnerExpectation, ShapingAuthorityRecoveryExpectation,
+        ShapingOutcomeExpectation, TaskGroup, FIXTURE_CATALOG_SCHEMA,
     },
     HarnessError, HarnessResult,
 };
@@ -45,6 +45,7 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
     let mut application_owners = BTreeSet::new();
     let mut authority_recoveries = BTreeSet::new();
     let mut scope_retarget_recoveries = BTreeSet::new();
+    let mut mutation_finalization_outcomes = BTreeSet::new();
     for scenario in &catalog.scenarios {
         validate_scenario(scenario)?;
         if !scenario_ids.insert(&scenario.scenario_id) {
@@ -65,6 +66,9 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
         }
         if let Some(recovery) = scenario.expected.scope_retarget_recovery {
             scope_retarget_recoveries.insert(recovery);
+        }
+        if let Some(outcome) = scenario.expected.mutation_finalization_outcome {
+            mutation_finalization_outcomes.insert(outcome);
         }
     }
     if task_groups != TaskGroup::ALL.into_iter().collect() {
@@ -124,13 +128,28 @@ pub fn validate_catalog(catalog: &FixtureCatalog) -> HarnessResult<Vec<FixtureCh
             "fixture catalog does not cover scope replacement and persisted corruption recovery",
         ));
     }
+    if mutation_finalization_outcomes
+        != [
+            MutationFinalizationOutcomeExpectation::Committed,
+            MutationFinalizationOutcomeExpectation::Staged,
+            MutationFinalizationOutcomeExpectation::Replayed,
+            MutationFinalizationOutcomeExpectation::Rejected,
+            MutationFinalizationOutcomeExpectation::NormalNoEffect,
+        ]
+        .into_iter()
+        .collect()
+    {
+        return Err(HarnessError::new(
+            "fixture catalog does not cover every mutation finalization outcome",
+        ));
+    }
 
     Ok(vec![
         FixtureCheck {
             check_id: "shaping_authority_coverage".to_owned(),
             status: CheckStatus::Passed,
             detail:
-                "decision outcomes, application owners, authority recovery, scope replacement, and persisted corruption paths are covered".to_owned(),
+                "decision outcomes, application owners, authority recovery, scope replacement, persisted corruption, and mutation finalization outcomes are covered".to_owned(),
         },
         FixtureCheck {
             check_id: "evaluation_conditions".to_owned(),

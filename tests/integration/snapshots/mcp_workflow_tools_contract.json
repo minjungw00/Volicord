@@ -169,6 +169,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -205,6 +206,7 @@
           "RequestHash",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -322,7 +324,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:639b2a2fcff639a666bce793a7147d14b8b516ed4712d4e310078b21ec378f04"
+        "sha256": "sha256:9527ceb54510d59cc6407adf0a3b7560b836b02709388c6acb879fb945cf374e"
       }
     },
     {
@@ -462,6 +464,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -499,6 +502,7 @@
           "RequestHash",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -618,7 +622,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a7c5c9e51a5fc273254929940eb745c36a2484af92a29644ec203575afedf307"
+        "sha256": "sha256:e67ed9a0e441b1a1da5e0ca34c7e7fd388667e9f0ec0a99788ccb2089ed851ae"
       }
     },
     {
@@ -780,6 +784,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -819,6 +824,7 @@
           "RequestHash",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -937,7 +943,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:20b0b8387f675dfdb2e36d64c6771a005f9479bd3d1b5832f5592004134971fa"
+        "sha256": "sha256:6d2b59b4c200ec8005ea72426f98c436b9bca55b741446bb3554f8f3604687dc"
       }
     },
     {
@@ -1074,6 +1080,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -1110,6 +1117,7 @@
           "RequestHash",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -1228,7 +1236,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6b0f28f7033568311bbfacf6c1a40c9f2fe01c723349a64ef20ee9ea88b383ba"
+        "sha256": "sha256:d36bb54a99cf9e69ba07a344daba46484cde4ef406c6ed05c3a2a5ed6be1110d"
       }
     },
     {
@@ -1354,6 +1362,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -1390,6 +1399,7 @@
           "RequestHash",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -1507,7 +1517,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4c180a6c88e4d6c6b9e5a510e31fc13a4775a16223e00f495ac886160c4448c3"
+        "sha256": "sha256:0c997450904e0d512c525f002d15e45dfe5cbd56b37f20c4561c839d29bf2293"
       }
     },
     {
@@ -2072,6 +2082,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -2109,6 +2120,7 @@
           "RepositoryFileSource",
           "RequestHash",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -2210,7 +2222,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:927729f87e2ad5d51070f179f1089e200d8576ad418f84b84400500ff53be3b2"
+        "sha256": "sha256:1e35c85cff6b6f9ffe9ac321058c557e2c3b68b220236ba8c009480abe31fc2f"
       }
     },
     {
@@ -2333,6 +2345,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -2373,6 +2386,7 @@
           "RequestHash",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -2497,7 +2511,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a2797e982316e70478aef21c33513278a483e14fc656b41a9a9eea85059db36c"
+        "sha256": "sha256:9a35250e7a7b4c8aca284c410225925251307439eb2d44ac4b097332a0edbdfe"
       }
     },
     {
@@ -2606,6 +2620,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -2640,6 +2655,7 @@
           "RepositoryFileSource",
           "RequestHash",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -2744,7 +2760,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6bef1574ad1fae44897ca5e900ee0959c933c2d2b75e6205605504e0ef45204a"
+        "sha256": "sha256:2e16ec640d32120e2b308c55c6a958c112084bcc8c1b7fc2c5e7581e7ce1a956"
       }
     },
     {
@@ -2929,6 +2945,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -2970,6 +2987,7 @@
           "RequestedControlLevel",
           "ResidualRisk",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -3089,7 +3107,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ebc208c9e849edd7b48a8e59ac4f205552280376b2a51d8fae9e65e6ff90e0b3"
+        "sha256": "sha256:9476024e8da8418a3b103927f5f1a300afe44e9dff1213b2582c64e892a77b79"
       }
     },
     {
@@ -3228,6 +3246,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -3270,6 +3289,7 @@
           "RequestUserActionResultBase",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -3389,7 +3409,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:614213bc8cca969265621f40cf4158a47091322f2a7bdada9e717b9fda07d857"
+        "sha256": "sha256:b38ca5845e1fcfb127d8fe8f5bbda74db7eb0abb8eea1ec2dc0aa18097e84026"
       }
     },
     {
@@ -3504,6 +3524,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -3544,6 +3565,7 @@
           "RequestHash",
           "RequestedControlLevel",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskId",
           "RunId",
@@ -3666,7 +3688,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b0f8ff46e5d0ba0ddd913a725c37083f8c51d6995448551cb3f5acdbe2071b75"
+        "sha256": "sha256:cf0daa6daf0bef42e28a7f380bd321614d7760ba3fdedeaa78f28bd2d333e2af"
       }
     },
     {
@@ -4035,6 +4057,7 @@
           "McpMutationEffectSummary",
           "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
+          "McpNoEffectFinalizationFailureCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
           "McpOperationalResource",
@@ -4076,6 +4099,7 @@
           "RequestedControlLevel",
           "ResidualRisk",
           "ResidualRiskInput",
+          "ResponseKind",
           "RetryContract",
           "RiskAcceptanceCoverage",
           "RiskId",
@@ -4196,7 +4220,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:90219ad95ef255dafc2795ab13ccdb50a39afc36a217f8c8341ab4d48b4c8f62"
+        "sha256": "sha256:6b1b737c32de3b89051366563d472d1456d5e88d2979bb79b0afc85f98027298"
       }
     },
     {
