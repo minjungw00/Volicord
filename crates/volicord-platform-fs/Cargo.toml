@@ -27,3 +27,8 @@ rustix = { version = "1", features = ["fs", "process"] }
 [dev-dependencies]
 serde_json = "1"
 tempfile = "3"
+
+[[test]]
+name = "mutation_lease_fixture"
+path = "tests/mutation_lease_fixture.rs"
+harness = false
