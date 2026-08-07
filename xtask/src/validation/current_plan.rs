@@ -376,6 +376,63 @@ mod tests {
     }
 
     #[test]
+    fn ci_runs_bounded_mutation_lease_stability_outside_the_shared_final_plan() {
+        let workflow: serde_yaml::Value =
+            serde_yaml::from_str(include_str!("../../../.github/workflows/ci.yml"))
+                .expect("parse CI workflow");
+        let job = &workflow["jobs"]["mutation-lease-stability"];
+        assert_eq!(job["runs-on"].as_str(), Some("ubuntu-24.04"));
+        assert_eq!(job["timeout-minutes"].as_u64(), Some(15));
+        let steps = job["steps"].as_sequence().expect("stability CI steps");
+        let stability_steps = steps
+            .iter()
+            .filter(|step| {
+                step["run"].as_str().is_some_and(|run| {
+                    run.contains("cargo test --locked -p volicord-platform-fs")
+                        && run.contains("--test mutation_lease_process")
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(stability_steps.len(), 1);
+        let stability = stability_steps[0];
+        assert_eq!(
+            stability["env"]["MUTATION_LEASE_STABILITY_ITERATIONS"].as_str(),
+            Some("20")
+        );
+        let run = stability["run"].as_str().expect("stability command");
+        assert!(
+            run.contains("while [ \"$iteration\" -le \"$MUTATION_LEASE_STABILITY_ITERATIONS\" ]")
+        );
+        assert!(run.contains("iteration-${iteration}.log"));
+        assert!(run.contains("set -o pipefail"));
+        assert!(run.contains("exit \"$status\""));
+        assert!(!run.contains("--test-threads=1"));
+        assert!(!run.contains("RUST_TEST_THREADS"));
+        assert!(!run.contains("until cargo test"));
+
+        let upload = steps
+            .iter()
+            .find(|step| step["uses"].as_str() == Some("actions/upload-artifact@v4"))
+            .expect("failing stability log upload");
+        assert_eq!(upload["if"].as_str(), Some("failure()"));
+        assert_eq!(
+            upload["with"]["path"].as_str(),
+            Some("target/mutation-lease-stability/")
+        );
+
+        assert!(current_linux_validation_plan()
+            .commands
+            .iter()
+            .all(|command| {
+                command.id != "mutation-lease-stability"
+                    && !command.args.iter().any(|argument| {
+                        argument.contains("mutation_lease_process")
+                            || argument.contains("MUTATION_LEASE_STABILITY_ITERATIONS")
+                    })
+            }));
+    }
+
+    #[test]
     fn current_plan_has_machine_readable_and_human_renderings() {
         let plan = current_linux_validation_plan();
         let json = serde_json::to_string_pretty(&plan).expect("serialize current plan");

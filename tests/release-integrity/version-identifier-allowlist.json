@@ -7,6 +7,12 @@
       "reason": "GitHub Actions owns the checkout action release identifier."
     },
     {
+      "path": ".github/workflows/ci.yml",
+      "needle": "actions/upload-artifact@v4",
+      "classification": "third_party_api",
+      "reason": "GitHub Actions owns the artifact action release identifier."
+    },
+    {
       "path": ".github/workflows/release.yml",
       "needle": "actions/checkout@v4",
       "classification": "third_party_api",
@@ -197,6 +203,12 @@
       "needle": "VOLICORD_DIAGNOSTIC_V1",
       "classification": "product_contract",
       "reason": "The Korean runtime owner defines where the exact bootstrap diagnostic envelope may be emitted."
+    },
+    {
+      "path": "xtask/src/validation/current_plan.rs",
+      "needle": "actions/upload-artifact@v4",
+      "classification": "third_party_api",
+      "reason": "The centralized CI contract test verifies the GitHub-owned artifact action release identifier."
     },
     {
       "path": "xtask/tests/release_version_check.rs",

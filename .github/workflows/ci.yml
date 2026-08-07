@@ -64,6 +64,47 @@ jobs:
       - name: Run current Linux repository validation plan
         run: cargo run --locked -p xtask -- validate final --base HEAD
 
+  mutation-lease-stability:
+    name: Mutation lease stability (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
+
+      - name: Repeat mutation lease process isolation
+        shell: bash
+        env:
+          MUTATION_LEASE_STABILITY_ITERATIONS: "20"
+        run: |
+          set -o pipefail
+          mkdir -p target/mutation-lease-stability
+          iteration=1
+          while [ "$iteration" -le "$MUTATION_LEASE_STABILITY_ITERATIONS" ]; do
+            log_path="target/mutation-lease-stability/iteration-${iteration}.log"
+            echo "mutation-lease stability iteration ${iteration}/${MUTATION_LEASE_STABILITY_ITERATIONS}"
+            if cargo test --locked -p volicord-platform-fs --test mutation_lease_process 2>&1 | tee "$log_path"; then
+              iteration=$((iteration + 1))
+            else
+              status=$?
+              echo "mutation-lease stability failed at iteration ${iteration}" | tee -a "$log_path"
+              exit "$status"
+            fi
+          done
+
+      - name: Preserve mutation lease stability logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-lease-stability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/mutation-lease-stability/
+          if-no-files-found: ignore
+
   operational-host-native-platforms:
     name: Operational host tests (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
