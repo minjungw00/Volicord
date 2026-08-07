@@ -1,16 +1,20 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    collections::BTreeSet,
     error::Error,
     io,
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
-    sync::OnceLock,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Barrier, OnceLock,
+    },
     thread,
     time::{Duration, Instant},
 };
 
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 use volicord_platform_fs::{
     RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
     RuntimeHomeMutationWaitPolicy,
@@ -29,6 +33,7 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(2);
 const CAPTURE_LIMIT: usize = 64 * 1024;
+const CONCURRENT_ROUNDS: usize = 2;
 
 static FIXTURE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
@@ -73,6 +78,7 @@ struct LeaseChild {
     stderr_capture: Vec<u8>,
     stdout_omitted: usize,
     stderr_omitted: usize,
+    reaped: Arc<AtomicBool>,
     finalized: bool,
 }
 
@@ -104,6 +110,7 @@ impl LeaseChild {
             stderr_capture: Vec::new(),
             stdout_omitted: 0,
             stderr_omitted: 0,
+            reaped: Arc::new(AtomicBool::new(false)),
             finalized: false,
         };
         let child = lease_child
@@ -132,6 +139,10 @@ impl LeaseChild {
             return Err(format!("{error}\n{diagnostics}").into());
         }
         Ok(lease_child)
+    }
+
+    fn reap_audit(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.reaped)
     }
 
     fn configure_pipes(&mut self) -> io::Result<()> {
@@ -226,6 +237,10 @@ impl LeaseChild {
             ),
             ChildExit::Normal | ChildExit::Terminated => {}
         }
+        assert!(
+            self.reaped.load(Ordering::Acquire),
+            "completed mutation-lease fixture child was not reaped\n{diagnostics}"
+        );
         self.finalized = true;
         Ok(())
     }
@@ -277,6 +292,7 @@ impl LeaseChild {
         if let Some(status) = child.try_wait()? {
             self.status = Some(status);
             self.child.take();
+            self.reaped.store(true, Ordering::Release);
             return Ok(Some(status));
         }
         Ok(None)
@@ -443,8 +459,182 @@ fn expected_admission(
         && requested == RuntimeHomeMutationLeaseMode::SharedWriter
 }
 
+struct ProcessGroupNamespace {
+    fixture: TempDir,
+    target: PathBuf,
+    lock_identity: String,
+}
+
+impl ProcessGroupNamespace {
+    fn create() -> Result<Self, Box<dyn Error>> {
+        let fixture = tempdir()?;
+        let target = fixture.path().join("runtime-home");
+        let RuntimeHomeMutationLeaseOutcome::Acquired(lease) = acquire(
+            &target,
+            RuntimeHomeMutationLeaseMode::SharedWriter,
+            RuntimeHomeMutationWaitPolicy::Immediate,
+        )?
+        else {
+            return Err("fresh process-group namespace was unexpectedly busy".into());
+        };
+        let lock_identity = lease.lock_identity().as_str().to_owned();
+        drop(lease);
+        Ok(Self {
+            fixture,
+            target,
+            lock_identity,
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ConcurrentGroupCase {
+    label: &'static str,
+    held: RuntimeHomeMutationLeaseMode,
+    requested: RuntimeHomeMutationLeaseMode,
+    wait_policy: RuntimeHomeMutationWaitPolicy,
+    exit: ChildExit,
+    parent_unwind: bool,
+}
+
+fn concurrent_group_cases() -> [ConcurrentGroupCase; 9] {
+    use RuntimeHomeMutationLeaseMode::{ExclusiveSetup, SharedWriter};
+
+    let immediate = RuntimeHomeMutationWaitPolicy::Immediate;
+    let bounded = RuntimeHomeMutationWaitPolicy::Bounded {
+        timeout: Duration::from_millis(25),
+    };
+    [
+        ConcurrentGroupCase {
+            label: "shared-shared-immediate-normal",
+            held: SharedWriter,
+            requested: SharedWriter,
+            wait_policy: immediate,
+            exit: ChildExit::Normal,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "shared-shared-bounded-error",
+            held: SharedWriter,
+            requested: SharedWriter,
+            wait_policy: bounded,
+            exit: ChildExit::Error,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "shared-exclusive-immediate-panic",
+            held: SharedWriter,
+            requested: ExclusiveSetup,
+            wait_policy: immediate,
+            exit: ChildExit::Panic,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "shared-exclusive-bounded-terminated",
+            held: SharedWriter,
+            requested: ExclusiveSetup,
+            wait_policy: bounded,
+            exit: ChildExit::Terminated,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "exclusive-shared-immediate-error",
+            held: ExclusiveSetup,
+            requested: SharedWriter,
+            wait_policy: immediate,
+            exit: ChildExit::Error,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "exclusive-shared-bounded-panic",
+            held: ExclusiveSetup,
+            requested: SharedWriter,
+            wait_policy: bounded,
+            exit: ChildExit::Panic,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "exclusive-exclusive-immediate-terminated",
+            held: ExclusiveSetup,
+            requested: ExclusiveSetup,
+            wait_policy: immediate,
+            exit: ChildExit::Terminated,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "exclusive-exclusive-bounded-normal",
+            held: ExclusiveSetup,
+            requested: ExclusiveSetup,
+            wait_policy: bounded,
+            exit: ChildExit::Normal,
+            parent_unwind: false,
+        },
+        ConcurrentGroupCase {
+            label: "exclusive-shared-parent-unwind",
+            held: ExclusiveSetup,
+            requested: SharedWriter,
+            wait_policy: immediate,
+            exit: ChildExit::Normal,
+            parent_unwind: true,
+        },
+    ]
+}
+
+fn run_concurrent_group(
+    namespace: ProcessGroupNamespace,
+    case: ConcurrentGroupCase,
+    ready: &Barrier,
+) -> Result<(), Box<dyn Error>> {
+    let child_result = LeaseChild::spawn(&namespace.target, case.held, case.exit);
+    ready.wait();
+    let child = child_result?;
+    let reap_audit = child.reap_audit();
+
+    let outcome = acquire(&namespace.target, case.requested, case.wait_policy)?;
+    assert_eq!(
+        matches!(outcome, RuntimeHomeMutationLeaseOutcome::Acquired(_)),
+        expected_admission(case.held, case.requested),
+        "concurrent group {} observed cross-namespace interference: held={:?}, requested={:?}, wait_policy={:?}",
+        case.label,
+        case.held,
+        case.requested,
+        case.wait_policy,
+    );
+    if let RuntimeHomeMutationLeaseOutcome::Busy(busy) = &outcome {
+        assert_eq!(busy.requested_mode(), case.requested, "{}", case.label);
+        assert_eq!(busy.wait_policy(), case.wait_policy, "{}", case.label);
+    }
+    drop(outcome);
+
+    if case.parent_unwind {
+        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _child = child;
+            panic!("injected concurrent parent unwind");
+        }));
+        assert!(unwind.is_err(), "{} did not unwind", case.label);
+    } else {
+        child.finish(case.exit)?;
+    }
+    assert!(
+        reap_audit.load(Ordering::Acquire),
+        "{} left its fixture child unreaped",
+        case.label
+    );
+
+    assert!(matches!(
+        acquire(
+            &namespace.target,
+            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+            RuntimeHomeMutationWaitPolicy::Immediate,
+        )?,
+        RuntimeHomeMutationLeaseOutcome::Acquired(_)
+    ));
+    namespace.fixture.close()?;
+    Ok(())
+}
+
 #[test]
-fn cross_process_mutation_lease_protocol() -> Result<(), Box<dyn Error>> {
+fn cross_process_mutation_lease_contention_matrix() -> Result<(), Box<dyn Error>> {
     let modes = [
         RuntimeHomeMutationLeaseMode::SharedWriter,
         RuntimeHomeMutationLeaseMode::ExclusiveSetup,
@@ -482,6 +672,15 @@ fn cross_process_mutation_lease_protocol() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    Ok(())
+}
+
+#[test]
+fn cross_process_mutation_lease_exit_release_matrix() -> Result<(), Box<dyn Error>> {
+    let modes = [
+        RuntimeHomeMutationLeaseMode::SharedWriter,
+        RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+    ];
     for mode in modes {
         for exit in ChildExit::ALL {
             let fixture = tempdir()?;
@@ -519,19 +718,69 @@ fn cross_process_mutation_lease_protocol() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn independent_process_groups_preserve_parallel_isolation() -> Result<(), Box<dyn Error>> {
+    let _ = fixture_path();
+    for round in 0..CONCURRENT_ROUNDS {
+        let cases = concurrent_group_cases();
+        let mut namespaces = cases
+            .iter()
+            .map(|_| ProcessGroupNamespace::create())
+            .collect::<Result<Vec<_>, _>>()?;
+        let identities = namespaces
+            .iter()
+            .map(|namespace| namespace.lock_identity.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            identities.len(),
+            namespaces.len(),
+            "concurrent round {round} reused a mutation coordination namespace"
+        );
+
+        let ready = Barrier::new(cases.len());
+        thread::scope(|scope| -> Result<(), Box<dyn Error>> {
+            let handles = cases
+                .into_iter()
+                .zip(namespaces.drain(..))
+                .map(|(case, namespace)| {
+                    let ready = &ready;
+                    scope.spawn(move || {
+                        run_concurrent_group(namespace, case, ready)
+                            .map_err(|error| format!("{}: {error}", case.label))
+                    })
+                })
+                .collect::<Vec<_>>();
+            for handle in handles {
+                match handle.join() {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => return Err(error.into()),
+                    Err(_) => return Err("concurrent mutation-lease group panicked".into()),
+                }
+            }
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+#[test]
 fn parent_unwind_reaps_fixture_and_releases_lease() -> Result<(), Box<dyn Error>> {
     let fixture = tempdir()?;
     let target = fixture.path().join("runtime-home");
+    let child = LeaseChild::spawn(
+        &target,
+        RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+        ChildExit::Normal,
+    )?;
+    let reap_audit = child.reap_audit();
     let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _child = LeaseChild::spawn(
-            &target,
-            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
-            ChildExit::Normal,
-        )
-        .expect("spawn mutation-lease fixture before parent unwind");
+        let _child = child;
         panic!("injected parent test unwind");
     }));
     assert!(unwind.is_err());
+    assert!(
+        reap_audit.load(Ordering::Acquire),
+        "parent unwind left its fixture child unreaped"
+    );
     assert!(matches!(
         acquire(
             &target,
