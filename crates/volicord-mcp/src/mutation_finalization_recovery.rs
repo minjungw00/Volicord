@@ -1,5 +1,5 @@
-//! Bounded recovery for committed mutations whose ordinary MCP result cannot
-//! be projected.
+//! Bounded mutation-finalization recovery that preserves observed effect facts
+//! when the ordinary MCP result cannot be projected.
 
 use crate::errors::McpAdapterError;
 use crate::mutation_projection::{
@@ -9,7 +9,7 @@ use crate::telemetry::ToolDiagnosticFacts;
 use crate::tool_dispatch::{rendered_tool_call_output_size_for_capabilities, ToolCallOutput};
 use crate::tool_registry::method_name_for_tool;
 use serde_json::Value;
-use volicord_mcp_protocol::{CommittedResultRecovery, McpProtocolCapabilities};
+use volicord_mcp_protocol::{McpProtocolCapabilities, MutationFinalizationRecovery};
 use volicord_mcp_wire::{
     McpAuthoritativeRefreshFailure, McpMutationFinalizationStage,
     McpMutationNoEffectFinalizationFailure, McpMutationPostEffectFailure,
@@ -122,7 +122,7 @@ impl CanonicalMcpMutationOutcome {
         ]
     }
 
-    fn state_change_applied(&self) -> bool {
+    pub(crate) fn state_change_applied(&self) -> bool {
         self.facts.core_committed
     }
 
@@ -296,9 +296,9 @@ where
     match outcome
         .capabilities
         .result_recovery()
-        .committed_result_recovery()
+        .mutation_finalization_recovery()
     {
-        CommittedResultRecovery::PreserveAuthorityThenCompactResult => {}
+        MutationFinalizationRecovery::PreserveAuthorityThenCompactResult => {}
     }
     for candidate in outcome
         .recovery_candidates(include_exact)
@@ -315,19 +315,21 @@ where
     Err(McpAdapterError::Protocol(exhausted_message.to_owned()))
 }
 
-fn aligned_workflow_contract_diagnostics(
+fn validated_workflow_contract_diagnostics(
     outcome: &CanonicalMcpMutationOutcome,
     failure: &MutationFinalizationFailure,
-) -> Option<McpWorkflowContractDiagnostics> {
-    failure
-        .workflow_contract_diagnostics
-        .as_ref()
-        .cloned()
-        .map(|mut diagnostics| {
-            diagnostics.committed = outcome.facts.core_committed;
-            diagnostics.state_change_applied = outcome.state_change_applied();
-            diagnostics
-        })
+) -> Result<Option<McpWorkflowContractDiagnostics>, McpAdapterError> {
+    let Some(diagnostics) = failure.workflow_contract_diagnostics.as_ref() else {
+        return Ok(None);
+    };
+    if diagnostics.committed != outcome.facts.core_committed
+        || diagnostics.state_change_applied != outcome.state_change_applied()
+    {
+        return Err(McpAdapterError::Protocol(
+            "workflow-contract diagnostics disagree with observed mutation effect facts".to_owned(),
+        ));
+    }
+    Ok(Some(diagnostics.clone()))
 }
 
 pub(crate) fn project_mutation_finalization_failure(
@@ -388,7 +390,7 @@ fn mutation_no_effect_finalization_failure_output(
             "no-effect finalization recovery requires a bounded failure code".to_owned(),
         )
     })?;
-    let complete_diagnostics = aligned_workflow_contract_diagnostics(outcome, failure);
+    let complete_diagnostics = validated_workflow_contract_diagnostics(outcome, failure)?;
     let failed_action_key = complete_diagnostics
         .as_ref()
         .map(|diagnostics| diagnostics.failed_action_key.clone())
@@ -492,7 +494,7 @@ fn pre_effect_internal_contract_rejection(
             "pre-effect internal contract rejection cannot carry an applied effect".to_owned(),
         ));
     }
-    let diagnostics = aligned_workflow_contract_diagnostics(outcome, failure);
+    let diagnostics = validated_workflow_contract_diagnostics(outcome, failure)?;
     let transition_rejection = failure.transition_rejection().cloned();
     let workflow_contract_failed = diagnostics.is_some();
     let mut structured = McpToolErrorResponse {
@@ -680,7 +682,7 @@ fn mutation_post_effect_failure_output(
             "post-effect recovery requires a post-effect failure code".to_owned(),
         )
     })?;
-    let complete_diagnostics = aligned_workflow_contract_diagnostics(outcome, failure);
+    let complete_diagnostics = validated_workflow_contract_diagnostics(outcome, failure)?;
     let failed_action_key = complete_diagnostics
         .as_ref()
         .map(|diagnostics| diagnostics.failed_action_key.clone())
@@ -1085,6 +1087,34 @@ mod tests {
         assert!(failure
             .to_string()
             .contains("cannot carry an applied effect"));
+        assert_eq!(outcome.facts, facts);
+    }
+
+    #[test]
+    fn workflow_contract_diagnostics_cannot_rewrite_observed_effect_facts() {
+        let facts = ToolDiagnosticFacts {
+            core_reached: true,
+            core_committed: true,
+            effect_kind: Some(EffectKind::CoreCommitted),
+            effect_applied: true,
+            effect_anchor: Some("authority_event:event_committed".to_owned()),
+            ..ToolDiagnosticFacts::default()
+        };
+        let outcome = outcome(facts.clone());
+
+        let failure = project_mutation_finalization_failure(
+            &outcome,
+            &MutationFinalizationFailure::workflow_contract(
+                McpMutationFinalizationStage::WorkflowPresentation,
+                test_contract_diagnostics(),
+                None,
+            ),
+        )
+        .expect_err("mismatched diagnostics must not be rewritten after an observed effect");
+
+        assert!(failure
+            .to_string()
+            .contains("diagnostics disagree with observed mutation effect facts"));
         assert_eq!(outcome.facts, facts);
     }
 

@@ -9,13 +9,13 @@ use crate::authority_refresh::{
     ValidatedMutationAuthority,
 };
 use crate::binding::managed_agent_session_binding;
-use crate::committed_result_recovery::{
+use crate::errors::McpAdapterError;
+use crate::lifecycle::SessionRuntime;
+use crate::mutation_finalization_recovery::{
     authoritative_refresh_failure_output, bounded_mutation_compatibility_text,
     project_mutation_finalization_failure, CanonicalMcpMutationOutcome,
     MutationFinalizationFailure,
 };
-use crate::errors::McpAdapterError;
-use crate::lifecycle::SessionRuntime;
 use crate::tool_dispatch::{tool_call_result_from_output_for_capabilities, ToolCallOutput};
 use serde_json::Value;
 use volicord_core::pipeline::PipelineResponse;
@@ -205,6 +205,8 @@ pub(crate) fn finalize_mutation_output_with_injected_failure<F>(
 where
     F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
 {
+    let diagnostic_committed = output.diagnostic_facts.core_committed;
+    let diagnostic_state_change_applied = output.diagnostic_facts.core_committed;
     finalize_mutation_output_with_refresh_for_capabilities(
         tool_name,
         ProtocolRegistry::production()
@@ -235,6 +237,8 @@ where
                         &authority.workflow,
                         action_forms,
                         transition_rejection,
+                        diagnostic_committed,
+                        diagnostic_state_change_applied,
                     );
                     diagnostics.failed_action_key = RequiredNullable::new(*failed_action_key);
                     diagnostics.failed_stage = RequiredNullable::some(*failed_stage);
@@ -373,7 +377,11 @@ where
     let action_form_catalog = match action_forms(&context, &authority) {
         Ok(catalog) => catalog,
         Err(failure) => {
-            let diagnostics = failure.diagnostics(&authority.workflow);
+            let diagnostics = failure.diagnostics(
+                &authority.workflow,
+                outcome.facts.core_committed,
+                outcome.state_change_applied(),
+            );
             return project_mutation_finalization_failure(
                 &outcome,
                 &MutationFinalizationFailure::workflow_contract(
@@ -416,6 +424,8 @@ where
                 &authority.workflow,
                 Some(&action_form_catalog),
                 transition_rejection.as_ref(),
+                outcome.facts.core_committed,
+                outcome.state_change_applied(),
             );
             return project_mutation_finalization_failure(
                 &outcome,
@@ -452,6 +462,8 @@ where
             &authority.workflow,
             Some(&presentation.action_form_catalog),
             transition_rejection.as_ref(),
+            outcome.facts.core_committed,
+            outcome.state_change_applied(),
         );
         let retry = match transition_rejection.as_ref().and_then(|rejection| {
             rejection
@@ -947,6 +959,8 @@ fn workflow_contract_diagnostics(
     workflow: &volicord_types::schema::WorkflowProjection,
     action_forms: Option<&volicord_mcp_wire::WorkflowActionFormCatalog>,
     rejection: Option<&TransitionRejection>,
+    committed: bool,
+    state_change_applied: bool,
 ) -> McpWorkflowContractDiagnostics {
     McpWorkflowContractDiagnostics {
         normalized_workflow_snapshot: workflow.clone(),
@@ -965,8 +979,8 @@ fn workflow_contract_diagnostics(
         method_error_code: RequiredNullable::null(),
         method_error_details: RequiredNullable::null(),
         basis_state_version: RequiredNullable::null(),
-        state_change_applied: false,
-        committed: false,
+        state_change_applied,
+        committed,
         workflow_contract_digest: action_forms.map_or_else(
             volicord_types::managed_guidance::workflow_contract_semantic_digest,
             |forms| forms.workflow_contract_digest.clone(),
@@ -996,7 +1010,7 @@ fn workflow_contract_diagnostics_with_failure(
     action_key: Option<volicord_types::schema::WorkflowActionKey>,
     stage: volicord_mcp_wire::McpWorkflowContractStage,
 ) -> McpWorkflowContractDiagnostics {
-    let mut diagnostics = workflow_contract_diagnostics(workflow, None, None);
+    let mut diagnostics = workflow_contract_diagnostics(workflow, None, None, false, false);
     diagnostics.failed_action_key = RequiredNullable::new(action_key);
     diagnostics.failed_stage = RequiredNullable::some(stage);
     diagnostics
@@ -1430,7 +1444,7 @@ mod tests {
         rejected_compatibility_text, response_kind_from_structured_content,
         workflow_contract_diagnostics_with_failure,
     };
-    use crate::committed_result_recovery::{
+    use crate::mutation_finalization_recovery::{
         project_mutation_finalization_failure, CanonicalMcpMutationOutcome,
         MutationFinalizationFailure,
     };

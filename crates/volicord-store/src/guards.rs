@@ -593,6 +593,10 @@ pub fn current_project_agent_session_coordinates(
             }
         })?;
     let guidance_digest = volicord_types::managed_guidance::managed_guidance_semantic_digest();
+    let mutation_finalization_digest =
+        volicord_types::managed_guidance::mutation_finalization_contract_semantic_digest();
+    let post_effect_response_digest =
+        volicord_types::managed_guidance::post_effect_response_contract_semantic_digest();
     let workflow_contract_digest =
         volicord_types::managed_guidance::workflow_contract_semantic_digest();
     let submission_contract_digest =
@@ -612,6 +616,8 @@ pub fn current_project_agent_session_coordinates(
         product_repository_effect_catalog_digest: effect_catalog_digest.as_str(),
         storage_manifest_digest: storage_manifest_digest.as_str(),
         managed_guidance_semantic_digest: guidance_digest.as_str(),
+        mutation_finalization_contract_digest: mutation_finalization_digest.as_str(),
+        post_effect_response_contract_digest: post_effect_response_digest.as_str(),
         workflow_contract_semantic_digest: workflow_contract_digest.as_str(),
         submission_contract_semantic_digest: submission_contract_digest.as_str(),
         action_form_contract_semantic_digest: action_form_contract_digest.as_str(),

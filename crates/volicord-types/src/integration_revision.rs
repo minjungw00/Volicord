@@ -88,6 +88,8 @@ pub struct ProjectIntegrationRevisionBasis<'a> {
     pub product_repository_effect_catalog_digest: &'a str,
     pub storage_manifest_digest: &'a str,
     pub managed_guidance_semantic_digest: &'a str,
+    pub mutation_finalization_contract_digest: &'a str,
+    pub post_effect_response_contract_digest: &'a str,
     pub workflow_contract_semantic_digest: &'a str,
     pub submission_contract_semantic_digest: &'a str,
     pub action_form_contract_semantic_digest: &'a str,
@@ -229,6 +231,8 @@ fn validate_project_basis(
         || !is_canonical_sha256_digest(basis.product_repository_effect_catalog_digest)
         || !is_canonical_sha256_digest(basis.storage_manifest_digest)
         || !is_canonical_sha256_digest(basis.managed_guidance_semantic_digest)
+        || !is_canonical_sha256_digest(basis.mutation_finalization_contract_digest)
+        || !is_canonical_sha256_digest(basis.post_effect_response_contract_digest)
         || !is_canonical_sha256_digest(basis.workflow_contract_semantic_digest)
         || !is_canonical_sha256_digest(basis.submission_contract_semantic_digest)
         || !is_canonical_sha256_digest(basis.action_form_contract_semantic_digest)
@@ -322,6 +326,8 @@ mod tests {
         let effect_digest = format!("sha256:{}", "d".repeat(64));
         let storage_manifest_digest = format!("sha256:{}", "4".repeat(64));
         let guidance_digest = format!("sha256:{}", "e".repeat(64));
+        let mutation_finalization_digest = format!("sha256:{}", "1".repeat(64));
+        let post_effect_response_digest = format!("sha256:{}", "2".repeat(64));
         let workflow_contract_digest = format!("sha256:{}", "f".repeat(64));
         let submission_contract_digest = format!("sha256:{}", "5".repeat(64));
         let action_form_contract_digest = format!("sha256:{}", "6".repeat(64));
@@ -337,6 +343,8 @@ mod tests {
             product_repository_effect_catalog_digest: &effect_digest,
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
+            mutation_finalization_contract_digest: &mutation_finalization_digest,
+            post_effect_response_contract_digest: &post_effect_response_digest,
             workflow_contract_semantic_digest: &workflow_contract_digest,
             submission_contract_semantic_digest: &submission_contract_digest,
             action_form_contract_semantic_digest: &action_form_contract_digest,
@@ -371,6 +379,18 @@ mod tests {
             ..project_basis.clone()
         })
         .expect("changed guidance semantics");
+        let changed_mutation_finalization =
+            IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+                mutation_finalization_contract_digest: &format!("sha256:{}", "3".repeat(64)),
+                ..project_basis.clone()
+            })
+            .expect("changed mutation-finalization semantics");
+        let changed_post_effect_response =
+            IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+                post_effect_response_contract_digest: &format!("sha256:{}", "4".repeat(64)),
+                ..project_basis.clone()
+            })
+            .expect("changed post-effect response semantics");
         let changed_workflow_contract =
             IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
                 workflow_contract_semantic_digest: &format!("sha256:{}", "2".repeat(64)),
@@ -405,6 +425,8 @@ mod tests {
         assert_ne!(project, changed_effect_catalog);
         assert_ne!(project, changed_storage_manifest);
         assert_ne!(project, changed_guidance);
+        assert_ne!(project, changed_mutation_finalization);
+        assert_ne!(project, changed_post_effect_response);
         assert_ne!(project, changed_workflow_contract);
         assert_ne!(project, changed_submission_contract);
         assert_ne!(project, changed_action_form_contract);
@@ -420,6 +442,8 @@ mod tests {
             product_repository_effect_catalog_digest: &effect_digest,
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
+            mutation_finalization_contract_digest: &mutation_finalization_digest,
+            post_effect_response_contract_digest: &post_effect_response_digest,
             workflow_contract_semantic_digest: &workflow_contract_digest,
             submission_contract_semantic_digest: &submission_contract_digest,
             action_form_contract_semantic_digest: &action_form_contract_digest,
@@ -437,6 +461,8 @@ mod tests {
             product_repository_effect_catalog_digest: &effect_digest,
             storage_manifest_digest: &storage_manifest_digest,
             managed_guidance_semantic_digest: &guidance_digest,
+            mutation_finalization_contract_digest: &mutation_finalization_digest,
+            post_effect_response_contract_digest: &post_effect_response_digest,
             workflow_contract_semantic_digest: &workflow_contract_digest,
             submission_contract_semantic_digest: &submission_contract_digest,
             action_form_contract_semantic_digest: &action_form_contract_digest,

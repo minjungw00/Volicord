@@ -17,7 +17,7 @@ capabilities.
 
 Runtime request schemas omit documentation-only examples. Tool results use
 typed canonical content, schema validation, compact mutation projection,
-bounded committed-result recovery, tagged workflow authority, and typed
+bounded mutation-finalization recovery, tagged workflow authority, and typed
 workflow rejection recovery. Tool ownership does not fork by protocol
 revision.
 
@@ -77,7 +77,7 @@ protocol support. It does not provide state-dependent dynamic tool discovery.
   canonical definitions, mode filtering, and projection.
 - [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs),
   [`mutation_projection.rs`](../../../../crates/volicord-mcp/src/mutation_projection.rs), and
-  [`committed_result_recovery.rs`](../../../../crates/volicord-mcp/src/committed_result_recovery.rs):
+  [`mutation_finalization_recovery.rs`](../../../../crates/volicord-mcp/src/mutation_finalization_recovery.rs):
   dispatch and bounded result paths.
 
 ## Reference owners

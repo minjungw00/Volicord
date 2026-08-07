@@ -11,11 +11,11 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::committed_result_recovery::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES;
 use crate::lifecycle::{
     handle_json_rpc_message as transition_json_rpc_message, ClosedSession, SessionPhase,
     SessionState, SessionTermination,
 };
+use crate::mutation_finalization_recovery::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES;
 use crate::mutation_projection::{
     MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
 };

@@ -6,19 +6,19 @@ use crate::binding::{
     bind_codex_managed_tool_call, managed_agent_session_binding,
     validate_managed_stdio_session_ownership_admitted,
 };
-use crate::committed_result_recovery::bounded_mutation_compatibility_text;
-#[cfg(test)]
-use crate::committed_result_recovery::{
-    authoritative_refresh_failure_output, project_mutation_finalization_failure,
-    CanonicalMcpMutationOutcome, MutationFinalizationFailure,
-    MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
-};
 use crate::diagnostics::{McpDiagnostic, McpToolCallDiagnostic};
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
 use crate::json_rpc::{
     invalid_params_response, json_rpc_error, json_rpc_error_for_adapter, required_object_params,
 };
 use crate::lifecycle::SessionRuntime;
+use crate::mutation_finalization_recovery::bounded_mutation_compatibility_text;
+#[cfg(test)]
+use crate::mutation_finalization_recovery::{
+    authoritative_refresh_failure_output, project_mutation_finalization_failure,
+    CanonicalMcpMutationOutcome, MutationFinalizationFailure,
+    MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+};
 #[cfg(test)]
 use crate::mutation_projection::{
     compact_mutation_method_result, finalize_mutation_output_with_injected_failure,
@@ -749,7 +749,7 @@ impl ToolCallOutput {
                         tool_name: AgentToolId::STATUS.wire_name().to_owned(),
                         reached_core: failure.reached_core(),
                         transition_rejection: None,
-                        diagnostics: Box::new(failure.diagnostics(&workflow)),
+                        diagnostics: Box::new(failure.diagnostics(&workflow, false, false)),
                     })?,
             ),
             _ => None,

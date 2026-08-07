@@ -21,9 +21,9 @@ pub(crate) use volicord_core::{
     CorePipelineError, CoreService, GitWorkspaceContext, InvocationContext, PipelineResponse,
 };
 pub(crate) use volicord_mcp_protocol::{
-    ClientCapabilitiesShape, CommittedResultRecovery, InitializedNotification, JsonRpcBatching,
-    McpProtocolCapabilities, McpProtocolProfile, ProtocolRegistry, ServerCapabilityField,
-    ToolDefinitionField, ToolResultCarrier, ToolResultField,
+    ClientCapabilitiesShape, InitializedNotification, JsonRpcBatching, McpProtocolCapabilities,
+    McpProtocolProfile, ProtocolRegistry, ServerCapabilityField, ToolDefinitionField,
+    ToolResultCarrier, ToolResultField,
 };
 pub(crate) use volicord_mcp_wire::{
     client_capability_field_name, mcp_request_schema, mcp_response_schema,

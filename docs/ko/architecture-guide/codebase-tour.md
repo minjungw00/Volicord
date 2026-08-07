@@ -29,9 +29,9 @@ MCP 호출은 다음 순서로 추적합니다.
   tool call 디코딩, adapter dispatch, 공유 result carrier
 - [`crates/volicord-mcp/src/mutation_projection.rs`](../../../crates/volicord-mcp/src/mutation_projection.rs),
   [`authority_refresh.rs`](../../../crates/volicord-mcp/src/authority_refresh.rs),
-  [`committed_result_recovery.rs`](../../../crates/volicord-mcp/src/committed_result_recovery.rs):
-  일반 mutation projection, 현재 authority 재조회, 선택된 profile의 projection 예산을
-  초과하는 committed result의 authority 우선 복구
+  [`mutation_finalization_recovery.rs`](../../../crates/volicord-mcp/src/mutation_finalization_recovery.rs):
+  일반 mutation projection, 현재 authority 재조회, 새 commit·staging 효과·replay·
+  no-effect 메서드 결과 전반의 authority 우선 finalization 복구
 - [`crates/volicord-mcp/src/user_action_projection.rs`](../../../crates/volicord-mcp/src/user_action_projection.rs):
   공개 UserAction result와 CLI fallback projection
 - [`crates/volicord-mcp/src/telemetry.rs`](../../../crates/volicord-mcp/src/telemetry.rs)와

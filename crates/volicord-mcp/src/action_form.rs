@@ -936,8 +936,6 @@ pub(crate) struct ActionFormCatalogError {
     pub method_error_code: Option<ErrorCode>,
     pub method_error_details: Option<JsonObject>,
     pub basis_state_version: Option<u64>,
-    pub state_change_applied: bool,
-    pub committed: bool,
 }
 
 impl std::fmt::Display for ActionFormCatalogError {
@@ -962,8 +960,6 @@ impl ActionFormCatalogError {
             method_error_code: None,
             method_error_details: None,
             basis_state_version: None,
-            state_change_applied: false,
-            committed: false,
         }
     }
 
@@ -979,6 +975,8 @@ impl ActionFormCatalogError {
     pub(crate) fn diagnostics(
         &self,
         workflow: &WorkflowProjection,
+        committed: bool,
+        state_change_applied: bool,
     ) -> McpWorkflowContractDiagnostics {
         McpWorkflowContractDiagnostics {
             normalized_workflow_snapshot: workflow.clone(),
@@ -993,8 +991,8 @@ impl ActionFormCatalogError {
             method_error_code: RequiredNullable::new(self.method_error_code),
             method_error_details: RequiredNullable::new(self.method_error_details.clone()),
             basis_state_version: RequiredNullable::new(self.basis_state_version),
-            state_change_applied: self.state_change_applied,
-            committed: self.committed,
+            state_change_applied,
+            committed,
             workflow_contract_digest:
                 volicord_types::managed_guidance::workflow_contract_semantic_digest(),
             submission_contract_digest:
@@ -1363,11 +1361,9 @@ mod tests {
             method_error_code: Some(ErrorCode::RunKindIncompatible),
             method_error_details: Some(method_error_details.clone()),
             basis_state_version: Some(9),
-            state_change_applied: false,
-            committed: false,
         };
 
-        let diagnostics = failure.diagnostics(&workflow);
+        let diagnostics = failure.diagnostics(&workflow, false, false);
         assert_eq!(
             diagnostics.failed_action_key.as_ref(),
             Some(&transition.action_key)
@@ -2166,8 +2162,6 @@ mod tests {
                 McpWorkflowContractStage::MethodPlanningRejected
             );
             assert!(failure.reached_core());
-            assert!(!failure.committed);
-            assert!(!failure.state_change_applied);
         }
     }
 

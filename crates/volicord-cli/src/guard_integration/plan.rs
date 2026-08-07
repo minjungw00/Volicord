@@ -15,8 +15,6 @@ use volicord_types::guard_manifest::{
     GuardCommandSet, GuardManagedArtifact, GuardManifestOwnerBinding, PolicyHash,
 };
 use volicord_types::ids::ProjectId;
-use volicord_types::integration_verification::IntegrationVerificationWorkflowState;
-use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
 use crate::{
@@ -435,43 +433,16 @@ fn agents_guidance_block() -> String {
     format!(
         concat!(
             "{guidance_start_marker}\n# Volicord\n\n",
-            "- Treat Volicord's recorded scope and Store-derived tagged current effective shaping authority graph as authoritative. Superseded checkpoint, request, resolution, and application history is immutable audit history, never actionable authority.\n",
-            "- Do not modify Product Repository files outside an active compatible write authorization.\n",
-            "- Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.\n",
-            "- For the request `Run the Volicord integration verification.`, call `{}`, then `{}`. Follow its returned `workflow` tagged state: `{}` calls its exact `{}` tool once; `{}` calls its exact `{}` status tool once; `{}` and `{}` call no verification tool. Do not use shell sleep or poll loops, make repeated status calls, or automatically restart the workflow in the same turn. Begin, probe, and status expose the same workflow state.\n",
-            "- Only that first-party state-directed workflow proves current MCP and Guard correlation. Manual stdio and CLI MCP preflight are diagnostic and are not managed-host evidence.\n",
-            "- If Volicord tools are not exposed, report the managed MCP connection as unavailable. Do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as tool proof; use read-only connection status or MCP preflight only for diagnosis.\n",
-            "- `volicord connection verify` is optional active diagnostics only; it does not replace the managed-host workflow.\n",
-            "- Follow the tagged workflow's required transition; do not select progression from top-level array order. The tagged workflow transition catalog is mutation admission authority: call only a currently executable Agent transition, never speculate with a different shaping or implementation method, and do not treat read-only status as mutation authority.\n",
-            "- Follow the exact current Core transition and its state-specific action form. Copy every authority-owned fixed value exactly, and satisfy the required and optional Agent-authored input constraints for the current Task mode. Generic method examples do not authorize live requests. Use only a form published after its complete witness received an accepted exact-method Core no-commit plan. A method-rejected form witness is invalid and non-executable: do not retry it, reconstruct it, or present it as a usable example. Report the internal workflow-form inconsistency and its exact commit and side-effect facts. Use the exact typed rejection details, recovery action, and recovery form returned from Core for ordinary submitted-action recovery only. Do not infer recovery from error text or field names, and never reuse a form for another method or semantic variant.\n",
-            "- Use the type-owned MCP tool schema. Do not search ordinary CLI `--help`, binary strings, or source code for MCP request schemas. Preserve JSON primitive types and never infer another tagged-union branch after validation rejects the selected branch.\n",
-            "- Treat schema validity, transition compatibility, and persisted-data corruption as distinct outcomes. Report pre-Core rejection, Core rejection, and persisted-data corruption with their exact commit and side-effect facts.\n",
-            "- Do not modify Product Repository files before the required authority mutation commits successfully. If checkpoint recording or UserAction creation fails, report that neither was created and that Core state and Product Repository files are unchanged.\n",
-            "- Never replace the current shaping checkpoint to remove a pending or accepted-but-unapplied decision. Preserve its UserAction authority and follow the tagged recovery method.\n",
-            "- Carry every current compatible applied decision explicitly through `carry_forward_application_refs` when revising a checkpoint. Never replace a checkpoint to discard applied authority.\n",
-            "- Stale shaping authority grants no permission. Never carry a stale application forward or reuse its accepted resolution. For `application_authority_stale`, follow the exact `stale_authority_actions`: `retire` it or `reauthorize` it through a fresh successor gap and fresh `UserActionRequest`, preserving immutable `ShapingAuthorityReauthorization` lineage.\n",
-            "- Inspect the exact User Channel resolution outcome. Resolution does not apply a shaping decision: apply only accepted, current, compatible authority through its `application_owner`, using the exact current resolution refs.\n",
-            "- After rejection, deferral, or expiration, follow `decision_recovery_required` and revise shaping. Never retry resolution of a terminal or expired request. If the revised plan still needs that judgment, create a successor UserActionRequest with an independent identity; chat text cannot replace it.\n",
-            "- A rejected, deferred, or expired decision grants no authority and keeps Product Repository mutation unavailable. Surface that outcome and do not hide it as success.\n",
-            "- During `work/implementation`, an authority-invalidating scope, baseline, or Change Unit update is rejected before mutation. Follow the tagged `volicord.close_task` recovery to leave implementation; implementation work never returns silently to shaping.\n",
-            "- Do not invent a scope decision or pass a scope-decision ref for product-only or technical-only work; follow that decision's mode-specific application owner.\n",
-            "- Creating or replacing a Change Unit does not advance the Task phase. For work, call `volicord.advance_task` only when the tagged workflow requires explicit advance and never while a UserAction is pending. Do not call `volicord.prepare_write` before the Task enters implementation.\n",
-            "- Advisor Change Units are observe-only and pathless: the current form fixes `affected_paths=[]` and the canonical observe-only `effect_contract`; neither value is Agent-authored. On `ready_to_finalize_advice`, finalize the current advisor result with `volicord.finalize_advice`; do not use `volicord.record_run`, `volicord.advance_task`, or `volicord.prepare_write` for advisor.\n",
-            "- Create current UserAction requests before presenting user-owned choices. A chat reply is not a User Channel resolution; surface the canonical CLI inbox instruction.\n",
-            "- Never hide or paraphrase a rejected mutation as success. Surface pre-Core admission rejection accurately, including that Core was not reached and state did not change, plus the tagged workflow and every rejection and recovery fact in `presentation.must_surface`.\n",
-            "- Evaluate close readiness only during close review. Close blockers do not replace tagged workflow progression.\n",
-            "- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.\n",
-            "- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.\n",
+            "- Distinguish a Volicord method failure from a response-projection failure.\n",
+            "- When Volicord reports `effect_applied=true`, do not retry the mutation.\n",
+            "- After a response-projection failure, read current status.\n",
+            "- When `operation_result_ref` exists, retrieve the exact operation result.\n",
+            "- Distinguish a new commit (`committed=true`), a staging effect (`effect_kind=staging_created`), and a replay (`replayed=true`).\n",
+            "- Never claim that state was unchanged when Volicord reports `effect_applied=true`.\n",
+            "- A post-effect recovery response does not establish successful completion.\n",
+            "- After status refresh, continue to respect the current workflow authority.\n",
             "{guidance_end_marker}\n",
         ),
-        AgentToolId::LIST_PROJECTS.wire_name(),
-        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
-        IntegrationVerificationWorkflowState::AWAITING_PROBE_KIND,
-        AgentToolId::GUARD_PROBE.wire_name(),
-        IntegrationVerificationWorkflowState::AWAITING_OBSERVATION_KIND,
-        AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
-        IntegrationVerificationWorkflowState::REPAIR_REQUIRED_KIND,
-        IntegrationVerificationWorkflowState::COMPLETE_KIND,
         guidance_start_marker = GUIDANCE_START_MARKER,
         guidance_end_marker = GUIDANCE_END_MARKER,
     )
@@ -530,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_host_guidance_preserves_the_canonical_verification_boundary(
+    fn generated_host_guidance_contains_only_generic_mutation_recovery_rules(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = CoreFixture::new("guard-plan-verification-guidance")?;
         let repo_root = fixture.product_repo_path();
@@ -555,96 +526,35 @@ mod tests {
             .iter()
             .find(|file| file.artifact == GuardManagedArtifact::AgentsManagedBlock)
             .expect("managed AGENTS guidance");
-        for required in [
-            "Run the Volicord integration verification.",
-            "`volicord.list_projects`",
-            "`volicord.guard_probe`",
-            "`awaiting_probe`",
-            "`awaiting_observation`",
-            "`repair_required`",
-            "`complete`",
-            "same workflow state",
-            "raw stdio",
-            "Codex `_meta`",
-            "resources/list",
-            "not managed-host evidence",
-            "user-owned trust judgments",
-            "Do not use shell sleep or poll loops",
-            "automatically restart the workflow in the same turn",
-            "`volicord connection verify` is optional active diagnostics only",
-            "tagged workflow's required transition",
-            "call only a currently executable Agent transition",
-            "exact current Core transition and its state-specific action form",
-            "authority-owned fixed value exactly",
-            "Agent-authored input constraints for the current Task mode",
-            "Generic method examples do not authorize live requests",
-            "form published after its complete witness received an accepted exact-method Core no-commit plan",
-            "method-rejected form witness is invalid and non-executable",
-            "do not retry it, reconstruct it, or present it as a usable example",
-            "internal workflow-form inconsistency and its exact commit and side-effect facts",
-            "exact typed rejection details, recovery action, and recovery form",
-            "Do not infer recovery from error text or field names",
-            "never reuse a form for another method or semantic variant",
-            "type-owned MCP tool schema",
-            "ordinary CLI `--help`, binary strings, or source code for MCP request schemas",
-            "Preserve JSON primitive types",
-            "schema validity, transition compatibility, and persisted-data corruption as distinct outcomes",
-            "pre-Core rejection, Core rejection, and persisted-data corruption",
-            "required authority mutation commits successfully",
-            "Store-derived tagged current effective shaping authority graph",
-            "immutable audit history, never actionable authority",
-            "Never replace the current shaping checkpoint",
-            "accepted-but-unapplied decision",
-            "Carry every current compatible applied decision explicitly",
-            "`carry_forward_application_refs`",
-            "Never replace a checkpoint to discard applied authority",
-            "Stale shaping authority grants no permission",
-            "Never carry a stale application forward or reuse its accepted resolution",
-            "exact `stale_authority_actions`",
-            "fresh successor gap and fresh `UserActionRequest`",
-            "immutable `ShapingAuthorityReauthorization` lineage",
-            "Inspect the exact User Channel resolution outcome",
-            "apply only accepted, current, compatible authority",
-            "through its `application_owner`",
-            "follow `decision_recovery_required` and revise shaping",
-            "Never retry resolution of a terminal or expired request",
-            "successor UserActionRequest with an independent identity",
-            "keeps Product Repository mutation unavailable",
-            "authority-invalidating scope, baseline, or Change Unit update is rejected before mutation",
-            "tagged `volicord.close_task` recovery",
-            "implementation work never returns silently to shaping",
-            "product-only or technical-only work",
-            "Creating or replacing a Change Unit does not advance the Task phase",
-            "tagged workflow requires explicit advance",
-            "Advisor Change Units are observe-only and pathless",
-            "`affected_paths=[]`",
-            "canonical observe-only `effect_contract`",
-            "neither value is Agent-authored",
-            "`ready_to_finalize_advice`",
-            "finalize the current advisor result with `volicord.finalize_advice`",
-            "UserAction requests before presenting user-owned choices",
-            "chat reply is not a User Channel resolution",
-            "never while a UserAction is pending",
-            "`volicord.prepare_write` before the Task enters implementation",
-            "rejected mutation as success",
-            "rejection and recovery fact in `presentation.must_surface`",
-            "Close blockers do not replace tagged workflow progression",
-            "close readiness only during close review",
+        let guidance_lines = agents
+            .content
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            guidance_lines,
+            [
+                "- Distinguish a Volicord method failure from a response-projection failure.",
+                "- When Volicord reports `effect_applied=true`, do not retry the mutation.",
+                "- After a response-projection failure, read current status.",
+                "- When `operation_result_ref` exists, retrieve the exact operation result.",
+                "- Distinguish a new commit (`committed=true`), a staging effect (`effect_kind=staging_created`), and a replay (`replayed=true`).",
+                "- Never claim that state was unchanged when Volicord reports `effect_applied=true`.",
+                "- A post-effect recovery response does not establish successful completion.",
+                "- After status refresh, continue to respect the current workflow authority.",
+            ]
+        );
+        for forbidden in [
+            "Task",
+            "project_id",
+            "Product Repository",
+            "volicord.",
+            "action form",
+            "incident",
+            "awaiting_hook_completion",
+            "restart_required",
+            "codex-1.",
         ] {
-            assert!(
-                agents.content.contains(required),
-                "managed AGENTS.md omits required guidance: {required}"
-            );
-        }
-        for control in [
-            AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
-            AgentToolId::GET_INTEGRATION_VERIFICATION,
-        ] {
-            assert!(agents
-                .content
-                .contains(&format!("`{}`", control.wire_name())));
-        }
-        for forbidden in ["awaiting_hook_completion", "restart_required", "codex-1."] {
             assert!(!agents.content.contains(forbidden));
         }
 

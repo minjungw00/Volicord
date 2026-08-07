@@ -13,7 +13,6 @@ mod adapter;
 mod authority_refresh;
 mod binding;
 mod build_info;
-mod committed_result_recovery;
 mod constants;
 mod diagnostics;
 mod errors;
@@ -21,6 +20,7 @@ mod json_rpc;
 mod lifecycle;
 mod managed_launch;
 mod mutation_admission;
+mod mutation_finalization_recovery;
 mod mutation_projection;
 #[cfg(test)]
 mod prelude;

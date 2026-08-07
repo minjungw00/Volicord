@@ -638,7 +638,7 @@ fn bounded_budget_recovery_shape_remains_bounded_for_every_production_profile() 
     let recovery = CanonicalToolResult {
         metadata: None,
         content: vec![CanonicalContent::Text("r".repeat(
-            crate::committed_result_recovery::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+            crate::mutation_finalization_recovery::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
         ))],
         structured_content: json!({
             "code": "MCP_RESPONSE_BUDGET_EXCEEDED",

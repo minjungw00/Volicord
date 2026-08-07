@@ -16,7 +16,7 @@ canonical definition을 한 번 만들고 Connection mode로 filter한 뒤 선�
 
 Runtime request schema는 documentation-only example을 생략합니다. Tool result는 typed
 canonical content, schema validation, compact mutation projection, bounded
-committed-result recovery, 태그 기반 workflow 권한, typed workflow rejection
+mutation-finalization recovery, 태그 기반 workflow 권한, typed workflow rejection
 recovery를 사용합니다. Tool ownership은 protocol revision별로 갈라지지 않습니다.
 
 ## 불변 조건
@@ -72,7 +72,7 @@ dynamic tool discovery를 제공하지 않습니다.
   canonical definition, mode filtering, projection.
 - [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs),
   [`mutation_projection.rs`](../../../../crates/volicord-mcp/src/mutation_projection.rs),
-  [`committed_result_recovery.rs`](../../../../crates/volicord-mcp/src/committed_result_recovery.rs):
+  [`mutation_finalization_recovery.rs`](../../../../crates/volicord-mcp/src/mutation_finalization_recovery.rs):
   dispatch와 bounded result 경로.
 
 ## 참조 담당 문서

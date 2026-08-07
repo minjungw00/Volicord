@@ -14,7 +14,7 @@ replay response에서 한도가 있는 정확한 과거 작업 결과를 조회�
 반환합니다.
 
 완전한 body가 transport budget을 넘으면 MCP mutation projection은 간결하고 실행
-가능한 result를 유지합니다. `committed_result_recovery.rs`와
+가능한 result를 유지합니다. `mutation_finalization_recovery.rs`와
 `mutation_projection.rs`는 그 projection에서 operation-result reference를 보존하여
 caller가 별도 read-only 메서드를 사용할 수 있게 합니다.
 
@@ -64,7 +64,7 @@ failure는 mutation replay, artifact substitution, duplicate result table을 만
   read-only planning, validation, paging.
 - [`crates/volicord-store/src/core_pipeline/replay.rs`](../../../../crates/volicord-store/src/core_pipeline/replay.rs):
   scoped replay-row lookup.
-- [`crates/volicord-mcp/src/committed_result_recovery.rs`](../../../../crates/volicord-mcp/src/committed_result_recovery.rs)와
+- [`crates/volicord-mcp/src/mutation_finalization_recovery.rs`](../../../../crates/volicord-mcp/src/mutation_finalization_recovery.rs)와
   [`mutation_projection.rs`](../../../../crates/volicord-mcp/src/mutation_projection.rs):
   bounded mutation projection과 recovery coordinate.
 - [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs):

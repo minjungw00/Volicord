@@ -284,9 +284,9 @@ sets as a second behavior map.
 
 Unknown additive client capability fields remain accepted because every
 current profile declares an open object. Every profile also declares the same
-committed-result recovery capability: preserve fresh authority first, then a
-compact method result, then stable effect facts; never retry the committed
-mutation. The adapter's fixed compact, full, and compatibility-text byte
+mutation-finalization recovery capability: preserve fresh authority first,
+then a compact method result, then stable effect facts; never retry a mutation
+after an applied effect. The adapter's fixed compact, full, and compatibility-text byte
 budgets are applied after projection through the selected result carrier.
 
 Volicord advertises only the `tools` server capability, and only when that
@@ -1350,17 +1350,26 @@ failed action and method error details when present. Its workflow diagnostics
 repeat the same `committed` and `state_change_applied` facts as the top-level
 effect; they cannot recast an applied effect as a no-effect validation run.
 
-The effect combinations are exact. A new Core commit has `committed=true`,
-`replayed=false`, `effect_kind=core_committed`, `effect_applied=true`, and
-`state_change_applied=true`. A staging effect has `committed=false`,
-`replayed=false`, `effect_kind=staging_created`, `effect_applied=true`, and
-`state_change_applied=false`. Exact replay of a committed result has
-`committed=false`, `replayed=true`, `effect_kind=core_committed`,
-`effect_applied=true`, and `state_change_applied=false`. A rejected or other
-no-effect result remains `committed=false`, `effect_applied=false`, and
-`state_change_applied=false`; a projection failure on a normal no-effect result
-does not turn that result into either a commit or a method rejection. After Core
-has produced a legitimate no-effect method result and authority refresh has
+The mutation-finalization branches are exact:
+
+- A pre-effect internal contract failure uses the ordinary `adapter_error`
+  response with `committed=false`, `effect_applied=false`, and
+  `state_change_applied=false`.
+- A new Core commit has `committed=true`, `replayed=false`,
+  `effect_kind=core_committed`, `effect_applied=true`, and
+  `state_change_applied=true`.
+- A staging effect has `committed=false`, `replayed=false`,
+  `effect_kind=staging_created`, `effect_applied=true`, and
+  `state_change_applied=false`.
+- Exact replay of a committed result has `committed=false`, `replayed=true`,
+  `effect_kind=core_committed`, `effect_applied=true`, and
+  `state_change_applied=false`; it creates no new commit.
+- A normal no-effect result has `response_kind=result`, while a typed rejection
+  has `response_kind=rejected`. Both remain `committed=false`,
+  `effect_applied=false`, and `state_change_applied=false`; neither branch is
+  reclassified as the other when response projection fails.
+
+After Core has produced a legitimate no-effect method result and authority refresh has
 succeeded, such a failure uses the error-class `finalization_failure` branch,
 not success-class `post_effect_failure` or pre-Core `adapter_error`. It preserves
 `response_kind`, the exact or bounded method result, and a typed transition

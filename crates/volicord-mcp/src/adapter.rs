@@ -1029,7 +1029,7 @@ impl McpAdapter {
                 tool_name: "workflow_action_form_catalog".to_owned(),
                 reached_core: failure.reached_core(),
                 transition_rejection: None,
-                diagnostics: Box::new(failure.diagnostics(&authority.workflow)),
+                diagnostics: Box::new(failure.diagnostics(&authority.workflow, false, false)),
             })?;
         Ok(Some(AuthoritativeArgumentContext {
             context_loaded: true,
@@ -1186,8 +1186,6 @@ impl McpAdapter {
                     method_error_code: Some(rejection.method_error_code()),
                     method_error_details: rejection.method_error_details().cloned(),
                     basis_state_version: Some(rejection.basis_state_version()),
-                    state_change_applied: rejection.state_change_applied(),
-                    committed: rejection.committed(),
                 }
             }
             McpAdapterError::Core(error) => ActionFormCatalogError::contract(

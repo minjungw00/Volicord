@@ -15,7 +15,7 @@ the current invocation and reference, asks Store for the exact scoped replay
 response, verifies its content facts, and returns a UTF-8-safe page.
 
 MCP mutation projection keeps a compact actionable result when the complete
-body exceeds the transport budget. `committed_result_recovery.rs` and
+body exceeds the transport budget. `mutation_finalization_recovery.rs` and
 `mutation_projection.rs` preserve the operation-result reference across that
 projection so the caller can use the independent read-only method.
 
@@ -69,7 +69,7 @@ current.
   read-only planning, validation, and paging.
 - [`crates/volicord-store/src/core_pipeline/replay.rs`](../../../../crates/volicord-store/src/core_pipeline/replay.rs):
   scoped replay-row lookup.
-- [`crates/volicord-mcp/src/committed_result_recovery.rs`](../../../../crates/volicord-mcp/src/committed_result_recovery.rs)
+- [`crates/volicord-mcp/src/mutation_finalization_recovery.rs`](../../../../crates/volicord-mcp/src/mutation_finalization_recovery.rs)
   and [`mutation_projection.rs`](../../../../crates/volicord-mcp/src/mutation_projection.rs):
   bounded mutation projection and recovery coordinates.
 - [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs):

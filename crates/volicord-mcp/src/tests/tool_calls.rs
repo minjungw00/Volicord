@@ -740,8 +740,6 @@ fn exact_method_rejection_suppresses_form_and_preserves_bounded_failure_facts(
         Some(&json!("run_kind_incompatible"))
     );
     assert!(failure.reached_core());
-    assert!(!failure.committed);
-    assert!(!failure.state_change_applied);
 
     let projected = structured_error_result(&crate::tool_dispatch::tool_execution_error_result(
         AgentToolId::STATUS.wire_name(),
@@ -749,7 +747,7 @@ fn exact_method_rejection_suppresses_form_and_preserves_bounded_failure_facts(
             tool_name: AgentToolId::STATUS.wire_name().to_owned(),
             reached_core: failure.reached_core(),
             transition_rejection: None,
-            diagnostics: Box::new(failure.diagnostics(&workflow)),
+            diagnostics: Box::new(failure.diagnostics(&workflow, false, false)),
         },
     ));
     assert_eq!(projected["code"], "INTERNAL_CONTRACT_INCONSISTENT");
@@ -844,8 +842,6 @@ fn assert_mutated_catalog_fails_closed(
     assert_eq!(failure.method_error_code, Some(expected_code));
     assert!(failure.method_error_details.is_some());
     assert!(failure.reached_core());
-    assert!(!failure.committed);
-    assert!(!failure.state_change_applied);
 
     let projected = structured_error_result(&crate::tool_dispatch::tool_execution_error_result(
         AgentToolId::STATUS.wire_name(),
@@ -853,7 +849,7 @@ fn assert_mutated_catalog_fails_closed(
             tool_name: AgentToolId::STATUS.wire_name().to_owned(),
             reached_core: failure.reached_core(),
             transition_rejection: None,
-            diagnostics: Box::new(failure.diagnostics(&workflow)),
+            diagnostics: Box::new(failure.diagnostics(&workflow, false, false)),
         },
     ));
     assert_eq!(projected["code"], "INTERNAL_CONTRACT_INCONSISTENT");

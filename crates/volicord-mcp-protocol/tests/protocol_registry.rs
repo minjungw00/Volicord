@@ -3,10 +3,10 @@ use serde_json::{Map, Value};
 use std::collections::{BTreeSet, HashSet};
 use std::str::FromStr;
 use volicord_mcp_protocol::{
-    ClientCapabilitiesShape, ClientCapabilityField, CommittedResultRecovery,
-    InitializedNotification, JsonRpcBatching, McpProtocolGeneration, McpProtocolRevision,
-    McpProtocolRevisionError, McpRevisionStatus, ProtocolRegistry, ServerCapabilityField,
-    ToolDefinitionField, ToolResultCarrier, ToolResultField,
+    ClientCapabilitiesShape, ClientCapabilityField, InitializedNotification, JsonRpcBatching,
+    McpProtocolGeneration, McpProtocolRevision, McpProtocolRevisionError, McpRevisionStatus,
+    MutationFinalizationRecovery, ProtocolRegistry, ServerCapabilityField, ToolDefinitionField,
+    ToolResultCarrier, ToolResultField,
 };
 
 const MANIFEST: &str = include_str!(concat!(
@@ -446,8 +446,8 @@ fn profile_feature_differences_match_the_pinned_schemas() {
             tool_result_fields
         );
         assert_eq!(
-            profile.result_recovery().committed_result_recovery(),
-            CommittedResultRecovery::PreserveAuthorityThenCompactResult
+            profile.result_recovery().mutation_finalization_recovery(),
+            MutationFinalizationRecovery::PreserveAuthorityThenCompactResult
         );
     }
 }

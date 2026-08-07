@@ -689,8 +689,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   applies_to:
   - rust_workspace
   - doc_index_schema
@@ -720,14 +720,15 @@ documents:
   summary: Source path responsibility map for current Rust workspace modules, including the current
     effective shaping authority graph, immutable history, stale reauthorization, checkpoint
     succession, application carry-forward and ownership, advisor finalization, tagged workflow
-    transition catalogs, managed-guidance, transition-contract, submission-contract, and semantic-schema revision identities,
+    transition catalogs, managed-guidance, mutation-finalization, post-effect-response,
+    transition-contract, submission-contract, and semantic-schema revision identities,
     and MCP routing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-08-06'
-  last_verified_on: '2026-08-06'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1088,8 +1089,8 @@ documents:
   - mcp.wire
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-08-03'
-  last_verified_on: '2026-08-03'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   applies_to:
   - rust_workspace
   - mcp_initialize_profiles
@@ -1145,8 +1146,8 @@ documents:
   - api.method.get_operation_result.response
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1935,7 +1936,7 @@ documents:
   - static runtime-compact tool schemas and public tool list
   - MCP public input and output projections without hidden Core context
   - known-tool argument, lifecycle, and adapter-precondition failure shapes
-  - capability-driven `tools/call` result carriers and authority-preserving committed-result recovery
+  - capability-driven `tools/call` result carriers and effect-preserving mutation-finalization recovery
   - MCP-owned operational-unavailability wire identity and capability-selected failure projection
   - MCP creation or resume of UserAction requests without resolution authority
   - Runtime Home forwarding, connection binding, project selection, and repository discovery
@@ -3157,8 +3158,8 @@ documents:
   - mcp.wire
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-08-06'
-  last_verified_on: '2026-08-06'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -3175,7 +3176,8 @@ documents:
     root-scoped activation plan without renderer-side cause inference
   - subject-aware current operational findings and explicit current-report finding selection
   - typed integration revisions, including distinct Store-manifest, managed-guidance,
-    workflow-contract, submission-contract, action-form-contract, MCP-semantic-schema, and scalar-contract digests,
+    mutation-finalization, post-effect-response, workflow-contract, submission-contract,
+    action-form-contract, MCP-semantic-schema, and scalar-contract digests,
     and authoritative managed-host operational-session evidence
   - immutable Store-owned integration-instance identity across physical Connection lifecycles
   - Store-derived revision-scoped project Agent Session identity across mode and physical lifecycles
@@ -3228,10 +3230,8 @@ documents:
   path_en: docs/en/reference/template-bodies.md
   path_ko: docs/ko/reference/template-bodies.md
   kind: reference
-  summary: Reference contract for exact template body ownership, including workflow transition catalog admission,
-    method-and-variant forms, exact fixed authority arguments, type-owned MCP schemas, current shaping
-    authority, immutable history, stale retirement or reauthorization, UserAction,
-    rejection/recovery surfacing, and close-review guidance.
+  summary: Reference contract for exact template body ownership, including generic effect-preserving
+    mutation-recovery guidance and user-facing label and display wording.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
@@ -3247,7 +3247,7 @@ documents:
   - implement
   canonical_for:
   - rendered template body guidance
-  - current workflow transition catalog, action-form, fixed-authority-argument, MCP schema, retry, and pre-Core reporting guidance
+  - generic method-failure, response-projection, effect, retry, status-refresh, exact-result, and workflow-authority guidance
   - user-facing label and display wording
   - public-error display labels
   - display wording versus Core authority and API error semantics
@@ -3260,8 +3260,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: quality_conformance
   created_on: '2026-06-07'
-  last_updated_on: '2026-08-04'
-  last_verified_on: '2026-08-04'
+  last_updated_on: '2026-08-07'
+  last_verified_on: '2026-08-07'
   primary_audience:
   - implementers
   - reviewers

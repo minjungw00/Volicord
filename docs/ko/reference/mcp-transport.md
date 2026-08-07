@@ -257,9 +257,9 @@ adapter가 두 번째 동작 map으로 사용하지 않습니다.
 | `2025-11-25` | 기본 field와 `annotations`, `outputSchema`; 값이 있는 선택적 `title`과 정의 `_meta` 지원 | 기본 initialize field와 `instructions` | 열린 객체, 알려진 `elicitation`, `experimental`, `roots`, `sampling`, `tasks` |
 
 현재 profile은 모두 열린 객체를 선언하므로 알려지지 않은 추가 client capability field도
-허용합니다. 또한 모든 profile은 같은 committed-result 복구 capability를 선언합니다.
+허용합니다. 또한 모든 profile은 같은 mutation-finalization 복구 capability를 선언합니다.
 새 authority를 먼저 보존하고, 다음으로 간결한 method result, 마지막으로 안정적인 효과
-사실을 보존하며 커밋된 mutation을 다시 시도하지 않습니다. Adapter의 고정 compact, full,
+사실을 보존하며 적용된 효과가 있는 mutation을 다시 시도하지 않습니다. Adapter의 고정 compact, full,
 호환 text byte 예산은 선택한 결과 carrier로 projection한 뒤 적용합니다.
 
 Volicord는 선택한 profile이 허용할 때만 `tools` server capability를 광고하며, 지원하는
@@ -1205,15 +1205,24 @@ transition, action form 또는 workflow presentation contract를 투영하지 �
 `committed`와 `state_change_applied`는 최상위 효과 사실과 같으며 적용된 효과를 no-effect 검증 실행으로
 다시 표현할 수 없습니다.
 
-효과 조합은 정확합니다. 새 Core commit은 `committed=true`, `replayed=false`,
-`effect_kind=core_committed`, `effect_applied=true`, `state_change_applied=true`입니다. Staging 효과는
-`committed=false`, `replayed=false`, `effect_kind=staging_created`, `effect_applied=true`,
-`state_change_applied=false`입니다. 커밋된 결과의 정확한 replay는 `committed=false`,
-`replayed=true`, `effect_kind=core_committed`, `effect_applied=true`,
-`state_change_applied=false`입니다. 거부 또는 다른 no-effect 결과는 `committed=false`,
-`effect_applied=false`, `state_change_applied=false`로 유지됩니다. 정상 no-effect 결과의 projection
-실패는 그 결과를 commit이나 메서드 거부로 바꾸지 않습니다. Core가 정상적인 no-effect 메서드
-결과를 만들고 authority 새로고침까지 성공한 뒤 실패했다면 success-class
+Mutation finalization branch는 다음과 같이 정확합니다.
+
+- 효과 전 내부 contract 실패는 일반 `adapter_error` 응답을 사용하며
+  `committed=false`, `effect_applied=false`, `state_change_applied=false`입니다.
+- 새 Core commit은 `committed=true`, `replayed=false`,
+  `effect_kind=core_committed`, `effect_applied=true`, `state_change_applied=true`입니다.
+- Staging 효과는 `committed=false`, `replayed=false`,
+  `effect_kind=staging_created`, `effect_applied=true`, `state_change_applied=false`입니다.
+- 커밋된 결과의 정확한 replay는 `committed=false`, `replayed=true`,
+  `effect_kind=core_committed`, `effect_applied=true`, `state_change_applied=false`이며 새
+  commit을 만들지 않습니다.
+- 정상 no-effect 결과는 `response_kind=result`이고 typed rejection은
+  `response_kind=rejected`입니다. 두 branch 모두 `committed=false`,
+  `effect_applied=false`, `state_change_applied=false`로 유지되며 response projection이
+  실패해도 서로를 다른 branch로 다시 분류하지 않습니다.
+
+Core가 정상적인 no-effect 메서드 결과를 만들고 authority 새로고침까지 성공한 뒤
+실패했다면 success-class
 `post_effect_failure`나 Core 이전 `adapter_error`가 아니라 error-class
 `finalization_failure` branch를 사용합니다. 이 branch는 `response_kind`, 정확하거나 제한된 메서드
 결과, 안전하게 제공할 수 있는 typed transition rejection을 보존합니다. 적용된 효과를 암시하지

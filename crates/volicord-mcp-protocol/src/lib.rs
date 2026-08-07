@@ -179,10 +179,10 @@ pub enum ClientCapabilitiesShape {
     OpenObject,
 }
 
-/// Recovery behavior for a committed mutation whose ordinary result cannot be
-/// projected within the adapter result budget.
+/// Recovery behavior when an ordinary mutation result cannot be finalized
+/// within the adapter result budget.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum CommittedResultRecovery {
+pub enum MutationFinalizationRecovery {
     /// Preserve fresh authority first, then the compact method result, then
     /// stable effect facts. The mutation is never retried.
     PreserveAuthorityThenCompactResult,
@@ -382,22 +382,23 @@ impl ClientFeatures {
     }
 }
 
-/// Result-budget and committed-mutation recovery behavior.
+/// Result-budget and mutation-finalization recovery behavior.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ResultRecoveryFeatures {
-    committed_result_recovery: CommittedResultRecovery,
+    mutation_finalization_recovery: MutationFinalizationRecovery,
 }
 
 impl ResultRecoveryFeatures {
     const fn authority_preserving() -> Self {
         Self {
-            committed_result_recovery: CommittedResultRecovery::PreserveAuthorityThenCompactResult,
+            mutation_finalization_recovery:
+                MutationFinalizationRecovery::PreserveAuthorityThenCompactResult,
         }
     }
 
-    /// Returns the recovery behavior after a committed mutation.
-    pub const fn committed_result_recovery(self) -> CommittedResultRecovery {
-        self.committed_result_recovery
+    /// Returns the current mutation-finalization recovery behavior.
+    pub const fn mutation_finalization_recovery(self) -> MutationFinalizationRecovery {
+        self.mutation_finalization_recovery
     }
 }
 

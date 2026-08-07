@@ -34,10 +34,10 @@ For an MCP call, follow:
 - [`crates/volicord-mcp/src/mutation_projection.rs`](../../../crates/volicord-mcp/src/mutation_projection.rs),
   [`authority_refresh.rs`](../../../crates/volicord-mcp/src/authority_refresh.rs),
   and
-  [`committed_result_recovery.rs`](../../../crates/volicord-mcp/src/committed_result_recovery.rs)
+  [`mutation_finalization_recovery.rs`](../../../crates/volicord-mcp/src/mutation_finalization_recovery.rs)
   for normal mutation projection, current-authority reread, and authority-first
-  recovery of committed results that exceed the selected profile's projection
-  budget;
+  finalization recovery across new commits, staging effects, replays, and
+  no-effect method results;
 - [`crates/volicord-mcp/src/user_action_projection.rs`](../../../crates/volicord-mcp/src/user_action_projection.rs)
   for the public UserAction result and CLI fallback projection;
 - [`crates/volicord-mcp/src/telemetry.rs`](../../../crates/volicord-mcp/src/telemetry.rs)

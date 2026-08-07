@@ -776,17 +776,20 @@ current project workflow-policy fingerprint, current Guard installation
 identity/policy hash or explicit absence of Guard ownership, the repository
 observer semantic contract digest, and the canonical Product Repository
 effect-catalog digest. It also binds the digest of the complete current
-`StorageManifest` and six distinct current semantic digests: managed agent
-guidance, the workflow transition contract, the state-specific transition
-submission contract, the action-form contract, the MCP semantic schema, and
-the canonical scalar contract. The storage-manifest
+`StorageManifest` and eight distinct current semantic digests: managed agent
+guidance, mutation finalization, post-effect response recovery, the workflow
+transition contract, the state-specific transition submission contract, the
+action-form contract, the MCP semantic schema, and the canonical scalar
+contract. The storage-manifest
 digest covers its contract identity, canonical DDL and integrity-constraint
 digests, and complete capability set. The guidance digest covers the closed
-current workflow facts rendered into the managed `AGENTS.md` block and MCP
-server instructions, including exact transition and action-form use, Core-owned
-recovery, form isolation, MCP schema discovery boundaries, and distinct
-pre-Core, Core-rejected, and persisted-corruption reporting; it is not a hash
-of project-specific prose. The workflow-contract digest covers the normalized
+generic recovery facts rendered into the managed `AGENTS.md` block. The
+mutation-finalization digest distinguishes pre-effect failure, a new commit,
+staging, replay, normal no-effect, and typed rejection. The post-effect-response
+digest covers non-retryable recovery, current status reads, exact-result
+retrieval when a reference exists, withheld completion claims, and continuing
+current workflow authority. The guidance digest is not a hash of
+project-specific prose. The workflow-contract digest covers the normalized
 snapshot, pure machine, complete transition catalog, exact action keys, actor
 and role, transition-owned Core admission, typed current recovery, and exact
 no-commit planning semantics: only the four closed accepted branches produce a

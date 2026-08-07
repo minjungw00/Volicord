@@ -694,15 +694,16 @@ Connection report context는 finding correlation뿐 아니라 check evidence에�
 fingerprint, 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
 부재, 저장소 관찰자 semantic contract digest, 정규 Product Repository effect-catalog
 digest를 더합니다. 또한 완전한 현재 `StorageManifest`의 digest와 managed agent
-guidance, workflow transition contract, 상태별 transition submission contract,
-action-form contract, MCP semantic schema, canonical scalar contract라는 서로 다른 여섯 가지
-현재 semantic digest를 결속합니다.
+guidance, mutation finalization, post-effect response recovery, workflow transition
+contract, 상태별 transition submission contract, action-form contract, MCP semantic
+schema, canonical scalar contract라는 서로 다른 여덟 가지 현재 semantic digest를 결속합니다.
 Storage-manifest digest는 contract identity, 정규 DDL 및 무결성
 제약 digest, 완전한 capability 집합을 포함합니다. Guidance digest는 managed
-`AGENTS.md` block과 MCP server instruction에 rendering하는 폐쇄형 현재 workflow fact를
-포함합니다. 여기에는 정확한 transition과 action form 사용, Core 소유 recovery, form 격리,
-MCP schema 탐색 경계, Core 전·Core 거부·영속 손상 결과의 구분된 보고가 포함되며 프로젝트별
-prose의 hash가 아닙니다. Workflow-contract digest는 정규 snapshot, 순수 machine, 완전한
+`AGENTS.md` block에 rendering하는 일반 복구 fact를 포함합니다. Mutation-finalization
+digest는 효과 전 실패, 새 commit, staging, replay, 정상 no-effect, typed rejection을
+구분합니다. Post-effect-response digest는 재시도할 수 없는 복구, 현재 status 읽기, ref가
+있을 때의 정확한 결과 조회, 완료 주장 보류, 현재 workflow authority의 지속 적용을
+포함합니다. Guidance digest는 프로젝트별 prose의 hash가 아닙니다. Workflow-contract digest는 정규 snapshot, 순수 machine, 완전한
 transition catalog, 정확한 action key, actor와 role, transition 소유 Core admission, typed 현재
 recovery와 정확한 no-commit planning 의미를 포함합니다. 폐쇄형인 네 가지 수락 branch만 plan을
 만들고, 거부는 typed planning failure이며, 어느 결과도 효과를 만들지 않습니다.

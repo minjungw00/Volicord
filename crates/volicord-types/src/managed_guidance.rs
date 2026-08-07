@@ -7,71 +7,34 @@ use crate::ids::RequestHash;
 
 /// Closed semantic facts that every managed agent-guidance rendering preserves.
 pub const MANAGED_GUIDANCE_FACTS: &[&str] = &[
-    "follow_tagged_required_transition",
-    "tagged_workflow_transition_catalog_is_mutation_admission_authority",
-    "call_only_currently_executable_agent_transition",
-    "use_exact_method_and_semantic_variant_action_form",
-    "copy_and_preserve_fixed_authority_arguments_exactly",
-    "satisfy_task_mode_specific_required_and_optional_agent_inputs",
-    "advisor_change_units_are_observe_only_and_pathless",
-    "method_examples_are_not_authority_bearing_requests",
-    "use_only_action_forms_with_accepted_exact_method_no_commit_plans",
-    "method_rejected_form_witness_is_invalid_and_non_executable",
-    "never_retry_a_method_rejected_form_witness",
-    "action_form_never_authorizes_different_method_or_semantic_variant",
-    "use_only_core_returned_recovery_action_and_form",
-    "use_typed_rejection_attempt_details_for_recovery",
-    "never_infer_recovery_from_error_text_or_field_names",
-    "use_type_owned_mcp_schema_semantics",
-    "read_only_status_grants_no_mutation_authority",
-    "do_not_speculate_different_shaping_or_implementation_method",
-    "surface_pre_core_admission_rejection_exactly",
-    "use_mcp_tool_schema_and_retry_contract",
-    "ordinary_cli_help_is_not_mcp_request_schema",
-    "binary_strings_are_not_tool_schema",
-    "source_code_is_not_mcp_request_schema",
-    "preserve_json_null_boolean_and_number_primitive_types",
-    "do_not_infer_another_union_branch",
-    "schema_validity_transition_compatibility_and_persisted_corruption_are_distinct",
-    "transition_compatibility_error_does_not_imply_persisted_corruption",
-    "pre_core_core_rejected_and_persisted_corruption_outcomes_surface_exactly",
-    "product_repository_edit_requires_successful_authority_mutation",
-    "failed_checkpoint_and_user_action_creation_surface_exactly",
-    "use_store_derived_current_effective_shaping_authority_graph",
-    "superseded_shaping_history_is_immutable_and_non_actionable",
-    "preserve_current_checkpoint_and_user_action_authority",
-    "checkpoint_replacement_forbidden_while_decision_live",
-    "compatible_applied_decisions_require_explicit_checkpoint_carry_forward",
-    "stale_shaping_authority_grants_no_permission",
-    "stale_accepted_resolution_is_never_reused",
-    "stale_authority_requires_exact_retirement_or_reauthorization",
-    "reauthorization_creates_fresh_user_action_identity",
-    "reauthorization_lineage_is_immutable",
-    "resolution_does_not_apply_shaping_decision",
-    "inspect_exact_shaping_resolution_outcome",
-    "only_accepted_current_shaping_authority_is_applicable",
-    "follow_shaping_decision_application_owner",
-    "rejected_deferred_or_expired_decision_requires_shaping_recovery",
-    "terminal_or_expired_user_action_is_never_resolved_again",
-    "successor_user_action_required_when_revised_plan_still_needs_decision",
-    "non_authorizing_decision_does_not_enable_product_repository_mutation",
-    "scope_decision_not_invented_for_product_or_technical_only",
-    "change_unit_creation_does_not_advance_phase",
-    "explicit_advance_required_for_work_implementation",
-    "implementation_authority_invalidating_update_rejected_before_mutation",
-    "implementation_never_silently_returns_to_shaping",
-    "advisor_results_finalize_through_finalize_advice",
-    "advisor_change_units_are_non_write",
-    "user_decisions_require_user_action_requests",
-    "chat_reply_is_not_resolution",
-    "advance_task_forbidden_while_user_action_pending",
-    "prepare_write_forbidden_before_implementation",
-    "rejection_must_not_be_presented_as_success",
-    "all_rejection_and_recovery_facts_must_surface",
-    "non_authorizing_decision_must_surface_no_authority",
-    "presentation_must_surface_required_facts",
-    "close_blockers_do_not_replace_workflow_progression",
-    "close_readiness_only_during_close_review",
+    "method_failure_and_response_projection_failure_are_distinct",
+    "applied_effect_prohibits_mutation_retry",
+    "current_status_read_required_after_response_projection_failure",
+    "exact_operation_result_retrieved_when_ref_exists",
+    "new_commit_staging_effect_and_replay_are_distinct",
+    "applied_effect_never_reports_unchanged_state",
+    "post_effect_recovery_does_not_establish_successful_completion",
+    "refreshed_status_preserves_current_workflow_authority",
+];
+
+/// Closed semantics whose change invalidates mutation-finalization identity.
+pub const MUTATION_FINALIZATION_CONTRACT_FACTS: &[&str] = &[
+    "pre_effect_internal_contract_failure_is_an_ordinary_error_without_effect",
+    "committed_post_effect_failure_preserves_commit_effect_and_state_change",
+    "staging_post_effect_failure_preserves_applied_effect_without_commit_or_state_change",
+    "replayed_committed_result_preserves_effect_without_a_new_commit",
+    "normal_no_effect_result_and_typed_rejection_remain_distinct",
+    "workflow_contract_diagnostics_are_constructed_with_observed_effect_facts",
+];
+
+/// Closed semantics whose change invalidates post-effect response recovery.
+pub const POST_EFFECT_RESPONSE_CONTRACT_FACTS: &[&str] = &[
+    "method_failure_and_response_projection_failure_are_distinct",
+    "post_effect_recovery_is_non_retryable",
+    "post_effect_recovery_requires_current_status_read",
+    "operation_result_ref_routes_exact_result_retrieval_when_present",
+    "post_effect_recovery_withholds_successful_completion_claim",
+    "current_workflow_authority_governs_after_refresh",
 ];
 
 /// Closed semantics whose change invalidates the Core workflow contract.
@@ -163,6 +126,24 @@ pub fn managed_guidance_semantic_digest() -> RequestHash {
     .expect("static managed guidance semantics always serialize")
 }
 
+/// Returns the canonical semantic digest for mutation finalization.
+pub fn mutation_finalization_contract_semantic_digest() -> RequestHash {
+    canonical_json_sha256(&SemanticDigestBasis {
+        domain: "volicord.mutation-finalization-contract",
+        facts: MUTATION_FINALIZATION_CONTRACT_FACTS,
+    })
+    .expect("static mutation-finalization semantics always serialize")
+}
+
+/// Returns the canonical semantic digest for post-effect response recovery.
+pub fn post_effect_response_contract_semantic_digest() -> RequestHash {
+    canonical_json_sha256(&SemanticDigestBasis {
+        domain: "volicord.post-effect-response-contract",
+        facts: POST_EFFECT_RESPONSE_CONTRACT_FACTS,
+    })
+    .expect("static post-effect response semantics always serialize")
+}
+
 /// Returns the canonical semantic digest for the current Core workflow contract.
 pub fn workflow_contract_semantic_digest() -> RequestHash {
     canonical_json_sha256(&SemanticDigestBasis {
@@ -228,6 +209,36 @@ mod tests {
             facts: &WORKFLOW_CONTRACT_FACTS[..WORKFLOW_CONTRACT_FACTS.len() - 1],
         })
         .expect("test workflow semantics serialize");
+        assert_ne!(digest, changed);
+    }
+
+    #[test]
+    fn mutation_finalization_contract_semantic_digest_is_canonical_and_fact_bound() {
+        let digest = mutation_finalization_contract_semantic_digest();
+        assert!(crate::canonical::is_canonical_sha256_digest(
+            digest.as_str()
+        ));
+        let changed = canonical_json_sha256(&SemanticDigestBasis {
+            domain: "volicord.mutation-finalization-contract",
+            facts: &MUTATION_FINALIZATION_CONTRACT_FACTS
+                [..MUTATION_FINALIZATION_CONTRACT_FACTS.len() - 1],
+        })
+        .expect("test mutation-finalization semantics serialize");
+        assert_ne!(digest, changed);
+    }
+
+    #[test]
+    fn post_effect_response_contract_semantic_digest_is_canonical_and_fact_bound() {
+        let digest = post_effect_response_contract_semantic_digest();
+        assert!(crate::canonical::is_canonical_sha256_digest(
+            digest.as_str()
+        ));
+        let changed = canonical_json_sha256(&SemanticDigestBasis {
+            domain: "volicord.post-effect-response-contract",
+            facts: &POST_EFFECT_RESPONSE_CONTRACT_FACTS
+                [..POST_EFFECT_RESPONSE_CONTRACT_FACTS.len() - 1],
+        })
+        .expect("test post-effect response semantics serialize");
         assert_ne!(digest, changed);
     }
 
