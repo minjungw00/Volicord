@@ -43,30 +43,40 @@ workflow 권한이 되지는 않습니다.
 cargo run -p xtask -- owner-route --changed
 ```
 
-명시한 변경 series 기준 뒤의 commit된 변경과 staged, unstaged, untracked working
-tree 경로를 함께 포함하려면 `--base <revision>`을 사용합니다. 다른 도구나
-에이전트가 결과를 읽을 때는 `--json`을 추가합니다. 사람용 형식과 JSON 형식은
-정렬된 같은 보고서에서 생성됩니다.
+정확한 commit과 현재 working tree를 비교하고 commit된 series 변경, staged,
+unstaged, untracked 변경을 모두 포함하려면 `--base <revision>`을 사용합니다. Git
+탐색은 추가, 수정, 삭제, 이름 변경, 복사, 타입 변경으로 닫힌 상태와 이전·새 경로
+역할을 보존합니다. 다른 도구나 에이전트가 결과를 읽을 때는 `--json`을 추가합니다.
+사람용 형식과 JSON 형식은 정렬된 같은 보고서에서 생성되며 변경 종류, endpoint
+경로, `base` 또는 `current` 경로 지정 기준을 똑같이 표시합니다.
 
-이 명령은 Git에서 변경 경로를, Cargo metadata에서 워크스페이스 패키지 identity를,
-`docs/doc-index.yaml`에서 유지 문서 항목과 대응 언어 쌍을 읽습니다. 검증되는 지침,
-직접 담당 문서, 검증 분류 연결은 `docs/owner-routing.yaml`에서 읽습니다. 적용되는
-루트 및 범위별 `AGENTS.md`, 변경 패키지, 변경된 정확한 문서 항목과 대응 경로,
-직접 담당 문서, 검증 분류, 유지 경로가 없는 경로를 반환합니다. 결과는 정렬되고
-중복이 없습니다. 이 명령은 읽기 전용이며 임의 산문을 검색해 담당 범위를 추론하지
-않습니다.
+이 명령은 정확한 기준 commit과 현재 working tree에서 경로 지정 snapshot을 하나씩
+불러옵니다. 각 snapshot에는 담당 metadata, 유지 문서 항목과 대응 언어 쌍, 추적
+경로, Cargo workspace package identity가 들어 있습니다. 추가와 복사 목적지는 현재
+담당 범위를, 삭제는 기준 담당 범위를 사용하며 이름 변경은 두 endpoint를 모두
+사용합니다. 수정과 타입 변경도 두 snapshot을 사용하므로 같은 series에서 담당
+범위가 바뀌어도 이전 담당 문서와 현재 담당 문서를 모두 보존합니다. 보고서는
+적용되는 루트 및 범위별 `AGENTS.md`, package 영향, 정확한 유지 문서, 직접 담당
+문서, 검증 분류를 결정적인 순서로 합칩니다. 기준 자료는 임시 읽기 전용이며 이
+명령은 working tree를 바꾸거나 임의 산문을 검색해 담당 범위를 추론하지 않습니다.
 
-같은 인식 모델로 현재 Git index에서 추적하는 전체 경로도 검증합니다. 추적 경로는
-유지 문서이거나, 현재 workspace package에 속하거나, 명시적 경로 규칙과
-일치하거나, 비어 있지 않은 근거가 있는 정확한 현재 예외여야 합니다. 알 수 없는
-추적 경로는 정렬된 경로 순서로 metadata 검증을 실패시킵니다. 무시되는 생성 build
-출력과 검증 결과 파일을 포함한 untracked 파일은 이 inventory의 입력이 아닙니다.
+현재 snapshot은 현재 Git tree에서 추적하는 전체 경로를 독립적으로 검증합니다.
+추적 경로는 유지 문서이거나, 현재 workspace package에 속하거나, 명시적 경로
+규칙과 일치하거나, 비어 있지 않은 근거가 있는 정확한 현재 예외여야 합니다.
+정확한 `path` 규칙은 현재 경로를 가리켜야 하고 package 규칙은 현재 Cargo
+workspace와 같아야 합니다. 따라서 파일, 문서, 규칙, package를 제거할 때 현재
+tombstone을 남길 필요가 없으며 제거된 endpoint는 기준 snapshot에서만 경로를
+지정합니다. 알 수 없는 현재 추적 경로는 정렬된 경로 순서로 metadata 검증을
+실패시킵니다. 무시되는 생성 build 출력과 검증 결과 파일을 포함한 untracked 파일은
+이 inventory의 입력이 아닙니다.
 
 집중 검증은 담당 경로가 없는 모든 변경 경로를 담당 경로 사전 점검 실패로 처리하고
-유지보수자에게 `docs/owner-routing.yaml`을 안내합니다. 알 수 없는 경로가 사실상 빈
-성공 계획을 받을 수 없습니다. 루트 `Cargo.toml`이나 `Cargo.lock` 변경에는 항상
-워크스페이스 아키텍처와 워크스페이스 컴파일 점검을 추가하지만, 집중 profile에
-정확한 test aggregate를 추가하지는 않습니다.
+유지보수자에게 `docs/owner-routing.yaml`을 안내합니다. 알 수 없는 추가 경로가
+사실상 빈 성공 계획을 받을 수 없습니다. 루트 `Cargo.toml`이나 `Cargo.lock`
+변경에는 항상 workspace architecture와 workspace compilation 점검을 추가합니다.
+Workspace package를 제거하거나 옮길 때도 같은 workspace 수준 점검을 추가하되,
+변경 package lint와 test는 현재 snapshot에 존재하는 package만 선택합니다. 어떤
+경우에도 집중 profile에 정확한 test aggregate를 추가하지는 않습니다.
 
 ## 검증 profile과 순차 series
 
@@ -330,9 +340,10 @@ feature, package metadata, workspace 구성, profile은 프로덕션 변경으�
   안 됩니다.
 - `docs/owner-routing.yaml`의 모든 지침 경로, 직접 담당 `doc_id`, 워크스페이스
   패키지, 지원되는 검증 분류가 현재 지침 파일, 문서 색인, Cargo 워크스페이스와
-  정확히 한 번씩 대응합니다. 추적 경로 inventory는 `git ls-files`가 반환하는 모든
-  경로도 분류하며, 알 수 없는 추적 경로나 오래되었거나 비어 있거나 중복되거나
-  불필요한 예외는 유효하지 않습니다.
+  정확히 한 번씩 대응합니다. 추적 경로 inventory는 현재 Git tree의 모든 경로도
+  분류하며, 알 수 없는 추적 경로, 오래된 정확한 경로 규칙, 오래되었거나 비어
+  있거나 중복되거나 불필요한 예외는 유효하지 않습니다. 기준 revision 경로 지정은
+  이 현재 metadata 무결성 검사와 분리됩니다.
 - 정규 CI trigger 정책은 모든 추적 경로를 포함하며, 주 CI workflow의 pull request
   및 push path filter는 이 정책과 동일합니다.
 

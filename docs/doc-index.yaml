@@ -3557,7 +3557,7 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for xtask help boundaries, changed-owner routing, event-specific CI series bases and trigger ownership, sequential focused/final profiles, the current Linux validation plan shared by CI and final validation, durable command results,
+  summary: Maintenance policy for xtask help boundaries, status-aware base/current changed-owner routing, event-specific CI series bases and trigger ownership, sequential focused/final profiles, the current Linux validation plan shared by CI and final validation, durable command results,
     bounded aggregate decomposition, commit-type scope, owner-derived structure, links, terminology, bilingual parity,
     workspace architecture enforcement, generated CLI synchronization and source drift, complete tracked-path routing, tracked artifact hygiene, onboarding usability,
     deterministic committed-tree source bundles, dedicated cross-platform release-binary smoke, semantic release
@@ -3580,7 +3580,7 @@ documents:
   canonical_for:
   - xtask repository-maintenance help and its non-product-validation boundary
   - documentation metadata, path, link, terminology, parity, example, stability-label, and reporting validation
-  - complete tracked-Git-path routing and justified current-exemption validation
+  - complete status-aware base/current Git change routing, current tracked-path integrity, and justified current-exemption validation
   - event-specific pull-request, push, and manual-run CI series-base selection and fail-closed range validation
   - canonical pull-request and push CI path-trigger ownership with tracked-path coverage
   - workspace package declaration and internal dependency-direction validation

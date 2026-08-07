@@ -42,6 +42,13 @@ rust-version.workspace = true
         write(&root, "docs/AGENTS.md", "# Documentation rules\n");
         write(&root, "docs/en/maintain/validation.md", "# Validation\n");
         write(&root, "docs/ko/maintain/validation.md", "# 검증\n");
+        write(&root, "docs/en/maintain/other.md", "# Other owner\n");
+        write(&root, "docs/ko/maintain/other.md", "# 다른 담당\n");
+        write(&root, "docs/sample.txt", "sample route\n");
+        write(&root, "docs/delete.txt", "delete route\n");
+        write(&root, "docs/rename.txt", "rename route\n");
+        write(&root, "docs/copy-source.txt", "copy route\n");
+        write(&root, "docs/type.txt", "type route\n");
         write(
             &root,
             "docs/doc-index.yaml",
@@ -66,6 +73,11 @@ documents:
     owner_area: documentation_maintenance
     canonical_for:
       - repository validation
+  - doc_id: maintain.other
+    path_en: docs/en/maintain/other.md
+    path_ko: docs/ko/maintain/other.md
+    summary: Other owner.
+    owner_area: documentation_maintenance
 "#,
         );
         write(
@@ -169,6 +181,10 @@ on:
     fn status(&self) -> Vec<u8> {
         git_bytes(self.root(), &["status", "--porcelain", "-z"])
     }
+
+    fn worktrees(&self) -> Vec<u8> {
+        git_bytes(self.root(), &["worktree", "list", "--porcelain", "-z"])
+    }
 }
 
 #[test]
@@ -188,7 +204,7 @@ fn tracked_root_maintenance_files_have_owner_and_validation_routes() {
     let json = serde_json::to_string_pretty(&report).expect("render JSON");
 
     assert_eq!(
-        report.changed_paths,
+        report.changed_paths(),
         [
             ".dockerignore",
             ".gitattributes",
@@ -203,7 +219,7 @@ fn tracked_root_maintenance_files_have_owner_and_validation_routes() {
         .validation_classes
         .contains(&"repository-hygiene".to_owned()));
     assert!(report.validation_classes.contains(&"workflow".to_owned()));
-    for path in &report.changed_paths {
+    for path in &report.changed_paths() {
         assert!(human.contains(path));
         assert!(json.contains(path));
     }
@@ -283,12 +299,18 @@ on:
     );
     write(fixture.root(), "unknown.bin", "unknown\n");
     let status_before = fixture.status();
+    let worktrees_before = fixture.worktrees();
 
     let report = xtask::run_owner_route(fixture.root(), None).expect("route dirty paths");
 
     assert_eq!(fixture.status(), status_before, "routing must be read-only");
     assert_eq!(
-        report.changed_paths,
+        fixture.worktrees(),
+        worktrees_before,
+        "routing must not add a Git worktree"
+    );
+    assert_eq!(
+        report.changed_paths(),
         [
             ".github/workflows/ci.yml",
             "AGENTS.md",
@@ -314,11 +336,25 @@ on:
         report
             .instructions
             .iter()
+            .map(|item| (item.routing_basis, item.path.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (xtask::RoutingBasis::Base, "AGENTS.md"),
+            (xtask::RoutingBasis::Base, "crates/AGENTS.md"),
+            (xtask::RoutingBasis::Base, "docs/AGENTS.md"),
+            (xtask::RoutingBasis::Current, "AGENTS.md"),
+            (xtask::RoutingBasis::Current, "crates/AGENTS.md"),
+            (xtask::RoutingBasis::Current, "docs/AGENTS.md"),
+        ]
+    );
+    assert_eq!(
+        report
+            .unknown_paths
+            .iter()
             .map(|item| item.path.as_str())
             .collect::<Vec<_>>(),
-        ["AGENTS.md", "crates/AGENTS.md", "docs/AGENTS.md"]
+        ["unknown.bin"]
     );
-    assert_eq!(report.unknown_paths, ["unknown.bin"]);
     assert!(report.validation_classes.contains(&"workflow".to_owned()));
     assert!(report.validation_classes.contains(&"rust".to_owned()));
 }
@@ -352,11 +388,11 @@ on:
 
     assert_eq!(report.base_revision.as_deref(), Some(fixture.base.as_str()));
     assert_eq!(
-        report.changed_paths,
+        report.changed_paths(),
         [".github/workflows/ci.yml", "docs/ko/maintain/validation.md"]
     );
     for value in report
-        .changed_paths
+        .changed_paths()
         .iter()
         .chain(report.instructions.iter().map(|item| &item.path))
         .chain(report.validation_classes.iter())
@@ -375,6 +411,314 @@ on:
     let rerun = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
         .expect("rerun deterministic route");
     assert_eq!(report, rerun);
+}
+
+#[cfg(unix)]
+#[test]
+fn discovers_closed_git_statuses_with_explicit_endpoint_bases() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new();
+    write(fixture.root(), "Dockerfile", "FROM busybox\n");
+    fs::remove_file(fixture.root().join("docs/delete.txt")).expect("delete routed file");
+    git(
+        fixture.root(),
+        &["mv", "docs/rename.txt", "docs/renamed.txt"],
+    );
+    fs::copy(
+        fixture.root().join("docs/copy-source.txt"),
+        fixture.root().join("docs/copied.txt"),
+    )
+    .expect("copy routed file");
+    fs::remove_file(fixture.root().join("docs/type.txt")).expect("remove regular file");
+    symlink("copy-source.txt", fixture.root().join("docs/type.txt")).expect("create symlink");
+    git(fixture.root(), &["add", "-A"]);
+    write(fixture.root(), "untracked.bin", "added\n");
+
+    let report = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect("route every supported change status");
+    let by_kind = report
+        .changes
+        .iter()
+        .map(|change| (change.kind, change))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    let added = by_kind[&xtask::RepositoryChangeKind::Added];
+    assert_eq!(added.old_path, None);
+    assert_eq!(added.new_path.as_deref(), Some("untracked.bin"));
+    assert_eq!(added.routing[0].routing_basis, xtask::RoutingBasis::Current);
+
+    let modified = by_kind[&xtask::RepositoryChangeKind::Modified];
+    assert_eq!(modified.new_path.as_deref(), Some("Dockerfile"));
+    assert_eq!(
+        modified
+            .routing
+            .iter()
+            .map(|endpoint| endpoint.routing_basis)
+            .collect::<Vec<_>>(),
+        [xtask::RoutingBasis::Base, xtask::RoutingBasis::Current]
+    );
+
+    let deleted = by_kind[&xtask::RepositoryChangeKind::Deleted];
+    assert_eq!(deleted.old_path.as_deref(), Some("docs/delete.txt"));
+    assert_eq!(deleted.new_path, None);
+    assert_eq!(deleted.routing[0].routing_basis, xtask::RoutingBasis::Base);
+
+    let renamed = by_kind[&xtask::RepositoryChangeKind::Renamed];
+    assert_eq!(renamed.old_path.as_deref(), Some("docs/rename.txt"));
+    assert_eq!(renamed.new_path.as_deref(), Some("docs/renamed.txt"));
+    assert_eq!(renamed.routing[0].routing_basis, xtask::RoutingBasis::Base);
+    assert_eq!(
+        renamed.routing[1].routing_basis,
+        xtask::RoutingBasis::Current
+    );
+
+    let copied = by_kind[&xtask::RepositoryChangeKind::Copied];
+    assert_eq!(copied.old_path.as_deref(), Some("docs/copy-source.txt"));
+    assert_eq!(copied.new_path.as_deref(), Some("docs/copied.txt"));
+    assert_eq!(copied.routing.len(), 1);
+    assert_eq!(
+        copied.routing[0].routing_basis,
+        xtask::RoutingBasis::Current
+    );
+
+    let type_changed = by_kind[&xtask::RepositoryChangeKind::TypeChanged];
+    assert_eq!(type_changed.old_path.as_deref(), Some("docs/type.txt"));
+    assert_eq!(
+        type_changed
+            .routing
+            .iter()
+            .map(|endpoint| endpoint.routing_basis)
+            .collect::<Vec<_>>(),
+        [xtask::RoutingBasis::Base, xtask::RoutingBasis::Current]
+    );
+    assert!(report
+        .unknown_paths
+        .iter()
+        .any(|item| item.path == "untracked.bin"
+            && item.routing_basis == xtask::RoutingBasis::Current));
+
+    let human = report.render_human();
+    let json = serde_json::to_string_pretty(&report).expect("render JSON");
+    for value in [
+        "added",
+        "modified",
+        "deleted",
+        "renamed",
+        "copied",
+        "type_changed",
+        "docs/rename.txt",
+        "docs/renamed.txt",
+        "base",
+        "current",
+    ] {
+        assert!(human.contains(value), "human report omits {value}");
+        assert!(json.contains(value), "JSON report omits {value}");
+    }
+}
+
+#[test]
+fn document_rename_uses_base_and_current_document_snapshots() {
+    let fixture = Fixture::new();
+    git(
+        fixture.root(),
+        &[
+            "mv",
+            "docs/en/maintain/validation.md",
+            "docs/en/maintain/validation-renamed.md",
+        ],
+    );
+    git(
+        fixture.root(),
+        &[
+            "mv",
+            "docs/ko/maintain/validation.md",
+            "docs/ko/maintain/validation-renamed.md",
+        ],
+    );
+    replace(
+        fixture.root(),
+        "docs/doc-index.yaml",
+        "docs/en/maintain/validation.md",
+        "docs/en/maintain/validation-renamed.md",
+    );
+    replace(
+        fixture.root(),
+        "docs/doc-index.yaml",
+        "docs/ko/maintain/validation.md",
+        "docs/ko/maintain/validation-renamed.md",
+    );
+    git(fixture.root(), &["add", "docs/doc-index.yaml"]);
+
+    let report = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect("route renamed maintained document");
+    let documents = report
+        .maintained_documents
+        .iter()
+        .filter(|document| document.doc_id == "maintain.validation")
+        .collect::<Vec<_>>();
+    assert_eq!(documents.len(), 2);
+    assert_eq!(documents[0].routing_basis, xtask::RoutingBasis::Base);
+    assert!(documents[0]
+        .paths
+        .contains(&"docs/en/maintain/validation.md".to_owned()));
+    assert_eq!(documents[1].routing_basis, xtask::RoutingBasis::Current);
+    assert!(documents[1]
+        .paths
+        .contains(&"docs/en/maintain/validation-renamed.md".to_owned()));
+}
+
+#[test]
+fn package_directory_rename_routes_both_workspace_snapshots() {
+    let fixture = Fixture::new();
+    git(fixture.root(), &["mv", "crates/sample", "crates/renamed"]);
+    replace(
+        fixture.root(),
+        "Cargo.toml",
+        "crates/sample",
+        "crates/renamed",
+    );
+    git(fixture.root(), &["add", "Cargo.toml"]);
+
+    let report = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect("route renamed package directory");
+    assert!(report.workspace_packages.iter().any(|package| {
+        package.routing_basis == xtask::RoutingBasis::Base
+            && package.manifest_path == "crates/sample/Cargo.toml"
+    }));
+    assert!(report.workspace_packages.iter().any(|package| {
+        package.routing_basis == xtask::RoutingBasis::Current
+            && package.manifest_path == "crates/renamed/Cargo.toml"
+    }));
+    assert!(report
+        .validation_classes
+        .contains(&"architecture".to_owned()));
+    assert!(report.validation_classes.contains(&"rust".to_owned()));
+}
+
+#[test]
+fn deleted_package_is_base_owned_and_not_a_current_test_target() {
+    let fixture = Fixture::new();
+    git(fixture.root(), &["rm", "-r", "-q", "crates/sample"]);
+    replace(
+        fixture.root(),
+        "Cargo.toml",
+        "members = [\"crates/sample\"]",
+        "members = []",
+    );
+    let routing = fs::read_to_string(fixture.root().join("docs/owner-routing.yaml"))
+        .expect("read routing metadata");
+    fs::write(
+        fixture.root().join("docs/owner-routing.yaml"),
+        routing.replace(
+            "package_routes:\n  sample:\n    owner_doc_ids: [maintain.validation]\n    validation_classes: [architecture]\n",
+            "package_routes: {}\n",
+        ),
+    )
+    .expect("remove deleted package route");
+    command(fixture.root(), "cargo", &["generate-lockfile"]);
+    git(
+        fixture.root(),
+        &["add", "Cargo.toml", "Cargo.lock", "docs/owner-routing.yaml"],
+    );
+
+    let report = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect("route deleted package from base snapshot");
+    let packages = report
+        .workspace_packages
+        .iter()
+        .filter(|package| package.name == "sample")
+        .collect::<Vec<_>>();
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].routing_basis, xtask::RoutingBasis::Base);
+    for class in ["architecture", "repository-hygiene", "rust"] {
+        assert!(report.validation_classes.contains(&class.to_owned()));
+    }
+}
+
+#[test]
+fn route_reassignment_unions_old_and_current_owners() {
+    let fixture = Fixture::new();
+    replace(
+        fixture.root(),
+        "docs/owner-routing.yaml",
+        "  - path: .dockerignore\n    owner_doc_ids: [maintain.validation]",
+        "  - path: .dockerignore\n    owner_doc_ids: [maintain.other]",
+    );
+    write(fixture.root(), ".dockerignore", "target\nchanged\n");
+    git(
+        fixture.root(),
+        &["add", ".dockerignore", "docs/owner-routing.yaml"],
+    );
+
+    let report = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect("union reassigned owners");
+    assert!(report.owner_documents.iter().any(|owner| {
+        owner.routing_basis == xtask::RoutingBasis::Base
+            && owner.doc_id == "maintain.validation"
+            && owner
+                .reasons
+                .iter()
+                .any(|reason| reason == "base:.dockerignore")
+    }));
+    assert!(report.owner_documents.iter().any(|owner| {
+        owner.routing_basis == xtask::RoutingBasis::Current
+            && owner.doc_id == "maintain.other"
+            && owner
+                .reasons
+                .iter()
+                .any(|reason| reason == "current:.dockerignore")
+    }));
+}
+
+#[test]
+fn file_and_exact_route_can_be_deleted_together() {
+    let fixture = Fixture::new();
+    git(fixture.root(), &["rm", "-q", ".dockerignore"]);
+    remove_dockerignore_route(fixture.root());
+    git(fixture.root(), &["add", "docs/owner-routing.yaml"]);
+
+    let report = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect("route deleted file through base metadata");
+    let deleted = report
+        .changes
+        .iter()
+        .find(|change| change.old_path.as_deref() == Some(".dockerignore"))
+        .expect("deleted path");
+    assert_eq!(deleted.kind, xtask::RepositoryChangeKind::Deleted);
+    assert!(report.unknown_paths.is_empty());
+}
+
+#[test]
+fn current_exact_route_to_an_absent_path_fails_metadata_integrity() {
+    let fixture = Fixture::new();
+    git(fixture.root(), &["rm", "-q", ".dockerignore"]);
+
+    let error = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect_err("stale current exact route must fail")
+        .to_string();
+    assert!(error.contains("exact path route .dockerignore does not name a current path"));
+}
+
+fn remove_dockerignore_route(root: &Path) {
+    let path = root.join("docs/owner-routing.yaml");
+    let routing = fs::read_to_string(&path).expect("read routing metadata");
+    let block = r#"  - path: .dockerignore
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [release, repository-hygiene]
+"#;
+    assert!(routing.contains(block));
+    fs::write(path, routing.replace(block, "")).expect("remove exact route");
+}
+
+fn replace(root: &Path, relative: &str, before: &str, after: &str) {
+    let path = root.join(relative);
+    let contents = fs::read_to_string(&path).expect("read replacement source");
+    assert!(
+        contents.contains(before),
+        "{relative} does not contain replacement source"
+    );
+    fs::write(path, contents.replacen(before, after, 1)).expect("write replacement");
 }
 
 fn write(root: &Path, relative: &str, contents: &str) {

@@ -3,7 +3,7 @@ use super::current_plan::{
 };
 use super::{CommandInvocation, ValidationProfile};
 use crate::architecture::{derive_workspace_package_inputs, WorkspacePackageInput};
-use crate::owner_route::OwnerRouteReport;
+use crate::owner_route::{OwnerRouteReport, RoutingBasis, UnknownRoutedPath};
 use anyhow::{bail, Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -53,11 +53,26 @@ pub(crate) fn build_validation_plan(
         .clone()
         .context("validation requires an explicit base revision")?;
     let head_revision = git_text(root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    let changed_paths = route.changed_paths();
     let changed_packages = route
         .workspace_packages
         .iter()
+        .filter(|package| package.routing_basis == RoutingBasis::Current)
         .map(|package| package.name.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
+    let current_package_identities = route
+        .workspace_packages
+        .iter()
+        .filter(|package| package.routing_basis == RoutingBasis::Current)
+        .map(|package| (package.name.clone(), package.manifest_path.clone()))
+        .collect::<BTreeSet<_>>();
+    let workspace_topology_changed = route.workspace_packages.iter().any(|package| {
+        package.routing_basis == RoutingBasis::Base
+            && !current_package_identities
+                .contains(&(package.name.clone(), package.manifest_path.clone()))
+    });
     let validation_classes = route.validation_classes.clone();
     let scope_issues = commit_scope_issues(root, &base_revision)?;
     let mut raw = Vec::new();
@@ -74,7 +89,8 @@ pub(crate) fn build_validation_plan(
                 &base_revision,
                 &changed_packages,
                 &validation_classes,
-                &route.changed_paths,
+                &changed_paths,
+                workspace_topology_changed,
             ));
         }
         ValidationProfile::Final => raw.extend(final_specs(root, &base_revision)),
@@ -84,7 +100,7 @@ pub(crate) fn build_validation_plan(
     Ok(ValidationPlan {
         base_revision,
         head_revision,
-        changed_paths: route.changed_paths,
+        changed_paths,
         changed_packages,
         validation_classes,
         commands,
@@ -97,6 +113,7 @@ fn focused_specs(
     changed_packages: &[String],
     validation_classes: &[String],
     changed_paths: &[String],
+    workspace_topology_changed: bool,
 ) -> Vec<CommandSpec> {
     let classes = validation_classes
         .iter()
@@ -104,7 +121,8 @@ fn focused_specs(
         .collect::<BTreeSet<_>>();
     let workspace_inputs_changed = changed_paths
         .iter()
-        .any(|path| matches!(path.as_str(), "Cargo.toml" | "Cargo.lock"));
+        .any(|path| matches!(path.as_str(), "Cargo.toml" | "Cargo.lock"))
+        || workspace_topology_changed;
     let mut specs = Vec::new();
     if classes.contains("repository-hygiene") {
         specs.push(process(
@@ -234,7 +252,7 @@ fn current_command_spec(root: &Path, command: CurrentValidationCommand) -> Comma
     spec
 }
 
-fn internal_owner_routing_spec(root: &Path, unknown_paths: &[String]) -> CommandSpec {
+fn internal_owner_routing_spec(root: &Path, unknown_paths: &[UnknownRoutedPath]) -> CommandSpec {
     let (stdout, stderr, exit_code) = if unknown_paths.is_empty() {
         (
             "owner-routing coverage check passed\n".to_owned(),
@@ -246,7 +264,11 @@ fn internal_owner_routing_spec(root: &Path, unknown_paths: &[String]) -> Command
             String::new(),
             format!(
                 "focused validation cannot route changed path(s): {}. Add or correct a maintained path route in docs/owner-routing.yaml before relying on focused validation.\n",
-                unknown_paths.join(", ")
+                unknown_paths
+                    .iter()
+                    .map(|item| format!("{}:{}", item.routing_basis.label(), item.path))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             1,
         )
@@ -727,6 +749,7 @@ mod tests {
                 "rust".to_owned(),
             ],
             &["xtask/src/validation/plan.rs".to_owned()],
+            false,
         );
         let invocations = specs
             .iter()
@@ -881,9 +904,22 @@ edition = "2021"
             crate::resolve_ci_base(root, "push", &event_path, "HEAD").expect("resolve CI base");
         let route = OwnerRouteReport {
             base_revision: Some(resolution.base_revision),
-            changed_paths: resolution.changed_paths,
+            changes: resolution
+                .changed_paths
+                .into_iter()
+                .map(|path| crate::owner_route::RepositoryChange {
+                    kind: crate::owner_route::RepositoryChangeKind::Modified,
+                    old_path: Some(path.clone()),
+                    new_path: Some(path.clone()),
+                    routing: vec![crate::owner_route::ChangeRoutingEndpoint {
+                        routing_basis: RoutingBasis::Current,
+                        path,
+                    }],
+                })
+                .collect(),
             instructions: Vec::new(),
             workspace_packages: vec![crate::owner_route::RoutedPackage {
+                routing_basis: RoutingBasis::Current,
                 name: "production".to_owned(),
                 manifest_path: "crates/production/Cargo.toml".to_owned(),
                 changed_paths: vec!["crates/production/src/lib.rs".to_owned()],
@@ -998,6 +1034,7 @@ anyhow = "1"
                 &[],
                 &["rust".to_owned()],
                 &[path.to_owned()],
+                false,
             );
             let invocations = specs
                 .iter()
@@ -1016,10 +1053,40 @@ anyhow = "1"
     }
 
     #[test]
+    fn deleted_package_selects_workspace_checks_without_nonexistent_package_commands() {
+        let specs = focused_specs(
+            Path::new("/repository"),
+            "base",
+            &[],
+            &[
+                "architecture".to_owned(),
+                "repository-hygiene".to_owned(),
+                "rust".to_owned(),
+            ],
+            &["crates/deleted/Cargo.toml".to_owned()],
+            true,
+        );
+        let invocations = specs
+            .iter()
+            .map(|spec| spec.invocation.args.join(" "))
+            .collect::<Vec<_>>();
+        assert!(invocations
+            .iter()
+            .any(|args| args == "run --locked -p xtask -- architecture-check"));
+        assert!(invocations
+            .iter()
+            .any(|args| args == "check --locked --workspace --all-targets --all-features"));
+        assert!(invocations.iter().all(|args| !args.contains("-p deleted")));
+    }
+
+    #[test]
     fn unknown_paths_create_an_actionable_failed_preflight() {
         let spec = internal_owner_routing_spec(
             Path::new("/repository"),
-            &["unrouted/input.bin".to_owned()],
+            &[UnknownRoutedPath {
+                routing_basis: RoutingBasis::Current,
+                path: "unrouted/input.bin".to_owned(),
+            }],
         );
         let CommandKind::Internal {
             stderr, exit_code, ..
@@ -1041,6 +1108,7 @@ anyhow = "1"
             &[],
             &["rust".to_owned(), "architecture".to_owned()],
             &changed,
+            false,
         );
         let second = focused_specs(
             Path::new("/repository"),
@@ -1048,6 +1116,7 @@ anyhow = "1"
             &[],
             &["architecture".to_owned(), "rust".to_owned()],
             &changed,
+            false,
         );
         assert_eq!(
             first

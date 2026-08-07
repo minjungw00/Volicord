@@ -5,8 +5,9 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Write;
 use std::path::{Component, Path};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";
 const OWNER_ROUTING_PATH: &str = "docs/owner-routing.yaml";
@@ -23,13 +24,13 @@ const SUPPORTED_VALIDATION_CLASSES: &[&str] = &[
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct OwnerRouteReport {
     pub base_revision: Option<String>,
-    pub changed_paths: Vec<String>,
+    pub changes: Vec<RepositoryChange>,
     pub instructions: Vec<RoutedInstruction>,
     pub workspace_packages: Vec<RoutedPackage>,
     pub maintained_documents: Vec<RoutedDocument>,
     pub owner_documents: Vec<RoutedOwnerDocument>,
     pub validation_classes: Vec<String>,
-    pub unknown_paths: Vec<String>,
+    pub unknown_paths: Vec<UnknownRoutedPath>,
 }
 
 impl OwnerRouteReport {
@@ -41,14 +42,29 @@ impl OwnerRouteReport {
                 .as_deref()
                 .unwrap_or("working tree vs HEAD")
         ));
-        render_list(&mut output, "changed paths", &self.changed_paths);
+        render_list(
+            &mut output,
+            "changes",
+            &self
+                .changes
+                .iter()
+                .map(RepositoryChange::render_human)
+                .collect::<Vec<_>>(),
+        );
         render_list(
             &mut output,
             "instructions",
             &self
                 .instructions
                 .iter()
-                .map(|item| format!("{} <- {}", item.path, item.reasons.join(", ")))
+                .map(|item| {
+                    format!(
+                        "{}; basis={}; reasons={}",
+                        item.path,
+                        item.routing_basis.label(),
+                        item.reasons.join(", ")
+                    )
+                })
                 .collect::<Vec<_>>(),
         );
         render_list(
@@ -59,9 +75,10 @@ impl OwnerRouteReport {
                 .iter()
                 .map(|item| {
                     format!(
-                        "{}; manifest={}; changed={}",
+                        "{}; manifest={}; basis={}; changed={}",
                         item.name,
                         item.manifest_path,
+                        item.routing_basis.label(),
                         item.changed_paths.join(", ")
                     )
                 })
@@ -75,8 +92,9 @@ impl OwnerRouteReport {
                 .iter()
                 .map(|item| {
                     format!(
-                        "{}; paths={}; changed={}; owner_area={}; summary={}; canonical_for={}; depends_on={}",
+                        "{}; basis={}; paths={}; changed={}; owner_area={}; summary={}; canonical_for={}; depends_on={}",
                         item.doc_id,
+                        item.routing_basis.label(),
                         item.paths.join(", "),
                         item.changed_paths.join(", "),
                         item.owner_area,
@@ -95,8 +113,9 @@ impl OwnerRouteReport {
                 .iter()
                 .map(|item| {
                     format!(
-                        "{}; paths={}; reasons={}",
+                        "{}; basis={}; paths={}; reasons={}",
                         item.doc_id,
+                        item.routing_basis.label(),
                         item.paths.join(", "),
                         item.reasons.join(", ")
                     )
@@ -104,8 +123,27 @@ impl OwnerRouteReport {
                 .collect::<Vec<_>>(),
         );
         render_list(&mut output, "validation classes", &self.validation_classes);
-        render_list(&mut output, "unknown paths", &self.unknown_paths);
+        render_list(
+            &mut output,
+            "unknown paths",
+            &self
+                .unknown_paths
+                .iter()
+                .map(|item| format!("{}; basis={}", item.path, item.routing_basis.label()))
+                .collect::<Vec<_>>(),
+        );
         output
+    }
+
+    pub fn changed_paths(&self) -> Vec<String> {
+        self.changes
+            .iter()
+            .flat_map(|change| [change.old_path.as_ref(), change.new_path.as_ref()])
+            .flatten()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 }
 
@@ -123,14 +161,93 @@ fn render_list(output: &mut String, heading: &str, values: &[String]) {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryChangeKind {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+    Copied,
+    TypeChanged,
+}
+
+impl RepositoryChangeKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Added => "added",
+            Self::Modified => "modified",
+            Self::Deleted => "deleted",
+            Self::Renamed => "renamed",
+            Self::Copied => "copied",
+            Self::TypeChanged => "type_changed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingBasis {
+    Base,
+    Current,
+}
+
+impl RoutingBasis {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Base => "base",
+            Self::Current => "current",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct ChangeRoutingEndpoint {
+    pub routing_basis: RoutingBasis,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct RepositoryChange {
+    pub kind: RepositoryChangeKind,
+    pub old_path: Option<String>,
+    pub new_path: Option<String>,
+    pub routing: Vec<ChangeRoutingEndpoint>,
+}
+
+impl RepositoryChange {
+    fn render_human(&self) -> String {
+        let routing = self
+            .routing
+            .iter()
+            .map(|endpoint| format!("{}:{}", endpoint.routing_basis.label(), endpoint.path))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "kind={}; old={}; new={}; routing={routing}",
+            self.kind.label(),
+            self.old_path.as_deref().unwrap_or("none"),
+            self.new_path.as_deref().unwrap_or("none")
+        )
+    }
+}
+
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct UnknownRoutedPath {
+    pub routing_basis: RoutingBasis,
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct RoutedInstruction {
+    pub routing_basis: RoutingBasis,
     pub path: String,
     pub reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct RoutedPackage {
+    pub routing_basis: RoutingBasis,
     pub name: String,
     pub manifest_path: String,
     pub changed_paths: Vec<String>,
@@ -138,6 +255,7 @@ pub struct RoutedPackage {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct RoutedDocument {
+    pub routing_basis: RoutingBasis,
     pub doc_id: String,
     pub paths: Vec<String>,
     pub changed_paths: Vec<String>,
@@ -149,6 +267,7 @@ pub struct RoutedDocument {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct RoutedOwnerDocument {
+    pub routing_basis: RoutingBasis,
     pub doc_id: String,
     pub paths: Vec<String>,
     pub reasons: Vec<String>,
@@ -161,7 +280,7 @@ struct RoutingMetadata {
     instruction_scopes: Vec<InstructionScope>,
     path_routes: Vec<PathRoute>,
     tracked_path_exemptions: Vec<TrackedPathExemption>,
-    ci_trigger_policy: CiTriggerPolicy,
+    ci_trigger_policy: serde_yaml::Value,
     package_defaults: PackageRoute,
     package_routes: BTreeMap<String, PackageRoute>,
 }
@@ -252,22 +371,63 @@ struct DocumentRouteEntry {
     depends_on: Vec<String>,
 }
 
+struct RoutingSnapshot {
+    basis: RoutingBasis,
+    metadata: RoutingMetadata,
+    documents: BTreeMap<String, DocumentRouteEntry>,
+    document_by_path: BTreeMap<String, String>,
+    packages: Vec<WorkspacePackageInput>,
+    tracked_paths: BTreeSet<String>,
+}
+
+impl RoutingSnapshot {
+    fn load(root: &Path, basis: RoutingBasis, tracked_paths: BTreeSet<String>) -> Result<Self> {
+        let metadata = load_routing_metadata(root)?;
+        let documents = load_document_routes(root)?;
+        let document_by_path = documents
+            .values()
+            .flat_map(|document| {
+                document
+                    .paths
+                    .iter()
+                    .map(move |path| (path.clone(), document.doc_id.clone()))
+            })
+            .collect();
+        Ok(Self {
+            basis,
+            metadata,
+            documents,
+            document_by_path,
+            packages: derive_workspace_package_inputs(root)?,
+            tracked_paths,
+        })
+    }
+}
+
 pub fn run_owner_route(root: &Path, base: Option<&str>) -> Result<OwnerRouteReport> {
     let root = normalize_existing_root(root)?;
     ensure_git_repository_root(&root)?;
-    let base_revision = base
-        .map(|revision| resolve_commit(&root, revision))
-        .transpose()?;
-    let changed_paths = discover_changed_paths(&root, base_revision.as_deref())?;
-    route_paths(&root, base_revision, changed_paths)
+    let comparison_revision = resolve_commit(&root, base.unwrap_or("HEAD"))?;
+    let base_revision = base.map(|_| comparison_revision.clone());
+    let changes = discover_repository_changes(&root, &comparison_revision)?;
+    let base_snapshot = load_revision_snapshot(&root, &comparison_revision)?;
+    let current_snapshot = RoutingSnapshot::load(
+        &root,
+        RoutingBasis::Current,
+        current_tracked_git_paths(&root)?,
+    )?;
+    validate_routing_metadata(&root, &current_snapshot)?;
+    route_changes(base_revision, changes, &base_snapshot, &current_snapshot)
 }
 
 pub(crate) fn validate_owner_routing(root: &Path, issues: &mut Vec<ValidationIssue>) {
     let result = (|| {
-        let metadata = load_routing_metadata(root)?;
-        let documents = load_document_routes(root)?;
-        let packages = derive_workspace_package_inputs(root)?;
-        validate_routing_metadata(root, &metadata, &documents, &packages)
+        let snapshot = RoutingSnapshot::load(
+            root,
+            RoutingBasis::Current,
+            current_tracked_git_paths(root)?,
+        )?;
+        validate_routing_metadata(root, &snapshot)
     })();
     if let Err(error) = result {
         issues.push(ValidationIssue::new(
@@ -278,94 +438,58 @@ pub(crate) fn validate_owner_routing(root: &Path, issues: &mut Vec<ValidationIss
     }
 }
 
-fn route_paths(
-    root: &Path,
+fn route_changes(
     base_revision: Option<String>,
-    changed_paths: Vec<String>,
+    changes: Vec<RepositoryChange>,
+    base: &RoutingSnapshot,
+    current: &RoutingSnapshot,
 ) -> Result<OwnerRouteReport> {
-    let metadata = load_routing_metadata(root)?;
-    let documents = load_document_routes(root)?;
-    let packages = derive_workspace_package_inputs(root)?;
-    validate_routing_metadata(root, &metadata, &documents, &packages)?;
-
-    let document_by_path = documents
-        .values()
-        .flat_map(|document| {
-            document
-                .paths
-                .iter()
-                .map(move |path| (path.clone(), document.doc_id.clone()))
-        })
-        .collect::<BTreeMap<_, _>>();
-    let mut instruction_reasons = BTreeMap::<String, BTreeSet<String>>::new();
-    let mut package_paths = BTreeMap::<String, BTreeSet<String>>::new();
-    let mut document_paths = BTreeMap::<String, BTreeSet<String>>::new();
-    let mut owner_reasons = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut instruction_reasons = BTreeMap::<(RoutingBasis, String), BTreeSet<String>>::new();
+    let mut package_paths = BTreeMap::<(RoutingBasis, String, String), BTreeSet<String>>::new();
+    let mut document_paths = BTreeMap::<(RoutingBasis, String), BTreeSet<String>>::new();
+    let mut owner_reasons = BTreeMap::<(RoutingBasis, String), BTreeSet<String>>::new();
     let mut validation_classes = BTreeSet::new();
     let mut unknown_paths = BTreeSet::new();
 
-    for path in &changed_paths {
-        let recognized = classify_path(
-            path,
-            &document_by_path,
-            &packages,
-            &metadata.path_routes,
-            &metadata.tracked_path_exemptions,
-        )
-        .is_recognized();
-        for scope in &metadata.instruction_scopes {
-            if path_matches_prefix(path, &scope.path_prefix) {
-                instruction_reasons
-                    .entry(scope.instruction.clone())
-                    .or_default()
-                    .insert(format!("path:{path}"));
-            }
-        }
-        if let Some(doc_id) = document_by_path.get(path) {
-            document_paths
-                .entry(doc_id.clone())
-                .or_default()
-                .insert(path.clone());
-        }
-        for package in &packages {
-            if package_contains_path(package, path) {
-                package_paths
-                    .entry(package.name().to_owned())
-                    .or_default()
-                    .insert(path.clone());
-            }
-        }
-        for route in &metadata.path_routes {
-            if route.matches(path) {
-                add_route(
-                    &mut owner_reasons,
-                    &mut validation_classes,
-                    &route.owner_doc_ids,
-                    &route.validation_classes,
-                    &format!("path:{path}"),
-                );
-            }
-        }
-        if !recognized {
-            unknown_paths.insert(path.clone());
+    for change in &changes {
+        for endpoint in &change.routing {
+            let snapshot = match endpoint.routing_basis {
+                RoutingBasis::Base => base,
+                RoutingBasis::Current => current,
+            };
+            route_endpoint(
+                snapshot,
+                &endpoint.path,
+                &mut instruction_reasons,
+                &mut package_paths,
+                &mut document_paths,
+                &mut owner_reasons,
+                &mut validation_classes,
+                &mut unknown_paths,
+            );
         }
     }
 
-    if !package_paths.is_empty() {
+    for (basis, package, _) in package_paths.keys() {
+        let snapshot = match basis {
+            RoutingBasis::Base => base,
+            RoutingBasis::Current => current,
+        };
         add_package_route(
-            &metadata.package_defaults,
+            *basis,
+            &snapshot.metadata.package_defaults,
             "workspace-package-default",
             &mut instruction_reasons,
             &mut owner_reasons,
             &mut validation_classes,
         );
-    }
-    for package in package_paths.keys() {
-        let route = metadata
+        let route = snapshot
+            .metadata
             .package_routes
             .get(package)
             .with_context(|| format!("routing metadata has no package route for {package}"))?;
         add_package_route(
+            *basis,
             route,
             &format!("package:{package}"),
             &mut instruction_reasons,
@@ -374,23 +498,48 @@ fn route_paths(
         );
     }
 
-    let workspace_packages = packages
-        .iter()
-        .filter_map(|package| {
-            package_paths
-                .get(package.name())
-                .map(|paths| RoutedPackage {
-                    name: package.name().to_owned(),
-                    manifest_path: package.manifest_path().to_owned(),
-                    changed_paths: paths.iter().cloned().collect(),
-                })
-        })
+    let current_package_identities = package_paths
+        .keys()
+        .filter(|(basis, _, _)| *basis == RoutingBasis::Current)
+        .map(|(_, name, manifest)| (name.clone(), manifest.clone()))
+        .collect::<BTreeSet<_>>();
+    if package_paths.keys().any(|(basis, name, manifest)| {
+        *basis == RoutingBasis::Base
+            && !current_package_identities.contains(&(name.clone(), manifest.clone()))
+    }) {
+        validation_classes.extend(
+            ["architecture", "repository-hygiene", "rust"]
+                .into_iter()
+                .map(str::to_owned),
+        );
+    }
+
+    let workspace_packages = package_paths
+        .into_iter()
+        .map(
+            |((routing_basis, name, manifest_path), paths)| RoutedPackage {
+                routing_basis,
+                name,
+                manifest_path,
+                changed_paths: paths.into_iter().collect(),
+            },
+        )
         .collect();
     let maintained_documents = document_paths
         .into_iter()
-        .map(|(doc_id, changed)| {
-            let document = &documents[&doc_id];
-            RoutedDocument {
+        .map(|((routing_basis, doc_id), changed)| {
+            let snapshot = match routing_basis {
+                RoutingBasis::Base => base,
+                RoutingBasis::Current => current,
+            };
+            let document = snapshot.documents.get(&doc_id).with_context(|| {
+                format!(
+                    "{} routing snapshot has no maintained document {doc_id}",
+                    routing_basis.label()
+                )
+            })?;
+            Ok(RoutedDocument {
+                routing_basis,
                 doc_id,
                 paths: document.paths.clone(),
                 changed_paths: changed.into_iter().collect(),
@@ -398,23 +547,34 @@ fn route_paths(
                 summary: document.summary.clone(),
                 canonical_for: document.canonical_for.clone(),
                 depends_on: document.depends_on.clone(),
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     let owner_documents = owner_reasons
         .into_iter()
-        .map(|(doc_id, reasons)| {
-            let document = &documents[&doc_id];
-            RoutedOwnerDocument {
+        .map(|((routing_basis, doc_id), reasons)| {
+            let snapshot = match routing_basis {
+                RoutingBasis::Base => base,
+                RoutingBasis::Current => current,
+            };
+            let document = snapshot.documents.get(&doc_id).with_context(|| {
+                format!(
+                    "{} routing snapshot refers to unknown owner document {doc_id}",
+                    routing_basis.label()
+                )
+            })?;
+            Ok(RoutedOwnerDocument {
+                routing_basis,
                 doc_id,
                 paths: document.paths.clone(),
                 reasons: reasons.into_iter().collect(),
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     let instructions = instruction_reasons
         .into_iter()
-        .map(|(path, reasons)| RoutedInstruction {
+        .map(|((routing_basis, path), reasons)| RoutedInstruction {
+            routing_basis,
             path,
             reasons: reasons.into_iter().collect(),
         })
@@ -422,7 +582,7 @@ fn route_paths(
 
     Ok(OwnerRouteReport {
         base_revision,
-        changed_paths,
+        changes,
         instructions,
         workspace_packages,
         maintained_documents,
@@ -430,6 +590,73 @@ fn route_paths(
         validation_classes: validation_classes.into_iter().collect(),
         unknown_paths: unknown_paths.into_iter().collect(),
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn route_endpoint(
+    snapshot: &RoutingSnapshot,
+    path: &str,
+    instruction_reasons: &mut BTreeMap<(RoutingBasis, String), BTreeSet<String>>,
+    package_paths: &mut BTreeMap<(RoutingBasis, String, String), BTreeSet<String>>,
+    document_paths: &mut BTreeMap<(RoutingBasis, String), BTreeSet<String>>,
+    owner_reasons: &mut BTreeMap<(RoutingBasis, String), BTreeSet<String>>,
+    validation_classes: &mut BTreeSet<String>,
+    unknown_paths: &mut BTreeSet<UnknownRoutedPath>,
+) {
+    let basis = snapshot.basis;
+    let reason = format!("{}:{path}", basis.label());
+    let recognized = classify_path(
+        path,
+        &snapshot.document_by_path,
+        &snapshot.packages,
+        &snapshot.metadata.path_routes,
+        &snapshot.metadata.tracked_path_exemptions,
+    )
+    .is_recognized();
+    for scope in &snapshot.metadata.instruction_scopes {
+        if path_matches_prefix(path, &scope.path_prefix) {
+            instruction_reasons
+                .entry((basis, scope.instruction.clone()))
+                .or_default()
+                .insert(reason.clone());
+        }
+    }
+    if let Some(doc_id) = snapshot.document_by_path.get(path) {
+        document_paths
+            .entry((basis, doc_id.clone()))
+            .or_default()
+            .insert(path.to_owned());
+    }
+    for package in &snapshot.packages {
+        if package_contains_path(package, path) {
+            package_paths
+                .entry((
+                    basis,
+                    package.name().to_owned(),
+                    package.manifest_path().to_owned(),
+                ))
+                .or_default()
+                .insert(path.to_owned());
+        }
+    }
+    for route in &snapshot.metadata.path_routes {
+        if route.matches(path) {
+            add_route(
+                basis,
+                owner_reasons,
+                validation_classes,
+                &route.owner_doc_ids,
+                &route.validation_classes,
+                &reason,
+            );
+        }
+    }
+    if !recognized {
+        unknown_paths.insert(UnknownRoutedPath {
+            routing_basis: basis,
+            path: path.to_owned(),
+        });
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -477,7 +704,8 @@ impl PathRoute {
 }
 
 fn add_route(
-    owner_reasons: &mut BTreeMap<String, BTreeSet<String>>,
+    basis: RoutingBasis,
+    owner_reasons: &mut BTreeMap<(RoutingBasis, String), BTreeSet<String>>,
     validation: &mut BTreeSet<String>,
     owners: &[String],
     classes: &[String],
@@ -485,7 +713,7 @@ fn add_route(
 ) {
     for owner in owners {
         owner_reasons
-            .entry(owner.clone())
+            .entry((basis, owner.clone()))
             .or_default()
             .insert(reason.to_owned());
     }
@@ -493,19 +721,21 @@ fn add_route(
 }
 
 fn add_package_route(
+    basis: RoutingBasis,
     route: &PackageRoute,
     reason: &str,
-    instructions: &mut BTreeMap<String, BTreeSet<String>>,
-    owners: &mut BTreeMap<String, BTreeSet<String>>,
+    instructions: &mut BTreeMap<(RoutingBasis, String), BTreeSet<String>>,
+    owners: &mut BTreeMap<(RoutingBasis, String), BTreeSet<String>>,
     validation: &mut BTreeSet<String>,
 ) {
     for instruction in &route.instruction_paths {
         instructions
-            .entry(instruction.clone())
+            .entry((basis, instruction.clone()))
             .or_default()
             .insert(reason.to_owned());
     }
     add_route(
+        basis,
         owners,
         validation,
         &route.owner_doc_ids,
@@ -585,12 +815,10 @@ fn insert_document(
     Ok(())
 }
 
-fn validate_routing_metadata(
-    root: &Path,
-    metadata: &RoutingMetadata,
-    documents: &BTreeMap<String, DocumentRouteEntry>,
-    packages: &[WorkspacePackageInput],
-) -> Result<()> {
+fn validate_routing_metadata(root: &Path, snapshot: &RoutingSnapshot) -> Result<()> {
+    let metadata = &snapshot.metadata;
+    let documents = &snapshot.documents;
+    let packages = &snapshot.packages;
     let expected_classes = SUPPORTED_VALIDATION_CLASSES
         .iter()
         .map(|value| (*value).to_owned())
@@ -660,6 +888,9 @@ fn validate_routing_metadata(
         }
         if let Some(path) = route.path.as_deref() {
             validate_relative_path(path, "path route")?;
+            if fs::symlink_metadata(root.join(path)).is_err() {
+                bail!("exact path route {path} does not name a current path");
+            }
         }
         if let Some(prefix) = route.path_prefix.as_deref() {
             validate_relative_path(prefix, "path prefix")?;
@@ -673,7 +904,7 @@ fn validate_routing_metadata(
             documents,
         )?;
     }
-    let tracked_paths = tracked_git_paths(root)?;
+    let tracked_paths = &snapshot.tracked_paths;
     let document_by_path = documents
         .values()
         .flat_map(|document| {
@@ -735,7 +966,10 @@ fn validate_routing_metadata(
             unknown_tracked_paths.join(", ")
         );
     }
-    validate_ci_trigger_policy(root, &metadata.ci_trigger_policy, &tracked_paths)?;
+    let ci_trigger_policy: CiTriggerPolicy =
+        serde_yaml::from_value(metadata.ci_trigger_policy.clone())
+            .context("failed to parse current CI trigger policy")?;
+    validate_ci_trigger_policy(root, &ci_trigger_policy, tracked_paths)?;
     validate_package_route(&metadata.package_defaults, documents, &instruction_paths)?;
     for route in metadata.package_routes.values() {
         validate_package_route(route, documents, &instruction_paths)?;
@@ -864,8 +1098,27 @@ fn workflow_trigger_paths(workflow: &serde_yaml::Value, event: &str) -> Result<B
         .collect()
 }
 
-fn tracked_git_paths(root: &Path) -> Result<BTreeSet<String>> {
-    let output = git_output(root, &["ls-files", "-z", "--"])?;
+fn current_tracked_git_paths(root: &Path) -> Result<BTreeSet<String>> {
+    let output = git_output(root, &["ls-files", "--cached", "-z", "--"])?;
+    let mut paths = BTreeSet::new();
+    for raw in output.split(|byte| *byte == 0) {
+        if raw.is_empty() {
+            continue;
+        }
+        let path = std::str::from_utf8(raw).context("Git returned a non-UTF-8 tracked path")?;
+        validate_relative_path(path, "tracked path")?;
+        if fs::symlink_metadata(root.join(path)).is_ok() {
+            paths.insert(path.to_owned());
+        }
+    }
+    Ok(paths)
+}
+
+fn revision_tracked_git_paths(root: &Path, revision: &str) -> Result<BTreeSet<String>> {
+    let output = git_output(
+        root,
+        &["ls-tree", "-r", "--name-only", "-z", revision, "--"],
+    )?;
     let mut paths = BTreeSet::new();
     for raw in output.split(|byte| *byte == 0) {
         if raw.is_empty() {
@@ -958,15 +1211,49 @@ fn resolve_commit(root: &Path, revision: &str) -> Result<String> {
     Ok(std::str::from_utf8(&output)?.trim().to_owned())
 }
 
-fn discover_changed_paths(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
-    let comparison = base.unwrap_or("HEAD");
+fn load_revision_snapshot(root: &Path, revision: &str) -> Result<RoutingSnapshot> {
+    let directory = tempfile::tempdir().context("failed to create temporary routing snapshot")?;
+    let archive = git_output(root, &["archive", "--format=tar", revision])?;
+    let mut extractor = Command::new("tar")
+        .args(["-xf", "-", "-C"])
+        .arg(directory.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to execute tar for temporary routing snapshot")?;
+    extractor
+        .stdin
+        .take()
+        .context("tar did not provide stdin")?
+        .write_all(&archive)
+        .context("failed to write temporary routing snapshot archive")?;
+    let output = extractor
+        .wait_with_output()
+        .context("failed to wait for temporary routing snapshot extraction")?;
+    if !output.status.success() {
+        bail!(
+            "failed to extract temporary routing snapshot: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    RoutingSnapshot::load(
+        directory.path(),
+        RoutingBasis::Base,
+        revision_tracked_git_paths(root, revision)?,
+    )
+}
+
+fn discover_repository_changes(root: &Path, comparison: &str) -> Result<Vec<RepositoryChange>> {
     let diff = git_output(
         root,
         &[
             "diff",
-            "--name-only",
+            "--name-status",
             "-z",
-            "--no-renames",
+            "--find-renames",
+            "--find-copies",
+            "--find-copies-harder",
             comparison,
             "--",
         ],
@@ -975,19 +1262,149 @@ fn discover_changed_paths(root: &Path, base: Option<&str>) -> Result<Vec<String>
         root,
         &["ls-files", "--others", "--exclude-standard", "-z", "--"],
     )?;
-    let mut paths = BTreeSet::new();
-    for raw in diff
+    let fields = diff
         .split(|byte| *byte == 0)
-        .chain(untracked.split(|byte| *byte == 0))
-    {
+        .filter(|field| !field.is_empty())
+        .map(|field| {
+            std::str::from_utf8(field)
+                .context("Git returned a non-UTF-8 change entry")
+                .map(str::to_owned)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let mut changes = BTreeSet::new();
+    let mut index = 0;
+    while index < fields.len() {
+        let status = &fields[index];
+        index += 1;
+        let kind = status
+            .chars()
+            .next()
+            .context("Git returned an empty change status")?;
+        let path_count = if matches!(kind, 'R' | 'C') { 2 } else { 1 };
+        if index + path_count > fields.len() {
+            bail!("Git returned an incomplete {status} change entry");
+        }
+        let first = fields[index].clone();
+        validate_relative_path(&first, "changed path")?;
+        index += 1;
+        let second = if path_count == 2 {
+            let path = fields[index].clone();
+            validate_relative_path(&path, "changed path")?;
+            index += 1;
+            Some(path)
+        } else {
+            None
+        };
+        changes.insert(repository_change(kind, first, second)?);
+    }
+    for raw in untracked.split(|byte| *byte == 0) {
         if raw.is_empty() {
             continue;
         }
         let path = std::str::from_utf8(raw).context("Git returned a non-UTF-8 changed path")?;
         validate_relative_path(path, "changed path")?;
-        paths.insert(path.to_owned());
+        changes.insert(repository_change('A', path.to_owned(), None)?);
     }
-    Ok(paths.into_iter().collect())
+    let mut changes = changes.into_iter().collect::<Vec<_>>();
+    changes.sort_by(|left, right| {
+        left.new_path
+            .as_deref()
+            .or(left.old_path.as_deref())
+            .cmp(&right.new_path.as_deref().or(right.old_path.as_deref()))
+            .then_with(|| left.kind.cmp(&right.kind))
+            .then_with(|| left.old_path.cmp(&right.old_path))
+            .then_with(|| left.new_path.cmp(&right.new_path))
+    });
+    Ok(changes)
+}
+
+fn repository_change(
+    status: char,
+    first: String,
+    second: Option<String>,
+) -> Result<RepositoryChange> {
+    let (kind, old_path, new_path, routing) = match status {
+        'A' => (
+            RepositoryChangeKind::Added,
+            None,
+            Some(first.clone()),
+            vec![ChangeRoutingEndpoint {
+                routing_basis: RoutingBasis::Current,
+                path: first,
+            }],
+        ),
+        'M' => (
+            RepositoryChangeKind::Modified,
+            Some(first.clone()),
+            Some(first.clone()),
+            paired_endpoints(first),
+        ),
+        'D' => (
+            RepositoryChangeKind::Deleted,
+            Some(first.clone()),
+            None,
+            vec![ChangeRoutingEndpoint {
+                routing_basis: RoutingBasis::Base,
+                path: first,
+            }],
+        ),
+        'R' => {
+            let current = second.context("Git rename entry has no destination")?;
+            (
+                RepositoryChangeKind::Renamed,
+                Some(first.clone()),
+                Some(current.clone()),
+                vec![
+                    ChangeRoutingEndpoint {
+                        routing_basis: RoutingBasis::Base,
+                        path: first,
+                    },
+                    ChangeRoutingEndpoint {
+                        routing_basis: RoutingBasis::Current,
+                        path: current,
+                    },
+                ],
+            )
+        }
+        'C' => {
+            let current = second.context("Git copy entry has no destination")?;
+            (
+                RepositoryChangeKind::Copied,
+                Some(first),
+                Some(current.clone()),
+                vec![ChangeRoutingEndpoint {
+                    routing_basis: RoutingBasis::Current,
+                    path: current,
+                }],
+            )
+        }
+        'T' => (
+            RepositoryChangeKind::TypeChanged,
+            Some(first.clone()),
+            Some(first.clone()),
+            paired_endpoints(first),
+        ),
+        unsupported => bail!("unsupported Git change status {unsupported:?}"),
+    };
+    Ok(RepositoryChange {
+        kind,
+        old_path,
+        new_path,
+        routing,
+    })
+}
+
+fn paired_endpoints(path: String) -> Vec<ChangeRoutingEndpoint> {
+    vec![
+        ChangeRoutingEndpoint {
+            routing_basis: RoutingBasis::Base,
+            path: path.clone(),
+        },
+        ChangeRoutingEndpoint {
+            routing_basis: RoutingBasis::Current,
+            path,
+        },
+    ]
 }
 
 fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>> {

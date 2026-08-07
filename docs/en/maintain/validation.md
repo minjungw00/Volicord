@@ -45,34 +45,45 @@ Before broad discovery, derive the bounded route for the current Git changes:
 cargo run -p xtask -- owner-route --changed
 ```
 
-Use `--base <revision>` to include committed changes after an explicit series
-base together with staged, unstaged, and untracked working-tree paths. Add
-`--json` when another tool or agent will consume the result. The human and JSON
-forms come from the same ordered report.
+Use `--base <revision>` to compare that exact commit with the current worktree,
+including committed series changes and staged, unstaged, and untracked changes.
+Git discovery preserves the closed add, modify, delete, rename, copy, and type
+change status together with old and new path roles. Add `--json` when another
+tool or agent will consume the result. The human and JSON forms come from the
+same ordered report and expose the same change kind, endpoint paths, and
+`base` or `current` routing basis.
 
-The command reads changed paths from Git, workspace package identity from Cargo
-metadata, maintained document entries and language pairs from
-`docs/doc-index.yaml`, and the validated instruction, direct-owner, and
-validation-class associations in `docs/owner-routing.yaml`. It returns the
-applicable root and scoped `AGENTS.md` files, changed packages, exact changed
-document entries and their paired paths, direct owner documents, validation
-classes, and paths not covered by a maintained route. Results are sorted and
-duplicate-free. The command is read-only and does not infer ownership by
+The command loads one routing snapshot from the exact base commit and one from
+the current worktree. Each snapshot contains its routing metadata, maintained
+document entries and language pairs, tracked paths, and Cargo workspace package
+identity. Additions and copy destinations use current ownership, deletions use
+base ownership, and renames use both endpoints. Modifications and type changes
+use both snapshots so an owner reassignment in the same series preserves the
+old and current owners. The report deterministically unions applicable root and
+scoped `AGENTS.md` files, package impact, exact maintained documents, direct
+owner documents, and validation classes. Base material is temporary and
+read-only; the command does not alter the working tree or infer ownership by
 scanning arbitrary prose.
 
-The same recognition model validates the complete current tracked Git index.
-Every tracked path must be a maintained document, belong to a current workspace
-package, match an explicit path route, or have an exact current exemption with
-a non-empty justification. Unknown tracked paths fail metadata validation in
-sorted path order. Untracked files, including ignored generated build output
-and validation-result files, are not inputs to this inventory.
+The current snapshot independently validates the complete current tracked Git
+tree. Every tracked path must be a maintained document, belong to a current
+workspace package, match an explicit path route, or have an exact current
+exemption with a non-empty justification. An exact `path` route must name a
+current path, and package routes must equal the current Cargo workspace.
+Removing a file, document, route, or package therefore needs no current
+tombstone: the removed endpoint is routed only through the base snapshot.
+Unknown current tracked paths fail metadata validation in sorted path order.
+Untracked files, including ignored generated build output and validation-result
+files, are not inputs to this inventory.
 
 Focused validation treats every uncovered changed path as a failed
 owner-routing preflight and points maintainers to `docs/owner-routing.yaml`.
-An unknown path cannot receive an otherwise empty successful plan. A root
+An unknown added path cannot receive an otherwise empty successful plan. A root
 `Cargo.toml` or `Cargo.lock` change always adds workspace architecture and
-workspace compilation checks; it does not add the exact test aggregate to the
-focused profile.
+workspace compilation checks. Removing or moving a workspace package adds the
+same workspace-level checks while changed-package lint and tests select only
+packages present in the current snapshot. None of these cases adds the exact
+test aggregate to the focused profile.
 
 ## Validation Profiles And Sequential Series
 
@@ -365,8 +376,9 @@ read-only and verifies the machine-checkable shape:
   `doc_id`, workspace package, and supported validation class exactly once
   against the current instruction files, document index, and Cargo workspace.
   Its tracked-path inventory also classifies every path returned by
-  `git ls-files`; an unknown tracked path or stale, empty, duplicate, or
-  redundant exemption is invalid.
+  the current Git tree; an unknown tracked path, stale exact route, or stale,
+  empty, duplicate, or redundant exemption is invalid. Base-revision routing
+  remains separate from this current-metadata integrity check.
 - Its canonical CI trigger policy covers every tracked path, and the main CI
   workflow's pull-request and push path filters are identical to that policy.
 

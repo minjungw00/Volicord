@@ -33,7 +33,10 @@ pub use mcp_spec::{
     check_mcp_spec_fixture, check_mcp_spec_fixture_with_production_profiles, run_mcp_spec_check,
     run_mcp_spec_sync, McpSpecCheckReport, McpSpecSyncReport,
 };
-pub use owner_route::{run_owner_route, OwnerRouteReport};
+pub use owner_route::{
+    run_owner_route, ChangeRoutingEndpoint, OwnerRouteReport, RepositoryChange,
+    RepositoryChangeKind, RoutingBasis, UnknownRoutedPath,
+};
 pub use release_metadata::{run_release_version_check, ReleaseVersionReport};
 pub use source_bundle::{create_source_bundle, validate_source_bundle, SourceBundleReport};
 pub use validation::{

@@ -189,7 +189,7 @@ fn pull_request_base_preserves_changed_paths_and_package_attribution() {
 
     let route = xtask::run_owner_route(&fixture.root, Some(&resolution.base_revision))
         .expect("route resolved pull-request range");
-    assert_eq!(route.changed_paths, ["crates/sample/src/lib.rs"]);
+    assert_eq!(route.changed_paths(), ["crates/sample/src/lib.rs"]);
     assert_eq!(route.workspace_packages[0].name, "sample");
 }
 
