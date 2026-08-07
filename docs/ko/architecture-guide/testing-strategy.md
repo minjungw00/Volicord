@@ -172,6 +172,20 @@ Windows Job Object, 비차단 파이프 primitive를 조합하며 해당 OS 구�
 않습니다. 제품 MCP 감독 정책, 프로토콜 프레이밍, lifecycle 진행 상태, 진단은 계속
 `volicord-cli`가 담당합니다.
 
+## 변경된 파일의 담당 경로 지정
+
+`cargo run -p xtask -- owner-route --changed`는 Git 변경 경로에서 저장소 유지보수
+범위를 도출합니다. `--base <revision>`을 명시하면 commit된 변경 series와 현재
+working tree를 함께 포함합니다. 패키지 소속은 Cargo metadata에서, 유지 문서 및
+대응 언어 identity는 `docs/doc-index.yaml`에서 가져옵니다. 이 담당 원본에 없는
+연결만 검증되는 `docs/owner-routing.yaml` catalog에 둡니다.
+
+경로 지정 테스트는 폐기 가능한 Git 저장소를 사용합니다. Rust 패키지, 대응 문서,
+저장소 지침, workflow 파일, 알 수 없는 경로, dirty working tree, 명시적 기준
+revision, 안정적인 정렬, 사람용/JSON 일치, 읽기 전용 working tree 경계를
+검사합니다. 테스트는 두 번째 워크스페이스 패키지 목록을 두거나 산문을 검색해
+담당 경로를 찾지 않습니다.
+
 ## 워크스페이스 아키텍처 검증
 
 `cargo run -p xtask -- architecture-check`는 Cargo가 보고하는 현재 워크스페이스

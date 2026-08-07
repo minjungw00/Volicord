@@ -9,6 +9,7 @@ mod document_structure;
 mod links;
 mod markdown;
 mod mcp_spec;
+mod owner_route;
 mod parity;
 mod release_metadata;
 mod repository;
@@ -31,6 +32,7 @@ pub use mcp_spec::{
     check_mcp_spec_fixture, check_mcp_spec_fixture_with_production_profiles, run_mcp_spec_check,
     run_mcp_spec_sync, McpSpecCheckReport, McpSpecSyncReport,
 };
+pub use owner_route::{run_owner_route, OwnerRouteReport};
 pub use release_metadata::{run_release_version_check, ReleaseVersionReport};
 pub use source_bundle::{create_source_bundle, validate_source_bundle, SourceBundleReport};
 
@@ -65,6 +67,9 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         document_structure::validate_surface_stability_sections(&root, index, &mut issues);
         storage::validate_baseline_ref_contract(&root, index, &mut issues);
         storage::validate_storage_ddl_sql_blocks(&root, index, &mut issues);
+    }
+    if root.join("docs/owner-routing.yaml").exists() {
+        owner_route::validate_owner_routing(&root, &mut issues);
     }
     artifact_hygiene::validate_tracked_artifacts(&root, &mut issues);
 

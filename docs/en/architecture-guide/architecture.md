@@ -138,7 +138,7 @@ Each current workspace package has one responsibility entry in the root Cargo me
 | `volicord-types` | `shared-types` | schema | production | Core-facing | Dependency-safe public schemas and closed values for checkpoint and application lineage, stale-authority actions and reauthorization, advisor finalization, tagged workflow progression, typed rejection, canonical encodings, and platform-neutral facts. |
 | `volicord-user-action-presentation` | `user-action-presentation` | presentation | production | adapter | Typed User Channel presentation, CLI JSON Schemas, chat-nonauthority boundaries, and command-model-backed resolution instructions. |
 | `volicord-user-action-service` | `user-action-service` | application | production | Core-facing | Semantic UserAction construction, validation, authority, lifecycle, shaping-link identity, persistence mapping, resolution, continuity, and projection from Store-validated records. |
-| `xtask` | `repository-validation` | validation | non-production | neutral | Repository architecture, documentation, protocol fixture, release metadata, and Git-tree source-bundle validation, generation, and synchronization. |
+| `xtask` | `repository-validation` | validation | non-production | neutral | Changed-owner routing plus repository architecture, documentation, protocol fixture, release metadata, and Git-tree source-bundle validation, generation, and synchronization. |
 
 ### Allowed internal dependency directions
 

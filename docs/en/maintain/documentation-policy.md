@@ -48,6 +48,14 @@ the current value from that owner. `default_applicability` applies its non-empty
 list to every entry. An entry uses `applies_to` only for non-empty additional
 catalog values and does not repeat a root default.
 
+Use [`docs/owner-routing.yaml`](../../owner-routing.yaml) only for validated
+changed-path routing from repository paths and workspace packages to applicable
+instructions, direct owner documents, and validation classes. It refers to
+document entries by `doc_id`; it does not duplicate maintained document paths,
+paired-language relationships, package discovery, product contracts, or
+validation command plans. `cargo run -p xtask -- owner-route --changed` is the
+repository-owned reader of this metadata.
+
 Use these document kinds by reader purpose:
 
 - `landing`: introduces a product, repository, or documentation area.

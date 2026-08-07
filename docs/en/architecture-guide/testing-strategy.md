@@ -197,6 +197,21 @@ nonblocking pipe primitives owned by `volicord-platform-process`; it does not
 duplicate those OS implementations. Product MCP supervision policy, protocol
 framing, lifecycle progress, and diagnostics remain owned by `volicord-cli`.
 
+## Changed-Owner Routing
+
+`cargo run -p xtask -- owner-route --changed` derives repository maintenance
+scope from Git changed paths. An explicit `--base <revision>` includes committed
+series changes and the current working tree. Package membership comes from
+Cargo metadata, maintained document and language-pair identity comes from
+`docs/doc-index.yaml`, and only the associations absent from those owners live
+in the validated `docs/owner-routing.yaml` catalog.
+
+Routing tests use disposable Git repositories. They cover Rust packages,
+paired documents, repository guidance, workflow files, unknown paths, dirty
+working trees, explicit base revisions, stable ordering, human/JSON parity, and
+the read-only worktree boundary. Tests do not carry a second workspace package
+inventory or discover owner routes by scanning prose.
+
 ## Workspace Architecture Validation
 
 `cargo run -p xtask -- architecture-check` compares Cargo's current workspace

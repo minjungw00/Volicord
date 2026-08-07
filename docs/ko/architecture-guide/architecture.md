@@ -128,7 +128,7 @@ Store, UserAction 서비스, CLI, presentation package는 `volicord-mcp-wire`를
 | `volicord-types` | `shared-types` | 스키마 | 프로덕션 | Core 지향 | checkpoint 및 application lineage, stale 권한 action과 재권한, advisor finalization, 태그 기반 workflow 진행, typed rejection, 정규 인코딩, 플랫폼 중립 fact를 위한 의존 안전한 공개 스키마와 폐쇄형 값을 담당합니다. |
 | `volicord-user-action-presentation` | `user-action-presentation` | 표현 | 프로덕션 | 어댑터 | typed User Channel presentation, CLI JSON Schema, 대화 비권한 경계, 명령 모델 기반 resolution 안내를 담당합니다. |
 | `volicord-user-action-service` | `user-action-service` | 애플리케이션 | 프로덕션 | Core 지향 | 의미 기반 UserAction 구성, 검증, 권한, 생명주기, shaping link identity, 영속화 매핑, 해결, 연속성, Store가 검증한 record 기반 투영을 담당합니다. |
-| `xtask` | `repository-validation` | 검증 | 비프로덕션 | 중립 | 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터, Git 트리 소스 번들의 검증, 생성, 동기화를 담당합니다. |
+| `xtask` | `repository-validation` | 검증 | 비프로덕션 | 중립 | 변경된 파일의 담당 경로 지정과 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터, Git 트리 소스 번들의 검증, 생성, 동기화를 담당합니다. |
 
 ### 허용되는 내부 의존 방향
 

@@ -6,6 +6,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
 
     match args.as_slice() {
+        [command, rest @ ..] if command == "owner-route" => run_owner_route_command(rest),
         [command] if command == "docs-check" => {
             let result = match env::current_dir() {
                 Ok(root) => xtask::run_docs_check(&root),
@@ -96,9 +97,62 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: cargo run -p xtask -- <architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
+                "usage: cargo run -p xtask -- <owner-route --changed [--base REVISION] [--json]|architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
             );
             ExitCode::from(2)
+        }
+    }
+}
+
+fn run_owner_route_command(args: &[String]) -> ExitCode {
+    let mut changed = false;
+    let mut json = false;
+    let mut base = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--changed" if !changed => changed = true,
+            "--json" if !json => json = true,
+            "--base" if base.is_none() && index + 1 < args.len() => {
+                index += 1;
+                base = Some(args[index].as_str());
+            }
+            _ => {
+                eprintln!(
+                    "usage: cargo run -p xtask -- owner-route --changed [--base REVISION] [--json]"
+                );
+                return ExitCode::from(2);
+            }
+        }
+        index += 1;
+    }
+    if !changed {
+        eprintln!("usage: cargo run -p xtask -- owner-route --changed [--base REVISION] [--json]");
+        return ExitCode::from(2);
+    }
+
+    let result = match env::current_dir() {
+        Ok(root) => xtask::run_owner_route(&root, base),
+        Err(error) => Err(error.into()),
+    };
+    match result {
+        Ok(report) => {
+            if json {
+                match serde_json::to_string_pretty(&report) {
+                    Ok(rendered) => println!("{rendered}"),
+                    Err(error) => {
+                        eprintln!("owner-route failed to render JSON: {error}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else {
+                print!("{}", report.render_human());
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("owner-route failed: {error:#}");
+            ExitCode::from(1)
         }
     }
 }

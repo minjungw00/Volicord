@@ -6,12 +6,15 @@ focused Reference owner, not by current code or this guide.
 ## Before Editing
 
 1. Read the repository and nearest scoped `AGENTS.md`.
-2. Use [`docs/doc-index.yaml`](../../doc-index.yaml) to find the focused
-   English/Korean owner pair.
-3. Read [Architecture](architecture.md) and this guide before changing durable
+2. Run `cargo run -p xtask -- owner-route --changed` to obtain the bounded
+   instruction, changed-package, maintained-document, direct-owner, and
+   validation-class route. Use `--base <revision>` for a commit series.
+3. Use [`docs/doc-index.yaml`](../../doc-index.yaml) to confirm the focused
+   English/Korean owner pair returned by that route.
+4. Read [Architecture](architecture.md) and this guide before changing durable
    Rust structure.
-4. Inspect the worktree and preserve unrelated user changes.
-5. If an owner does not define required behavior, update that owner first or
+5. Inspect the worktree and preserve unrelated user changes.
+6. If an owner does not define required behavior, update that owner first or
    report the gap.
 
 ## Route By Change Type

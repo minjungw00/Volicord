@@ -1,0 +1,269 @@
+validation_classes:
+  architecture: Workspace package declarations, placement, and dependency-direction checks.
+  documentation: Maintained-document metadata, structure, links, terminology, parity, and generated-region checks.
+  mcp-spec: Pinned MCP specification manifest and fixture checks.
+  release: Release packaging, source-bundle, smoke, and integrity checks.
+  repository-hygiene: Diff, tracked-artifact, and generated-output hygiene checks.
+  rust: Formatting, lint, and changed-package Rust checks.
+  workflow: Parsed CI, release-workflow, and reusable-action checks.
+
+instruction_scopes:
+  - path_prefix: ""
+    instruction: AGENTS.md
+  - path_prefix: "crates/"
+    instruction: crates/AGENTS.md
+  - path_prefix: "docs/"
+    instruction: docs/AGENTS.md
+  - path_prefix: "tests/"
+    instruction: crates/AGENTS.md
+  - path_prefix: "xtask/"
+    instruction: crates/AGENTS.md
+
+path_routes:
+  - path: AGENTS.md
+    owner_doc_ids:
+      - maintain.documentation-policy
+      - maintain.validation
+    validation_classes:
+      - documentation
+      - repository-hygiene
+  - path: crates/AGENTS.md
+    owner_doc_ids:
+      - architecture-guide.change-guide
+      - architecture-guide.testing-strategy
+      - maintain.validation
+    validation_classes:
+      - documentation
+      - repository-hygiene
+  - path: Cargo.lock
+    owner_doc_ids:
+      - architecture-guide.architecture
+      - architecture-guide.change-guide
+      - architecture-guide.testing-strategy
+      - maintain.validation
+    validation_classes:
+      - repository-hygiene
+      - rust
+  - path: Cargo.toml
+    owner_doc_ids:
+      - architecture-guide.architecture
+      - architecture-guide.change-guide
+      - architecture-guide.testing-strategy
+      - maintain.validation
+    validation_classes:
+      - architecture
+      - documentation
+      - repository-hygiene
+      - rust
+  - path: README.md
+    owner_doc_ids:
+      - maintain.documentation-policy
+      - maintain.translation-policy
+      - maintain.validation
+    validation_classes:
+      - documentation
+      - repository-hygiene
+  - path: README.ko.md
+    owner_doc_ids:
+      - maintain.documentation-policy
+      - maintain.translation-policy
+      - maintain.validation
+    validation_classes:
+      - documentation
+      - repository-hygiene
+  - path: .gitignore
+    owner_doc_ids:
+      - maintain.validation
+    validation_classes:
+      - repository-hygiene
+  - path_prefix: ".github/"
+    owner_doc_ids:
+      - architecture-guide.testing-strategy
+      - maintain.validation
+    validation_classes:
+      - release
+      - repository-hygiene
+      - workflow
+  - path_prefix: "docs/"
+    owner_doc_ids:
+      - docs.doc-index
+      - maintain.documentation-policy
+      - maintain.translation-policy
+      - maintain.validation
+    validation_classes:
+      - documentation
+      - repository-hygiene
+  - path_prefix: "scripts/"
+    owner_doc_ids:
+      - architecture-guide.testing-strategy
+      - maintain.validation
+    validation_classes:
+      - release
+      - repository-hygiene
+  - path: xtask/src/architecture.rs
+    owner_doc_ids:
+      - architecture-guide.architecture
+      - architecture-guide.testing-strategy
+    validation_classes:
+      - architecture
+      - documentation
+  - path: xtask/src/owner_route.rs
+    owner_doc_ids:
+      - docs.doc-index
+      - maintain.validation
+    validation_classes:
+      - architecture
+      - documentation
+  - path: xtask/src/source_bundle.rs
+    owner_doc_ids:
+      - maintain.validation
+    validation_classes:
+      - release
+  - path_prefix: "xtask/src/mcp_spec/"
+    owner_doc_ids:
+      - reference.external-contracts
+      - reference.mcp-transport
+    validation_classes:
+      - mcp-spec
+
+package_defaults:
+  instruction_paths:
+    - crates/AGENTS.md
+  owner_doc_ids:
+    - architecture-guide.architecture
+    - architecture-guide.change-guide
+    - architecture-guide.testing-strategy
+    - maintain.validation
+  validation_classes:
+    - repository-hygiene
+    - rust
+
+package_routes:
+  volicord-agent-evaluation:
+    owner_doc_ids:
+      - reference.conformance
+      - reference.design-quality
+    validation_classes: []
+  volicord-cli:
+    owner_doc_ids:
+      - reference.admin-cli
+      - reference.agent-connection
+      - reference.runtime-boundaries
+      - reference.security
+    validation_classes: []
+  volicord-command-model:
+    owner_doc_ids:
+      - reference.admin-cli
+    validation_classes:
+      - documentation
+  volicord-conformance-tests:
+    owner_doc_ids:
+      - reference.conformance
+      - reference.mcp-transport
+    validation_classes:
+      - mcp-spec
+  volicord-core:
+    owner_doc_ids:
+      - reference.api.methods
+      - reference.core-model
+      - reference.storage-effects
+    validation_classes: []
+  volicord-host-contract:
+    owner_doc_ids:
+      - reference.agent-connection
+      - reference.repository-observation
+      - reference.security
+    validation_classes: []
+  volicord-integration-tests:
+    owner_doc_ids:
+      - reference.agent-connection
+      - reference.api.methods
+      - reference.conformance
+    validation_classes: []
+  volicord-mcp:
+    owner_doc_ids:
+      - reference.agent-connection
+      - reference.api.methods
+      - reference.mcp-transport
+    validation_classes:
+      - mcp-spec
+  volicord-mcp-protocol:
+    owner_doc_ids:
+      - reference.external-contracts
+      - reference.mcp-transport
+    validation_classes:
+      - mcp-spec
+  volicord-mcp-wire:
+    owner_doc_ids:
+      - reference.api.schema-core
+      - reference.mcp-transport
+    validation_classes:
+      - mcp-spec
+  volicord-platform-fs:
+    owner_doc_ids:
+      - reference.repository-observation
+      - reference.runtime-boundaries
+      - reference.system-requirements
+    validation_classes: []
+  volicord-platform-process:
+    owner_doc_ids:
+      - reference.agent-connection
+      - reference.system-requirements
+    validation_classes: []
+  volicord-release-integrity-tests:
+    owner_doc_ids:
+      - maintain.validation
+      - reference.system-requirements
+    validation_classes:
+      - release
+      - workflow
+  volicord-release-smoke:
+    owner_doc_ids:
+      - maintain.validation
+      - reference.agent-connection
+      - reference.system-requirements
+    validation_classes:
+      - release
+      - workflow
+  volicord-store:
+    owner_doc_ids:
+      - reference.runtime-boundaries
+      - reference.storage
+      - reference.storage-artifacts
+      - reference.storage-ddl
+      - reference.storage-effects
+      - reference.storage-records
+      - reference.storage-versioning
+    validation_classes: []
+  volicord-test-process:
+    owner_doc_ids: []
+    validation_classes: []
+  volicord-test-support:
+    owner_doc_ids: []
+    validation_classes: []
+  volicord-types:
+    owner_doc_ids:
+      - reference.api.methods
+      - reference.api.schema-core
+      - reference.api.schema-state
+      - reference.api.schema-value-sets
+    validation_classes:
+      - documentation
+  volicord-user-action-presentation:
+    owner_doc_ids:
+      - reference.admin-cli
+      - reference.api.schema-user-action
+    validation_classes:
+      - documentation
+  volicord-user-action-service:
+    owner_doc_ids:
+      - reference.api.method-request-user-action
+      - reference.api.method-resolve-user-action
+      - reference.api.schema-user-action
+      - reference.storage-records
+    validation_classes: []
+  xtask:
+    owner_doc_ids:
+      - docs.doc-index
+      - maintain.documentation-policy
+    validation_classes: []

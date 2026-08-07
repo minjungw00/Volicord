@@ -24,6 +24,27 @@ cargo run -p xtask -- docs-sync
 cargo run -p xtask -- architecture-check
 ```
 
+## 변경된 파일의 담당 경로 지정
+
+넓은 범위를 탐색하기 전에 현재 Git 변경에 필요한 한정된 경로를 도출합니다.
+
+```sh
+cargo run -p xtask -- owner-route --changed
+```
+
+명시한 변경 series 기준 뒤의 commit된 변경과 staged, unstaged, untracked working
+tree 경로를 함께 포함하려면 `--base <revision>`을 사용합니다. 다른 도구나
+에이전트가 결과를 읽을 때는 `--json`을 추가합니다. 사람용 형식과 JSON 형식은
+정렬된 같은 보고서에서 생성됩니다.
+
+이 명령은 Git에서 변경 경로를, Cargo metadata에서 워크스페이스 패키지 identity를,
+`docs/doc-index.yaml`에서 유지 문서 항목과 대응 언어 쌍을 읽습니다. 검증되는 지침,
+직접 담당 문서, 검증 분류 연결은 `docs/owner-routing.yaml`에서 읽습니다. 적용되는
+루트 및 범위별 `AGENTS.md`, 변경 패키지, 변경된 정확한 문서 항목과 대응 경로,
+직접 담당 문서, 검증 분류, 유지 경로가 없는 경로를 반환합니다. 결과는 정렬되고
+중복이 없습니다. 이 명령은 읽기 전용이며 임의 산문을 검색해 담당 범위를 추론하지
+않습니다.
+
 ## 구조 점검
 
 문서 메타데이터, 경로, 링크, 용어 경로를 바꿨다면 저장소 루트에서
@@ -160,6 +181,9 @@ cargo run -p xtask -- architecture-check
   SQL 영역은 Store의 기준 SQL 원본과 일치합니다.
 - 추적 파일은 `.gitignore`가 담당하는 저장소 아티팩트 제외 규칙과 일치하면
   안 됩니다.
+- `docs/owner-routing.yaml`의 모든 지침 경로, 직접 담당 `doc_id`, 워크스페이스
+  패키지, 지원되는 검증 분류가 현재 지침 파일, 문서 색인, Cargo 워크스페이스와
+  정확히 한 번씩 대응합니다.
 
 `docs-check`는 Rust나 Markdown 줄에서 금지 단어나 문구를 검색하지 않습니다.
 산문 품질, 브랜드 주장, 보안 표현, 호스트 지원 표현은 담당 문서와 사람 검토의

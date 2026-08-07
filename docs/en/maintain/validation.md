@@ -25,6 +25,29 @@ Validate the current workspace package graph with:
 cargo run -p xtask -- architecture-check
 ```
 
+## Changed-Owner Routing
+
+Before broad discovery, derive the bounded route for the current Git changes:
+
+```sh
+cargo run -p xtask -- owner-route --changed
+```
+
+Use `--base <revision>` to include committed changes after an explicit series
+base together with staged, unstaged, and untracked working-tree paths. Add
+`--json` when another tool or agent will consume the result. The human and JSON
+forms come from the same ordered report.
+
+The command reads changed paths from Git, workspace package identity from Cargo
+metadata, maintained document entries and language pairs from
+`docs/doc-index.yaml`, and the validated instruction, direct-owner, and
+validation-class associations in `docs/owner-routing.yaml`. It returns the
+applicable root and scoped `AGENTS.md` files, changed packages, exact changed
+document entries and their paired paths, direct owner documents, validation
+classes, and paths not covered by a maintained route. Results are sorted and
+duplicate-free. The command is read-only and does not infer ownership by
+scanning arbitrary prose.
+
 ## Structural Checks
 
 For documentation metadata, route, link, and terminology-path changes, run
@@ -176,6 +199,9 @@ read-only and verifies the machine-checkable shape:
   Store SQL sources.
 - A tracked file must not match the repository artifact-exclusion rules owned
   by `.gitignore`.
+- `docs/owner-routing.yaml` resolves every instruction path, direct owner
+  `doc_id`, workspace package, and supported validation class exactly once
+  against the current instruction files, document index, and Cargo workspace.
 
 `docs-check` does not search Rust or Markdown lines for prohibited words or
 phrases. Prose quality, brand claims, security wording, and host-support wording
