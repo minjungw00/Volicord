@@ -67,10 +67,15 @@ submit. Before the catalog is shown, every current Agent form's complete
 witness has already reached an accepted plan from the matching Core no-commit
 method planner against the current Store snapshot. The catalog is published
 only when its form action keys equal all current Agent transition action keys.
-If any required or allowed form witness is rejected, Volicord exposes no form
-catalog and reports a non-retryable internal workflow-form contract failure
-with no committed state change. That check proves a published form is executable
-as a contract; it does not make its witness values suitable for your Task. A
+If any required or allowed form witness is rejected during a read-only catalog
+load before an effect, Volicord exposes no form catalog and reports a
+non-retryable internal workflow-form contract failure with no committed state
+change. If the same next-state projection fails after the current call already
+committed, created staging, or replayed an exact committed result, trust the
+effect-preserving recovery facts instead: do not retry the mutation, read
+`volicord.status`, and use `volicord.get_operation_result` when an operation
+result ref is present. That check proves a published form is executable as a
+contract; it does not make its witness values suitable for your Task. A
 form never authorizes another method or variant. Preserve JSON
 types and array order, and never reconstruct coordinates listed as fixed.
 Project and expected state version are adapter-injected from current authority

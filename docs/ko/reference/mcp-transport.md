@@ -642,10 +642,13 @@ key가 현재 Agent transition action key 전체와 같은지 totality 검사로
 `canonical_minimal_request`는 schema 검증을 통과하는 request-shape 시작점으로 유지됩니다.
 그 한정된 witness 값은 form 형태 검증용이며 사용자 권한이나 제품 결정을 주장하지 않고 권장
 입력도 아닙니다. Catalog 검증은 현재 Store snapshot을 읽기 전용으로 사용하며 Store나 Product
-Repository에 효과를 만들지 않습니다. 실패하면 catalog를 노출하지 않고 `committed=false`,
-알 수 있는 경우 한정된 실패 action key와 폐쇄형 검증 stage를 포함한
-`INTERNAL_CONTRACT_INCONSISTENT`를 반환하거나 기록합니다. 일부 catalog를 게시하거나 가까운 form을
-선택하지 않습니다. 정확한 witness가 `response_kind=rejected`를 만들면 Core는 plan 대신
+Repository에 효과를 만들지 않습니다. 권위 있는 메서드 또는 staging 효과가 생기기 전에 실패하면
+catalog를 노출하지 않고 `committed=false`, 알 수 있는 경우 한정된 실패 action key와 폐쇄형 검증
+stage를 포함한 `INTERNAL_CONTRACT_INCONSISTENT`를 반환하거나 기록합니다. 일부 catalog를 게시하거나
+가까운 form을 선택하지 않습니다. Core 또는 staging 효과가 이미 권위 있는 결과의 다음 상태 catalog
+검증이 finalization 중 실패하면 MCP는 대신 [응답 감싸기](#mutation-authority-receipt-projection)의
+success-class 효과 이후 workflow contract 복구를 사용합니다. 원래 효과 사실을 보존하며 호출을
+커밋되지 않은 거부로 바꾸지 않습니다. 정확한 witness가 `response_kind=rejected`를 만들면 Core는 plan 대신
 `NoCommitSubmissionRejected`를 반환합니다. `method_planning_rejected` 실패는 표시 문구에서 메서드
 의미를 복원하지 않고 메서드 오류 code와 typed details, 기준 state version,
 `reached_core=true`, `state_change_applied=false`, `committed=false`를 보존합니다. 거부된 witness는
@@ -1133,6 +1136,55 @@ API를 만들지 않으며 일반 status에 추가하지 않습니다. 현재 �
 사용한 정확한 workflow machine, submission, action form, semantic schema, canonical scalar
 contract를 식별합니다.
 
+Mutation finalization은 다음 폐쇄형 stage를 구분합니다.
+
+```schema
+McpMutationFinalizationStage:
+  action_form_catalog | workflow_presentation | response_projection |
+    post_effect_adapter
+
+McpMutationPostEffectFailure:
+  code: MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED |
+    MCP_RESPONSE_PROJECTION_FAILED | MCP_POST_EFFECT_ADAPTER_FAILED
+  tool_name: MethodName
+  requested_detail: MutationDetailLevel
+  retryable: false
+  reached_core: boolean
+  committed: boolean
+  replayed: boolean
+  effect_kind: EffectKind
+  effect_applied: true
+  state_change_applied: boolean
+  effect_anchor: string | null
+  operation_result_ref: OperationResultRef | null
+  authority_receipt: AuthorityReceipt | null
+  method_result: object | null
+  failed_action_key: WorkflowActionKey | null
+  failed_stage: McpMutationFinalizationStage
+  method_error_code: ErrorCode | null
+  method_error_details: object | null
+  contract_diagnostics: McpWorkflowContractDiagnostics | null
+  authoritative_refresh_succeeded: true
+  response_projection_omitted: true
+  status_read_required: true
+  completion_claim_withheld: true
+```
+
+`MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED`는 권위 있는 효과가 생기고 새로고침이 성공한 뒤 현재
+transition, action form 또는 workflow presentation contract를 투영하지 못한 경우를 식별합니다.
+응답은 실패 action과 메서드 오류 세부사항이 있으면 정확히 보존합니다. Workflow diagnostics의
+`committed`와 `state_change_applied`는 최상위 효과 사실과 같으며 적용된 효과를 no-effect 검증 실행으로
+다시 표현할 수 없습니다.
+
+효과 조합은 정확합니다. 새 Core commit은 `committed=true`, `replayed=false`,
+`effect_kind=core_committed`, `effect_applied=true`, `state_change_applied=true`입니다. Staging 효과는
+`committed=false`, `replayed=false`, `effect_kind=staging_created`, `effect_applied=true`,
+`state_change_applied=false`입니다. 커밋된 결과의 정확한 replay는 `committed=false`,
+`replayed=true`, `effect_kind=core_committed`, `effect_applied=true`,
+`state_change_applied=false`입니다. 거부 또는 다른 no-effect 결과는 `committed=false`,
+`effect_applied=false`, `state_change_applied=false`로 유지됩니다. 정상 no-effect 결과의 projection
+실패는 그 결과를 commit이나 메서드 거부로 바꾸지 않습니다.
+
 ```schema
 McpArgumentFailurePresentation:
   method_committed: boolean
@@ -1168,13 +1220,23 @@ Store 실패는 기존 `store_access` operation과 Store resource identity를 �
 
 Mutation은 선택한 `summary`, `workflow`, `full` 공개 projection에 새
 `AuthorityReceipt`, 정확한 효과 identity, replay 사실, 제한된 복구 정보를 그대로
-담습니다. 응답 크기 계산과 간결한 복구는 선택한 profile의 semantic carrier capability를
+담습니다. 권위 refresh 및 response-budget 실패를 포함한 간결한 복구 carrier도 같은
+`replayed`와 `state_change_applied` 효과 사실을 노출합니다. 응답 크기나 refresh 가능 여부로
+이 사실을 추론하지 않습니다. 응답 크기 계산과 간결한 복구는 선택한 profile의 semantic carrier capability를
 사용합니다. 정상적인 committed 결과가 너무 크거나 효과 뒤에 projection할 수 없으면 새
 authority receipt를 먼저 보존하고, 다음으로 간결한 method result, 마지막으로 안정적인
 효과 사실을 보존합니다. 이 복구는 success-class를 유지하고 `retryable=false`를
 설정하며 completion 주장을 보류하고 현재 `volicord.status` 읽기를 요구합니다. 값이 있으면
 불변 operation-result reference도 보존합니다. Core 효과를 바꾸거나 권위 있는 공개 method
 result를 다시 해석하지 않습니다.
+
+효과 뒤 다음 상태 action-form catalog 구성이나 workflow presentation이 실패할 때도 같은 효과
+보존 복구를 적용합니다. 새 Core commit은 mutation이 커밋되었지만 다음 상태 workflow form을
+투영할 수 없었다고 알립니다. Staging 결과는 staging이 생성되었으며 이를 반복하면 안 된다고
+알립니다. Replay는 정확한 committed result가 replay되었고 새 commit은 없었다고 알립니다. 세
+경우 모두 mutation retry를 금지하고 `volicord.status`를 요구하며 `operation_result_ref`가 있으면
+`volicord.get_operation_result`로 안내합니다. 정확하거나 간결한 `method_result`와 새 receipt는 같은
+한정 복구 순서를 따르며, 크기 때문에 빠져도 최상위 효과 사실은 사라지지 않습니다.
 
 정상 workflow mutation projection은 모두 canonical agent-facing `presentation` 하나도
 포함합니다.

@@ -59,10 +59,13 @@ witness이며 권장 입력, 사용자 권한, 제품 결정이 아닙니다. �
 바꾸십시오. Catalog가 표시되기 전에 현재 Agent form 각각의 완전한 witness는 현재 Store
 snapshot에 대해 대응하는 정확한 Core no-commit 메서드 planner의 허용된 plan에 도달해야
 합니다. Form action key가 현재 Agent transition action key 전체와 같을 때만 catalog를
-게시합니다. 필수 또는 허용 form witness 중 하나라도 거부되면 form catalog를 전혀 노출하지
-않고, 상태 변경을 커밋하지 않은 재시도 불가 내부 workflow-form contract 실패를 보고합니다.
-이 검사는 게시된 form이 contract로서 실행 가능함을 입증하지만 witness 값을 해당 Task에
-적합하게 만들지는 않습니다. Form은 다른 메서드나 variant에 권한을 주지 않습니다. JSON 타입과
+게시합니다. 효과 전 읽기 전용 catalog load에서 필수 또는 허용 form witness 중 하나라도
+거부되면 form catalog를 전혀 노출하지 않고, 상태 변경을 커밋하지 않은 재시도 불가 내부
+workflow-form contract 실패를 보고합니다. 현재 호출이 이미 commit, staging 생성 또는 정확한
+committed result replay를 마친 뒤 같은 다음 상태 projection이 실패했다면 효과를 보존하는 복구
+사실을 신뢰합니다. Mutation을 다시 시도하지 말고 `volicord.status`를 읽으며 operation result
+ref가 있으면 `volicord.get_operation_result`를 사용합니다. 이 검사는 게시된 form이 contract로서
+실행 가능함을 입증하지만 witness 값을 해당 Task에 적합하게 만들지는 않습니다. Form은 다른 메서드나 variant에 권한을 주지 않습니다. JSON 타입과
 배열 순서를 보존하고 고정 좌표를 다시 조립하지 않습니다. 프로젝트와 예상 상태 버전은 호출자가
 보내는 field가 아니라 현재 권한에서 adapter가 주입합니다.
 

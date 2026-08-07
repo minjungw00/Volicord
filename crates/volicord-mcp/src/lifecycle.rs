@@ -595,6 +595,9 @@ fn handle_json_rpc_request(
                 "MCP_POST_EFFECT_ADAPTER_FAILED" => Some(McpDiagnostic::ToolCall(
                     McpToolCallDiagnostic::AdapterExecutionError,
                 )),
+                "MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED" => Some(McpDiagnostic::ToolCall(
+                    McpToolCallDiagnostic::ContractInconsistent,
+                )),
                 _ => None,
             });
     }

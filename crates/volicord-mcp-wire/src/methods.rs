@@ -792,8 +792,10 @@ pub struct McpAuthoritativeRefreshFailure<T> {
     pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,
+    pub replayed: bool,
     pub effect_kind: RequiredNullable<EffectKind>,
     pub effect_applied: bool,
+    pub state_change_applied: bool,
     pub effect_anchor: RequiredNullable<String>,
     pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub method_result: RequiredNullable<T>,
@@ -812,8 +814,19 @@ pub enum McpMutationProjectionErrorCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum McpPostEffectFailureCode {
+    McpWorkflowContractProjectionFailed,
     McpResponseProjectionFailed,
     McpPostEffectAdapterFailed,
+}
+
+/// Closed mutation-finalization boundary at which the normal response failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpMutationFinalizationStage {
+    ActionFormCatalog,
+    WorkflowPresentation,
+    ResponseProjection,
+    PostEffectAdapter,
 }
 
 /// Bounded success-class recovery when post-effect adapter work cannot safely
@@ -827,12 +840,19 @@ pub struct McpMutationPostEffectFailure {
     pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,
+    pub replayed: bool,
     pub effect_kind: RequiredNullable<EffectKind>,
     pub effect_applied: bool,
+    pub state_change_applied: bool,
     pub effect_anchor: RequiredNullable<String>,
     pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: RequiredNullable<AuthorityReceipt>,
     pub method_result: RequiredNullable<JsonObject>,
+    pub failed_action_key: RequiredNullable<volicord_types::schema::WorkflowActionKey>,
+    pub failed_stage: McpMutationFinalizationStage,
+    pub method_error_code: RequiredNullable<volicord_types::values::ErrorCode>,
+    pub method_error_details: RequiredNullable<JsonObject>,
+    pub contract_diagnostics: RequiredNullable<McpWorkflowContractDiagnostics>,
     pub authoritative_refresh_succeeded: bool,
     pub response_projection_omitted: bool,
     pub status_read_required: bool,
@@ -849,8 +869,10 @@ pub struct McpMutationResponseBudgetExceeded<T> {
     pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,
+    pub replayed: bool,
     pub effect_kind: RequiredNullable<EffectKind>,
     pub effect_applied: bool,
+    pub state_change_applied: bool,
     pub effect_anchor: RequiredNullable<String>,
     pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: RequiredNullable<AuthorityReceipt>,
@@ -873,7 +895,7 @@ pub enum McpMutationStructuredContent<T, C> {
     OperationalFailure(McpOperationalFailure),
     RefreshFailure(McpAuthoritativeRefreshFailure<C>),
     ResponseBudgetExceeded(McpMutationResponseBudgetExceeded<C>),
-    PostEffectFailure(McpMutationPostEffectFailure),
+    PostEffectFailure(Box<McpMutationPostEffectFailure>),
     AdapterError(Box<McpToolErrorResponse>),
 }
 

@@ -11,8 +11,8 @@ use crate::authority_refresh::{
 use crate::binding::managed_agent_session_binding;
 use crate::committed_result_recovery::{
     authoritative_refresh_failure_output, bounded_mutation_compatibility_text,
-    mutation_post_effect_failure_output, mutation_response_budget_exceeded_output,
-    CanonicalMcpMutationOutcome,
+    project_mutation_finalization_failure, CanonicalMcpMutationOutcome,
+    MutationFinalizationFailure,
 };
 use crate::errors::McpAdapterError;
 use crate::lifecycle::SessionRuntime;
@@ -25,13 +25,12 @@ use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_mcp_wire::{
     McpAdvanceTaskCompactResult, McpAgentStateChange, McpArgumentFailurePresentation,
     McpFinalizeAdviceCompactResult, McpMustSurfaceFact, McpMutationEffectSummary,
-    McpMutationFullResponse, McpMutationStructuredContent, McpMutationSummaryResponse,
-    McpMutationWorkflowResponse, McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult,
+    McpMutationFinalizationStage, McpMutationFullResponse, McpMutationSummaryResponse,
+    McpMutationWorkflowResponse, McpPrepareEvidenceCaptureCompactResult,
     McpPrepareWriteCompactResult, McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor,
     McpRecordRunCompactResult, McpRecordShapingCheckpointCompactResult,
     McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
-    McpTaskPhasePresentation, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
-    McpToolIssueCode, McpUpdateScopeCompactResult, McpUserChannelInstructions,
+    McpTaskPhasePresentation, McpUpdateScopeCompactResult, McpUserChannelInstructions,
     McpWorkflowBlockerSummary, McpWorkflowContractDiagnostics, McpWorkflowDryRunResponse,
     McpWorkflowPresentation, McpWorkflowRejectedResponse, RetryContract,
 };
@@ -174,6 +173,29 @@ where
     )
 }
 
+#[cfg(test)]
+pub(crate) fn finalize_mutation_output_with_refresh_and_action_form_failure<F>(
+    tool_name: &str,
+    detail: Option<MutationDetailLevel>,
+    output: ToolCallOutput,
+    refresh: F,
+    failure: ActionFormCatalogError,
+) -> Result<ToolCallOutput, McpAdapterError>
+where
+    F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
+{
+    finalize_mutation_output_with_refresh_for_capabilities(
+        tool_name,
+        ProtocolRegistry::production()
+            .preferred_server_profile()
+            .capabilities(),
+        detail,
+        output,
+        refresh,
+        |_, _| Err(failure),
+    )
+}
+
 fn finalize_mutation_output_with_refresh_for_capabilities<F, G>(
     tool_name: &str,
     capabilities: McpProtocolCapabilities,
@@ -195,13 +217,6 @@ where
     if output.is_error {
         return Ok(output);
     }
-    let response_kind = response_kind_from_structured_content(&output.structured_content)
-        .ok_or_else(|| {
-            McpAdapterError::Protocol(format!(
-                "mutation tool {tool_name} returned no response_kind"
-            ))
-        })?
-        .to_owned();
     let original_method_result = std::mem::take(&mut output.structured_content);
     let operation_result_ref = output.operation_result_ref.clone();
     let mut outcome = CanonicalMcpMutationOutcome::new(
@@ -229,17 +244,43 @@ where
         .expect("validated canonical mutation outcome requires an authority receipt");
 
     if let Some(code) = output.post_effect_failure {
-        return mutation_post_effect_failure_output(&outcome, code);
+        return project_mutation_finalization_failure(
+            &outcome,
+            &MutationFinalizationFailure::post_effect_marker(code),
+        );
     }
 
+    let Some(response_kind) = outcome
+        .exact_method_result
+        .as_ref()
+        .and_then(response_kind_from_structured_content)
+        .map(str::to_owned)
+    else {
+        return project_mutation_finalization_failure(
+            &outcome,
+            &MutationFinalizationFailure::response_projection(
+                McpMutationFinalizationStage::ResponseProjection,
+            ),
+        );
+    };
+
     let rejected_method_result = if response_kind == "rejected" {
-        let method_result: ToolRejectedResponse = serde_json::from_value(
+        let method_result: ToolRejectedResponse = match serde_json::from_value(
             outcome
                 .exact_method_result
                 .clone()
                 .expect("rejected mutation requires an exact result"),
-        )
-        .map_err(McpAdapterError::Json)?;
+        ) {
+            Ok(method_result) => method_result,
+            Err(_) => {
+                return project_mutation_finalization_failure(
+                    &outcome,
+                    &MutationFinalizationFailure::response_projection(
+                        McpMutationFinalizationStage::ResponseProjection,
+                    ),
+                )
+            }
+        };
         let transition_rejection = method_result.errors().iter().find_map(|error| {
             error.details().and_then(|details| {
                 serde_json::from_value::<TransitionRejection>(Value::Object(details.clone())).ok()
@@ -253,14 +294,14 @@ where
     let action_form_catalog = match action_forms(&context, &authority) {
         Ok(catalog) => catalog,
         Err(failure) => {
-            let reached_core = failure.reached_core();
             let diagnostics = failure.diagnostics(&authority.workflow);
-            return internal_contract_inconsistent_rejection(
-                output,
-                tool_name,
-                None,
-                diagnostics,
-                reached_core,
+            return project_mutation_finalization_failure(
+                &outcome,
+                &MutationFinalizationFailure::workflow_contract(
+                    McpMutationFinalizationStage::ActionFormCatalog,
+                    diagnostics,
+                    None,
+                ),
             );
         }
     };
@@ -274,31 +315,34 @@ where
             .as_ref()
             .expect("canonical mutation outcome requires an exact result"),
         &authority,
-        action_form_catalog,
+        action_form_catalog.clone(),
     ) {
         Ok(presentation) => presentation,
-        Err(McpAdapterError::SchemaContractFailure { .. }) if rejected_method_result.is_some() => {
+        Err(WorkflowPresentationFailure::Contract) => {
             let transition_rejection = rejected_method_result
                 .as_ref()
                 .and_then(|(_, rejection)| rejection.clone());
             let diagnostics = workflow_contract_diagnostics(
                 &authority.workflow,
-                None,
+                Some(&action_form_catalog),
                 transition_rejection.as_ref(),
             );
-            return internal_contract_inconsistent_rejection(
-                output,
-                tool_name,
-                transition_rejection,
-                diagnostics,
-                true,
+            return project_mutation_finalization_failure(
+                &outcome,
+                &MutationFinalizationFailure::workflow_contract(
+                    McpMutationFinalizationStage::WorkflowPresentation,
+                    diagnostics,
+                    transition_rejection,
+                ),
             );
         }
-        Err(_) => {
-            return mutation_post_effect_failure_output(
+        Err(WorkflowPresentationFailure::ResponseProjection) => {
+            return project_mutation_finalization_failure(
                 &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
-            )
+                &MutationFinalizationFailure::response_projection(
+                    McpMutationFinalizationStage::WorkflowPresentation,
+                ),
+            );
         }
     };
 
@@ -325,12 +369,13 @@ where
         }) {
             Some(Ok(retry)) => Some(retry),
             Some(Err(_)) => {
-                return internal_contract_inconsistent_rejection(
-                    output,
-                    tool_name,
-                    transition_rejection,
-                    diagnostics,
-                    true,
+                return project_mutation_finalization_failure(
+                    &outcome,
+                    &MutationFinalizationFailure::workflow_contract(
+                        McpMutationFinalizationStage::WorkflowPresentation,
+                        diagnostics,
+                        transition_rejection,
+                    ),
                 )
             }
             None => None,
@@ -344,7 +389,7 @@ where
             transition_rejection.as_ref(),
             retry.as_ref(),
         );
-        output.structured_content = serde_json::to_value(McpWorkflowRejectedResponse {
+        output.structured_content = match serde_json::to_value(McpWorkflowRejectedResponse {
             method_result,
             authority_receipt: authority.receipt.clone(),
             workflow: authority.workflow.clone(),
@@ -377,34 +422,64 @@ where
             },
             contract_diagnostics: diagnostics,
             presentation,
-        })
-        .map_err(McpAdapterError::Json)?;
+        }) {
+            Ok(structured_content) => structured_content,
+            Err(_) => {
+                return project_mutation_finalization_failure(
+                    &outcome,
+                    &MutationFinalizationFailure::response_projection(
+                        McpMutationFinalizationStage::ResponseProjection,
+                    ),
+                )
+            }
+        };
         output.mutation_refresh_context = None;
         return Ok(output);
     }
     if response_kind == "dry_run" {
-        let method_result: ToolDryRunResponse = serde_json::from_value(
+        let method_result: ToolDryRunResponse = match serde_json::from_value(
             outcome
                 .exact_method_result
                 .clone()
                 .expect("dry-run mutation requires an exact result"),
-        )
-        .map_err(McpAdapterError::Json)?;
+        ) {
+            Ok(method_result) => method_result,
+            Err(_) => {
+                return project_mutation_finalization_failure(
+                    &outcome,
+                    &MutationFinalizationFailure::response_projection(
+                        McpMutationFinalizationStage::ResponseProjection,
+                    ),
+                )
+            }
+        };
         output.primary_text = dry_run_compatibility_text(tool_name, &presentation);
-        output.structured_content = serde_json::to_value(McpWorkflowDryRunResponse {
+        output.structured_content = match serde_json::to_value(McpWorkflowDryRunResponse {
             method_result,
             authority_receipt: authority.receipt,
             workflow: authority.workflow,
             presentation,
-        })
-        .map_err(McpAdapterError::Json)?;
+        }) {
+            Ok(structured_content) => structured_content,
+            Err(_) => {
+                return project_mutation_finalization_failure(
+                    &outcome,
+                    &MutationFinalizationFailure::response_projection(
+                        McpMutationFinalizationStage::ResponseProjection,
+                    ),
+                )
+            }
+        };
         output.mutation_refresh_context = None;
         return Ok(output);
     }
     if response_kind != "result" {
-        return Err(McpAdapterError::Protocol(format!(
-            "mutation tool {tool_name} returned unsupported response_kind={response_kind}"
-        )));
+        return project_mutation_finalization_failure(
+            &outcome,
+            &MutationFinalizationFailure::response_projection(
+                McpMutationFinalizationStage::ResponseProjection,
+            ),
+        );
     }
 
     output.primary_text = match authority_receipt_compatibility_text(
@@ -414,17 +489,21 @@ where
     ) {
         Ok(text) => text,
         Err(_) => {
-            return mutation_post_effect_failure_output(
+            return project_mutation_finalization_failure(
                 &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
+                &MutationFinalizationFailure::response_projection(
+                    McpMutationFinalizationStage::WorkflowPresentation,
+                ),
             )
         }
     };
     output.mutation_refresh_context = None;
     let Some(compact_method_result) = outcome.compact_method_result.clone() else {
-        return mutation_post_effect_failure_output(
+        return project_mutation_finalization_failure(
             &outcome,
-            McpPostEffectFailureCode::McpResponseProjectionFailed,
+            &MutationFinalizationFailure::response_projection(
+                McpMutationFinalizationStage::ResponseProjection,
+            ),
         );
     };
     let method_result = match detail {
@@ -461,15 +540,30 @@ where
     output.structured_content = match projected {
         Ok(projected) => projected,
         Err(_) => {
-            return mutation_post_effect_failure_output(
+            return project_mutation_finalization_failure(
                 &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
+                &MutationFinalizationFailure::response_projection(
+                    McpMutationFinalizationStage::ResponseProjection,
+                ),
             )
         }
     };
 
-    let result =
-        tool_call_result_from_output_for_capabilities(tool_name, output.clone(), capabilities)?;
+    let result = match tool_call_result_from_output_for_capabilities(
+        tool_name,
+        output.clone(),
+        capabilities,
+    ) {
+        Ok(result) => result,
+        Err(_) => {
+            return project_mutation_finalization_failure(
+                &outcome,
+                &MutationFinalizationFailure::response_projection(
+                    McpMutationFinalizationStage::ResponseProjection,
+                ),
+            )
+        }
+    };
     let response_budget = match detail {
         MutationDetailLevel::Summary | MutationDetailLevel::Workflow => {
             MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
@@ -479,14 +573,19 @@ where
     let rendered_size = match serde_json::to_vec(&result) {
         Ok(rendered) => rendered.len(),
         Err(_) => {
-            return mutation_post_effect_failure_output(
+            return project_mutation_finalization_failure(
                 &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
+                &MutationFinalizationFailure::response_projection(
+                    McpMutationFinalizationStage::ResponseProjection,
+                ),
             )
         }
     };
     if rendered_size > response_budget {
-        return mutation_response_budget_exceeded_output(&outcome);
+        return project_mutation_finalization_failure(
+            &outcome,
+            &MutationFinalizationFailure::response_budget_exceeded(),
+        );
     }
     Ok(output)
 }
@@ -498,6 +597,12 @@ pub(crate) fn response_kind_from_structured_content(value: &Value) -> Option<&st
         .and_then(Value::as_str)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkflowPresentationFailure {
+    Contract,
+    ResponseProjection,
+}
+
 fn workflow_presentation(
     tool_name: &str,
     response_kind: &str,
@@ -505,16 +610,13 @@ fn workflow_presentation(
     method_result: &Value,
     authority: &ValidatedMutationAuthority,
     action_form_catalog: volicord_mcp_wire::WorkflowActionFormCatalog,
-) -> Result<McpWorkflowPresentation, McpAdapterError> {
+) -> Result<McpWorkflowPresentation, WorkflowPresentationFailure> {
     let method = AgentToolId::from_wire_name(tool_name)
         .ok()
         .and_then(AgentToolId::method)
-        .ok_or_else(|| {
-            McpAdapterError::Protocol(format!(
-                "missing MethodName mapping for mutation tool {tool_name}"
-            ))
-        })?;
-    let state_change = mutation_state_change(response_kind, replayed, method_result)?;
+        .ok_or(WorkflowPresentationFailure::Contract)?;
+    let state_change = mutation_state_change(response_kind, replayed, method_result)
+        .map_err(|_| WorkflowPresentationFailure::ResponseProjection)?;
     let task_phase = McpTaskPhasePresentation {
         mode: authority.task_mode,
         work_phase: authority.work_phase,
@@ -530,8 +632,8 @@ fn workflow_presentation(
             mode: authority.task_mode,
             work_phase: authority.work_phase,
         });
-        let rejected: ToolRejectedResponse =
-            serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+        let rejected: ToolRejectedResponse = serde_json::from_value(method_result.clone())
+            .map_err(|_| WorkflowPresentationFailure::ResponseProjection)?;
         if let Some(details) = rejected.errors().iter().find_map(|error| {
             error.details().and_then(|details| {
                 serde_json::from_value::<TransitionRejection>(Value::Object(details.clone())).ok()
@@ -642,17 +744,13 @@ fn workflow_presentation(
             .task_id
             .as_ref()
             .cloned()
-            .ok_or_else(|| {
-                McpAdapterError::Protocol(
-                    "authoritative User Channel presentation requires a Task coordinate".to_owned(),
-                )
-            })?;
+            .ok_or(WorkflowPresentationFailure::Contract)?;
         let instruction = canonical_user_channel_instructions(
             &authority.receipt.project_id,
             &task_id,
             authority.pending_user_action_refs.clone(),
         )
-        .map_err(|error| McpAdapterError::Protocol(error.to_string()))?;
+        .map_err(|_| WorkflowPresentationFailure::Contract)?;
         must_surface.push(McpMustSurfaceFact::UserActionRequestExists {
             request_refs: instruction.request_refs.clone(),
         });
@@ -801,62 +899,6 @@ fn workflow_contract_diagnostics_with_failure(
     diagnostics.failed_action_key = RequiredNullable::new(action_key);
     diagnostics.failed_stage = RequiredNullable::some(stage);
     diagnostics
-}
-
-fn internal_contract_inconsistent_rejection(
-    mut output: ToolCallOutput,
-    tool_name: &str,
-    transition_rejection: Option<TransitionRejection>,
-    diagnostics: McpWorkflowContractDiagnostics,
-    reached_core: bool,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let mut structured = McpToolErrorResponse {
-        code: McpToolErrorCode::InternalContractInconsistent,
-        tool_name: tool_name.to_owned(),
-        selected_variant: RequiredNullable::null(),
-        canonical_example: RequiredNullable::null(),
-        retryable: false,
-        reached_core,
-        committed: false,
-        failed_action_key: diagnostics.failed_action_key.clone(),
-        failed_stage: diagnostics.failed_stage.clone(),
-        method_error_code: diagnostics.method_error_code.clone(),
-        method_error_details: diagnostics.method_error_details.clone(),
-        state_change_applied: diagnostics.state_change_applied,
-        reported_issue_count: 1,
-        truncated: false,
-        issues: vec![McpToolErrorIssue::new(
-            String::new(),
-            McpToolIssueCode::InternalContractInconsistent,
-            "The current workflow form contract is internally inconsistent; the rejected witness is not executable and must not be retried.",
-        )],
-        authoritative_context: RequiredNullable::null(),
-        retry_contract: RequiredNullable::null(),
-        failure: RequiredNullable::null(),
-        workflow_admission: RequiredNullable::null(),
-        action_form_argument_mismatches: Vec::new(),
-        transition_rejection: RequiredNullable::new(transition_rejection),
-        contract_diagnostics: RequiredNullable::some(diagnostics),
-    };
-    if serde_json::to_vec(&structured)
-        .map_err(McpAdapterError::Json)?
-        .len()
-        > MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
-    {
-        structured.contract_diagnostics = RequiredNullable::null();
-        structured.truncated = true;
-    }
-    output.primary_text = "Volicord rejected the mutation because the current workflow form contract is internally inconsistent; Core state is unchanged, the rejected witness is not executable, and no retry is suggested.".to_owned();
-    output.structured_content = serde_json::to_value(
-        McpMutationStructuredContent::<Value, Value>::AdapterError(Box::new(structured)),
-    )
-    .map_err(McpAdapterError::Json)?;
-    output.is_error = true;
-    output.diagnostic_facts.core_reached = reached_core;
-    output.diagnostic_facts.core_committed = false;
-    output.diagnostic_facts.effect_applied = false;
-    output.mutation_refresh_context = None;
-    Ok(output)
 }
 
 fn rejected_compatibility_text(
@@ -1262,9 +1304,11 @@ fn authority_receipt_compatibility_text(
 #[cfg(test)]
 mod tests {
     use serde_json::{json, Value};
+    use volicord_mcp_protocol::ProtocolRegistry;
     use volicord_mcp_wire::{
-        McpAgentStateChange, McpMustSurfaceFact, McpTaskPhasePresentation, McpWorkflowPresentation,
-        RetryContract, WorkflowActionForm, WorkflowActionFormCatalog,
+        McpAgentStateChange, McpMustSurfaceFact, McpMutationFinalizationStage,
+        McpTaskPhasePresentation, McpWorkflowPresentation, RetryContract, WorkflowActionForm,
+        WorkflowActionFormCatalog,
     };
     use volicord_types::ids::{RequestHash, TaskId};
     use volicord_types::schema::{
@@ -1273,17 +1317,23 @@ mod tests {
         WorkflowCloseReadiness, WorkflowProjection, WorkflowTransitionCatalog,
         WorkflowTransitionSubmissionContract,
     };
+    use volicord_types::tool_names::AgentToolId;
     use volicord_types::values::{
-        AuthorityNextActor, MethodName, RunKind, TaskMode, TransitionRejectionReason, WorkPhase,
-        WorkflowActionSemanticVariant, WorkflowAuthorityInvalidationPolicy,
-        WorkflowExpectedResultState, WorkflowTransitionActor, WorkflowTransitionEffectClass,
+        AuthorityNextActor, MethodName, MutationDetailLevel, RunKind, TaskMode,
+        TransitionRejectionReason, WorkPhase, WorkflowActionSemanticVariant,
+        WorkflowAuthorityInvalidationPolicy, WorkflowExpectedResultState, WorkflowTransitionActor,
+        WorkflowTransitionEffectClass,
     };
 
     use super::{
-        internal_contract_inconsistent_rejection, rejected_compatibility_text,
-        response_kind_from_structured_content, workflow_contract_diagnostics_with_failure,
+        rejected_compatibility_text, response_kind_from_structured_content,
+        workflow_contract_diagnostics_with_failure,
     };
-    use crate::tool_dispatch::ToolCallOutput;
+    use crate::committed_result_recovery::{
+        project_mutation_finalization_failure, CanonicalMcpMutationOutcome,
+        MutationFinalizationFailure,
+    };
+    use crate::telemetry::ToolDiagnosticFacts;
 
     #[test]
     fn response_branch_projection_uses_response_kind_not_dry_run_metadata() {
@@ -1364,12 +1414,30 @@ mod tests {
             Some(action_key),
             volicord_mcp_wire::McpWorkflowContractStage::CatalogTotality,
         );
-        let output = internal_contract_inconsistent_rejection(
-            ToolCallOutput::success("{}".to_owned()).expect("empty test output"),
-            MethodName::CloseTask.as_str(),
-            Some(rejection.clone()),
-            diagnostics,
-            true,
+        let facts = ToolDiagnosticFacts {
+            core_reached: true,
+            ..ToolDiagnosticFacts::default()
+        };
+        let outcome = CanonicalMcpMutationOutcome {
+            tool_name: AgentToolId::CLOSE_TASK.wire_name().to_owned(),
+            capabilities: ProtocolRegistry::production()
+                .preferred_server_profile()
+                .capabilities(),
+            requested_detail: MutationDetailLevel::Summary,
+            facts: facts.clone(),
+            exact_method_result: Some(json!({"base": {"response_kind": "rejected"}})),
+            compact_method_result: None,
+            operation_result_ref: None,
+            authority_receipt: None,
+            workflow: Some(workflow),
+        };
+        let output = project_mutation_finalization_failure(
+            &outcome,
+            &MutationFinalizationFailure::workflow_contract(
+                McpMutationFinalizationStage::ActionFormCatalog,
+                diagnostics,
+                Some(rejection.clone()),
+            ),
         )
         .expect("bounded internal error projection");
 
@@ -1407,6 +1475,8 @@ mod tests {
             output.structured_content["contract_diagnostics"]["failed_stage"],
             "catalog_totality"
         );
+        assert_eq!(output.diagnostic_facts, facts);
+        assert!(output.operation_result_ref.is_none());
         assert!(output.primary_text.len() <= 512);
     }
 

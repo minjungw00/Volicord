@@ -734,10 +734,16 @@ The `canonical_minimal_request` remains the schema-valid request-shape starting
 point. Its bounded witness values validate the form shape; they do not claim
 user authority or a product decision and are not recommendations. Catalog
 validation uses the current Store snapshot read-only and creates no Store or
-Product Repository effect. Failure exposes no catalog and returns or records
+Product Repository effect. A failure before any authoritative method or
+staging effect exposes no catalog and returns or records
 `INTERNAL_CONTRACT_INCONSISTENT` with `committed=false`, the bounded failed
 action key and closed validation stage when known; it never publishes a partial
-catalog or chooses a nearby form. If the exact witness produces
+catalog or chooses a nearby form. If next-state catalog validation fails while
+finalizing a result whose Core or staging effect is already authoritative, MCP
+instead uses the success-class post-effect workflow-contract recovery defined
+under [Response Wrapping](#mutation-authority-receipt-projection). It preserves
+the original effect facts and never turns the call into an uncommitted
+rejection. If the exact witness produces
 `response_kind=rejected`, Core returns `NoCommitSubmissionRejected` instead of a
 plan. The `method_planning_rejected` failure preserves the method error code and
 typed details, basis state version, `reached_core=true`,
@@ -1274,6 +1280,58 @@ diagnostic history. The five digests identify the exact workflow-machine,
 submission, action-form, semantic-schema, and canonical-scalar contracts used
 for the projection without selecting behavior through numeric versions.
 
+Mutation finalization distinguishes these closed stages:
+
+```schema
+McpMutationFinalizationStage:
+  action_form_catalog | workflow_presentation | response_projection |
+    post_effect_adapter
+
+McpMutationPostEffectFailure:
+  code: MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED |
+    MCP_RESPONSE_PROJECTION_FAILED | MCP_POST_EFFECT_ADAPTER_FAILED
+  tool_name: MethodName
+  requested_detail: MutationDetailLevel
+  retryable: false
+  reached_core: boolean
+  committed: boolean
+  replayed: boolean
+  effect_kind: EffectKind
+  effect_applied: true
+  state_change_applied: boolean
+  effect_anchor: string | null
+  operation_result_ref: OperationResultRef | null
+  authority_receipt: AuthorityReceipt | null
+  method_result: object | null
+  failed_action_key: WorkflowActionKey | null
+  failed_stage: McpMutationFinalizationStage
+  method_error_code: ErrorCode | null
+  method_error_details: object | null
+  contract_diagnostics: McpWorkflowContractDiagnostics | null
+  authoritative_refresh_succeeded: true
+  response_projection_omitted: true
+  status_read_required: true
+  completion_claim_withheld: true
+```
+
+`MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED` identifies a failure to project the
+current transition, action-form, or workflow presentation contract after an
+authoritative effect and successful refresh. The response preserves the exact
+failed action and method error details when present. Its workflow diagnostics
+repeat the same `committed` and `state_change_applied` facts as the top-level
+effect; they cannot recast an applied effect as a no-effect validation run.
+
+The effect combinations are exact. A new Core commit has `committed=true`,
+`replayed=false`, `effect_kind=core_committed`, `effect_applied=true`, and
+`state_change_applied=true`. A staging effect has `committed=false`,
+`replayed=false`, `effect_kind=staging_created`, `effect_applied=true`, and
+`state_change_applied=false`. Exact replay of a committed result has
+`committed=false`, `replayed=true`, `effect_kind=core_committed`,
+`effect_applied=true`, and `state_change_applied=false`. A rejected or other
+no-effect result remains `committed=false`, `effect_applied=false`, and
+`state_change_applied=false`; a projection failure on a normal no-effect result
+does not turn that result into either a commit or a method rejection.
+
 ```schema
 McpArgumentFailurePresentation:
   method_committed: boolean
@@ -1309,8 +1367,12 @@ capability registry; an unknown or unsupported profile is rejected.
 
 Mutations retain the selected `summary`, `workflow`, or `full` public
 projection with one fresh `AuthorityReceipt`, exact effect identity, replay
-facts, and bounded recovery information. Response-size accounting and compact
-recovery use the selected profile's semantic carrier capability. When an
+facts, and bounded recovery information. Compact recovery carriers, including
+authoritative-refresh and response-budget
+failures, expose the same `replayed` and `state_change_applied` effect facts.
+They do not infer those facts from response size or refresh availability.
+Response-size accounting and compact recovery use the selected profile's
+semantic carrier capability. When an
 ordinary committed result is oversized or cannot be projected after the
 effect, recovery preserves the fresh authority receipt first, then the compact
 method result, then stable effect facts. The recovery remains success-class,
@@ -1318,6 +1380,17 @@ sets `retryable=false`, withholds a completion claim, requires a current
 `volicord.status` read, and retains an immutable operation-result reference
 when one exists. It does not change Core effects or reinterpret the
 authoritative public method result.
+
+The same effect-preserving recovery applies when next-state action-form catalog
+construction or workflow presentation fails after the effect. A new Core
+commit says that the mutation committed but the next-state workflow form could
+not be projected. A staging result says that staging was created and must not
+be repeated. A replay says that the exact committed result was replayed and no
+new commit was created. All three prohibit mutation retry, require
+`volicord.status`, and direct the caller to
+`volicord.get_operation_result` when `operation_result_ref` is present. Exact or
+compact `method_result` and the fresh receipt follow the same bounded recovery
+order; omission for size does not erase the top-level effect facts.
 
 Every normal workflow mutation projection also carries exactly one canonical
 agent-facing `presentation`:

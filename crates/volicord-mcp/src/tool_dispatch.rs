@@ -1,5 +1,7 @@
 //! Public tool-call decoding, adapter dispatch, and shared tool-result carrier.
 
+#[cfg(test)]
+use crate::action_form::ActionFormCatalogError;
 use crate::adapter::{McpAdapter, OwnedAgentSessionCoordinates};
 use crate::authority_refresh::MutationRefreshContext;
 use crate::binding::{
@@ -9,8 +11,8 @@ use crate::binding::{
 use crate::committed_result_recovery::bounded_mutation_compatibility_text;
 #[cfg(test)]
 use crate::committed_result_recovery::{
-    authoritative_refresh_failure_output, mutation_post_effect_failure_output,
-    mutation_response_budget_exceeded_output, CanonicalMcpMutationOutcome,
+    authoritative_refresh_failure_output, project_mutation_finalization_failure,
+    CanonicalMcpMutationOutcome, MutationFinalizationFailure,
     MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::diagnostics::{McpDiagnostic, McpToolCallDiagnostic};
@@ -22,6 +24,7 @@ use crate::lifecycle::SessionRuntime;
 #[cfg(test)]
 use crate::mutation_projection::{
     compact_mutation_method_result, finalize_mutation_output_with_refresh,
+    finalize_mutation_output_with_refresh_and_action_form_failure,
     MAX_MCP_FULL_MUTATION_RESULT_BYTES,
 };
 use crate::mutation_projection::{
@@ -48,6 +51,8 @@ use volicord_core::pipeline::{
 use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
+#[cfg(test)]
+use volicord_mcp_wire::{McpMutationFinalizationStage, McpWorkflowContractStage};
 use volicord_mcp_wire::{
     McpOperationalErrorCode, McpOperationalFailure, McpOperationalOperation,
     McpOperationalResource, McpPostEffectFailureCode, McpStatusResponse, McpToolErrorCode,
@@ -998,7 +1003,11 @@ fn semantic_result_type(
     }
     if matches!(
         code,
-        Some("MCP_RESPONSE_PROJECTION_FAILED" | "MCP_POST_EFFECT_ADAPTER_FAILED")
+        Some(
+            "MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED"
+                | "MCP_RESPONSE_PROJECTION_FAILED"
+                | "MCP_POST_EFFECT_ADAPTER_FAILED"
+        )
     ) {
         return "post_effect_failure";
     }
@@ -1870,6 +1879,26 @@ mod mutation_projection_and_recovery_tests {
         }
     }
 
+    fn response_projection_failure_output(
+        outcome: &CanonicalMcpMutationOutcome,
+    ) -> Result<ToolCallOutput, McpAdapterError> {
+        project_mutation_finalization_failure(
+            outcome,
+            &MutationFinalizationFailure::response_projection(
+                McpMutationFinalizationStage::ResponseProjection,
+            ),
+        )
+    }
+
+    fn response_budget_failure_output(
+        outcome: &CanonicalMcpMutationOutcome,
+    ) -> Result<ToolCallOutput, McpAdapterError> {
+        project_mutation_finalization_failure(
+            outcome,
+            &MutationFinalizationFailure::response_budget_exceeded(),
+        )
+    }
+
     fn assert_compact_budget(output: ToolCallOutput) -> Result<(), Box<dyn Error>> {
         assert!(!output.is_error);
         assert_eq!(output.structured_content["retryable"], false);
@@ -2435,7 +2464,14 @@ mod mutation_projection_and_recovery_tests {
         assert!(!recovery.retryable);
         assert!(recovery.reached_core);
         assert!(recovery.committed);
+        assert!(!recovery.replayed);
         assert!(recovery.effect_applied);
+        assert!(recovery.state_change_applied);
+        assert_eq!(
+            recovery.failed_stage,
+            McpMutationFinalizationStage::PostEffectAdapter
+        );
+        assert!(recovery.contract_diagnostics.as_ref().is_none());
         assert!(recovery.response_projection_omitted);
         assert!(recovery.status_read_required);
         assert!(recovery.completion_claim_withheld);
@@ -2494,6 +2530,10 @@ mod mutation_projection_and_recovery_tests {
             "MCP_RESPONSE_PROJECTION_FAILED"
         );
         assert_eq!(output.structured_content["retryable"], false);
+        assert_eq!(
+            output.structured_content["failed_stage"],
+            "workflow_presentation"
+        );
         assert_eq!(output.structured_content["effect_kind"], "core_committed");
         assert_eq!(output.structured_content["effect_applied"], true);
         assert_eq!(
@@ -2662,8 +2702,10 @@ mod mutation_projection_and_recovery_tests {
             assert_eq!(output.structured_content["retryable"], false);
             assert_eq!(output.structured_content["reached_core"], true);
             assert_eq!(output.structured_content["committed"], true);
+            assert_eq!(output.structured_content["replayed"], false);
             assert_eq!(output.structured_content["effect_kind"], "core_committed");
             assert_eq!(output.structured_content["effect_applied"], true);
+            assert_eq!(output.structured_content["state_change_applied"], true);
             assert!(output.structured_content["effect_anchor"]
                 .as_str()
                 .is_some_and(|token| token.starts_with("authority_event:")));
@@ -2701,6 +2743,10 @@ mod mutation_projection_and_recovery_tests {
             output.structured_content["code"],
             "MCP_POST_EFFECT_ADAPTER_FAILED"
         );
+        assert_eq!(
+            output.structured_content["failed_stage"],
+            "post_effect_adapter"
+        );
         assert_eq!(output.structured_content["authority_receipt"], Value::Null);
         assert_eq!(
             output.structured_content["response_projection_omitted"],
@@ -2730,10 +2776,7 @@ mod mutation_projection_and_recovery_tests {
             Some(committed.response_value.clone()),
             Some(compact),
         );
-        let both = mutation_post_effect_failure_output(
-            &both_outcome,
-            McpPostEffectFailureCode::McpResponseProjectionFailed,
-        )?;
+        let both = response_projection_failure_output(&both_outcome)?;
         assert!(both.structured_content["authority_receipt"].is_object());
         assert!(both.structured_content["method_result"].is_object());
         assert_compact_budget(both)?;
@@ -2754,10 +2797,7 @@ mod mutation_projection_and_recovery_tests {
             Some(oversized_exact_result.clone()),
             Some(expected_compact.clone()),
         );
-        let receipt_and_compact = mutation_post_effect_failure_output(
-            &receipt_and_compact_outcome,
-            McpPostEffectFailureCode::McpResponseProjectionFailed,
-        )?;
+        let receipt_and_compact = response_projection_failure_output(&receipt_and_compact_outcome)?;
         assert!(receipt_and_compact.structured_content["authority_receipt"].is_object());
         assert_eq!(
             receipt_and_compact.structured_content["method_result"],
@@ -2775,10 +2815,7 @@ mod mutation_projection_and_recovery_tests {
             Some(oversized_exact_result),
             Some(expected_compact),
         );
-        let compact_only = mutation_post_effect_failure_output(
-            &compact_only_outcome,
-            McpPostEffectFailureCode::McpResponseProjectionFailed,
-        )?;
+        let compact_only = response_projection_failure_output(&compact_only_outcome)?;
         assert_eq!(
             compact_only.structured_content["authority_receipt"],
             Value::Null
@@ -2803,10 +2840,7 @@ mod mutation_projection_and_recovery_tests {
             Some(unprojectable_result),
             None,
         );
-        let effect_facts_only = mutation_post_effect_failure_output(
-            &effect_facts_outcome,
-            McpPostEffectFailureCode::McpResponseProjectionFailed,
-        )?;
+        let effect_facts_only = response_projection_failure_output(&effect_facts_outcome)?;
         assert_eq!(
             effect_facts_only.structured_content["authority_receipt"],
             Value::Null
@@ -2816,6 +2850,112 @@ mod mutation_projection_and_recovery_tests {
             Value::Null
         );
         assert_compact_budget(effect_facts_only)?;
+        Ok(())
+    }
+
+    #[test]
+    fn committed_action_form_contract_failure_preserves_authoritative_effect_and_diagnostics(
+    ) -> Result<(), Box<dyn Error>> {
+        let (fixture, committed, _) =
+            committed_intake_with_receipt("mcp-committed-action-form-contract-failure")?;
+        let task_id = committed
+            .resolved_task_id
+            .as_ref()
+            .expect("committed intake resolves a Task")
+            .clone();
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
+        let refreshed = core.status(
+            fixture.status_request(
+                "req_mcp_committed_action_form_contract_failure_status",
+                Some(task_id.as_str()),
+            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
+        )?;
+        let workflow: volicord_types::schema::WorkflowProjection =
+            serde_json::from_value(refreshed.response_value["active_task"]["workflow"].clone())?;
+        let action_key = workflow
+            .transition_catalog()
+            .transitions
+            .first()
+            .expect("post-intake workflow exposes a transition")
+            .action_key;
+        let mut failure = ActionFormCatalogError::contract(
+            Some(action_key),
+            McpWorkflowContractStage::CatalogTotality,
+            "injected action-form contract failure",
+        );
+        failure.method_error_code = Some(ErrorCode::PersistedDataCorrupt);
+        failure.method_error_details = Some(
+            json!({"reason": "injected and redacted"})
+                .as_object()
+                .expect("object details")
+                .clone(),
+        );
+
+        let original_output = ToolCallOutput::from_pipeline_response(&committed)?;
+        let original_facts = original_output.diagnostic_facts.clone();
+        let operation_result_ref = original_output
+            .operation_result_ref
+            .clone()
+            .expect("committed intake retains an operation-result reference");
+        let output = finalize_mutation_output_with_refresh_and_action_form_failure(
+            AgentToolId::INTAKE.wire_name(),
+            Some(MutationDetailLevel::Summary),
+            original_output,
+            |_| Ok(refreshed),
+            failure,
+        )?;
+
+        assert!(!output.is_error);
+        assert_eq!(
+            output.structured_content["code"],
+            "MCP_WORKFLOW_CONTRACT_PROJECTION_FAILED"
+        );
+        assert_eq!(
+            output.structured_content["failed_stage"],
+            "action_form_catalog"
+        );
+        assert_eq!(
+            output.structured_content["failed_action_key"],
+            json!(action_key)
+        );
+        assert_eq!(
+            output.structured_content["method_error_code"],
+            "PERSISTED_DATA_CORRUPT"
+        );
+        assert_eq!(
+            output.structured_content["method_error_details"]["reason"],
+            "injected and redacted"
+        );
+        assert_eq!(output.structured_content["committed"], true);
+        assert_eq!(output.structured_content["replayed"], false);
+        assert_eq!(output.structured_content["effect_kind"], "core_committed");
+        assert_eq!(output.structured_content["effect_applied"], true);
+        assert_eq!(output.structured_content["state_change_applied"], true);
+        assert_eq!(output.structured_content["retryable"], false);
+        assert_eq!(output.structured_content["status_read_required"], true);
+        assert_eq!(output.structured_content["completion_claim_withheld"], true);
+        assert_eq!(
+            output.structured_content["operation_result_ref"],
+            serde_json::to_value(operation_result_ref)?
+        );
+        assert!(output.structured_content["authority_receipt"].is_object());
+        assert!(output.structured_content["method_result"].is_object());
+        assert_eq!(
+            output.structured_content["contract_diagnostics"]["committed"],
+            output.structured_content["committed"]
+        );
+        assert_eq!(
+            output.structured_content["contract_diagnostics"]["state_change_applied"],
+            output.structured_content["state_change_applied"]
+        );
+        assert_eq!(output.diagnostic_facts, original_facts);
+        assert!(output.primary_text.contains("mutation was committed"));
+        assert!(!output.primary_text.contains("Core state is unchanged"));
+        assert!(
+            serde_json::to_vec(&tool_call_result_from_output(output))?.len()
+                <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+        );
         Ok(())
     }
 
@@ -2887,10 +3027,7 @@ mod mutation_projection_and_recovery_tests {
                 Some(exact),
                 Some(compact),
             );
-            let output = mutation_post_effect_failure_output(
-                &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
-            )?;
+            let output = response_projection_failure_output(&outcome)?;
             assert_eq!(
                 output.structured_content["authority_receipt"].is_object(),
                 expect_receipt,
@@ -2926,7 +3063,7 @@ mod mutation_projection_and_recovery_tests {
             None,
             Some(small_result.clone()),
         );
-        let both = mutation_response_budget_exceeded_output(&both_outcome)?;
+        let both = response_budget_failure_output(&both_outcome)?;
         assert!(both.structured_content["authority_receipt"].is_object());
         assert_eq!(
             both.structured_content["method_result"]["effect_kind"],
@@ -2944,7 +3081,7 @@ mod mutation_projection_and_recovery_tests {
                 "padding": "x".repeat(36 * 1024),
             })),
         );
-        let receipt_only = mutation_response_budget_exceeded_output(&receipt_only_outcome)?;
+        let receipt_only = response_budget_failure_output(&receipt_only_outcome)?;
         assert!(receipt_only.structured_content["authority_receipt"].is_object());
         assert_eq!(
             receipt_only.structured_content["method_result"],
@@ -2962,7 +3099,7 @@ mod mutation_projection_and_recovery_tests {
             None,
             Some(small_result),
         );
-        let compact_only = mutation_response_budget_exceeded_output(&compact_only_outcome)?;
+        let compact_only = response_budget_failure_output(&compact_only_outcome)?;
         assert_eq!(
             compact_only.structured_content["authority_receipt"],
             Value::Null
@@ -2986,7 +3123,7 @@ mod mutation_projection_and_recovery_tests {
                 "padding": "x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES),
             })),
         );
-        let effect_facts_only = mutation_response_budget_exceeded_output(&effect_facts_outcome)?;
+        let effect_facts_only = response_budget_failure_output(&effect_facts_outcome)?;
         assert_eq!(
             effect_facts_only.structured_content["authority_receipt"],
             Value::Null
@@ -3133,11 +3270,8 @@ mod mutation_projection_and_recovery_tests {
         );
 
         let outputs = [
-            mutation_post_effect_failure_output(
-                &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
-            )?,
-            mutation_response_budget_exceeded_output(&outcome)?,
+            response_projection_failure_output(&outcome)?,
+            response_budget_failure_output(&outcome)?,
             authoritative_refresh_failure_output(&outcome)?,
         ];
         for output in outputs {

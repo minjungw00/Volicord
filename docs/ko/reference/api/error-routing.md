@@ -76,6 +76,13 @@ variant가 현재 상태가 아니면 `WORKFLOW_ACTION_VARIANT_NOT_ALLOWED`를 �
 어떤 메서드 결과도 만들 수 없게 하는 typed Core 운영 불가도 이 분기 밖에 있으며 호출
 어댑터가 변환합니다.
 
+메서드 또는 staging 효과가 권위 있게 된 뒤의 MCP workflow contract나 응답 projection 실패도
+이 거부 분기 밖에 있습니다. MCP carrier는 success-class 재시도 불가 복구로 commit, staging,
+replay 효과를 보존하며 `ToolRejectedResponse`를 만들거나 Core 상태가 바뀌지 않았다고 주장하면 안
+됩니다. 권위 있는 효과 전에 일어난 대응 실패는 커밋된 동작이 없는 adapter 소유 내부 contract
+실패로 남습니다. 정확한 carrier field와 operation-result 복구는 [MCP 전송](../mcp-transport.md#mutation-authority-receipt-projection)이
+담당합니다.
+
 <a id="error-vs-blocker-blocked-result"></a>
 차단 결과:
 - 공개 형태: `write_decision_reasons`나 `blockers` 같은 메서드별 결과 필드입니다.

@@ -167,6 +167,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -321,7 +322,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5ba531fd0a8a726bdd7c65dda65acefc2a6d177548a05e623d3340b6e7d56a64"
+        "sha256": "sha256:639b2a2fcff639a666bce793a7147d14b8b516ed4712d4e310078b21ec378f04"
       }
     },
     {
@@ -459,6 +460,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -616,7 +618,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0780386a625c94d8cb3ee963b7c06ba1fc22b50de8a59c84671b04a667134058"
+        "sha256": "sha256:a7c5c9e51a5fc273254929940eb745c36a2484af92a29644ec203575afedf307"
       }
     },
     {
@@ -776,6 +778,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -934,7 +937,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0324933de63b19e19d11654b9d73df3e86d01f4232498be247020ee67c60695b"
+        "sha256": "sha256:20b0b8387f675dfdb2e36d64c6771a005f9479bd3d1b5832f5592004134971fa"
       }
     },
     {
@@ -1069,6 +1072,7 @@
           "McpFinalizeAdviceCompactResult",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -1224,7 +1228,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5c8707bf22f43153c6bd33677a785da93a6d5697a0b3f01d3ac1fa0ed7c2d2f6"
+        "sha256": "sha256:6b0f28f7033568311bbfacf6c1a40c9f2fe01c723349a64ef20ee9ea88b383ba"
       }
     },
     {
@@ -1348,6 +1352,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -1502,7 +1507,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:79841205735b64259acd9f85e6966c69ce581adbf2e753a608c2cb49c4f491f5"
+        "sha256": "sha256:4c180a6c88e4d6c6b9e5a510e31fc13a4775a16223e00f495ac886160c4448c3"
       }
     },
     {
@@ -2065,6 +2070,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -2204,7 +2210,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b43b2abf5a521095dc8400f87fee7d32026ef6555e35e5ecaa957d16d69ec5c5"
+        "sha256": "sha256:927729f87e2ad5d51070f179f1089e200d8576ad418f84b84400500ff53be3b2"
       }
     },
     {
@@ -2325,6 +2331,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -2490,7 +2497,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d732e53823be6ebd4a754a2fc503530097db682af6219cffe3c00fd10c561196"
+        "sha256": "sha256:a2797e982316e70478aef21c33513278a483e14fc656b41a9a9eea85059db36c"
       }
     },
     {
@@ -2597,6 +2604,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -2736,7 +2744,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c2770e78184bc397d2a28cd85ae859730c31f2d840cedb6406db42f2fbfc1c6b"
+        "sha256": "sha256:6bef1574ad1fae44897ca5e900ee0959c933c2d2b75e6205605504e0ef45204a"
       }
     },
     {
@@ -2919,6 +2927,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -3080,7 +3089,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:92be03c97831ede4a4d47e9cb35925e391b53d9d6137a6901144312e0fa1ca07"
+        "sha256": "sha256:ebc208c9e849edd7b48a8e59ac4f205552280376b2a51d8fae9e65e6ff90e0b3"
       }
     },
     {
@@ -3217,6 +3226,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -3379,7 +3389,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:221771fb54a96d5e081855a38ad749deed15126a73f488637c53b5e73e75e44f"
+        "sha256": "sha256:614213bc8cca969265621f40cf4158a47091322f2a7bdada9e717b9fda07d857"
       }
     },
     {
@@ -3492,6 +3502,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -3655,7 +3666,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b2bfc33d091c6bee34205eb94d5b05b0b62f90ffa05510ce6d0417775766112c"
+        "sha256": "sha256:b0f8ff46e5d0ba0ddd913a725c37083f8c51d6995448551cb3f5acdbe2071b75"
       }
     },
     {
@@ -4022,6 +4033,7 @@
           "McpArgumentFailurePresentation",
           "McpMustSurfaceFact",
           "McpMutationEffectSummary",
+          "McpMutationFinalizationStage",
           "McpMutationProjectionErrorCode",
           "McpOperationalErrorCode",
           "McpOperationalOperation",
@@ -4184,7 +4196,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:13a7715f3e98f7a764cf01eaee43a2e0571140914f35903e99987e28e0446611"
+        "sha256": "sha256:90219ad95ef255dafc2795ab13ccdb50a39afc36a217f8c8341ab4d48b4c8f62"
       }
     },
     {

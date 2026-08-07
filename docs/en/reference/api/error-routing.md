@@ -82,6 +82,15 @@ workflow and form recovery facts owned by [MCP Transport](../mcp-transport.md#pu
 Typed Core operational unavailability that prevents any method result is also
 outside this branch and is mapped by the calling adapter.
 
+An MCP workflow-contract or response-projection failure after a method or
+staging effect is authoritative is also outside this rejected branch. The MCP
+carrier preserves that committed, staged, or replayed effect through its
+success-class non-retryable recovery; it must not manufacture a
+`ToolRejectedResponse` or claim that Core state is unchanged. A corresponding
+failure before any authoritative effect remains an adapter-owned internal
+contract failure with no committed operation. Exact carrier fields and
+operation-result recovery belong to [MCP Transport](../mcp-transport.md#mutation-authority-receipt-projection).
+
 <a id="error-vs-blocker-blocked-result"></a>
 Blocked result:
 - Public shape: Method-specific result fields such as `write_decision_reasons` or `blockers`.
