@@ -131,7 +131,7 @@ package_routes:
     }
 
     fn status(&self) -> Vec<u8> {
-        git_bytes(self.root(), &["status", "--porcelain=v1", "-z"])
+        git_bytes(self.root(), &["status", "--porcelain", "-z"])
     }
 }
 

@@ -307,8 +307,8 @@ build = []
 
 [workspace.metadata.architecture.packages.xtask]
 group = "repository-validation"
-description = "Changed-owner routing plus repository architecture, documentation, protocol fixture, release metadata, and Git-tree source-bundle validation, generation, and synchronization."
-description_ko = "변경된 파일의 담당 경로 지정과 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터, Git 트리 소스 번들의 검증, 생성, 동기화를 담당합니다."
+description = "Changed-owner routing, focused/final validation with durable command results, and repository architecture, documentation, protocol fixture, release metadata, and Git-tree source-bundle validation, generation, and synchronization."
+description_ko = "변경된 파일의 담당 경로 지정, 오래 남는 명령 결과를 제공하는 집중·최종 검증, 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터, Git 트리 소스 번들의 검증, 생성, 동기화를 담당합니다."
 kind = "validation"
 production = false
 boundary = "neutral"

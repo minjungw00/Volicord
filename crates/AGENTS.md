@@ -112,18 +112,18 @@ acceptance decisions, close-readiness state, or residual-risk decisions.
 
 ## Validation
 
-- After Rust implementation edits, inspect the Cargo workspace or changed crate
-  layout before choosing validation commands.
-- Default Rust validation from the workspace root is:
-  - `cargo fmt`
-  - `cargo clippy --all-targets --all-features`
-  - `cargo test --all-targets --all-features`
-- Use narrower Cargo commands only when the repository structure or task scope
-  clearly calls for them, and report the reason.
-- When editing Storage DDL, canonical SQL, or schema validation code, also run:
-  - `cargo test -p volicord-store --test storage_ddl_contract`
-- When implementation work also changes maintained documentation, run the
-  applicable documentation validation from `docs/en/maintain/validation.md` or
-  `docs/ko/maintain/validation.md`.
+- After Rust implementation edits, run
+  `cargo run -p xtask -- validate focused --base <revision>` with the explicit
+  change-series base. The owner route selects changed packages, direct contract
+  checks, architecture and documentation checks, formatting, lint, and
+  repository hygiene without the exact workspace aggregate.
+- Run `cargo run -p xtask -- validate final --base <revision>` once after every
+  planned commit in the series is present. The final profile owns the complete
+  workspace policy, exact aggregate, bounded retry, and truthful decomposition
+  reporting; do not reproduce those commands manually per commit.
+- When implementation work changes maintained documentation, complete the
+  applicable bilingual semantic review from
+  `docs/en/maintain/validation.md` or `docs/ko/maintain/validation.md` in
+  addition to the automated profile.
 - If no Rust source, Cargo manifest, test, fixture, or build configuration is
   changed, Rust validation is not required.

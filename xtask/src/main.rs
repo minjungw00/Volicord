@@ -7,6 +7,7 @@ fn main() -> ExitCode {
 
     match args.as_slice() {
         [command, rest @ ..] if command == "owner-route" => run_owner_route_command(rest),
+        [command, rest @ ..] if command == "validate" => run_validate_command(rest),
         [command] if command == "docs-check" => {
             let result = match env::current_dir() {
                 Ok(root) => xtask::run_docs_check(&root),
@@ -97,9 +98,71 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: cargo run -p xtask -- <owner-route --changed [--base REVISION] [--json]|architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
+                "usage: cargo run -p xtask -- <owner-route --changed [--base REVISION] [--json]|validate <focused|final> --base REVISION [--json]|architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|source-bundle --output PATH [--commit COMMIT]|source-bundle-validate --input PATH [--commit COMMIT]>"
             );
             ExitCode::from(2)
+        }
+    }
+}
+
+fn run_validate_command(args: &[String]) -> ExitCode {
+    let Some(profile) = args
+        .first()
+        .and_then(|value| xtask::ValidationProfile::parse(value))
+    else {
+        eprintln!("usage: cargo run -p xtask -- validate <focused|final> --base REVISION [--json]");
+        return ExitCode::from(2);
+    };
+    let mut base = None;
+    let mut json = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" if !json => json = true,
+            "--base" if base.is_none() && index + 1 < args.len() => {
+                index += 1;
+                base = Some(args[index].as_str());
+            }
+            _ => {
+                eprintln!(
+                    "usage: cargo run -p xtask -- validate <focused|final> --base REVISION [--json]"
+                );
+                return ExitCode::from(2);
+            }
+        }
+        index += 1;
+    }
+    let Some(base) = base else {
+        eprintln!("usage: cargo run -p xtask -- validate <focused|final> --base REVISION [--json]");
+        return ExitCode::from(2);
+    };
+
+    let result = match env::current_dir() {
+        Ok(root) => xtask::run_validation(&root, profile, base),
+        Err(error) => Err(error.into()),
+    };
+    match result {
+        Ok(summary) => {
+            if json {
+                match serde_json::to_string_pretty(&summary) {
+                    Ok(rendered) => println!("{rendered}"),
+                    Err(error) => {
+                        eprintln!("validation failed to render JSON: {error}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else {
+                print!("{}", summary.render_human());
+            }
+            if summary.is_success() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
+        }
+        Err(error) => {
+            eprintln!("validation failed before a run could be created: {error:#}");
+            ExitCode::from(1)
         }
     }
 }

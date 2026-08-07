@@ -136,10 +136,12 @@ residual-risk decisions.
 ## Validation
 
 - After documentation edits, use `docs/en/maintain/validation.md` or
-  `docs/ko/maintain/validation.md` and run the checks that match the changed
-  files.
-- For documentation metadata, route, link, and terminology-path changes, run:
-  - `cargo run -p xtask -- docs-check`
+  `docs/ko/maintain/validation.md` and run the repository-owned focused profile
+  with the explicit change-series base. Its owner route selects documentation
+  structure, link, terminology, parity, generated-region, and hygiene checks.
+- Run the final profile once only after all commits in the declared series are
+  present. Do not repeat the exact workspace aggregate for an intermediate
+  documentation commit.
 - For bilingual changes, compare English and Korean by meaning unit after
   automated checks.
 - For contract-adjacent changes, confirm exact behavior remains in the focused
@@ -150,3 +152,6 @@ residual-risk decisions.
   contracts.
 - Before finishing, confirm changed links, file paths, anchors,
   paired-language links, owner routing, terminology, and repository hygiene.
+- Report passed, failed, decomposed, and skipped results from the durable
+  validation summary without treating decomposed success as an exact aggregate
+  pass.

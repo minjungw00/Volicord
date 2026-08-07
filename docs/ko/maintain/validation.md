@@ -45,6 +45,88 @@ tree 경로를 함께 포함하려면 `--base <revision>`을 사용합니다. �
 중복이 없습니다. 이 명령은 읽기 전용이며 임의 산문을 검색해 담당 범위를 추론하지
 않습니다.
 
+## 검증 profile과 순차 series
+
+순차 change series의 첫 commit 전에 그 상위 commit을 series 기준으로 기록합니다.
+같은 series의 모든 profile 호출에 같은 명시적 revision을 사용합니다.
+
+중간 작업에는 집중 profile을 실행합니다.
+
+```sh
+cargo run -p xtask -- validate focused --base <revision>
+```
+
+집중 profile은 `owner-route` 결과를 사용해 변경된 패키지, 직접 계약 및 생성 drift
+점검, 문서와 아키텍처 점검, 저장소 위생을 선택합니다. `cargo test --workspace`나
+다른 정확한 workspace aggregate를 실행하지 않습니다. 도구나 에이전트가 정확한
+summary를 읽어야 하면 `--json`을 사용합니다.
+
+계획한 모든 commit이 준비되고 working tree가 최종 gate를 실행할 상태가 되면 최종
+검증 session 하나를 시작합니다.
+
+```sh
+cargo run -p xtask -- validate final --base <revision>
+```
+
+최종 profile을 미리 시험하거나 동시에 실행하거나 중간 commit마다 실행하지
+않습니다. 이 session이 정확한 aggregate와 한도가 있는 진단을 포함한 현재의 완전한
+저장소 정책을 담당합니다. 실패한 최종 session은 실패로 남습니다. 분해 결과를
+완료로 설명하지 말고 보고한 뒤 수정된 series를 시작합니다.
+
+아래에 문서화된 직접 명령은 안정적인 집중 점검 및 CI 구성 요소로 남습니다.
+Series 수준 선택, 순서, 오래 남는 결과 수집, aggregate 처리, summary 상태는 검증
+profile이 권위 있게 담당합니다.
+
+## 오래 남는 명령 결과
+
+각 profile은 무시되는 `target/volicord-validation/<run-id>/summary.json`을
+만듭니다. 실행한 각 명령은 같은 run directory 아래에 완전한 stdout log, stderr
+log, 기계 판독 결과, 정확한 호출, working directory, 시작·종료 timestamp, exit
+code를 남깁니다. 자식 stdout과 stderr는 실행 중에 그 파일로 직접 들어가므로
+terminal buffer 연결 유지에 의존하지 않습니다.
+
+Runner는 첫 명령 전에 초기 summary를 쓰고 명령 상태가 바뀔 때마다 전후로
+checkpoint합니다. Runner가 계속 실행되는 동안 terminal이나 process handle을
+잃었다면 보고된 run ID와 summary 경로를 확인해 복구합니다. 대기 중인 작업은 완료,
+실패, 생략 명령과 구분됩니다. 검증 출력은 무시되는 빌드 출력이며 commit하지
+않습니다.
+
+## 정확한 aggregate와 한도 있는 분해
+
+최종 profile만 다음 정확한 aggregate를 실행합니다.
+
+```sh
+cargo test --locked --workspace --all-targets --all-features
+```
+
+일반적으로 한 번 실행합니다. 출력에서 변경하지 않은 패키지의 실패 target 하나를
+확인할 수 있으면 runner는 그 target과 전체 패키지를 실행할 수 있습니다. 둘 다
+통과하면 정확한 aggregate를 한 번 재시도할 수 있습니다. 한 최종 session에서 정확한
+aggregate는 두 번보다 많이 실행되지 않습니다.
+
+두 번째 aggregate-only 실패 뒤에는 확인한 변경하지 않은 패키지를 제외한
+workspace와 그 전체 패키지를 따로 실행한 뒤 멈춥니다. 영구적인 패키지 제외를
+추가하지 않고 세 번째 정확한 시도를 하지 않습니다. 변경 패키지 실패에는 이 분해
+경로를 적용하지 않습니다. 유지 담당 문서가 먼저 요구하지 않는 한 어떤 profile도
+전역 `--test-threads=1`이나 `RUST_TEST_THREADS=1`을 설정하지 않습니다.
+
+통과, 실패, 분해, 생략은 서로 독립적인 summary 분류입니다. 분해 명령은 통과하거나
+실패할 수 있지만 성공해도 실패한 정확한 aggregate를 없애거나 전체 결과를 통과로
+바꾸지 않습니다. 사람용 출력과 JSON 출력은 같은 명령 record와 분류 목록에서
+생성됩니다.
+
+## Commit 종류 범위
+
+검증 사전 점검은 명시적 기준과 `HEAD` 사이의 commit subject와 기계로 확인 가능한
+파일 범위를 검사합니다. `test:` commit은 프로덕션 동작을 바꾸면 안 됩니다.
+`docs:` commit은 프로덕션 코드나 런타임 계약을 바꾸면 안 됩니다. 파일 범위로
+구분할 수 있는 프로덕션 구현 경로는 자동 점검이 거부하며 유지 문서 안의 계약
+의미는 계속 의미 검토가 담당합니다.
+
+테스트나 문서 작업 중 프로덕션 공백을 찾았다면 프로덕션 변경을 앞선 `feat:`,
+`fix:`, `refactor:` commit에 둡니다. 그 공백을 `test:` 또는 `docs:` commit 안에
+숨기지 않습니다.
+
 ## 구조 점검
 
 문서 메타데이터, 경로, 링크, 용어 경로를 바꿨다면 저장소 루트에서
@@ -411,17 +493,11 @@ initialize 및 도구 목록 milestone을 실행하며, 필수 도구와 안전 
 Rust 소스, Cargo 매니페스트, 테스트, 픽스처, 빌드 설정을 바꾸지 않았다면 Rust
 검증은 필요하지 않습니다.
 
-Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트에서 적용되는 Rust
-검증을 실행합니다.
-
-- `cargo fmt`
-- 워크스페이스 메타데이터, Cargo 매니페스트, 패키지 배치, 내부 의존성을
-  변경했다면 `cargo run -p xtask -- architecture-check`
-- `cargo clippy --all-targets --all-features`
-- `cargo test --all-targets --all-features`
-
-더 좁은 Cargo 명령은 저장소 구조나 작업 범위가 분명히 요구할 때만 사용하고 그
-이유를 보고합니다.
+Rust 구현을 편집한 뒤에는 명시적 series 기준으로 `validate focused`를
+사용합니다. 이 profile은 formatting, 변경 패키지 lint와 테스트, 경로에서 선택한
+직접 점검, 위생을 계획합니다. 완전한 series 뒤에는 `validate final`을 한 번
+사용합니다. 최종 profile은 workspace lint, 완전한 저장소 점검, 정확한 aggregate를
+추가합니다. 실제 실행한 명령과 생략 작업은 오래 남는 summary가 담당합니다.
 
 ## 생성 참조와 계약 드리프트 점검
 
@@ -489,8 +565,10 @@ registry/project SQL 원본 파일과 일치하는지도 확인합니다.
 
 ## 보고
 
-검증 결과는 저장소 파일이 아니라 대화에 보고합니다. 변경 파일, 수행한 점검,
-결과, 건너뛴 점검과 이유, 남은 문서 위험을 포함합니다.
+검증 결과는 저장소 파일이 아니라 대화에 보고합니다. 변경 파일, run ID, summary
+경로, 별도의 통과·실패·분해·생략 목록을 포함합니다. 생략 이유와 남은 문서 위험도
+포함합니다. 정확한 aggregate 시도 중 하나라도 실패했거나 정확한 aggregate를
+실행하지 않았다면 검증이 통과했다고 말하지 않습니다.
 
 `PASS`, `WARN`, `FAIL`, `SKIP`은 문서 유지보수 또는 구현 점검 결과로만
 사용합니다. 통과한 검증 단계를 Volicord 런타임 적합성, 제품 수락, QA 완료, 닫기

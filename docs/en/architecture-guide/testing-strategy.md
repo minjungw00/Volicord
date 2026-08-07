@@ -212,6 +212,26 @@ working trees, explicit base revisions, stable ordering, human/JSON parity, and
 the read-only worktree boundary. Tests do not carry a second workspace package
 inventory or discover owner routes by scanning prose.
 
+`cargo run -p xtask -- validate focused --base <revision>` turns that route
+into an intermediate command plan. It selects only changed workspace packages,
+direct documentation, architecture, MCP specification, release/workflow, and
+hygiene checks. It never schedules the exact workspace aggregate.
+
+`cargo run -p xtask -- validate final --base <revision>` schedules the complete
+repository policy once all series commits are present. Every child process
+writes stdout and stderr directly to files under
+`target/volicord-validation/<run-id>/` while it runs. The runner checkpoints a
+machine-readable summary and per-command result with the exact invocation,
+timestamps, and exit code so completed results survive loss of a terminal
+handle.
+
+Validation-runner tests use injected command outcomes rather than invoking a
+second validation engine. They cover focused planning, changed-package
+selection, documentation routing, durable logs and recovery, exit-code
+preservation, skipped commands, human/JSON category parity, aggregate retry
+limits, unchanged-package decomposition, changed-package failure, and truthful
+overall summaries.
+
 ## Workspace Architecture Validation
 
 `cargo run -p xtask -- architecture-check` compares Cargo's current workspace
@@ -738,26 +758,20 @@ Volicord release checks.
 ## Documentation Validation
 
 Meaning-changing paired documents require English/Korean semantic parity.
-Generated contract projections must match their sources. Run:
-
-```sh
-cargo run -p xtask -- docs-check
-git diff --check
-```
-
-Then inspect the diff for owner routing, exact identifiers, paths, anchors, and
-repository hygiene.
+Generated contract projections must match their sources. The focused profile
+selects the documentation and diff checks from the owner route. Then inspect
+the diff for owner routing, exact identifiers, paths, anchors, and repository
+hygiene.
 
 ## Rust Validation
 
-The normal workspace gate is:
+Use the focused profile for intermediate Rust changes and the final profile once
+after the complete commit series:
 
 ```sh
-cargo fmt
-cargo run -p xtask -- architecture-check
-cargo clippy --all-targets --all-features
-cargo test --all-targets --all-features
+cargo run -p xtask -- validate focused --base <revision>
+cargo run -p xtask -- validate final --base <revision>
 ```
 
-If a narrower command is necessary, record why and identify the unexecuted
-workspace checks in the handoff.
+The durable summary records narrower commands, the exact aggregate, any bounded
+retry or decomposition, and every skipped command with its reason.

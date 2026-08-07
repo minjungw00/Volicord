@@ -119,6 +119,15 @@ path_routes:
       - maintain.validation
     validation_classes:
       - release
+  - path_prefix: "xtask/src/validation/"
+    owner_doc_ids:
+      - architecture-guide.testing-strategy
+      - maintain.validation
+    validation_classes:
+      - architecture
+      - documentation
+      - release
+      - workflow
   - path_prefix: "xtask/src/mcp_spec/"
     owner_doc_ids:
       - reference.external-contracts

@@ -55,33 +55,32 @@ resolution channel을 추가하지 않습니다.
 
 ## 검증
 
-Rust 변경은 작업 범위가 더 좁은 crate 명령을 명확히 정당화하지 않는 한 workspace에서
-다음을 실행합니다.
+첫 series commit의 상위 commit을 기록합니다. 중간 변경 상태나 commit마다 저장소
+소유 집중 profile을 실행합니다.
 
 ```sh
-cargo fmt
-cargo run -p xtask -- architecture-check
-cargo run -p xtask -- docs-sync
-cargo clippy --all-targets --all-features
-cargo test --all-targets --all-features
+cargo run -p xtask -- validate focused --base <revision>
 ```
 
-문서 변경은 [검증](../maintain/validation.md)의 검사를 실행하며 다음을 포함합니다.
+계획한 모든 commit이 준비된 뒤 최종 검증 session 하나를 시작합니다.
 
 ```sh
-cargo run -p xtask -- docs-check
-git diff --check
+cargo run -p xtask -- validate final --base <revision>
 ```
 
-패키지 아키텍처 메타데이터를 변경했다면 `docs-sync`를 실행하여 생성되는 영어·한국어
-책임 및 의존 표를 현재 상태로 유지합니다.
+집중 profile은 담당 경로 결과를 사용하며 정확한 workspace aggregate를 실행하지
+않습니다. 최종 profile이 완전한 workspace 정책과 한도가 있는 aggregate 처리를
+담당합니다. 중간 commit에서 최종 profile이나 그 넓은 명령을 반복하지 않습니다.
+기계 판독 출력에는 `--json`을 사용하며 완전한 명령 결과는 보고된 무시 경로
+`target/volicord-validation/<run-id>/` 아래에 남습니다.
 
-릴리스 변경은 정규 `xtask` 소스 번들 명령, 일반 release-integrity 패키지, 변경에
-해당하는 빌드, 패키지, checksum, 플랫폼, workflow 점검도 요구합니다. 실제 Codex
-smoke 실행은 현재 구성과 환경의 선택적인 운영 관찰입니다. Version이 바뀌면 관찰을
-갱신하며 관리 호출 권한은 계속 session binding으로 판단합니다.
+패키지 아키텍처 metadata를 변경했다면 구현 중에 `docs-sync`를 실행하여 생성되는
+영어·한국어 책임 및 의존 표를 현재 상태로 유지합니다. Profile은 생성 내용 drift를
+검증합니다. 실제 Codex smoke 실행은 현재 구성과 환경의 선택적인 운영 관찰로
+남으며 일반 최종 결과에 포함되지 않습니다.
 
 ## 인계
 
-변경 파일, 검증과 결과, 사유가 있는 생략 검사, 남은 위험 또는 범위 밖 발견을
-보고합니다. 작업 로그나 검증 출력을 유지 문서에 쓰지 않습니다.
+변경 파일, 검증 run ID와 summary 경로, 통과, 실패, 분해, 생략 결과, 남은 위험
+또는 범위 밖 발견을 보고합니다. 작업 로그나 검증 출력을 유지 문서에 쓰지
+않습니다.

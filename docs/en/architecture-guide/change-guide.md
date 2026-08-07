@@ -55,37 +55,35 @@ transport, or user-action resolution channel without an explicit owner change.
 
 ## Validation
 
-For Rust changes, run from the workspace unless the task clearly supports a
-narrower crate command:
+Record the parent of the first series commit. For every intermediate change
+state or commit, run the repository-owned focused profile:
 
 ```sh
-cargo fmt
-cargo run -p xtask -- architecture-check
-cargo run -p xtask -- docs-sync
-cargo clippy --all-targets --all-features
-cargo test --all-targets --all-features
+cargo run -p xtask -- validate focused --base <revision>
 ```
 
-For documentation changes, run the checks in
-[Validation](../maintain/validation.md), including:
+After all planned commits are present, start one final-validation session:
 
 ```sh
-cargo run -p xtask -- docs-check
-git diff --check
+cargo run -p xtask -- validate final --base <revision>
 ```
 
-Run `docs-sync` whenever package architecture metadata changes so the generated
-English and Korean responsibility and dependency tables remain current.
+The focused profile consumes the owner route and does not run the exact
+workspace aggregate. The final profile owns the complete workspace policy and
+bounded aggregate handling. Do not repeat the final profile or its broad
+commands for intermediate commits. Use `--json` for machine-readable output;
+complete command results remain under the reported ignored
+`target/volicord-validation/<run-id>/` path.
 
-Release changes also require the canonical `xtask` source-bundle command, the
-generic release-integrity package, and the ordinary build, package, checksum,
-platform, and workflow checks applicable to the change. A real-Codex smoke run
-is an optional operational observation for the current configuration and
-environment; version changes renew that observation, while managed-call
-authorization remains session-bound.
+Run `docs-sync` during implementation whenever package architecture metadata
+changes so the generated English and Korean responsibility and dependency
+tables remain current. The profiles verify that generated content does not
+drift. A real-Codex smoke run remains an optional operational observation for
+the current configuration and environment; it is not part of the ordinary
+final result.
 
 ## Handoff
 
-Report changed files, validation and results, skipped checks with reasons, and
-remaining risks or out-of-scope findings. Do not write work logs or validation
-output into maintained documentation.
+Report changed files, validation run IDs and summary paths, passed, failed,
+decomposed, and skipped results, and remaining risks or out-of-scope findings.
+Do not write work logs or validation output into maintained documentation.

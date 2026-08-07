@@ -158,6 +158,16 @@ impl WorkspacePackageInput {
     pub fn target_source_paths(&self) -> &[String] {
         &self.target_source_paths
     }
+
+    #[cfg(test)]
+    pub(crate) fn for_validation_test(name: &str, manifest_path: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            manifest_path: manifest_path.to_owned(),
+            source_roots: Vec::new(),
+            target_source_paths: Vec::new(),
+        }
+    }
 }
 
 pub fn run_architecture_check(root: &Path) -> Result<crate::diagnostics::CheckReport> {

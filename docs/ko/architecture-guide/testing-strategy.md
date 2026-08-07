@@ -186,6 +186,23 @@ revision, 안정적인 정렬, 사람용/JSON 일치, 읽기 전용 working tree
 검사합니다. 테스트는 두 번째 워크스페이스 패키지 목록을 두거나 산문을 검색해
 담당 경로를 찾지 않습니다.
 
+`cargo run -p xtask -- validate focused --base <revision>`은 그 경로를 중간 명령
+계획으로 바꿉니다. 변경된 워크스페이스 패키지와 직접 적용되는 문서, 아키텍처,
+MCP specification, release/workflow, 위생 점검만 선택하며 정확한 workspace
+aggregate는 계획하지 않습니다.
+
+`cargo run -p xtask -- validate final --base <revision>`은 series의 모든 commit이
+준비된 뒤 완전한 저장소 정책을 계획합니다. 각 자식 프로세스는 실행 중에 stdout과
+stderr를 `target/volicord-validation/<run-id>/` 아래 파일에 직접 기록합니다.
+Runner는 정확한 호출, timestamp, exit code를 담는 기계 판독 summary와 명령별
+결과를 checkpoint하므로 terminal handle을 잃어도 완료된 결과를 확인할 수
+있습니다.
+
+검증 runner 테스트는 두 번째 검증 엔진을 호출하지 않고 주입한 명령 결과를
+사용합니다. 집중 계획, 변경 패키지 선택, 문서 경로, 오래 남는 log와 복구,
+exit code 보존, 생략 명령, 사람용/JSON 분류 일치, aggregate 재시도 한도, 변경하지
+않은 패키지의 분해, 변경 패키지 실패, 정확한 전체 summary를 검사합니다.
+
 ## 워크스페이스 아키텍처 검증
 
 `cargo run -p xtask -- architecture-check`는 Cargo가 보고하는 현재 워크스페이스
@@ -622,24 +639,19 @@ workflow 경로를 다룹니다. 운영 Codex 상호운용성 테스트는
 ## 문서 검증
 
 의미가 바뀐 문서 쌍은 영문/국문 의미 동등성을 요구합니다. 생성 계약 projection은
-소스와 일치해야 합니다. 다음을 실행합니다.
-
-```sh
-cargo run -p xtask -- docs-check
-git diff --check
-```
-
-그다음 diff에서 담당 경로, 정확한 식별자, 경로, 앵커, 저장소 위생을 확인합니다.
+소스와 일치해야 합니다. 집중 profile은 담당 경로에서 문서와 diff 점검을
+선택합니다. 그다음 diff에서 담당 경로, 정확한 식별자, 경로, 앵커, 저장소 위생을
+확인합니다.
 
 ## Rust 검증
 
-일반 workspace gate는 다음과 같습니다.
+중간 Rust 변경에는 집중 profile을 사용하고 완전한 commit series 뒤에는 최종
+profile을 한 번 사용합니다.
 
 ```sh
-cargo fmt
-cargo run -p xtask -- architecture-check
-cargo clippy --all-targets --all-features
-cargo test --all-targets --all-features
+cargo run -p xtask -- validate focused --base <revision>
+cargo run -p xtask -- validate final --base <revision>
 ```
 
-더 좁은 명령이 필요하면 이유와 실행하지 않은 workspace 검사를 인계에 기록합니다.
+오래 남는 summary는 더 좁은 명령, 정확한 aggregate, 한도가 있는 재시도나 분해,
+생략한 모든 명령과 그 이유를 기록합니다.

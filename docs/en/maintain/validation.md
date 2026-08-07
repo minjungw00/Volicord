@@ -48,6 +48,94 @@ classes, and paths not covered by a maintained route. Results are sorted and
 duplicate-free. The command is read-only and does not infer ownership by
 scanning arbitrary prose.
 
+## Validation Profiles And Sequential Series
+
+Before the first commit in a sequential change series, record its parent commit
+as the series base. Use the same explicit revision for every profile invocation
+in that series.
+
+Run the focused profile for intermediate work:
+
+```sh
+cargo run -p xtask -- validate focused --base <revision>
+```
+
+The focused profile consumes `owner-route`, selects changed packages, direct
+contract and generated-drift checks, documentation and architecture checks, and
+repository hygiene. It does not run `cargo test --workspace` or another exact
+workspace aggregate. Use `--json` when a tool or agent needs the exact summary.
+
+After every planned commit is present and the worktree is ready for the final
+gate, start one final-validation session:
+
+```sh
+cargo run -p xtask -- validate final --base <revision>
+```
+
+Do not run the final profile speculatively, concurrently, or once per
+intermediate commit. The session owns the complete current repository policy,
+including the exact aggregate and its bounded diagnostics. A failed final
+session remains failed; report it and begin a corrected series instead of
+describing decomposed results as closure.
+
+The direct commands documented below remain stable focused checks and CI
+building blocks. The validation profiles are authoritative for series-level
+selection, sequencing, durable capture, aggregate handling, and summary status.
+
+## Durable Command Results
+
+Every profile creates an ignored
+`target/volicord-validation/<run-id>/summary.json`. Each executed command has a
+complete stdout log, stderr log, machine-readable result, exact invocation,
+working directory, start and finish timestamps, and exit code under the same
+run directory. Child stdout and stderr go directly to those files while the
+command runs; they do not depend on a terminal buffer remaining attached.
+
+The runner writes the initial summary before the first command and checkpoints
+it before and after every command state change. If a terminal or process handle
+is lost while the runner continues, recover the run by inspecting the reported
+run ID and summary path. Pending work remains distinguishable from completed,
+failed, and skipped commands. Validation output is ignored build output and is
+not committed.
+
+## Exact Aggregate And Bounded Decomposition
+
+Only the final profile runs the exact aggregate:
+
+```sh
+cargo test --locked --workspace --all-targets --all-features
+```
+
+It runs once normally. When its output identifies one failing target in an
+unchanged package, the runner may run that isolated target and the full package.
+If both pass, it may retry the exact aggregate once. The exact aggregate never
+runs more than twice in one final session.
+
+After a second aggregate-only failure, the runner runs the workspace excluding
+the identified unchanged package and runs that full package separately, then
+stops. It does not add a permanent package exclusion and does not perform a
+third exact attempt. It never applies this downgrade path to a changed-package
+failure. No profile sets global `--test-threads=1` or `RUST_TEST_THREADS=1`
+unless a maintained owner first requires that setting.
+
+Passed, failed, decomposed, and skipped are independent summary categories. A
+decomposed command can pass or fail, but its success never removes the failed
+exact aggregate or changes the overall result to passed. Human and JSON output
+are rendered from the same command records and category lists.
+
+## Commit-Type Scope
+
+The validation preflight checks commit subjects and practical file-scope
+boundaries between the explicit base and `HEAD`. A `test:` commit must not
+change production behavior. A `docs:` commit must not change production code or
+runtime contracts. File-scope checks reject production implementation paths
+where that distinction is machine-checkable; semantic review remains
+responsible for contract meaning inside maintained documentation.
+
+If test or documentation work exposes a production gap, put the production
+change in a preceding `feat:`, `fix:`, or `refactor:` commit. Do not hide the
+gap in a `test:` or `docs:` commit.
+
 ## Structural Checks
 
 For documentation metadata, route, link, and terminology-path changes, run
@@ -466,17 +554,12 @@ compliance outside the observed round trips.
 If no Rust source, Cargo manifest, test, fixture, or build configuration is
 changed, Rust validation is not required.
 
-After Rust implementation edits, run the applicable Rust validation from the
-workspace or changed crate:
-
-- `cargo fmt`
-- `cargo run -p xtask -- architecture-check` when workspace metadata, Cargo
-  manifests, package placement, or internal dependencies change
-- `cargo clippy --all-targets --all-features`
-- `cargo test --all-targets --all-features`
-
-Use narrower Cargo commands only when the repository structure or task scope
-clearly calls for them, and report the reason.
+After Rust implementation edits, use `validate focused` with the explicit
+series base. It plans formatting, changed-package lint and tests, routed direct
+checks, and hygiene. Use `validate final` once after the complete series; it
+adds workspace lint, the complete repository checks, and the exact aggregate.
+The durable summary is the owner for the commands actually run and any skipped
+work.
 
 ## Generated Reference And Contract Drift Checks
 
@@ -551,8 +634,10 @@ proof, and residual-risk acceptance.
 ## Reporting
 
 Report validation results in the conversation, not in repository files. Include
-changed files, checks performed, results, skipped checks with reasons, and
-remaining documentation risks.
+changed files, run IDs, summary paths, and separate passed, failed, decomposed,
+and skipped lists. Include skipped reasons and remaining documentation risks.
+Do not state that validation passed when any exact aggregate attempt failed or
+when the exact aggregate was not run.
 
 Use `PASS`, `WARN`, `FAIL`, or `SKIP` only as documentation-maintenance or
 implementation-check outcomes. Do not describe a passing validation step as

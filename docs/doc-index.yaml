@@ -137,8 +137,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: repository_guidance
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-08-08'
+  last_verified_on: '2026-08-08'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -156,6 +156,7 @@ shared_documents:
   - global bilingual semantic-parity requirement
   - repository output and scratch artifact placement guidance
   - repository validation and reporting expectations
+  - sequential change-series validation, durable command-result, bounded aggregate, and commit-type scope guidance
 - doc_id: agents.docs
   path: docs/AGENTS.md
   kind: maintenance
@@ -163,8 +164,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: repository_guidance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-28'
-  last_verified_on: '2026-07-28'
+  last_updated_on: '2026-08-08'
+  last_verified_on: '2026-08-08'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -188,8 +189,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: repository_guidance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-08-08'
+  last_verified_on: '2026-08-08'
   primary_audience:
   - agents
   - implementers
@@ -919,7 +920,8 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Test-layer selection, changed-owner routing, machine-checked workspace architecture, strict contract and corruption
+  summary: Test-layer selection, changed-owner routing, focused/final validation and durable command results,
+    machine-checked workspace architecture, strict contract and corruption
     coverage, pinned MCP specification inputs and offline integrity, documentation validation,
     committed-tree source-bundle integrity, cross-platform actual-binary smoke, generic release integrity,
     and operational Codex interoperability observation.
@@ -1403,7 +1405,7 @@ documents:
   path_ko: docs/ko/architecture-guide/change-guide.md
   kind: how_to
   summary: How-to guidance for changed-owner and implementation routing, source-path and source-bundle
-    routing, and validation-command selection in the Rust workspace.
+    routing, sequential validation profiles, and handoff in the Rust workspace.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1439,7 +1441,7 @@ documents:
   path_en: docs/en/architecture-guide/architecture.md
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
-  summary: Concise top-level implementation architecture overview for workspace shape,
+  summary: Concise top-level implementation architecture overview for workspace shape, repository validation profiles,
     machine-enforced dependency direction and visibility, explicit shaping progression ownership,
     operational paths, durable boundaries, source-bundle integrity, and detail routes.
   normative_level: guide
@@ -3554,8 +3556,9 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for changed-owner routing, owner-derived structure, links, terminology, bilingual parity, workspace
-    architecture enforcement, generated CLI synchronization and source drift, tracked artifact hygiene, onboarding usability,
+  summary: Maintenance policy for changed-owner routing, sequential focused/final profiles, durable command results,
+    bounded aggregate decomposition, commit-type scope, owner-derived structure, links, terminology, bilingual parity,
+    workspace architecture enforcement, generated CLI synchronization and source drift, tracked artifact hygiene, onboarding usability,
     deterministic committed-tree source bundles, dedicated cross-platform release-binary smoke, semantic release
     integrity, optional host smoke, Rust checks, and result reporting.
   normative_level: maintenance
@@ -3580,6 +3583,10 @@ documents:
   - tracked-file artifact exclusion derived from repository ignore rules
   - contract-boundary and generated-source drift checks
   - durable repository-test selection and reporting boundaries
+  - sequential change-series focused and final validation profiles
+  - durable command logs, result records, run summaries, and lost-terminal-handle recovery
+  - bounded exact workspace aggregate retry and truthful decomposition reporting
+  - practical test and documentation commit-type scope checks
   - representative-user Codex onboarding usability validation
   - deterministic committed-tree source-bundle generation and complete Git-tree validation
   - generic five-target, version, canonical-byte, package, checksum, and workflow integrity validation

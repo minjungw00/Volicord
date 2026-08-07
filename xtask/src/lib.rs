@@ -17,6 +17,7 @@ mod source_bundle;
 mod storage;
 mod structured_parser;
 mod terminology;
+mod validation;
 mod workspace_manifests;
 
 use anyhow::Result;
@@ -35,6 +36,7 @@ pub use mcp_spec::{
 pub use owner_route::{run_owner_route, OwnerRouteReport};
 pub use release_metadata::{run_release_version_check, ReleaseVersionReport};
 pub use source_bundle::{create_source_bundle, validate_source_bundle, SourceBundleReport};
+pub use validation::{run_validation, ValidationProfile, ValidationRunSummary};
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";
 

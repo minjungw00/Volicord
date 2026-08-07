@@ -122,22 +122,32 @@ residual-risk decisions, or implementation output.
 
 ## Validation And Reporting
 
-- After documentation edits, run the checks in
-  `docs/en/maintain/validation.md` or `docs/ko/maintain/validation.md`. For
-  route and entry changes, include structure, links, terminology, and
-  language-parity checks when applicable.
-- After Rust implementation edits, run the applicable Rust validation from the
-  workspace or changed crate:
-  - `cargo fmt`
-  - `cargo clippy --all-targets --all-features`
-  - `cargo test --all-targets --all-features`
-- Use narrower Cargo commands only when the repository structure or task scope
-  clearly calls for them, and report the reason.
+- Record the parent of the first change-series commit as the explicit series
+  base. Use `cargo run -p xtask -- owner-route --changed --base <revision>` to
+  discover applicable instructions, owners, packages, and validation classes.
+- Use `cargo run -p xtask -- validate focused --base <revision>` for
+  intermediate change states and commits. The focused profile is the
+  repository-owned replacement for manually selecting narrow Cargo and
+  documentation checks; it never runs the exact workspace aggregate.
+- After every planned commit in a sequential series is present, start one
+  `cargo run -p xtask -- validate final --base <revision>` session. Do not run
+  the final profile for each intermediate commit or repeat its broad commands
+  outside that session.
+- Validation command stdout, stderr, invocation, timestamps, and exit status
+  are stored under ignored `target/volicord-validation/<run-id>/` paths. Keep
+  and report the run ID and `summary.json` path when a terminal handle is lost.
+- The final profile owns bounded exact-aggregate retry and decomposition. A
+  decomposed pass does not replace an exact aggregate failure, and a changed
+  package failure remains related to the change series.
+- A `test:` commit must not change production behavior. A `docs:` commit must
+  not change production code or runtime contracts. Split a production gap
+  found during either kind of work into a preceding `feat:`, `fix:`, or
+  `refactor:` commit.
 - If validation cannot run because the relevant workspace, crate, toolchain,
   dependency, or network access is unavailable, report it as skipped validation
   with the reason.
 - Before finishing, confirm changed links, paths, anchors, paired-language
   links, owner routing, terminology, and repository hygiene.
-- Final reports stay in the conversation, not in repository files. Include
-  changed files, validation performed and results, skipped validation with
-  reasons, and remaining risks or out-of-scope issues.
+- Final reports stay in the conversation, not in repository files. List
+  passed, failed, decomposed, and skipped validation separately, include run
+  IDs and summary paths, and report remaining risks or out-of-scope issues.
