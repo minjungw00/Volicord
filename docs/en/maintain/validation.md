@@ -113,11 +113,22 @@ cargo run -p xtask -- validation-plan --json
 ```
 
 The final profile consumes that plan after its series preflights. The main
-Linux CI job invokes `validate final --base HEAD` once instead of repeating the
-commands in workflow YAML. Platform-specific native operational jobs remain
-separate. The direct commands documented below remain stable focused and
-diagnostic checks; the profiles own series-level selection, sequencing, durable
-capture, aggregate handling, and summary status.
+Linux CI job resolves one event-specific base and passes that commit to
+`validate final --base` once instead of repeating the commands in workflow
+YAML. Pull requests use `pull_request.base.sha`, ordinary pushes use a valid
+nonzero `before`, and manual runs require `inputs.base`. The resolver rejects a
+missing or unreachable commit, a base that is not an ancestor of the checked-out
+head, `HEAD..HEAD`, and a range with no changed paths. The checkout fetches full
+history so a valid event base is available. Platform-specific native
+operational jobs remain separate. The direct commands documented below remain
+stable focused and diagnostic checks; the profiles own series-level selection,
+sequencing, durable capture, aggregate handling, and summary status.
+
+`docs/owner-routing.yaml` also owns the canonical main-CI path-trigger set. It
+includes every root-level file and each current maintained repository directory.
+Metadata validation requires every tracked path to match that set. A repository
+contract check requires the pull-request and push filters to be identical to
+the canonical set, so a new tracked route cannot silently fall outside CI.
 
 ## Durable Command Results
 
@@ -356,6 +367,8 @@ read-only and verifies the machine-checkable shape:
   Its tracked-path inventory also classifies every path returned by
   `git ls-files`; an unknown tracked path or stale, empty, duplicate, or
   redundant exemption is invalid.
+- Its canonical CI trigger policy covers every tracked path, and the main CI
+  workflow's pull-request and push path filters are identical to that policy.
 
 `docs-check` does not search Rust or Markdown lines for prohibited words or
 phrases. Prose quality, brand claims, security wording, and host-support wording

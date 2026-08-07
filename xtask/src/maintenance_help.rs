@@ -33,6 +33,18 @@ const COMMANDS: &[CommandHelp] = &[
         ],
     },
     CommandHelp {
+        name: "ci-base",
+        summary: "Resolve and verify the event-specific CI change-series base.",
+        usage: "cargo run --locked -p xtask -- ci-base --event-name EVENT --event-path PATH --head REVISION [--github-output PATH]",
+        details: "Selects the pull-request base SHA, valid push before SHA, or required manual input, then verifies a reachable nonempty ancestor range.",
+        options: &[
+            "--event-name EVENT   Select pull_request, push, or workflow_dispatch handling.",
+            "--event-path PATH    Read the GitHub event JSON payload from PATH.",
+            "--head REVISION      Resolve and verify the checked-out head revision.",
+            "--github-output PATH Append the resolved base as a GitHub Actions step output.",
+        ],
+    },
+    CommandHelp {
         name: "validation-plan",
         summary: "Inspect the current Linux repository-validation command plan without executing it.",
         usage: "cargo run --locked -p xtask -- validation-plan [--json]",

@@ -161,6 +161,7 @@ struct RoutingMetadata {
     instruction_scopes: Vec<InstructionScope>,
     path_routes: Vec<PathRoute>,
     tracked_path_exemptions: Vec<TrackedPathExemption>,
+    ci_trigger_policy: CiTriggerPolicy,
     package_defaults: PackageRoute,
     package_routes: BTreeMap<String, PackageRoute>,
 }
@@ -190,6 +191,13 @@ struct PathRoute {
 struct TrackedPathExemption {
     path: String,
     reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CiTriggerPolicy {
+    workflow: String,
+    paths: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -727,6 +735,7 @@ fn validate_routing_metadata(
             unknown_tracked_paths.join(", ")
         );
     }
+    validate_ci_trigger_policy(root, &metadata.ci_trigger_policy, &tracked_paths)?;
     validate_package_route(&metadata.package_defaults, documents, &instruction_paths)?;
     for route in metadata.package_routes.values() {
         validate_package_route(route, documents, &instruction_paths)?;
@@ -748,6 +757,111 @@ fn validate_routing_metadata(
         );
     }
     Ok(())
+}
+
+fn validate_ci_trigger_policy(
+    root: &Path,
+    policy: &CiTriggerPolicy,
+    tracked_paths: &BTreeSet<String>,
+) -> Result<()> {
+    validate_relative_path(&policy.workflow, "CI trigger workflow")?;
+    if !root.join(&policy.workflow).is_file() {
+        bail!("CI trigger workflow {} does not exist", policy.workflow);
+    }
+    let mut canonical_paths = BTreeSet::new();
+    for pattern in &policy.paths {
+        validate_ci_trigger_pattern(pattern)?;
+        if !canonical_paths.insert(pattern.clone()) {
+            bail!("CI trigger path pattern {pattern:?} is duplicated");
+        }
+    }
+    if canonical_paths.is_empty() {
+        bail!("CI trigger policy must declare at least one path pattern");
+    }
+    let uncovered = tracked_paths
+        .iter()
+        .filter(|path| {
+            !canonical_paths
+                .iter()
+                .any(|pattern| ci_trigger_matches(pattern, path))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if !uncovered.is_empty() {
+        bail!(
+            "CI trigger policy does not cover tracked path(s): {}",
+            uncovered.join(", ")
+        );
+    }
+
+    let workflow_path = root.join(&policy.workflow);
+    let contents = fs::read_to_string(&workflow_path)
+        .with_context(|| format!("failed to read {}", workflow_path.display()))?;
+    let workflow: serde_yaml::Value = serde_yaml::from_str(&contents)
+        .with_context(|| format!("failed to parse {}", workflow_path.display()))?;
+    let pull_request = workflow_trigger_paths(&workflow, "pull_request")?;
+    let push = workflow_trigger_paths(&workflow, "push")?;
+    if pull_request != push {
+        bail!(
+            "{} pull_request and push path filters differ; pull_request={}, push={}",
+            policy.workflow,
+            pull_request.iter().cloned().collect::<Vec<_>>().join(", "),
+            push.iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+    }
+    if pull_request != canonical_paths {
+        bail!(
+            "{} path filters differ from the canonical CI trigger policy; expected {}, found {}",
+            policy.workflow,
+            canonical_paths
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", "),
+            pull_request.iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+    }
+    Ok(())
+}
+
+fn validate_ci_trigger_pattern(pattern: &str) -> Result<()> {
+    if pattern == "*" {
+        return Ok(());
+    }
+    let Some(prefix) = pattern.strip_suffix("**") else {
+        bail!("CI trigger path pattern {pattern:?} must be `*` or end with `/**`");
+    };
+    if !prefix.ends_with('/')
+        || prefix
+            .chars()
+            .any(|character| matches!(character, '*' | '?' | '[' | ']'))
+    {
+        bail!("CI trigger path pattern {pattern:?} must be `*` or end with `/**`");
+    }
+    validate_relative_path(prefix, "CI trigger path prefix")
+}
+
+fn ci_trigger_matches(pattern: &str, path: &str) -> bool {
+    if pattern == "*" {
+        return !path.contains('/');
+    }
+    pattern
+        .strip_suffix("**")
+        .is_some_and(|prefix| path.starts_with(prefix))
+}
+
+fn workflow_trigger_paths(workflow: &serde_yaml::Value, event: &str) -> Result<BTreeSet<String>> {
+    workflow["on"][event]["paths"]
+        .as_sequence()
+        .with_context(|| format!("CI workflow event {event} must declare path filters"))?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .with_context(|| format!("CI workflow event {event} has a non-string path filter"))
+        })
+        .collect()
 }
 
 fn tracked_git_paths(root: &Path) -> Result<BTreeSet<String>> {

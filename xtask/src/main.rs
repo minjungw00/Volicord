@@ -23,6 +23,7 @@ fn main() -> ExitCode {
     match args.as_slice() {
         [command, rest @ ..] if command == "owner-route" => run_owner_route_command(rest),
         [command, rest @ ..] if command == "validate" => run_validate_command(rest),
+        [command, rest @ ..] if command == "ci-base" => run_ci_base_command(rest),
         [command] if command == "validation-plan" => {
             print!("{}", xtask::current_linux_validation_plan().render_human());
             ExitCode::SUCCESS
@@ -132,6 +133,60 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn run_ci_base_command(args: &[String]) -> ExitCode {
+    let mut event_name = None;
+    let mut event_path = None;
+    let mut head = None;
+    let mut github_output = None;
+    let mut index = 0;
+    while index < args.len() {
+        let target = match args[index].as_str() {
+            "--event-name" if event_name.is_none() => &mut event_name,
+            "--event-path" if event_path.is_none() => &mut event_path,
+            "--head" if head.is_none() => &mut head,
+            "--github-output" if github_output.is_none() => &mut github_output,
+            _ => return ci_base_usage_error(),
+        };
+        index += 1;
+        if index == args.len() {
+            return ci_base_usage_error();
+        }
+        *target = Some(args[index].as_str());
+        index += 1;
+    }
+    let (Some(event_name), Some(event_path), Some(head)) = (event_name, event_path, head) else {
+        return ci_base_usage_error();
+    };
+
+    let result = match env::current_dir() {
+        Ok(root) => xtask::resolve_ci_base(&root, event_name, Path::new(event_path), head),
+        Err(error) => Err(error.into()),
+    };
+    match result {
+        Ok(resolution) => {
+            if let Some(output) = github_output {
+                if let Err(error) = xtask::append_github_output(Path::new(output), &resolution) {
+                    eprintln!("ci-base failed: {error:#}");
+                    return ExitCode::from(1);
+                }
+            }
+            println!("{}", resolution.base_revision);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("ci-base failed: {error:#}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn ci_base_usage_error() -> ExitCode {
+    eprintln!(
+        "usage: cargo run -p xtask -- ci-base --event-name EVENT --event-path PATH --head REVISION [--github-output PATH]"
+    );
+    ExitCode::from(2)
 }
 
 fn run_validate_command(args: &[String]) -> ExitCode {

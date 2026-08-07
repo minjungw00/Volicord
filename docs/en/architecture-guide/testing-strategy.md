@@ -238,8 +238,13 @@ handle.
 membership and ordering in that complete plan. `validation-plan --json` renders
 the Linux form without executing it. Local final validation consumes the owner
 after series-only preflights, and the main Linux CI job calls the same final
-profile with `--base HEAD` rather than maintaining a parallel YAML command
-list. Native operational jobs retain only their platform-specific checks.
+profile with a verified pull-request, push, or manual-run series base rather
+than maintaining a parallel YAML command list. The checkout retains sufficient
+history, and fail-closed event fixtures cover missing, shallow, equal-head, and
+empty ranges. The canonical CI trigger paths live with repository owner routing;
+contract tests keep pull-request and push filters identical and covering every
+tracked root file and maintained directory. Native operational jobs retain only
+their platform-specific checks.
 
 Validation-runner tests use injected command outcomes rather than invoking a
 second validation engine. They cover focused planning, changed-package

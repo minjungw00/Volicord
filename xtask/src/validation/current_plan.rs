@@ -357,10 +357,28 @@ mod tests {
                 run.contains("cargo run")
                     && run.contains("-p xtask")
                     && run.contains("validate final")
-                    && run.contains("--base HEAD")
+                    && run.contains("steps.validation-base.outputs.base")
             })
             .count();
         assert_eq!(invocations, 1);
+        assert!(steps
+            .iter()
+            .filter_map(|step| step["run"].as_str())
+            .all(|run| !run.contains("validate final --base HEAD")));
+        let checkout = steps
+            .iter()
+            .find(|step| step["uses"].as_str() == Some("actions/checkout@v4"))
+            .expect("CI checkout");
+        assert_eq!(checkout["with"]["fetch-depth"].as_u64(), Some(0));
+        let base = steps
+            .iter()
+            .find(|step| step["id"].as_str() == Some("validation-base"))
+            .and_then(|step| step["run"].as_str())
+            .expect("CI base resolver");
+        assert!(base.contains("ci-base"));
+        assert!(base.contains("$GITHUB_EVENT_NAME"));
+        assert!(base.contains("$GITHUB_EVENT_PATH"));
+        assert!(base.contains("$GITHUB_OUTPUT"));
         for duplicated in [
             "cargo fmt --check",
             "cargo clippy",

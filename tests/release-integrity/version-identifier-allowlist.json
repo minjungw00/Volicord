@@ -205,6 +205,18 @@
       "reason": "The Korean runtime owner defines where the exact bootstrap diagnostic envelope may be emitted."
     },
     {
+      "path": "tests/release-integrity/tests/release_workflow.rs",
+      "needle": "actions/checkout@v4",
+      "classification": "third_party_api",
+      "reason": "The CI checkout-history contract test verifies the GitHub-owned checkout action release identifier."
+    },
+    {
+      "path": "xtask/src/validation/current_plan.rs",
+      "needle": "actions/checkout@v4",
+      "classification": "third_party_api",
+      "reason": "The centralized CI delegation test verifies the GitHub-owned checkout action release identifier."
+    },
+    {
       "path": "xtask/src/validation/current_plan.rs",
       "needle": "actions/upload-artifact@v4",
       "classification": "third_party_api",

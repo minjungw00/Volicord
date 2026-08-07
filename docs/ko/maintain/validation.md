@@ -104,10 +104,21 @@ cargo run -p xtask -- validation-plan --json
 ```
 
 최종 profile은 series 사전 점검 뒤에 이 계획을 사용합니다. 주 Linux CI job은 workflow
-YAML에 명령을 반복하지 않고 `validate final --base HEAD`를 한 번 호출합니다. 플랫폼별
-네이티브 운영 job은 별도로 유지합니다. 아래에 문서화된 직접 명령은 안정적인 집중 및
-진단 점검으로 남고, profile이 series 수준 선택, 순서, 오래 남는 결과 수집, aggregate
-처리, summary 상태를 담당합니다.
+YAML에 명령을 반복하지 않고 event별 기준 하나를 해석해 그 commit을
+`validate final --base`에 한 번 전달합니다. Pull request는
+`pull_request.base.sha`, 일반 push는 0이 아닌 유효한 `before`, 수동 실행은 필수
+`inputs.base`를 사용합니다. 해석기는 commit이 없거나 도달할 수 없는 경우, 기준이
+checkout한 head의 조상이 아닌 경우, `HEAD..HEAD`, 변경 경로가 없는 범위를
+거부합니다. 유효한 event 기준을 사용할 수 있도록 checkout은 전체 이력을 가져옵니다.
+플랫폼별 네이티브 운영 job은 별도로 유지합니다. 아래에 문서화된 직접 명령은 안정적인
+집중 및 진단 점검으로 남고, profile이 series 수준 선택, 순서, 오래 남는 결과 수집,
+aggregate 처리, summary 상태를 담당합니다.
+
+`docs/owner-routing.yaml`은 주 CI의 정규 path trigger 집합도 담당합니다. 이 집합은
+모든 루트 수준 파일과 현재 유지되는 각 저장소 directory를 포함합니다. Metadata
+검증은 모든 추적 경로가 이 집합과 일치하도록 요구합니다. 저장소 계약 점검은 pull
+request와 push filter가 서로 같고 정규 집합과도 같도록 요구하므로, 새 추적 경로가
+CI 범위 밖에 조용히 남을 수 없습니다.
 
 ## 오래 남는 명령 결과
 
@@ -322,6 +333,8 @@ feature, package metadata, workspace 구성, profile은 프로덕션 변경으�
   정확히 한 번씩 대응합니다. 추적 경로 inventory는 `git ls-files`가 반환하는 모든
   경로도 분류하며, 알 수 없는 추적 경로나 오래되었거나 비어 있거나 중복되거나
   불필요한 예외는 유효하지 않습니다.
+- 정규 CI trigger 정책은 모든 추적 경로를 포함하며, 주 CI workflow의 pull request
+  및 push path filter는 이 정책과 동일합니다.
 
 `docs-check`는 Rust나 Markdown 줄에서 금지 단어나 문구를 검색하지 않습니다.
 산문 품질, 브랜드 주장, 보안 표현, 호스트 지원 표현은 담당 문서와 사람 검토의

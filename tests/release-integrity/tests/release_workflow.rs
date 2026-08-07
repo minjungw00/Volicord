@@ -216,23 +216,70 @@ fn ci_runs_the_complete_activation_journey_on_every_native_runtime_platform() {
 
 #[test]
 fn workflow_filters_cover_the_shared_smoke_boundary_and_contract_inputs() {
-    let required = BTreeSet::from([
+    let release_required = [
         ".github/actions/volicord-release-smoke/**",
         "crates/volicord-cli/**",
         "crates/volicord-mcp-protocol/**",
         "crates/volicord-test-process/**",
         "crates/volicord-types/**",
         "tests/release-smoke/**",
-    ]);
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<BTreeSet<_>>();
     let ci = read_yaml(".github/workflows/ci.yml");
     let ci_pull_paths = workflow_paths(&ci, "pull_request");
     let ci_push_paths = workflow_paths(&ci, "push");
-    assert!(required.is_subset(&ci_pull_paths));
-    assert!(required.is_subset(&ci_push_paths));
+    let canonical = canonical_ci_trigger_paths();
+    assert_eq!(ci_pull_paths, canonical);
+    assert_eq!(ci_push_paths, canonical);
+    assert!(canonical.contains("*"));
+    for directory in [
+        ".github/**",
+        "crates/**",
+        "docs/**",
+        "scripts/**",
+        "tests/**",
+        "xtask/**",
+    ] {
+        assert!(canonical.contains(directory));
+    }
 
     let release = read_yaml(".github/workflows/release.yml");
     let release_paths = workflow_paths(&release, "pull_request");
-    assert!(required.is_subset(&release_paths));
+    assert!(release_required.is_subset(&release_paths));
+}
+
+#[test]
+fn ci_fetches_history_and_passes_one_verified_event_base_to_final_validation() {
+    let workflow = read_yaml(".github/workflows/ci.yml");
+    assert_eq!(
+        workflow["on"]["workflow_dispatch"]["inputs"]["base"]["required"].as_bool(),
+        Some(true)
+    );
+    let steps = workflow["jobs"]["checks"]["steps"]
+        .as_sequence()
+        .expect("CI check steps");
+    let checkout = steps
+        .iter()
+        .find(|step| step["uses"].as_str() == Some("actions/checkout@v4"))
+        .expect("CI checkout");
+    assert_eq!(checkout["with"]["fetch-depth"].as_u64(), Some(0));
+
+    let resolver = steps
+        .iter()
+        .find(|step| step["id"].as_str() == Some("validation-base"))
+        .and_then(|step| step["run"].as_str())
+        .expect("CI base resolver");
+    assert!(resolver.contains("ci-base"));
+    assert!(resolver.contains("--event-name \"$GITHUB_EVENT_NAME\""));
+    assert!(resolver.contains("--event-path \"$GITHUB_EVENT_PATH\""));
+    assert!(resolver.contains("--github-output \"$GITHUB_OUTPUT\""));
+
+    let final_invocations = shared_final_plan_invocations(steps);
+    assert_eq!(final_invocations.len(), 1);
+    assert!(final_invocations[0].contains("steps.validation-base.outputs.base"));
+    assert!(!final_invocations[0].contains("--base HEAD"));
 }
 
 #[test]
@@ -326,17 +373,27 @@ fn shared_final_plan_invocations(steps: &[Value]) -> Vec<&str> {
                 && run.contains("--locked")
                 && run.contains("-p xtask")
                 && run.contains("validate final")
-                && run.contains("--base HEAD")
+                && run.contains("steps.validation-base.outputs.base")
         })
         .collect()
 }
 
-fn workflow_paths<'a>(workflow: &'a Value, event: &str) -> BTreeSet<&'a str> {
+fn canonical_ci_trigger_paths() -> BTreeSet<String> {
+    let routing = read_yaml("docs/owner-routing.yaml");
+    routing["ci_trigger_policy"]["paths"]
+        .as_sequence()
+        .expect("canonical CI trigger paths")
+        .iter()
+        .map(|path| path.as_str().expect("CI trigger path").to_owned())
+        .collect()
+}
+
+fn workflow_paths(workflow: &Value, event: &str) -> BTreeSet<String> {
     workflow["on"][event]["paths"]
         .as_sequence()
         .expect("workflow path filters")
         .iter()
-        .map(|path| path.as_str().expect("workflow path filter"))
+        .map(|path| path.as_str().expect("workflow path filter").to_owned())
         .collect()
 }
 

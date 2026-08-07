@@ -165,6 +165,17 @@ path_routes:
 
 tracked_path_exemptions: []
 
+ci_trigger_policy:
+  workflow: .github/workflows/ci.yml
+  paths:
+    - "*"
+    - ".github/**"
+    - "crates/**"
+    - "docs/**"
+    - "scripts/**"
+    - "tests/**"
+    - "xtask/**"
+
 package_defaults:
   instruction_paths:
     - crates/AGENTS.md

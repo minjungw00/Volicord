@@ -37,8 +37,9 @@ pub use owner_route::{run_owner_route, OwnerRouteReport};
 pub use release_metadata::{run_release_version_check, ReleaseVersionReport};
 pub use source_bundle::{create_source_bundle, validate_source_bundle, SourceBundleReport};
 pub use validation::{
-    current_linux_validation_plan, run_validation, CurrentValidationCommand,
-    CurrentValidationCommandKind, CurrentValidationPlan, ValidationProfile, ValidationRunSummary,
+    append_github_output, current_linux_validation_plan, resolve_ci_base, run_validation,
+    CiBaseResolution, CurrentValidationCommand, CurrentValidationCommandKind,
+    CurrentValidationPlan, ValidationProfile, ValidationRunSummary,
 };
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";

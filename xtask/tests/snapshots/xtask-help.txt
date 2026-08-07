@@ -9,6 +9,7 @@ Usage:
 Commands:
   owner-route               Resolve maintenance owners and validation classes for changed repository paths.
   validate                  Plan and run repository-owned validation with durable results.
+  ci-base                   Resolve and verify the event-specific CI change-series base.
   validation-plan           Inspect the current Linux repository-validation command plan without executing it.
   architecture-check        Check the maintained Rust workspace package and dependency architecture.
   docs-check                Check maintained documentation structure and generated-region drift.

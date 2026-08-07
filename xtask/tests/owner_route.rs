@@ -115,6 +115,9 @@ path_routes:
     owner_doc_ids: [maintain.validation]
     validation_classes: [documentation]
 tracked_path_exemptions: []
+ci_trigger_policy:
+  workflow: .github/workflows/ci.yml
+  paths: ["*", ".github/**", "crates/**", "docs/**"]
 package_defaults:
   instruction_paths: [crates/AGENTS.md]
   owner_doc_ids: [maintain.validation]
@@ -129,7 +132,17 @@ package_routes:
         write(&root, ".gitattributes", "* text=auto\n");
         write(&root, "Dockerfile", "FROM scratch\n");
         write(&root, "Dockerfile.release", "FROM scratch\n");
-        write(&root, ".github/workflows/ci.yml", "name: CI\n");
+        write(
+            &root,
+            ".github/workflows/ci.yml",
+            r#"name: CI
+on:
+  pull_request:
+    paths: ["*", ".github/**", "crates/**", "docs/**"]
+  push:
+    paths: ["*", ".github/**", "crates/**", "docs/**"]
+"#,
+        );
 
         git(&root, &["init", "-q"]);
         git(
@@ -215,6 +228,35 @@ fn tracked_unrouted_paths_fail_metadata_validation_in_stable_path_order() {
 }
 
 #[test]
+fn newly_routed_directory_must_also_join_the_canonical_ci_trigger_policy() {
+    let fixture = Fixture::new();
+    let routing_path = fixture.root().join("docs/owner-routing.yaml");
+    let routing = fs::read_to_string(&routing_path).expect("read routing metadata");
+    fs::write(
+        &routing_path,
+        routing.replace(
+            "tracked_path_exemptions: []",
+            r#"  - path_prefix: "future/"
+    owner_doc_ids: [maintain.validation]
+    validation_classes: [repository-hygiene]
+tracked_path_exemptions: []"#,
+        ),
+    )
+    .expect("add future route");
+    write(fixture.root(), "future/maintenance.txt", "future\n");
+    git(
+        fixture.root(),
+        &["add", "docs/owner-routing.yaml", "future/maintenance.txt"],
+    );
+
+    let error = xtask::run_owner_route(fixture.root(), None)
+        .expect_err("CI trigger coverage must follow new tracked routes")
+        .to_string();
+    assert!(error.contains("CI trigger policy does not cover tracked path(s)"));
+    assert!(error.contains("future/maintenance.txt"));
+}
+
+#[test]
 fn routes_dirty_rust_docs_guidance_workflow_and_unknown_paths_without_mutation() {
     let fixture = Fixture::new();
     write(
@@ -231,7 +273,13 @@ fn routes_dirty_rust_docs_guidance_workflow_and_unknown_paths_without_mutation()
     write(
         fixture.root(),
         ".github/workflows/ci.yml",
-        "name: Changed CI\n",
+        r#"name: Changed CI
+on:
+  pull_request:
+    paths: ["*", ".github/**", "crates/**", "docs/**"]
+  push:
+    paths: ["*", ".github/**", "crates/**", "docs/**"]
+"#,
     );
     write(fixture.root(), "unknown.bin", "unknown\n");
     let status_before = fixture.status();
@@ -281,7 +329,13 @@ fn explicit_base_includes_committed_and_dirty_paths_in_stable_human_json_order()
     write(
         fixture.root(),
         ".github/workflows/ci.yml",
-        "name: Committed CI\n",
+        r#"name: Committed CI
+on:
+  pull_request:
+    paths: ["*", ".github/**", "crates/**", "docs/**"]
+  push:
+    paths: ["*", ".github/**", "crates/**", "docs/**"]
+"#,
     );
     git(fixture.root(), &["add", ".github/workflows/ci.yml"]);
     git(fixture.root(), &["commit", "-q", "-m", "test: workflow"]);

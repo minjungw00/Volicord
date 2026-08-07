@@ -3,43 +3,30 @@ name: CI
 on:
   pull_request:
     paths:
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/release.yml"
-      - ".github/actions/volicord-release-smoke/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "Dockerfile"
+      - "*"
+      - ".github/**"
       - "crates/**"
-      - "crates/volicord-cli/**"
-      - "crates/volicord-mcp-protocol/**"
-      - "crates/volicord-test-process/**"
-      - "crates/volicord-types/**"
       - "docs/**"
       - "scripts/**"
       - "tests/**"
-      - "tests/release-smoke/**"
       - "xtask/**"
   push:
     branches:
       - main
     paths:
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/release.yml"
-      - ".github/actions/volicord-release-smoke/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "Dockerfile"
+      - "*"
+      - ".github/**"
       - "crates/**"
-      - "crates/volicord-cli/**"
-      - "crates/volicord-mcp-protocol/**"
-      - "crates/volicord-test-process/**"
-      - "crates/volicord-types/**"
       - "docs/**"
       - "scripts/**"
       - "tests/**"
-      - "tests/release-smoke/**"
       - "xtask/**"
   workflow_dispatch:
+    inputs:
+      base:
+        description: Exact reachable commit before the change series
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -54,6 +41,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         run: |
@@ -61,8 +50,12 @@ jobs:
           rustup default "${{ env.RUST_VERSION }}"
           rustup component add rustfmt clippy
 
+      - name: Resolve CI change-series base
+        id: validation-base
+        run: cargo run --locked -p xtask -- ci-base --event-name "$GITHUB_EVENT_NAME" --event-path "$GITHUB_EVENT_PATH" --head HEAD --github-output "$GITHUB_OUTPUT"
+
       - name: Run current Linux repository validation plan
-        run: cargo run --locked -p xtask -- validate final --base HEAD
+        run: cargo run --locked -p xtask -- validate final --base "${{ steps.validation-base.outputs.base }}"
 
   mutation-lease-stability:
     name: Mutation lease stability (Linux)

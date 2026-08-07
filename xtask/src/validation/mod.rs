@@ -1,3 +1,4 @@
+mod ci;
 mod current_plan;
 mod plan;
 mod runner;
@@ -6,6 +7,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+pub use ci::{append_github_output, resolve_ci_base, CiBaseResolution};
 pub use current_plan::{
     current_linux_validation_plan, CurrentValidationCommand, CurrentValidationCommandKind,
     CurrentValidationPlan,

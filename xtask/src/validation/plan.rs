@@ -804,6 +804,115 @@ mod tests {
     }
 
     #[test]
+    fn resolved_ci_series_base_exposes_scoped_commit_violation_to_validation_preflight() {
+        let directory = tempfile::tempdir().expect("temporary repository");
+        let root = directory.path();
+        fs::create_dir_all(root.join("crates/production/src")).expect("create package source");
+        fs::write(
+            root.join("Cargo.toml"),
+            r#"[workspace]
+members = ["crates/production"]
+resolver = "2"
+
+[workspace.metadata.architecture.packages.production]
+production = true
+"#,
+        )
+        .expect("write workspace manifest");
+        fs::write(
+            root.join("crates/production/Cargo.toml"),
+            r#"[package]
+name = "production"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .expect("write package manifest");
+        fs::write(
+            root.join("crates/production/src/lib.rs"),
+            "pub fn value() {}\n",
+        )
+        .expect("write package source");
+
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .current_dir(root)
+                .args(args)
+                .output()
+                .expect("execute Git");
+            assert!(
+                output.status.success(),
+                "git {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8(output.stdout)
+                .expect("Git output is UTF-8")
+                .trim()
+                .to_owned()
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "scope@example.invalid"]);
+        git(&["config", "user.name", "Scope Test"]);
+        let cargo = Command::new("cargo")
+            .current_dir(root)
+            .arg("generate-lockfile")
+            .output()
+            .expect("generate fixture lockfile");
+        assert!(cargo.status.success());
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "fixture: base"]);
+        let base = git(&["rev-parse", "HEAD"]);
+
+        fs::write(
+            root.join("crates/production/src/lib.rs"),
+            "pub fn changed() {}\n",
+        )
+        .expect("change production source");
+        git(&["add", "crates/production/src/lib.rs"]);
+        git(&["commit", "-q", "-m", "test(scope): change production"]);
+        let event_path = directory.path().join("push.json");
+        fs::write(
+            &event_path,
+            serde_json::to_vec(&serde_json::json!({"before": base})).expect("serialize event"),
+        )
+        .expect("write event");
+        let resolution =
+            crate::resolve_ci_base(root, "push", &event_path, "HEAD").expect("resolve CI base");
+        let route = OwnerRouteReport {
+            base_revision: Some(resolution.base_revision),
+            changed_paths: resolution.changed_paths,
+            instructions: Vec::new(),
+            workspace_packages: vec![crate::owner_route::RoutedPackage {
+                name: "production".to_owned(),
+                manifest_path: "crates/production/Cargo.toml".to_owned(),
+                changed_paths: vec!["crates/production/src/lib.rs".to_owned()],
+            }],
+            maintained_documents: Vec::new(),
+            owner_documents: Vec::new(),
+            validation_classes: vec!["rust".to_owned()],
+            unknown_paths: Vec::new(),
+        };
+
+        let plan = build_validation_plan(root, ValidationProfile::Focused, route)
+            .expect("build validation plan");
+        let commit_scope = plan
+            .commands
+            .iter()
+            .find(|spec| spec.label == "commit-type scope")
+            .expect("commit-scope preflight");
+        let CommandKind::Internal {
+            stderr, exit_code, ..
+        } = &commit_scope.kind
+        else {
+            panic!("commit-scope preflight must be internal");
+        };
+        assert_eq!(*exit_code, 1);
+        assert!(stderr.contains("test: commit changes production path"));
+        assert!(stderr.contains("crates/production/src/lib.rs"));
+    }
+
+    #[test]
     fn conventional_commit_subject_parser_accepts_scoped_and_breaking_forms() {
         assert_eq!(
             conventional_commit_type("test(scope): cover it"),
