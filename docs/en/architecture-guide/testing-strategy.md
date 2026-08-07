@@ -236,10 +236,11 @@ handle.
 
 Validation-runner tests use injected command outcomes rather than invoking a
 second validation engine. They cover focused planning, changed-package
-selection, documentation routing, durable logs and recovery, exit-code
-preservation, skipped commands, human/JSON category parity, aggregate retry
-limits, unchanged-package decomposition, changed-package failure, and truthful
-overall summaries.
+selection, documentation routing, pre-command run discovery, concurrent active
+records, durable logs and recovery, exit-code preservation, skipped commands,
+human/JSON category parity, aggregate retry limits, same-package decomposition,
+changed- and different-package second failures, ambiguous failure output, and
+truthful overall summaries.
 
 ## Workspace Architecture Validation
 

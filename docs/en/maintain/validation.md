@@ -98,12 +98,21 @@ working directory, start and finish timestamps, and exit code under the same
 run directory. Child stdout and stderr go directly to those files while the
 command runs; they do not depend on a terminal buffer remaining attached.
 
-The runner writes the initial summary before the first command and checkpoints
-it before and after every command state change. If a terminal or process handle
-is lost while the runner continues, recover the run by inspecting the reported
-run ID and summary path. Pending work remains distinguishable from completed,
-failed, and skipped commands. Validation output is ignored build output and is
-not committed.
+The runner writes the initial summary, an active-run locator under
+`target/volicord-validation/active/`, and the advisory
+`target/volicord-validation/latest-run.json` locator before the first command.
+It then reports the run ID and summary path to stderr immediately, so `--json`
+stdout remains one valid JSON value. Concurrent runs use separate active
+records. A normally finished run removes its active record; an interrupted run
+may leave a stale locator.
+
+The locator files contain discovery information only and are not validation
+results. Always read the referenced summary and per-command result records for
+status and exit codes. The runner checkpoints those records before and after
+every command state change. If a terminal or process handle is lost while the
+runner continues, use an emitted path or locator to recover the run. Pending
+work remains distinguishable from completed, failed, and skipped commands.
+Validation output is ignored build output and is not committed.
 
 ## Exact Aggregate And Bounded Decomposition
 
@@ -118,10 +127,17 @@ unchanged package, the runner may run that isolated target and the full package.
 If both pass, it may retry the exact aggregate once. The exact aggregate never
 runs more than twice in one final session.
 
-After a second aggregate-only failure, the runner runs the workspace excluding
-the identified unchanged package and runs that full package separately, then
-stops. It does not add a permanent package exclusion and does not perform a
-third exact attempt. It never applies this downgrade path to a changed-package
+After a second aggregate-only failure, the runner decomposes only when that
+second output identifies exactly one rerunnable target in the same single
+unchanged package identified by the first failure. It then runs the workspace
+excluding that package and the full package separately before stopping. A
+different package, changed package, multiple packages or targets, or
+unparseable output stops without that decomposition and records the exact
+diagnostic in the run summary. The runner never reuses the first failure target
+as a fallback for the second.
+
+The runner does not add a permanent package exclusion and does not perform a
+third exact attempt. It never applies the downgrade path to a changed-package
 failure. No profile sets global `--test-threads=1` or `RUST_TEST_THREADS=1`
 unless a maintained owner first requires that setting.
 

@@ -91,11 +91,19 @@ log, 기계 판독 결과, 정확한 호출, working directory, 시작·종료 t
 code를 남깁니다. 자식 stdout과 stderr는 실행 중에 그 파일로 직접 들어가므로
 terminal buffer 연결 유지에 의존하지 않습니다.
 
-Runner는 첫 명령 전에 초기 summary를 쓰고 명령 상태가 바뀔 때마다 전후로
-checkpoint합니다. Runner가 계속 실행되는 동안 terminal이나 process handle을
-잃었다면 보고된 run ID와 summary 경로를 확인해 복구합니다. 대기 중인 작업은 완료,
-실패, 생략 명령과 구분됩니다. 검증 출력은 무시되는 빌드 출력이며 commit하지
-않습니다.
+Runner는 첫 명령 전에 초기 summary, `target/volicord-validation/active/` 아래의
+활성 run locator, 참고용 `target/volicord-validation/latest-run.json` locator를
+씁니다. 이어서 run ID와 summary 경로를 즉시 stderr에 보고하므로 `--json` stdout은
+유효한 JSON 값 하나로 남습니다. 동시에 실행하는 run은 서로 다른 활성 record를
+사용합니다. 정상적으로 끝난 run은 활성 record를 지우지만 중단된 run은 오래된
+locator를 남길 수 있습니다.
+
+Locator 파일은 찾기 정보일 뿐 검증 결과가 아닙니다. 상태와 exit code는 항상 locator가
+가리키는 summary와 명령별 결과 record에서 확인합니다. Runner는 명령 상태가 바뀔
+때마다 이 record를 전후로 checkpoint합니다. Runner가 계속 실행되는 동안 terminal이나
+process handle을 잃었다면 이미 출력된 경로나 locator를 사용해 run을 복구합니다. 대기
+중인 작업은 완료, 실패, 생략 명령과 구분됩니다. 검증 출력은 무시되는 빌드 출력이며
+commit하지 않습니다.
 
 ## 정확한 aggregate와 한도 있는 분해
 
@@ -110,11 +118,17 @@ cargo test --locked --workspace --all-targets --all-features
 통과하면 정확한 aggregate를 한 번 재시도할 수 있습니다. 한 최종 session에서 정확한
 aggregate는 두 번보다 많이 실행되지 않습니다.
 
-두 번째 aggregate-only 실패 뒤에는 확인한 변경하지 않은 패키지를 제외한
-workspace와 그 전체 패키지를 따로 실행한 뒤 멈춥니다. 영구적인 패키지 제외를
-추가하지 않고 세 번째 정확한 시도를 하지 않습니다. 변경 패키지 실패에는 이 분해
-경로를 적용하지 않습니다. 유지 담당 문서가 먼저 요구하지 않는 한 어떤 profile도
-전역 `--test-threads=1`이나 `RUST_TEST_THREADS=1`을 설정하지 않습니다.
+두 번째 aggregate-only 실패 뒤에는 그 출력에서 첫 실패와 같은 변경하지 않은 단일
+패키지의 재실행 target 하나를 정확히 확인한 경우에만 분해합니다. 이때 해당 패키지를
+제외한 workspace와 전체 패키지를 따로 실행한 뒤 멈춥니다. 다른 패키지, 변경된 패키지,
+여러 패키지나 target, 해석할 수 없는 출력이면 그 분해를 하지 않고 멈추며 정확한 진단
+이유를 run summary에 기록합니다. 두 번째 실패를 해석하지 못했을 때 첫 실패 target을
+대체값으로 다시 사용하지 않습니다.
+
+영구적인 패키지 제외를 추가하지 않고 세 번째 정확한 시도를 하지 않습니다. 변경
+패키지 실패에는 이 downgrade 경로를 적용하지 않습니다. 유지 담당 문서가 먼저
+요구하지 않는 한 어떤 profile도 전역 `--test-threads=1`이나 `RUST_TEST_THREADS=1`을
+설정하지 않습니다.
 
 통과, 실패, 분해, 생략은 서로 독립적인 summary 분류입니다. 분해 명령은 통과하거나
 실패할 수 있지만 성공해도 실패한 정확한 aggregate를 없애거나 전체 결과를 통과로

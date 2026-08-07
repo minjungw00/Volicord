@@ -9,15 +9,17 @@ use super::{
 use crate::owner_route::run_owner_route;
 use crate::repository::normalize_existing_root;
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static RUN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static ATOMIC_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub fn run_validation(
     root: &Path,
@@ -134,6 +136,7 @@ fn run_plan_with_executor(
         status: ValidationStatus::Pending,
         exact_aggregate_attempts: 0,
         exact_aggregate_failed: false,
+        aggregate_diagnostic: None,
         commands: plan
             .commands
             .iter()
@@ -142,6 +145,10 @@ fn run_plan_with_executor(
         categories: ValidationCategories::default(),
     };
     checkpoint_summary(&summary_path, &mut summary, false)?;
+    let lifecycle = initialize_run_lifecycle(run_directory, &summary)?;
+    if progress {
+        eprint!("{}", run_discovery_message(&summary));
+    }
 
     let aggregate_index = plan
         .commands
@@ -162,7 +169,7 @@ fn run_plan_with_executor(
         if summary.commands[index].status == CommandStatus::Failed {
             let reason = format!("stopped after {}", summary.commands[index].id);
             skip_pending(&summary_path, &mut summary, &reason)?;
-            return finish_summary(&summary_path, summary);
+            return finish_summary(&summary_path, &lifecycle, summary);
         }
     }
 
@@ -178,7 +185,7 @@ fn run_plan_with_executor(
             progress,
         )?;
     }
-    finish_summary(&summary_path, summary)
+    finish_summary(&summary_path, &lifecycle, summary)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -209,10 +216,29 @@ fn execute_aggregate_policy(
     summary.exact_aggregate_failed = true;
     checkpoint_summary(summary_path, summary, false)?;
 
-    let Some(failure) = failed_target(root, &summary.commands[aggregate_index])? else {
-        return Ok(());
+    let failure = match failed_target(root, &summary.commands[aggregate_index])? {
+        FailedTargetAnalysis::Single(failure) => failure,
+        analysis => {
+            record_aggregate_diagnostic(
+                summary_path,
+                summary,
+                format!(
+                    "first exact aggregate failure {}; isolated diagnostics and retry were not started",
+                    analysis.description()
+                ),
+            )?;
+            return Ok(());
+        }
     };
     if summary.changed_packages.contains(&failure.package) {
+        record_aggregate_diagnostic(
+            summary_path,
+            summary,
+            format!(
+                "first exact aggregate failure identified changed package {}; unchanged-package diagnostics were not started",
+                failure.package
+            ),
+        )?;
         return Ok(());
     }
 
@@ -264,15 +290,62 @@ fn execute_aggregate_policy(
         progress,
     )?;
     if summary.commands[retry_index].status == CommandStatus::Passed {
+        record_aggregate_diagnostic(
+            summary_path,
+            summary,
+            format!(
+                "exact aggregate retry passed after isolated diagnostics for {}",
+                failure.package
+            ),
+        )?;
         return Ok(());
     }
     summary.exact_aggregate_failed = true;
-
-    let retry_failure =
-        failed_target(root, &summary.commands[retry_index])?.unwrap_or_else(|| failure.clone());
+    let retry_failure = match failed_target(root, &summary.commands[retry_index])? {
+        FailedTargetAnalysis::Single(retry_failure) => retry_failure,
+        analysis => {
+            record_aggregate_diagnostic(
+                summary_path,
+                summary,
+                format!(
+                    "second exact aggregate failure {}; decomposition stopped without reusing the first failure target {}",
+                    analysis.description(),
+                    failure.package
+                ),
+            )?;
+            return Ok(());
+        }
+    };
     if summary.changed_packages.contains(&retry_failure.package) {
+        record_aggregate_diagnostic(
+            summary_path,
+            summary,
+            format!(
+                "second exact aggregate failure identified changed package {}; decomposition stopped",
+                retry_failure.package
+            ),
+        )?;
         return Ok(());
     }
+    if retry_failure.package != failure.package {
+        record_aggregate_diagnostic(
+            summary_path,
+            summary,
+            format!(
+                "second exact aggregate failure identified different package {}; first failure identified {}; decomposition stopped",
+                retry_failure.package, failure.package
+            ),
+        )?;
+        return Ok(());
+    }
+    record_aggregate_diagnostic(
+        summary_path,
+        summary,
+        format!(
+            "second exact aggregate failure matched unchanged package {}; starting decomposition",
+            retry_failure.package
+        ),
+    )?;
     let excluded = workspace_excluding_spec(root, &retry_failure.package);
     let package = full_package_spec(
         root,
@@ -303,6 +376,15 @@ fn execute_aggregate_policy(
         progress,
     )?;
     Ok(())
+}
+
+fn record_aggregate_diagnostic(
+    summary_path: &Path,
+    summary: &mut ValidationRunSummary,
+    diagnostic: String,
+) -> Result<()> {
+    summary.aggregate_diagnostic = Some(diagnostic);
+    checkpoint_summary(summary_path, summary, false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -451,12 +533,58 @@ fn skip_pending(
     checkpoint_summary(summary_path, summary, false)
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct RunLocator {
+    run_id: String,
+    summary_path: String,
+    profile: ValidationProfile,
+    started_at_unix_ms: u64,
+}
+
+#[derive(Debug)]
+struct RunLifecycle {
+    active_path: PathBuf,
+}
+
+fn initialize_run_lifecycle(
+    run_directory: &Path,
+    summary: &ValidationRunSummary,
+) -> Result<RunLifecycle> {
+    let validation_directory = run_directory
+        .parent()
+        .context("validation run directory has no parent")?;
+    let active_directory = validation_directory.join("active");
+    fs::create_dir_all(&active_directory)?;
+    let locator = RunLocator {
+        run_id: summary.run_id.clone(),
+        summary_path: summary.summary_path.clone(),
+        profile: summary.profile,
+        started_at_unix_ms: summary.started_at_unix_ms,
+    };
+    let active_path = active_directory.join(format!("{}.json", summary.run_id));
+    write_json_atomically(&active_path, &locator)?;
+    write_json_atomically(&validation_directory.join("latest-run.json"), &locator)?;
+    Ok(RunLifecycle { active_path })
+}
+
+fn run_discovery_message(summary: &ValidationRunSummary) -> String {
+    format!(
+        "validation run id: {}\nvalidation summary: {}\n",
+        summary.run_id, summary.summary_path
+    )
+}
+
 fn finish_summary(
     summary_path: &Path,
+    lifecycle: &RunLifecycle,
     mut summary: ValidationRunSummary,
 ) -> Result<ValidationRunSummary> {
     summary.finished_at_unix_ms = Some(now_unix_ms());
     checkpoint_summary(summary_path, &mut summary, true)?;
+    if lifecycle.active_path.exists() {
+        fs::remove_file(&lifecycle.active_path)?;
+        sync_parent_directory(&lifecycle.active_path)?;
+    }
     Ok(summary)
 }
 
@@ -474,15 +602,37 @@ fn write_command_result(path: &Path, command: &ValidationCommandResult) -> Resul
 }
 
 fn write_json_atomically(path: &Path, value: &impl serde::Serialize) -> Result<()> {
-    let temporary = path.with_extension("json.next");
-    let mut file = File::create(&temporary)?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("atomic JSON path has no UTF-8 file name")?;
+    let temporary = path.with_file_name(format!(
+        ".{file_name}.{}.{}.next",
+        std::process::id(),
+        ATOMIC_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
     serde_json::to_writer_pretty(&mut file, value)?;
     file.write_all(b"\n")?;
     file.sync_all()?;
+    #[cfg(windows)]
     if path.exists() {
         fs::remove_file(path)?;
     }
     fs::rename(&temporary, path)?;
+    sync_parent_directory(path)?;
+    Ok(())
+}
+
+fn sync_parent_directory(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    if let Some(parent) = path.parent() {
+        File::open(parent)?.sync_all()?;
+    }
+    let _ = path;
     Ok(())
 }
 
@@ -497,13 +647,37 @@ fn resolve_run_directory(specs: &mut [CommandSpec], run_directory: &Path) {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct FailedTarget {
     package: String,
     target_args: Vec<String>,
 }
 
-fn failed_target(root: &Path, command: &ValidationCommandResult) -> Result<Option<FailedTarget>> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum FailedTargetAnalysis {
+    Single(FailedTarget),
+    Missing,
+    Ambiguous { packages: Vec<String> },
+}
+
+impl FailedTargetAnalysis {
+    fn description(&self) -> String {
+        match self {
+            Self::Single(target) => format!("identified package {}", target.package),
+            Self::Missing => "did not identify exactly one parseable rerun target".to_owned(),
+            Self::Ambiguous { packages } if packages.len() > 1 => format!(
+                "identified rerun targets from multiple packages: {}",
+                packages.join(", ")
+            ),
+            Self::Ambiguous { packages } => format!(
+                "identified multiple rerun targets for package {}",
+                packages.first().map(String::as_str).unwrap_or("unknown")
+            ),
+        }
+    }
+}
+
+fn failed_target(root: &Path, command: &ValidationCommandResult) -> Result<FailedTargetAnalysis> {
     let mut candidates = BTreeSet::new();
     for path in [&command.stdout_path, &command.stderr_path]
         .into_iter()
@@ -521,11 +695,20 @@ fn failed_target(root: &Path, command: &ValidationCommandResult) -> Result<Optio
             }
         }
     }
+    if candidates.is_empty() {
+        return Ok(FailedTargetAnalysis::Missing);
+    }
     if candidates.len() != 1 {
-        return Ok(None);
+        let packages = candidates
+            .iter()
+            .map(|(package, _)| package.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        return Ok(FailedTargetAnalysis::Ambiguous { packages });
     }
     let (package, target_args) = candidates.into_iter().next().expect("one candidate");
-    Ok(Some(FailedTarget {
+    Ok(FailedTargetAnalysis::Single(FailedTarget {
         package,
         target_args,
     }))
@@ -663,6 +846,7 @@ fn sync_file(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::collections::VecDeque;
+    use std::sync::{Arc, Barrier};
 
     #[derive(Clone)]
     struct ScriptedResult {
@@ -693,6 +877,23 @@ mod tests {
             stdout_path: &Path,
             stderr_path: &Path,
         ) -> ExecutionOutcome {
+            let run_directory = stdout_path
+                .parent()
+                .and_then(Path::parent)
+                .expect("scripted run directory");
+            let validation_directory = run_directory.parent().expect("validation directory");
+            assert!(
+                run_directory.join("summary.json").is_file(),
+                "pending summary must exist before command execution"
+            );
+            assert!(
+                validation_directory.join("latest-run.json").is_file(),
+                "latest-run locator must exist before command execution"
+            );
+            assert!(
+                validation_directory.join("active/test-run.json").is_file(),
+                "active-run locator must exist before command execution"
+            );
             self.invocations.push(invocation.clone());
             let result = self.results.pop_front().expect("scripted command result");
             write_and_sync(stdout_path, &result.stdout).expect("scripted stdout");
@@ -752,6 +953,86 @@ mod tests {
         (directory, summary, executor)
     }
 
+    fn locator_summary(run_id: &str) -> ValidationRunSummary {
+        ValidationRunSummary {
+            run_id: run_id.to_owned(),
+            summary_path: format!("target/volicord-validation/{run_id}/summary.json"),
+            profile: ValidationProfile::Focused,
+            base_revision: "base".to_owned(),
+            head_revision: "head".to_owned(),
+            changed_paths: Vec::new(),
+            changed_packages: Vec::new(),
+            validation_classes: Vec::new(),
+            started_at_unix_ms: 1,
+            finished_at_unix_ms: None,
+            status: ValidationStatus::Pending,
+            exact_aggregate_attempts: 0,
+            exact_aggregate_failed: false,
+            aggregate_diagnostic: None,
+            commands: Vec::new(),
+            categories: ValidationCategories::default(),
+        }
+    }
+
+    fn aggregate_spec(root: &Path) -> CommandSpec {
+        let mut aggregate = process_owned(
+            root,
+            "exact workspace aggregate",
+            "cargo",
+            vec!["test".to_owned(), "--workspace".to_owned()],
+        );
+        aggregate.kind = CommandKind::ExactAggregate;
+        aggregate.aggregate_attempt = Some(1);
+        aggregate
+    }
+
+    fn run_second_aggregate_failure(
+        second_failure: &str,
+        changed: &[&str],
+    ) -> (ValidationRunSummary, ScriptedExecutor) {
+        let first_failure = "error: test failed, to rerun pass `-p first-package --test lease`\n";
+        let (_, summary, executor) = run_scripted(
+            vec![aggregate_spec(Path::new("/repository"))],
+            changed,
+            vec![
+                scripted(1, "", first_failure),
+                scripted(0, "isolated ok\n", ""),
+                scripted(0, "package ok\n", ""),
+                scripted(1, "", second_failure),
+            ],
+        );
+        (summary, executor)
+    }
+
+    #[test]
+    fn concurrent_runs_keep_distinct_active_records_and_valid_latest_locator() {
+        let directory = tempfile::tempdir().expect("validation test directory");
+        let root = directory.path().to_path_buf();
+        let barrier = Arc::new(Barrier::new(2));
+        let handles = ["run-a", "run-b"].map(|run_id| {
+            let root = root.clone();
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                let run_directory = root.join("target/volicord-validation").join(run_id);
+                fs::create_dir_all(run_directory.join("commands"))
+                    .expect("concurrent run directory");
+                barrier.wait();
+                initialize_run_lifecycle(&run_directory, &locator_summary(run_id))
+                    .expect("initialize concurrent run")
+            })
+        });
+        let lifecycles = handles.map(|handle| handle.join().expect("concurrent run thread"));
+        for lifecycle in &lifecycles {
+            assert!(lifecycle.active_path.is_file());
+        }
+        let latest: RunLocator = serde_json::from_slice(
+            &fs::read(root.join("target/volicord-validation/latest-run.json"))
+                .expect("concurrent latest-run locator"),
+        )
+        .expect("decode concurrent latest-run locator");
+        assert!(matches!(latest.run_id.as_str(), "run-a" | "run-b"));
+    }
+
     #[test]
     fn durable_logs_and_summary_preserve_exit_code_after_handle_loss() {
         let root = Path::new("/repository");
@@ -774,6 +1055,21 @@ mod tests {
             &fs::read(&summary_path).expect("durable summary after lost handle"),
         )
         .expect("decode recovered summary");
+        let locator: RunLocator = serde_json::from_slice(
+            &fs::read(
+                directory
+                    .path()
+                    .join("target/volicord-validation/latest-run.json"),
+            )
+            .expect("latest-run locator"),
+        )
+        .expect("decode latest-run locator");
+        assert_eq!(locator.run_id, "test-run");
+        assert_eq!(locator.summary_path, recovered.summary_path);
+        assert!(!directory
+            .path()
+            .join("target/volicord-validation/active/test-run.json")
+            .exists());
         assert_eq!(recovered.commands[0].exit_code, Some(23));
         assert_eq!(
             fs::read_to_string(
@@ -842,7 +1138,85 @@ mod tests {
                 .windows(2)
                 .any(|pair| pair == ["--exclude", "unchanged"])
         }));
+        assert!(summary
+            .aggregate_diagnostic
+            .as_deref()
+            .is_some_and(|reason| reason.contains("matched unchanged package unchanged")));
         assert!(!summary.render_human().contains("profile result: passed"));
+    }
+
+    #[test]
+    fn second_failure_in_a_different_package_stops_without_stale_decomposition() {
+        let second = "error: test failed, to rerun pass `-p second-package --test another`\n";
+        let (summary, executor) = run_second_aggregate_failure(second, &[]);
+        assert_eq!(executor.invocations.len(), 4);
+        assert!(!executor.invocations.iter().any(|invocation| {
+            invocation
+                .args
+                .iter()
+                .any(|argument| argument == "--exclude")
+        }));
+        assert!(summary
+            .aggregate_diagnostic
+            .as_deref()
+            .is_some_and(|reason| reason.contains("different package second-package")
+                && reason.contains("first failure identified first-package")));
+    }
+
+    #[test]
+    fn second_failure_in_a_changed_package_stops_without_decomposition() {
+        let second = "error: test failed, to rerun pass `-p changed-package --test another`\n";
+        let (summary, executor) = run_second_aggregate_failure(second, &["changed-package"]);
+        assert_eq!(executor.invocations.len(), 4);
+        assert!(summary
+            .aggregate_diagnostic
+            .as_deref()
+            .is_some_and(|reason| reason.contains("identified changed package changed-package")));
+    }
+
+    #[test]
+    fn ambiguous_second_failure_records_packages_and_stops() {
+        let second = concat!(
+            "error: test failed, to rerun pass `-p first-package --test one`\n",
+            "error: test failed, to rerun pass `-p other-package --test two`\n"
+        );
+        let (summary, executor) = run_second_aggregate_failure(second, &[]);
+        assert_eq!(executor.invocations.len(), 4);
+        assert!(summary
+            .aggregate_diagnostic
+            .as_deref()
+            .is_some_and(|reason| reason
+                .contains("multiple packages: first-package, other-package")
+                && reason.contains("without reusing the first failure target")));
+    }
+
+    #[test]
+    fn multiple_targets_in_the_same_second_failure_package_are_ambiguous() {
+        let second = concat!(
+            "error: test failed, to rerun pass `-p first-package --test one`\n",
+            "error: test failed, to rerun pass `-p first-package --test two`\n"
+        );
+        let (summary, executor) = run_second_aggregate_failure(second, &[]);
+        assert_eq!(executor.invocations.len(), 4);
+        assert!(summary
+            .aggregate_diagnostic
+            .as_deref()
+            .is_some_and(|reason| reason
+                .contains("identified multiple rerun targets for package first-package")));
+    }
+
+    #[test]
+    fn unparseable_second_failure_records_reason_and_stops() {
+        let (summary, executor) =
+            run_second_aggregate_failure("aggregate failed without rerun guidance\n", &[]);
+        assert_eq!(executor.invocations.len(), 4);
+        assert!(summary
+            .aggregate_diagnostic
+            .as_deref()
+            .is_some_and(
+                |reason| reason.contains("did not identify exactly one parseable")
+                    && reason.contains("without reusing the first failure target")
+            ));
     }
 
     #[test]
@@ -886,6 +1260,18 @@ mod tests {
             assert!(json.contains(id));
             assert!(human.contains(id));
         }
+    }
+
+    #[test]
+    fn run_discovery_message_is_stderr_ready_and_identifies_the_pending_summary() {
+        let summary = locator_summary("run-visible");
+        assert_eq!(
+            run_discovery_message(&summary),
+            concat!(
+                "validation run id: run-visible\n",
+                "validation summary: target/volicord-validation/run-visible/summary.json\n"
+            )
+        );
     }
 
     #[test]

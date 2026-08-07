@@ -112,6 +112,7 @@ pub struct ValidationRunSummary {
     pub status: ValidationStatus,
     pub exact_aggregate_attempts: u8,
     pub exact_aggregate_failed: bool,
+    pub aggregate_diagnostic: Option<String>,
     pub commands: Vec<ValidationCommandResult>,
     pub categories: ValidationCategories,
 }
@@ -136,6 +137,10 @@ impl ValidationRunSummary {
         output.push_str(&format!(
             "exact aggregate failed: {}\n",
             self.exact_aggregate_failed
+        ));
+        output.push_str(&format!(
+            "aggregate diagnostic: {}\n",
+            self.aggregate_diagnostic.as_deref().unwrap_or("none")
         ));
         render_values(&mut output, "changed paths", &self.changed_paths);
         render_values(&mut output, "changed packages", &self.changed_packages);
