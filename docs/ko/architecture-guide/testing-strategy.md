@@ -211,8 +211,9 @@ Runner는 정확한 호출, timestamp, exit code를 담는 기계 판독 summary
 별도 YAML 명령 목록을 유지하지 않고 검증된 pull request, push 또는 수동 실행 series
 기준으로 같은 최종 profile을 호출합니다. Checkout은 충분한 이력을 유지하며, 실패로
 닫히는 event fixture는 기준 누락, shallow 이력, head와 같은 기준, 빈 범위를 다룹니다.
-정규 CI trigger 경로는 저장소 담당 경로와 함께 두며, 계약 테스트는 pull request와
-push filter가 서로 같고 모든 추적 루트 파일 및 유지 directory를 포함하도록 합니다.
+저장소 담당 경로에는 모든 변경을 포함하는 닫힌 CI 정책 하나를 둡니다. 계약 테스트는
+pull request와 push event의 `paths`와 `paths-ignore`를 거부하고 두 event가 저장소
+변경에 항상 실행되도록 하며, 최종 검증 전에 event별 기준을 해석하도록 요구합니다.
 네이티브 운영 job에는 플랫폼별 점검만 따로 남습니다.
 
 검증 runner 테스트는 두 번째 검증 엔진을 호출하지 않고 주입한 명령 결과를

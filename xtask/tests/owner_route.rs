@@ -129,7 +129,7 @@ path_routes:
 tracked_path_exemptions: []
 ci_trigger_policy:
   workflow: .github/workflows/ci.yml
-  paths: ["*", ".github/**", "crates/**", "docs/**"]
+  repository_changes: all
 package_defaults:
   instruction_paths: [crates/AGENTS.md]
   owner_doc_ids: [maintain.validation]
@@ -150,9 +150,14 @@ package_routes:
             r#"name: CI
 on:
   pull_request:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
   push:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
+    branches: [main]
+jobs:
+  checks:
+    steps:
+      - id: validation-base
+        run: cargo run -p xtask -- ci-base --event-name "$GITHUB_EVENT_NAME" --event-path "$GITHUB_EVENT_PATH" --head HEAD --github-output "$GITHUB_OUTPUT"
+      - run: cargo run -p xtask -- validate final --base "${{ steps.validation-base.outputs.base }}"
 "#,
         );
 
@@ -244,7 +249,7 @@ fn tracked_unrouted_paths_fail_metadata_validation_in_stable_path_order() {
 }
 
 #[test]
-fn newly_routed_directory_must_also_join_the_canonical_ci_trigger_policy() {
+fn newly_routed_top_level_directory_needs_no_ci_filter_metadata() {
     let fixture = Fixture::new();
     let routing_path = fixture.root().join("docs/owner-routing.yaml");
     let routing = fs::read_to_string(&routing_path).expect("read routing metadata");
@@ -265,11 +270,82 @@ tracked_path_exemptions: []"#,
         &["add", "docs/owner-routing.yaml", "future/maintenance.txt"],
     );
 
-    let error = xtask::run_owner_route(fixture.root(), None)
-        .expect_err("CI trigger coverage must follow new tracked routes")
+    let report = xtask::run_owner_route(fixture.root(), None)
+        .expect("always-on CI policy admits a new top-level route");
+    assert!(report.unknown_paths.is_empty());
+    assert!(report
+        .changed_paths()
+        .contains(&"future/maintenance.txt".to_owned()));
+}
+
+#[test]
+fn deletion_only_and_rename_only_changes_need_no_ci_filter_metadata() {
+    let deleted = Fixture::new();
+    fs::remove_file(deleted.root().join("docs/delete.txt")).expect("delete routed path");
+    git(deleted.root(), &["add", "-A"]);
+    let report = xtask::run_owner_route(deleted.root(), Some(&deleted.base))
+        .expect("always-on CI policy admits deletion-only change");
+    assert_eq!(report.changes.len(), 1);
+    assert_eq!(report.changes[0].kind, xtask::RepositoryChangeKind::Deleted);
+
+    let renamed = Fixture::new();
+    git(
+        renamed.root(),
+        &["mv", "docs/rename.txt", "docs/renamed.txt"],
+    );
+    let report = xtask::run_owner_route(renamed.root(), Some(&renamed.base))
+        .expect("always-on CI policy admits rename-only change");
+    assert_eq!(report.changes.len(), 1);
+    assert_eq!(report.changes[0].kind, xtask::RepositoryChangeKind::Renamed);
+}
+
+#[test]
+fn pull_request_and_push_reject_paths_and_paths_ignore_filters() {
+    for (event, filter) in [
+        ("pull_request", "paths"),
+        ("pull_request", "paths-ignore"),
+        ("push", "paths"),
+        ("push", "paths-ignore"),
+    ] {
+        let fixture = Fixture::new();
+        let before = if event == "pull_request" {
+            "  pull_request:\n"
+        } else {
+            "  push:\n    branches: [main]\n"
+        };
+        let after = if event == "pull_request" {
+            format!("  pull_request:\n    {filter}: [\"docs/**\"]\n")
+        } else {
+            format!("  push:\n    branches: [main]\n    {filter}: [\"docs/**\"]\n")
+        };
+        replace(fixture.root(), ".github/workflows/ci.yml", before, &after);
+
+        let error = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+            .expect_err("repository path filters must fail the CI contract")
+            .to_string();
+        assert!(
+            error.contains(&format!(
+                "CI workflow event {event} must not declare {filter}"
+            )),
+            "unexpected error: {error}"
+        );
+    }
+}
+
+#[test]
+fn ci_base_resolution_must_precede_the_base_fed_final_validation() {
+    let fixture = Fixture::new();
+    replace(
+        fixture.root(),
+        ".github/workflows/ci.yml",
+        "      - id: validation-base\n",
+        "      - id: misplaced-base\n",
+    );
+
+    let error = xtask::run_owner_route(fixture.root(), Some(&fixture.base))
+        .expect_err("missing event-specific base step must fail")
         .to_string();
-    assert!(error.contains("CI trigger policy does not cover tracked path(s)"));
-    assert!(error.contains("future/maintenance.txt"));
+    assert!(error.contains("must resolve one event-specific validation-base with ci-base"));
 }
 
 #[test]
@@ -286,16 +362,12 @@ fn routes_dirty_rust_docs_guidance_workflow_and_unknown_paths_without_mutation()
         "docs/en/maintain/validation.md",
         "# Changed validation\n",
     );
+    let workflow =
+        fs::read_to_string(fixture.root().join(".github/workflows/ci.yml")).expect("read workflow");
     write(
         fixture.root(),
         ".github/workflows/ci.yml",
-        r#"name: Changed CI
-on:
-  pull_request:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
-  push:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
-"#,
+        &(workflow + "\n# changed\n"),
     );
     write(fixture.root(), "unknown.bin", "unknown\n");
     let status_before = fixture.status();
@@ -362,16 +434,12 @@ on:
 #[test]
 fn explicit_base_includes_committed_and_dirty_paths_in_stable_human_json_order() {
     let fixture = Fixture::new();
+    let workflow =
+        fs::read_to_string(fixture.root().join(".github/workflows/ci.yml")).expect("read workflow");
     write(
         fixture.root(),
         ".github/workflows/ci.yml",
-        r#"name: Committed CI
-on:
-  pull_request:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
-  push:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
-"#,
+        &(workflow + "\n# committed change\n"),
     );
     git(fixture.root(), &["add", ".github/workflows/ci.yml"]);
     git(fixture.root(), &["commit", "-q", "-m", "test: workflow"]);

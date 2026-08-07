@@ -241,10 +241,11 @@ after series-only preflights, and the main Linux CI job calls the same final
 profile with a verified pull-request, push, or manual-run series base rather
 than maintaining a parallel YAML command list. The checkout retains sufficient
 history, and fail-closed event fixtures cover missing, shallow, equal-head, and
-empty ranges. The canonical CI trigger paths live with repository owner routing;
-contract tests keep pull-request and push filters identical and covering every
-tracked root file and maintained directory. Native operational jobs retain only
-their platform-specific checks.
+empty ranges. Repository owner routing declares one closed all-changes CI
+policy. Contract tests reject `paths` and `paths-ignore` on pull-request and
+push events, keep both events always on for repository changes, and require
+event-specific base resolution before final validation. Native operational jobs
+retain only their platform-specific checks.
 
 Validation-runner tests use injected command outcomes rather than invoking a
 second validation engine. They cover focused planning, changed-package

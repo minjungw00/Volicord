@@ -2,25 +2,9 @@ name: CI
 
 on:
   pull_request:
-    paths:
-      - "*"
-      - ".github/**"
-      - "crates/**"
-      - "docs/**"
-      - "scripts/**"
-      - "tests/**"
-      - "xtask/**"
   push:
     branches:
       - main
-    paths:
-      - "*"
-      - ".github/**"
-      - "crates/**"
-      - "docs/**"
-      - "scripts/**"
-      - "tests/**"
-      - "xtask/**"
   workflow_dispatch:
     inputs:
       base:

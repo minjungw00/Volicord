@@ -135,11 +135,14 @@ operational jobs remain separate. The direct commands documented below remain
 stable focused and diagnostic checks; the profiles own series-level selection,
 sequencing, durable capture, aggregate handling, and summary status.
 
-`docs/owner-routing.yaml` also owns the canonical main-CI path-trigger set. It
-includes every root-level file and each current maintained repository directory.
-Metadata validation requires every tracked path to match that set. A repository
-contract check requires the pull-request and push filters to be identical to
-the canonical set, so a new tracked route cannot silently fall outside CI.
+`docs/owner-routing.yaml` also owns one closed main-CI policy:
+`repository_changes: all`. The pull-request and configured push events declare
+no `paths` or `paths-ignore` filter, so a new top-level directory, deletion-only
+change, or rename-only change starts CI without first extending trigger
+metadata. Repository ownership and heavy-check selection remain inside
+`owner-route` and `validate`; the GitHub workflow does not duplicate them. The
+repository contract validator also requires the event-specific `ci-base` step
+to precede the single final-validation step that consumes its base output.
 
 ## Durable Command Results
 
@@ -379,8 +382,11 @@ read-only and verifies the machine-checkable shape:
   the current Git tree; an unknown tracked path, stale exact route, or stale,
   empty, duplicate, or redundant exemption is invalid. Base-revision routing
   remains separate from this current-metadata integrity check.
-- Its canonical CI trigger policy covers every tracked path, and the main CI
-  workflow's pull-request and push path filters are identical to that policy.
+- Its closed CI trigger policy covers all repository changes. The main CI
+  workflow declares neither `paths` nor `paths-ignore` for pull requests or
+  configured pushes, applies the same always-on repository-change policy to
+  both events, and resolves the event-specific series base before final
+  validation.
 
 `docs-check` does not search Rust or Markdown lines for prohibited words or
 phrases. Prose quality, brand claims, security wording, and host-support wording

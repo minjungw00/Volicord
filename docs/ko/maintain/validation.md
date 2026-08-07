@@ -124,11 +124,13 @@ checkout한 head의 조상이 아닌 경우, `HEAD..HEAD`, 변경 경로가 없�
 집중 및 진단 점검으로 남고, profile이 series 수준 선택, 순서, 오래 남는 결과 수집,
 aggregate 처리, summary 상태를 담당합니다.
 
-`docs/owner-routing.yaml`은 주 CI의 정규 path trigger 집합도 담당합니다. 이 집합은
-모든 루트 수준 파일과 현재 유지되는 각 저장소 directory를 포함합니다. Metadata
-검증은 모든 추적 경로가 이 집합과 일치하도록 요구합니다. 저장소 계약 점검은 pull
-request와 push filter가 서로 같고 정규 집합과도 같도록 요구하므로, 새 추적 경로가
-CI 범위 밖에 조용히 남을 수 없습니다.
+`docs/owner-routing.yaml`은 주 CI의 닫힌 정책 하나도 담당합니다. 그 값은
+`repository_changes: all`입니다. Pull request와 설정된 push event에는 `paths`나
+`paths-ignore` filter가 없으므로 새 최상위 directory, 삭제만 있는 변경, 이름 변경만
+있는 변경도 trigger metadata를 먼저 늘리지 않고 CI를 시작합니다. 저장소 담당 범위와
+무거운 점검 선택은 `owner-route`와 `validate` 안에 남으며 GitHub workflow가 이를
+중복하지 않습니다. 저장소 계약 validator는 event별 `ci-base` 단계가 그 기준 출력을
+사용하는 최종 검증 단계 하나보다 먼저 오도록 요구합니다.
 
 ## 오래 남는 명령 결과
 
@@ -344,8 +346,10 @@ feature, package metadata, workspace 구성, profile은 프로덕션 변경으�
   분류하며, 알 수 없는 추적 경로, 오래된 정확한 경로 규칙, 오래되었거나 비어
   있거나 중복되거나 불필요한 예외는 유효하지 않습니다. 기준 revision 경로 지정은
   이 현재 metadata 무결성 검사와 분리됩니다.
-- 정규 CI trigger 정책은 모든 추적 경로를 포함하며, 주 CI workflow의 pull request
-  및 push path filter는 이 정책과 동일합니다.
+- 닫힌 CI trigger 정책은 모든 저장소 변경을 포함합니다. 주 CI workflow는 pull
+  request와 설정된 push에 `paths`와 `paths-ignore`를 모두 두지 않고 두 event에 같은
+  상시 실행 저장소 변경 정책을 적용하며, 최종 검증 전에 event별 series 기준을
+  해석합니다.
 
 `docs-check`는 Rust나 Markdown 줄에서 금지 단어나 문구를 검색하지 않습니다.
 산문 품질, 브랜드 주장, 보안 표현, 호스트 지원 표현은 담당 문서와 사람 검토의

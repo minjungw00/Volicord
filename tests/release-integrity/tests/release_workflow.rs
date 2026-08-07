@@ -215,7 +215,7 @@ fn ci_runs_the_complete_activation_journey_on_every_native_runtime_platform() {
 }
 
 #[test]
-fn workflow_filters_cover_the_shared_smoke_boundary_and_contract_inputs() {
+fn ordinary_ci_is_always_on_while_release_filters_cover_contract_inputs() {
     let release_required = [
         ".github/actions/volicord-release-smoke/**",
         "crates/volicord-cli/**",
@@ -227,22 +227,16 @@ fn workflow_filters_cover_the_shared_smoke_boundary_and_contract_inputs() {
     .into_iter()
     .map(str::to_owned)
     .collect::<BTreeSet<_>>();
+
+    let routing = read_yaml("docs/owner-routing.yaml");
+    assert_eq!(
+        routing["ci_trigger_policy"]["repository_changes"].as_str(),
+        Some("all")
+    );
     let ci = read_yaml(".github/workflows/ci.yml");
-    let ci_pull_paths = workflow_paths(&ci, "pull_request");
-    let ci_push_paths = workflow_paths(&ci, "push");
-    let canonical = canonical_ci_trigger_paths();
-    assert_eq!(ci_pull_paths, canonical);
-    assert_eq!(ci_push_paths, canonical);
-    assert!(canonical.contains("*"));
-    for directory in [
-        ".github/**",
-        "crates/**",
-        "docs/**",
-        "scripts/**",
-        "tests/**",
-        "xtask/**",
-    ] {
-        assert!(canonical.contains(directory));
+    for event in ["pull_request", "push"] {
+        assert!(ci["on"][event]["paths"].is_null());
+        assert!(ci["on"][event]["paths-ignore"].is_null());
     }
 
     let release = read_yaml(".github/workflows/release.yml");
@@ -375,16 +369,6 @@ fn shared_final_plan_invocations(steps: &[Value]) -> Vec<&str> {
                 && run.contains("validate final")
                 && run.contains("steps.validation-base.outputs.base")
         })
-        .collect()
-}
-
-fn canonical_ci_trigger_paths() -> BTreeSet<String> {
-    let routing = read_yaml("docs/owner-routing.yaml");
-    routing["ci_trigger_policy"]["paths"]
-        .as_sequence()
-        .expect("canonical CI trigger paths")
-        .iter()
-        .map(|path| path.as_str().expect("CI trigger path").to_owned())
         .collect()
 }
 

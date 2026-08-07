@@ -105,7 +105,7 @@ path_routes:
 tracked_path_exemptions: []
 ci_trigger_policy:
   workflow: .github/workflows/ci.yml
-  paths: ["*", ".github/**", "crates/**", "docs/**"]
+  repository_changes: all
 package_defaults:
   instruction_paths: [crates/AGENTS.md]
   owner_doc_ids: [maintain.validation]
@@ -122,9 +122,14 @@ package_routes:
             r#"name: CI
 on:
   pull_request:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
   push:
-    paths: ["*", ".github/**", "crates/**", "docs/**"]
+    branches: [main]
+jobs:
+  checks:
+    steps:
+      - id: validation-base
+        run: cargo run -p xtask -- ci-base --event-name "$GITHUB_EVENT_NAME" --event-path "$GITHUB_EVENT_PATH" --head HEAD --github-output "$GITHUB_OUTPUT"
+      - run: cargo run -p xtask -- validate final --base "${{ steps.validation-base.outputs.base }}"
 "#,
         );
 

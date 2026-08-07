@@ -167,14 +167,7 @@ tracked_path_exemptions: []
 
 ci_trigger_policy:
   workflow: .github/workflows/ci.yml
-  paths:
-    - "*"
-    - ".github/**"
-    - "crates/**"
-    - "docs/**"
-    - "scripts/**"
-    - "tests/**"
-    - "xtask/**"
+  repository_changes: all
 
 package_defaults:
   instruction_paths:

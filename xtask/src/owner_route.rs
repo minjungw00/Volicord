@@ -316,7 +316,13 @@ struct TrackedPathExemption {
 #[serde(deny_unknown_fields)]
 struct CiTriggerPolicy {
     workflow: String,
-    paths: Vec<String>,
+    repository_changes: RepositoryChangeTrigger,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum RepositoryChangeTrigger {
+    All,
 }
 
 #[derive(Debug, Deserialize)]
@@ -969,7 +975,7 @@ fn validate_routing_metadata(root: &Path, snapshot: &RoutingSnapshot) -> Result<
     let ci_trigger_policy: CiTriggerPolicy =
         serde_yaml::from_value(metadata.ci_trigger_policy.clone())
             .context("failed to parse current CI trigger policy")?;
-    validate_ci_trigger_policy(root, &ci_trigger_policy, tracked_paths)?;
+    validate_ci_trigger_policy(root, &ci_trigger_policy)?;
     validate_package_route(&metadata.package_defaults, documents, &instruction_paths)?;
     for route in metadata.package_routes.values() {
         validate_package_route(route, documents, &instruction_paths)?;
@@ -993,39 +999,13 @@ fn validate_routing_metadata(root: &Path, snapshot: &RoutingSnapshot) -> Result<
     Ok(())
 }
 
-fn validate_ci_trigger_policy(
-    root: &Path,
-    policy: &CiTriggerPolicy,
-    tracked_paths: &BTreeSet<String>,
-) -> Result<()> {
+fn validate_ci_trigger_policy(root: &Path, policy: &CiTriggerPolicy) -> Result<()> {
     validate_relative_path(&policy.workflow, "CI trigger workflow")?;
     if !root.join(&policy.workflow).is_file() {
         bail!("CI trigger workflow {} does not exist", policy.workflow);
     }
-    let mut canonical_paths = BTreeSet::new();
-    for pattern in &policy.paths {
-        validate_ci_trigger_pattern(pattern)?;
-        if !canonical_paths.insert(pattern.clone()) {
-            bail!("CI trigger path pattern {pattern:?} is duplicated");
-        }
-    }
-    if canonical_paths.is_empty() {
-        bail!("CI trigger policy must declare at least one path pattern");
-    }
-    let uncovered = tracked_paths
-        .iter()
-        .filter(|path| {
-            !canonical_paths
-                .iter()
-                .any(|pattern| ci_trigger_matches(pattern, path))
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    if !uncovered.is_empty() {
-        bail!(
-            "CI trigger policy does not cover tracked path(s): {}",
-            uncovered.join(", ")
-        );
+    if policy.repository_changes != RepositoryChangeTrigger::All {
+        bail!("CI trigger policy must cover all repository changes");
     }
 
     let workflow_path = root.join(&policy.workflow);
@@ -1033,69 +1013,103 @@ fn validate_ci_trigger_policy(
         .with_context(|| format!("failed to read {}", workflow_path.display()))?;
     let workflow: serde_yaml::Value = serde_yaml::from_str(&contents)
         .with_context(|| format!("failed to parse {}", workflow_path.display()))?;
-    let pull_request = workflow_trigger_paths(&workflow, "pull_request")?;
-    let push = workflow_trigger_paths(&workflow, "push")?;
+    let pull_request = workflow_repository_change_policy(&workflow, "pull_request")?;
+    let push = workflow_repository_change_policy(&workflow, "push")?;
     if pull_request != push {
         bail!(
-            "{} pull_request and push path filters differ; pull_request={}, push={}",
-            policy.workflow,
-            pull_request.iter().cloned().collect::<Vec<_>>().join(", "),
-            push.iter().cloned().collect::<Vec<_>>().join(", ")
+            "{} pull_request and push repository-change policies differ",
+            policy.workflow
         );
     }
-    if pull_request != canonical_paths {
+    if pull_request != RepositoryChangeTrigger::All {
         bail!(
-            "{} path filters differ from the canonical CI trigger policy; expected {}, found {}",
-            policy.workflow,
-            canonical_paths
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", "),
-            pull_request.iter().cloned().collect::<Vec<_>>().join(", ")
+            "{} pull_request and push events must cover all repository changes",
+            policy.workflow
         );
     }
+    validate_ci_base_before_final(&workflow, &policy.workflow)?;
     Ok(())
 }
 
-fn validate_ci_trigger_pattern(pattern: &str) -> Result<()> {
-    if pattern == "*" {
-        return Ok(());
+fn workflow_repository_change_policy(
+    workflow: &serde_yaml::Value,
+    event: &str,
+) -> Result<RepositoryChangeTrigger> {
+    let events = workflow["on"]
+        .as_mapping()
+        .context("CI workflow must declare an event mapping")?;
+    let event_key = serde_yaml::Value::String(event.to_owned());
+    let configuration = events
+        .get(&event_key)
+        .with_context(|| format!("CI workflow must declare the {event} event"))?;
+    if configuration.is_null() {
+        return Ok(RepositoryChangeTrigger::All);
     }
-    let Some(prefix) = pattern.strip_suffix("**") else {
-        bail!("CI trigger path pattern {pattern:?} must be `*` or end with `/**`");
-    };
-    if !prefix.ends_with('/')
-        || prefix
-            .chars()
-            .any(|character| matches!(character, '*' | '?' | '[' | ']'))
-    {
-        bail!("CI trigger path pattern {pattern:?} must be `*` or end with `/**`");
+    let mapping = configuration
+        .as_mapping()
+        .with_context(|| format!("CI workflow event {event} must be a mapping or null"))?;
+    for filter in ["paths", "paths-ignore"] {
+        if mapping.contains_key(serde_yaml::Value::String(filter.to_owned())) {
+            bail!("CI workflow event {event} must not declare {filter}");
+        }
     }
-    validate_relative_path(prefix, "CI trigger path prefix")
+    Ok(RepositoryChangeTrigger::All)
 }
 
-fn ci_trigger_matches(pattern: &str, path: &str) -> bool {
-    if pattern == "*" {
-        return !path.contains('/');
-    }
-    pattern
-        .strip_suffix("**")
-        .is_some_and(|prefix| path.starts_with(prefix))
-}
-
-fn workflow_trigger_paths(workflow: &serde_yaml::Value, event: &str) -> Result<BTreeSet<String>> {
-    workflow["on"][event]["paths"]
+fn validate_ci_base_before_final(workflow: &serde_yaml::Value, workflow_path: &str) -> Result<()> {
+    let steps = workflow["jobs"]["checks"]["steps"]
         .as_sequence()
-        .with_context(|| format!("CI workflow event {event} must declare path filters"))?
+        .with_context(|| format!("{workflow_path} must declare jobs.checks.steps"))?;
+    let base_steps = steps
         .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .map(str::to_owned)
-                .with_context(|| format!("CI workflow event {event} has a non-string path filter"))
+        .enumerate()
+        .filter(|(_, step)| step["id"].as_str() == Some("validation-base"))
+        .filter_map(|(index, step)| step["run"].as_str().map(|run| (index, run)))
+        .filter(|(_, run)| {
+            [
+                "cargo run",
+                "-p xtask",
+                "ci-base",
+                "--event-name",
+                "$GITHUB_EVENT_NAME",
+                "--event-path",
+                "$GITHUB_EVENT_PATH",
+                "--head HEAD",
+                "--github-output",
+                "$GITHUB_OUTPUT",
+            ]
+            .iter()
+            .all(|required| run.contains(required))
         })
-        .collect()
+        .collect::<Vec<_>>();
+    if base_steps.len() != 1 {
+        bail!("{workflow_path} must resolve one event-specific validation-base with ci-base");
+    }
+    let final_steps = steps
+        .iter()
+        .enumerate()
+        .filter_map(|(index, step)| step["run"].as_str().map(|run| (index, run)))
+        .filter(|(_, run)| {
+            [
+                "cargo run",
+                "-p xtask",
+                "validate final",
+                "--base",
+                "steps.validation-base.outputs.base",
+            ]
+            .iter()
+            .all(|required| run.contains(required))
+        })
+        .collect::<Vec<_>>();
+    if final_steps.len() != 1 {
+        bail!(
+            "{workflow_path} must run validate final once with the event-specific validation-base"
+        );
+    }
+    if base_steps[0].0 >= final_steps[0].0 {
+        bail!("{workflow_path} must resolve ci-base before validate final");
+    }
+    Ok(())
 }
 
 fn current_tracked_git_paths(root: &Path) -> Result<BTreeSet<String>> {
