@@ -1,5 +1,232 @@
 {
   "schema_version": 1,
   "description": "Maintained self-authored fixtures for reconstruction validation experiments.",
-  "fixtures": []
+  "fixtures": [
+    {
+      "id": "v01-java",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/java",
+      "purpose": "Exercise Java packages, interface implementation, classes, fields, constructors, methods, imports, calls, Maven configuration, and JUnit-style tests.",
+      "expected_entities": [
+        "java|src/main/java/example/Greeter.java|interface|Named|5",
+        "java|src/main/java/example/Greeter.java|method|name|6",
+        "java|src/main/java/example/Greeter.java|class|Greeter|9",
+        "java|src/main/java/example/Greeter.java|field|prefix|10",
+        "java|src/main/java/example/Greeter.java|method|Greeter|12",
+        "java|src/main/java/example/Greeter.java|method|name|16",
+        "java|src/main/java/example/Greeter.java|method|greet|20",
+        "java|src/test/java/example/GreeterTest.java|class|GreeterTest|5",
+        "java|src/test/java/example/GreeterTest.java|test|greetsPerson|7"
+      ],
+      "expected_relations": [
+        "imports|example|java.util.Objects",
+        "implements|example.Greeter|Named",
+        "calls_syntactically|example.Greeter.greet|name",
+        "tests|example.GreeterTest.greetsPerson|java"
+      ],
+      "expected_unsupported": ["annotation processing", "reflection", "generated sources"],
+      "content_sha256": "5b3579bc2a073420d519528b89d39de143b1253ea843504ca1ada6d7ed36246f",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-python",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/python",
+      "purpose": "Exercise Python packages, modules, imports, functions, classes, instance fields, methods, calls, pyproject configuration, and pytest-style tests.",
+      "expected_entities": [
+        "python|src/greeter/core.py|function|format_name|4",
+        "python|src/greeter/core.py|class|Greeter|8",
+        "python|src/greeter/core.py|method|__init__|9",
+        "python|src/greeter/core.py|field|prefix|10",
+        "python|src/greeter/core.py|method|greet|12",
+        "python|tests/test_core.py|test|test_greet|4"
+      ],
+      "expected_relations": [
+        "imports|src.greeter.core|math",
+        "imports|tests.test_core|greeter.core",
+        "calls_syntactically|src.greeter.core.Greeter.greet|format_name",
+        "tests|tests.test_core.test_greet|python"
+      ],
+      "expected_unsupported": ["dynamic dispatch", "runtime monkey-patching"],
+      "content_sha256": "7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-javascript",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/javascript",
+      "purpose": "Exercise JavaScript ES modules, exports, classes, instance fields, methods, functions, calls, tests, and recoverable malformed source.",
+      "expected_entities": [
+        "javascript|src/broken.js|function|stillVisible|1",
+        "javascript|src/index.js|class|Greeter|3",
+        "javascript|src/index.js|method|constructor|4",
+        "javascript|src/index.js|field|prefix|5",
+        "javascript|src/index.js|method|greet|8",
+        "javascript|src/index.js|function|formatName|13",
+        "javascript|test/index.test.js|test|testGreeting|3"
+      ],
+      "expected_relations": [
+        "imports|src/index.js|./suffix.js",
+        "exports|src/index.js|Greeter",
+        "calls_syntactically|Greeter.greet|formatName",
+        "tests|test/index.test.js.testGreeting|javascript"
+      ],
+      "expected_unsupported": ["dynamic properties", "prototype mutation", "runtime module resolution", "unbalanced braces"],
+      "content_sha256": "8dd3d47acf0f5ddef3d21d33cc7c869d36db8d59983a3a3f6df036b1b62996a4",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-typescript",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/typescript",
+      "purpose": "Exercise TypeScript interfaces, types, enums, classes, constructor fields, methods, functions, imports, exports, calls, tests, and tsconfig configuration.",
+      "expected_entities": [
+        "typescript|src/index.ts|interface|Named|3",
+        "typescript|src/index.ts|method|name|4",
+        "typescript|src/index.ts|type|Identifier|7",
+        "typescript|src/index.ts|enum|Mode|9",
+        "typescript|src/index.ts|class|Greeter|14",
+        "typescript|src/index.ts|method|constructor|15",
+        "typescript|src/index.ts|field|prefix|15",
+        "typescript|src/index.ts|method|name|17",
+        "typescript|src/index.ts|method|greet|21",
+        "typescript|src/index.ts|function|formatName|26",
+        "typescript|test/index.test.ts|test|testGreeting|3"
+      ],
+      "expected_relations": [
+        "imports|src/index.ts|./suffix.js",
+        "exports|src/index.ts|Identifier",
+        "implements|Greeter|Named",
+        "calls_syntactically|Greeter.greet|this.name",
+        "tests|test/index.test.ts.testGreeting|typescript"
+      ],
+      "expected_unsupported": ["type-level evaluation", "declaration merging"],
+      "content_sha256": "ddcb5f043dde8b5e406c5d2092771510c2f16071343e6f0a072a99be2f6abc18",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-c",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/c",
+      "purpose": "Exercise C headers and sources, structs, enums, fields, function declarations and definitions, includes, calls, CMake configuration, and tests.",
+      "expected_entities": [
+        "c|include/greeter.h|struct|Greeter|4",
+        "c|include/greeter.h|field|prefix|5",
+        "c|include/greeter.h|enum|GreeterMode|8",
+        "c|include/greeter.h|function|greeter_greet|13",
+        "c|src/greeter.c|function|greeter_greet|3",
+        "c|tests/test_greeter.c|test|test_greeter|3"
+      ],
+      "expected_relations": [
+        "includes|src/greeter.c|greeter.h",
+        "includes|tests/test_greeter.c|greeter.h",
+        "calls_syntactically|tests/test_greeter.c.test_greeter|greeter_greet",
+        "tests|tests/test_greeter.c.test_greeter|c"
+      ],
+      "expected_unsupported": ["macro expansion", "conditional compilation"],
+      "content_sha256": "f8fa2b884bcd665bb592144d0023454fd276e310554946c9b5daa42e912db044",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-cpp",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/cpp",
+      "purpose": "Exercise C++ namespaces, classes, inheritance, structs, enums, aliases, fields, methods, includes, calls, CMake configuration, and tests.",
+      "expected_entities": [
+        "cpp|include/greeter.hpp|class|Named|7",
+        "cpp|include/greeter.hpp|struct|Options|13",
+        "cpp|include/greeter.hpp|field|loud|14",
+        "cpp|include/greeter.hpp|enum|Mode|17",
+        "cpp|include/greeter.hpp|type|Identifier|19",
+        "cpp|include/greeter.hpp|class|Greeter|21",
+        "cpp|include/greeter.hpp|method|Greeter|23",
+        "cpp|include/greeter.hpp|method|name|24",
+        "cpp|include/greeter.hpp|method|greet|25",
+        "cpp|include/greeter.hpp|field|prefix_|28",
+        "cpp|src/greeter.cpp|method|Greeter|7",
+        "cpp|src/greeter.cpp|method|name|9",
+        "cpp|src/greeter.cpp|method|greet|13",
+        "cpp|tests/test_greeter.cpp|test|test_greeter|3"
+      ],
+      "expected_relations": [
+        "includes|src/greeter.cpp|greeter.hpp",
+        "inherits|sample.Greeter|Named",
+        "calls_syntactically|src/greeter.cpp.greet|name",
+        "tests|tests/test_greeter.cpp.test_greeter|cpp"
+      ],
+      "expected_unsupported": ["template instantiation", "macros", "conditional compilation"],
+      "content_sha256": "6ec33083178041df947674b64d01602dd9e3ffbcc2cbc8726a9fc397a82a3ea4",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-rust",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/rust",
+      "purpose": "Exercise a Rust Cargo workspace with modules, traits, structs, fields, enums, aliases, impl methods, functions, calls, cfg, and tests.",
+      "expected_entities": [
+        "rust|crates/greeter/src/lib.rs|function|normalize|2",
+        "rust|crates/greeter/src/lib.rs|trait|Named|7",
+        "rust|crates/greeter/src/lib.rs|method|name|8",
+        "rust|crates/greeter/src/lib.rs|struct|Greeter|11",
+        "rust|crates/greeter/src/lib.rs|field|prefix|12",
+        "rust|crates/greeter/src/lib.rs|enum|Mode|15",
+        "rust|crates/greeter/src/lib.rs|type|Identifier|20",
+        "rust|crates/greeter/src/lib.rs|method|new|23",
+        "rust|crates/greeter/src/lib.rs|method|greet|27",
+        "rust|crates/greeter/src/lib.rs|method|name|33",
+        "rust|crates/greeter/src/lib.rs|test|greets_person|43"
+      ],
+      "expected_relations": [
+        "implements|Greeter|Named",
+        "imports|crates/greeter/src/lib.rs|super::*",
+        "calls_syntactically|Greeter.greet|format::normalize",
+        "tests|crates/greeter/src/lib.rs.greets_person|rust"
+      ],
+      "expected_unsupported": ["macro expansion", "cfg-disabled code", "trait resolution"],
+      "content_sha256": "8161bab1034f30b88012a4dcc4ffba5ccfb43c6023561c4d30f51afa6f2fb899",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-polyglot",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/polyglot",
+      "purpose": "Exercise repository-wide inventory and separate Java, Python, and TypeScript structural results beside shared configuration and documentation without inventing cross-process calls.",
+      "expected_entities": [
+        "java|java/Gateway.java|class|Gateway|3",
+        "java|java/Gateway.java|method|route|4",
+        "python|python/formatter.py|function|format_greeting|1",
+        "typescript|typescript/client.ts|interface|Reply|1",
+        "typescript|typescript/client.ts|field|message|2",
+        "typescript|typescript/client.ts|function|readReply|5"
+      ],
+      "expected_relations": [
+        "calls_syntactically|polyglot.gateway.Gateway.route|name.trim",
+        "calls_syntactically|python.formatter.format_greeting|name.strip",
+        "exports|typescript/client.ts|Reply"
+      ],
+      "expected_unsupported": ["cross-process boundary is documented inventory evidence, not a syntax-level call"],
+      "content_sha256": "21d9b78a1ff12838932aeabeea2b1c12c1a901cf9db238e4dd25584bcff0baff",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v01-out-of-set",
+      "validation_id": "V01",
+      "path": "rebuild/validation/fixtures/v01/out_of_set",
+      "purpose": "Verify that a text-based Go repository remains inventory-available while structural capability is explicitly unavailable in the first adapter set.",
+      "expected_entities": [],
+      "expected_relations": [],
+      "expected_unsupported": ["V01 has no Go structural adapter; inventory remains available"],
+      "content_sha256": "addbe4831b61f30e56149051ab441347d0cbb7604ee2c914bb0b4ddaf12e3a41",
+      "origin": "Self-authored deterministic fixture for V01.",
+      "license": "CC0-1.0"
+    }
+  ]
 }

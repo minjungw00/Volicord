@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(cpp_greeter CXX)
+add_library(greeter src/greeter.cpp)
+target_include_directories(greeter PUBLIC include)
+add_executable(greeter_test tests/test_greeter.cpp)
+target_link_libraries(greeter_test PRIVATE greeter)

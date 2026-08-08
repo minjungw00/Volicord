@@ -1,0 +1,5 @@
+{
+  "gateway": "java/Gateway.java",
+  "formatter": "python/formatter.py",
+  "client": "typescript/client.ts"
+}
