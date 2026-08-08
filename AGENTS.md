@@ -1,153 +1,124 @@
-# Agent Working Rules
+# Agent Working Rules — Reconstruction Branch
 
-These rules apply across the repository to agents and maintainers who edit,
-review, validate, or report on Volicord repository work. They are work
-instructions only. They do not define product behavior, public API behavior,
-storage effects, security guarantees, schemas, Core authority semantics,
-conformance results, QA results, acceptance decisions, close-readiness state,
-residual-risk decisions, or implementation output.
+These rules apply across this reconstruction branch. They are repository work
+instructions, not product contracts. The maintained implementation and
+documentation that existed at the reconstruction baseline remain available for
+reference, but they are not compatibility requirements for the replacement
+product.
 
 ## Scope And Hierarchy
 
 - Read this file before editing repository files.
-- Read the closest applicable `AGENTS.md` before changing files in its scope.
-  Under `docs/`, read `docs/AGENTS.md`. For Rust workspace implementation
-  work, including crate code and supporting tests or fixtures, read
-  `crates/AGENTS.md`.
-- When a change crosses documentation and implementation boundaries, apply all
-  relevant scoped rules together. Stop and report if scoped rules cannot be
-  reconciled.
-- If another scoped `AGENTS.md` is added later, it applies only to files under
-  that directory and does not replace this root file.
-- Stop and report if the repository structure no longer matches the maintained
-  shape described by this file, `docs/AGENTS.md`, `crates/AGENTS.md`,
-  `docs/doc-index.yaml`, `docs/en`, `docs/ko`, and `crates`.
-- Stop and report before broad documentation edits if `docs/doc-index.yaml` is
-  missing or malformed enough that the applicable shared or paired document
-  entry cannot be identified.
+- For any file under `rebuild/`, also read `rebuild/AGENTS.md` and the relevant
+  documents under `rebuild/docs/design/`.
+- `crates/AGENTS.md` and `docs/AGENTS.md` apply only when a task intentionally
+  modifies the legacy paths in their scope. They do not govern new work under
+  `rebuild/`.
+- If a legacy scoped rule conflicts with the reconstruction boundary in this
+  file, stop and report the conflict instead of adapting the replacement
+  design to the legacy contract.
+- Do not use product-generation or temporary reconstruction labels in public
+  names, package names, commands, schemas, or user documentation. Conversation
+  shorthand does not define repository naming.
 
-## Stable Owner Routes
+## Repository Zones
 
-- Use `docs/doc-index.yaml` for machine-readable owner routing, maintained
-  paths, paired-language routing, maintenance responsibility, and applicability.
-  It is not runtime configuration and not product contract data.
-- Use `docs/terminology-map.yaml` for terminology and identifier-preservation
-  rules.
-- For Rust implementation work, start with
-  `docs/en/architecture-guide/change-guide.md` or
-  `docs/ko/architecture-guide/change-guide.md`, then use the matching
-  `docs/en/architecture-guide/architecture.md` or
-  `docs/ko/architecture-guide/architecture.md` before changing durable
-  implementation structure.
-- For public API, CLI, MCP, storage, schema, runtime-boundary, security, Core
-  model, conformance, close-readiness, value-set, or blocker behavior, use the
-  focused Reference owner selected through `docs/doc-index.yaml` or the
-  human-readable Reference Index at `docs/en/reference/README.md` or
-  `docs/ko/reference/README.md`.
-- For the supported public API method list and method-owner routing, use
-  `docs/en/reference/api/methods.md` and
-  `docs/ko/reference/api/methods.md`. Administrative CLI commands are not
-  public API methods.
-- For product naming, brand copy, visual presentation, or broad claim wording,
-  use `docs/en/maintain/brand-guidelines.md` or
-  `docs/ko/maintain/brand-guidelines.md` together with the applicable
-  Reference owner when exact behavior matters.
-- For documentation policy and validation, use
-  `docs/en/maintain/documentation-policy.md`,
-  `docs/ko/maintain/documentation-policy.md`,
-  `docs/en/maintain/validation.md`, and
-  `docs/ko/maintain/validation.md`.
+### Reconstruction zone
 
-## Contract And Implementation Boundaries
+- New product code, tests, design documents, fixtures, and temporary build
+  configuration belong under `rebuild/` until cutover.
+- The replacement implementation must build from `rebuild/Cargo.toml` without
+  depending on the existing Volicord workflow crates.
+- New durable product meaning is owned by `rebuild/docs/design/` during the
+  reconstruction period.
 
-- Do not define API behavior, storage behavior, schema meaning, security
-  guarantees, Core authority semantics, or other product contracts in an
-  `AGENTS.md`, README, Maintain page, route page, implementation comment, test,
-  fixture, generated output, or CLI help.
-- If implementation work needs behavior that the maintained owners do not
-  define, update the applicable owner document first or report the owner gap.
-- If implementation and documentation disagree, treat that as an owner-routing
-  or implementation gap to resolve. Do not infer a new contract from current
-  code, examples, generated output, logs, or metadata.
-- Keep product implementation code, tests, fixtures, and build configuration in
-  ordinary implementation paths. Do not put product implementation code under
-  `docs/`.
-- Core-facing code must stay independent of CLI and MCP adapter layers. CLI and
-  MCP adapters may call Core-facing interfaces.
-- Keep tests and fixtures aligned to owner-defined facts. A test, fixture,
-  helper, or snapshot must not become the only place a product contract is
-  defined.
-- Do not add legacy compatibility code, old aliases, fallback behavior, or
-  adapter paths unless a stable Reference or Architecture Guide owner explicitly
-  requires them. When compatibility is required, test the current supported
-  behavior and owner-defined boundary.
-- When public contracts change, update the focused owner, durable contract
-  tests, affected generated documentation or schema output, and reader-facing
-  routes in the same change.
+### Legacy reference zone
 
-## Generated And Runtime Files
+The following paths are reference-only by default:
 
-- Do not edit generated files directly. Change the source, generator, template,
-  or fixture that owns the generated content, then regenerate it with the
-  repository-supported command.
-- Maintained documentation, shared metadata, README files, and `AGENTS.md`
-  files are not Volicord runtime homes and are not places for generated runtime
-  state.
-- Do not store runtime data, generated logs, SQLite files, product runtime
-  homes, test runtime homes, generated projections, fixture output, QA results,
-  acceptance records, close-readiness state, residual-risk records, work logs,
-  archive copies, or local scratch notes in maintained documentation or
-  repository guidance files.
-- For local test runs, use Cargo build output, another ignored test-output
-  location already used by the repository, or `/tmp`. If a test needs a runtime
-  home, point it at a disposable per-test path.
-- Do not add one-off tests, persistent scratch artifacts, or local output
-  directories. Add durable tests only when they protect current behavior,
-  owner-defined contracts, stable validation rules, or user value.
-- If a tool creates generated output during editing or validation, remove it
-  before finishing unless it is ordinary ignored build output.
+- `crates/`
+- `tests/`
+- `docs/en/`, `docs/ko/`, `docs/doc-index.yaml`, and
+  `docs/terminology-map.yaml`
+- `README.md` and `README.ko.md`
+- the existing root Cargo workspace, release scripts, installers, Docker files,
+  workflows, and `xtask/`
 
-## Language And Terminology
+Do not modify a reference-only path unless the task explicitly does one of the
+following:
 
-- English and Korean documentation are both maintained. Neither language is an
-  archive, appendix, or translation-only copy.
-- For ordinary lookup, read the language that matches the request or the
-  default language recorded in `docs/doc-index.yaml`.
-- Do not finish a meaning-changing documentation batch with only one language
-  updated when the changed document has a maintained paired path.
-- Preserve exact identifiers, file paths, API methods, schema names, field
-  names, enum values, status values, product labels, anchors, and code literals
-  where the terminology map requires them.
-- Korean documentation must use natural Korean technical prose.
+1. fixes a critical issue needed to keep the baseline inspectable;
+2. extracts an approved, responsibility-bounded primitive into the
+   reconstruction zone;
+3. prepares the final cutover after the replacement gate passes; or
+4. updates the root boundary files required to keep the workspaces isolated.
 
-## Validation And Reporting
+When a legacy path is changed, state why the change is necessary and confirm
+that it does not restore a removed workflow contract as a compatibility
+requirement.
 
-- Record the parent of the first change-series commit as the explicit series
-  base. Use `cargo run -p xtask -- owner-route --changed --base <revision>` to
-  discover applicable instructions, owners, packages, and validation classes.
-- Use `cargo run -p xtask -- validate focused --base <revision>` for
-  intermediate change states and commits. The focused profile is the
-  repository-owned replacement for manually selecting narrow Cargo and
-  documentation checks; it never runs the exact workspace aggregate.
-- After every planned commit in a sequential series is present, start one
-  `cargo run -p xtask -- validate final --base <revision>` session. Do not run
-  the final profile for each intermediate commit or repeat its broad commands
-  outside that session.
-- Validation command stdout, stderr, invocation, timestamps, and exit status
-  are stored under ignored `target/volicord-validation/<run-id>/` paths. Keep
-  and report the run ID and `summary.json` path when a terminal handle is lost.
-- The final profile owns bounded exact-aggregate retry and decomposition. A
-  decomposed pass does not replace an exact aggregate failure, and a changed
-  package failure remains related to the change series.
-- A `test:` commit must not change production behavior. A `docs:` commit must
-  not change production code or runtime contracts. Split a production gap
-  found during either kind of work into a preceding `feat:`, `fix:`, or
-  `refactor:` commit.
-- If validation cannot run because the relevant workspace, crate, toolchain,
-  dependency, or network access is unavailable, report it as skipped validation
-  with the reason.
-- Before finishing, confirm changed links, paths, anchors, paired-language
-  links, owner routing, terminology, and repository hygiene.
-- Final reports stay in the conversation, not in repository files. List
-  passed, failed, decomposed, and skipped validation separately, include run
-  IDs and summary paths, and report remaining risks or out-of-scope issues.
+## Reconstruction Contract Ownership
+
+- `rebuild/docs/design/product-charter.md` owns the accepted product purpose,
+  user, values, principles, and non-goals.
+- `rebuild/docs/design/open-decisions.md` owns unresolved product and design
+  questions and records accepted choices.
+- `rebuild/docs/design/acceptance-scenarios.md` owns the replacement usability
+  and cutover scenarios.
+- `rebuild/docs/design/legacy-asset-inventory.md` owns the provisional
+  reuse/reference/removal classification.
+- `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
+  deleting the legacy implementation.
+- Existing Reference, Architecture Guide, conformance, and SignalBox workflow
+  documents describe the legacy baseline only. Do not infer replacement
+  contracts from them.
+- English/Korean parity and `docs/doc-index.yaml` routing do not apply to
+  reconstruction design documents. Final maintained documentation policy will
+  be established before cutover.
+
+## Prohibited Compatibility Shortcuts
+
+- Do not implement the replacement API as wrappers over legacy `status`,
+  `intake`, UserAction, Write Ticket, Run, Evidence, final-acceptance, or close
+  methods.
+- Do not add replacement records to the existing Runtime Home or Store schema.
+- Do not make new crates depend on `volicord-core`, `volicord-store`,
+  `volicord-types`, `volicord-user-action-service`, or other legacy workflow
+  crates.
+- Do not make legacy conformance tests the acceptance criteria for replacement
+  behavior.
+- Do not preserve Task phases, Change Units, ordinary-write admission, or close
+  ceremony merely because the existing implementation contains them.
+- Reuse code only after the needed primitive has a new responsibility, new
+  tests, and no dependency on legacy workflow semantics.
+
+## Runtime And Generated State
+
+- Keep replacement runtime state separate from the existing `VOLICORD_HOME` and
+  legacy database schema.
+- Use ignored reconstruction-local paths such as `.local/` or
+  `rebuild/.local/` for development runtime homes and generated analysis data.
+- Canonical context, candidate observations, and rebuildable derived indexes
+  must remain distinguishable in both design and implementation.
+- Do not commit runtime homes, indexes, embeddings, generated analysis graphs,
+  SQLite journals, logs, source copies, or local model output.
+
+## Validation
+
+For reconstruction work, run validation against the nested workspace rather
+than the legacy root workspace:
+
+```bash
+cargo metadata --manifest-path rebuild/Cargo.toml --no-deps --format-version 1
+cargo fmt --manifest-path rebuild/Cargo.toml --all -- --check
+cargo clippy --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features
+cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features
+```
+
+- Confirm that every reconstruction workspace package is under `rebuild/`.
+- Confirm that no reconstruction package depends on a legacy Volicord crate.
+- Run legacy validation only when legacy paths are intentionally changed.
+- If required tools are unavailable, report the skipped command and reason;
+  do not claim validation passed.
+- Keep final reports in the conversation. Report changed files, checks and
+  results, skipped checks, and remaining risks.

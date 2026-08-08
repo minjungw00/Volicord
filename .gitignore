@@ -28,3 +28,8 @@
 /staged-artifacts/
 /scratch/
 *.log
+
+# Reconstruction workspace output and local state
+/rebuild/target/
+/.local/
+/rebuild/.local/
