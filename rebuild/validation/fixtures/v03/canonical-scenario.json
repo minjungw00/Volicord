@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "project": {
+    "id": "project-018f4f06-4d00-7a01-8000-000000000003",
+    "name": "Portable Context Fixture",
+    "created_at": "2026-08-08T20:30:00Z"
+  },
+  "initial_clone": "/fixtures/clones/primary",
+  "another_clone": "/fixtures/clones/another-path",
+  "records": [
+    {
+      "id": "source-repository",
+      "kind": "source",
+      "body": {"locator": "src/lib.rs", "source_kind": "repository_file"},
+      "author_kind": "observed",
+      "source_id": null,
+      "created_at": "2026-08-08T20:30:01Z"
+    },
+    {
+      "id": "question-storage",
+      "kind": "question",
+      "body": {"text": "Which local storage boundary should be used?", "prerequisites": []},
+      "author_kind": "agent",
+      "source_id": "source-repository",
+      "created_at": "2026-08-08T20:30:02Z"
+    },
+    {
+      "id": "decision-storage",
+      "kind": "decision",
+      "body": {"choice": "transactional local store", "question_id": "question-storage", "rationale": "Recovery must preserve committed context."},
+      "author_kind": "user",
+      "source_id": "source-user-turn-17",
+      "created_at": "2026-08-08T20:30:03Z"
+    },
+    {
+      "id": "context-goal",
+      "kind": "context_item",
+      "body": {"context_kind": "goal", "text": "Resume with the same project context."},
+      "author_kind": "user",
+      "source_id": "source-user-turn-17",
+      "created_at": "2026-08-08T20:30:04Z"
+    },
+    {
+      "id": "context-fact",
+      "kind": "context_item",
+      "body": {"context_kind": "fact", "text": "The fixture has a Rust source file."},
+      "author_kind": "agent",
+      "source_id": "source-repository",
+      "created_at": "2026-08-08T20:30:05Z"
+    },
+    {
+      "id": "checkpoint-1",
+      "kind": "checkpoint",
+      "body": {"state": "paused", "summary": "Canonical scenario recorded.", "verification": "fixture assertions pending"},
+      "author_kind": "agent",
+      "source_id": "source-repository",
+      "created_at": "2026-08-08T20:30:06Z"
+    }
+  ],
+  "sensitive_record": {
+    "id": "context-sensitive",
+    "kind": "context_item",
+    "body": {"context_kind": "preference", "text": "SENSITIVE-V03-7f43-private-alias"},
+    "author_kind": "user",
+    "source_id": "source-user-turn-18",
+    "created_at": "2026-08-08T20:30:07Z"
+  }
+}

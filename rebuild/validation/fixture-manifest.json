@@ -227,6 +227,35 @@
       "content_sha256": "addbe4831b61f30e56149051ab441347d0cbb7604ee2c914bb0b4ddaf12e3a41",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v03-canonical-scenario",
+      "validation_id": "V03",
+      "path": "rebuild/validation/fixtures/v03",
+      "purpose": "Exercise stable Project identity, explicit clone binding, all canonical record kinds, provenance, revision, supersession, review state, deletion, bundle portability, and another-path rebinding.",
+      "expected_entities": [
+        "project-018f4f06-4d00-7a01-8000-000000000003",
+        "source-repository",
+        "question-storage",
+        "decision-storage",
+        "context-goal",
+        "context-fact",
+        "checkpoint-1",
+        "context-sensitive"
+      ],
+      "expected_relations": [
+        "decision-storage|answers|question-storage",
+        "decision-storage|provenance|source-user-turn-17",
+        "context-fact|grounded_by|source-repository",
+        "decision-storage-2|supersedes|decision-storage"
+      ],
+      "expected_unsupported": [
+        "divergent bundle merge is V04",
+        "production schema and production Canonical Context APIs are outside this disposable experiment"
+      ],
+      "content_sha256": "5c4e236e66c20bcd142588497ac62a2aac1d59e53613498bf687bcdfe91651b7",
+      "origin": "Self-authored deterministic fixture for V03.",
+      "license": "CC0-1.0"
     }
   ]
 }
