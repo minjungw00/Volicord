@@ -61,12 +61,14 @@ requirement.
 
 - `rebuild/docs/design/product-charter.md` owns the accepted product purpose,
   user, values, principles, and non-goals.
-- `rebuild/docs/design/open-decisions.md` owns unresolved product and design
-  questions and records accepted choices.
+- `rebuild/docs/design/open-decisions.md` owns accepted product decisions,
+  their scope and revisit triggers, and any future product question.
 - `rebuild/docs/design/acceptance-scenarios.md` owns the replacement usability
   and cutover scenarios.
 - `rebuild/docs/design/legacy-asset-inventory.md` owns the provisional
   reuse/reference/removal classification.
+- `rebuild/docs/design/validation-plan.md` owns risk spikes, fixture
+  requirements, validation reports, and the gate for promoting experiment code.
 - `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
   deleting the legacy implementation.
 - Existing Reference, Architecture Guide, conformance, and SignalBox workflow
@@ -82,6 +84,8 @@ requirement.
   `intake`, UserAction, Write Ticket, Run, Evidence, final-acceptance, or close
   methods.
 - Do not add replacement records to the existing Runtime Home or Store schema.
+- Do not implement legacy Runtime Home detection, migration, import, historical
+  export, backup guidance, command aliases, or dual-runtime compatibility.
 - Do not make new crates depend on `volicord-core`, `volicord-store`,
   `volicord-types`, `volicord-user-action-service`, or other legacy workflow
   crates.
@@ -117,6 +121,9 @@ cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-fe
 
 - Confirm that every reconstruction workspace package is under `rebuild/`.
 - Confirm that no reconstruction package depends on a legacy Volicord crate.
+- Confirm that product changes preserve the accepted polyglot capability
+  contract rather than narrowing Repository Intelligence to the implementation
+  language or the current dogfood repository.
 - Run legacy validation only when legacy paths are intentionally changed.
 - If required tools are unavailable, report the skipped command and reason;
   do not claim validation passed.
