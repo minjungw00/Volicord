@@ -124,6 +124,16 @@ Rules:
 
 - Start with the smallest responsibility boundary that demonstrates an
   acceptance scenario; do not pre-create a large crate taxonomy.
+- Use `rebuild/scripts/validate focused <label> -- <command> [arguments...]`
+  for focused or long-running validation. Inspect the preserved result under
+  `rebuild/.local/validation/` before reporting its status.
+- Use `rebuild/scripts/validate self-test` to verify the repository-local
+  validation runner. `rebuild/scripts/validate final` owns the ordered
+  aggregate suite from the root `AGENTS.md`; run it only when the task's
+  validation role is final.
+- Keep maintained fixtures, validation report templates, and experiment
+  summaries under `rebuild/validation/`. Keep raw command output, generated
+  graphs, and measurement artifacts under ignored `rebuild/.local/` state.
 - Follow `validation-plan.md` for fixtures, measurements, reports, and
   production-code promotion. Spike success does not make experiment output a
   maintained contract.

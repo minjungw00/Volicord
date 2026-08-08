@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Check the maintained validation report shape owned by validation-plan.md."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import sys
+
+
+SECTIONS = (
+    "Status",
+    "Goal",
+    "Accepted decisions being validated",
+    "Input repositories and revisions",
+    "Environment and tool versions",
+    "Candidate approaches",
+    "Commands and configuration",
+    "Observed results",
+    "Coverage and failures",
+    "Performance and resource observations",
+    "Privacy and external transmission",
+    "Acceptance results",
+    "Known limits",
+    "Recommended implementation choice",
+    "Rejected alternatives and reasons",
+    "Reusable primitive decision",
+    "Decision revisit trigger status",
+    "Follow-up work",
+    "Artifacts",
+)
+
+
+def check(path: Path) -> list[str]:
+    errors: list[str] = []
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    if not lines or not re.fullmatch(r"# V\d{2} — .+", lines[0]):
+        errors.append("first line must be '# VNN — <title>'")
+    positions: list[int] = []
+    for section in SECTIONS:
+        heading = f"## {section}"
+        matching = [index for index, line in enumerate(lines) if line == heading]
+        if len(matching) != 1:
+            errors.append(f"expected exactly one heading: {heading}")
+            continue
+        positions.append(matching[0])
+        next_nonblank = next((line for line in lines[matching[0] + 1 :] if line.strip()), "")
+        if not next_nonblank or next_nonblank.startswith("## "):
+            errors.append(f"section has no content: {heading}")
+    if positions != sorted(positions):
+        errors.append("required headings are out of order")
+    return errors
+
+
+def main(arguments: list[str]) -> int:
+    if len(arguments) != 1:
+        print("usage: rebuild/scripts/check-validation-report <report.md>", file=sys.stderr)
+        return 2
+    path = Path(arguments[0])
+    if not path.is_file():
+        print(f"report does not exist: {path}", file=sys.stderr)
+        return 2
+    errors = check(path)
+    if errors:
+        for error in errors:
+            print(error, file=sys.stderr)
+        return 1
+    print(f"validation report shape passed: {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

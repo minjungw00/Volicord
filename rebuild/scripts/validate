@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""Repository-local focused and aggregate validation runner."""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import shlex
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from typing import Sequence
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+REBUILD_ROOT = REPOSITORY_ROOT / "rebuild"
+ARTIFACT_ROOT = REBUILD_ROOT / ".local" / "validation"
+FINAL_COMMANDS: tuple[tuple[str, ...], ...] = (
+    (
+        "cargo",
+        "metadata",
+        "--manifest-path",
+        "rebuild/Cargo.toml",
+        "--no-deps",
+        "--format-version",
+        "1",
+    ),
+    (
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "rebuild/Cargo.toml",
+        "--all",
+        "--",
+        "--check",
+    ),
+    (
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "rebuild/Cargo.toml",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+    ),
+    (
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rebuild/Cargo.toml",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+    ),
+)
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="microseconds")
+
+
+def safe_label(label: str) -> str:
+    cleaned = "".join(character if character.isalnum() or character in "-_" else "-" for character in label)
+    cleaned = cleaned.strip("-")
+    if not cleaned:
+        raise ValueError("validation label must contain a letter or number")
+    return cleaned[:80]
+
+
+def new_run_directory(label: str) -> Path:
+    ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    return Path(tempfile.mkdtemp(prefix=f"{stamp}-{safe_label(label)}-", dir=ARTIFACT_ROOT))
+
+
+def write_json(path: Path, value: object) -> None:
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def run_in_directory(run_directory: Path, argv: Sequence[str]) -> dict[str, object]:
+    run_directory.mkdir(parents=True, exist_ok=True)
+    stdout_path = run_directory / "stdout.log"
+    stderr_path = run_directory / "stderr.log"
+    started_at = utc_now()
+    started = time.monotonic_ns()
+    metadata = {
+        "schema_version": 1,
+        "argv": list(argv),
+        "command": shlex.join(argv),
+        "working_directory": str(REPOSITORY_ROOT),
+        "started_at": started_at,
+    }
+    write_json(run_directory / "command.json", metadata)
+
+    return_code: int | None = None
+    spawn_error: str | None = None
+    with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
+        try:
+            completed = subprocess.run(
+                list(argv),
+                cwd=REPOSITORY_ROOT,
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                check=False,
+                shell=False,
+            )
+            return_code = completed.returncode
+        except OSError as error:
+            spawn_error = f"{type(error).__name__}: {error}"
+            stderr_file.write((spawn_error + "\n").encode("utf-8", errors="replace"))
+
+    ended = time.monotonic_ns()
+    signal_number = -return_code if return_code is not None and return_code < 0 else None
+    signal_name = None
+    if signal_number is not None:
+        try:
+            signal_name = signal.Signals(signal_number).name
+        except ValueError:
+            signal_name = "UNKNOWN"
+    numeric_exit_code = return_code if return_code is not None and return_code >= 0 else None
+    wrapper_exit_code = (
+        127
+        if spawn_error is not None
+        else 128 + signal_number
+        if signal_number is not None
+        else numeric_exit_code
+    )
+    outcome = (
+        "spawn_failed"
+        if spawn_error is not None
+        else "terminated"
+        if signal_number is not None
+        else "succeeded"
+        if numeric_exit_code == 0
+        else "failed"
+    )
+    result: dict[str, object] = {
+        **metadata,
+        "ended_at": utc_now(),
+        "duration_ms": round((ended - started) / 1_000_000, 3),
+        "outcome": outcome,
+        "exit_code": numeric_exit_code,
+        "wrapper_exit_code": wrapper_exit_code,
+        "termination": (
+            {"kind": "signal", "number": signal_number, "name": signal_name}
+            if signal_number is not None
+            else None
+        ),
+        "spawn_error": spawn_error,
+        "stdout": str(stdout_path),
+        "stderr": str(stderr_path),
+    }
+    write_json(run_directory / "result.json", result)
+    return result
+
+
+def run_focused(label: str, argv: Sequence[str]) -> tuple[dict[str, object], Path]:
+    run_directory = new_run_directory(label)
+    result = run_in_directory(run_directory, argv)
+    return result, run_directory
+
+
+def run_aggregate(
+    label: str, commands: Sequence[Sequence[str]]
+) -> tuple[dict[str, object], Path]:
+    aggregate_directory = new_run_directory(label)
+    started_at = utc_now()
+    started = time.monotonic_ns()
+    results: list[dict[str, object]] = []
+    for index, command in enumerate(commands, start=1):
+        command_directory = aggregate_directory / f"{index:02d}"
+        result = run_in_directory(command_directory, command)
+        result["artifact_directory"] = str(command_directory)
+        results.append(result)
+    failures = sum(result["wrapper_exit_code"] != 0 for result in results)
+    summary: dict[str, object] = {
+        "schema_version": 1,
+        "working_directory": str(REPOSITORY_ROOT),
+        "started_at": started_at,
+        "ended_at": utc_now(),
+        "duration_ms": round((time.monotonic_ns() - started) / 1_000_000, 3),
+        "command_count": len(results),
+        "failure_count": failures,
+        "outcome": "succeeded" if failures == 0 else "failed",
+        "commands": results,
+    }
+    write_json(aggregate_directory / "summary.json", summary)
+    return summary, aggregate_directory
+
+
+def assert_self_test(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def self_test() -> int:
+    root = new_run_directory("runner-self-test")
+    python = sys.executable
+
+    success = run_in_directory(root / "success", (python, "-c", "print('ok')"))
+    assert_self_test(success["exit_code"] == 0 and success["outcome"] == "succeeded", "success outcome")
+
+    failure = run_in_directory(root / "nonzero", (python, "-c", "raise SystemExit(23)"))
+    assert_self_test(failure["exit_code"] == 23 and failure["outcome"] == "failed", "nonzero outcome")
+
+    streams = run_in_directory(
+        root / "streams",
+        (python, "-c", "import sys; print('only-out'); print('only-err', file=sys.stderr)"),
+    )
+    out_text = Path(str(streams["stdout"])).read_text(encoding="utf-8")
+    err_text = Path(str(streams["stderr"])).read_text(encoding="utf-8")
+    assert_self_test(out_text == "only-out\n" and err_text == "only-err\n", "distinct streams")
+
+    preserved_arguments = ("space value", "$(not-executed)", "single'quote", 'double"quote', "--flag")
+    argv_result = run_in_directory(
+        root / "argv",
+        (
+            python,
+            "-c",
+            "import json,sys; print(json.dumps(sys.argv[1:]))",
+            *preserved_arguments,
+        ),
+    )
+    received = json.loads(Path(str(argv_result["stdout"])).read_text(encoding="utf-8"))
+    assert_self_test(received == list(preserved_arguments), "argv preservation")
+
+    missing = run_in_directory(root / "missing", ("volicord-validation-command-that-does-not-exist",))
+    assert_self_test(
+        missing["outcome"] == "spawn_failed" and missing["wrapper_exit_code"] == 127,
+        "missing command outcome",
+    )
+
+    if hasattr(signal, "SIGTERM"):
+        terminated = run_in_directory(
+            root / "termination",
+            (python, "-c", "import os,signal; os.kill(os.getpid(), signal.SIGTERM)"),
+        )
+        termination = terminated["termination"]
+        assert_self_test(
+            terminated["outcome"] == "terminated"
+            and isinstance(termination, dict)
+            and termination["number"] == signal.SIGTERM,
+            "termination outcome",
+        )
+
+    expected_final = (
+        "cargo metadata --manifest-path rebuild/Cargo.toml --no-deps --format-version 1",
+        "cargo fmt --manifest-path rebuild/Cargo.toml --all -- --check",
+        "cargo clippy --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features",
+        "cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features",
+    )
+    assert_self_test(tuple(shlex.join(command) for command in FINAL_COMMANDS) == expected_final, "final command contract")
+
+    marker = root / "aggregate-marker"
+    fake_commands = tuple(
+        (
+            python,
+            "-c",
+            "from pathlib import Path; import sys; p=Path(sys.argv[1]); p.open('a').write(sys.argv[2]+'\\n'); raise SystemExit(int(sys.argv[3]))",
+            str(marker),
+            str(index),
+            str(exit_code),
+        )
+        for index, exit_code in ((1, 0), (2, 9), (3, 0))
+    )
+    aggregate, aggregate_directory = run_aggregate("runner-self-test-final-fake", fake_commands)
+    assert_self_test(marker.read_text(encoding="utf-8") == "1\n2\n3\n", "aggregate is non-fail-fast")
+    assert_self_test(
+        aggregate["failure_count"] == 1 and aggregate["outcome"] == "failed",
+        "aggregate failure summary",
+    )
+
+    summary = {
+        "schema_version": 1,
+        "outcome": "succeeded",
+        "artifact_directory": str(root),
+        "fake_final_artifact_directory": str(aggregate_directory),
+        "checks": [
+            "successful command",
+            "nonzero command",
+            "distinct stdout and stderr",
+            "exact argv preservation",
+            "missing command",
+            "termination reporting" if hasattr(signal, "SIGTERM") else "termination reporting skipped",
+            "exact final command contract",
+            "non-fail-fast fake aggregate",
+        ],
+    }
+    write_json(root / "summary.json", summary)
+    print(f"validation self-test passed; artifacts: {root}")
+    return 0
+
+
+def print_result(result: dict[str, object], run_directory: Path) -> None:
+    print(
+        f"validation {result['outcome']}; exit={result['wrapper_exit_code']}; "
+        f"duration_ms={result['duration_ms']}; artifacts: {run_directory}"
+    )
+
+
+def usage() -> int:
+    print(
+        "usage:\n"
+        "  rebuild/scripts/validate self-test\n"
+        "  rebuild/scripts/validate focused <label> -- <command> [arguments...]\n"
+        "  rebuild/scripts/validate final",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def main(arguments: Sequence[str]) -> int:
+    if arguments == ("self-test",) or list(arguments) == ["self-test"]:
+        try:
+            return self_test()
+        except (AssertionError, OSError, ValueError) as error:
+            print(f"validation self-test failed: {error}", file=sys.stderr)
+            return 1
+    if arguments == ("final",) or list(arguments) == ["final"]:
+        summary, run_directory = run_aggregate("final", FINAL_COMMANDS)
+        print(f"final validation {summary['outcome']}; failures={summary['failure_count']}; artifacts: {run_directory}")
+        return 0 if summary["failure_count"] == 0 else 1
+    if len(arguments) >= 4 and arguments[0] == "focused" and arguments[2] == "--":
+        try:
+            result, run_directory = run_focused(arguments[1], arguments[3:])
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 2
+        print_result(result, run_directory)
+        return int(result["wrapper_exit_code"])
+    return usage()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
