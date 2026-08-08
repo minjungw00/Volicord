@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "project": {
+    "id": "project-018f4f06-4d00-7a01-8000-000000000005",
+    "name": "Inquiry Frontier Fixture",
+    "created_at": "2026-08-08T20:40:00Z"
+  },
+  "clone_path": "/fixtures/clones/inquiry",
+  "fact_source": "environment-facts.json",
+  "questions": [
+    {
+      "id": "question-language-fact",
+      "order": 0,
+      "semantic_key": "implementation-language",
+      "category": "fact",
+      "text": "Which language implements the product?",
+      "why_now": "Implementation constraints depend on the language.",
+      "options": [],
+      "recommendation": null,
+      "prerequisites": [],
+      "fact_key": "implementation_language"
+    },
+    {
+      "id": "question-user-value",
+      "order": 10,
+      "semantic_key": "privacy-default",
+      "category": "user_value",
+      "text": "Which privacy default should guide local analysis?",
+      "why_now": "The default changes user trust and setup behavior.",
+      "options": ["local-first", "provider-first"],
+      "recommendation": "local-first",
+      "prerequisites": []
+    },
+    {
+      "id": "question-user-value-rephrased",
+      "order": 11,
+      "semantic_key": "privacy-default",
+      "category": "user_value",
+      "text": "Should local processing remain the default?",
+      "why_now": "This is deliberately the same material decision in different words.",
+      "options": ["yes", "no"],
+      "recommendation": "yes",
+      "prerequisites": ["question-user-value"]
+    },
+    {
+      "id": "question-unknown-recovery",
+      "order": 20,
+      "semantic_key": "recovery-copy-usability",
+      "category": "user_value",
+      "text": "Which recovery-copy workflow will users understand best?",
+      "why_now": "The choice needs evidence that the fixture does not contain.",
+      "options": ["automatic", "guided", "manual"],
+      "recommendation": "guided",
+      "prerequisites": []
+    },
+    {
+      "id": "question-platform-scope",
+      "order": 30,
+      "semantic_key": "collaboration-scope",
+      "category": "user_value",
+      "text": "Is the first product for one local owner or a managed team?",
+      "why_now": "The answer controls whether team permissions are material.",
+      "options": ["single-owner", "managed-team"],
+      "recommendation": "single-owner",
+      "prerequisites": []
+    },
+    {
+      "id": "question-team-permissions",
+      "order": 31,
+      "semantic_key": "team-permissions",
+      "category": "implementation_choice",
+      "text": "Which team permission model should be implemented?",
+      "why_now": "This matters only for a managed-team product.",
+      "options": ["role-based", "capability-based"],
+      "recommendation": "role-based",
+      "prerequisites": ["question-platform-scope"],
+      "supersede_when": {
+        "question_id": "question-platform-scope",
+        "choice_equals": "single-owner"
+      }
+    },
+    {
+      "id": "question-future-sync",
+      "order": 40,
+      "semantic_key": "future-sync",
+      "category": "user_value",
+      "text": "Should cross-device live synchronization be chosen now?",
+      "why_now": "It may be intentionally postponed without blocking local portability.",
+      "options": ["choose-now", "defer"],
+      "recommendation": "defer",
+      "prerequisites": []
+    },
+    {
+      "id": "question-enterprise-auth",
+      "order": 50,
+      "semantic_key": "enterprise-auth",
+      "category": "user_value",
+      "text": "Should enterprise identity administration be included?",
+      "why_now": "The branch tests explicit scope exclusion.",
+      "options": ["include", "exclude"],
+      "recommendation": "exclude",
+      "prerequisites": []
+    },
+    {
+      "id": "question-storage-implementation",
+      "order": 60,
+      "semantic_key": "inquiry-storage-implementation",
+      "category": "implementation_choice",
+      "text": "Which transactional details should the agent implement?",
+      "why_now": "The user may delegate a reversible implementation choice.",
+      "options": ["delegate", "specify"],
+      "recommendation": "delegate",
+      "prerequisites": ["question-platform-scope", "question-language-fact"]
+    },
+    {
+      "id": "question-resume-ux",
+      "order": 70,
+      "semantic_key": "resume-ux",
+      "category": "ux_choice",
+      "text": "Which resume presentation is easiest to understand?",
+      "why_now": "A static discussion cannot establish interaction quality.",
+      "options": ["timeline", "brief", "hybrid"],
+      "recommendation": "prototype a brief and timeline",
+      "prerequisites": ["question-user-value"]
+    }
+  ]
+}

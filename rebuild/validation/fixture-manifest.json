@@ -256,6 +256,39 @@
       "content_sha256": "5c4e236e66c20bcd142588497ac62a2aac1d59e53613498bf687bcdfe91651b7",
       "origin": "Self-authored deterministic fixture for V03.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v05-inquiry-scenario",
+      "validation_id": "V05",
+      "path": "rebuild/validation/fixtures/v05",
+      "purpose": "Exercise deterministic fact resolution, dependency frontiers, independent question batching, exact user-turn linkage, all terminal outcomes, pause/restart resume, upstream supersession, and rephrased-question suppression.",
+      "expected_entities": [
+        "question-language-fact",
+        "question-user-value",
+        "question-user-value-rephrased",
+        "question-unknown-recovery",
+        "question-platform-scope",
+        "question-team-permissions",
+        "question-future-sync",
+        "question-enterprise-auth",
+        "question-storage-implementation",
+        "question-resume-ux"
+      ],
+      "expected_relations": [
+        "question-language-fact|resolved_by|source-deterministic-environment",
+        "question-storage-implementation|depends_on|question-platform-scope",
+        "question-resume-ux|depends_on|question-user-value",
+        "question-team-permissions|superseded_by|question-platform-scope",
+        "context-response-user-turn-101|answers_revision|question-user-value@1"
+      ],
+      "expected_unsupported": [
+        "LLM-dependent question generation",
+        "production Inquiry APIs and host integration",
+        "materiality quality outside the deterministic fixture"
+      ],
+      "content_sha256": "7967a0c665f962694a2c1b35d6bcab894137cc33bacd63c3049e1f4afcb5986f",
+      "origin": "Self-authored deterministic fixture for V05.",
+      "license": "CC0-1.0"
     }
   ]
 }
