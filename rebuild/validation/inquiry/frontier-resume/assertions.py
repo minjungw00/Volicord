@@ -17,11 +17,11 @@ sys.dont_write_bytecode = True
 from prototype import InquiryEngine, TERMINAL_OUTCOMES, v03
 
 
-ROOT = Path(__file__).resolve().parents[3]
-FIXTURE = ROOT / "rebuild/validation/fixtures/v05/inquiry-scenario.json"
-FACTS = ROOT / "rebuild/validation/fixtures/v05/environment-facts.json"
-PROTOTYPE = ROOT / "rebuild/validation/v05/prototype.py"
-V03_PROTOTYPE = ROOT / "rebuild/validation/v03/prototype.py"
+ROOT = Path(__file__).resolve().parents[4]
+FIXTURE = ROOT / "rebuild/validation/inquiry/frontier-resume/fixtures/inquiry-scenario.json"
+FACTS = ROOT / "rebuild/validation/inquiry/frontier-resume/fixtures/environment-facts.json"
+PROTOTYPE = ROOT / "rebuild/validation/inquiry/frontier-resume/prototype.py"
+V03_PROTOTYPE = ROOT / "rebuild/validation/canonical-context/portability/prototype.py"
 ARTIFACT_PARENT = ROOT / "rebuild/.local/v05"
 
 

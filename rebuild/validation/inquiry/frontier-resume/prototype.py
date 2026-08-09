@@ -14,8 +14,8 @@ from typing import Any, Iterable
 
 
 sys.dont_write_bytecode = True
-ROOT = Path(__file__).resolve().parents[3]
-V03_PROTOTYPE = ROOT / "rebuild/validation/v03/prototype.py"
+ROOT = Path(__file__).resolve().parents[4]
+V03_PROTOTYPE = ROOT / "rebuild/validation/canonical-context/portability/prototype.py"
 V03_SPEC = importlib.util.spec_from_file_location("v03_experimental_storage", V03_PROTOTYPE)
 if V03_SPEC is None or V03_SPEC.loader is None:
     raise RuntimeError("committed V03 experimental storage could not be loaded")

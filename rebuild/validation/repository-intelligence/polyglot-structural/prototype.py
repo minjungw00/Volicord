@@ -25,8 +25,15 @@ import time
 from typing import Any, Iterable
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_FIXTURE_ROOT = REPOSITORY_ROOT / "rebuild" / "validation" / "fixtures" / "v01"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_FIXTURE_ROOT = (
+    REPOSITORY_ROOT
+    / "rebuild"
+    / "validation"
+    / "repository-intelligence"
+    / "polyglot-structural"
+    / "fixtures"
+)
 LANGUAGE_SUFFIXES = {
     ".java": "java",
     ".py": "python",

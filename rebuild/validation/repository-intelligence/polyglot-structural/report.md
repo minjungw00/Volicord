@@ -75,10 +75,10 @@ All fixture content is self-authored, deterministic, and declared CC0-1.0 in
 The maintained focused commands were:
 
 ```text
-rebuild/scripts/validate focused v01-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/fixture-manifest.json
-rebuild/scripts/validate focused v01-assertions -- rebuild/validation/v01/assertions.py
-rebuild/scripts/validate focused v01-candidate-probes -- rebuild/validation/v01/prototype.py probe-candidates --output rebuild/.local/v01/candidate-probes.json
-rebuild/scripts/validate focused v01-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/v01/report.md
+rebuild/scripts/validate focused v01-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
+rebuild/scripts/validate focused v01-assertions -- rebuild/validation/repository-intelligence/polyglot-structural/assertions.py
+rebuild/scripts/validate focused v01-candidate-probes -- rebuild/validation/repository-intelligence/polyglot-structural/prototype.py probe-candidates --output rebuild/.local/v01/candidate-probes.json
+rebuild/scripts/validate focused v01-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/repository-intelligence/polyglot-structural/report.md
 ```
 
 The assertion program runs common and hybrid analysis twice, injects a
@@ -244,8 +244,10 @@ question is opened.
 
 ## Artifacts
 
-Maintained inputs are under `rebuild/validation/fixtures/v01/`, the manifest,
-`prototype.py`, `assertions.py`, and this report. Raw artifacts remain ignored:
+Maintained inputs are under
+`rebuild/validation/repository-intelligence/polyglot-structural/`, with the
+shared manifest at `rebuild/validation/shared/fixture-manifest.json`. Raw
+artifacts remain ignored:
 
 - `rebuild/.local/v01/assertions-rgvpwjfl/summary.json`, SHA-256
   `2d9e81519ff2beda27c5119e34dcd7360d06d771f26ca2456f1534e2bcf77810`;

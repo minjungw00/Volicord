@@ -14,10 +14,10 @@ sys.dont_write_bytecode = True
 import prototype
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-MANIFEST = REPOSITORY_ROOT / "rebuild" / "validation" / "fixture-manifest.json"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+MANIFEST = REPOSITORY_ROOT / "rebuild" / "validation" / "shared" / "fixture-manifest.json"
 LOCAL_ROOT = REPOSITORY_ROOT / "rebuild" / ".local" / "v01"
-V01_FIXTURE_PREFIX = Path("rebuild/validation/fixtures/v01")
+V01_FIXTURE_PREFIX = Path("rebuild/validation/repository-intelligence/polyglot-structural/fixtures")
 
 
 def require(condition: bool, message: str) -> None:
@@ -235,7 +235,7 @@ def verify_manifest_selection_regressions(
         "inconsistent V01 fixture manifest id",
     )
     inconsistent_fixture = dict(fixtures[0])
-    inconsistent_fixture["path"] = "rebuild/validation/fixtures/v03"
+    inconsistent_fixture["path"] = "rebuild/validation/canonical-context/portability/fixtures"
     inconsistent_manifest = {
         "fixtures": [inconsistent_fixture, *manifest["fixtures"][1:]]
     }

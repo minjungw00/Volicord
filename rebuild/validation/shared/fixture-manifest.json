@@ -5,7 +5,7 @@
     {
       "id": "v01-java",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/java",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/java",
       "purpose": "Exercise Java packages, interface implementation, classes, fields, constructors, methods, imports, calls, Maven configuration, and JUnit-style tests.",
       "expected_entities": [
         "java|src/main/java/example/Greeter.java|interface|Named|5",
@@ -32,7 +32,7 @@
     {
       "id": "v01-python",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/python",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/python",
       "purpose": "Exercise Python packages, modules, imports, functions, classes, instance fields, methods, calls, pyproject configuration, and pytest-style tests.",
       "expected_entities": [
         "python|src/greeter/core.py|function|format_name|4",
@@ -56,7 +56,7 @@
     {
       "id": "v01-javascript",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/javascript",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/javascript",
       "purpose": "Exercise JavaScript ES modules, exports, classes, instance fields, methods, functions, calls, tests, and recoverable malformed source.",
       "expected_entities": [
         "javascript|src/broken.js|function|stillVisible|1",
@@ -81,7 +81,7 @@
     {
       "id": "v01-typescript",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/typescript",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/typescript",
       "purpose": "Exercise TypeScript interfaces, types, enums, classes, constructor fields, methods, functions, imports, exports, calls, tests, and tsconfig configuration.",
       "expected_entities": [
         "typescript|src/index.ts|interface|Named|3",
@@ -111,7 +111,7 @@
     {
       "id": "v01-c",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/c",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/c",
       "purpose": "Exercise C headers and sources, structs, enums, fields, function declarations and definitions, includes, calls, CMake configuration, and tests.",
       "expected_entities": [
         "c|include/greeter.h|struct|Greeter|4",
@@ -135,7 +135,7 @@
     {
       "id": "v01-cpp",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/cpp",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/cpp",
       "purpose": "Exercise C++ namespaces, classes, inheritance, structs, enums, aliases, fields, methods, includes, calls, CMake configuration, and tests.",
       "expected_entities": [
         "cpp|include/greeter.hpp|class|Named|7",
@@ -167,7 +167,7 @@
     {
       "id": "v01-rust",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/rust",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/rust",
       "purpose": "Exercise a Rust Cargo workspace with modules, traits, structs, fields, enums, aliases, impl methods, functions, calls, cfg, and tests.",
       "expected_entities": [
         "rust|crates/greeter/src/lib.rs|function|normalize|2",
@@ -196,7 +196,7 @@
     {
       "id": "v01-polyglot",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/polyglot",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/polyglot",
       "purpose": "Exercise repository-wide inventory and separate Java, Python, and TypeScript structural results beside shared configuration and documentation without inventing cross-process calls.",
       "expected_entities": [
         "java|java/Gateway.java|class|Gateway|3",
@@ -219,7 +219,7 @@
     {
       "id": "v01-out-of-set",
       "validation_id": "V01",
-      "path": "rebuild/validation/fixtures/v01/out_of_set",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/out_of_set",
       "purpose": "Verify that a text-based Go repository remains inventory-available while structural capability is explicitly unavailable in the first adapter set.",
       "expected_entities": [],
       "expected_relations": [],
@@ -231,7 +231,7 @@
     {
       "id": "v03-canonical-scenario",
       "validation_id": "V03",
-      "path": "rebuild/validation/fixtures/v03",
+      "path": "rebuild/validation/canonical-context/portability/fixtures",
       "purpose": "Exercise stable Project identity, explicit clone binding, all canonical record kinds, provenance, revision, supersession, review state, deletion, bundle portability, and another-path rebinding.",
       "expected_entities": [
         "project-018f4f06-4d00-7a01-8000-000000000003",
@@ -260,7 +260,7 @@
     {
       "id": "v05-inquiry-scenario",
       "validation_id": "V05",
-      "path": "rebuild/validation/fixtures/v05",
+      "path": "rebuild/validation/inquiry/frontier-resume/fixtures",
       "purpose": "Exercise deterministic fact resolution, dependency frontiers, independent question batching, exact user-turn linkage, all terminal outcomes, pause/restart resume, upstream supersession, and rephrased-question suppression.",
       "expected_entities": [
         "question-language-fact",

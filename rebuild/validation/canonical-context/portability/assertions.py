@@ -17,9 +17,9 @@ sys.dont_write_bytecode = True
 from prototype import AtomicJsonCanonicalStore, SqliteCanonicalStore, canonical_bytes, new_project_identity, read_json
 
 
-ROOT = Path(__file__).resolve().parents[3]
-FIXTURE = ROOT / "rebuild/validation/fixtures/v03/canonical-scenario.json"
-PROTOTYPE = ROOT / "rebuild/validation/v03/prototype.py"
+ROOT = Path(__file__).resolve().parents[4]
+FIXTURE = ROOT / "rebuild/validation/canonical-context/portability/fixtures/canonical-scenario.json"
+PROTOTYPE = ROOT / "rebuild/validation/canonical-context/portability/prototype.py"
 ARTIFACT_PARENT = ROOT / "rebuild/.local/v03"
 SECRET = b"SENSITIVE-V03-7f43-private-alias"
 

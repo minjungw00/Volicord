@@ -43,10 +43,10 @@ This conclusion permits Phase 3 architecture work only. It does not promote expe
 ## Maintained reports and reproducibility references
 
 - Runner contract: `rebuild/scripts/validate`; ownership and usage: `rebuild/AGENTS.md`; maintained validation policy: `rebuild/docs/design/validation-plan.md` and `rebuild/validation/README.md`.
-- Shared fixture authority: `rebuild/validation/fixture-manifest.json`; manifest check: `rebuild/scripts/check-fixture-manifest`.
-- V01 report and exact focused command set: `rebuild/validation/v01/report.md`; executable evidence: `rebuild/validation/v01/assertions.py` and `rebuild/validation/v01/prototype.py`.
-- V03 report and exact focused command set: `rebuild/validation/v03/report.md`; executable evidence: `rebuild/validation/v03/assertions.py` and `rebuild/validation/v03/prototype.py`.
-- V05 report and exact focused command set: `rebuild/validation/v05/report.md`; executable evidence: `rebuild/validation/v05/assertions.py` and `rebuild/validation/v05/prototype.py`.
+- Shared fixture authority: `rebuild/validation/shared/fixture-manifest.json`; manifest check: `rebuild/scripts/check-fixture-manifest`.
+- V01 report and exact focused command set: `rebuild/validation/repository-intelligence/polyglot-structural/report.md`; executable evidence: `assertions.py` and `prototype.py` beside that report.
+- V03 report and exact focused command set: `rebuild/validation/canonical-context/portability/report.md`; executable evidence: `assertions.py` and `prototype.py` beside that report.
+- V05 report and exact focused command set: `rebuild/validation/inquiry/frontier-resume/report.md`; executable evidence: `assertions.py` and `prototype.py` beside that report.
 - Independent runner self-test artifacts: `rebuild/.local/validation/20260808T211857.237828Z-runner-self-test-0f2w2get`.
 - Independent V01 focused replay artifacts: `rebuild/.local/validation/20260808T211917.652017Z-v01-fixture-manifest-audit-wf_bwn61`, `rebuild/.local/validation/20260808T211917.657045Z-v01-assertions-audit-c4n9kvzm`, `rebuild/.local/validation/20260808T211917.662695Z-v01-candidate-probes-audit-uypg9_ze`, and `rebuild/.local/validation/20260808T211917.670216Z-v01-report-shape-audit-vybnfgrn`.
 - Independent V03 focused replay artifacts: `rebuild/.local/validation/20260808T211917.672647Z-v03-fixture-manifest-audit-hhlrlut6`, `rebuild/.local/validation/20260808T211917.717733Z-v03-assertions-audit-got3ivnf`, `rebuild/.local/validation/20260808T211917.724432Z-v03-assertions-repeat-audit-6xlpabcj`, and `rebuild/.local/validation/20260808T211917.684679Z-v03-report-shape-audit-u63hy__n`.

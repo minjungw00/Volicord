@@ -30,6 +30,27 @@ these to ignored `rebuild/.local/validation/`. Maintained reports may cite an
 artifact path and hash, but local artifacts are reproducibility evidence rather
 than durable design truth.
 
-V01, V03, and V05 share this policy and the report shape in
-`report-template.md`. Each experiment owns its fixture subdirectory, assertions,
-and maintained report without turning spike code into a production dependency.
+V01, V03, and V05 remain stable report and metadata identifiers. Tracked
+validation assets use capability-based paths:
+
+```text
+shared/fixture-manifest.json
+shared/report-template.md
+repository-intelligence/polyglot-structural/
+canonical-context/portability/
+inquiry/frontier-resume/
+wave-1-summary.md
+```
+
+The shared fixture manifest is the single fixture catalog. Each capability
+directory owns its fixtures, assertions, disposable prototype, and maintained
+report. The three validations share the report shape in
+`shared/report-template.md` without turning spike code into a production
+dependency.
+
+Examples:
+
+```text
+rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
+rebuild/scripts/check-validation-report rebuild/validation/repository-intelligence/polyglot-structural/report.md
+```

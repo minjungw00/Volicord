@@ -72,10 +72,10 @@ unavailable third-party candidate.
 The maintained focused commands are:
 
 ```text
-rebuild/scripts/validate focused v03-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/fixture-manifest.json
-rebuild/scripts/validate focused v03-assertions -- rebuild/validation/v03/assertions.py
-rebuild/scripts/validate focused v03-assertions-repeat -- rebuild/validation/v03/assertions.py
-rebuild/scripts/validate focused v03-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/v03/report.md
+rebuild/scripts/validate focused v03-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
+rebuild/scripts/validate focused v03-assertions -- rebuild/validation/canonical-context/portability/assertions.py
+rebuild/scripts/validate focused v03-assertions-repeat -- rebuild/validation/canonical-context/portability/assertions.py
+rebuild/scripts/validate focused v03-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/canonical-context/portability/report.md
 ```
 
 The assertion program creates all runtime state beneath ignored
@@ -220,7 +220,7 @@ architecture remains gated on review and later validations.
 
 `experimental_test_support`. V05 may import the V03 prototype explicitly to
 avoid duplicate transaction and restart machinery. No source in
-`rebuild/validation/v03/` is approved for production promotion, and
+`rebuild/validation/canonical-context/portability/` is approved for production promotion, and
 `rebuild/crates/volicord-context` remains an unchanged bootstrap shell.
 
 ## Decision revisit trigger status
@@ -243,9 +243,10 @@ show that Q6 or Q7 is infeasible. No product question is reopened.
 
 ## Artifacts
 
-Maintained inputs are the fixture-manifest entry,
-`rebuild/validation/fixtures/v03/canonical-scenario.json`, `prototype.py`,
-`assertions.py`, and this report. Raw evidence remains ignored:
+Maintained inputs are the shared fixture-manifest entry and the fixtures,
+prototype, assertions, and report under
+`rebuild/validation/canonical-context/portability/`. Raw evidence remains
+ignored:
 
 - `rebuild/.local/v03/assertions-qkgrrexg/summary.json`, SHA-256
   `73239945940d6f5357aa7d733981f4460fa4a552a63bc91dc06f99f9571213d7`;

@@ -37,7 +37,8 @@ No accepted product decision is changed by this report.
 
 The experiment starts from committed V03 baseline
 `692bb00b` (`test: validate canonical context portability`) and imports its
-prototype explicitly as `rebuild/validation/v03/prototype.py`.
+prototype explicitly as
+`rebuild/validation/canonical-context/portability/prototype.py`.
 
 The maintained `v05-inquiry-scenario` fixture has fixture-manifest SHA-256
 `7967a0c665f962694a2c1b35d6bcab894137cc33bacd63c3049e1f4afcb5986f`.
@@ -76,10 +77,10 @@ snapshot behavior while keeping only canonical Questions/Decisions authoritative
 The maintained focused commands are:
 
 ```text
-rebuild/scripts/validate focused v05-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/fixture-manifest.json
-rebuild/scripts/validate focused v05-assertions -- rebuild/validation/v05/assertions.py
-rebuild/scripts/validate focused v05-assertions-repeat -- rebuild/validation/v05/assertions.py
-rebuild/scripts/validate focused v05-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/v05/report.md
+rebuild/scripts/validate focused v05-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
+rebuild/scripts/validate focused v05-assertions -- rebuild/validation/inquiry/frontier-resume/assertions.py
+rebuild/scripts/validate focused v05-assertions-repeat -- rebuild/validation/inquiry/frontier-resume/assertions.py
+rebuild/scripts/validate focused v05-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/inquiry/frontier-resume/report.md
 ```
 
 The assertion program initializes a V03 experimental store, computes and
@@ -253,9 +254,9 @@ the accepted Inquiry contract is infeasible. No product question is reopened.
 
 ## Artifacts
 
-Maintained inputs are the V05 fixture-manifest entry,
-`rebuild/validation/fixtures/v05/`, `prototype.py`, `assertions.py`, and this
-report. Raw evidence remains ignored:
+Maintained inputs are the V05 entry in the shared fixture manifest and the
+fixtures, prototype, assertions, and report under
+`rebuild/validation/inquiry/frontier-resume/`. Raw evidence remains ignored:
 
 - `rebuild/.local/v05/assertions-t54gtwpl/summary.json`, SHA-256
   `012877d6a8e1f0a2cbfbc7ef88caa687702bda901f3a6fb29b3f3252a5e90f67`;
