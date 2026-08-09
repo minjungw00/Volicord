@@ -20,10 +20,20 @@ Before changing reconstruction design or implementation, read:
    architecture work; it owns evidence constraints and the architecture-document
    ownership plan, not the target architecture
 
-Planned Phase 3 architecture documents are not active contracts until their
-files are created. Once created, `architecture.md` owns cross-subsystem
-dependency direction and resolves boundary conflicts; each specialized document
-owns the named domain routed by `architecture-inputs.md`.
+For target-architecture work after the core owners exist, also read:
+
+8. `rebuild/docs/design/architecture.md`; it owns the active logical subsystem
+   map, cross-subsystem dependency direction, integration boundaries, and
+   boundary conflict resolution
+9. `rebuild/docs/design/domain-model.md`; it owns the active information
+   classes, canonical entity meanings, core identity, provenance, relations,
+   and lifecycle semantics
+
+The remaining planned Phase 3 architecture documents are not active contracts
+until their files are created and routed by the governing instructions. Once
+active, each specialized document owns only the named domain routed by
+`architecture-inputs.md` and must not redefine `architecture.md` or
+`domain-model.md`.
 
 The required product decisions are accepted in `open-decisions.md`. Do not
 quietly narrow them because an implementation is difficult. When validation

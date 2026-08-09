@@ -72,12 +72,18 @@ requirement.
 - `rebuild/docs/design/architecture-inputs.md` owns Phase 3 evidence
   constraints, unsupported conclusions, and the architecture-document ownership
   plan. It does not own the target architecture.
+- `rebuild/docs/design/architecture.md` owns the active logical subsystem map,
+  cross-subsystem dependency direction, integration boundaries, and boundary
+  conflict resolution.
+- `rebuild/docs/design/domain-model.md` owns the active information classes,
+  canonical entity meanings, core identity, provenance, relations, and lifecycle
+  semantics.
 - `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
   deleting the legacy implementation.
-- Planned Phase 3 architecture documents become active owners only after the
-  corresponding files are created. Once active, `architecture.md` owns
-  cross-subsystem dependency direction and boundary-conflict resolution, while
-  each specialized document owns its named domain contract.
+- Later target-architecture work must read `architecture.md` and
+  `domain-model.md` and may not redefine their contracts in specialized
+  documents. The remaining planned Phase 3 documents become active owners only
+  after the corresponding files are created and routed here.
 - Existing Reference, Architecture Guide, conformance, and SignalBox workflow
   documents describe the legacy baseline only. Do not infer replacement
   contracts from them.

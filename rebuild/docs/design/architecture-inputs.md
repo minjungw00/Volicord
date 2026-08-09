@@ -6,10 +6,12 @@
 - 검증 기준: `validation-plan.md`, `rebuild/validation/`의 maintained report와
   `rebuild/validation/wave-1-summary.md`
 - 비소유 범위: target architecture, production API, crate 경계와 구현 기술
+- active target owners: [논리 아키텍처](architecture.md),
+  [핵심 도메인 모델](domain-model.md)
 
 이 문서는 Phase 3가 사용할 수 있는 증거와 아직 결론 내릴 수 없는 사항을
 구분한다. Wave 1 prototype의 구현 모양을 production 설계로 승격하지 않으며,
-아래에 계획된 architecture 문서가 생성되기 전 그 문서의 계약을 대신 쓰지
+아래 ownership plan에서 아직 `planned`인 architecture 문서의 계약을 대신 쓰지
 않는다.
 
 ## 1. Phase 3를 제약하는 accepted product decisions
@@ -109,34 +111,37 @@ Later validation 결과가 accepted decision의 revisit trigger를 충족하면
 
 ## 5. Phase 3 document ownership plan
 
-아래 파일은 계획된 owner다. 파일이 실제로 생성되기 전에는 active contract가
-아니며, 이 문서나 이름만으로 내용을 추론하지 않는다.
+`active` file만 현재 contract다. `planned` file은 실제로 생성되고 governing
+instructions가 route하기 전에는 내용을 추론하거나 active owner로 인용하지 않는다.
 
-| Planned document | 생성 후 소유하는 contract | 소유하지 않는 사항 |
-|---|---|---|
-| `architecture.md` | subsystem map, cross-subsystem dependency direction, integration boundary와 cross-document boundary conflict resolution | specialized domain의 상세 invariant와 Wave 1 evidence 자체 |
-| `domain-model.md` | Canonical/Candidate/Derived 분류, core identity, provenance, record relation, revision/supersession/forget의 domain meaning | storage schema, bundle merge procedure와 UI representation |
-| `repository-intelligence.md` | snapshot, inventory, entity/relation, capability/coverage/freshness와 language/semantic adapter contract | 사용자 judgment, final parser/provider technology와 canonical persistence |
-| `inquiry-and-decision.md` | Question/Decision/Candidate behavior, dependency frontier, response linkage, terminal transition, Decision applicability, Checkpoint/Recall interaction sequence | Canonical storage schema, projection rendering과 host-specific wire format |
-| `portable-context.md` | portable bundle boundary, Project/clone binding, source availability, divergence, conflict class와 resolution contract | canonical domain meaning의 재정의와 evidence 없는 merge algorithm 선택 |
-| `privacy-and-provider-boundary.md` | local processing, interactive/background distinction, Project opt-in, transmission scope, secret/exclude, annotation retention/deletion contract | provider implementation 선택과 general authorization architecture |
-| `projections-and-documents.md` | Recall/view/document read projections, grounding metadata, adoption boundary, Markdown/HTML output contract | canonical mutation semantics, UI framework와 inquiry transition |
-| `failure-and-recovery.md` | subsystem failure/degraded states, transaction/crash boundary, repair/rebuild responsibility와 process recovery contract | final storage/process technology와 normal domain meaning의 재정의 |
-| `versioning-policy.md` | production schema/format version boundaries, new-product format evolution, upgrade/test responsibility와 unsupported-version behavior | legacy data handling과 concrete schema field design |
+| Status | Document | 소유하는 contract | 소유하지 않는 사항 |
+|---|---|---|---|
+| `active` | [architecture.md](architecture.md) | subsystem map, cross-subsystem dependency direction, integration boundary와 cross-document boundary conflict resolution | specialized domain의 상세 invariant와 Wave 1 evidence 자체 |
+| `active` | [domain-model.md](domain-model.md) | Canonical Context/Session Candidate/Derived State 분류, core identity, provenance, record relation, revision/supersession/forgetting의 domain meaning | storage schema, bundle merge procedure와 UI representation |
+| `planned` | `repository-intelligence.md` | snapshot, inventory, entity/relation, capability/coverage/freshness와 language/semantic adapter contract | 사용자 judgment, final parser/provider technology와 canonical persistence |
+| `planned` | `inquiry-and-decision.md` | Question/Decision/Candidate behavior, dependency frontier, response linkage, terminal transition, Decision applicability, Checkpoint/Recall interaction sequence | Canonical storage schema, projection rendering과 host-specific wire format |
+| `planned` | `portable-context.md` | portable bundle boundary, Project/clone binding, source availability, divergence, conflict class와 resolution contract | canonical domain meaning의 재정의와 evidence 없는 merge algorithm 선택 |
+| `planned` | `privacy-and-provider-boundary.md` | local processing, interactive/background distinction, Project opt-in, transmission scope, secret/exclude, annotation retention/deletion contract | provider implementation 선택과 general authorization architecture |
+| `planned` | `projections-and-documents.md` | Recall/view/document read projections, grounding metadata, adoption boundary, Markdown/HTML output contract | canonical mutation semantics, UI framework와 inquiry transition |
+| `planned` | `failure-and-recovery.md` | subsystem failure/degraded states, transaction/crash boundary, repair/rebuild responsibility와 process recovery contract | final storage/process technology와 normal domain meaning의 재정의 |
+| `planned` | `versioning-policy.md` | production schema/format version boundaries, new-product format evolution, upgrade/test responsibility와 unsupported-version behavior | legacy data handling과 concrete schema field design |
 
 ## 6. Ownership precedence and activation
 
 1. `product-charter.md`와 `open-decisions.md`의 accepted product meaning이 모든
    architecture 문서를 제약한다.
-2. `architecture.md`는 cross-subsystem dependency direction을 소유하고
+2. Active `architecture.md`는 cross-subsystem dependency direction을 소유하고
    specialized 문서 사이의 boundary conflict를 해결한다.
-3. 각 specialized document는 위 표의 named domain contract를 소유한다.
-4. `architecture-inputs.md`는 evidence constraint, unsupported conclusion과 이
+3. Active `domain-model.md`는 core information class, identity, provenance,
+   relation과 lifecycle meaning을 소유한다.
+4. 나머지 specialized document는 활성화된 뒤 위 표의 named domain contract만
+   소유한다.
+5. `architecture-inputs.md`는 evidence constraint, unsupported conclusion과 이
    ownership plan만 소유한다. Target architecture 자체를 소유하지 않는다.
-5. Planned document는 파일이 생성되고 governing instructions가 해당 파일을
+6. Planned document는 파일이 생성되고 governing instructions가 해당 파일을
    route한 시점부터 active owner가 된다. 생성 전에는 active contract로
    표시하거나 없는 내용을 전제하지 않는다.
-6. Evidence와 target contract가 충돌해 보이면 evidence limit을 먼저 확인하고,
+7. Evidence와 target contract가 충돌해 보이면 evidence limit을 먼저 확인하고,
    accepted Decision을 바꿔야 할 때만 revisit 절차를 사용한다.
 
 ## 7. Phase 3가 추론해서는 안 되는 사항
