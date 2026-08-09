@@ -237,7 +237,8 @@ argument, stdout와 stderr 전체는 기본 canonical content가 아니며, 필�
 Provider result는 provider와 model identity, source snapshot과 included scope,
 generation context, freshness와 uncertainty를 확인할 수 있어야 한다. Provider
 provenance는 User 또는 Repository observer provenance로 바뀌지 않는다. Detailed
-transmission, retention과 revoke contract는 future privacy/provider owner가 소유한다.
+transmission, retention과 revoke contract는 active
+[Privacy와 provider 경계 계약](privacy-and-provider-boundary.md)이 소유한다.
 
 ### Generated explanation provenance
 
@@ -441,13 +442,13 @@ analysis가 원래 text나 claim을 다시 canonical로 복원할 수 없다.
 이 문서는 다음 상세 contract를 정의하지 않는다.
 
 - Repository snapshot, code entity/relation, capability, adapter와 invalidation:
-  future `repository-intelligence.md`
+  active [Repository Intelligence 계약](repository-intelligence.md)
 - Question frontier, response, terminal transition, Recall/Checkpoint interaction:
   future `inquiry-and-decision.md`
 - Bundle content, clone binding procedure, divergence, conflict와 merge:
   future `portable-context.md`
 - Provider transmission, privacy, retention, revoke와 deletion completeness:
-  future `privacy-and-provider-boundary.md`
+  active [Privacy와 provider 경계 계약](privacy-and-provider-boundary.md)
 - Recall/view/document selection, grounding, rendering과 adoption:
   future `projections-and-documents.md`
 - Transaction, crash, degraded mode, repair와 rebuild:

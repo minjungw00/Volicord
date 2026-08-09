@@ -7,7 +7,9 @@
   `rebuild/validation/wave-1-summary.md`
 - 비소유 범위: target architecture, production API, crate 경계와 구현 기술
 - active target owners: [논리 아키텍처](architecture.md),
-  [핵심 도메인 모델](domain-model.md)
+  [핵심 도메인 모델](domain-model.md),
+  [Repository Intelligence](repository-intelligence.md),
+  [Privacy와 provider 경계](privacy-and-provider-boundary.md)
 
 이 문서는 Phase 3가 사용할 수 있는 증거와 아직 결론 내릴 수 없는 사항을
 구분한다. Wave 1 prototype의 구현 모양을 production 설계로 승격하지 않으며,
@@ -118,10 +120,10 @@ instructions가 route하기 전에는 내용을 추론하거나 active owner로 
 |---|---|---|---|
 | `active` | [architecture.md](architecture.md) | subsystem map, cross-subsystem dependency direction, integration boundary와 cross-document boundary conflict resolution | specialized domain의 상세 invariant와 Wave 1 evidence 자체 |
 | `active` | [domain-model.md](domain-model.md) | Canonical Context/Session Candidate/Derived State 분류, core identity, provenance, record relation, revision/supersession/forgetting의 domain meaning | storage schema, bundle merge procedure와 UI representation |
-| `planned` | `repository-intelligence.md` | snapshot, inventory, entity/relation, capability/coverage/freshness와 language/semantic adapter contract | 사용자 judgment, final parser/provider technology와 canonical persistence |
+| `active` | [repository-intelligence.md](repository-intelligence.md) | snapshot, inventory, entity/relation, capability/coverage/freshness와 language/semantic adapter contract | 사용자 judgment, final parser/provider technology와 canonical persistence |
 | `planned` | `inquiry-and-decision.md` | Question/Decision/Candidate behavior, dependency frontier, response linkage, terminal transition, Decision applicability, Checkpoint/Recall interaction sequence | Canonical storage schema, projection rendering과 host-specific wire format |
 | `planned` | `portable-context.md` | portable bundle boundary, Project/clone binding, source availability, divergence, conflict class와 resolution contract | canonical domain meaning의 재정의와 evidence 없는 merge algorithm 선택 |
-| `planned` | `privacy-and-provider-boundary.md` | local processing, interactive/background distinction, Project opt-in, transmission scope, secret/exclude, annotation retention/deletion contract | provider implementation 선택과 general authorization architecture |
+| `active` | [privacy-and-provider-boundary.md](privacy-and-provider-boundary.md) | local processing, interactive/background distinction, Project opt-in, transmission scope, secret/exclude, annotation retention/deletion contract | provider implementation 선택과 general authorization architecture |
 | `planned` | `projections-and-documents.md` | Recall/view/document read projections, grounding metadata, adoption boundary, Markdown/HTML output contract | canonical mutation semantics, UI framework와 inquiry transition |
 | `planned` | `failure-and-recovery.md` | subsystem failure/degraded states, transaction/crash boundary, repair/rebuild responsibility와 process recovery contract | final storage/process technology와 normal domain meaning의 재정의 |
 | `planned` | `versioning-policy.md` | production schema/format version boundaries, new-product format evolution, upgrade/test responsibility와 unsupported-version behavior | legacy data handling과 concrete schema field design |

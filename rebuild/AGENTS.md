@@ -35,6 +35,11 @@ active, each specialized document owns only the named domain routed by
 `architecture-inputs.md` and must not redefine `architecture.md` or
 `domain-model.md`.
 
+Active specialized owners relevant to repository analysis and provider use are
+`rebuild/docs/design/repository-intelligence.md` and
+`rebuild/docs/design/privacy-and-provider-boundary.md`. Read them before work
+that changes their named contracts.
+
 The required product decisions are accepted in `open-decisions.md`. Do not
 quietly narrow them because an implementation is difficult. When validation
 meets a recorded revisit trigger, add a new product question, preserve the

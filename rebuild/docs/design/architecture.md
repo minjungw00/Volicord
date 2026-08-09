@@ -38,8 +38,8 @@ Architecture 문서의 해석 순서는 다음과 같다.
 `cutover-plan.md`는 legacy 제거 조건과 순서를 계속 소유한다. 이 문서는 그
 책임을 복제하지 않는다.
 
-현재 active Phase 3 architecture owner는 이 문서와 `domain-model.md`뿐이다.
-`architecture-inputs.md`에 이름만 있는 나머지 specialized document는 파일이
+현재 active specialized owner와 planned owner의 정확한 상태는
+`architecture-inputs.md`의 ownership plan이 route한다. 생성되지 않은 문서는 파일이
 생성되고 owner routing이 갱신되기 전에는 active contract가 아니다.
 
 ## 2. Dependency 표기와 기본 방향
@@ -127,7 +127,7 @@ reference할 수 있고 설명에 필요한 selected canonical context를 읽을
 operation을 거친다.
 
 세부 entity/relation vocabulary, language adapter, snapshot invalidation과
-capability contract는 이후 `repository-intelligence.md`가 생성될 때 그 문서가
+capability contract는 active [Repository Intelligence 계약](repository-intelligence.md)이
 소유한다. 이 문서는 V01 prototype의 graph나 parser 모양을 채택하지 않는다.
 
 ### 3.3 Inquiry and Decision
@@ -194,8 +194,8 @@ provenance를 가진 Derived State 또는 Session Candidate로 돌아온다.
 이 boundary는 기본적으로 absent일 수 있다. Project opt-in, source scope와
 interactive/background 구분을 만족하지 않은 background transmission을 허용하지
 않으며 user judgment나 canonical write authority를 갖지 않는다. Transmission,
-retention, revoke와 deletion의 상세 contract는 이후
-`privacy-and-provider-boundary.md`가 생성될 때 그 문서가 소유한다.
+retention, revoke와 deletion의 상세 contract는
+[Privacy와 provider 경계 계약](privacy-and-provider-boundary.md)이 소유한다.
 
 ## 4. Boundary authority
 

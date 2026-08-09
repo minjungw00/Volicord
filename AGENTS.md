@@ -78,6 +78,12 @@ requirement.
 - `rebuild/docs/design/domain-model.md` owns the active information classes,
   canonical entity meanings, core identity, provenance, relations, and lifecycle
   semantics.
+- `rebuild/docs/design/repository-intelligence.md` owns active repository and
+  analysis snapshot identity, inventory, normalized analysis envelopes,
+  capability, coverage, freshness, provenance, and analyzer-adapter contracts.
+- `rebuild/docs/design/privacy-and-provider-boundary.md` owns active local,
+  interactive-host, and background-provider authority, opt-in, transmission,
+  retention, and deletion boundaries.
 - `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
   deleting the legacy implementation.
 - Later target-architecture work must read `architecture.md` and
