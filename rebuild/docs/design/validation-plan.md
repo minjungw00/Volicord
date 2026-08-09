@@ -31,6 +31,31 @@
 9. Linux에서 실행하며 Codex를 첫 host integration 대상으로 사용한다.
 10. 각 실험은 재현 가능한 report를 남긴다.
 
+Maintained Wave 1 asset은 capability 기준 경로인
+`rebuild/validation/repository-intelligence/polyglot-structural/`,
+`rebuild/validation/canonical-context/portability/`와
+`rebuild/validation/inquiry/frontier-resume/`에 둔다. Fixture catalog와 report
+template은 각각 `rebuild/validation/shared/fixture-manifest.json`과
+`rebuild/validation/shared/report-template.md`가 공동 소유한다. V01, V03와
+V05는 path가 아니라 stable validation metadata와 report identifier다.
+
+### Experiment language와 production language ownership
+
+- Python 또는 다른 적합한 external language는 disposable feasibility
+  experiment, fixture orchestration, external analyzer invocation,
+  cross-language black-box comparison과 end-to-end harness에 사용할 수 있다.
+- Rust는 production domain semantics, Canonical Context invariant, durable
+  storage behavior, Inquiry transition, production serialization, production
+  crash/recovery behavior와 production integration/property test를 소유한다.
+- Python experiment를 Rust production behavior의 두 번째 long-lived reference
+  implementation으로 유지하지 않는다.
+- production 의미를 disposable Python prototype만으로 검증된 상태로 남기지
+  않는다.
+- V01 orchestration은 language-neutral black-box validation에 이점이 있으면
+  external로 유지할 수 있다.
+- V03와 V05 semantics는 production promotion 전에 실제 Rust production
+  implementation을 대상으로 다시 표현하고 검증한다.
+
 ## 3. 검증 보고서 형식
 
 각 실험은 다음 형식의 보고서를 작성한다.
@@ -593,6 +618,10 @@ clean Linux install
 ## 16. Architecture 확정 gate
 
 다음이 완료되면 production architecture 문서를 확정할 수 있다.
+
+Phase 3 evidence constraint와 architecture document ownership은
+`architecture-inputs.md`가 소유한다. 이 입력 계약은 target architecture를
+대신하지 않는다.
 
 - V01 결과로 polyglot structural model과 language adapter boundary를 선택함
 - V03 결과로 canonical storage, bundle과 revision model을 선택함

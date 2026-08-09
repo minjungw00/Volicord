@@ -16,6 +16,14 @@ Before changing reconstruction design or implementation, read:
 5. `rebuild/docs/design/legacy-asset-inventory.md` when considering reuse
 6. `rebuild/docs/design/cutover-plan.md` when changing repository layout,
    installation, data handling, or legacy-removal conditions
+7. `rebuild/docs/design/architecture-inputs.md` before Phase 3 target
+   architecture work; it owns evidence constraints and the architecture-document
+   ownership plan, not the target architecture
+
+Planned Phase 3 architecture documents are not active contracts until their
+files are created. Once created, `architecture.md` owns cross-subsystem
+dependency direction and resolves boundary conflicts; each specialized document
+owns the named domain routed by `architecture-inputs.md`.
 
 The required product decisions are accepted in `open-decisions.md`. Do not
 quietly narrow them because an implementation is difficult. When validation

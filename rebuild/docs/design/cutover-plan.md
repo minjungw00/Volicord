@@ -83,6 +83,16 @@
 
 ### Phase 3 — Target architecture
 
+필수 입력:
+
+- `architecture-inputs.md`의 evidence constraint, unsupported conclusion과
+  architecture-document ownership plan
+- `rebuild/validation/wave-1-summary.md`와 semantic capability path의 V01, V03,
+  V05 maintained reports
+
+`architecture-inputs.md`는 target architecture를 대신하지 않으며, 계획된
+specialized document는 실제 파일이 생성될 때 active owner가 된다.
+
 산출물:
 
 - Canonical Context Kernel dependency boundary

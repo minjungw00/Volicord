@@ -69,8 +69,15 @@ requirement.
   reuse/reference/removal classification.
 - `rebuild/docs/design/validation-plan.md` owns risk spikes, fixture
   requirements, validation reports, and the gate for promoting experiment code.
+- `rebuild/docs/design/architecture-inputs.md` owns Phase 3 evidence
+  constraints, unsupported conclusions, and the architecture-document ownership
+  plan. It does not own the target architecture.
 - `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
   deleting the legacy implementation.
+- Planned Phase 3 architecture documents become active owners only after the
+  corresponding files are created. Once active, `architecture.md` owns
+  cross-subsystem dependency direction and boundary-conflict resolution, while
+  each specialized document owns its named domain contract.
 - Existing Reference, Architecture Guide, conformance, and SignalBox workflow
   documents describe the legacy baseline only. Do not infer replacement
   contracts from them.
