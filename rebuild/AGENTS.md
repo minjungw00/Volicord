@@ -40,6 +40,11 @@ Active specialized owners relevant to repository analysis and provider use are
 `rebuild/docs/design/privacy-and-provider-boundary.md`. Read them before work
 that changes their named contracts.
 
+Active specialized owners relevant to inquiry, Recall, maps, and generated
+documents are `rebuild/docs/design/inquiry-and-decision.md` and
+`rebuild/docs/design/projections-and-documents.md`. Read them before work that
+changes their named contracts.
+
 The required product decisions are accepted in `open-decisions.md`. Do not
 quietly narrow them because an implementation is difficult. When validation
 meets a recorded revisit trigger, add a new product question, preserve the

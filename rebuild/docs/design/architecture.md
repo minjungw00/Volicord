@@ -144,7 +144,7 @@ Agent recommendation, 조사 결과, prototype 필요와 user choice는 별개�
 유지한다.
 
 Question discovery, frontier transition, response 처리, Recall/Checkpoint와의 상세
-sequence는 이후 `inquiry-and-decision.md`가 생성될 때 그 문서가 소유한다.
+sequence는 active [Inquiry와 Decision 계약](inquiry-and-decision.md)이 소유한다.
 
 ### 3.4 Projections and Documents
 
@@ -156,8 +156,8 @@ record identity, source, freshness, uncertainty, supersession와 omission basis�
 Projection은 authoritative record가 아니며 generated document도 explicit adoption
 전에는 canonical truth가 아니다. Rendering, preview, 파일 출력 또는 실패가
 source record를 바꾸지 않는다. 상세 Recall selection, document grounding,
-adoption과 output contract는 이후 `projections-and-documents.md`가 생성될 때 그
-문서가 소유한다.
+adoption과 output contract는 active
+[Projection과 document 계약](projections-and-documents.md)이 소유한다.
 
 ### 3.5 Host and User Adapters
 

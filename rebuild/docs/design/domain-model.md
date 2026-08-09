@@ -141,8 +141,8 @@ delegation, research, prototype, deferment, exclusion 또는 supersession이 필
 Question은 다른 Question에 `depends_on`할 수 있고 여러 independent Question이
 같은 current frontier에 있을 수 있다. Terminal outcome은 Question이 더 이상
 현재 답변을 기다리지 않는 이유를 나타내며, 모든 terminal outcome이 Decision을
-만든다는 뜻은 아니다. Frontier 계산과 transition의 상세 contract는 future
-inquiry-and-decision owner가 소유한다.
+만든다는 뜻은 아니다. Frontier 계산과 transition의 상세 contract는 active
+[Inquiry와 Decision 계약](inquiry-and-decision.md)이 소유한다.
 
 ### 4.4 Decision
 
@@ -444,13 +444,13 @@ analysis가 원래 text나 claim을 다시 canonical로 복원할 수 없다.
 - Repository snapshot, code entity/relation, capability, adapter와 invalidation:
   active [Repository Intelligence 계약](repository-intelligence.md)
 - Question frontier, response, terminal transition, Recall/Checkpoint interaction:
-  future `inquiry-and-decision.md`
+  active [Inquiry와 Decision 계약](inquiry-and-decision.md)
 - Bundle content, clone binding procedure, divergence, conflict와 merge:
   future `portable-context.md`
 - Provider transmission, privacy, retention, revoke와 deletion completeness:
   active [Privacy와 provider 경계 계약](privacy-and-provider-boundary.md)
 - Recall/view/document selection, grounding, rendering과 adoption:
-  future `projections-and-documents.md`
+  active [Projection과 document 계약](projections-and-documents.md)
 - Transaction, crash, degraded mode, repair와 rebuild:
   future `failure-and-recovery.md`
 - Schema/format version과 new-product upgrade behavior:

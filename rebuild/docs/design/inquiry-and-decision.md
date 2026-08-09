@@ -1,0 +1,357 @@
+# Inquiry와 Decision 계약
+
+- 상태: active specialized architecture owner
+- 소유 범위: Question Candidate와 Question behavior, materiality, dependency frontier,
+  recommendation/alternative presentation, exact current-host response linkage, terminal
+  transition, pause/resume, Decision applicability·reuse·re-questioning과 Checkpoint interaction
+- 상위 architecture 기준: [논리 아키텍처](architecture.md)
+- core domain 기준: [핵심 도메인 모델](domain-model.md)
+- repository fact 기준: [Repository Intelligence 계약](repository-intelligence.md)
+- evidence 기준: [architecture 입력 계약](architecture-inputs.md),
+  [V05 보고서](../../validation/inquiry/frontier-resume/report.md)
+- projection 기준: [Projection과 document 계약](projections-and-documents.md)
+- 비소유 범위: canonical storage schema, host wire format, automatic Question-discovery
+  algorithm/quality, UI rendering, portable merge와 production transaction technology
+
+이 문서는 material uncertainty를 단계적으로 해결하는 Inquiry and Decision
+subsystem의 specialized contract다. `domain-model.md`가 소유하는 Question, Decision,
+Source, Checkpoint identity와 provenance meaning을 사용하며 새 canonical entity를
+추가하거나 Kernel의 write authority를 대신하지 않는다.
+
+## 1. Question Candidate와 canonical Question
+
+### 1.1 Question Candidate
+
+`Question Candidate`는 작업 결과를 바꿀 수 있는 uncertainty라는 관찰 또는
+가설이며 `Session Candidate`다. Candidate는 user에게 답을 요구하는 authority가
+아니고 Decision을 만들지 않는다. 최소 다음 basis를 가진다.
+
+- Project와 candidate identity
+- 발견 actor/session과 Source basis
+- 현재 알려진 fact, assumption과 uncertainty
+- 영향을 받을 path, component, work context 또는 product concern
+- possible prerequisite/dependency
+- materiality assessment와 그 근거
+- repository/environment research 가능성
+- candidate freshness와 duplicate/supersession basis
+
+Candidate의 text가 설득력 있거나 여러 번 발견되었다는 이유만으로 canonical
+Question으로 승격하지 않는다. Automatic discovery와 materiality quality는 아직
+실행 검증되지 않았으며 이 문서는 generation/ranking algorithm을 선택하지 않는다.
+
+### 1.2 Materiality status
+
+Materiality assessment는 최소 다음 상태를 구분한다.
+
+| Status | 의미 |
+|---|---|
+| `unassessed` | 결과 영향과 Source basis를 아직 검토하지 않음 |
+| `needs_evidence` | repository/environment research 또는 prototype evidence가 있어야 materiality를 판정할 수 있음 |
+| `material` | user choice, delegation 또는 명시적 branch disposition이 결과를 실질적으로 바꿈 |
+| `not_material` | 현재 scope에서 결과를 실질적으로 바꾸지 않거나 이미 다른 canonical meaning에 포함됨 |
+
+Canonical Question으로의 promotion에는 current revision 기준 `material` assessment,
+Project scope, Source basis와 known prerequisite가 필요하다. `not_material` Candidate는
+질문 수를 채우기 위해 승격하지 않는다. Materiality basis가 나중에 바뀌면 기존
+Question을 조용히 삭제하지 않고 적절한 terminal outcome 또는 새 revision/source
+basis로 처리한다.
+
+### 1.3 Canonical Question
+
+Canonical `Question`은 다음 meaning을 보존한다.
+
+- stable Question identity와 Project ownership
+- displayed wording을 포함한 correction revision
+- materiality basis와 why it matters now
+- established fact, assumption, known limit와 Source basis
+- dependencies, prerequisite outcome requirement와 dependent branch
+- displayed alternatives, recommendation와 explanation basis
+- applicability scope와 what the answer unlocks
+- current lifecycle outcome와 supersession relation
+
+Question identity는 wording과 다르다. 같은 material meaning을 바꿔 표현했다고 새
+Question identity를 만들지 않으며, meaning이 달라지면 correction revision으로
+숨기지 않는다. Display된 revision은 response linkage의 일부다.
+
+## 2. Dependency와 prerequisite semantics
+
+`depends_on`은 dependent Question이 material하게 열리기 전에 필요한 다른 Question
+outcome을 가리킨다. Dependency는 단순한 ordering hint가 아니며 다음을 명시한다.
+
+- prerequisite Question identity
+- dependent Question identity
+- 어떤 prerequisite outcome 또는 resulting basis가 dependency를 만족하는지
+- 어떤 outcome이 dependent branch를 supersede, exclude 또는 계속 block하는지
+- dependency assessment의 Source와 revision basis
+
+모든 terminal outcome이 모든 dependency를 만족하지 않는다. 예를 들어 특정
+`deferred`나 `out_of_scope` outcome이 dependent implementation Question을 자동으로
+열지 않는다. Dependency cycle이나 missing prerequisite는 empty frontier 성공으로
+숨기지 않고 diagnostic/review 대상으로 표시한다.
+
+## 3. Current dependency frontier
+
+`current dependency frontier`는 canonical Question state에서 매번 재계산하는
+read model이다. 다음 조건을 모두 만족하는 Question만 포함한다.
+
+- current Project와 Inquiry scope에 속함
+- current revision의 materiality가 `material`임
+- terminal outcome이 없음
+- 모든 prerequisite가 그 dependency가 요구한 positive basis를 만족함
+- active Decision이나 upstream outcome으로 superseded되지 않음
+- repository/environment research로 먼저 해결해야 할 fact가 남아 있지 않음
+
+미해결 prerequisite가 있는 Question은 canonical하게 사라지지 않지만 frontier에는
+나오지 않는다. 모든 material branch가 terminal이고 unresolved prerequisite나
+dependency diagnostic이 없을 때 frontier는 비어 있고 Inquiry를 종료할 수 있다.
+
+### Deterministic ordering
+
+같은 canonical state와 scope에서는 모든 host/session이 같은 frontier order를
+만든다. Ordering basis는 Question promotion 또는 dependency review에서 보존한 explicit
+presentation order를 먼저 사용하고 stable Question identity를 final tie-breaker로
+사용한다. Independent Questions는 이 순서로 같은 round에 묶을 수 있다.
+
+Runtime discovery order, map iteration, access frequency, generated wording, model score와
+Checkpoint listing order는 authority가 아니다. Ordering basis를 바꾸는 operation은
+inspectable revision/basis를 남기며 이미 terminal인 Question을 다시 열지 않는다.
+
+## 4. Research before asking
+
+Repository, source, environment 또는 bounded experiment로 결정적으로 확인할 수 있는
+fact는 user preference Question처럼 묻지 않고 먼저 조사한다.
+
+- Repository Intelligence의 capability/coverage/freshness를 확인한다.
+- 필요한 local file, Git, manifest, command와 environment observation을 Source로
+  남긴다.
+- 확인 범위와 unavailable/unsupported/failed uncertainty를 표시한다.
+- 충분한 evidence가 있으면 Question을 `resolved_by_research`로 transition한다.
+- evidence가 부족하고 user value가 필요하지 않으면 `requires_prototype`,
+  `deferred` 또는 계속 research 대상으로 둔다.
+
+Research result는 user Decision이 아니다. Agent가 사실을 찾지 못했다는 이유만으로
+사용자에게 추측을 요구하지 않으며, repository/environment fact와 user preference가
+혼합된 Question이면 established fact와 실제 선택 지점을 분리한다.
+
+## 5. Question presentation
+
+Frontier의 각 Question은 최소 다음을 함께 표시한다.
+
+- Question identity와 displayed revision
+- why it matters now와 material scope
+- established facts와 Source/capability/freshness
+- displayed alternatives와 각 consequence
+- agent recommendation과 recommendation Source basis
+- trade-offs, uncertainty, known limits와 omitted evidence
+- prerequisite/outcome context와 answer가 여는 다음 branch
+- 선택 외의 가능한 disposition: delegation, research, prototype, deferment 또는
+  out-of-scope
+
+`Agent Recommendation`은 Question revision에 연결된 agent-authored basis이며 user
+choice와 별개다. Displayed alternative와 recommendation이 바뀌면 response가 참조할
+revision도 바뀐다. Recommendation batch adoption은 각 Question identity/revision과
+명시적으로 연결된 user response일 때만 개별 Decision transition으로 해석한다.
+
+## 6. Current-host User Response Source
+
+`User Response Source`는 현재 active host interaction의 explicit user turn을 가리키는
+canonical Source다. Inquiry response로 인정하려면 다음을 확인할 수 있어야 한다.
+
+- Project, host와 active session context
+- exact user-turn identity
+- 응답 대상 exact Question identity와 displayed revision
+- user가 실제로 제출한 bounded response basis
+- response time/order와 adapter observation provenance
+
+Past conversation, inferred preference, agent paraphrase, 다른 interface의 미연결 input,
+provider output과 일반적인 “좋아요”는 이 Source를 대신하지 않는다. 같은 user turn이
+여러 Question에 명시적으로 답할 수는 있지만 각 Question identity/revision linkage를
+독립적으로 확인한다.
+
+## 7. Response Interpretation과 Decision 생성
+
+`Response Interpretation`은 user-turn Source를 Question의 displayed alternatives 또는
+terminal disposition에 mapping하는 bounded inquiry meaning이다. 새 core entity가
+아니며 user text를 rewrite하거나 user rationale를 생성하는 authority가 아니다.
+
+### Decision이 되기 위한 조건
+
+User response가 canonical `Decision`을 만들려면 다음을 모두 만족한다.
+
+- exact current-host User Response Source가 존재함
+- Source가 exact current Question identity와 displayed revision을 가리킴
+- Question이 아직 response를 받을 수 있고 Project/scope가 일치함
+- explicit choice 또는 explicit delegation을 모호하지 않게 mapping할 수 있음
+- user rationale가 있다면 응답과 구분하여 그대로 Source-linked basis로 보존함
+- 당시 displayed alternatives, Agent Recommendation, uncertainty와 Source basis를
+  추적할 수 있음
+- resulting Decision applicability와 Question outcome이 일치함
+
+Explicit choice는 Question outcome `answered`와 `answers` relation을 만든다. Explicit
+delegation은 delegation Decision과 `delegated` outcome을 만들 수 있다. Research,
+prototype 필요, deferment, scope exclusion과 supersession은 Question을 terminal로
+만들 수 있지만 user choice/delegation 조건이 없으면 Decision으로 위조하지 않는다.
+
+### Rejection
+
+다음 input은 canonical transition 없이 거부하거나 clarification Candidate로 남긴다.
+
+- displayed revision보다 오래된 stale response
+- Question identity가 없거나 다른 Project를 가리키는 response
+- 여러 alternative/outcome으로 해석 가능한 ambiguous response
+- 이미 terminal/superseded된 revision에 대한 response
+- agent recommendation을 user response로 재전송한 input
+- host/session/user-turn provenance를 확인할 수 없는 input
+
+Rejection은 Source/Decision/Question 일부만 성공한 것처럼 보고하지 않는다. 새 current
+revision을 다시 표시하거나 ambiguity를 명확히 해 달라고 요청할 수 있지만 기존
+Question의 의미를 추측으로 바꾸지 않는다.
+
+## 8. Abstract atomic response boundary
+
+한 response가 Decision을 만드는 logical operation은 최소 다음 네 meaning을 하나의
+atomic boundary로 취급한다.
+
+1. current-host User Response Source의 존재와 linkage
+2. exact Question revision에 대한 Response Interpretation
+3. provenance/applicability를 가진 Decision 생성
+4. Question의 `answered` 또는 `delegated` transition
+
+모두 관찰 가능하게 성공하거나 어느 것도 canonical success로 남지 않아야 한다.
+Crash/retry 뒤 같은 response가 duplicate Decision을 만들거나 Question만 terminal로
+남아서는 안 된다. User turn 하나가 여러 Question에 답하면 각 Question 단위의
+atomic meaning과 전체 결과를 구분해 보고한다.
+
+이 요구는 transaction, API, storage, event, lock 또는 idempotency mechanism을
+선택하지 않는다. Production implementation은 이 invariant를 atomic commit 또는
+동등하게 검증된 repair/idempotency behavior로 만족하고 later failure validation에
+근거를 남겨야 한다.
+
+## 9. Terminal outcome
+
+Canonical Question의 terminal outcome vocabulary는 다음과 같다.
+
+| Outcome | 의미 | Decision requirement |
+|---|---|---|
+| `answered` | user가 exact current revision에 명시적 choice를 제공함 | user Decision 필수 |
+| `delegated` | user가 bounded choice를 agent/implementation owner에게 명시적으로 위임함 | delegation Decision 필수 |
+| `resolved_by_research` | repository/environment Source가 선택 질문 없이 필요한 fact를 해결함 | user Decision을 만들지 않음 |
+| `requires_prototype` | 대화/현재 evidence로 결정할 수 없어 prototype evidence branch로 전환함 | user Decision을 자동 생성하지 않음 |
+| `deferred` | 이유, scope와 revisit basis를 보존하고 현재 답변을 의도적으로 미룸 | user Decision을 자동 생성하지 않음 |
+| `out_of_scope` | 현재 Project/work scope에서 다루지 않기로 branch를 닫음 | user Decision을 자동 생성하지 않음 |
+| `superseded` | upstream outcome, 동일 material meaning 또는 후속 Question/Decision이 이 branch를 대체함 | 대체 basis가 필요하며 user Decision을 자동 생성하지 않음 |
+
+`answered`는 accepted Q1의 decision branch를 canonical Question outcome vocabulary로
+표현한 이름이며 새 product choice가 아니다. Terminal outcome은 Question이 현재
+답변을 기다리지 않는 이유다. 모든 outcome이 같은 dependent branch를 열거나 모든
+outcome이 Decision을 만든다는 뜻이 아니다.
+
+## 10. Inquiry round, persistence와 pause/resume
+
+한 Inquiry round는 같은 frontier에서 표시한 independent Question들과 그 response,
+research 또는 disposition 처리의 bounded unit이다.
+
+- 다음 frontier를 표시하기 전에 각 accepted transition과 Source basis를 canonical로
+  보존한다.
+- Partial round는 성공한 Question과 실패/거부된 Question을 구분하며 전체 성공으로
+  표현하지 않는다.
+- User가 pause하면 current canonical Question/Decision state를 먼저 보존한다.
+- Resume은 persisted frontier list를 replay하지 않고 current canonical state에서
+  frontier를 deterministic하게 재계산한다.
+- Already `answered`, `delegated` 또는 다른 terminal outcome인 material meaning을
+  wording만 바꾸어 다시 묻지 않는다.
+- Question/round 수에는 고정 상한을 두지 않는다. 모든 material branch가 terminal이
+  되거나 explicit pause할 때까지 진행할 수 있다.
+
+Process/session 종료 뒤에도 exact Question revisions, Source linkage, Decisions,
+terminal outcomes와 unresolved dependencies를 읽어 같은 frontier를 복구할 수 있어야
+한다.
+
+## 11. Decision applicability
+
+Inquiry는 `domain-model.md`의 Decision identity와 validity를 사용하며 다음 basis를
+함께 평가한다.
+
+- Project
+- path, component 또는 work context scope
+- explicit assumptions
+- Source basis와 freshness/availability
+- 당시 alternatives, Agent Recommendation과 user rationale
+- expected consequence, known uncertainty와 known limit
+- revisit trigger
+- `supersedes`/`superseded_by`, contradiction과 `review_due` state
+
+Projection omission, access frequency, 오래된 display time와 cache eviction은 Decision
+validity를 바꾸지 않는다. Source가 stale/unavailable한 경우 historical Decision을
+rewrite하지 않고 applicability uncertainty 또는 `review_due` basis로 제시한다.
+
+## 12. Decision reuse와 re-questioning
+
+Active Decision은 같은 Project, declared scope와 assumptions가 유지되고 Source basis에
+unresolved conflict가 없으며 revisit trigger가 충족되지 않았을 때 재사용한다. 이미
+선택한 방향의 직접적인 구현 세부사항을 다른 표현으로 다시 묻지 않는다.
+
+다음 경우에는 reason과 changed basis를 제시한 새 Question으로 재검토할 수 있다.
+
+- user가 explicit review를 요청함
+- Project, path, component 또는 work context scope가 material하게 달라짐
+- assumption 또는 Source basis/freshness가 material하게 달라짐
+- declared revisit trigger가 충족됨
+- repository/Context evidence와 Decision이 충돌함
+- 후속 conflicting Decision 또는 supersession이 존재함
+- 실제 consequence가 중요한 expected consequence와 다름
+
+Preference inference, model change, access frequency와 새 agent session만으로 다시
+묻지 않는다. Re-questioning이 user choice를 바꾸면 새 Decision이 기존 Decision을
+supersede하며 in-place correction으로 숨기지 않는다.
+
+## 13. Checkpoint interaction
+
+Checkpoint는 pause/handoff에서 다음을 관찰해 기록할 수 있다.
+
+- 해당 시점의 open Question identities/revisions
+- 당시 계산된 frontier와 blocked dependency summary
+- applied Decisions, research/prototype branch와 next meaningful step
+
+이 목록은 `records_state_of` observation이며 Inquiry frontier의 두 번째 authority가
+아니다. Resume은 Checkpoint의 frontier를 그대로 활성화하지 않고 canonical
+Question/Decision/dependency에서 재계산한다. Checkpoint와 recomputed state가 다르면
+Checkpoint를 rewrite하지 않고 snapshot/freshness 차이를 설명한다.
+
+Inquiry round persistence는 Checkpoint 생성 여부에 의존하지 않는다. 단순 질문
+표시나 response rejection만으로 meaningful work Checkpoint를 만들지 않는다.
+
+## 14. Later-validation hooks
+
+### V09 — Recall과 Checkpoint 정확성
+
+V09는 최소 다음을 검증해야 한다.
+
+- fresh session에서 canonical state로 frontier/Decision basis 복구
+- terminal/answered Question 비반복과 deterministic ordering
+- Checkpoint frontier listing과 current recomputation의 authority 분리
+- stale Source, superseded Decision과 unresolved prerequisite 표시
+- pause/handoff persistence와 unrelated greeting에서 inquiry/Recall 비개입
+- work/verification/review/acceptance와 Question outcome의 독립성
+
+### V11 — Combined journey
+
+V11은 실제 repository task에서 다음을 결합 검증해야 한다.
+
+- repository/environment fact research before ask
+- Question Candidate와 canonical Question promotion boundary
+- material multi-round dependency frontier와 모든 일곱 terminal outcome
+- exact current-host turn/revision response와 stale/ambiguous rejection
+- response Source/interpretation/Decision/Question atomicity와 retry behavior
+- Decision applicability reuse와 evidence-driven re-questioning
+- session/process restart 뒤 pause/resume와 Checkpoint non-authority
+
+Automatic discovery와 materiality quality를 검증하지 않은 상태에서 완전한 Question
+coverage를 주장하지 않는다.
+
+## 15. Non-goals
+
+이 문서는 Question generation model, materiality ranking algorithm, parser, provider,
+database, serialized field, transaction mechanism, API, MCP method, host UI와 wire
+representation을 선택하지 않는다. Portable conflict/merge, generated-document
+rendering, general failure/recovery matrix와 legacy workflow도 정의하지 않는다.

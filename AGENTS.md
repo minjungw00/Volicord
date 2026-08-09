@@ -84,6 +84,12 @@ requirement.
 - `rebuild/docs/design/privacy-and-provider-boundary.md` owns active local,
   interactive-host, and background-provider authority, opt-in, transmission,
   retention, and deletion boundaries.
+- `rebuild/docs/design/inquiry-and-decision.md` owns active Question Candidate,
+  frontier, response, terminal transition, Decision applicability, reuse, and
+  Checkpoint-interaction contracts.
+- `rebuild/docs/design/projections-and-documents.md` owns active Recall, map,
+  document projection, grounding, preview, adoption, and output-format
+  boundaries.
 - `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
   deleting the legacy implementation.
 - Later target-architecture work must read `architecture.md` and
