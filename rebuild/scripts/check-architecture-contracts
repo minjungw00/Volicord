@@ -40,6 +40,7 @@ REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
         "## 8. Accepted Decision traceability contract",
         "## 9. Acceptance scenario traceability contract",
         "## 10. Later-validation interface traceability",
+        "#### Candidate Inspection read authority contract",
         "#### Guarded-effect confirmation contract",
     ),
     "domain-model.md": (
@@ -177,6 +178,18 @@ CANDIDATE_PRIVACY_CONCERNS = (
     "explicit_deletion",
     "policy_change",
 )
+CANDIDATE_READ_AUTHORITY_FIELDS = (
+    "reader",
+    "purpose",
+    "input_information_class",
+    "allowed_read",
+    "policy_owners",
+    "forbidden_access",
+    "mutation_boundary",
+    "failure_boundary",
+    "producer_independence",
+    "implementation_neutrality",
+)
 GUARDED_CONFIRMATION_FIELDS = (
     "confirmation_request_identity",
     "request_revision",
@@ -232,6 +245,10 @@ PRODUCTION_PROTOTYPE_PATTERNS = (
     re.compile(r"production implementation\s*:\s*(?:Wave 1 prototype|prototype\.py)", re.IGNORECASE),
     re.compile(r"(?:Wave 1 prototype|prototype\.py).{0,80}production implementation으로 사용한다", re.IGNORECASE),
 )
+OVERBROAD_CANDIDATE_ACCESS_PATTERNS = (
+    re.compile(r"unrestricted Candidate-body access (?:is )?allowed", re.IGNORECASE),
+    re.compile(r"blanket Candidate(?:-body)? read authority (?:is )?granted", re.IGNORECASE),
+)
 
 
 def tracked_paths(root: Path) -> list[str]:
@@ -253,6 +270,19 @@ def section(text: str, heading: str) -> str:
         return ""
     following = text.find("\n## ", start + len(heading))
     return text[start:] if following < 0 else text[start:following]
+
+
+def heading_section(text: str, heading: str) -> str:
+    """Return one Markdown heading and its content through the next peer/parent heading."""
+    start = text.find(heading)
+    if start < 0:
+        return ""
+    level = len(heading) - len(heading.lstrip("#"))
+    following = re.search(rf"^#{{1,{level}}} ", text[start + len(heading) :], re.MULTILINE)
+    if following is None:
+        return text[start:]
+    end = start + len(heading) + following.start()
+    return text[start:end]
 
 
 def table_first_cells(text: str) -> list[str]:
@@ -577,6 +607,277 @@ def check_candidate_contract(root: Path) -> list[str]:
     return errors
 
 
+def check_candidate_inspection_read_authority(root: Path) -> list[str]:
+    errors: list[str] = []
+    architecture_document = "architecture.md"
+    architecture_text = (root / DESIGN_DIRECTORY / architecture_document).read_text(
+        encoding="utf-8"
+    )
+
+    subsystem_section = heading_section(
+        architecture_text, "### 3.4 Projections and Documents"
+    )
+    subsystem_description = subsystem_section.split(
+        "#### Candidate Inspection read authority contract", 1
+    )[0]
+    subsystem_markers = (
+        "정확히 다음 세 logical input class",
+        "Canonical Context read model",
+        "Candidate Inspection",
+        "domain과 privacy policy가 허용한",
+        "bounded Session Candidate metadata",
+        "permitted Derived State",
+    )
+    subsystem_grants_candidate = all(
+        marker in subsystem_description for marker in subsystem_markers
+    )
+    if not subsystem_grants_candidate:
+        errors.append(
+            f"{architecture_document}: missing Projections subsystem Candidate Inspection read authority"
+        )
+
+    boundary_rows = table_rows(
+        section(architecture_text, "## 4. Boundary authority"),
+        ("Subsystem", "Read authority", "Write authority", "Reference authority"),
+    )
+    boundary_index = indexed_rows(boundary_rows, "Subsystem")
+    projection_row = boundary_index.get("Projections and Documents")
+    boundary_markers = (
+        "Canonical Context read model",
+        "Candidate Inspection에만",
+        "domain/privacy-policy-authorized",
+        "bounded Session Candidate metadata",
+        "permitted Derived State",
+    )
+    boundary_grants_candidate = projection_row is not None and all(
+        marker in projection_row["Read authority"] for marker in boundary_markers
+    )
+    if not boundary_grants_candidate:
+        errors.append(
+            f"{architecture_document}: Boundary authority row missing Candidate Inspection read authority"
+        )
+
+    authority_section = heading_section(
+        architecture_text, "#### Candidate Inspection read authority contract"
+    )
+    authority_rows = table_rows(
+        authority_section, ("Contract field", "Required authority boundary")
+    )
+    authority_index = require_row_keys(
+        errors,
+        architecture_document,
+        authority_rows,
+        "Contract field",
+        CANDIDATE_READ_AUTHORITY_FIELDS,
+        "Candidate Inspection read authority field",
+    )
+
+    reader = authority_index.get("reader", {}).get("Required authority boundary", "")
+    purpose = authority_index.get("purpose", {}).get("Required authority boundary", "")
+    if reader != "Projections and Documents" or purpose != "Candidate Inspection only":
+        errors.append(f"{architecture_document}: invalid Candidate Inspection reader/purpose")
+
+    input_class = authority_index.get("input_information_class", {}).get(
+        "Required authority boundary", ""
+    )
+    input_class_markers = (
+        "Session Candidate remains Session Candidate",
+        "not reclassified as Derived State",
+    )
+    input_is_session_candidate = all(marker in input_class for marker in input_class_markers)
+    if not input_is_session_candidate:
+        errors.append(
+            f"{architecture_document}: Candidate Inspection input is not distinct Session Candidate"
+        )
+
+    allowed_read = authority_index.get("allowed_read", {}).get(
+        "Required authority boundary", ""
+    )
+    allowed_read_markers = (
+        "`domain-model.md`",
+        "user-inspectable Candidate metadata",
+        "collection",
+        "retention",
+        "deletion",
+        "privacy policy",
+        "bounded Candidate content",
+    )
+    bounded_policy_scope = all(marker in allowed_read for marker in allowed_read_markers)
+    if not bounded_policy_scope:
+        errors.append(
+            f"{architecture_document}: missing bounded domain/privacy Candidate read scope"
+        )
+
+    policy_owners = authority_index.get("policy_owners", {}).get(
+        "Required authority boundary", ""
+    )
+    for marker in (
+        "`domain-model.md`",
+        "`privacy-and-provider-boundary.md`",
+        "`projections-and-documents.md`",
+        "identity, meaning, lifecycle",
+        "collection scope, opt-out, retention, expiry와 deletion",
+        "presentation과 omission",
+    ):
+        if marker not in policy_owners:
+            errors.append(
+                f"{architecture_document}: incomplete Candidate Inspection policy ownership: {marker}"
+            )
+
+    forbidden_access = authority_index.get("forbidden_access", {}).get(
+        "Required authority boundary", ""
+    )
+    for marker in (
+        "Full prompts",
+        "full tool arguments",
+        "full Source bodies",
+        "unlimited stdout/stderr",
+        "provider-private payloads",
+        "expired or deleted Candidate content",
+        "authorized Project/scope 밖의 content",
+        "blanket read authority가 없다",
+    ):
+        if marker not in forbidden_access:
+            errors.append(
+                f"{architecture_document}: incomplete Candidate Inspection forbidden access: {marker}"
+            )
+    for pattern in OVERBROAD_CANDIDATE_ACCESS_PATTERNS:
+        if pattern.search(authority_section):
+            errors.append(f"{architecture_document}: grants unrestricted Candidate-body access")
+
+    mutation_boundary = authority_index.get("mutation_boundary", {}).get(
+        "Required authority boundary", ""
+    )
+    mutation_markers = (
+        "Read, omission, ranking, rendering, expansion 또는 inspection failure",
+        "promote, dismiss, expire, delete, correct, reinterpret",
+        "retention/opt-out state를 바꿀 수 없다",
+    )
+    no_mutation = all(marker in mutation_boundary for marker in mutation_markers)
+    if not no_mutation:
+        errors.append(
+            f"{architecture_document}: missing Candidate Inspection no-mutation behavior"
+        )
+
+    failure_boundary = authority_index.get("failure_boundary", {}).get(
+        "Required authority boundary", ""
+    )
+    failure_markers = (
+        "Unavailable 또는 policy-withheld Candidate content",
+        "bounded `partial`/`degraded` inspection",
+        "explicit omission basis",
+        "Empty success",
+        "Canonical mutation",
+    )
+    degraded_failure = all(marker in failure_boundary for marker in failure_markers)
+    if not degraded_failure:
+        errors.append(
+            f"{architecture_document}: missing Candidate Inspection partial/degraded failure boundary"
+        )
+
+    producer_independence = authority_index.get("producer_independence", {}).get(
+        "Required authority boundary", ""
+    )
+    for marker in ("identity와 provenance", "write authority를 얻지 않는다"):
+        if marker not in producer_independence:
+            errors.append(
+                f"{architecture_document}: incomplete Candidate producer independence: {marker}"
+            )
+
+    implementation_neutrality = authority_index.get("implementation_neutrality", {}).get(
+        "Required authority boundary", ""
+    )
+    for marker in ("database", "unified service", "API", "process", "transport"):
+        if marker not in implementation_neutrality:
+            errors.append(
+                f"{architecture_document}: incomplete Candidate implementation neutrality: {marker}"
+            )
+
+    domain_document = "domain-model.md"
+    domain_text = (root / DESIGN_DIRECTORY / domain_document).read_text(encoding="utf-8")
+    domain_information = section(domain_text, "## 2. Information class")
+    domain_separates_candidate = all(
+        marker in domain_text or marker in domain_information
+        for marker in (
+            "`Canonical Context`, `Session Candidate`, `Derived State`는 서로 다른",
+            "### 2.2 Session Candidate",
+            "### 2.3 Derived State",
+        )
+    )
+    if not domain_separates_candidate:
+        errors.append(f"{domain_document}: Session Candidate is not separate from Derived State")
+
+    projection_document = "projections-and-documents.md"
+    projection_text = (root / DESIGN_DIRECTORY / projection_document).read_text(encoding="utf-8")
+    projection_intro = " ".join(
+        projection_text.split("## 1. Projection invariant", 1)[0].split()
+    )
+    projection_invariants = " ".join(
+        heading_section(projection_text, "## 1. Projection invariant").split()
+    )
+    projection_candidate = " ".join(
+        heading_section(
+            projection_text, "### Candidate Inspection projection contract"
+        ).split()
+    )
+    specialized_markers = (
+        "Canonical Context",
+        "bounded Session Candidate metadata",
+        "Candidate Inspection에만",
+        "permitted Derived State",
+    )
+    if not all(marker in projection_intro for marker in specialized_markers):
+        errors.append(
+            f"{projection_document}: introductory read boundary exceeds top-level authority"
+        )
+    if not all(marker in projection_invariants for marker in specialized_markers):
+        errors.append(
+            f"{projection_document}: Projection invariant exceeds top-level authority"
+        )
+    specialized_scope_markers = (
+        "user-inspectable Candidate metadata",
+        "collection, retention, deletion 및 privacy policy",
+        "bounded Candidate",
+        "Full prompts",
+        "full tool arguments",
+        "full Source bodies",
+        "unlimited",
+        "provider-private payloads",
+        "blanket authority가 아니다",
+    )
+    if not all(marker in projection_candidate for marker in specialized_scope_markers):
+        errors.append(
+            f"{projection_document}: Candidate Inspection does not preserve bounded top-level scope"
+        )
+    for pattern in OVERBROAD_CANDIDATE_ACCESS_PATTERNS:
+        if pattern.search(projection_text):
+            errors.append(
+                f"{projection_document}: claims unrestricted Candidate-body access"
+            )
+
+    top_level_grants_candidate = all(
+        (
+            subsystem_grants_candidate,
+            boundary_grants_candidate,
+            reader == "Projections and Documents",
+            purpose == "Candidate Inspection only",
+            input_is_session_candidate,
+            bounded_policy_scope,
+            no_mutation,
+            degraded_failure,
+        )
+    )
+    specialized_claims_candidate = (
+        "Session Candidate를 읽는 named," in projection_candidate
+        and "read-only projection" in projection_candidate
+    )
+    if specialized_claims_candidate and not top_level_grants_candidate:
+        errors.append(
+            f"{projection_document}: Candidate Inspection exceeds top-level architecture authority"
+        )
+    return errors
+
+
 def check_guarded_effect_contract(root: Path) -> list[str]:
     errors: list[str] = []
     architecture_document = "architecture.md"
@@ -810,6 +1111,7 @@ def check_repository(root: Path, known_tracked: list[str] | None = None) -> list
     errors.extend(check_traceability(root))
     errors.extend(check_relation_direction_contract(root))
     errors.extend(check_candidate_contract(root))
+    errors.extend(check_candidate_inspection_read_authority(root))
     errors.extend(check_guarded_effect_contract(root))
     errors.extend(check_corrected_traceability(root))
     errors.extend(check_paths_and_prohibitions(root, tracked))
@@ -840,6 +1142,49 @@ def replace_once(path: Path, old: str, new: str) -> None:
     if text.count(old) != 1:
         raise AssertionError(f"self-test fixture expected one occurrence in {path}: {old}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def remove_top_level_candidate_read_authority(root: Path, _: list[str]) -> None:
+    architecture = root / DESIGN_DIRECTORY / "architecture.md"
+    replace_once(
+        architecture,
+        "- Projections and Documents는 Canonical Context read model, Candidate Inspection에만\n"
+        "  허용된 bounded Session Candidate metadata와 permitted Derived State를 읽어 결과를\n"
+        "  만들며 read, rendering 또는 export의 side effect로 Candidate나 canonical record를\n"
+        "  수정하지 않는다.",
+        "- Projections and Documents는 Canonical Context read model과 permitted Derived "
+        "State만 읽는다.",
+    )
+    replace_once(
+        architecture,
+        "2. Named Candidate Inspection projection에만 필요한, domain과 privacy policy가 허용한\n"
+        "   bounded Session Candidate metadata.",
+        "2. Session Candidate input authority is absent.",
+    )
+    replace_once(
+        architecture,
+        "| `purpose` | Candidate Inspection only |",
+        "| `purpose` | Candidate Inspection authority absent |",
+    )
+    replace_once(
+        architecture,
+        "| `input_information_class` | Session Candidate remains Session Candidate and is not "
+        "reclassified as Derived State. |",
+        "| `input_information_class` | No Candidate input class. |",
+    )
+    replace_once(
+        architecture,
+        "| `allowed_read` | `domain-model.md`가 소유하는 user-inspectable Candidate metadata와, "
+        "적용되는 collection, retention, deletion 및 privacy policy가 명시적으로 허용한 "
+        "bounded Candidate content만 읽는다. |",
+        "| `allowed_read` | No Candidate read. |",
+    )
+    replace_once(
+        architecture,
+        "Candidate Inspection에만 domain/privacy-policy-authorized bounded Session Candidate "
+        "metadata, ",
+        "",
+    )
 
 
 def self_test() -> int:
@@ -984,6 +1329,73 @@ def self_test() -> int:
                     "effective behavior removed",
                 ),
                 "missing Candidate opt-out behavior",
+            ),
+            (
+                "missing-candidate-authority-subsystem",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "2. Named Candidate Inspection projection에만 필요한, domain과 privacy policy가 허용한\n"
+                    "   bounded Session Candidate metadata.",
+                    "2. Candidate read authority removed.",
+                ),
+                "missing Projections subsystem Candidate Inspection read authority",
+            ),
+            (
+                "missing-candidate-authority-boundary-row",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "Candidate Inspection에만 domain/privacy-policy-authorized bounded Session Candidate "
+                    "metadata, ",
+                    "",
+                ),
+                "Boundary authority row missing Candidate Inspection read authority",
+            ),
+            (
+                "reclassified-candidate-authority-input",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "| `input_information_class` | Session Candidate remains Session Candidate and is not "
+                    "reclassified as Derived State. |",
+                    "| `input_information_class` | Derived State remains Derived State. |",
+                ),
+                "Candidate Inspection input is not distinct Session Candidate",
+            ),
+            (
+                "missing-bounded-candidate-read-scope",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "| `allowed_read` | `domain-model.md`가 소유하는 user-inspectable Candidate metadata와, "
+                    "적용되는 collection, retention, deletion 및 privacy policy가 명시적으로 허용한 "
+                    "bounded Candidate content만 읽는다. |",
+                    "| `allowed_read` | Candidate content may be read. |",
+                ),
+                "missing bounded domain/privacy Candidate read scope",
+            ),
+            (
+                "missing-candidate-inspection-no-mutation",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "| `mutation_boundary` | Read, omission, ranking, rendering, expansion 또는 inspection "
+                    "failure는 Candidate를 promote, dismiss, expire, delete, correct, reinterpret하거나 "
+                    "retention/opt-out state를 바꿀 수 없다. |",
+                    "| `mutation_boundary` | Mutation behavior removed. |",
+                ),
+                "missing Candidate Inspection no-mutation behavior",
+            ),
+            (
+                "unrestricted-candidate-body-projection",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "projections-and-documents.md",
+                    "밖의 content를 읽는 blanket authority가 아니다.",
+                    "밖의 content를 읽는 blanket authority가 아니다. Unrestricted Candidate-body "
+                    "access is allowed.",
+                ),
+                "claims unrestricted Candidate-body access",
+            ),
+            (
+                "specialized-candidate-without-top-level-authority",
+                remove_top_level_candidate_read_authority,
+                "Candidate Inspection exceeds top-level architecture authority",
             ),
             (
                 "missing-guarded-expiration",
