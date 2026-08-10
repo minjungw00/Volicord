@@ -1,0 +1,539 @@
+#!/usr/bin/env python3
+"""Check Phase 3 architecture document structure and traceability.
+
+This is deterministic internal test support. Product meaning remains in the
+architecture documents; this checker verifies only maintained structure,
+routing, links, and traceability identifiers.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+DESIGN_DIRECTORY = Path("rebuild/docs/design")
+
+ARCHITECTURE_DOCUMENTS: tuple[str, ...] = (
+    "architecture.md",
+    "domain-model.md",
+    "repository-intelligence.md",
+    "privacy-and-provider-boundary.md",
+    "inquiry-and-decision.md",
+    "projections-and-documents.md",
+    "portable-context.md",
+    "versioning-policy.md",
+    "failure-and-recovery.md",
+)
+
+REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
+    "architecture.md": (
+        "## 1. 계약과 ownership",
+        "## 5. 주요 journey의 entry와 ownership",
+        "## 7. Phase 4 responsibility handoff",
+        "## 8. Accepted Decision traceability contract",
+        "## 9. Acceptance scenario traceability contract",
+        "## 10. Later-validation interface traceability",
+    ),
+    "domain-model.md": (
+        "## 1. Domain invariant",
+        "## 2. Information class",
+        "## 4. Canonical entity",
+        "## 9. Lifecycle semantics",
+    ),
+    "repository-intelligence.md": (
+        "## 1. Authority와 information class",
+        "## 2. Snapshot identity",
+        "## 4. Accepted capability와 상태",
+        "## 12. Later-validation hooks",
+    ),
+    "privacy-and-provider-boundary.md": (
+        "## 1. 세 authority boundary",
+        "## 6. Local-only normal mode",
+        "## 11. Later-validation hooks",
+    ),
+    "inquiry-and-decision.md": (
+        "## 1. Question Candidate와 canonical Question",
+        "## 3. Current dependency frontier",
+        "## 7. Response Interpretation과 Decision 생성",
+        "## 9. Terminal outcome",
+        "## 14. Later-validation hooks",
+    ),
+    "projections-and-documents.md": (
+        "## 1. Projection invariant",
+        "## 2. First project-scoped automatic Recall",
+        "## 7. Initial generated documents",
+        "## 10. Explicit adoption과 preserved Source boundary",
+        "## 13. Later-validation hooks",
+    ),
+    "portable-context.md": (
+        "## 1. Authority와 information boundary",
+        "## 2. Portable bundle inclusion",
+        "## 3. Default exclusions",
+        "## 8. Conflict vocabulary",
+        "## 9. Resolution authority와 automatic limits",
+        "## 11. Validation hooks",
+    ),
+    "versioning-policy.md": (
+        "## 1. Version boundary invariant",
+        "## 2. Independent formats와 ownership",
+        "## 8. Read-time version checks",
+        "## 9. Write-version behavior",
+        "## 11. Upgrade responsibility",
+        "## 12. New-product evolution과 excluded legacy service",
+        "## 13. Validation hooks",
+    ),
+    "failure-and-recovery.md": (
+        "## 1. Failure invariant",
+        "## 2. State matrix",
+        "## 3. Canonical mutation failure와 projection failure",
+        "## 4. Failure propagation matrix",
+        "## 5. Repair와 rebuild",
+        "## 7. Process와 long-operation result",
+        "## 9. Validation hooks",
+    ),
+}
+
+DECISION_IDS = tuple(f"D{number}" for number in range(1, 13))
+QUESTION_IDS = (
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5",
+    "Q6",
+    "Q7",
+    "Q8-A",
+    "Q8-B",
+    "Q9",
+    "Q10",
+    "Q11",
+    "Q12",
+    "Q13",
+)
+ACCEPTANCE_IDS = tuple("ABCDEFGHIJKLMNOPQ")
+LATER_VALIDATION_IDS = ("V02", "V04", "V06", "V07", "V08", "V09", "V10", "V11")
+
+CAPABILITY_REPORT_PATHS = (
+    "rebuild/validation/repository-intelligence/polyglot-structural/report.md",
+    "rebuild/validation/canonical-context/portability/report.md",
+    "rebuild/validation/inquiry/frontier-resume/report.md",
+)
+
+PHASE_4_HANDOFF = (
+    "Project and Source",
+    "→ Question",
+    "→ Decision",
+    "→ Context Item",
+    "→ Checkpoint",
+    "→ revision, supersession, contradiction, and forgetting",
+    "→ portable bundle and local binding",
+    "→ deterministic Recall basis",
+)
+
+PLACEHOLDER_PATTERN = re.compile(r"\b(?:TODO|TBD|FIXME)\b", re.IGNORECASE)
+OLD_NUMERIC_VALIDATION_PATH = re.compile(
+    r"^rebuild/validation/(?:[vV][0-9]{2}(?:/|-)|[0-9]{2}(?:/|-))"
+)
+OLD_NUMERIC_VALIDATION_REFERENCE = re.compile(
+    r"rebuild/validation/(?:[vV][0-9]{2}(?:/|-)|[0-9]{2}(?:/|-))"
+)
+POSITIVE_PROHIBITED_PATH_PATTERNS = (
+    re.compile(r"supported compatibility path", re.IGNORECASE),
+    re.compile(
+        r"\b(?:enable|provide|support|allow)(?:s|ed|ing)?\s+"
+        r"(?:legacy|migration|dual[- ]?(?:read|write)|parallel production|product-generation)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:legacy|migration|dual[- ]?(?:read|write)|parallel production|product-generation)"
+        r".{0,80}(?:지원한다|제공한다|허용한다|사용한다)",
+        re.IGNORECASE,
+    ),
+)
+PRODUCTION_PROTOTYPE_PATTERNS = (
+    re.compile(r"(?:Wave 1 prototype|prototype\.py) is (?:a|the) production implementation", re.IGNORECASE),
+    re.compile(r"production implementation\s*:\s*(?:Wave 1 prototype|prototype\.py)", re.IGNORECASE),
+    re.compile(r"(?:Wave 1 prototype|prototype\.py).{0,80}production implementation으로 사용한다", re.IGNORECASE),
+)
+
+
+def tracked_paths(root: Path) -> list[str]:
+    completed = subprocess.run(
+        ("git", "-C", str(root), "ls-files"),
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"git ls-files failed: {completed.stderr.strip()}")
+    return completed.stdout.splitlines()
+
+
+def section(text: str, heading: str) -> str:
+    start = text.find(heading)
+    if start < 0:
+        return ""
+    following = text.find("\n## ", start + len(heading))
+    return text[start:] if following < 0 else text[start:following]
+
+
+def table_first_cells(text: str) -> list[str]:
+    cells: list[str] = []
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        parts = [part.strip() for part in line.strip().strip("|").split("|")]
+        if not parts or parts[0] in {"", "---", "Decision", "Scenario", "Validation"}:
+            continue
+        if set(parts[0]) == {"-"}:
+            continue
+        cells.append(parts[0])
+    return cells
+
+
+def markdown_files(root: Path, tracked: Iterable[str]) -> list[Path]:
+    selected: list[Path] = []
+    for relative in tracked:
+        if relative in {"AGENTS.md", "rebuild/AGENTS.md"} or (
+            relative.endswith(".md")
+            and (
+                relative.startswith("rebuild/docs/design/")
+                or relative.startswith("rebuild/validation/")
+            )
+        ):
+            path = root / relative
+            if path.is_file():
+                selected.append(path)
+    return selected
+
+
+def check_links(root: Path, paths: Iterable[Path]) -> list[str]:
+    errors: list[str] = []
+    link_pattern = re.compile(r"\[[^]]+\]\(([^)]+)\)")
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        for target in link_pattern.findall(text):
+            if "://" in target or target.startswith("#"):
+                continue
+            relative = target.split("#", 1)[0]
+            if relative and not (path.parent / relative).resolve().exists():
+                errors.append(f"{path.relative_to(root)}: unresolved relative link: {target}")
+    return errors
+
+
+def check_documents(root: Path) -> list[str]:
+    errors: list[str] = []
+    for name in ARCHITECTURE_DOCUMENTS:
+        path = root / DESIGN_DIRECTORY / name
+        if not path.is_file():
+            errors.append(f"missing architecture document: {path.relative_to(root)}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for declaration in ("- 상태: active", "- 소유 범위:", "- 비소유 범위:"):
+            if declaration not in text:
+                errors.append(f"{path.relative_to(root)}: missing ownership declaration: {declaration}")
+        for heading in REQUIRED_HEADINGS[name]:
+            if text.splitlines().count(heading) != 1:
+                errors.append(f"{path.relative_to(root)}: expected one heading: {heading}")
+        match = PLACEHOLDER_PATTERN.search(text)
+        if match:
+            errors.append(f"{path.relative_to(root)}: active placeholder: {match.group(0)}")
+    return errors
+
+
+def check_owner_routing(root: Path) -> list[str]:
+    errors: list[str] = []
+    root_agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    rebuild_agents = (root / "rebuild/AGENTS.md").read_text(encoding="utf-8")
+    inputs_path = root / DESIGN_DIRECTORY / "architecture-inputs.md"
+    inputs = inputs_path.read_text(encoding="utf-8")
+
+    owner_pattern = re.compile(r"^\| `active` \| \[[^]]+\.md\]\(([^)]+\.md)\) \|", re.MULTILINE)
+    owners = owner_pattern.findall(inputs)
+    expected = set(ARCHITECTURE_DOCUMENTS)
+    if len(owners) != len(ARCHITECTURE_DOCUMENTS):
+        errors.append(f"architecture-inputs.md: expected 9 active owner rows, found {len(owners)}")
+    duplicates = sorted({name for name in owners if owners.count(name) > 1})
+    if duplicates:
+        errors.append(f"architecture-inputs.md: duplicate architecture owner: {', '.join(duplicates)}")
+    missing = sorted(expected - set(owners))
+    extra = sorted(set(owners) - expected)
+    if missing:
+        errors.append(f"architecture-inputs.md: missing active owners: {', '.join(missing)}")
+    if extra:
+        errors.append(f"architecture-inputs.md: unexpected active owners: {', '.join(extra)}")
+
+    for name in ARCHITECTURE_DOCUMENTS:
+        full = f"rebuild/docs/design/{name}"
+        route_pattern = re.compile(rf"`{re.escape(full)}` owns (?:the )?active")
+        if not route_pattern.search(root_agents):
+            errors.append(f"AGENTS.md: missing active owner route: {full}")
+        if full not in rebuild_agents:
+            errors.append(f"rebuild/AGENTS.md: missing required read route: {full}")
+        planned_pattern = re.compile(rf"\| `planned` \| (?:`|\[[^]]+\]\(){re.escape(name)}")
+        if planned_pattern.search(inputs):
+            errors.append(f"architecture-inputs.md: active owner remains planned: {name}")
+    return errors
+
+
+def check_traceability(root: Path) -> list[str]:
+    errors: list[str] = []
+    architecture_path = root / DESIGN_DIRECTORY / "architecture.md"
+    text = architecture_path.read_text(encoding="utf-8")
+
+    decision_cells = table_first_cells(section(text, "## 8. Accepted Decision traceability contract"))
+    expected_decisions = (*DECISION_IDS, *QUESTION_IDS)
+    for identifier in expected_decisions:
+        count = decision_cells.count(identifier)
+        if count != 1:
+            errors.append(f"architecture.md: expected one traceability row for {identifier}, found {count}")
+
+    acceptance_cells = table_first_cells(section(text, "## 9. Acceptance scenario traceability contract"))
+    for identifier in ACCEPTANCE_IDS:
+        count = acceptance_cells.count(identifier)
+        if count != 1:
+            errors.append(f"architecture.md: expected one acceptance row for {identifier}, found {count}")
+
+    validation_cells = table_first_cells(section(text, "## 10. Later-validation interface traceability"))
+    for identifier in LATER_VALIDATION_IDS:
+        count = validation_cells.count(identifier)
+        if count != 1:
+            errors.append(f"architecture.md: expected one later-validation row for {identifier}, found {count}")
+
+    for concept in PHASE_4_HANDOFF:
+        if concept not in section(text, "## 7. Phase 4 responsibility handoff"):
+            errors.append(f"architecture.md: missing Phase 4 handoff concept: {concept}")
+    return errors
+
+
+def check_paths_and_prohibitions(root: Path, tracked: list[str]) -> list[str]:
+    errors: list[str] = []
+    tracked_set = set(tracked)
+    for path in CAPABILITY_REPORT_PATHS:
+        if path not in tracked_set or not (root / path).is_file():
+            errors.append(f"missing capability-based validation report: {path}")
+    for path in tracked:
+        if OLD_NUMERIC_VALIDATION_PATH.match(path):
+            errors.append(f"tracked old numeric validation source path: {path}")
+
+    active_text = "\n".join(
+        (root / DESIGN_DIRECTORY / name).read_text(encoding="utf-8")
+        for name in ARCHITECTURE_DOCUMENTS
+        if (root / DESIGN_DIRECTORY / name).is_file()
+    )
+    old_reference = OLD_NUMERIC_VALIDATION_REFERENCE.search(active_text)
+    if old_reference:
+        errors.append(f"active architecture uses old numeric validation path: {old_reference.group(0)}")
+    for pattern in POSITIVE_PROHIBITED_PATH_PATTERNS:
+        match = pattern.search(active_text)
+        if match:
+            errors.append(f"active architecture presents a prohibited supported path: {match.group(0)}")
+    for pattern in PRODUCTION_PROTOTYPE_PATTERNS:
+        match = pattern.search(active_text)
+        if match:
+            errors.append(f"Wave 1 prototype named as production implementation: {match.group(0)}")
+
+    version_text = (root / DESIGN_DIRECTORY / "versioning-policy.md").read_text(encoding="utf-8")
+    for marker in ("Legacy decoder", "dual read/write", "parallel production implementation", "product-generation label"):
+        if marker not in version_text:
+            errors.append(f"versioning-policy.md: missing prohibited-path boundary: {marker}")
+    return errors
+
+
+def check_repository(root: Path, known_tracked: list[str] | None = None) -> list[str]:
+    tracked = tracked_paths(root) if known_tracked is None else known_tracked
+    errors: list[str] = []
+    errors.extend(check_documents(root))
+    errors.extend(check_links(root, markdown_files(root, tracked)))
+    errors.extend(check_owner_routing(root))
+    errors.extend(check_traceability(root))
+    errors.extend(check_paths_and_prohibitions(root, tracked))
+    return errors
+
+
+def copy_self_test_fixture(destination: Path, tracked: list[str]) -> list[str]:
+    selected: list[str] = []
+    for relative in tracked:
+        if relative in {"AGENTS.md", "rebuild/AGENTS.md"} or (
+            relative.endswith(".md")
+            and (
+                relative.startswith("rebuild/docs/design/")
+                or relative.startswith("rebuild/validation/")
+            )
+        ):
+            source = REPOSITORY_ROOT / relative
+            if source.is_file():
+                target = destination / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+                selected.append(relative)
+    return selected
+
+
+def replace_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if text.count(old) != 1:
+        raise AssertionError(f"self-test fixture expected one occurrence in {path}: {old}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def self_test() -> int:
+    maintained_errors = check_repository(REPOSITORY_ROOT)
+    if maintained_errors:
+        raise AssertionError("maintained repository did not pass before self-test: " + maintained_errors[0])
+
+    tracked = tracked_paths(REPOSITORY_ROOT)
+    with tempfile.TemporaryDirectory(prefix="volicord-architecture-contracts-") as temporary:
+        temporary_root = Path(temporary)
+        base = temporary_root / "positive"
+        fixture_tracked = copy_self_test_fixture(base, tracked)
+        positive_errors = check_repository(base, fixture_tracked)
+        if positive_errors:
+            raise AssertionError("positive fixture failed: " + positive_errors[0])
+
+        cases: tuple[tuple[str, Callable[[Path, list[str]], None], str], ...] = (
+            (
+                "missing-heading",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "portable-context.md",
+                    "## 8. Conflict vocabulary",
+                    "## 8. Removed heading",
+                ),
+                "expected one heading",
+            ),
+            (
+                "broken-link",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "[Failure와 Recovery](failure-and-recovery.md)",
+                    "[Failure와 Recovery](missing-failure-owner.md)",
+                ),
+                "unresolved relative link",
+            ),
+            (
+                "missing-trace",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "| D12 | `architecture.md` |",
+                    "| DX12 | `architecture.md` |",
+                ),
+                "D12",
+            ),
+            (
+                "placeholder",
+                lambda root, _: (
+                    root / DESIGN_DIRECTORY / "domain-model.md"
+                ).write_text(
+                    (root / DESIGN_DIRECTORY / "domain-model.md").read_text(encoding="utf-8")
+                    + "\nTODO: invalid active placeholder\n",
+                    encoding="utf-8",
+                ),
+                "active placeholder",
+            ),
+            (
+                "prohibited-supported-path",
+                lambda root, _: (
+                    root / DESIGN_DIRECTORY / "versioning-policy.md"
+                ).write_text(
+                    (root / DESIGN_DIRECTORY / "versioning-policy.md").read_text(encoding="utf-8")
+                    + "\nSupported compatibility path: legacy migration and dual read/write.\n",
+                    encoding="utf-8",
+                ),
+                "prohibited supported path",
+            ),
+            (
+                "old-validation-path",
+                lambda _root, paths: paths.append("rebuild/validation/V02/report.md"),
+                "old numeric validation source path",
+            ),
+            (
+                "prototype-production",
+                lambda root, _: (
+                    root / DESIGN_DIRECTORY / "architecture.md"
+                ).write_text(
+                    (root / DESIGN_DIRECTORY / "architecture.md").read_text(encoding="utf-8")
+                    + "\nWave 1 prototype.py is the production implementation.\n",
+                    encoding="utf-8",
+                ),
+                "prototype named as production implementation",
+            ),
+            (
+                "missing-handoff",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "→ deterministic Recall basis",
+                    "→ removed recall basis",
+                ),
+                "missing Phase 4 handoff concept",
+            ),
+            (
+                "duplicate-owner",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture-inputs.md",
+                    "| `active` | [versioning-policy.md](versioning-policy.md)",
+                    "| `active` | [versioning-policy.md](portable-context.md)",
+                ),
+                "duplicate architecture owner",
+            ),
+        )
+
+        for name, mutate, expected_error in cases:
+            case_root = temporary_root / name
+            shutil.copytree(base, case_root)
+            case_tracked = list(fixture_tracked)
+            mutate(case_root, case_tracked)
+            errors = check_repository(case_root, case_tracked)
+            if not any(expected_error in error for error in errors):
+                raise AssertionError(
+                    f"negative case {name} did not report {expected_error!r}; got: {errors}"
+                )
+
+    print(f"architecture contract self-test passed: positive fixture and {len(cases)} negative cases")
+    return 0
+
+
+def report(errors: list[str]) -> int:
+    if errors:
+        for error in errors:
+            print(f"architecture contract error: {error}", file=sys.stderr)
+        return 1
+    print(f"architecture contracts passed: {len(ARCHITECTURE_DOCUMENTS)} active owner documents")
+    return 0
+
+
+def usage() -> int:
+    print(
+        "usage:\n"
+        "  rebuild/scripts/check-architecture-contracts\n"
+        "  rebuild/scripts/check-architecture-contracts --self-test",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def main(arguments: list[str]) -> int:
+    if not arguments:
+        try:
+            return report(check_repository(REPOSITORY_ROOT))
+        except (OSError, RuntimeError) as error:
+            print(f"architecture contract check failed: {error}", file=sys.stderr)
+            return 1
+    if arguments == ["--self-test"]:
+        try:
+            return self_test()
+        except (AssertionError, OSError, RuntimeError) as error:
+            print(f"architecture contract self-test failed: {error}", file=sys.stderr)
+            return 1
+    return usage()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

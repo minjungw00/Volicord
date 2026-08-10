@@ -16,6 +16,16 @@ surface, not a Volicord product command or production architecture.
 - `rebuild/scripts/validate final` runs the four root `AGENTS.md` aggregate
   commands in order, records every result, and fails after all commands finish
   if any failed. It is reserved for work whose validation role is `final`.
+- `rebuild/scripts/check-architecture-contracts` checks the nine active Phase 3
+  owner documents, routing, relative links, traceability IDs, capability-based
+  validation paths, prohibited supported paths, and Phase 4 handoff structure.
+- `rebuild/scripts/check-architecture-contracts --self-test` copies maintained
+  inputs to isolated temporary fixtures and demonstrates positive validation
+  plus representative structural failures without modifying active documents.
+
+The architecture checker is deterministic internal test support. It does not
+define domain meaning, judge conceptual correctness, choose implementation
+technology, or treat validation IDs as product-format versions.
 
 ## Maintained and generated boundaries
 
