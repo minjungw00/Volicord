@@ -40,12 +40,16 @@ REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
         "## 8. Accepted Decision traceability contract",
         "## 9. Acceptance scenario traceability contract",
         "## 10. Later-validation interface traceability",
+        "#### Guarded-effect confirmation contract",
     ),
     "domain-model.md": (
         "## 1. Domain invariant",
         "## 2. Information class",
         "## 4. Canonical entity",
+        "## 8. Canonical relation",
         "## 9. Lifecycle semantics",
+        "#### Candidate inspection metadata contract",
+        "#### Candidate lifecycle and disposition contract",
     ),
     "repository-intelligence.md": (
         "## 1. Authority와 information class",
@@ -57,6 +61,7 @@ REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
         "## 1. 세 authority boundary",
         "## 6. Local-only normal mode",
         "## 11. Later-validation hooks",
+        "### Candidate collection opt-out and retention contract",
     ),
     "inquiry-and-decision.md": (
         "## 1. Question Candidate와 canonical Question",
@@ -71,6 +76,7 @@ REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
         "## 7. Initial generated documents",
         "## 10. Explicit adoption과 preserved Source boundary",
         "## 13. Later-validation hooks",
+        "### Candidate Inspection projection contract",
     ),
     "portable-context.md": (
         "## 1. Authority와 information boundary",
@@ -97,6 +103,7 @@ REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
         "## 5. Repair와 rebuild",
         "## 7. Process와 long-operation result",
         "## 9. Validation hooks",
+        "### Guarded confirmation and execution failure contract",
     ),
 }
 
@@ -135,6 +142,69 @@ PHASE_4_HANDOFF = (
     "→ revision, supersession, contradiction, and forgetting",
     "→ portable bundle and local binding",
     "→ deterministic Recall basis",
+)
+
+CANDIDATE_METADATA_ATTRIBUTES = (
+    "candidate_identity",
+    "candidate_kind",
+    "origin_and_provenance",
+    "collection_scope",
+    "creation_or_observation_basis",
+    "retention_or_expiry_state",
+    "promotion_disposition",
+    "scope_opt_out_state",
+)
+CANDIDATE_INSPECTION_ATTRIBUTES = (
+    "existence_and_identity",
+    "candidate_kind",
+    "origin_and_provenance",
+    "collection_scope",
+    "creation_or_observation_basis",
+    "retention_or_expiry_state",
+    "promotion_disposition",
+    "scope_opt_out_state",
+)
+CANDIDATE_DISPOSITIONS = (
+    "pending_or_retained",
+    "promoted",
+    "dismissed",
+    "expired_or_retention_cleaned",
+)
+CANDIDATE_PRIVACY_CONCERNS = (
+    "scope_opt_out",
+    "existing_candidate_visibility",
+    "retention_policy",
+    "explicit_deletion",
+    "policy_change",
+)
+GUARDED_CONFIRMATION_FIELDS = (
+    "confirmation_request_identity",
+    "request_revision",
+    "exact_action",
+    "target",
+    "expected_effect",
+    "risk",
+    "scope",
+    "expiration",
+    "requesting_actor_and_provenance",
+    "effect_fingerprint",
+)
+GUARDED_OPERATION_OUTCOMES = (
+    "not_dispatched",
+    "dispatched_and_completed",
+    "dispatched_and_failed",
+    "execution_outcome_indeterminate",
+)
+GUARDED_FAILURE_CONDITIONS = (
+    "missing",
+    "denied",
+    "stale",
+    "expired",
+    "mismatched",
+    "reused",
+    "dispatch_failed",
+    "execution_failed",
+    "execution_outcome_indeterminate",
 )
 
 PLACEHOLDER_PATTERN = re.compile(r"\b(?:TODO|TBD|FIXME)\b", re.IGNORECASE)
@@ -197,6 +267,60 @@ def table_first_cells(text: str) -> list[str]:
             continue
         cells.append(parts[0])
     return cells
+
+
+def table_rows(text: str, headers: tuple[str, ...]) -> list[dict[str, str]]:
+    """Return rows from one table identified by its compact header contract."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if not line.startswith("|"):
+            continue
+        cells = tuple(part.strip() for part in line.strip().strip("|").split("|"))
+        if cells != headers:
+            continue
+        if index + 1 >= len(lines) or not lines[index + 1].startswith("|"):
+            return []
+        rows: list[dict[str, str]] = []
+        for row_line in lines[index + 2 :]:
+            if not row_line.startswith("|"):
+                break
+            values = tuple(part.strip() for part in row_line.strip().strip("|").split("|"))
+            if len(values) != len(headers):
+                break
+            rows.append(dict(zip(headers, values, strict=True)))
+        return rows
+    return []
+
+
+def unquote_code(value: str) -> str:
+    return value[1:-1] if value.startswith("`") and value.endswith("`") else value
+
+
+def indexed_rows(rows: list[dict[str, str]], key: str) -> dict[str, dict[str, str]]:
+    return {unquote_code(row[key]): row for row in rows}
+
+
+def require_row_keys(
+    errors: list[str],
+    document: str,
+    rows: list[dict[str, str]],
+    key: str,
+    required: tuple[str, ...],
+    contract: str,
+) -> dict[str, dict[str, str]]:
+    indexed = indexed_rows(rows, key)
+    for item in required:
+        if item not in indexed:
+            errors.append(f"{document}: missing {contract}: {item}")
+    return indexed
+
+
+def require_markers(
+    errors: list[str], document: str, text: str, markers: tuple[str, ...], contract: str
+) -> None:
+    for marker in markers:
+        if marker not in text:
+            errors.append(f"{document}: missing {contract}: {marker}")
 
 
 def markdown_files(root: Path, tracked: Iterable[str]) -> list[Path]:
@@ -314,6 +438,335 @@ def check_traceability(root: Path) -> list[str]:
     return errors
 
 
+def check_relation_direction_contract(root: Path) -> list[str]:
+    errors: list[str] = []
+    document = "domain-model.md"
+    text = (root / DESIGN_DIRECTORY / document).read_text(encoding="utf-8")
+    rows = table_rows(
+        section(text, "## 8. Canonical relation"),
+        ("Relation", "From", "To", "Domain meaning"),
+    )
+    indexed = indexed_rows(rows, "Relation")
+
+    expected = {
+        "supported_by": (
+            "statement-bearing record, Decision rationale 또는 Checkpoint observation",
+            "supporting Source",
+        ),
+        "derived_from": (
+            "Session Candidate, Derived State 또는 generated explanation",
+            "Source 또는 canonical basis used",
+        ),
+    }
+    for relation, (expected_from, expected_to) in expected.items():
+        row = indexed.get(relation)
+        if row is None:
+            errors.append(f"{document}: missing canonical relation direction: {relation}")
+            continue
+        actual_from = row["From"]
+        actual_to = row["To"]
+        if relation == "supported_by" and "Source" in actual_from and any(
+            marker in actual_to for marker in ("statement", "Decision", "Checkpoint")
+        ):
+            errors.append(f"{document}: reversed supported_by direction")
+        if relation == "derived_from" and (
+            actual_from.startswith("Source") or actual_from.startswith("canonical basis")
+        ) and any(marker in actual_to for marker in ("Candidate", "Derived", "explanation")):
+            errors.append(f"{document}: reversed derived_from direction")
+        if actual_from != expected_from or actual_to != expected_to:
+            errors.append(
+                f"{document}: invalid {relation} direction; expected {expected_from} -> {expected_to}"
+            )
+    return errors
+
+
+def check_candidate_contract(root: Path) -> list[str]:
+    errors: list[str] = []
+    domain_document = "domain-model.md"
+    domain_text = (root / DESIGN_DIRECTORY / domain_document).read_text(encoding="utf-8")
+    domain_section = section(domain_text, "## 2. Information class")
+    metadata_rows = table_rows(domain_section, ("Attribute", "Required meaning"))
+    require_row_keys(
+        errors,
+        domain_document,
+        metadata_rows,
+        "Attribute",
+        CANDIDATE_METADATA_ATTRIBUTES,
+        "Candidate metadata attribute",
+    )
+    lifecycle_rows = table_rows(domain_section, ("Disposition", "Meaning"))
+    require_row_keys(
+        errors,
+        domain_document,
+        lifecycle_rows,
+        "Disposition",
+        CANDIDATE_DISPOSITIONS,
+        "Candidate lifecycle disposition",
+    )
+
+    projection_document = "projections-and-documents.md"
+    projection_text = (root / DESIGN_DIRECTORY / projection_document).read_text(encoding="utf-8")
+    projection_section = section(projection_text, "### Candidate Inspection projection contract")
+    inspection_rows = table_rows(
+        projection_section, ("Inspectable attribute", "Projection obligation")
+    )
+    require_row_keys(
+        errors,
+        projection_document,
+        inspection_rows,
+        "Inspectable attribute",
+        CANDIDATE_INSPECTION_ATTRIBUTES,
+        "Candidate Inspection attribute",
+    )
+    require_markers(
+        errors,
+        projection_document,
+        projection_section,
+        (
+            "named,",
+            "read-only projection",
+            "promote, correct, dismiss, expire, delete 또는",
+            "Inspection failure는 projection degradation",
+        ),
+        "Candidate Inspection read-only/degradation behavior",
+    )
+    if "projections, Candidate Inspection," not in projection_text:
+        errors.append(f"{projection_document}: missing Candidate Inspection owner declaration")
+
+    privacy_document = "privacy-and-provider-boundary.md"
+    privacy_text = (root / DESIGN_DIRECTORY / privacy_document).read_text(encoding="utf-8")
+    privacy_section = section(
+        privacy_text, "### Candidate collection opt-out and retention contract"
+    )
+    privacy_rows = table_rows(privacy_section, ("Concern", "Required behavior"))
+    privacy_index = require_row_keys(
+        errors,
+        privacy_document,
+        privacy_rows,
+        "Concern",
+        CANDIDATE_PRIVACY_CONCERNS,
+        "Candidate privacy concern",
+    )
+    opt_out_row = privacy_index.get("scope_opt_out")
+    if opt_out_row is not None and "새 automatic Candidate collection을 중단" not in opt_out_row[
+        "Required behavior"
+    ]:
+        errors.append(f"{privacy_document}: missing Candidate opt-out behavior")
+    existing_row = privacy_index.get("existing_candidate_visibility")
+    if existing_row is not None:
+        for marker in ("explicit deletion", "dismissal", "promotion", "retention expiry"):
+            if marker not in existing_row["Required behavior"]:
+                errors.append(
+                    f"{privacy_document}: incomplete existing Candidate retention behavior: {marker}"
+                )
+    require_markers(
+        errors,
+        privacy_document,
+        privacy_section,
+        (
+            "Opt-out은 existing Candidate를 promote, dismiss, expire, delete, correct 또는",
+            "Full prompt",
+            "full tool argument",
+            "full Source body",
+            "unlimited stdout/stderr",
+        ),
+        "Candidate opt-out/retention boundary",
+    )
+    if "Candidate collection opt-out/retention" not in privacy_text:
+        errors.append(f"{privacy_document}: missing Candidate opt-out/retention owner declaration")
+    return errors
+
+
+def check_guarded_effect_contract(root: Path) -> list[str]:
+    errors: list[str] = []
+    architecture_document = "architecture.md"
+    architecture_text = (root / DESIGN_DIRECTORY / architecture_document).read_text(
+        encoding="utf-8"
+    )
+    guarded_section = section(architecture_text, "#### Guarded-effect confirmation contract")
+    field_rows = table_rows(
+        guarded_section, ("Confirmation request field", "Required meaning")
+    )
+    require_row_keys(
+        errors,
+        architecture_document,
+        field_rows,
+        "Confirmation request field",
+        GUARDED_CONFIRMATION_FIELDS,
+        "Guarded confirmation field",
+    )
+    outcome_rows = table_rows(guarded_section, ("Guarded operation outcome", "Meaning"))
+    require_row_keys(
+        errors,
+        architecture_document,
+        outcome_rows,
+        "Guarded operation outcome",
+        GUARDED_OPERATION_OUTCOMES,
+        "Guarded operation outcome",
+    )
+    require_markers(
+        errors,
+        architecture_document,
+        guarded_section,
+        (
+            "Ordinary code edit, local test, local repository inventory와 local structural analysis",
+            "Guarded boundary 밖이며 confirmation 때문에 block되지 않는다",
+            "`Source`-linked response",
+            "general product `Decision`",
+            "action-scoped, target-scoped, scope-scoped, expiring, non-transferable이며",
+            "single-use",
+            "Dispatch 전에 Local Operations",
+            "request revision, exact action, target,",
+            "expected effect, scope, expiration과 effect fingerprint가 current Candidate와 일치",
+            "consumed confirmation의 reuse는 reject한다",
+            "Valid confirmation 전에는 external 또는 그 밖의 Guarded effect를 dispatch하지 않는다",
+            "Derived/operational state이고 새 canonical",
+            "일곱 번째\ncanonical core entity로 만들지 않는다",
+            "cooperative confirmation",
+            "OS sandbox 또는 security enforcement가",
+        ),
+        "Guarded confirmation behavior",
+    )
+    require_markers(
+        errors,
+        architecture_document,
+        architecture_text,
+        (
+            "현재 host의 explicit Guarded confirmation request/response transport",
+            "local viewer 또는 CLI",
+            "Local Operations는 Guarded effect dispatch와 exact confirmation validation의 logical",
+        ),
+        "Guarded current-host/fallback/dispatch ownership",
+    )
+    if "`Source`-linked response" not in guarded_section:
+        errors.append(f"{architecture_document}: missing Guarded user-response Source linkage")
+    if "consumed confirmation의 reuse는 reject한다" not in guarded_section:
+        errors.append(f"{architecture_document}: missing confirmation reuse rejection")
+
+    failure_document = "failure-and-recovery.md"
+    failure_text = (root / DESIGN_DIRECTORY / failure_document).read_text(encoding="utf-8")
+    failure_section = section(
+        failure_text, "### Guarded confirmation and execution failure contract"
+    )
+    failure_rows = table_rows(
+        failure_section, ("Confirmation/execution condition", "Required result")
+    )
+    require_row_keys(
+        errors,
+        failure_document,
+        failure_rows,
+        "Confirmation/execution condition",
+        GUARDED_FAILURE_CONDITIONS,
+        "Guarded failure condition",
+    )
+    no_dispatch_marker = (
+        "Guarded effect는 valid exact-match confirmation의 pre-dispatch validation보다 먼저\n"
+        "   dispatch되지 않는다."
+    )
+    if no_dispatch_marker not in failure_text:
+        errors.append(f"{failure_document}: missing no-dispatch-before-confirmation rule")
+    require_markers(
+        errors,
+        failure_document,
+        failure_section,
+        (
+            "silently retry하지 않음",
+            "`repair_required`",
+            "Cooperative confirmation",
+            "OS sandbox나",
+            "security enforcement",
+        ),
+        "Guarded indeterminate/cooperative failure behavior",
+    )
+    return errors
+
+
+def check_corrected_traceability(root: Path) -> list[str]:
+    errors: list[str] = []
+    document = "architecture.md"
+    text = (root / DESIGN_DIRECTORY / document).read_text(encoding="utf-8")
+    decisions = indexed_rows(
+        table_rows(
+            section(text, "## 8. Accepted Decision traceability contract"),
+            ("Decision", "Authoritative architecture owner", "Owned interface"),
+        ),
+        "Decision",
+    )
+    acceptances = indexed_rows(
+        table_rows(
+            section(text, "## 9. Acceptance scenario traceability contract"),
+            (
+                "Scenario",
+                "Owning architecture document",
+                "Future implementation phase",
+                "Owning later validation",
+            ),
+        ),
+        "Scenario",
+    )
+    validations = indexed_rows(
+        table_rows(
+            section(text, "## 10. Later-validation interface traceability"),
+            ("Validation", "Owning Phase 3 interface", "Precise contract validated later"),
+        ),
+        "Validation",
+    )
+
+    expected_decisions = {
+        "Q10": ("`domain-model.md`", ("inspection", "Privacy")),
+        "Q12": ("`architecture.md`", ("Source-linked", "pre-dispatch")),
+    }
+    for identifier, (owner, markers) in expected_decisions.items():
+        row = decisions.get(identifier)
+        if row is None:
+            continue
+        if row["Authoritative architecture owner"] != owner:
+            errors.append(f"{document}: incorrect {identifier} primary owner")
+        for marker in markers:
+            if marker not in row["Owned interface"]:
+                errors.append(f"{document}: incomplete {identifier} corrected-owner routing: {marker}")
+
+    expected_acceptance_validations = {
+        "G": ("V07", "V09", "V11"),
+        "K": ("V04", "V07"),
+        "M": ("V08", "V11"),
+    }
+    expected_acceptance_owners = {
+        "G": ("`domain-model.md`", "Projection", "Privacy"),
+        "K": ("`domain-model.md`", "privacy/deletion"),
+        "M": ("`architecture.md`", "fallback", "non-reuse"),
+    }
+    for identifier, required_validations in expected_acceptance_validations.items():
+        row = acceptances.get(identifier)
+        if row is None:
+            continue
+        for validation in required_validations:
+            if validation not in row["Owning later validation"]:
+                errors.append(
+                    f"{document}: Acceptance {identifier} missing validation owner: {validation}"
+                )
+        for marker in expected_acceptance_owners[identifier]:
+            if marker not in row["Owning architecture document"]:
+                errors.append(
+                    f"{document}: Acceptance {identifier} missing corrected-owner routing: {marker}"
+                )
+
+    expected_validation_markers = {
+        "V07": ("Candidate collection opt-out/retention", "privacy/deletion propagation"),
+        "V08": ("Guarded current-host transport", "viewer/CLI fallback"),
+        "V09": ("Candidate promotion/inspection/no-mutation",),
+        "V11": ("integrated Candidate journey", "Guarded exact-match/non-reuse/ordinary-action"),
+    }
+    for identifier, markers in expected_validation_markers.items():
+        row = validations.get(identifier)
+        if row is None:
+            continue
+        for marker in markers:
+            if marker not in row["Precise contract validated later"]:
+                errors.append(f"{document}: {identifier} missing corrected validation contract: {marker}")
+    return errors
+
+
 def check_paths_and_prohibitions(root: Path, tracked: list[str]) -> list[str]:
     errors: list[str] = []
     tracked_set = set(tracked)
@@ -355,6 +808,10 @@ def check_repository(root: Path, known_tracked: list[str] | None = None) -> list
     errors.extend(check_links(root, markdown_files(root, tracked)))
     errors.extend(check_owner_routing(root))
     errors.extend(check_traceability(root))
+    errors.extend(check_relation_direction_contract(root))
+    errors.extend(check_candidate_contract(root))
+    errors.extend(check_guarded_effect_contract(root))
+    errors.extend(check_corrected_traceability(root))
     errors.extend(check_paths_and_prohibitions(root, tracked))
     return errors
 
@@ -483,6 +940,88 @@ def self_test() -> int:
                 ),
                 "duplicate architecture owner",
             ),
+            (
+                "reversed-supported-by",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "domain-model.md",
+                    "| `supported_by` | statement-bearing record, Decision rationale 또는 Checkpoint observation | supporting Source |",
+                    "| `supported_by` | supporting Source | statement-bearing record, Decision rationale 또는 Checkpoint observation |",
+                ),
+                "reversed supported_by direction",
+            ),
+            (
+                "reversed-derived-from",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "domain-model.md",
+                    "| `derived_from` | Session Candidate, Derived State 또는 generated explanation | Source 또는 canonical basis used |",
+                    "| `derived_from` | Source 또는 canonical basis used | Session Candidate, Derived State 또는 generated explanation |",
+                ),
+                "reversed derived_from direction",
+            ),
+            (
+                "missing-candidate-provenance",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "projections-and-documents.md",
+                    "| `origin_and_provenance` |",
+                    "| `removed_origin_and_provenance` |",
+                ),
+                "missing Candidate Inspection attribute: origin_and_provenance",
+            ),
+            (
+                "missing-candidate-retention",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "projections-and-documents.md",
+                    "| `retention_or_expiry_state` |",
+                    "| `removed_retention_or_expiry_state` |",
+                ),
+                "missing Candidate Inspection attribute: retention_or_expiry_state",
+            ),
+            (
+                "missing-candidate-opt-out",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "privacy-and-provider-boundary.md",
+                    "effective 시점부터 selected scope의 새 automatic Candidate collection을 중단",
+                    "effective behavior removed",
+                ),
+                "missing Candidate opt-out behavior",
+            ),
+            (
+                "missing-guarded-expiration",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "| `expiration` |",
+                    "| `removed_expiration` |",
+                ),
+                "missing Guarded confirmation field: expiration",
+            ),
+            (
+                "missing-guarded-user-source",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "`Source`-linked response",
+                    "unlinked response",
+                ),
+                "missing Guarded user-response Source linkage",
+            ),
+            (
+                "missing-confirmation-reuse-rejection",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "architecture.md",
+                    "consumed confirmation의 reuse는 reject한다",
+                    "consumed confirmation reuse marker removed",
+                ),
+                "missing confirmation reuse rejection",
+            ),
+            (
+                "missing-no-dispatch-rule",
+                lambda root, _: replace_once(
+                    root / DESIGN_DIRECTORY / "failure-and-recovery.md",
+                    "Guarded effect는 valid exact-match confirmation의 pre-dispatch validation보다 먼저\n"
+                    "   dispatch되지 않는다.",
+                    "Guarded effect may dispatch before confirmation validation.",
+                ),
+                "missing no-dispatch-before-confirmation rule",
+            ),
         )
 
         for name, mutate, expected_error in cases:
@@ -496,7 +1035,11 @@ def self_test() -> int:
                     f"negative case {name} did not report {expected_error!r}; got: {errors}"
                 )
 
-    print(f"architecture contract self-test passed: positive fixture and {len(cases)} negative cases")
+    case_names = ", ".join(name for name, _, _ in cases)
+    print(
+        f"architecture contract self-test passed: positive fixture and {len(cases)} negative cases; "
+        f"cases: {case_names}"
+    )
     return 0
 
 
