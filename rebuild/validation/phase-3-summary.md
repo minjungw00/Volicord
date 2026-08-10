@@ -1,6 +1,6 @@
 # Phase 3 architecture conclusion
 
-- Phase 4 architecture-contract gate: blocked
+- Phase 4 architecture-contract gate: `ready`
 - Scope: logical architecture consistency and accepted-contract completeness
 - Excluded claim: production implementation and later-validation behavior have not been
   validated by this conclusion
@@ -31,12 +31,14 @@ second core architecture or canonical domain model.
 | Maintained check | Result |
 |---|---|
 | `rebuild/scripts/validate self-test` | `passed`; complete stream, duration, termination, exit-status, exact final-command and non-fail-fast aggregate behavior verified |
-| `rebuild/scripts/check-architecture-contracts --self-test` | `passed`; positive fixture and deterministic negative cases for maintained relation, Candidate and Guarded structure |
+| `rebuild/scripts/check-architecture-contracts --self-test` | `passed`; positive fixture and 25 deterministic negative cases for maintained relation, Candidate and Guarded structure |
 | `rebuild/scripts/check-architecture-contracts` | `passed`; nine owners, links, owner routing, traceability, corrected trust boundaries and prohibited-path checks verified |
 
 The checker is structural test support. Product meaning remains in the active architecture
-owners and accepted product Decisions. Independent validation of Candidate Inspection read
-authority is still required before the Phase 4 architecture-contract gate can be ready.
+owners and accepted product Decisions. Its Candidate negative cases detect removal from either
+top-level Projections location, Session Candidate reclassification, loss of bounded/privacy
+scope, loss of no-mutation behavior, unrestricted Candidate-body access and a specialized
+projection that exceeds top-level authority. The self-test mutates temporary fixtures only.
 
 ## Relation direction
 
@@ -66,9 +68,18 @@ Canonical Context and Derived State.
 
 Candidate Inspection exposes existence/identity, kind, origin/provenance, collection scope,
 creation/observation basis, retention/expiry, promotion disposition and relevant opt-out
-state. Reading or failing to read the projection does not promote, correct, dismiss, expire,
-delete, rewrite or reinterpret a Candidate. Projection failure is isolated as degradation,
-not Canonical Context mutation.
+state, plus only policy-authorized bounded content. It has no blanket authority to read full
+prompts, full tool arguments, full Source bodies, unlimited stdout/stderr, provider-private
+payloads, expired/deleted content or content outside the authorized Project/scope. Reading,
+omission, ranking, rendering, expansion or failure does not promote, correct, dismiss, expire,
+delete, rewrite or reinterpret a Candidate, or change retention/opt-out state. Unavailable or
+policy-withheld content produces bounded partial/degraded output with affected scope and an
+explicit omission basis, not empty success or Canonical Context mutation.
+
+Candidate-producing subsystems retain Candidate write authority and preserve identity and
+provenance. Projections and Documents receives only the inspection-specific read authority;
+the dependency and boundary contracts do not add Candidate mutation authority, centralize
+Candidate ownership or select a Candidate database, service, API, process or transport.
 
 Scoped opt-out stops new automatic collection after its effective basis and does not silently
 change existing Candidates. Existing Candidates remain inspectable until explicit deletion,
@@ -151,12 +162,14 @@ demonstrates one.
 
 ## Phase 4 gate
 
-`blocked`. The maintained owners now give Candidate Inspection a bounded, privacy-scoped
-Session Candidate metadata read authority without granting Candidate mutation or changing its
-information class. Independent validation must still confirm that the Projections subsystem
-description, Boundary authority row and specialized projection stay aligned; unrestricted
-Candidate-body access remains forbidden; and no-mutation plus partial/degraded failure behavior
-remain explicit before the Phase 4 architecture-contract gate can be ready.
+`ready`. The nine-owner architecture is semantically consistent. The Projections subsystem
+description, Boundary authority row and specialized Candidate Inspection projection grant the
+same bounded, privacy-scoped, inspection-only Session Candidate read authority without granting
+Candidate mutation, changing its information class or displacing producer ownership.
+Unrestricted Candidate-body access remains forbidden, partial/degraded failure preserves the
+affected scope and omission basis, accepted Decisions and Acceptance A–Q remain traceable, and
+no unresolved architecture contradiction or active Decision revisit trigger blocks Phase 4
+architecture-contract work.
 
 This status does not certify production behavior or complete V02, V04, V06, V07, V08, V09,
 V10 or V11.
