@@ -1,0 +1,232 @@
+# Failure와 Recovery 계약
+
+- 상태: active specialized architecture owner
+- 소유 범위: cross-subsystem failure/degradation state, read/write consequence,
+  propagation, retry, repair/rebuild, canonical transaction과 projection failure 구분,
+  process/long-operation observation과 recovery
+- 상위 architecture 기준: [논리 아키텍처](architecture.md)
+- core domain 기준: [핵심 도메인 모델](domain-model.md)
+- analysis 기준: [Repository Intelligence 계약](repository-intelligence.md)
+- portable 기준: [Portable Context 계약](portable-context.md)
+- version 기준: [Versioning 정책](versioning-policy.md)
+- validation 기준: [기술 검증 계획 V08·V10·V11](validation-plan.md)
+- 비소유 범위: normal entity/capability meaning, concrete storage/process/filesystem
+  technology, retry algorithm, timeout value, supervisor topology와 merge algorithm
+
+이 문서는 failure를 empty success나 다른 subsystem의 실패로 바꾸지 않고, 사용자가
+무엇을 계속 읽고 신뢰하며 누가 어떤 recovery를 수행해야 하는지 정의한다. 상태는
+identity, affected scope, Source/operation basis와 함께 표현하며 system-wide boolean으로
+일반화하지 않는다.
+
+## 1. Failure invariant
+
+1. Canonical mutation은 전부 commit되거나 canonical success가 남지 않는다.
+2. Projection, analyzer, provider, index, renderer와 process failure는 Canonical Context를
+   조용히 수정·삭제·복구하지 않는다.
+3. Partial/degraded result는 usable remainder와 omitted/failed scope를 함께 제공한다.
+4. Retry는 실패한 operation의 owner가 판정하며 caller가 duplicate canonical mutation을
+   만들지 않는다.
+5. Rebuildable Derived State의 corruption/loss를 canonical loss로 확산하지 않는다.
+6. Repair와 rebuild는 구분하며 어느 것도 user Decision이나 correction을 되돌리지
+   않는다.
+7. Failure result는 user-visible consequence, retry owner와 next safe action을 가진다.
+8. Process observation은 complete stdout, stderr, exit/termination과 duration을 잃지
+   않는다.
+
+## 2. State matrix
+
+아래 state는 cross-subsystem operation과 information health의 공통 vocabulary다.
+Repository capability나 domain lifecycle owner가 더 좁은 meaning을 정의하면 이 문서는
+그 state가 subsystem boundary를 지날 때의 consequence만 소유한다.
+
+| State | Owning subsystem | Information class | Read allowance | Write allowance | User visibility | Retry owner | Rebuildability | Operation-failure effect |
+|---|---|---|---|---|---|---|---|---|
+| `unavailable` | 현재 Source/capability/resource를 여는 subsystem | availability metadata 또는 operation result; underlying canonical/derived identity는 유지 | historical canonical과 unaffected result read 허용, unavailable content read 금지 | unavailable basis에 의존하지 않는 scoped write만 허용; freshness를 확인한 것처럼 쓰기 금지 | missing resource, affected scope, usable remainder와 bind/configure action 표시 | resource를 획득·bind·invoke하는 Local Operations 또는 producing subsystem | Source는 rebuild 대상 아님; Derived는 basis가 돌아오면 rebuild 가능 | affected operation만 미수행/실패; aggregate는 degraded/partial로 계속 가능 |
+| `unsupported` | format/capability meaning owner | capability/format diagnostic; canonical content가 아님 | opaque identity/metadata와 unaffected content read 허용 | unsupported meaning을 drop/coerce한 write 금지 | detected kind/version/scope와 supported alternative 표시 | 자동 retry 없음; owner upgrade 또는 capability implementation 필요 | Derived는 supported producer가 있으면 rebuild, canonical은 supported upgrade 필요 | requested scope 실패; unsupported를 empty success로 보고 금지 |
+| `partial` | bounded result를 생산한 subsystem | Derived result, projection 또는 aggregate operation result | provenance가 완전한 usable subset만 read 허용 | subset을 complete basis로 canonical write 금지; independent successful writes는 명시적으로 유지 가능 | completed/failed/omitted scope와 coverage 표시 | failed child scope의 owning subsystem | 입력이 있으면 affected Derived subset rebuild 가능 | aggregate는 partial이며 complete success가 아님; successful independent outcomes는 보존 |
+| `failed` | operation을 실행한 subsystem | operation result와 diagnostic; partial artifact는 별도 분류 | 이전 committed/current state와 verified partial result만 read 허용 | failed operation의 uncommitted write 금지 | exact operation, scope, error, outputs, exit/termination과 retry consequence 표시 | operation owner가 idempotency와 precondition 확인 후 결정 | Derived operation은 가능하면 rebuild; canonical failure는 retry/repair 전 새 success 없음 | 해당 operation 실패, aggregate는 나머지를 계속하되 failure count 보존 |
+| `stale` | Source/analysis/projection owner | Source availability, Derived result 또는 projection freshness metadata | historical basis임을 표시한 read 허용, current fact로 read 금지 | stale basis로 validity/coverage를 current로 갱신하는 write 금지 | old/current snapshot basis와 refresh/review action 표시 | source observer 또는 derived producer | Derived는 refresh/rebuild 가능; canonical history는 rebuild하지 않음 | current-grounded request는 degraded/partial; historical inspection은 성공 가능 |
+| `contradicted` | Canonical Context Kernel이 relation/state meaning을 소유 | Canonical lifecycle state와 provenance-bearing review Candidate | 양쪽 claim/Decision과 Source read 허용 | automatic overwrite/resolve 금지; explicit correction, evidence, supersession 또는 user review만 허용 | conflict identities, basis, applicability consequence와 unresolved state 표시 | Inquiry/user review owner; analyzer/provider 자동 retry 대상 아님 | rebuild 불가; 새 evidence/semantic resolution 필요 | current applicability를 단정하는 operation은 blocked/degraded, unrelated operation은 계속 |
+| `degraded` | aggregate/health를 제공하는 Local Operations 또는 projection owner | operational health 또는 aggregate projection | declared usable capability와 canonical read 허용 | degraded dependency와 무관한 owner-validated write 허용 | lost capability, cause, safe remainder와 recovery owner 표시 | 원인 subsystem owner; aggregate layer는 retry를 대신 결정하지 않음 | 원인이 Derived/resource면 가능, canonical semantic conflict면 불가 | 전체 실패가 아니며 requested guarantee를 축소한 success도 아님; degraded outcome으로 종료 |
+| `corrupt` | 해당 durable/derived format owner | integrity diagnostic과 quarantined state | 검증된 unaffected partition만 read; corrupt bytes를 domain record로 read 금지 | corrupt state에 in-place normal write 금지 | affected format/scope, integrity evidence와 data-at-risk 표시 | format owner가 repair/rebuild 판단 | Derived는 canonical/source basis에서 rebuild; canonical은 검증된 repair/restore만 가능 | affected operation 실패, quarantine하며 empty/fresh state로 가장 금지 |
+| `repair_required` | invariant를 복구해야 하는 authoritative owner | operation/health state; repair evidence는 provenance를 가짐 | owner가 정의한 safe read-only subset만 허용 | 일반 write 중단; validated repair operation만 허용 | invariant, affected scope, repair owner, risk와 post-check 표시 | authoritative subsystem/Local Operations가 조정 | Derived는 대개 rebuild; canonical은 deterministic repair만 가능 | dependent mutation 실패/차단, unrelated subsystem read/operation은 격리해 계속 가능 |
+
+State를 전환할 때 prior state와 evidence를 지우지 않는다. `degraded`는 aggregate
+consequence이고 원인 state를 대체하지 않는다. `repair_required`는 repair 명령이
+존재한다는 제품 API 약속이 아니라 normal write가 안전하지 않은 invariant 상태다.
+
+## 3. Canonical mutation failure와 projection failure
+
+Canonical mutation과 projection은 서로 다른 authority와 success boundary를 가진다.
+
+### Canonical mutation failure
+
+- Kernel invariant validation, transaction, durable publication 또는 atomic response
+  boundary가 완료되지 않으면 mutation은 `failed`다.
+- Question response처럼 여러 canonical meaning을 묶는 operation은 Source linkage,
+  interpretation, Decision과 Question transition이 모두 성공하거나 아무 canonical
+  success도 남지 않아야 한다.
+- Caller에게 response를 render하지 못했더라도 commit이 성공했다면 canonical mutation
+  success와 response projection failure를 각각 보고한다. 같은 mutation을 blind retry해
+  duplicate record를 만들지 않는다.
+- Commit 여부를 확인할 수 없으면 success로 추측하지 않고 `repair_required` 또는
+  operation-specific indeterminate diagnostic로 authoritative owner의 확인을 요구한다.
+
+### Projection failure
+
+- Recall selection, map, document generation, preview, render 또는 export presentation이
+  실패해도 input canonical record와 Repository work result는 그대로다.
+- Projection이 일부 section만 만들면 `partial`과 omission/failure scope를 보고하며
+  complete document로 adoption하지 않는다.
+- Projection retry/regeneration은 source snapshot, canonical read revision과 generator
+  basis를 다시 확인한다.
+- Projection 실패를 canonical transaction failure, repository work failure 또는 user
+  Decision rollback으로 보고하지 않는다.
+
+따라서 canonical commit 뒤 response projection이 실패한 경우 “작업 전체 실패”로
+재시도하거나 “projection만 실패했으므로 canonical commit도 없었다”고 가정하지
+않는다. 두 result identity와 retry ownership을 분리한다.
+
+## 4. Failure propagation matrix
+
+| Failure | Immediate owner/state | Preserved behavior | Forbidden propagation | Recovery owner/action |
+|---|---|---|---|---|
+| one language analyzer failure | Repository Intelligence, affected language/area `failed` 또는 `partial` | inventory, other languages/areas, prior historical snapshot와 Canonical Context | repository-wide empty success나 total canonical failure | adapter/Repository Intelligence retry; scope-specific reanalysis |
+| semantic-provider unavailable | Provider Boundary `unavailable`, provider-backed capability `degraded` | local inventory/structural, Inquiry, Decision, Checkpoint, Recall과 canonical read/write | opt-in 확대, local core failure 또는 old annotation을 current로 표시 | Repository Intelligence/Local Operations가 config/availability 뒤 explicit retry |
+| Derived Index corruption | index owner `corrupt`, dependent search/projection `degraded` | Canonical Context, Source basis와 non-index read | canonical loss, corrupt index query 또는 silent empty index | owning subsystem이 quarantine/delete 후 rebuild; Local Operations가 progress 관찰 |
+| Canonical transaction failure | Kernel `failed` 또는 commit 불명 시 `repair_required` | last verified committed state와 unrelated derived/history read | partial canonical success, projection-only degradation으로 축소 또는 blind retry | Kernel이 commit state 확인, idempotent retry/validated repair |
+| bundle conflict | Portable Context의 named conflict; unresolved operation `partial`/`failed` | both histories, common-base/lineage와 unaffected additions | Decision/Question/delete-modify silent overwrite | user-owned resolution 또는 branch; Portable I/O가 result/provenance 보존 |
+| document-generation failure | Projections and Documents `failed`/`partial` | canonical records, analysis, ordinary work와 prior adopted Sources | repository work/Checkpoint rollback 또는 failed draft 자동 adoption | Projection owner가 same/current basis 확인 후 retry/regenerate |
+| Recall-projection failure | Projections and Documents `failed`/`partial` | direct canonical inspect, existing Question/Decision/Checkpoint와 ordinary work | hidden fallback memory를 authority로 사용하거나 canonical mutation | Projection owner retry; user에게 unavailable sections와 direct inspection path 제공 |
+| forced process termination | Local Operations/process owner `failed`, termination recorded | committed state, complete captured streams와 unaffected subsystem state | exit success 추정, child 상태 은폐 또는 partial canonical publish | process owner가 child cleanup/commit check 뒤 scoped retry; V10 technology 선택 |
+| unavailable source repository | Local Operations/Source `unavailable` | source-independent canonical read, Inquiry history, Decision와 Checkpoint | fabricated current code link/freshness나 Project loss | explicit bind/rebind; Repository Intelligence refresh after availability |
+| unsupported format version | Versioning owner `unsupported` | original bytes/state와 safely inspectable metadata | partial import, field dropping, empty initialization 또는 write-back | format owner의 supported upgrade, Derived rebuild 또는 newer implementation |
+
+각 propagation result는 root cause, affected scope, downstream degradation과 independent
+success를 함께 보존한다. Aggregate caller는 모든 bounded child outcome을 모은 뒤
+failure/partial/degraded를 판정하며 첫 실패에서 나머지 독립 작업을 조용히 생략하지
+않는다.
+
+## 5. Repair와 rebuild
+
+`repair`는 authoritative 또는 durable state가 invariant를 만족하도록 검증된
+transformation/cleanup을 수행하는 일이다. `rebuild`는 disposable Derived State를
+Canonical Context와 Source basis에서 다시 계산하는 일이다.
+
+| Responsibility | Repair | Rebuild |
+|---|---|---|
+| Typical target | canonical transaction marker, supported schema publication, binding/integrity metadata, managed durable artifact | index, graph, embedding, cache, layout, Analysis Snapshot, generated preview |
+| Required basis | authoritative last-known state, invariant, repair plan과 post-check | current supported Source/canonical basis와 producer version |
+| Allowed semantic change | 없음; user judgment/lifecycle을 발명하지 않음 | 없음; derived meaning만 재계산 |
+| Failure result | prior safe state 유지 또는 `repair_required`; success로 추측 금지 | target capability `failed`/`degraded`; canonical은 유지 |
+| User visibility | affected durable scope, risk, backup/restore가 아니라 new-product repair consequence와 outcome | deleted/rebuilt scope, progress, coverage, unavailable input과 outcome |
+
+Canonical Context를 Derived State에서 rebuild하지 않는다. User Decision, correction,
+supersession, forgetting과 conflict resolution은 repair algorithm이 자동 선택할 수 없는
+domain operation이다. Conversely, rebuildable index corruption에 canonical migration이나
+semantic repair를 요구하지 않는다.
+
+## 6. Retry ownership
+
+Retry에는 original operation identity, input/source version, idempotency/commit state,
+attempt number와 prior outcome이 필요하다.
+
+- Kernel은 canonical mutation retry와 duplicate prevention을 소유한다.
+- Repository Intelligence adapter는 language/area analysis retry를 소유한다.
+- Provider Boundary는 opt-in/scope를 재확인한 request retry를 소유한다.
+- Projection owner는 current grounding basis의 render/generation retry를 소유한다.
+- Portable Context owner는 import/export validation과 conflict result retry를 소유한다.
+- Local Operations는 scheduling, cancellation과 observation을 조정하지만 lower owner의
+  semantic retry safety를 추측하지 않는다.
+
+Automatic retry는 bounded하고 같은 failure를 숨기지 않는다. User input, opt-in,
+conflict judgment, unavailable resource 또는 unsupported version이 필요한 경우 반복
+실행으로 해결하려 하지 않는다.
+
+## 7. Process와 long-operation result
+
+Analyzer, provider adapter, document renderer, export/import, rebuild, repair와 다른
+long-running operation은 최소 다음 result contract를 가진다.
+
+- exact operation identity와 requested scope
+- start/end time과 monotonic `duration`
+- complete `stdout` artifact와 complete `stderr` artifact를 서로 분리
+- numeric `exit status` 또는 spawn failure
+- signal/forced `termination` kind와 child cleanup outcome
+- user/host `cancellation` request, observation time와 completion outcome
+- configured `timeout`, timeout trigger와 실제 post-timeout process state
+- `bounded progress`: phase/unit, completed/total 또는 total이 unknown이라는 사실,
+  last update와 stalled/active state
+- partial-result manifest, completed/failed/omitted units와 publication state
+- retry owner, safe retry basis와 next action
+
+Complete stdout/stderr는 maintained document나 canonical record에 무제한 저장한다는
+뜻이 아니다. Full streams는 ignored managed operational artifact에 보존하고 UI/host에는
+bounded preview, truncation count와 artifact reference를 제공할 수 있다. Secret/source
+retention boundary는 그대로 적용한다.
+
+### Cancellation, timeout과 termination
+
+- Cancellation intent와 process termination 완료는 별도 사실이다.
+- Timeout은 종료 요청의 원인이며 actual exit/termination/child cleanup을 대신하지
+  않는다.
+- Forced termination 뒤 canonical commit 여부와 partial publication을 owner가 확인한다.
+- Child cleanup failure를 operation completion으로 숨기지 않는다.
+- Cancellation 전에 safely committed independent units가 있으면 manifest에 보존하되
+  aggregate complete success로 표시하지 않는다.
+
+### Bounded progress와 partial result
+
+Progress는 heartbeat만으로 success를 뜻하지 않는다. Total work를 모르면 percentage를
+만들지 않고 current phase/unit과 unknown total을 표시한다. Partial result는 owning
+subsystem이 independently valid하다고 판정한 unit만 publish하며 coverage와 missing
+scope를 함께 제공한다.
+
+## 8. Technology deferral
+
+Process group/session, signal strategy, pipe capture, filesystem publication, lock,
+transaction, journal, timeout primitive, child-tree cleanup과 repair implementation은 V10이
+비교·검증한 뒤 선택한다. 이 문서는 process crate, database, API, command 또는 daemon
+topology를 정하지 않는다.
+
+기존 process/filesystem code는 V10의 `adopt_as_new_primitive`,
+`reimplement_from_behavior`, `reference_only`, `reject` 판정과 새 responsibility test를
+거치기 전 production implementation 이름으로 사용하지 않는다.
+
+## 9. Validation hooks
+
+### V08 — Linux install과 Codex integration
+
+V08은 clean Linux/Codex journey에서 startup, health, adapter lifecycle, connection
+failure/degradation, process cleanup, locale rendering과 unsupported/failed user-visible
+result를 검증한다. Install/reinstall failure가 canonical user data를 조용히 삭제하지
+않고 legacy runtime 접근으로 복구하지 않는 성질도 확인한다.
+
+### V10 — Process/filesystem primitives
+
+V10은 complete stdout/stderr, exit/termination, duration, cancellation, timeout, bounded
+progress, child cleanup, partial publication, atomicity, corruption/repair/rebuild와 retry
+ownership을 fault injection으로 검증한다. 구체적인 primitive 선택은 이 evidence 뒤에
+이뤄지며 legacy workflow type이나 Wave 1 prototype을 production 이름으로 승격하지
+않는다.
+
+### V11 — Combined recovery journey
+
+V11은 세 repository에서 analyzer/provider/index/source/process failure, canonical
+transaction fault, bundle conflict, document/Recall projection failure와 unsupported
+newer format을 결합해 다음을 확인한다.
+
+- canonical mutation과 projection result 분리
+- unaffected capability와 independent success 보존
+- state matrix의 read/write/user visibility/retry/rebuild consequence
+- restart 뒤 committed-state recovery와 duplicate prevention
+- repair/rebuild 후 provenance, coverage와 user correction 유지
+- long-operation result와 forced-termination child cleanup
+
+## 10. Non-goals
+
+이 문서는 database, transaction engine, process supervisor, signal/tree cleanup library,
+filesystem atomicity primitive, retry count/backoff, timeout value, CLI/API와 repair command
+catalog를 선택하지 않는다. Legacy recovery, migration, dual-runtime fallback과 parallel
+production implementation은 recovery path가 아니다.
+

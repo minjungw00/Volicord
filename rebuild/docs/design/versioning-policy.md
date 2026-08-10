@@ -188,7 +188,7 @@ Upgrade는 format owner가 아닌 production implementation의 명시적 operati
 - upgrade 전 validation과 recoverable publication boundary
 - identity, provenance, lifecycle, privacy/forgetting과 common-base basis 보존
 - complete stdout/stderr/exit/termination을 포함한 operational result가 필요한 경우
-  failure owner contract 준수
+  [Failure와 Recovery 계약](failure-and-recovery.md) 준수
 - success/failure/cancellation 뒤 authoritative version을 한 개로 유지
 - supported version fixtures, deterministic repeat와 fault-injection tests
 - user-visible unsupported/rebuild/repair consequence
@@ -236,4 +236,3 @@ boundary를 유지한다.
 process/filesystem technology, release numbering과 support window를 선택하지 않는다.
 Legacy decoder, dual read/write, compatibility mode와 parallel production implementation은
 새 format evolution path가 아니다.
-

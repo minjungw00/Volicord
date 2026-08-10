@@ -208,8 +208,8 @@ inventory, local structural result, canonical judgment와 prior historical annot
 삭제하지 않는다. Partial result를 complete로 표시하거나 transmission이 없었는데
 있었던 것으로, 전송 후 실패했는데 전송이 없었던 것으로 표시하지 않는다.
 
-Cross-subsystem retry, process cleanup과 repair matrix는 future
-`failure-and-recovery.md`가 소유한다.
+Cross-subsystem retry, process cleanup과 repair matrix는 active
+[Failure와 Recovery 계약](failure-and-recovery.md)이 소유한다.
 
 ## 11. Later-validation hooks
 

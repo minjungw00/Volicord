@@ -349,5 +349,7 @@ V06/V09가 selection 또는 grounding quality 한계를 드러내면 evidence와
 
 이 문서는 viewer framework, graph layout, renderer, template, ranking/embedding,
 database, API, MCP method, output publication mechanism과 host wire format을 선택하지
-않는다. Portable bundle content/merge, Inquiry transition, production failure matrix,
-versioning과 legacy document compatibility도 정의하지 않는다.
+않는다. Portable bundle content/merge, Inquiry transition과 legacy document
+compatibility도 정의하지 않는다. Production failure matrix는
+[Failure와 Recovery 계약](failure-and-recovery.md), versioning은
+[Versioning 정책](versioning-policy.md)이 소유한다.

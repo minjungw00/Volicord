@@ -452,11 +452,10 @@ analysis가 원래 text나 claim을 다시 canonical로 복원할 수 없다.
 - Recall/view/document selection, grounding, rendering과 adoption:
   active [Projection과 document 계약](projections-and-documents.md)
 - Transaction, crash, degraded mode, repair와 rebuild:
-  future `failure-and-recovery.md`
+  active [Failure와 Recovery 계약](failure-and-recovery.md)
 - Schema/format version과 new-product upgrade behavior:
   active [Versioning 정책](versioning-policy.md)
 
-이 이름들은 `architecture-inputs.md`의 ownership plan을 가리킬 뿐 현재 active
-contract가 아님을 전제한다. 이후 파일이 활성화되면 이 문서의 information class,
-core identity, provenance, relation과 lifecycle meaning을 재정의하지 않고 자기
-named domain만 구체화한다.
+이 owner들은 `architecture-inputs.md`의 active ownership plan을 따른다. Specialized
+문서는 이 문서의 information class, core identity, provenance, relation과 lifecycle
+meaning을 재정의하지 않고 자기 named domain만 구체화한다.

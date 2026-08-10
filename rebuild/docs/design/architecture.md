@@ -8,6 +8,12 @@
 - domain 의미 기준: [핵심 도메인 모델](domain-model.md)
 - evidence 기준: [architecture 입력 계약](architecture-inputs.md),
   [Wave 1 결론](../../validation/wave-1-summary.md)
+- specialized 기준: [Repository Intelligence](repository-intelligence.md),
+  [Privacy와 provider 경계](privacy-and-provider-boundary.md),
+  [Inquiry와 Decision](inquiry-and-decision.md),
+  [Projection과 document](projections-and-documents.md),
+  [Portable Context](portable-context.md), [Versioning](versioning-policy.md),
+  [Failure와 Recovery](failure-and-recovery.md)
 - 비소유 범위: crate, process, binary, API, storage, parser, provider와 UI 기술 선택
 
 이 문서는 Volicord의 logical target architecture를 정의한다. 여기서 subsystem은
@@ -26,8 +32,8 @@ Architecture 문서의 해석 순서는 다음과 같다.
    provenance와 lifecycle 의미를 소유한다. 이 문서와 충돌해 보이는 항목이
    subsystem 배치 문제면 이 문서가, entity 의미 문제면 `domain-model.md`가
    해석 기준이다.
-4. 이후 생성되는 specialized Phase 3 문서는
-   `architecture-inputs.md`가 배정한 named domain을 구체화한다. 그 문서는 이
+4. Active specialized Phase 3 문서는 `architecture-inputs.md`가 배정한 named
+   domain을 구체화한다. 그 문서는 이
    문서의 dependency direction이나 `domain-model.md`의 core meaning을
    재정의할 수 없다.
 5. `architecture-inputs.md`와 maintained validation report는 evidence constraint와
@@ -38,9 +44,8 @@ Architecture 문서의 해석 순서는 다음과 같다.
 `cutover-plan.md`는 legacy 제거 조건과 순서를 계속 소유한다. 이 문서는 그
 책임을 복제하지 않는다.
 
-현재 active specialized owner와 remaining planned owner의 정확한 상태는
-`architecture-inputs.md`의 ownership plan이 route한다. 생성되지 않은 문서는 파일이
-생성되고 owner routing이 갱신되기 전에는 active contract가 아니다.
+현재 아홉 active owner의 정확한 상태와 unique ownership은
+`architecture-inputs.md`의 ownership plan이 route한다.
 
 ## 2. Dependency 표기와 기본 방향
 
@@ -181,8 +186,9 @@ meaning이나 analysis meaning을 소유하지 않는다.
 Local Operations는 Kernel의 canonical operation, Repository Intelligence의
 analysis operation과 Projection의 read operation을 순서대로 호출할 수 있다.
 실패를 숨기거나 하나의 subsystem 결과를 다른 subsystem의 성공으로 위조할 수
-없다. Process topology, supervisor, transaction, filesystem publication과 recovery의
-상세 contract는 이후 `failure-and-recovery.md` 등 해당 owner가 생성된 뒤 정한다.
+없다. Process, canonical/projection failure separation, repair/rebuild와 recovery의
+상세 contract는 active [Failure와 Recovery 계약](failure-and-recovery.md)이,
+durable format evolution은 active [Versioning 정책](versioning-policy.md)이 소유한다.
 
 ### 3.7 Optional Semantic Provider Boundary
 
@@ -225,27 +231,32 @@ Repository Intelligence가 Candidate를 기록해도 Canonical Context를 직접
 
 ## 5. 주요 journey의 entry와 ownership
 
-### Project initialization과 local clone binding
+### 1. Project initialization과 local clone binding
 
 Host and User Adapter가 explicit init/bind intent를 Local Operations에 전달한다.
 Canonical Context Kernel이 path와 독립적인 Project identity와 portable Source
 meaning을 만들고, Local Operations가 현재 clone과의 local binding을 소유한다.
-Tracked marker 자동 생성이나 path/remote 기반 Project identity 추론은 하지 않는다.
+Canonical mutation이 commit된 뒤 binding result를 별도로 확정하며 한쪽 실패를 다른
+쪽 success로 위조하지 않는다. Tracked marker 자동 생성이나 path/remote 기반 Project
+identity 추론은 하지 않는다.
 
-### Repository analysis
+### 2. Repository inventory와 degraded analysis
 
 Local Operations가 analysis를 요청·관찰하고 Repository Intelligence가 snapshot,
-inventory, capability, coverage와 analysis result를 소유한다. Analyzer가 없거나
-일부 언어가 실패해도 Project와 Canonical Context는 계속 사용할 수 있다.
+analyzer-independent inventory, language/area별 capability, coverage와 analysis result를
+소유한다. 각 adapter result는 bounded outcome으로 aggregate하며 한 language가
+`failed`/`partial`이어도 다른 language, inventory와 historical result를 보존한다.
+Analyzer/provider/index state와 usable remainder를 표시하고 Project와 Canonical Context는
+계속 사용할 수 있다.
 
-### First project-scoped Recall
+### 3. First project-scoped Recall
 
 Host and User Adapter가 첫 project-scoped interaction임을 전달하면 Projections and
 Documents가 Kernel의 canonical basis와 허용된 current analysis를 읽어 bounded,
 read-only Recall을 구성한다. Recall은 canonical mutation을 만들지 않으며 사용한
 record, Source, freshness와 omission을 추적할 수 있게 한다.
 
-### Staged Inquiry와 user Decision
+### 4. Staged Inquiry와 user Decision
 
 Host and User Adapter가 Inquiry entry 또는 material response를 전달한다. Inquiry
 and Decision은 먼저 확인 가능한 fact를 조사하고 current frontier를 제시한다.
@@ -253,7 +264,7 @@ User response는 exact Question identity/revision과 current user-turn Source에
 연결된 경우에만 Kernel이 user Decision으로 기록한다. Agent recommendation이나
 provider result는 이 경로를 대신할 수 없다.
 
-### Ordinary work와 Checkpoint
+### 5. Ordinary work와 source-grounded Checkpoint
 
 일반 repository 작업은 Volicord의 사전 admission 대상이 아니다. Adapter와 Local
 Operations는 work observation을 Candidate로 전달할 수 있다. 의미 있는 완료,
@@ -261,7 +272,7 @@ pause 또는 handoff boundary에서 source, changed basis, verification, known l
 next step이 확인되면 Kernel이 Checkpoint를 canonical로 기록한다. Work,
 verification, user review와 user acceptance는 서로 독립적으로 남는다.
 
-### Portable export/import
+### 6. Portable export/import와 conflict resolution
 
 Local Operations가 user-requested I/O를 조정하고 Kernel이 portable canonical
 meaning과 identity를 제공한다. Import는 canonical provenance를 보존하고 현재
@@ -270,20 +281,40 @@ authority의 상세 contract는 active [Portable Context 계약](portable-contex
 소유하며 concrete algorithm이나 serialization technology는 선택하지 않는다. Format
 version behavior는 active [Versioning 정책](versioning-policy.md)이 소유한다.
 
-### Document projection
+Import 전 bundle/version/integrity와 common-base basis를 검증하고 local binding은
+portable record와 분리한다. Independent addition 외의 semantic Decision/Question,
+delete/modify와 unavailable-base conflict는 user-owned resolution 또는 branch 전까지
+unresolved로 남긴다. Resolution은 common-base와 input provenance를 보존한다.
+
+### 7. Generated document preview와 explicit adoption
 
 Projections and Documents가 canonical/derived read basis에서 문서를 만들고 Host and
-User Adapter가 preview 또는 user-selected destination을 다룬다. 생성 자체는
-canonical mutation이 아니다. 편집본이나 생성물을 Source/Context로 보존하려면
-별도의 explicit adoption intent와 Kernel operation이 필요하다.
+User Adapter가 read-only draft/preview와 user-selected destination을 다룬다. Grounding,
+coverage, omission과 generated-document metadata version을 검증하며 render/export
+failure는 canonical state를 바꾸지 않는다. 편집본이나 생성물을 Source/Context로
+보존하려면 exact artifact/revision, current-host user Source와 origin grounding을 가진
+별도의 explicit adoption intent를 Kernel operation에 제출한다. Publication success와
+adoption success는 독립 결과다.
 
-### Background semantic-provider opt-in
+### 8. Background semantic-provider opt-in
 
 Host and User Adapter가 Project-scoped opt-in intent와 inspectable source scope를
 Local Operations에 전달한다. Repository Intelligence만 Optional Semantic Provider
 Boundary를 통해 background request를 수행하며 결과를 Derived State 또는
 Candidate로 분류한다. Opt-in이 없거나 provider가 unavailable이면 이 path만
 비활성화되고 local core journey는 유지된다.
+
+### 9. Analyzer, provider, index, source와 process failure recovery
+
+Local Operations는 bounded subsystem outcome을 모두 관찰하고 active
+[Failure와 Recovery 계약](failure-and-recovery.md)의 root cause, scope, usable remainder,
+retry owner와 repair/rebuild consequence를 보존한다. Analyzer/provider failure는 affected
+analysis만 degrade하고, Derived Index corruption은 quarantine/rebuild하며, unavailable
+source에서도 canonical read를 유지한다. Forced termination은 complete stdout/stderr,
+exit/termination, duration, cancellation/timeout과 child cleanup을 보고한다. Canonical
+transaction failure는 projection degradation으로 축소하지 않고 commit state를 Kernel이
+확인한다. Repair/rebuild 뒤에는 source snapshot, provenance, coverage와 user correction이
+유지됐는지 다시 검증한다.
 
 ## 6. Logical boundary와 implementation boundary의 구분
 
@@ -301,59 +332,118 @@ authority가 합쳐지지 않는다. Process 분리가 있다는 이유만으로
 boundary가 생기는 것도 아니다. 구체적 배치는 production promotion과 관련
 specialized validation을 통과한 뒤 선택한다.
 
-## 7. Phase 4 initial implementation boundary
+## 7. Phase 4 responsibility handoff
 
-Phase 4의 첫 구현 경계는 **Canonical Context Kernel의 Project–Source identity와
-provenance 책임**이다. 이 boundary는 crate나 API 목록이 아니라 다음 observable
-responsibility로 정의한다.
+Phase 4는 다음 dependency-respecting responsibility chain을 순서대로 입증한다.
 
-- path와 독립적인 Project를 initialize하고 inspect한다.
-- user, agent, repository와 command basis를 구분한 Source를 연결한다.
-- canonical identity와 local clone binding을 분리한다.
-- Repository Intelligence, provider와 host adapter 없이 같은 canonical meaning을
-  읽고 invariant를 검증한다.
-- Derived State를 만들지 않아도 이 책임을 수행한다.
-- legacy runtime, schema, identifier 또는 workflow를 입력으로 사용하지 않는다.
+```text
+Project and Source
+→ Question
+→ Decision
+→ Context Item
+→ Checkpoint
+→ revision, supersession, contradiction, and forgetting
+→ portable bundle and local binding
+→ deterministic Recall basis
+```
 
-Question, Decision, Context Item과 Checkpoint는 이 foundation 위에서 accepted
-순서대로 추가한다. 첫 boundary는 demo용 public slice나 final storage 선택이
-아니며, 이후 entity를 미리 빈 shell로 만들 이유가 되지 않는다.
-
-## 8. Accepted Decision traceability
-
-아래 표는 accepted constraint가 architecture의 어디에 들어오는지만 보여 준다.
-제품 의미와 revisit trigger의 전체 wording은 `open-decisions.md`가 소유한다.
-
-| Decision | Architecture entry |
+| Responsibility boundary | Phase 4 handoff result |
 |---|---|
-| D1 | 별도 logical architecture, clean runtime, legacy dependency 부재와 cutover non-goal |
-| D2 | Project-scoped Kernel identity와 Adapter가 보존하는 user/agent/session provenance |
-| D3 | Kernel의 portable canonical authority와 Local Operations의 clone binding 분리 |
-| D4 | Kernel이 소유하는 여섯 canonical entity와 `domain-model.md`의 단일 정의 |
-| D5 | boundary마다 Canonical Context, Session Candidate와 Derived State write authority 분리 |
-| D6 | Inquiry and Decision의 material staged frontier entry |
-| D7 | exact current host response가 Adapter를 거쳐 Kernel Decision operation에 연결되는 경로 |
-| D8 | ordinary work 비차단과 Host/Local Operations의 별도 high-risk confirmation entry |
-| D9 | Checkpoint와 projection에서 work, verification, review와 acceptance 독립성 |
-| D10 | Projections가 같은 canonical identity/source basis로 역할별 Recall을 만드는 경로 |
-| D11 | first-party Repository Intelligence와 Projections를 Kernel에서 분리한 subsystem map |
-| D12 | Phase 4 responsibility slice와 replacement journey를 향한 incremental ownership |
-| Q1 | Inquiry and Decision 경계와 durable Question basis; 상세 transition은 후속 owner |
-| Q2 | polyglot Repository Intelligence extension boundary와 per-area degradation 보존 |
-| Q3 | provider-optional graph, local core independence와 explicit background boundary |
-| Q4 | Host and User Adapters, Local Operations와 Projections의 surface responsibility 분리 |
-| Q5 | read-only document projection, user-selected publication과 explicit adoption 경계 |
-| Q6 | portable Project identity와 local binding 분리; bundle/conflict 상세는 `portable-context.md`가 소유 |
-| Q7 | Kernel lifecycle authority와 Derived invalidation 경계 |
-| Q8-A | Linux/Codex가 첫 Host/Operations acceptance entry이며 logical core와 분리됨 |
-| Q8-B | legacy runtime/API/data path가 graph와 import entry에 존재하지 않음 |
-| Q9 | 첫 project-scoped bounded read-only Recall을 Projection entry로 배치 |
-| Q10 | analyzer/adapter observation을 Candidate로 제한하고 Kernel promotion을 요구 |
-| Q11 | source-grounded meaningful boundary만 Kernel Checkpoint operation으로 진입 |
-| Q12 | high-risk effect confirmation을 Adapter/Operations concern으로 격리 |
-| Q13 | Decision applicability와 revisit 의미를 Kernel/domain이 소유하고 Inquiry가 사용 |
+| Project and Source | path-independent Project identity, actor/repository/command Source provenance와 local binding 분리를 provider/analyzer 없이 durable하게 읽고 검증 |
+| Question | material identity, revision, Source basis와 dependency를 Decision 없이도 보존하고 current state를 읽음 |
+| Decision | exact current-host Question revision/turn linkage와 user choice/delegation을 recommendation과 분리해 atomic canonical result로 보존 |
+| Context Item | goal/fact/assumption/constraint/preference/risk/limit과 statement role/provenance를 구분해 보존 |
+| Checkpoint | meaningful work/pause/handoff의 changed basis, applied Decision, verification, limits, open Question과 next step을 독립 fact로 보존 |
+| revision, supersession, contradiction, and forgetting | non-semantic correction, semantic replacement, unresolved evidence conflict와 content removal을 서로 바꾸지 않고 inspectable하게 적용 |
+| portable bundle and local binding | deterministic canonical export/import, Project identity preservation, local path exclusion, explicit bind와 supported format check를 제공 |
+| deterministic Recall basis | Derived State 없이도 stable canonical read order와 active/history/applicability basis를 제공하며 projection 자체는 후속 read owner에 남김 |
 
-## 9. Non-goals와 열린 implementation choice
+각 boundary는 이전 responsibility의 identity, provenance와 failure invariant를 유지한
+상태에서 observable behavior와 production Rust test로 닫는다. 이 handoff는 crate/module
+plan, public/internal API catalog, database/schema design, implementation schedule 또는
+빈 future entity shell을 정하지 않는다. Repository Intelligence, provider, host와
+renderer는 이 chain의 correctness dependency가 아니다.
+
+## 8. Accepted Decision traceability contract
+
+제품 의미와 revisit trigger의 전체 wording은 `open-decisions.md`가 소유한다. 아래
+표의 architecture owner는 해당 accepted constraint가 target architecture에서 들어가는
+유일한 주 interface owner다. 다른 문서는 reference할 수 있지만 다시 정의하지 않는다.
+
+| Decision | Authoritative architecture owner | Owned interface |
+|---|---|---|
+| D1 | `architecture.md` | 하나의 clean logical product graph, legacy dependency 부재와 cutover boundary |
+| D2 | `domain-model.md` | Project-scoped user/agent/session/Source identity와 provenance separation |
+| D3 | `portable-context.md` | user-owned portable canonical context와 local clone binding 분리 |
+| D4 | `domain-model.md` | Project, Source, Question, Decision, Context Item, Checkpoint의 canonical meaning |
+| D5 | `domain-model.md` | Canonical Context, Session Candidate와 Derived State classification/promotion |
+| D6 | `inquiry-and-decision.md` | material Question의 unbounded staged dependency frontier |
+| D7 | `inquiry-and-decision.md` | exact current-host Question revision/turn response와 Decision atomic boundary |
+| D8 | `architecture.md` | ordinary work non-blocking과 high-risk effect entry의 adapter/operation isolation |
+| D9 | `domain-model.md` | work, verification, review와 acceptance fact dimension separation |
+| D10 | `projections-and-documents.md` | user/agent가 공유하는 canonical/source/freshness Recall basis |
+| D11 | `architecture.md` | first-party Repository Intelligence와 document projection을 Kernel에서 분리한 subsystem map |
+| D12 | `architecture.md` | end-to-end journey와 Phase 4 responsibility handoff를 향한 implementation boundary |
+| Q1 | `inquiry-and-decision.md` | Inquiry entry, frontier, round, terminal outcome와 pause/resume |
+| Q2 | `repository-intelligence.md` | polyglot capability, snapshot/envelope, coverage와 adapter extension boundary |
+| Q3 | `privacy-and-provider-boundary.md` | local/interactive/background authority, opt-in, transmission와 deletion |
+| Q4 | `architecture.md` | Host/User Adapter, Local Operations, Inquiry와 Projection surface responsibility |
+| Q5 | `projections-and-documents.md` | four grounded documents, Markdown/HTML, preview/publication/adoption boundary |
+| Q6 | `portable-context.md` | Project/binding, bundle, common base, conflict class와 resolution authority |
+| Q7 | `domain-model.md` | correction, supersession, contradiction/review와 forgetting meaning |
+| Q8-A | `architecture.md` | Linux/Codex Host/Operations entry와 logical core separation |
+| Q8-B | `architecture.md` | legacy runtime/API/data path가 없는 clean product graph |
+| Q9 | `projections-and-documents.md` | first project-scoped bounded read-only Recall과 visible omission basis |
+| Q10 | `domain-model.md` | Candidate information class와 statement-role-aware canonical promotion |
+| Q11 | `domain-model.md` | source-grounded meaningful Checkpoint와 independent status dimensions |
+| Q12 | `architecture.md` | high-risk confirmation을 Adapter/Operations concern으로 격리 |
+| Q13 | `inquiry-and-decision.md` | Decision applicability, reuse와 evidence-driven re-questioning |
+
+## 9. Acceptance scenario traceability contract
+
+Acceptance 시나리오의 complete user experience는 `acceptance-scenarios.md`, phase
+sequence/cutover는 `cutover-plan.md`, validation execution은 `validation-plan.md`가
+소유한다. 이 표는 primary architecture interface, first implementing phase와 owning
+later validation을 연결한다.
+
+| Scenario | Owning architecture document | Future implementation phase | Owning later validation |
+|---|---|---|---|
+| A | `architecture.md` — init/bind와 Host/Operations | Phase 7 | V08 |
+| B | `repository-intelligence.md` — inventory/agent-assisted fallback | Phase 5 | V11 |
+| C | `repository-intelligence.md` — structural adapter/envelope | Phase 5 | V11 |
+| D | `repository-intelligence.md` — semantic normalization | Phase 5 | V02 |
+| E | `repository-intelligence.md` — per-area polyglot composition | Phase 5 | V11 |
+| F | `inquiry-and-decision.md` — staged frontier/response | Phase 6 | V11 |
+| G | `domain-model.md` — Candidate/promotion boundary | Phase 6 | V09 |
+| H | `domain-model.md` — Checkpoint/source/status meaning | Phase 6 | V09 |
+| I | `projections-and-documents.md` — automatic bounded Recall | Phase 6 | V09 |
+| J | `portable-context.md` — another-clone divergence/conflict | Phase 4 | V04 |
+| K | `domain-model.md` — revision/supersession/forgetting | Phase 4 | V04 |
+| L | `inquiry-and-decision.md` — Decision reuse/re-questioning | Phase 6 | V09 |
+| M | `architecture.md` — high-risk effect boundary | Phase 7 | V11 |
+| N | `projections-and-documents.md` — viewer/map/documents/adoption | Phase 7 | V06 |
+| O | `failure-and-recovery.md` — degradation/process/recovery | Phase 7 | V10, V11 |
+| P | `architecture.md` — fresh-service/legacy exclusion | Phase 9 | V08, V11 |
+| Q | `privacy-and-provider-boundary.md` — background opt-in/local-only | Phase 7 | V07 |
+
+## 10. Later-validation interface traceability
+
+| Validation | Owning Phase 3 interface | Precise contract validated later |
+|---|---|---|
+| V02 | `repository-intelligence.md`, `versioning-policy.md` | 최소 세 ecosystem의 Semantic Result normalization, structural/semantic provenance, snapshot version, range, diagnostics와 incomplete-build degradation |
+| V04 | `portable-context.md`, `versioning-policy.md` | common base, six conflict classes, automatic/user resolution limit, deletion propagation, merge provenance와 bundle-version non-mutation |
+| V06 | `projections-and-documents.md`, `versioning-policy.md` | four-document grounding/omission, canonical purity, preview/adoption, generated metadata와 Markdown/HTML equivalence |
+| V07 | `privacy-and-provider-boundary.md` | three authority boundaries, opt-in-before-transmission, manifest/exclusion/filtering, revoke/deletion와 local-only journey |
+| V08 | `architecture.md`, `failure-and-recovery.md` | Linux/Codex init/bind/health entry, adapter lifecycle, install/process degradation, cleanup와 clean-runtime exclusion |
+| V09 | `inquiry-and-decision.md`, `projections-and-documents.md` | deterministic frontier/resume, Decision reuse, meaningful Checkpoint, bounded Recall, omission/no-mutation와 dirty-change attribution |
+| V10 | `failure-and-recovery.md`, `versioning-policy.md` | complete streams/exit/termination, timeout/cancellation/progress, child cleanup, atomic publication, corruption, repair/rebuild와 upgrade failure |
+| V11 | `architecture.md`와 모든 specialized owner | nine integrated flows, combined multi-repository capability, portability, privacy, projection, version와 failure/recovery boundary |
+
+Validation이 accepted Decision revisit trigger를 충족하면 `open-decisions.md` 절차를
+따른다. Interface owner가 validation 결과를 product scope 축소나 새로운 implementation
+technology 선택으로 조용히 번역하지 않는다.
+
+## 11. Non-goals와 열린 implementation choice
 
 이 architecture는 다음을 선택하거나 보증하지 않는다.
 
@@ -365,11 +455,11 @@ Question, Decision, Context Item과 Checkpoint는 이 foundation 위에서 accep
 - provider, model, transmission mechanism과 retention implementation
 - Question discovery algorithm, ranking, general paraphrase recognition과 atomic host API
 - viewer framework, graph layout, renderer와 document template
-- repair, encryption, schema upgrade와 production crash strategy
+- repair/encryption implementation, schema upgrade engine와 production crash technology
 - Wave 1 prototype code 또는 experimental schema의 promotion
 
 이 문서는 first structural language set, user-owned canonical context, local-only
 operation과 source-grounded explanation 같은 accepted product contract를 구현
-편의 때문에 좁히지 않는다. Evidence gap은 해당 validation 또는 future active
-owner가 해결하며, accepted Decision 변경이 필요하면 제품 결정 revisit 절차를
+편의 때문에 좁히지 않는다. Evidence gap은 해당 active owner와 validation이
+해결하며, accepted Decision 변경이 필요하면 제품 결정 revisit 절차를
 따른다.

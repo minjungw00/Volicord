@@ -13,12 +13,12 @@
   [Inquiry와 Decision](inquiry-and-decision.md),
   [Projection과 document](projections-and-documents.md),
   [Portable Context](portable-context.md),
-  [Versioning 정책](versioning-policy.md)
+  [Versioning 정책](versioning-policy.md),
+  [Failure와 Recovery](failure-and-recovery.md)
 
 이 문서는 Phase 3가 사용할 수 있는 증거와 아직 결론 내릴 수 없는 사항을
 구분한다. Wave 1 prototype의 구현 모양을 production 설계로 승격하지 않으며,
-아래 ownership plan에서 아직 `planned`인 architecture 문서의 계약을 대신 쓰지
-않는다.
+아래 ownership plan의 active architecture 문서 계약을 대신 쓰지 않는다.
 
 ## 1. Phase 3를 제약하는 accepted product decisions
 
@@ -117,8 +117,8 @@ Later validation 결과가 accepted decision의 revisit trigger를 충족하면
 
 ## 5. Phase 3 document ownership plan
 
-`active` file만 현재 contract다. `planned` file은 실제로 생성되고 governing
-instructions가 route하기 전에는 내용을 추론하거나 active owner로 인용하지 않는다.
+아래 아홉 `active` file이 현재 target architecture contract다. 각 row는 하나의
+target architecture area를 유일하게 소유하며 다른 row의 meaning을 재정의하지 않는다.
 
 | Status | Document | 소유하는 contract | 소유하지 않는 사항 |
 |---|---|---|---|
@@ -129,7 +129,7 @@ instructions가 route하기 전에는 내용을 추론하거나 active owner로 
 | `active` | [portable-context.md](portable-context.md) | portable bundle boundary, Project/clone binding, source availability, divergence, conflict class와 resolution contract | canonical domain meaning의 재정의와 evidence 없는 merge algorithm 선택 |
 | `active` | [privacy-and-provider-boundary.md](privacy-and-provider-boundary.md) | local processing, interactive/background distinction, Project opt-in, transmission scope, secret/exclude, annotation retention/deletion contract | provider implementation 선택과 general authorization architecture |
 | `active` | [projections-and-documents.md](projections-and-documents.md) | Recall/view/document read projections, grounding metadata, adoption boundary, Markdown/HTML output contract | canonical mutation semantics, UI framework와 inquiry transition |
-| `planned` | `failure-and-recovery.md` | subsystem failure/degraded states, transaction/crash boundary, repair/rebuild responsibility와 process recovery contract | final storage/process technology와 normal domain meaning의 재정의 |
+| `active` | [failure-and-recovery.md](failure-and-recovery.md) | subsystem failure/degraded states, transaction/crash boundary, repair/rebuild responsibility와 process recovery contract | final storage/process technology와 normal domain meaning의 재정의 |
 | `active` | [versioning-policy.md](versioning-policy.md) | production schema/format version boundaries, new-product format evolution, upgrade/test responsibility와 unsupported-version behavior | legacy data handling과 concrete schema field design |
 
 ## 6. Ownership precedence and activation
@@ -144,9 +144,9 @@ instructions가 route하기 전에는 내용을 추론하거나 active owner로 
    소유한다.
 5. `architecture-inputs.md`는 evidence constraint, unsupported conclusion과 이
    ownership plan만 소유한다. Target architecture 자체를 소유하지 않는다.
-6. Planned document는 파일이 생성되고 governing instructions가 해당 파일을
-   route한 시점부터 active owner가 된다. 생성 전에는 active contract로
-   표시하거나 없는 내용을 전제하지 않는다.
+6. 아홉 active owner의 contract가 충돌해 보이면 logical subsystem 문제는
+   `architecture.md`, core entity/information meaning 문제는 `domain-model.md`를 따라
+   해석하고 specialized owner는 named boundary 밖으로 확장하지 않는다.
 7. Evidence와 target contract가 충돌해 보이면 evidence limit을 먼저 확인하고,
    accepted Decision을 바꿔야 할 때만 revisit 절차를 사용한다.
 

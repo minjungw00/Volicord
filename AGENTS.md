@@ -96,12 +96,14 @@ requirement.
 - `rebuild/docs/design/versioning-policy.md` owns active canonical schema,
   portable bundle, Analysis Snapshot, Derived Index, and generated-document
   metadata version behavior and upgrade responsibility.
+- `rebuild/docs/design/failure-and-recovery.md` owns active cross-subsystem
+  failure, degradation, propagation, retry, repair/rebuild, process, and
+  long-operation recovery boundaries.
 - `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
   deleting the legacy implementation.
-- Later target-architecture work must read all active Phase 3 owners and may
-  not redefine `architecture.md` or `domain-model.md` in specialized documents.
-  The remaining planned Phase 3 document becomes an active owner only after its
-  file is created and routed here.
+- Later target-architecture work must read all nine active Phase 3 owners and
+  may not redefine `architecture.md` or `domain-model.md` in specialized
+  documents.
 - Existing Reference, Architecture Guide, conformance, and SignalBox workflow
   documents describe the legacy baseline only. Do not infer replacement
   contracts from them.

@@ -354,4 +354,5 @@ coverage를 주장하지 않는다.
 이 문서는 Question generation model, materiality ranking algorithm, parser, provider,
 database, serialized field, transaction mechanism, API, MCP method, host UI와 wire
 representation을 선택하지 않는다. Portable conflict/merge, generated-document
-rendering, general failure/recovery matrix와 legacy workflow도 정의하지 않는다.
+rendering과 legacy workflow도 정의하지 않는다. General failure/recovery matrix는
+[Failure와 Recovery 계약](failure-and-recovery.md)이 소유한다.

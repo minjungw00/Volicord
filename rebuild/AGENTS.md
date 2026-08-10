@@ -29,11 +29,11 @@ For target-architecture work after the core owners exist, also read:
    classes, canonical entity meanings, core identity, provenance, relations,
    and lifecycle semantics
 
-The remaining planned Phase 3 architecture documents are not active contracts
-until their files are created and routed by the governing instructions. Once
-active, each specialized document owns only the named domain routed by
-`architecture-inputs.md` and must not redefine `architecture.md` or
-`domain-model.md`.
+All nine Phase 3 target-architecture documents are active contracts. Every
+target-architecture task must read `architecture.md`, `domain-model.md` and the
+specialized owners whose named boundary it touches. Each specialized document
+owns only the domain routed by `architecture-inputs.md` and must not redefine
+`architecture.md` or `domain-model.md`.
 
 Active specialized owners relevant to repository analysis and provider use are
 `rebuild/docs/design/repository-intelligence.md` and
@@ -50,6 +50,11 @@ evolution are `rebuild/docs/design/portable-context.md` and
 `rebuild/docs/design/versioning-policy.md`. Read them before work that changes
 bundle content, clone binding, divergence, conflict resolution, format-version
 checks, writes, upgrades, or rebuild behavior.
+
+The active cross-subsystem failure owner is
+`rebuild/docs/design/failure-and-recovery.md`. Read it before work that changes
+failure propagation, degradation, canonical/projection failure separation,
+retry, repair/rebuild, process termination, or long-operation results.
 
 The required product decisions are accepted in `open-decisions.md`. Do not
 quietly narrow them because an implementation is difficult. When validation

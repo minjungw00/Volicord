@@ -313,9 +313,9 @@ Analysis는 language, area와 capability 단위의 bounded result다.
   보존한다.
 - Partial result를 소비하는 projection은 coverage와 omission을 함께 표시한다.
 
-Cross-subsystem failure/recovery matrix, process termination과 repair 절차는 이 문서의
-범위가 아니다. 이 문서는 analysis result가 failure를 숨기지 않고 격리해야 한다는
-normal contract만 소유한다.
+Cross-subsystem failure/recovery matrix, process termination과 repair 절차는 active
+[Failure와 Recovery 계약](failure-and-recovery.md)이 소유한다. 이 문서는 analysis
+result가 failure를 숨기지 않고 격리해야 한다는 normal contract만 소유한다.
 
 ## 10. Freshness와 invalidation category
 
