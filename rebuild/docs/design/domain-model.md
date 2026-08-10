@@ -116,8 +116,8 @@ canonical entity의 ownership boundary이고 portable context의 기준이다.
 
 Local clone binding은 Project identity 자체가 아니다. 하나의 Project가 여러
 binding을 가질 수 있고 source repository가 unavailable해도 Project와 canonical
-record는 읽을 수 있다. Project 병합, branch와 binding procedure의 상세 의미는
-future portable-context owner가 구체화한다.
+record는 읽을 수 있다. Project divergence, branch와 binding procedure의 상세 의미는
+active [Portable Context 계약](portable-context.md)이 구체화한다.
 
 ### 4.2 Source
 
@@ -445,8 +445,8 @@ analysis가 원래 text나 claim을 다시 canonical로 복원할 수 없다.
   active [Repository Intelligence 계약](repository-intelligence.md)
 - Question frontier, response, terminal transition, Recall/Checkpoint interaction:
   active [Inquiry와 Decision 계약](inquiry-and-decision.md)
-- Bundle content, clone binding procedure, divergence, conflict와 merge:
-  future `portable-context.md`
+- Bundle content, clone binding procedure, divergence, conflict와 resolution:
+  active [Portable Context 계약](portable-context.md)
 - Provider transmission, privacy, retention, revoke와 deletion completeness:
   active [Privacy와 provider 경계 계약](privacy-and-provider-boundary.md)
 - Recall/view/document selection, grounding, rendering과 adoption:
@@ -454,7 +454,7 @@ analysis가 원래 text나 claim을 다시 canonical로 복원할 수 없다.
 - Transaction, crash, degraded mode, repair와 rebuild:
   future `failure-and-recovery.md`
 - Schema/format version과 new-product upgrade behavior:
-  future `versioning-policy.md`
+  active [Versioning 정책](versioning-policy.md)
 
 이 이름들은 `architecture-inputs.md`의 ownership plan을 가리킬 뿐 현재 active
 contract가 아님을 전제한다. 이후 파일이 활성화되면 이 문서의 information class,

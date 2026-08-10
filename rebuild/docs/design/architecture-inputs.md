@@ -11,7 +11,9 @@
   [Repository Intelligence](repository-intelligence.md),
   [Privacy와 provider 경계](privacy-and-provider-boundary.md),
   [Inquiry와 Decision](inquiry-and-decision.md),
-  [Projection과 document](projections-and-documents.md)
+  [Projection과 document](projections-and-documents.md),
+  [Portable Context](portable-context.md),
+  [Versioning 정책](versioning-policy.md)
 
 이 문서는 Phase 3가 사용할 수 있는 증거와 아직 결론 내릴 수 없는 사항을
 구분한다. Wave 1 prototype의 구현 모양을 production 설계로 승격하지 않으며,
@@ -124,11 +126,11 @@ instructions가 route하기 전에는 내용을 추론하거나 active owner로 
 | `active` | [domain-model.md](domain-model.md) | Canonical Context/Session Candidate/Derived State 분류, core identity, provenance, record relation, revision/supersession/forgetting의 domain meaning | storage schema, bundle merge procedure와 UI representation |
 | `active` | [repository-intelligence.md](repository-intelligence.md) | snapshot, inventory, entity/relation, capability/coverage/freshness와 language/semantic adapter contract | 사용자 judgment, final parser/provider technology와 canonical persistence |
 | `active` | [inquiry-and-decision.md](inquiry-and-decision.md) | Question/Decision/Candidate behavior, dependency frontier, response linkage, terminal transition, Decision applicability, Checkpoint/Recall interaction sequence | Canonical storage schema, projection rendering과 host-specific wire format |
-| `planned` | `portable-context.md` | portable bundle boundary, Project/clone binding, source availability, divergence, conflict class와 resolution contract | canonical domain meaning의 재정의와 evidence 없는 merge algorithm 선택 |
+| `active` | [portable-context.md](portable-context.md) | portable bundle boundary, Project/clone binding, source availability, divergence, conflict class와 resolution contract | canonical domain meaning의 재정의와 evidence 없는 merge algorithm 선택 |
 | `active` | [privacy-and-provider-boundary.md](privacy-and-provider-boundary.md) | local processing, interactive/background distinction, Project opt-in, transmission scope, secret/exclude, annotation retention/deletion contract | provider implementation 선택과 general authorization architecture |
 | `active` | [projections-and-documents.md](projections-and-documents.md) | Recall/view/document read projections, grounding metadata, adoption boundary, Markdown/HTML output contract | canonical mutation semantics, UI framework와 inquiry transition |
 | `planned` | `failure-and-recovery.md` | subsystem failure/degraded states, transaction/crash boundary, repair/rebuild responsibility와 process recovery contract | final storage/process technology와 normal domain meaning의 재정의 |
-| `planned` | `versioning-policy.md` | production schema/format version boundaries, new-product format evolution, upgrade/test responsibility와 unsupported-version behavior | legacy data handling과 concrete schema field design |
+| `active` | [versioning-policy.md](versioning-policy.md) | production schema/format version boundaries, new-product format evolution, upgrade/test responsibility와 unsupported-version behavior | legacy data handling과 concrete schema field design |
 
 ## 6. Ownership precedence and activation
 

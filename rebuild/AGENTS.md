@@ -45,6 +45,12 @@ documents are `rebuild/docs/design/inquiry-and-decision.md` and
 `rebuild/docs/design/projections-and-documents.md`. Read them before work that
 changes their named contracts.
 
+Active specialized owners relevant to portable context and durable format
+evolution are `rebuild/docs/design/portable-context.md` and
+`rebuild/docs/design/versioning-policy.md`. Read them before work that changes
+bundle content, clone binding, divergence, conflict resolution, format-version
+checks, writes, upgrades, or rebuild behavior.
+
 The required product decisions are accepted in `open-decisions.md`. Do not
 quietly narrow them because an implementation is difficult. When validation
 meets a recorded revisit trigger, add a new product question, preserve the

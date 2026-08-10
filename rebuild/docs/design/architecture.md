@@ -38,7 +38,7 @@ Architecture 문서의 해석 순서는 다음과 같다.
 `cutover-plan.md`는 legacy 제거 조건과 순서를 계속 소유한다. 이 문서는 그
 책임을 복제하지 않는다.
 
-현재 active specialized owner와 planned owner의 정확한 상태는
+현재 active specialized owner와 remaining planned owner의 정확한 상태는
 `architecture-inputs.md`의 ownership plan이 route한다. 생성되지 않은 문서는 파일이
 생성되고 owner routing이 갱신되기 전에는 active contract가 아니다.
 
@@ -265,9 +265,10 @@ verification, user review와 user acceptance는 서로 독립적으로 남는다
 
 Local Operations가 user-requested I/O를 조정하고 Kernel이 portable canonical
 meaning과 identity를 제공한다. Import는 canonical provenance를 보존하고 현재
-clone binding은 별도로 수행한다. Bundle content, divergence, conflict와 merge의
-상세 contract는 이후 `portable-context.md`가 생성될 때 정하며, 이 문서는
-algorithm이나 format을 선택하지 않는다.
+clone binding은 별도로 수행한다. Bundle content, divergence, conflict와 resolution
+authority의 상세 contract는 active [Portable Context 계약](portable-context.md)이
+소유하며 concrete algorithm이나 serialization technology는 선택하지 않는다. Format
+version behavior는 active [Versioning 정책](versioning-policy.md)이 소유한다.
 
 ### Document projection
 
@@ -342,7 +343,7 @@ Question, Decision, Context Item과 Checkpoint는 이 foundation 위에서 accep
 | Q3 | provider-optional graph, local core independence와 explicit background boundary |
 | Q4 | Host and User Adapters, Local Operations와 Projections의 surface responsibility 분리 |
 | Q5 | read-only document projection, user-selected publication과 explicit adoption 경계 |
-| Q6 | portable Project identity와 local binding 분리; merge 상세는 후속 owner에 보류 |
+| Q6 | portable Project identity와 local binding 분리; bundle/conflict 상세는 `portable-context.md`가 소유 |
 | Q7 | Kernel lifecycle authority와 Derived invalidation 경계 |
 | Q8-A | Linux/Codex가 첫 Host/Operations acceptance entry이며 logical core와 분리됨 |
 | Q8-B | legacy runtime/API/data path가 graph와 import entry에 존재하지 않음 |

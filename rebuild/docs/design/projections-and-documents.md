@@ -11,7 +11,9 @@
 - privacy 기준: [Privacy와 provider 경계](privacy-and-provider-boundary.md)
 - validation 기준: [기술 검증 계획 V06·V09·V11](validation-plan.md)
 - 비소유 범위: canonical mutation semantics, Inquiry transition, UI framework,
-  renderer/template technology, portable merge, storage/API와 background-provider policy
+  renderer/template technology, portable conflict resolution, storage/API와
+  background-provider policy; portable boundary는
+  [Portable Context 계약](portable-context.md)이 소유함
 
 이 문서는 Canonical Context와 허용된 Derived State를 사람이 이해하고 agent가 다시
 사용할 수 있는 read projection으로 만드는 계약이다. Projection은 source record의

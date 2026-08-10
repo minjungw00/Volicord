@@ -148,8 +148,8 @@ Canonical Context와 다른 boundary다.
 - Source가 unavailable해도 Project, Decision과 Checkpoint를 읽을 수 있으며 current
   code verification이 unavailable하다는 사실을 표시한다.
 
-Portable bundle의 concrete content, clone binding, divergence와 merge는 future
-`portable-context.md`가 소유한다. 이 문서는 raw source와 portable context를 같은
+Portable bundle의 concrete content, clone binding, divergence와 conflict resolution은
+active [Portable Context 계약](portable-context.md)이 소유한다. 이 문서는 raw source와 portable context를 같은
 consent 또는 retention unit으로 합치지 않는 privacy boundary만 정의한다.
 
 ## 8. Semantic annotation retention과 deletion
