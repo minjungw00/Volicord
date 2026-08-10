@@ -78,8 +78,10 @@ Canonical Context Kernel  → no other logical subsystem
   읽는 것은 허용되지만 user judgment의 생성·유효성·변경을 소유하지 않는다.
 - Inquiry and Decision은 canonical context와 repository analysis를 읽을 수 있지만,
   명시적으로 연결된 현재 host의 user response만 user Decision 입력이 될 수 있다.
-- Projections and Documents는 읽기 결과를 만들며 rendering 또는 export의 side
-  effect로 canonical record를 수정하지 않는다.
+- Projections and Documents는 Canonical Context read model, Candidate Inspection에만
+  허용된 bounded Session Candidate metadata와 permitted Derived State를 읽어 결과를
+  만들며 read, rendering 또는 export의 side effect로 Candidate나 canonical record를
+  수정하지 않는다.
 - Host and User Adapters는 host 표현을 use case 입력으로 번역할 뿐 domain
   meaning, provenance 또는 authority를 발명하지 않는다.
 - Local Operations는 subsystem을 시작·연결·관찰할 수 있지만 각 subsystem의
@@ -153,16 +155,41 @@ sequence는 active [Inquiry와 Decision 계약](inquiry-and-decision.md)이 소�
 
 ### 3.4 Projections and Documents
 
-Projections and Documents는 Canonical Context와 필요한 Derived State를 읽어 Recall,
-viewer view와 generated document를 만든다. User용과 agent용 표현의 깊이는 달라도
-record identity, source, freshness, uncertainty, supersession와 omission basis는
-같다.
+Projections and Documents는 정확히 다음 세 logical input class를 읽는다.
+
+1. Canonical Context read model.
+2. Named Candidate Inspection projection에만 필요한, domain과 privacy policy가 허용한
+   bounded Session Candidate metadata.
+3. Recall, map, preview와 generated document에 필요한 permitted Derived State.
+
+이 read authority로 Recall, viewer view와 generated document를 만든다. User용과
+agent용 표현의 깊이는 달라도 record identity, source, freshness, uncertainty,
+supersession와 omission basis는 같다.
 
 Projection은 authoritative record가 아니며 generated document도 explicit adoption
 전에는 canonical truth가 아니다. Rendering, preview, 파일 출력 또는 실패가
 source record를 바꾸지 않는다. 상세 Recall selection, document grounding,
 adoption과 output contract는 active
 [Projection과 document 계약](projections-and-documents.md)이 소유한다.
+
+#### Candidate Inspection read authority contract
+
+| Contract field | Required authority boundary |
+|---|---|
+| `reader` | Projections and Documents |
+| `purpose` | Candidate Inspection only |
+| `input_information_class` | Session Candidate remains Session Candidate and is not reclassified as Derived State. |
+| `allowed_read` | `domain-model.md`가 소유하는 user-inspectable Candidate metadata와, 적용되는 collection, retention, deletion 및 privacy policy가 명시적으로 허용한 bounded Candidate content만 읽는다. |
+| `policy_owners` | Candidate identity, meaning, lifecycle과 disposition은 `domain-model.md`; collection scope, opt-out, retention, expiry와 deletion은 `privacy-and-provider-boundary.md`; Candidate Inspection presentation과 omission은 `projections-and-documents.md`가 계속 소유한다. |
+| `forbidden_access` | Full prompts, full tool arguments, full Source bodies, unlimited stdout/stderr, provider-private payloads, expired or deleted Candidate content와 authorized Project/scope 밖의 content에 대한 blanket read authority가 없다. |
+| `mutation_boundary` | Read, omission, ranking, rendering, expansion 또는 inspection failure는 Candidate를 promote, dismiss, expire, delete, correct, reinterpret하거나 retention/opt-out state를 바꿀 수 없다. |
+| `failure_boundary` | Unavailable 또는 policy-withheld Candidate content는 bounded `partial`/`degraded` inspection과 explicit omission basis를 만든다. Empty success나 Canonical mutation으로 바꾸지 않는다. |
+| `producer_independence` | Candidate-producing subsystem은 identity와 provenance를 보존하지만 Candidate Inspection은 그 subsystem의 write authority를 얻지 않는다. |
+| `implementation_neutrality` | Candidate database, unified service, API, process 또는 transport를 선택하지 않는다. |
+
+이 contract는 Candidate Inspection에만 적용된다. 다른 projection에 일반적인 Session
+Candidate read authority를 부여하거나 Session Candidate를 portable Canonical Context,
+일곱 번째 canonical entity 또는 rebuildable Derived State로 바꾸지 않는다.
 
 ### 3.5 Host and User Adapters
 
@@ -289,7 +316,7 @@ retention, revoke와 deletion의 상세 contract는
 | Canonical Context Kernel | 모든 canonical record와 relation | Canonical Context의 유일한 authoritative mutation | canonical entity identity와 relation의 기준 |
 | Repository Intelligence | repository snapshot, selected canonical context, 자신의 Derived State | analysis Derived State와 provenance-bearing Candidate | canonical ID를 연결점으로 참조하되 의미를 재정의하지 않음 |
 | Inquiry and Decision | canonical Question/Decision/Context, relevant analysis와 Candidate | inquiry-local Candidate와 Kernel에 제출할 intent | exact Question revision, user-turn Source와 analysis Source를 참조 |
-| Projections and Documents | canonical read model과 허용된 Derived State | disposable projection, preview와 user-requested output | source/Decision/snapshot identity를 그대로 보존 |
+| Projections and Documents | Canonical Context read model, Candidate Inspection에만 domain/privacy-policy-authorized bounded Session Candidate metadata, permitted Derived State | disposable projection, preview와 user-requested output | source/Decision/snapshot identity를 그대로 보존 |
 | Host and User Adapters | 노출이 허용된 use-case result | transport/session observation, explicit user intent와 current-host confirmation response 전달 | host turn/session/confirmation request identity를 provenance로 전달 |
 | Local Operations | health, local binding, subsystem result, confirmation state와 operation status | local binding, runtime coordination, Guarded dispatch와 rebuildable operational state | Project/Source/confirmation/operation identity를 local resource와 연결 |
 | Optional Semantic Provider Boundary | opt-in된 snapshot-scoped source 범위 | provider result와 delivery observation | provider/model/source snapshot basis를 보존 |

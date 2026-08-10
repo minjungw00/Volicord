@@ -1,6 +1,6 @@
 # Phase 3 architecture conclusion
 
-- Phase 4 architecture-contract gate: `ready`
+- Phase 4 architecture-contract gate: blocked
 - Scope: logical architecture consistency and accepted-contract completeness
 - Excluded claim: production implementation and later-validation behavior have not been
   validated by this conclusion
@@ -31,11 +31,12 @@ second core architecture or canonical domain model.
 | Maintained check | Result |
 |---|---|
 | `rebuild/scripts/validate self-test` | `passed`; complete stream, duration, termination, exit-status, exact final-command and non-fail-fast aggregate behavior verified |
-| `rebuild/scripts/check-architecture-contracts --self-test` | `passed`; positive fixture and 18 deterministic negative cases, including relation, Candidate and Guarded regressions |
+| `rebuild/scripts/check-architecture-contracts --self-test` | `passed`; positive fixture and deterministic negative cases for maintained relation, Candidate and Guarded structure |
 | `rebuild/scripts/check-architecture-contracts` | `passed`; nine owners, links, owner routing, traceability, corrected trust boundaries and prohibited-path checks verified |
 
 The checker is structural test support. Product meaning remains in the active architecture
-owners and accepted product Decisions.
+owners and accepted product Decisions. Independent validation of Candidate Inspection read
+authority is still required before the Phase 4 architecture-contract gate can be ready.
 
 ## Relation direction
 
@@ -57,7 +58,11 @@ alias with the same name.
 `domain-model.md` remains the owner of Candidate information-class meaning, identity,
 metadata, lifecycle and promotion. `privacy-and-provider-boundary.md` explicitly owns scoped
 automatic collection, opt-out, retention/expiry and deletion. The named `Candidate
-Inspection` projection in `projections-and-documents.md` is read-only.
+Inspection` projection in `projections-and-documents.md` is read-only. `architecture.md`
+grants Projections and Documents exactly three logical input classes: Canonical Context read
+models, domain/privacy-policy-authorized bounded Session Candidate metadata for Candidate
+Inspection only, and permitted Derived State. Session Candidate remains distinct from both
+Canonical Context and Derived State.
 
 Candidate Inspection exposes existence/identity, kind, origin/provenance, collection scope,
 creation/observation basis, retention/expiry, promotion disposition and relevant opt-out
@@ -146,11 +151,12 @@ demonstrates one.
 
 ## Phase 4 gate
 
-`ready`. The nine-owner architecture is semantically consistent, relation direction is
-usable across grounding and invalidation, Candidate and Guarded trust boundaries are complete,
-accepted Decisions and Acceptance A–Q remain traceable, maintained structural checks pass, and
-no unresolved architecture contradiction or active Decision revisit trigger blocks Phase 4
-architecture-contract work.
+`blocked`. The maintained owners now give Candidate Inspection a bounded, privacy-scoped
+Session Candidate metadata read authority without granting Candidate mutation or changing its
+information class. Independent validation must still confirm that the Projections subsystem
+description, Boundary authority row and specialized projection stay aligned; unrestricted
+Candidate-body access remains forbidden; and no-mutation plus partial/degraded failure behavior
+remain explicit before the Phase 4 architecture-contract gate can be ready.
 
 This status does not certify production behavior or complete V02, V04, V06, V07, V08, V09,
 V10 or V11.

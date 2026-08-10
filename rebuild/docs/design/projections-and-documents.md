@@ -15,15 +15,19 @@
   background-provider policy; portable boundary는
   [Portable Context 계약](portable-context.md)이 소유함
 
-이 문서는 Canonical Context와 허용된 Derived State를 사람이 이해하고 agent가 다시
-사용할 수 있는 read projection으로 만드는 계약이다. Projection은 source record의
-authority나 identity를 복제하지 않으며 generation/render/export를 canonical write의
-숨은 경로로 사용하지 않는다.
+이 문서는 Canonical Context, Candidate Inspection에만 top-level architecture가 허용한
+bounded Session Candidate metadata와 permitted Derived State를 사람이 이해하고 agent가
+다시 사용할 수 있는 read projection으로 만드는 계약이다. Projection은 source
+record의 authority나 identity를 복제하지 않으며 generation/render/export를 canonical
+write의 숨은 경로로 사용하지 않는다.
 
 ## 1. Projection invariant
 
 모든 Recall, map, view와 generated document에 다음 불변 조건을 적용한다.
 
+- Projection input은 Canonical Context, Candidate Inspection에만 허용된 bounded Session
+  Candidate metadata와 permitted Derived State로 제한한다. Candidate Inspection 외의
+  projection은 Session Candidate read authority를 얻지 않는다.
 - canonical record identity와 revision을 새 projection-local identity로 대체하지 않는다.
 - Source basis, Repository/Analysis Snapshot, capability와 coverage를 보존한다.
 - freshness, uncertainty, contradiction, supersession와 availability를 숨기지 않는다.
@@ -140,6 +144,11 @@ User view의 단순화가 uncertainty나 failed scope를 complete success로 바
 read-only projection이다. Projections and Documents가 이 read projection을 소유하고
 `domain-model.md`의 Candidate meaning/lifecycle과
 `privacy-and-provider-boundary.md`의 collection/retention policy를 그대로 사용한다.
+Read는 domain owner가 정의한 user-inspectable Candidate metadata와 applicable
+collection, retention, deletion 및 privacy policy가 명시적으로 허용한 bounded Candidate
+content로 제한된다. Full prompts, full tool arguments, full Source bodies, unlimited
+stdout/stderr, provider-private payloads, expired/deleted content와 authorized Project/scope
+밖의 content를 읽는 blanket authority가 아니다.
 
 각 visible Candidate에 대해 최소 다음 attributes를 노출한다.
 
