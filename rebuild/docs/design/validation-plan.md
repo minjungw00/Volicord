@@ -440,6 +440,8 @@ external semantic provider 없이 핵심 기능을 사용할 수 있고, interac
 ### 시나리오
 
 - semantic provider 미설정
+- Candidate collection 활성/selected-scope opt-out와 pre-existing Candidate
+- Candidate retention expiry, explicit deletion과 promoted Candidate
 - Project opt-in 전 background analysis 요청
 - opt-in 후 explicit scope 전송
 - excluded file과 secret-like fixture
@@ -453,6 +455,8 @@ external semantic provider 없이 핵심 기능을 사용할 수 있고, interac
 - exclude와 secret behavior
 - opt-in persistence와 revoke
 - annotation provenance
+- Candidate retention/expiry와 opt-out state
+- Candidate, annotation, canonical forgetting과 related Derived deletion propagation
 - deletion completeness
 
 ### 통과 조건
@@ -462,6 +466,11 @@ external semantic provider 없이 핵심 기능을 사용할 수 있고, interac
 - 사용자에게 provider, model, source 범위와 exclusions를 표시한다.
 - raw source body가 portable bundle에 포함되지 않는다.
 - annotation 삭제 후 cache와 derived output에서 제거된다.
+- Candidate opt-out은 selected scope의 새 automatic collection을 중단하고 existing
+  Candidate를 explicit deletion/dismissal/promotion/retention expiry까지 inspectable하게
+  유지한다.
+- Candidate retention/deletion은 canonical target을 silent rewrite/delete하지 않고,
+  canonical forgetting은 관련 managed Candidate/Derived content로 전파된다.
 
 ## 12. V08 — Linux install과 Codex integration
 
@@ -476,6 +485,7 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - Runtime Home init
 - Project init/bind
 - Codex MCP setup
+- Guarded confirmation의 current-host transport와 elicitation-unavailable fallback
 - host restart
 - health degraded/failure
 - uninstall/reinstall
@@ -486,6 +496,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - install artifacts
 - startup time와 failure message
 - adapter lifecycle
+- exact confirmation request/revision과 user-response Source transport fidelity
+- local viewer/CLI fallback equivalence
 - process cleanup
 - locale rendering
 - no legacy dependency or runtime access
@@ -495,6 +507,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - documented command로 clean install과 first Project journey가 가능하다.
 - Codex가 high-level MCP surface를 발견하고 Recall/Decision/Checkpoint를 호출할 수 있다.
 - 연결 실패와 degraded capability를 구분한다.
+- Current host가 Guarded response를 받을 수 있고, 받을 수 없으면 local viewer/CLI가
+  같은 logical confirmation identity/revision과 Source linkage를 유지한다.
 - uninstall/reinstall이 canonical user data를 조용히 삭제하지 않는다.
 - active product에 legacy command alias, import 또는 migrate path가 없다.
 
@@ -513,6 +527,7 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - ordinary work with unrelated dirty changes
 - completed, paused와 handoff boundary
 - verification pass, fail와 not-run
+- pending/promoted/dismissed/expired Candidate와 Candidate Inspection degradation
 
 ### 측정 항목
 
@@ -523,6 +538,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - dirty change attribution
 - Checkpoint false-positive/false-negative
 - work/verification/review state separation
+- Candidate promotion authorization/disposition과 inspection attribute completeness
+- Candidate Inspection no-mutation과 failure isolation
 
 ### 통과 조건
 
@@ -532,6 +549,9 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - existing dirty changes를 current Checkpoint 변경으로 포함하지 않는다.
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint를 만들지 않는다.
 - new session이 goal, rationale, current state, open Questions와 next step을 복구한다.
+- Candidate Inspection이 existence, kind, provenance, collection scope, retention/expiry,
+  promotion disposition과 opt-out state를 노출하고 read/failure가 Candidate를 mutate하지
+  않는다.
 
 ## 14. V10 — 기존 process/filesystem primitive 재사용 평가
 
@@ -600,8 +620,10 @@ clean Linux install
 → Project init/bind
 → inventory and capability analysis
 → source-grounded explanation
+→ Candidate collection, inspection and bounded promotion/disposition
 → staged Inquiry and user Decision
 → ordinary work
+→ exact Guarded confirmation and effect outcome where applicable
 → source-grounded Checkpoint
 → process restart and new-session Recall
 → bundle export/import to another clone
@@ -614,6 +636,11 @@ clean Linux install
 ### 통과 조건
 
 `acceptance-scenarios.md`의 최종 통과 조건을 모두 만족한다. 하나의 repository에서만 통과한 결과로 cutover gate를 열지 않는다.
+
+특히 Candidate collection/inspection/promotion/retention journey와 Guarded effect의 exact
+action/target/effect/scope/revision/expiration match, user-response Source, single-use/reuse
+rejection, no-dispatch-before-valid-confirmation, ordinary-action non-blocking 및
+indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한다.
 
 ## 16. Architecture 확정 gate
 

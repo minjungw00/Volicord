@@ -171,6 +171,11 @@ input/output을 logical use case로 번역한다. Adapter는 user turn, agent se
 confirmation과 display context를 손실 없이 전달하고 subsystem 결과를 host에
 맞게 표현한다.
 
+현재 host의 explicit Guarded confirmation request/response transport는 Host and User
+Adapters가 소유한다. Host가 confirmation을 elicitation할 수 없으면 같은 logical
+contract를 local viewer 또는 CLI로 전달하는 fallback을 제공한다. Fallback은 weaker
+approval, general consent 또는 다른 operation identity를 만드는 경로가 아니다.
+
 Adapter는 Question을 답한 것으로 추론하거나, recommendation을 user choice로
 바꾸거나, low-level transport identity를 domain identity로 만들지 않는다. 특정
 host, command 또는 wire representation은 이 문서의 architecture contract가
@@ -189,6 +194,80 @@ analysis operation과 Projection의 read operation을 순서대로 호출할 수
 없다. Process, canonical/projection failure separation, repair/rebuild와 recovery의
 상세 contract는 active [Failure와 Recovery 계약](failure-and-recovery.md)이,
 durable format evolution은 active [Versioning 정책](versioning-policy.md)이 소유한다.
+
+Local Operations는 Guarded effect dispatch와 exact confirmation validation의 logical
+owner다. Transport가 confirmation을 받았다는 사실만으로 effect를 실행하지 않으며,
+아래 contract를 통과한 operation만 dispatch한다.
+
+#### Guarded-effect confirmation contract
+
+Accepted Guarded boundary의 initial high-risk categories는 다음과 같다.
+
+- destructive file/data deletion
+- irreversible 또는 large-scale migration
+- external deployment 또는 public publication
+- payment 또는 continuing cost
+- secret/credential access 또는 change
+- personal data 또는 source code의 external transmission
+- external system으로 message, email 또는 issue 전송
+- production data change
+- permission, authentication 또는 security-setting change
+
+Ordinary code edit, local test, local repository inventory와 local structural analysis는
+Guarded boundary 밖이며 confirmation 때문에 block되지 않는다. `Guarded Effect
+Candidate`는 `domain-model.md`가 분류하는 Derived/operational state이고 새 canonical
+core entity가 아니다.
+
+하나의 logical confirmation request identity는 immutable revision별로 다음 exact
+meaning을 가진다.
+
+| Confirmation request field | Required meaning |
+|---|---|
+| `confirmation_request_identity` | 같은 logical request의 revision history를 묶는 identity |
+| `request_revision` | user에게 실제 표시되고 response가 bind되는 exact revision |
+| `exact_action` | dispatch하려는 action |
+| `target` | effect가 적용되는 exact target |
+| `expected_effect` | user가 승인 전에 이해해야 하는 예상 effect |
+| `risk` | category와 concrete consequence |
+| `scope` | action/target에 허용되는 bounded scope |
+| `expiration` | confirmation이 더 이상 유효하지 않은 time/basis |
+| `requesting_actor_and_provenance` | request를 만든 actor/session과 Candidate/Source/operation basis |
+| `effect_fingerprint` | action, target, expected effect, risk, scope와 revision을 exact-match하는 stable comparison basis |
+
+User confirmation input은 current host에서 explicit하게 제출된 `Source`-linked response다.
+Exact confirmation request identity/revision, user-turn Source와 response basis를
+연결하며 general product `Decision`, 과거 consent, agent inference 또는 unrelated
+approval과 분리한다.
+
+Confirmation은 action-scoped, target-scoped, scope-scoped, expiring, non-transferable이며
+single-use다. Dispatch 전에 Local Operations는 request revision, exact action, target,
+expected effect, scope, expiration과 effect fingerprint가 current Candidate와 일치하고
+user-response Source가 valid하며 아직 consumption되지 않았는지 검증한다. Action,
+target, expected effect, scope 또는 request revision이 바뀌거나 confirmation이 stale/
+expired하면 새 confirmation이 필요하다. 한 confirmation은 다른 effect를 authorize하지
+않고 consumed confirmation의 reuse는 reject한다.
+
+Valid confirmation 전에는 external 또는 그 밖의 Guarded effect를 dispatch하지 않는다.
+Confirmation consumption과 dispatch는 하나의 `operation_identity`로 연결해 다음
+outcome을 구분한다.
+
+| Guarded operation outcome | Meaning |
+|---|---|
+| `not_dispatched` | confirmation validation/consumption 또는 dispatch 전 단계에서 멈춤 |
+| `dispatched_and_completed` | exact operation이 dispatch되고 completion outcome을 확인함 |
+| `dispatched_and_failed` | dispatch는 일어났고 failure outcome을 확인함 |
+| `execution_outcome_indeterminate` | termination/communication loss 뒤 dispatch 또는 effect completion을 확정할 수 없음 |
+
+Consumption과 dispatch의 implementation atomicity/repair mechanism은 아직 선택하지
+않지만 결과는 approval reuse나 silent retry를 허용해서는 안 된다. Durable Project
+history가 필요하면 user-response Source와 resulting operation을 Checkpoint/Context
+Item이 reference할 수 있다. Operational confirmation을 general Decision이나 일곱 번째
+canonical core entity로 만들지 않는다.
+
+이 경계는 cooperative confirmation이며 OS sandbox 또는 security enforcement가
+아니다. Host/adapter가 표현을 전달하고 Local Operations가 cooperative product
+contract를 적용하지만 외부 process나 operating system을 강제로 격리한다는 보증은
+하지 않는다.
 
 ### 3.7 Optional Semantic Provider Boundary
 
@@ -211,8 +290,8 @@ retention, revoke와 deletion의 상세 contract는
 | Repository Intelligence | repository snapshot, selected canonical context, 자신의 Derived State | analysis Derived State와 provenance-bearing Candidate | canonical ID를 연결점으로 참조하되 의미를 재정의하지 않음 |
 | Inquiry and Decision | canonical Question/Decision/Context, relevant analysis와 Candidate | inquiry-local Candidate와 Kernel에 제출할 intent | exact Question revision, user-turn Source와 analysis Source를 참조 |
 | Projections and Documents | canonical read model과 허용된 Derived State | disposable projection, preview와 user-requested output | source/Decision/snapshot identity를 그대로 보존 |
-| Host and User Adapters | 노출이 허용된 use-case result | transport/session observation과 explicit user intent 전달 | host turn/session identity를 provenance로 전달 |
-| Local Operations | health, local binding, subsystem result와 operation status | local binding, runtime coordination과 rebuildable operational state | Project/Source ID를 local resource와 연결 |
+| Host and User Adapters | 노출이 허용된 use-case result | transport/session observation, explicit user intent와 current-host confirmation response 전달 | host turn/session/confirmation request identity를 provenance로 전달 |
+| Local Operations | health, local binding, subsystem result, confirmation state와 operation status | local binding, runtime coordination, Guarded dispatch와 rebuildable operational state | Project/Source/confirmation/operation identity를 local resource와 연결 |
 | Optional Semantic Provider Boundary | opt-in된 snapshot-scoped source 범위 | provider result와 delivery observation | provider/model/source snapshot basis를 보존 |
 
 `write authority`는 저장 매체의 독점이라는 뜻이 아니라 해당 information class의
@@ -304,7 +383,18 @@ Boundary를 통해 background request를 수행하며 결과를 Derived State �
 Candidate로 분류한다. Opt-in이 없거나 provider가 unavailable이면 이 path만
 비활성화되고 local core journey는 유지된다.
 
-### 9. Analyzer, provider, index, source와 process failure recovery
+### 9. Guarded effect confirmation과 dispatch
+
+Host and User Adapter가 Guarded Effect Candidate의 exact request identity/revision과
+current-host response Source를 운반한다. Host가 response를 elicitation할 수 없으면 local
+viewer 또는 CLI가 같은 request를 표시하고 같은 Source-linkage contract로 응답을
+전달한다. Local Operations는 expiration, exact action/target/expected effect/scope,
+fingerprint와 unused state를 확인한 뒤에만 하나의 operation identity로 consume/dispatch를
+연결한다. Missing/denied/stale/expired/mismatched/reused response는 dispatch하지 않고,
+indeterminate execution은 [Failure와 Recovery 계약](failure-and-recovery.md)에 따라
+silent retry나 success claim 없이 scoped recovery로 보낸다.
+
+### 10. Analyzer, provider, index, source와 process failure recovery
 
 Local Operations는 bounded subsystem outcome을 모두 관찰하고 active
 [Failure와 Recovery 계약](failure-and-recovery.md)의 root cause, scope, usable remainder,
@@ -379,7 +469,7 @@ renderer는 이 chain의 correctness dependency가 아니다.
 | D5 | `domain-model.md` | Canonical Context, Session Candidate와 Derived State classification/promotion |
 | D6 | `inquiry-and-decision.md` | material Question의 unbounded staged dependency frontier |
 | D7 | `inquiry-and-decision.md` | exact current-host Question revision/turn response와 Decision atomic boundary |
-| D8 | `architecture.md` | ordinary work non-blocking과 high-risk effect entry의 adapter/operation isolation |
+| D8 | `architecture.md` | ordinary work non-blocking과 exact, single-use Guarded confirmation/dispatch isolation |
 | D9 | `domain-model.md` | work, verification, review와 acceptance fact dimension separation |
 | D10 | `projections-and-documents.md` | user/agent가 공유하는 canonical/source/freshness Recall basis |
 | D11 | `architecture.md` | first-party Repository Intelligence와 document projection을 Kernel에서 분리한 subsystem map |
@@ -394,9 +484,9 @@ renderer는 이 chain의 correctness dependency가 아니다.
 | Q8-A | `architecture.md` | Linux/Codex Host/Operations entry와 logical core separation |
 | Q8-B | `architecture.md` | legacy runtime/API/data path가 없는 clean product graph |
 | Q9 | `projections-and-documents.md` | first project-scoped bounded read-only Recall과 visible omission basis |
-| Q10 | `domain-model.md` | Candidate information class와 statement-role-aware canonical promotion |
+| Q10 | `domain-model.md` | Candidate identity/metadata/lifecycle와 promotion meaning; inspection은 Projection, collection/retention은 Privacy owner로 route |
 | Q11 | `domain-model.md` | source-grounded meaningful Checkpoint와 independent status dimensions |
-| Q12 | `architecture.md` | high-risk confirmation을 Adapter/Operations concern으로 격리 |
+| Q12 | `architecture.md` | Guarded Candidate, Source-linked confirmation, Host/fallback transport와 exact pre-dispatch validation/consumption |
 | Q13 | `inquiry-and-decision.md` | Decision applicability, reuse와 evidence-driven re-questioning |
 
 ## 9. Acceptance scenario traceability contract
@@ -414,13 +504,13 @@ later validation을 연결한다.
 | D | `repository-intelligence.md` — semantic normalization | Phase 5 | V02 |
 | E | `repository-intelligence.md` — per-area polyglot composition | Phase 5 | V11 |
 | F | `inquiry-and-decision.md` — staged frontier/response | Phase 6 | V11 |
-| G | `domain-model.md` — Candidate/promotion boundary | Phase 6 | V09 |
+| G | `domain-model.md` — Candidate lifecycle/promotion; Projection inspection과 Privacy collection/retention route | Phase 6 | V07, V09, V11 |
 | H | `domain-model.md` — Checkpoint/source/status meaning | Phase 6 | V09 |
 | I | `projections-and-documents.md` — automatic bounded Recall | Phase 6 | V09 |
 | J | `portable-context.md` — another-clone divergence/conflict | Phase 4 | V04 |
-| K | `domain-model.md` — revision/supersession/forgetting | Phase 4 | V04 |
+| K | `domain-model.md` — revision/supersession/forgetting과 privacy/deletion propagation | Phase 4 | V04, V07 |
 | L | `inquiry-and-decision.md` — Decision reuse/re-questioning | Phase 6 | V09 |
-| M | `architecture.md` — high-risk effect boundary | Phase 7 | V11 |
+| M | `architecture.md` — Guarded confirmation transport, fallback, exact validation/dispatch와 non-reuse | Phase 7 | V08, V11 |
 | N | `projections-and-documents.md` — viewer/map/documents/adoption | Phase 7 | V06 |
 | O | `failure-and-recovery.md` — degradation/process/recovery | Phase 7 | V10, V11 |
 | P | `architecture.md` — fresh-service/legacy exclusion | Phase 9 | V08, V11 |
@@ -433,11 +523,11 @@ later validation을 연결한다.
 | V02 | `repository-intelligence.md`, `versioning-policy.md` | 최소 세 ecosystem의 Semantic Result normalization, structural/semantic provenance, snapshot version, range, diagnostics와 incomplete-build degradation |
 | V04 | `portable-context.md`, `versioning-policy.md` | common base, six conflict classes, automatic/user resolution limit, deletion propagation, merge provenance와 bundle-version non-mutation |
 | V06 | `projections-and-documents.md`, `versioning-policy.md` | four-document grounding/omission, canonical purity, preview/adoption, generated metadata와 Markdown/HTML equivalence |
-| V07 | `privacy-and-provider-boundary.md` | three authority boundaries, opt-in-before-transmission, manifest/exclusion/filtering, revoke/deletion와 local-only journey |
-| V08 | `architecture.md`, `failure-and-recovery.md` | Linux/Codex init/bind/health entry, adapter lifecycle, install/process degradation, cleanup와 clean-runtime exclusion |
-| V09 | `inquiry-and-decision.md`, `projections-and-documents.md` | deterministic frontier/resume, Decision reuse, meaningful Checkpoint, bounded Recall, omission/no-mutation와 dirty-change attribution |
+| V07 | `privacy-and-provider-boundary.md` | three provider boundaries, Candidate collection opt-out/retention, privacy/deletion propagation, revoke와 local-only journey |
+| V08 | `architecture.md`, `failure-and-recovery.md` | Linux/Codex init/bind/health, Guarded current-host transport와 viewer/CLI fallback, process cleanup와 clean-runtime exclusion |
+| V09 | `inquiry-and-decision.md`, `projections-and-documents.md` | frontier/resume, Decision reuse, Checkpoint/Recall 및 Candidate promotion/inspection/no-mutation |
 | V10 | `failure-and-recovery.md`, `versioning-policy.md` | complete streams/exit/termination, timeout/cancellation/progress, child cleanup, atomic publication, corruption, repair/rebuild와 upgrade failure |
-| V11 | `architecture.md`와 모든 specialized owner | nine integrated flows, combined multi-repository capability, portability, privacy, projection, version와 failure/recovery boundary |
+| V11 | `architecture.md`와 모든 specialized owner | integrated Candidate journey와 Guarded exact-match/non-reuse/ordinary-action behavior를 포함한 multi-repository product boundaries |
 
 Validation이 accepted Decision revisit trigger를 충족하면 `open-decisions.md` 절차를
 따른다. Interface owner가 validation 결과를 product scope 축소나 새로운 implementation

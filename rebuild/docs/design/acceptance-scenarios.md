@@ -424,11 +424,18 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 ### 기대 사용자 경험
 
-- Candidate 수집 범위와 상태를 확인할 수 있다.
+- Candidate Inspection에서 existence/identity, kind, origin/provenance, collection scope,
+  creation/observation basis, retention/expiry, promotion disposition과 scope opt-out
+  state를 확인할 수 있다.
 - raw prompt, 전체 tool arguments와 source body가 자동 장기 저장되지 않는다.
 - observed fact, agent hypothesis와 Question Candidate가 구분된다.
 - 사용자 Decision만 명시적 user turn에서 승격된다.
-- 사용자는 Candidate 수집을 끌 수 있다.
+- 사용자는 selected scope의 Candidate 수집을 끌 수 있고 이후 새 automatic collection이
+  중단된다.
+- Opt-out 전에 존재한 Candidate는 explicit deletion, dismissal, promotion 또는 retention
+  expiry까지 inspectable하며 opt-out이 이를 조용히 rewrite/promote하지 않는다.
+- Candidate Inspection failure는 projection degradation으로 표시되고 Candidate를
+  promote, delete 또는 reinterpret하지 않는다.
 
 ### Canonical Context 변화
 
@@ -443,13 +450,15 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - hypothesis를 canonical fact로 자동 승격
 - 모든 stdout를 무제한 보존
 - Candidate decay를 Decision 삭제로 적용
+- inspection read를 Candidate promotion/dismissal/deletion side effect로 사용
+- opt-out을 existing Candidate의 silent promotion, rewrite 또는 hidden deletion으로 적용
 
 ### 자동 검증
 
-- candidate type과 provenance
-- promotion authorization
-- opt-out
-- retention cleanup
+- V07: scoped opt-out, existing Candidate visibility, retention/expiry와 deletion boundary
+- V09: candidate type/provenance, promotion authorization/disposition과 read-only inspection
+- V11: collection → inspection → promotion/dismissal/expiry integrated journey와 projection
+  failure isolation
 
 ### 수동 평가
 
@@ -643,7 +652,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 - revision history
 - active/superseded selection
-- deletion propagation
+- V07 privacy/managed deletion propagation
 - export/import 후 forget semantics
 
 ### 수동 평가
@@ -707,18 +716,27 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 ### 기대 사용자 경험
 
 - 일반 수정과 테스트는 사전 confirmation 없이 진행한다.
-- 고위험 effect 직전에 exact action, target, expected effect, risk, scope와 expiration을 제시한다.
+- 고위험 effect 직전에 confirmation request identity/revision, exact action, target,
+  expected effect, risk, scope, expiration, requesting actor/provenance와 exact-match
+  fingerprint basis를 제시한다.
 - 현재 host에서 답할 수 있고, 지원하지 않으면 viewer 또는 CLI fallback을 제공한다.
-- confirmation은 해당 action에만 적용된다.
+- Explicit current-host response는 exact request/revision에 연결된 Source이며 general
+  product Decision과 분리된다.
+- Confirmation은 action/target/scope-scoped, expiring, single-use와 non-transferable이고
+  action, target, expected effect, scope 또는 revision이 바뀌면 새 confirmation이 필요하다.
+- Guarded effect는 valid exact-match confirmation을 검증하기 전에 dispatch되지 않는다.
+- 하나의 operation identity로 not-dispatched, completed, failed와 indeterminate outcome을
+  구분하며 indeterminate outcome은 silent retry나 success로 처리하지 않는다.
 
 ### Canonical Context 변화
 
-- 필요한 경우 confirmation record와 user response Source
-- 일반 작업 Decision과 분리
+- explicit user response Source
+- 필요한 durable history만 resulting operation과 함께 Checkpoint/Context Item에서 참조
+- operational confirmation은 general Decision이나 seventh canonical core entity가 아님
 
 ### Derived State 변화
 
-- effect classification Candidate
+- Guarded Effect Candidate와 confirmation/operation operational state
 
 ### 금지 행동
 
@@ -726,13 +744,15 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - 한 번의 승인으로 다른 target·effect까지 포괄
 - cooperative confirmation을 sandbox로 표현
 - 승인 전 외부 effect 수행
+- stale/expired/mismatched/reused confirmation으로 dispatch 또는 silent retry
+- denied/missing confirmation을 general consent나 inferred approval로 대체
 
 ### 자동 검증
 
-- effect category mapping
-- scope/expiration
-- confirmation reuse rejection
-- ordinary action non-blocking
+- V08: current-host response transport와 viewer/CLI logical fallback identity/linkage
+- V11: effect category mapping, exact action/target/effect/scope/revision/expiration match,
+  Source linkage, confirmation reuse rejection, no-dispatch-before-validation,
+  ordinary-action non-blocking과 indeterminate recovery
 
 ### 수동 평가
 

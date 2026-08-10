@@ -2,8 +2,8 @@
 
 - 상태: active specialized architecture owner
 - 소유 범위: first project-scoped Recall, bounded Resume Brief, user/agent read
-  projections, Decision–Context–Code map, generated-document grounding, draft/preview,
-  review/correction, explicit adoption과 output format boundary
+  projections, Candidate Inspection, Decision–Context–Code map, generated-document
+  grounding, draft/preview, review/correction, explicit adoption과 output format boundary
 - 상위 architecture 기준: [논리 아키텍처](architecture.md)
 - core domain 기준: [핵심 도메인 모델](domain-model.md)
 - Inquiry 기준: [Inquiry와 Decision 계약](inquiry-and-decision.md)
@@ -134,12 +134,44 @@ continuation에 필요한 structured depth를 우선할 수 있다. 차이는 �
 Agent-only hidden summary를 user-visible record보다 높은 authority로 사용하지 않는다.
 User view의 단순화가 uncertainty나 failed scope를 complete success로 바꾸지 않는다.
 
+### Candidate Inspection projection contract
+
+`Candidate Inspection`은 local Project context의 Session Candidate를 읽는 named,
+read-only projection이다. Projections and Documents가 이 read projection을 소유하고
+`domain-model.md`의 Candidate meaning/lifecycle과
+`privacy-and-provider-boundary.md`의 collection/retention policy를 그대로 사용한다.
+
+각 visible Candidate에 대해 최소 다음 attributes를 노출한다.
+
+| Inspectable attribute | Projection obligation |
+|---|---|
+| `existence_and_identity` | Candidate가 현재 존재하는지와 local Project 안의 candidate identity |
+| `candidate_kind` | observation, hypothesis, semantic claim, Question/Checkpoint candidate 또는 promotion proposal kind |
+| `origin_and_provenance` | actor/subsystem/session과 Source/snapshot/command/host/provider basis |
+| `collection_scope` | 이 Candidate를 수집한 Project/session/source/operation scope |
+| `creation_or_observation_basis` | created/observed time과 bounded evidence/request basis |
+| `retention_or_expiry_state` | retention policy, expiry basis와 cleaned state |
+| `promotion_disposition` | pending/retained, promoted, dismissed 또는 expired/retention-cleaned 상태와 result basis |
+| `scope_opt_out_state` | 해당 collection scope의 current opt-out state와 effective basis |
+
+Candidate Inspection read는 Candidate를 promote, correct, dismiss, expire, delete 또는
+reinterpret하지 않는다. Projection access/omission도 retention clock, promotion
+authorization 또는 opt-out state를 바꾸지 않는다. Mutation은 각각의 explicit domain,
+privacy 또는 lifecycle operation으로 분리한다.
+
+Candidate source/body가 privacy boundary로 unavailable하거나 일부 Candidate read가
+실패하면 available metadata와 affected scope를 `partial`/`degraded`로 표시한다.
+Inspection failure는 projection degradation일 뿐 Candidate나 canonical record를
+promote, delete, rewrite 또는 reinterpret하지 않는다. Direct scoped inspection이나
+later retry path를 제공하되 hidden cache를 더 높은 authority로 사용하지 않는다.
+
 ## 6. Decision–Context–Code map
 
 `Decision–Context–Code map`은 다음 identity를 연결하는 read-only projection이다.
 
 ```text
-Decision ──applies_to/assumes/supported_by──▶ Context Item / Source
+Decision ──applies_to/assumes───────────────▶ declared scope / assumption Context
+Decision rationale ──supported_by───────────▶ Source
     │                                             │
     └──declared path/component scope──────────────┤
                                                   ▼
@@ -265,10 +297,11 @@ promotion basis로 사용할 수 있다. Adoption은 다음을 하지 않는다.
 - user-edited text를 original agent/model output으로 표시
 - document acceptance를 implementation completion이나 user Decision으로 일반화
 
-Adopted document와 underlying Sources는 각각 identity/provenance를 유지하고
-`derived_from`/`supported_by` relation으로 연결된다. Document 수정이 semantic
-meaning을 바꾸면 adopted Source의 새 revision/adoption 의미를 명시하며 원래 Source
-basis를 조용히 rewrite하지 않는다.
+Adopted document와 underlying Sources는 각각 identity/provenance를 유지한다. Generated
+explanation/draft는 사용한 Source 또는 canonical basis를 향해 `derived_from`하고,
+adopted statement-bearing Source나 Context는 supporting Source를 향해 `supported_by`한다.
+Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/adoption 의미를
+명시하며 원래 Source basis를 조용히 rewrite하지 않는다.
 
 ## 11. Portable output format boundary
 
@@ -329,6 +362,8 @@ V09는 다음을 검증해야 한다.
 - user/agent projection의 identity/source/freshness/uncertainty/supersession/omission 일치
 - Recall no-mutation property와 Checkpoint non-frontier authority
 - stale Source, superseded Decision, unrelated dirty change와 verification state 표현
+- Candidate promotion authorization/disposition과 Candidate Inspection의 existence, kind,
+  provenance, collection scope, retention/expiry, opt-out 및 no-mutation behavior
 
 ### V11 — Combined journey
 
@@ -340,6 +375,8 @@ V11은 Volicord, single-language와 polyglot repository에서 다음을 결합 �
 - provider/analyzer/source unavailable 상태의 useful degraded projection
 - correction/review/regeneration/adoption 뒤 provenance와 canonical purity
 - projection/cache deletion과 render/export failure가 canonical loss로 전파되지 않음
+- Candidate collection부터 read-only inspection, promotion/dismissal/expiry까지의
+  integrated identity와 projection-degradation isolation
 
 V06/V09가 selection 또는 grounding quality 한계를 드러내면 evidence와 omission을
 보존하고 accepted Q5/Q9 revisit 절차를 따른다. 문서가 스스로 canonical contract를

@@ -3,7 +3,7 @@
 - 상태: active specialized architecture owner
 - 소유 범위: cross-subsystem failure/degradation state, read/write consequence,
   propagation, retry, repair/rebuild, canonical transaction과 projection failure 구분,
-  process/long-operation observation과 recovery
+  Guarded confirmation/execution failure, process/long-operation observation과 recovery
 - 상위 architecture 기준: [논리 아키텍처](architecture.md)
 - core domain 기준: [핵심 도메인 모델](domain-model.md)
 - analysis 기준: [Repository Intelligence 계약](repository-intelligence.md)
@@ -32,6 +32,8 @@ identity, affected scope, Source/operation basis와 함께 표현하며 system-w
 7. Failure result는 user-visible consequence, retry owner와 next safe action을 가진다.
 8. Process observation은 complete stdout, stderr, exit/termination과 duration을 잃지
    않는다.
+9. Guarded effect는 valid exact-match confirmation의 pre-dispatch validation보다 먼저
+   dispatch되지 않는다.
 
 ## 2. State matrix
 
@@ -87,6 +89,37 @@ Canonical mutation과 projection은 서로 다른 authority와 success boundary�
 재시도하거나 “projection만 실패했으므로 canonical commit도 없었다”고 가정하지
 않는다. 두 result identity와 retry ownership을 분리한다.
 
+### Guarded confirmation and execution failure contract
+
+Guarded confirmation outcome은 confirmation request/revision, user-response Source와
+operation identity를 보존하며 다음 behavior를 구분한다.
+
+| Confirmation/execution condition | Required result |
+|---|---|
+| `missing` | explicit response가 없으므로 `not_dispatched`; general consent나 silence로 대체하지 않음 |
+| `denied` | explicit denial Source를 보존하고 `not_dispatched`; 같은 request를 승인으로 reinterpret하지 않음 |
+| `stale` | request/current Candidate basis가 달라 `not_dispatched`; current revision으로 새 confirmation 필요 |
+| `expired` | expiration을 지났으므로 `not_dispatched`; 새 expiration/revision의 confirmation 필요 |
+| `mismatched` | action, target, expected effect, scope, revision 또는 fingerprint가 다르므로 `not_dispatched` |
+| `reused` | 이미 consumed된 confirmation을 reject하고 `not_dispatched`; 다른 effect나 retry에 transfer하지 않음 |
+| `dispatch_failed` | validation/consumption은 확인됐지만 dispatch 실패가 확정됨; `not_dispatched`와 consumed state를 함께 보고 blind reuse하지 않음 |
+| `execution_failed` | dispatch는 확인됐고 execution failure도 확인됨; `dispatched_and_failed`로 보고 success로 바꾸지 않음 |
+| `execution_outcome_indeterminate` | termination/communication loss 뒤 dispatch/effect completion을 확정할 수 없음; success를 주장하거나 silently retry하지 않음 |
+
+Missing, denied, stale, expired, mismatched와 reused confirmation은 Guarded effect를
+dispatch하지 않는다. Changed action/target/expected effect/scope/request revision은 새
+confirmation 없이 mismatch를 repair할 수 없다. Confirmation transport/display failure도
+approval로 해석하지 않고 Host and User Adapters가 같은 logical request를 viewer/CLI
+fallback으로 전달하거나 `not_dispatched`로 끝낸다.
+
+Confirmation consumption과 dispatched operation은 `architecture.md`의 한
+`operation_identity`로 연결한다. `execution_outcome_indeterminate`이면 Local Operations는
+known confirmation/dispatch observations, external target의 inspectable status와 recovery
+scope를 제시한다. Outcome을 안전하게 판정할 수 있을 때만 scoped reconciliation을
+수행하며, 그렇지 않으면 `repair_required`로 두고 새 confirmation을 받아도 같은 effect를
+silent retry하지 않는다. Cooperative confirmation은 이 recovery contract를 OS sandbox나
+security enforcement 보증으로 바꾸지 않는다.
+
 ## 4. Failure propagation matrix
 
 | Failure | Immediate owner/state | Preserved behavior | Forbidden propagation | Recovery owner/action |
@@ -98,6 +131,9 @@ Canonical mutation과 projection은 서로 다른 authority와 success boundary�
 | bundle conflict | Portable Context의 named conflict; unresolved operation `partial`/`failed` | both histories, common-base/lineage와 unaffected additions | Decision/Question/delete-modify silent overwrite | user-owned resolution 또는 branch; Portable I/O가 result/provenance 보존 |
 | document-generation failure | Projections and Documents `failed`/`partial` | canonical records, analysis, ordinary work와 prior adopted Sources | repository work/Checkpoint rollback 또는 failed draft 자동 adoption | Projection owner가 same/current basis 확인 후 retry/regenerate |
 | Recall-projection failure | Projections and Documents `failed`/`partial` | direct canonical inspect, existing Question/Decision/Checkpoint와 ordinary work | hidden fallback memory를 authority로 사용하거나 canonical mutation | Projection owner retry; user에게 unavailable sections와 direct inspection path 제공 |
+| Candidate Inspection failure | Projections and Documents `failed`/`partial` 또는 `degraded` | Candidate identity/lifecycle data와 canonical state; direct scoped inspection | Candidate promotion, deletion, disposition/retention rewrite 또는 interpretation change | Projection owner가 read basis를 확인해 retry; privacy/domain owner만 explicit mutation 수행 |
+| Guarded confirmation invalid/unavailable | Host/Adapter 또는 Local Operations `failed`; operation `not_dispatched` | ordinary non-Guarded work와 exact request/response observation | fallback 없이 approval 추론, invalid confirmation consumption 또는 Guarded dispatch | Host가 viewer/CLI fallback; Local Operations가 exact new confirmation 전 dispatch 차단 |
+| Guarded execution indeterminate | Local Operations `repair_required` 또는 operation-specific indeterminate | request/response/consumption/dispatch observation과 unaffected work | success claim, silent retry 또는 confirmation reuse | scoped external-state reconciliation; 안전하게 판정 못 하면 repair_required 유지 |
 | forced process termination | Local Operations/process owner `failed`, termination recorded | committed state, complete captured streams와 unaffected subsystem state | exit success 추정, child 상태 은폐 또는 partial canonical publish | process owner가 child cleanup/commit check 뒤 scoped retry; V10 technology 선택 |
 | unavailable source repository | Local Operations/Source `unavailable` | source-independent canonical read, Inquiry history, Decision와 Checkpoint | fabricated current code link/freshness나 Project loss | explicit bind/rebind; Repository Intelligence refresh after availability |
 | unsupported format version | Versioning owner `unsupported` | original bytes/state와 safely inspectable metadata | partial import, field dropping, empty initialization 또는 write-back | format owner의 supported upgrade, Derived rebuild 또는 newer implementation |
@@ -199,7 +235,9 @@ topology를 정하지 않는다.
 
 V08은 clean Linux/Codex journey에서 startup, health, adapter lifecycle, connection
 failure/degradation, process cleanup, locale rendering과 unsupported/failed user-visible
-result를 검증한다. Install/reinstall failure가 canonical user data를 조용히 삭제하지
+result를 검증한다. Guarded request/response를 current host가 운반하고 host가 elicitation할
+수 없을 때 local viewer/CLI fallback이 같은 identity/revision/Source contract를 유지하는
+성질도 검증한다. Install/reinstall failure가 canonical user data를 조용히 삭제하지
 않고 legacy runtime 접근으로 복구하지 않는 성질도 확인한다.
 
 ### V10 — Process/filesystem primitives
@@ -222,6 +260,10 @@ newer format을 결합해 다음을 확인한다.
 - restart 뒤 committed-state recovery와 duplicate prevention
 - repair/rebuild 후 provenance, coverage와 user correction 유지
 - long-operation result와 forced-termination child cleanup
+- Guarded missing/denied/stale/expired/mismatched/reused rejection, no-dispatch-before-valid
+  confirmation, exact operation outcome과 indeterminate no-silent-retry behavior
+- Candidate Inspection failure가 promotion/deletion/retention/disposition mutation으로
+  전파되지 않는 성질
 
 ## 10. Non-goals
 
@@ -229,4 +271,3 @@ newer format을 결합해 다음을 확인한다.
 filesystem atomicity primitive, retry count/backoff, timeout value, CLI/API와 repair command
 catalog를 선택하지 않는다. Legacy recovery, migration, dual-runtime fallback과 parallel
 production implementation은 recovery path가 아니다.
-

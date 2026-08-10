@@ -3,7 +3,7 @@
 - 상태: active specialized architecture owner
 - 소유 범위: local processing, current-host interactive source access,
   background semantic-provider authority, Project opt-in, inspectable transmission,
-  retention, revoke와 managed deletion boundary
+  Candidate collection opt-out/retention, revoke와 managed deletion boundary
 - 상위 architecture 기준: [논리 아키텍처](architecture.md)
 - core domain 기준: [핵심 도메인 모델](domain-model.md)
 - analysis 기준: [Repository Intelligence 계약](repository-intelligence.md)
@@ -134,6 +134,32 @@ Provider-backed `semantic` 또는 annotation이 없다는 사실은 해당 capab
 failure로 표현하지 않는다. Local-only mode를 기능 사용 전의 trial/degraded consent
 screen처럼 취급하지 않는다.
 
+### Candidate collection opt-out and retention contract
+
+Privacy and Provider Boundary는 automatic Candidate collection의 scope별 opt-out과
+retention policy 책임을 소유한다. User는 최소 Project, session, source/operation area
+또는 지원되는 Candidate kind처럼 inspectable한 selected scope에 대해 collection을
+끌 수 있다. 구체적인 UI나 storage field는 이 계약이 정하지 않는다.
+
+| Concern | Required behavior |
+|---|---|
+| `scope_opt_out` | effective 시점부터 selected scope의 새 automatic Candidate collection을 중단 |
+| `existing_candidate_visibility` | opt-out 전에 존재한 Candidate는 explicit deletion, dismissal, promotion 또는 retention expiry까지 Candidate Inspection으로 inspectable하게 유지 |
+| `retention_policy` | collection scope/kind별 retained-until 또는 expiry basis와 cleanup outcome을 inspectable하게 유지 |
+| `explicit_deletion` | user-selected Candidate content와 관련 managed Derived copy를 삭제하되 canonical target이나 unrelated Candidate를 삭제하지 않음 |
+| `policy_change` | 새 policy/effective basis를 이후 collection에 적용하고 기존 Candidate lifecycle을 조용히 rewrite하지 않음 |
+
+Opt-out은 existing Candidate를 promote, dismiss, expire, delete, correct 또는
+reinterpret하지 않는다. Existing Candidate를 scope 밖으로 재분류해 보이지 않게 하거나
+opt-out을 promotion authorization으로 사용할 수 없다. Retention expiry/cleanup은
+Candidate content와 managed copy에 한정되며 이미 explicit promotion으로 생성된
+canonical record를 삭제하거나 바꾸지 않는다.
+
+Automatic collection은 계속 최소 structured observation으로 제한한다. Full prompt,
+full tool argument, full Source body와 unlimited stdout/stderr는 default long-term
+retention 대상이 아니다. Candidate Inspection에 필요한 provenance, scope와 bounded
+observation metadata가 이 기본 제외를 우회하는 raw-content 보존 근거가 되지 않는다.
+
 ## 7. Raw source와 portable context 분리
 
 Raw source body는 repository binding을 통해 접근하는 Source content이며 portable
@@ -225,6 +251,10 @@ V07은 최소 다음을 실행 증거로 남겨야 한다.
 - excluded file과 secret-like fixture의 filter outcome과 known limit
 - revoke 후 new background invocation 차단
 - Semantic Annotation과 local derived cache의 managed deletion
+- Candidate collection opt-out이 selected scope의 새 automatic collection을 중단하고
+  existing Candidate visibility/lifecycle을 조용히 바꾸지 않는 성질
+- Candidate retention/expiry와 explicit deletion이 Candidate, canonical target 및
+  related Derived content의 서로 다른 boundary를 보존하는 성질
 - raw source body가 portable context에 기본 포함되지 않는 성질
 - provider unavailable/failed/partial degradation과 unaffected local capability 유지
 
@@ -239,6 +269,8 @@ V11은 single-language, polyglot와 Volicord repository journey에서 다음을 
 - local-only mode에서 source-grounded work와 resumption이 실제로 유용함
 - provider failure와 annotation/cache deletion이 canonical loss로 전파되지 않음
 - correction 이후 reanalysis가 user-owned canonical meaning을 복원/overwrite하지 않음
+- Candidate opt-out, retention expiry와 deletion이 inspection/promotion journey에서
+  scope를 넘거나 existing Candidate를 silent promotion/rewrite하지 않음
 
 V07/V11이 secret filtering 또는 provider deletion completeness의 한계를 드러내면
 accepted Q3 revisit trigger 절차를 따르며 이 문서가 동의를 조용히 넓히지 않는다.

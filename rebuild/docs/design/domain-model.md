@@ -77,6 +77,45 @@ retention expiry, access frequency 또는 삭제는 Canonical Context를 수정�
 않는다. Candidate가 오래 존재하거나 자주 검색됐다는 사실만으로 승격되지
 않는다.
 
+#### Candidate inspection metadata contract
+
+각 Candidate는 local Project context 안에서 다음 user-inspectable meaning을 가진다.
+이 항목은 storage field가 아니라 Candidate의 existence와 처리 상태를 정직하게
+설명하기 위한 최소 domain contract다.
+
+| Attribute | Required meaning |
+|---|---|
+| `candidate_identity` | local Project context 안에서 Candidate를 다른 Candidate와 구분하는 identity |
+| `candidate_kind` | observation, hypothesis, semantic claim, Question candidate, Checkpoint candidate 또는 promotion proposal 같은 잠정 정보의 종류 |
+| `origin_and_provenance` | 생성 actor/subsystem/session과 repository, command, host turn, provider 또는 generated basis |
+| `collection_scope` | 수집이 허용된 Project/session/source/operation 또는 더 좁은 scope |
+| `creation_or_observation_basis` | 생성/관찰 시각과 사용한 Source, snapshot, execution 또는 request basis |
+| `retention_or_expiry_state` | 적용 retention policy, retained-until/expiry basis와 cleanup 여부 |
+| `promotion_disposition` | 아직 미처리인지, promoted/dismissed/expired인지와 target/result basis |
+| `scope_opt_out_state` | 이 Candidate의 collection scope에 적용되는 opt-out 상태와 effective basis |
+
+Candidate identity는 canonical entity identity가 아니며 portable bundle identity로
+일반화하지 않는다. Origin이나 Source body를 보여 준다는 뜻도 아니다. Full prompt,
+full tool argument, full Source body와 unlimited stdout/stderr를 기본 장기 content로
+보존하지 않으면서 위 provenance와 bounded observation basis를 제공한다.
+
+#### Candidate lifecycle and disposition contract
+
+Candidate lifecycle은 최소 다음 disposition을 구분한다.
+
+| Disposition | Meaning |
+|---|---|
+| `pending_or_retained` | promotion/dismissal/expiry가 완료되지 않았고 현재 retention policy 안에서 inspectable함 |
+| `promoted` | explicit promotion operation의 canonical target/result가 기록됨; Candidate retention/deletion은 별도 사실임 |
+| `dismissed` | Candidate를 canonical로 사용하지 않기로 명시적으로 disposition했으며 Decision이나 fact를 삭제한 뜻이 아님 |
+| `expired_or_retention_cleaned` | retention/expiry policy로 Candidate content가 제거됐고 canonical target을 만들지 않았으며 최소 non-content cleanup basis만 표시할 수 있음 |
+
+Disposition transition은 actor, time과 operation/policy basis를 가진다. Opt-out은
+disposition이 아니며 기존 Candidate를 promoted, dismissed 또는 expired로 조용히
+바꾸지 않는다. Promotion, dismissal과 expiry가 Candidate의 canonical basis를
+rewrite하지 않으며 `promoted` Candidate가 canonical target과 같은 identity를 얻지
+않는다.
+
 ### 2.3 Derived State
 
 `Derived State`는 authoritative Source와 Canonical Context에서 다시 계산할 수
@@ -91,6 +130,14 @@ Documents와 Local Operations는 자신의 책임 범위에서 Derived State를 
 Derived State는 전체 삭제와 rebuild가 가능해야 한다. 삭제 후 Canonical Context를
 읽고 수정할 수 있어야 하며, rebuild는 user correction, Decision, supersession와
 forgetting을 되돌리지 않는다.
+
+`Guarded Effect Candidate`는 Local Operations가 dispatch를 검토하는 exact effect의
+Derived 또는 operational state다. Action, target, expected effect, risk와 scope를
+분류할 수 있지만 canonical core entity나 general product Decision이 아니다. 관련
+confirmation request/response와 operation observation도 그 자체로 일곱 번째 canonical
+core entity가 되지 않는다. Durable Project history가 필요하면 explicit user-response
+`Source`와 resulting operation을 `Checkpoint` 또는 `Context Item`이 reference할 수
+있으며, 이때도 operational confirmation을 Decision으로 바꾸지 않는다.
 
 ## 3. Statement role과 judgment boundary
 
@@ -287,21 +334,22 @@ projection과 renderer는 promotion을 직접 완료하지 않는다.
 
 ## 8. Canonical relation
 
-다음 relation name은 domain meaning을 안정적으로 표현한다. Storage edge나 concrete
-field를 요구하지 않는다.
+다음 relation-direction contract는 domain meaning을 안정적으로 표현한다. `From`이
+relation의 출발이고 `To`가 화살표가 가리키는 대상이다. Storage edge나 concrete
+field를 요구하지 않으며 같은 relation name의 reverse alias를 허용하지 않는다.
 
-| Relation | Domain meaning |
-|---|---|
-| `belongs_to` | Source, Question, Decision, Context Item과 Checkpoint가 어떤 Project context에 속하는지 연결 |
-| `supported_by` | statement, Decision rationale 또는 Checkpoint observation이 Source basis를 참조 |
-| `depends_on` | Question이 material하게 열리기 전에 필요한 다른 Question/outcome을 참조 |
-| `answers` | Decision이 exact Question revision에 대한 user choice임을 연결 |
-| `applies_to` | Decision이 적용되는 Project/path/component/work context를 연결 |
-| `assumes` | Decision이 유효하게 재사용되기 위한 explicit assumption을 연결 |
-| `supersedes` | 새 semantic record가 이전 record의 현재 의미를 대체함을 연결 |
-| `contradicts` | source-grounded claim이나 Decision applicability basis 사이의 해결되지 않은 충돌을 연결 |
-| `records_state_of` | Checkpoint가 특정 work/context boundary의 관찰을 기록 |
-| `derived_from` | Candidate, Derived State 또는 generated explanation이 사용한 Source/canonical basis를 연결 |
+| Relation | From | To | Domain meaning |
+|---|---|---|---|
+| `belongs_to` | Source, Question, Decision, Context Item 또는 Checkpoint | Project | record가 어떤 Project context에 속하는지 연결 |
+| `supported_by` | statement-bearing record, Decision rationale 또는 Checkpoint observation | supporting Source | statement/rationale/observation이 자신의 Source basis를 참조 |
+| `depends_on` | dependent Question | prerequisite Question/outcome | Question이 material하게 열리기 위한 prerequisite를 참조 |
+| `answers` | Decision | exact Question revision | Decision이 exact Question revision에 대한 user choice임을 연결 |
+| `applies_to` | Decision | Project, path, component 또는 work context | Decision의 적용 범위를 연결 |
+| `assumes` | Decision | explicit assumption | Decision 재사용의 전제를 연결 |
+| `supersedes` | new semantic record | previous semantic record | 새 record가 이전 record의 현재 의미를 대체함을 연결 |
+| `contradicts` | source-grounded claim 또는 Decision applicability basis | conflicting claim/basis | 해결되지 않은 충돌을 연결 |
+| `records_state_of` | Checkpoint | work/context boundary | Checkpoint가 특정 boundary의 관찰을 기록 |
+| `derived_from` | Session Candidate, Derived State 또는 generated explanation | Source 또는 canonical basis used | derived/candidate/explanation이 실제 사용한 basis를 참조 |
 
 Relation은 ownership을 이전하지 않는다. 예를 들어 analysis가 `Decision`을
 `derived_from`으로 참조해도 Decision validity를 변경하지 않으며, Checkpoint가
@@ -311,9 +359,10 @@ Core entity의 기본 관계는 다음과 같다.
 
 ```text
 Project
-├─ Source ──supported_by/derived_from──▶ Context Item / Question / Decision / Checkpoint
+├─ Context Item / Question / Decision / Checkpoint observation ──supported_by──▶ Source
+├─ Session Candidate / Derived State / generated explanation ─────derived_from──▶ Source / canonical basis
 ├─ Question ──depends_on───────────────▶ Question
-│           ◀─answers────────────────── Decision
+├─ Decision ──answers──────────────────▶ Question revision
 ├─ Decision ──applies_to───────────────▶ Project / path / component / work context
 │           └─supersedes───────────────▶ Decision
 └─ Checkpoint ──records_state_of───────▶ work/context boundary
