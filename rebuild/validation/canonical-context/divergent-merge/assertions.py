@@ -92,6 +92,21 @@ RECOVERY_TESTS = {
     "bundle_derived_state_absence": "repeated_export_is_identical_and_excludes_local_and_noncanonical_classes",
 }
 
+PORTABLE_INVARIANT_TESTS = {
+    "valid_sanitized_forgotten_question_import": "direct_question_forgetting_bundle_imports_with_sanitized_dependents",
+    "invalid_import_active_decision_presentation": "import_rejects_recomputed_forgotten_question_presentation_before_mutation",
+    "invalid_import_decision_revision_only_presentation": "import_rejects_revision_only_presentation_and_missing_review_due",
+    "invalid_import_missing_review_due": "import_rejects_revision_only_presentation_and_missing_review_due",
+    "invalid_explicit_merged_bundle": "explicit_merged_rejects_forgotten_question_presentation_before_mutation",
+    "invalid_explicit_merged_local_question_already_forgotten": "explicit_merged_cannot_repopulate_an_already_forgotten_local_question",
+    "rejection_preserves_canonical_and_operational_state": "import_rejects_recomputed_forgotten_question_presentation_before_mutation",
+    "recomputed_checksum_and_history_basis": "import_rejects_recomputed_forgotten_question_presentation_before_mutation",
+    "valid_active_question_empty_presentation": "active_question_decision_with_empty_presentation_is_valid",
+    "valid_forgotten_question_without_active_decision": "forgotten_question_without_active_decision_does_not_require_review_due",
+    "invalid_internal_state_not_exported": "export_rejects_internal_forgotten_question_state_missing_review_due",
+    "valid_direct_forget_export_import_merge_and_read_unchanged": "direct_question_forgetting_bundle_imports_with_sanitized_dependents",
+}
+
 TEST_TARGETS = (
     "canonical_read",
     "context_checkpoint",
@@ -101,6 +116,7 @@ TEST_TARGETS = (
     "kernel",
     "lifecycle",
     "portable_bundle",
+    "portable_invariants",
     "portable_process",
     "process_reopen",
     "transaction_process",
@@ -159,6 +175,11 @@ def main() -> int:
     )
     require_scenarios(scenario.get("post_merge_assertions"), POST_MERGE_TESTS, "post_merge_assertions")
     require_scenarios(scenario.get("recovery_scenarios"), RECOVERY_TESTS, "recovery_scenarios")
+    require_scenarios(
+        scenario.get("portable_invariant_scenarios"),
+        PORTABLE_INVARIANT_TESTS,
+        "portable_invariant_scenarios",
+    )
 
     entry = next(
         (item for item in manifest.get("fixtures", []) if item.get("id") == "v04-divergent-merge"),
@@ -186,6 +207,7 @@ def main() -> int:
         *REQUIREMENT_TESTS.values(),
         *POST_MERGE_TESTS.values(),
         *RECOVERY_TESTS.values(),
+        *PORTABLE_INVARIANT_TESTS.values(),
     }
     missing = sorted(name for name in mapped_tests if f"{name}: test" not in catalog)
     require(not missing, f"mapped production Rust tests are missing: {missing}")
@@ -200,6 +222,7 @@ def main() -> int:
             | REQUIREMENT_TESTS
             | POST_MERGE_TESTS
             | RECOVERY_TESTS
+            | PORTABLE_INVARIANT_TESTS
         ),
         "production_test_targets": list(TEST_TARGETS),
         "production_tests": production_tests,

@@ -90,5 +90,19 @@
     "bundle_candidate_absence",
     "bundle_derived_state_absence"
   ],
+  "portable_invariant_scenarios": [
+    "valid_sanitized_forgotten_question_import",
+    "invalid_import_active_decision_presentation",
+    "invalid_import_decision_revision_only_presentation",
+    "invalid_import_missing_review_due",
+    "invalid_explicit_merged_bundle",
+    "invalid_explicit_merged_local_question_already_forgotten",
+    "rejection_preserves_canonical_and_operational_state",
+    "recomputed_checksum_and_history_basis",
+    "valid_active_question_empty_presentation",
+    "valid_forgotten_question_without_active_decision",
+    "invalid_internal_state_not_exported",
+    "valid_direct_forget_export_import_merge_and_read_unchanged"
+  ],
   "external_semantic_authority": false
 }
