@@ -24,7 +24,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 6 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 7 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -73,11 +73,18 @@ owned by `rebuild/docs/design/`.
 - Contradiction retains both records and their Source basis without selecting a
   winner. Review-due state records the changed basis while leaving the Decision
   readable and valid pending explicit review.
-- Forgetting currently accepts Context Items and Decisions, requires a current
-  host user-turn Source, deletes active content, revision content, and
-  content-bearing replay input, and leaves only Project, record kind, record
-  identity, and forgetting time in the tombstone. It returns a narrow
-  invalidation result for later Candidate/Derived owners.
+- Record-level forgetting supports every content-bearing canonical record kind:
+  Source, Question, Decision, Context Item, and Checkpoint. Project remains the
+  Project scope and identity root; whole-Project deletion is not supported.
+  Every typed operation requires a current-host user-turn Source, preserves
+  Project scoping, deletes active and revision content plus content-bearing
+  replay input, rewrites owned links, refreshes managed bundles, and leaves
+  only Project, record kind, record identity, and forgetting time in the
+  tombstone. Source and Question identities may remain only as tombstoned IDs
+  in surviving historical Decision or relation references; Source payload,
+  Question prompt/state support, dependencies, Checkpoint links, and other raw
+  content do not. Each operation returns the same narrow invalidation result
+  for later Candidate/Derived owners.
 - On supported Linux SQLite, forgetting commits with `secure_delete=ON`, then
   checkpoints/truncates WAL, vacuums the database, and checkpoints again. Tests
   scan the managed database, WAL/SHM, and sibling files for the forgotten bytes

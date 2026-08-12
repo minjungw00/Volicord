@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 const REQUIRED_TABLES: [&str; 27] = [
     "metadata",
@@ -1801,18 +1801,44 @@ fn ensure_record_exists(
         }),
         CanonicalRecordId::Source(value) => ensure_source_project(connection, value, project_id),
         CanonicalRecordId::Question(value) => {
+            ensure_record_project(connection, "questions", value.as_bytes(), project_id)?;
             load_question(connection, project_id, value).map(|_| ())
         }
         CanonicalRecordId::Decision(value) => {
+            ensure_record_project(connection, "decisions", value.as_bytes(), project_id)?;
             load_decision(connection, project_id, value).map(|_| ())
         }
         CanonicalRecordId::ContextItem(value) => {
+            ensure_record_project(connection, "context_items", value.as_bytes(), project_id)?;
             load_context_item(connection, project_id, value).map(|_| ())
         }
         CanonicalRecordId::Checkpoint(value) => {
+            ensure_record_project(connection, "checkpoints", value.as_bytes(), project_id)?;
             load_checkpoint(connection, project_id, value).map(|_| ())
         }
     }
+}
+
+fn ensure_record_project(
+    connection: &Connection,
+    table: &str,
+    record_id: &[u8; 16],
+    expected_project_id: ProjectId,
+) -> Result<(), Error> {
+    let sql = format!("SELECT project_id FROM {table} WHERE id = ?1");
+    let project_bytes: Vec<u8> = connection
+        .query_row(&sql, [record_id.as_slice()], |row| row.get(0))
+        .optional()
+        .map_err(read_error)?
+        .ok_or_else(|| Error::new(ErrorKind::NotFound, "canonical record was not found"))?;
+    let actual_project_id = ProjectId::from_slice(&project_bytes)?;
+    if actual_project_id != expected_project_id {
+        return Err(Error::new(
+            ErrorKind::WrongProject,
+            "canonical record belongs to a different Project",
+        ));
+    }
+    Ok(())
 }
 
 fn ensure_record_has_source_basis(
@@ -2542,6 +2568,36 @@ impl Store {
         )
     }
 
+    pub fn forget_source(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        source_id: SourceId,
+        user_authorization_source_id: SourceId,
+    ) -> Result<OperationResult<ForgetResult>, Error> {
+        self.forget_record(
+            operation_id,
+            project_id,
+            CanonicalRecordId::Source(source_id),
+            user_authorization_source_id,
+        )
+    }
+
+    pub fn forget_question(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        question_id: QuestionId,
+        user_authorization_source_id: SourceId,
+    ) -> Result<OperationResult<ForgetResult>, Error> {
+        self.forget_record(
+            operation_id,
+            project_id,
+            CanonicalRecordId::Question(question_id),
+            user_authorization_source_id,
+        )
+    }
+
     pub fn forget_decision(
         &mut self,
         operation_id: OperationId,
@@ -2553,6 +2609,21 @@ impl Store {
             operation_id,
             project_id,
             CanonicalRecordId::Decision(decision_id),
+            user_authorization_source_id,
+        )
+    }
+
+    pub fn forget_checkpoint(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        checkpoint_id: CheckpointId,
+        user_authorization_source_id: SourceId,
+    ) -> Result<OperationResult<ForgetResult>, Error> {
+        self.forget_record(
+            operation_id,
+            project_id,
+            CanonicalRecordId::Checkpoint(checkpoint_id),
             user_authorization_source_id,
         )
     }
@@ -2594,6 +2665,98 @@ impl Store {
             params![project_id.as_bytes().as_slice(), record.kind().as_str(), record.as_bytes().as_slice(), now.as_unix_micros()],
         ).map_err(write_error)?;
         match record {
+            CanonicalRecordId::Source(source_id) => {
+                transaction.execute(
+                    "DELETE FROM operations WHERE project_id = ?1 AND (result_id = ?2 OR (operation_kind = 'record_question_response' AND result_id IN (SELECT question_id FROM question_response_sources WHERE project_id = ?1 AND source_id = ?2)))",
+                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM source_relations WHERE project_id = ?1 AND (from_source_id = ?2 OR to_source_id = ?2)",
+                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM question_response_sources WHERE project_id = ?1 AND source_id = ?2",
+                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM context_item_sources WHERE project_id = ?1 AND source_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            source_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM checkpoint_source_relations WHERE project_id = ?1 AND source_id = ?2",
+                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "UPDATE checkpoint_verifications SET source_id = NULL WHERE project_id = ?1 AND source_id = ?2",
+                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "UPDATE checkpoints SET user_review_source_id = NULL WHERE project_id = ?1 AND user_review_source_id = ?2",
+                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "UPDATE checkpoints SET user_acceptance_source_id = NULL WHERE project_id = ?1 AND user_acceptance_source_id = ?2",
+                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM sources WHERE project_id = ?1 AND id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            source_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)
+                    .and_then(|count| {
+                        ensure_single_updated(count, "Source changed concurrently")
+                    })?;
+            }
+            CanonicalRecordId::Question(question_id) => {
+                transaction
+                    .execute(
+                        "DELETE FROM operations WHERE project_id = ?1 AND result_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            question_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                remove_question_dependencies(&transaction, project_id, question_id)?;
+                transaction.execute(
+                    "DELETE FROM checkpoint_questions WHERE project_id = ?1 AND question_id = ?2",
+                    params![project_id.as_bytes().as_slice(), question_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM question_response_sources WHERE project_id = ?1 AND question_id = ?2",
+                    params![project_id.as_bytes().as_slice(), question_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM question_revisions WHERE project_id = ?1 AND question_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            question_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM questions WHERE project_id = ?1 AND id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            question_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)
+                    .and_then(|count| {
+                        ensure_single_updated(count, "Question changed concurrently")
+                    })?;
+            }
             CanonicalRecordId::ContextItem(item_id) => {
                 transaction
                     .execute(
@@ -2652,6 +2815,45 @@ impl Store {
                     .map_err(write_error)
                     .and_then(|count| {
                         ensure_single_updated(count, "Decision changed concurrently")
+                    })?;
+            }
+            CanonicalRecordId::Checkpoint(checkpoint_id) => {
+                transaction
+                    .execute(
+                        "DELETE FROM operations WHERE project_id = ?1 AND result_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            checkpoint_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM checkpoint_verifications WHERE project_id = ?1 AND checkpoint_id = ?2",
+                    params![project_id.as_bytes().as_slice(), checkpoint_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM checkpoint_questions WHERE project_id = ?1 AND checkpoint_id = ?2",
+                    params![project_id.as_bytes().as_slice(), checkpoint_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM checkpoint_decisions WHERE project_id = ?1 AND checkpoint_id = ?2",
+                    params![project_id.as_bytes().as_slice(), checkpoint_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM checkpoint_source_relations WHERE project_id = ?1 AND checkpoint_id = ?2",
+                    params![project_id.as_bytes().as_slice(), checkpoint_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM checkpoints WHERE project_id = ?1 AND id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            checkpoint_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)
+                    .and_then(|count| {
+                        ensure_single_updated(count, "Checkpoint changed concurrently")
                     })?;
             }
             _ => {
@@ -4078,6 +4280,58 @@ fn decode_dependencies(bytes: &[u8]) -> Result<Vec<QuestionDependency>, Error> {
     Ok(values)
 }
 
+fn remove_question_dependencies(
+    transaction: &Transaction<'_>,
+    project_id: ProjectId,
+    forgotten_question_id: QuestionId,
+) -> Result<(), Error> {
+    let mut statement = transaction
+        .prepare(
+            "SELECT question_id, revision, dependencies FROM question_revisions
+             WHERE project_id = ?1 ORDER BY question_id, revision",
+        )
+        .map_err(read_error)?;
+    let rows = statement
+        .query_map([project_id.as_bytes().as_slice()], |row| {
+            Ok((
+                row.get::<_, Vec<u8>>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Vec<u8>>(2)?,
+            ))
+        })
+        .map_err(read_error)?;
+    let mut updates = Vec::new();
+    for row in rows {
+        let (question_bytes, revision, encoded) = row.map_err(read_error)?;
+        let question_id = QuestionId::from_slice(&question_bytes)?;
+        if question_id == forgotten_question_id {
+            continue;
+        }
+        let mut dependencies = decode_dependencies(&encoded)?;
+        let before = dependencies.len();
+        dependencies.retain(|dependency| dependency.question_id != forgotten_question_id);
+        if dependencies.len() != before {
+            updates.push((question_id, revision, encode_dependencies(&dependencies)));
+        }
+    }
+    drop(statement);
+    for (question_id, revision, dependencies) in updates {
+        transaction
+            .execute(
+                "UPDATE question_revisions SET dependencies = ?4
+                 WHERE project_id = ?1 AND question_id = ?2 AND revision = ?3",
+                params![
+                    project_id.as_bytes().as_slice(),
+                    question_id.as_bytes().as_slice(),
+                    revision,
+                    dependencies,
+                ],
+            )
+            .map_err(write_error)?;
+    }
+    Ok(())
+}
+
 fn encode_alternatives(values: &[QuestionAlternative]) -> Vec<u8> {
     let mut bytes = Vec::new();
     push_u64(&mut bytes, values.len() as u64);
@@ -4312,9 +4566,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  revisit_triggers BLOB NOT NULL,
                  recorded_at INTEGER NOT NULL,
                  UNIQUE(project_id, id),
-                 FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
-                 FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT,
-                 FOREIGN KEY(project_id, user_turn_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
              );
              CREATE TABLE context_items(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
@@ -4442,8 +4694,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  affected_identities BLOB NOT NULL,
                  branch_history_basis TEXT,
                  committed_at INTEGER NOT NULL,
-                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
-                 FOREIGN KEY(project_id, resolution_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
              ) WITHOUT ROWID;
              CREATE TABLE checkpoints(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),

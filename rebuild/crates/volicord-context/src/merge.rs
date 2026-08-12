@@ -583,6 +583,9 @@ fn classify_delete_modify(
     let base_state = record_states(base)?;
     let local_state = record_states(local)?;
     let incoming_state = record_states(incoming)?;
+    let base_closures = record_closures(base)?;
+    let local_closures = record_closures(local)?;
+    let incoming_closures = record_closures(incoming)?;
     let ids = base_state
         .keys()
         .chain(local_state.keys())
@@ -593,18 +596,25 @@ fn classify_delete_modify(
         let b = base_state.get(&id);
         let l = local_state.get(&id);
         let i = incoming_state.get(&id);
-        let conflict = matches!(
-            (b, l, i),
+        let record = id
+            .split_once(':')
+            .map(|(kind, identity)| CanonicalRecordIdentity {
+                kind: kind.to_owned(),
+                identity: identity.to_owned(),
+            });
+        let conflict = record.is_some_and(|record| match (b, l, i) {
             (
                 Some(RecordState::Active),
                 Some(RecordState::Tombstone),
-                Some(RecordState::Active)
-            ) | (
+                Some(RecordState::Active),
+            ) => incoming_closures.get(&record) != base_closures.get(&record),
+            (
                 Some(RecordState::Active),
                 Some(RecordState::Active),
-                Some(RecordState::Tombstone)
-            )
-        );
+                Some(RecordState::Tombstone),
+            ) => local_closures.get(&record) != base_closures.get(&record),
+            _ => false,
+        });
         if conflict {
             ambiguous.insert(format!("record|{id}"));
             push_conflict(conflicts, BundleConflictClass::DeleteModifyConflict, vec![id], false,

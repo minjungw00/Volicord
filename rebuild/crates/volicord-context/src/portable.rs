@@ -811,6 +811,112 @@ pub(crate) fn validate_tables(payload: &Payload, project_id: ProjectId) -> Resul
             "bundle contains both active canonical content and a tombstone for one record",
         ));
     }
+    if tombstones.iter().any(|(kind, _)| {
+        !matches!(
+            kind.as_str(),
+            "source" | "question" | "decision" | "context_item" | "checkpoint"
+        )
+    }) {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "bundle tombstone kind is not a forgettable canonical record",
+        ));
+    }
+    let present = |kind: &str, identity: &PortableValue| {
+        let record = (kind.to_owned(), value_key(identity));
+        active.contains(&record) || tombstones.contains(&record)
+    };
+    let active_record = |kind: &str, identity: &PortableValue| {
+        active.contains(&(kind.to_owned(), value_key(identity)))
+    };
+    for table in &payload.tables {
+        for row in &table.rows {
+            let owner = match table.name.as_str() {
+                "project_revisions" => Some(("project", 0)),
+                "source_relations" => Some(("source", 1)),
+                "question_revisions" => Some(("question", 0)),
+                "question_response_sources" => Some(("question", 1)),
+                "decision_revisions" => Some(("decision", 0)),
+                "context_item_sources" => Some(("context_item", 1)),
+                "context_item_revisions" => Some(("context_item", 0)),
+                "checkpoint_source_relations"
+                | "checkpoint_decisions"
+                | "checkpoint_questions"
+                | "checkpoint_verifications" => Some(("checkpoint", 1)),
+                "review_due" => Some(("decision", 1)),
+                _ => None,
+            };
+            if let Some((kind, index)) = owner {
+                if !active_record(kind, &row[index]) {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        format!(
+                            "bundle {} row exists without its active canonical owner",
+                            table.name
+                        ),
+                    ));
+                }
+            }
+            match table.name.as_str() {
+                "question_response_sources" if !active_record("source", &row[3]) => {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Question response references a missing active Source",
+                    ));
+                }
+                "decisions" => {
+                    if !present("question", &row[3]) || !present("source", &row[5]) {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "Decision references neither active nor tombstoned canonical identity",
+                        ));
+                    }
+                }
+                "context_item_sources" if !active_record("source", &row[2]) => {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Context Item link references a missing active Source",
+                    ));
+                }
+                "checkpoint_source_relations" if !active_record("source", &row[3]) => {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Checkpoint link references a missing active Source",
+                    ));
+                }
+                "checkpoint_decisions" if !active_record("decision", &row[2]) => {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Checkpoint link references a missing active Decision",
+                    ));
+                }
+                "checkpoint_questions" if !active_record("question", &row[2]) => {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Checkpoint link references a missing active Question",
+                    ));
+                }
+                "checkpoint_verifications"
+                    if !matches!(row[4], PortableValue::Null)
+                        && !active_record("source", &row[4]) =>
+                {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Checkpoint verification references a missing active Source",
+                    ));
+                }
+                "merge_events"
+                    if !matches!(row[9], PortableValue::Null) && !present("source", &row[9]) =>
+                {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "merge provenance references neither active nor tombstoned Source identity",
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
     let relation_table = payload
         .tables
         .iter()
