@@ -318,11 +318,33 @@ fn semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch
     let incoming_bundle = root.path().join("incoming.json");
     incoming.export_bundle(base.project.id, &incoming_bundle)?;
     let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    assert_eq!(comparison.conflict_revision, 1);
     assert!(comparison.requires_user_resolution());
-    assert!(comparison.conflicts.iter().any(|value| value.class
-        == BundleConflictClass::SemanticDecisionConflict
-        && !value.automatic_resolution_allowed
-        && value.user_judgment_reason.is_some()));
+    let semantic_conflict = comparison
+        .conflicts
+        .iter()
+        .find(|value| value.class == BundleConflictClass::SemanticDecisionConflict)
+        .ok_or("semantic Decision conflict missing")?;
+    assert!(!semantic_conflict.automatic_resolution_allowed);
+    assert!(semantic_conflict.user_judgment_reason.is_some());
+    assert_eq!(
+        semantic_conflict.base_basis.as_deref(),
+        comparison
+            .common_base
+            .as_ref()
+            .map(|value| value.history_basis.as_str())
+    );
+    assert_eq!(
+        semantic_conflict.local_basis,
+        comparison.local.history_basis
+    );
+    assert_eq!(
+        semantic_conflict.incoming_basis,
+        comparison.incoming.history_basis
+    );
+    assert!(!semantic_conflict.consequence.is_empty());
+    assert!(!semantic_conflict.affected_identities.is_empty());
+    assert!(!semantic_conflict.sources.is_empty());
     assert_eq!(
         local
             .merge_bundle(
@@ -356,6 +378,26 @@ fn semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch
             .kind(),
         ErrorKind::StaleBasis
     );
+    let stale_revision = MergeResolution {
+        conflict_set_identity: comparison.conflict_set_identity.clone(),
+        conflict_revision: comparison.conflict_revision + 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ChooseIncoming,
+    };
+    assert_eq!(
+        local
+            .merge_bundle(
+                operation(41),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                Some(stale_revision)
+            )
+            .err()
+            .ok_or("stale conflict revision accepted")?
+            .kind(),
+        ErrorKind::StaleBasis
+    );
     let resolution = MergeResolution {
         conflict_set_identity: comparison.conflict_set_identity.clone(),
         conflict_revision: 1,
@@ -374,7 +416,10 @@ fn semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch
         branched.value.branch_history_basis.as_deref(),
         Some(comparison.incoming.history_basis.as_str())
     );
-    assert!(branched.value.resolution_source_id.is_some());
+    assert_eq!(
+        branched.value.resolution_source_id,
+        Some(base.authorization.id)
+    );
 
     let mut choose_incoming = clone_from(
         &root.path().join("choose-incoming.sqlite3"),
@@ -475,12 +520,27 @@ fn semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch
     )?;
     let explicit_comparison =
         explicit.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    let mut curated = clone_from(
+        &root.path().join("explicit-result.sqlite3"),
+        &incoming_bundle,
+        &[61],
+        63,
+    )?;
+    let curated_item = curated
+        .record_context_item(
+            operation(64),
+            base.project.id,
+            agent_context("explicitly merged context", base.repository.id),
+        )?
+        .value;
+    let explicit_bundle = root.path().join("explicit-result.json");
+    curated.export_bundle(base.project.id, &explicit_bundle)?;
     let explicit_resolution = MergeResolution {
         conflict_set_identity: explicit_comparison.conflict_set_identity,
         conflict_revision: 1,
         user_turn_source_id: base.authorization.id,
         mode: MergeResolutionMode::ExplicitMerged {
-            bundle_path: incoming_bundle.clone(),
+            bundle_path: explicit_bundle,
         },
     };
     let explicit_result = explicit.merge_bundle(
@@ -491,6 +551,12 @@ fn semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch
         Some(explicit_resolution),
     )?;
     assert_eq!(explicit_result.value.status, BundleMergeStatus::Resolved);
+    assert_eq!(
+        explicit
+            .get_context_item(base.project.id, curated_item.id)?
+            .statement,
+        "explicitly merged context"
+    );
 
     let interrupted_path = root.path().join("interrupted.sqlite3");
     let mut interrupted = clone_from(&interrupted_path, &base_bundle, &[31], 70)?;
@@ -563,6 +629,13 @@ fn delete_modify_binding_and_unavailable_base_are_never_automatic(
     let base_bundle = root.path().join("base.json");
     origin.export_bundle(base.project.id, &base_bundle)?;
     let mut local = clone_from(&root.path().join("local.sqlite3"), &base_bundle, &[31], 20)?;
+    assert_eq!(
+        local
+            .get_source(base.project.id, base.repository.id)?
+            .availability,
+        Availability::Unavailable,
+        "merge must not require the source repository to be locally available"
+    );
     local.bind_clone(
         operation(22),
         base.project.id,
@@ -709,6 +782,72 @@ fn delete_modify_binding_and_unavailable_base_are_never_automatic(
             CanonicalRecordId::ContextItem(base.item.id)
         )
         .is_err());
+    Ok(())
+}
+
+#[test]
+fn competing_context_corrections_require_user_resolution() -> Result<(), Box<dyn std::error::Error>>
+{
+    let root = tempdir()?;
+    let mut origin = store(&root.path().join("origin.sqlite3"), &[1, 2, 3, 4, 5, 6])?;
+    let base = create_base(&mut origin)?;
+    let base_bundle = root.path().join("base.json");
+    origin.export_bundle(base.project.id, &base_bundle)?;
+
+    let mut local = clone_from(&root.path().join("local.sqlite3"), &base_bundle, &[], 20)?;
+    local.correct_context_item(
+        operation(21),
+        base.project.id,
+        base.item.id,
+        ContextItemCorrectionDraft {
+            expected_revision: 1,
+            corrected_statement: "base\nfact".to_owned(),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: base.authorization.id,
+        },
+    )?;
+    let mut incoming = clone_from(&root.path().join("incoming.sqlite3"), &base_bundle, &[], 30)?;
+    incoming.correct_context_item(
+        operation(31),
+        base.project.id,
+        base.item.id,
+        ContextItemCorrectionDraft {
+            expected_revision: 1,
+            corrected_statement: "base\tfact".to_owned(),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: base.authorization.id,
+        },
+    )?;
+    let incoming_bundle = root.path().join("incoming.json");
+    incoming.export_bundle(base.project.id, &incoming_bundle)?;
+
+    let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    assert_eq!(comparison.conflict_revision, 1);
+    assert!(comparison.conflicts.iter().any(|conflict| {
+        conflict.class == BundleConflictClass::SameRecordRevision
+            && !conflict.automatic_resolution_allowed
+            && conflict.user_judgment_reason.is_some()
+    }));
+    assert!(comparison.requires_user_resolution());
+    assert_eq!(
+        local
+            .merge_bundle(
+                operation(32),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                None,
+            )?
+            .value
+            .status,
+        BundleMergeStatus::Unresolved
+    );
+    assert_eq!(
+        local
+            .get_context_item(base.project.id, base.item.id)?
+            .statement,
+        "base\nfact"
+    );
     Ok(())
 }
 

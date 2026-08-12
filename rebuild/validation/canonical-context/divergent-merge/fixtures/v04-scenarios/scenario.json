@@ -24,10 +24,16 @@
     "trustworthy_common_base",
     "independent_additions",
     "compatible_non_semantic_correction",
-    "same_record_semantic_conflict",
+    "same_record_revision_conflict",
     "question_state_conflict",
     "semantic_decision_conflict",
-    "delete_modify",
+    "context_item_delete_modify_choose_forgotten",
+    "context_item_delete_modify_choose_modified",
+    "decision_delete_modify_choose_forgotten",
+    "decision_delete_modify_choose_modified",
+    "source_forgetting_modify",
+    "question_forgetting_modify",
+    "checkpoint_forgetting_modify",
     "supersede_supersede",
     "source_binding_conflict",
     "common_base_unavailable",
@@ -36,8 +42,8 @@
   "resolution_modes": [
     "choose_local",
     "choose_incoming",
-    "explicit_merged",
-    "context_branch"
+    "explicit_merged_result",
+    "context_branch_result"
   ],
   "resolution_requirements": [
     "exact_current_host_user_turn_source",
@@ -46,16 +52,17 @@
   ],
   "post_merge_assertions": [
     "merge_provenance",
-    "deterministic_export_import",
-    "deterministic_canonical_read_basis",
+    "post_merge_deterministic_export_import",
+    "post_merge_deterministic_canonical_read",
     "deletion_propagation",
-    "format_version_rejection",
+    "no_forgotten_content_resurrection",
+    "bundle_format_interaction",
     "operation_replay",
     "changed_replay_rejection"
   ],
   "recovery_scenarios": [
-    "canonical_termination_before_commit",
-    "canonical_termination_after_commit_before_response",
+    "transaction_termination_before_commit",
+    "termination_after_commit_before_response",
     "bundle_publication_interruption",
     "import_interruption_before_mutation",
     "merge_interruption",

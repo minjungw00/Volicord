@@ -260,6 +260,8 @@ fn repeated_export_is_identical_and_excludes_local_and_noncanonical_classes(
         "parser_cache",
         "raw_tool_traffic",
         "full_chat_transcript",
+        "candidate",
+        "derived_state",
         "VOLICORD_HOME",
     ] {
         assert!(

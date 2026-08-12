@@ -281,7 +281,7 @@
         "conflict UI, Recall prose, relevance ranking, Candidate and Derived State semantics",
         "signature, encryption, compression and legacy format decoding"
       ],
-      "content_sha256": "323542cfeaeb955d3dfdd3e2cf9769e44e1cf976aedc667ec05b670b4003225c",
+      "content_sha256": "94c8f809d506e2ae8676d33ce3babb890cb3f21bbc5028fee6cc5851838b860f",
       "origin": "Self-authored deterministic fixture for V04.",
       "license": "CC0-1.0"
     },
