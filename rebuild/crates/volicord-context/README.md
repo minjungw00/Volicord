@@ -24,7 +24,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 5 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 6 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -92,7 +92,7 @@ owned by `rebuild/docs/design/`.
 ## Portable bundle choices
 
 - The portable representation is kind `volicord-context-bundle`, format
-  version `1`. This is the only readable and writable version. Older or newer
+  version `2`. This is the only readable and writable version. Older or newer
   versions are rejected before mutation; there is no legacy decoder or
   migration path.
 - The payload is compact UTF-8 JSON with one LF terminator, fixed lexicographic
@@ -108,9 +108,10 @@ owned by `rebuild/docs/design/`.
   Candidates, Derived State, indexes, caches, layouts, previews, raw tool
   traffic, full transcripts, and raw Source bodies.
 - The lineage object records a SHA-256 history basis for the exact Project
-  semantic state and uses that same state as the current common-base basis. It
-  is sufficient to compare a later divergent export without implementing the
-  V04 merge or conflict-resolution policy here.
+  semantic state and the first exported or imported basis from which the local
+  history diverged. Merge comparison accepts only an explicitly supplied base
+  whose identity matches both histories; file names, paths, timestamps, and
+  import order never establish ancestry.
 - Repository-bound Source manifest entries import with `unavailable` local
   availability. Canonical records and historical Source identity remain
   readable without a repository, and an explicit later bind can establish a
@@ -131,6 +132,33 @@ owned by `rebuild/docs/design/`.
   managed representations while retaining only the minimal tombstone. If a
   local obstruction prevents that post-commit refresh, forgetting reports
   `RepairRequired` explicitly rather than claiming complete managed cleanup.
+
+## Divergent merge choices
+
+- Comparison is an explicit three-way operation over local state, an incoming
+  bundle, and a caller-selected base bundle. The base is trusted only when its
+  history identity matches the lineage declared by both sides. A missing or
+  mismatched base is reported as `common_base_unavailable`; paths, file names,
+  timestamps, and import order are never ancestry evidence.
+- Results use the six portable conflict classes and expose affected identities,
+  all three history bases, Source availability, consequence, uncertainty, and
+  the automatic/user-owned boundary. Independent rows and a one-sided verified
+  correction can advance automatically. Question meaning/state, Decision
+  meaning/applicability/supersession, delete/modify, competing bindings, and
+  unverified histories cannot.
+- An explicit resolution is bound to conflict-set identity and revision and to
+  a current-host user-turn Source in the same Project. The supported outcomes
+  choose local, choose incoming, accept an explicitly constructed merged
+  bundle, or retain the local context with an inspectable incoming branch
+  basis. No timestamp, last-writer, access-frequency, path-similarity, or model
+  recommendation fallback exists.
+- One merge replaces the selected Project-scoped portable state and records a
+  content-free operational provenance row in the same immediate transaction.
+  The row retains bundle/history identities, classes, affected identities,
+  resolution Source, branch basis, and result basis without becoming a seventh
+  canonical entity. The same operation/input replays; changed resolution input
+  conflicts. Transaction interruption exposes only the prior or committed
+  state.
 
 ## Dependency review
 

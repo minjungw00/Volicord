@@ -7,6 +7,7 @@
 
 mod error;
 mod identity;
+mod merge;
 mod model;
 mod portable;
 mod store;
@@ -16,6 +17,11 @@ pub use error::{Error, ErrorKind};
 pub use identity::{
     CheckpointId, ContextItemId, DecisionId, DeterministicIdGenerator, IdGenerator, LocalBindingId,
     OperationId, ProjectId, QuestionId, SourceId, SystemIdGenerator,
+};
+pub use merge::{
+    BundleBasis, BundleComparison, BundleConflict, BundleConflictClass, BundleMerge,
+    BundleMergeStatus, ConflictSourceBasis, MergeResolution, MergeResolutionMode,
+    SourceBindingCandidate,
 };
 pub use model::{
     AgentRecommendation, ApplicabilityScope, Availability, CanonicalInvalidation,

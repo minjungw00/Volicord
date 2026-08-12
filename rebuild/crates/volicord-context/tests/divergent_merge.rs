@@ -1,0 +1,753 @@
+use rusqlite::Connection;
+use std::fs;
+use std::path::Path;
+use tempfile::tempdir;
+use volicord_context::{
+    AgentRecommendation, ApplicabilityScope, Availability, BundleConflictClass, BundleMergeStatus,
+    ContextItemCorrectionDraft, ContextItemDraft, ContextItemRole, CorrectionKind, DecisionChoice,
+    DecisionSupersessionDraft, DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse,
+    FixedClock, MergeResolution, MergeResolutionMode, OperationId, Principal, PrincipalKind,
+    QuestionAlternative, QuestionDraft, QuestionResponseDraft, SourceBindingCandidate, SourceDraft,
+    SourcePayload, StatementProvenanceRole, Store, TimestampMicros, UserTurnSource,
+};
+
+fn operation(value: u8) -> OperationId {
+    OperationId::from_bytes([value; 16])
+}
+
+fn store(path: &Path, ids: &[u8]) -> Result<Store, volicord_context::Error> {
+    Store::open_with(
+        path,
+        DeterministicIdGenerator::new(ids.iter().map(|value| [*value; 16])),
+        FixedClock::new(TimestampMicros::from_unix_micros(1_780_000_000_000_000)),
+    )
+}
+
+fn user_turn(turn: &str) -> SourceDraft {
+    SourceDraft {
+        expected_project_revision: 1,
+        payload: SourcePayload::CurrentHostUserTurn {
+            host: "codex".to_owned(),
+            session: "merge-session".to_owned(),
+            turn: turn.to_owned(),
+        },
+        actor: Principal {
+            kind: PrincipalKind::User,
+            identity: "project-owner".to_owned(),
+        },
+        observer: None,
+        availability: Availability::Available,
+    }
+}
+
+fn agent_context(statement: &str, source: volicord_context::SourceId) -> ContextItemDraft {
+    ContextItemDraft {
+        expected_project_revision: 1,
+        role: ContextItemRole::Fact,
+        statement: statement.to_owned(),
+        provenance_role: StatementProvenanceRole::Observed,
+        author: Principal {
+            kind: PrincipalKind::Agent,
+            identity: "codex".to_owned(),
+        },
+        source_basis: vec![source],
+        applicability: ApplicabilityScope::default(),
+    }
+}
+
+struct Base {
+    project: volicord_context::Project,
+    repository: volicord_context::Source,
+    authorization: volicord_context::Source,
+    item: volicord_context::ContextItem,
+    decision: volicord_context::Decision,
+}
+
+fn create_base(store: &mut Store) -> Result<Base, Box<dyn std::error::Error>> {
+    let project = store
+        .create_project(operation(1), "Divergent context")?
+        .value;
+    let repository = store
+        .record_source(
+            operation(2),
+            project.id,
+            SourceDraft {
+                expected_project_revision: 1,
+                payload: SourcePayload::File {
+                    locator: "src/lib.rs".to_owned(),
+                    snapshot: "base-commit".to_owned(),
+                },
+                actor: Principal {
+                    kind: PrincipalKind::Repository,
+                    identity: "repository".to_owned(),
+                },
+                observer: Some(Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex".to_owned(),
+                }),
+                availability: Availability::Available,
+            },
+        )?
+        .value;
+    let authorization = store
+        .record_source(operation(3), project.id, user_turn("base-authorization"))?
+        .value;
+    let item = store
+        .record_context_item(
+            operation(4),
+            project.id,
+            agent_context("base fact", repository.id),
+        )?
+        .value;
+    let question = store
+        .create_question(
+            operation(5),
+            project.id,
+            QuestionDraft {
+                expected_project_revision: 1,
+                prompt_basis: "Which mode?".to_owned(),
+                source_basis: vec![repository.id],
+                dependencies: vec![],
+                alternatives: vec![
+                    QuestionAlternative {
+                        key: "a".to_owned(),
+                        label: "A".to_owned(),
+                        consequence: "Use A".to_owned(),
+                    },
+                    QuestionAlternative {
+                        key: "b".to_owned(),
+                        label: "B".to_owned(),
+                        consequence: "Use B".to_owned(),
+                    },
+                ],
+                recommendation: AgentRecommendation {
+                    alternative_key: Some("a".to_owned()),
+                    rationale: "Base recommendation".to_owned(),
+                    source_basis: vec![repository.id],
+                },
+                trade_offs: vec!["compatibility".to_owned()],
+                uncertainty: vec![],
+                material_scope: vec!["merge".to_owned()],
+            },
+        )?
+        .value;
+    let response = store
+        .record_question_response(
+            operation(6),
+            project.id,
+            QuestionResponseDraft {
+                expected_project_revision: 1,
+                question_id: question.id,
+                question_revision: 1,
+                user_turn_source: UserTurnSource::Existing(authorization.id),
+                displayed_alternative_keys: vec!["a".to_owned(), "b".to_owned()],
+                displayed_recommendation_key: Some("a".to_owned()),
+                response: ExplicitQuestionResponse::Choice {
+                    alternative_key: "a".to_owned(),
+                    user_rationale: Some("base rationale".to_owned()),
+                },
+                applicability: ApplicabilityScope::default(),
+                assumptions: vec!["base assumption".to_owned()],
+                revisit_triggers: vec![],
+            },
+        )?
+        .value;
+    Ok(Base {
+        project,
+        repository,
+        authorization,
+        item,
+        decision: response.decision.ok_or("Decision missing")?,
+    })
+}
+
+fn clone_from(
+    path: &Path,
+    bundle: &Path,
+    ids: &[u8],
+    operation_byte: u8,
+) -> Result<Store, Box<dyn std::error::Error>> {
+    let mut value = store(path, ids)?;
+    value.import_bundle(operation(operation_byte), bundle)?;
+    Ok(value)
+}
+
+#[test]
+fn verified_base_auto_merges_independent_additions_and_replays(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut origin = store(&root.path().join("origin.sqlite3"), &[1, 2, 3, 4, 5, 6])?;
+    let base = create_base(&mut origin)?;
+    let base_bundle = root.path().join("base.json");
+    origin.export_bundle(base.project.id, &base_bundle)?;
+    let mut local = clone_from(&root.path().join("local.sqlite3"), &base_bundle, &[31], 20)?;
+    let local_item = local
+        .record_context_item(
+            operation(21),
+            base.project.id,
+            agent_context("local addition", base.repository.id),
+        )?
+        .value;
+    let mut incoming = clone_from(
+        &root.path().join("incoming.sqlite3"),
+        &base_bundle,
+        &[41],
+        30,
+    )?;
+    let incoming_item = incoming
+        .record_context_item(
+            operation(31),
+            base.project.id,
+            agent_context("incoming addition", base.repository.id),
+        )?
+        .value;
+    let incoming_bundle = root.path().join("incoming.json");
+    incoming.export_bundle(base.project.id, &incoming_bundle)?;
+
+    let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    assert!(!comparison.requires_user_resolution());
+    assert!(comparison.conflicts.iter().any(|value| {
+        value.class == BundleConflictClass::IndependentAdditions
+            && value.automatic_resolution_allowed
+    }));
+    let merged = local.merge_bundle(
+        operation(40),
+        Some(&base_bundle),
+        &incoming_bundle,
+        None,
+        None,
+    )?;
+    assert_eq!(merged.value.status, BundleMergeStatus::MergedAutomatically);
+    assert_eq!(
+        local
+            .get_context_item(base.project.id, local_item.id)?
+            .statement,
+        "local addition"
+    );
+    assert_eq!(
+        local
+            .get_context_item(base.project.id, incoming_item.id)?
+            .statement,
+        "incoming addition"
+    );
+    assert!(
+        local
+            .merge_bundle(
+                operation(40),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                None
+            )?
+            .replayed
+    );
+    let changed = SourceBindingCandidate {
+        repository_identity: "different".to_owned(),
+        source_basis: vec![base.repository.id],
+    };
+    assert_eq!(
+        local
+            .merge_bundle(
+                operation(40),
+                Some(&base_bundle),
+                &incoming_bundle,
+                Some(changed),
+                None
+            )
+            .err()
+            .ok_or("changed replay accepted")?
+            .kind(),
+        ErrorKind::DomainConflict
+    );
+    Ok(())
+}
+
+#[test]
+fn semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut origin = store(&root.path().join("origin.sqlite3"), &[1, 2, 3, 4, 5, 6])?;
+    let base = create_base(&mut origin)?;
+    let base_bundle = root.path().join("base.json");
+    origin.export_bundle(base.project.id, &base_bundle)?;
+    let mut local = clone_from(
+        &root.path().join("local.sqlite3"),
+        &base_bundle,
+        &[31, 32],
+        20,
+    )?;
+    local.supersede_decision(
+        operation(21),
+        base.project.id,
+        DecisionSupersessionDraft {
+            expected_project_revision: 1,
+            previous_decision_id: base.decision.id,
+            user_turn_source: UserTurnSource::Existing(base.authorization.id),
+            choice: DecisionChoice::Alternative {
+                alternative_key: "a".to_owned(),
+            },
+            user_rationale: Some("local rationale".to_owned()),
+            applicability: ApplicabilityScope::default(),
+            assumptions: vec![],
+            revisit_triggers: vec![],
+        },
+    )?;
+    let mut incoming = clone_from(
+        &root.path().join("incoming.sqlite3"),
+        &base_bundle,
+        &[41, 42],
+        30,
+    )?;
+    incoming.supersede_decision(
+        operation(31),
+        base.project.id,
+        DecisionSupersessionDraft {
+            expected_project_revision: 1,
+            previous_decision_id: base.decision.id,
+            user_turn_source: UserTurnSource::Existing(base.authorization.id),
+            choice: DecisionChoice::Alternative {
+                alternative_key: "b".to_owned(),
+            },
+            user_rationale: Some("incoming rationale".to_owned()),
+            applicability: ApplicabilityScope::default(),
+            assumptions: vec![],
+            revisit_triggers: vec![],
+        },
+    )?;
+    let incoming_bundle = root.path().join("incoming.json");
+    incoming.export_bundle(base.project.id, &incoming_bundle)?;
+    let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    assert!(comparison.requires_user_resolution());
+    assert!(comparison.conflicts.iter().any(|value| value.class
+        == BundleConflictClass::SemanticDecisionConflict
+        && !value.automatic_resolution_allowed
+        && value.user_judgment_reason.is_some()));
+    assert_eq!(
+        local
+            .merge_bundle(
+                operation(40),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                None
+            )?
+            .value
+            .status,
+        BundleMergeStatus::Unresolved
+    );
+    let stale = MergeResolution {
+        conflict_set_identity: "0".repeat(64),
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ChooseIncoming,
+    };
+    assert_eq!(
+        local
+            .merge_bundle(
+                operation(41),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                Some(stale)
+            )
+            .err()
+            .ok_or("stale resolution accepted")?
+            .kind(),
+        ErrorKind::StaleBasis
+    );
+    let resolution = MergeResolution {
+        conflict_set_identity: comparison.conflict_set_identity.clone(),
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ContextBranch,
+    };
+    let branched = local.merge_bundle(
+        operation(42),
+        Some(&base_bundle),
+        &incoming_bundle,
+        None,
+        Some(resolution),
+    )?;
+    assert_eq!(branched.value.status, BundleMergeStatus::Branched);
+    assert_eq!(
+        branched.value.branch_history_basis.as_deref(),
+        Some(comparison.incoming.history_basis.as_str())
+    );
+    assert!(branched.value.resolution_source_id.is_some());
+
+    let mut choose_incoming = clone_from(
+        &root.path().join("choose-incoming.sqlite3"),
+        &base_bundle,
+        &[31],
+        50,
+    )?;
+    choose_incoming.supersede_decision(
+        operation(51),
+        base.project.id,
+        DecisionSupersessionDraft {
+            expected_project_revision: 1,
+            previous_decision_id: base.decision.id,
+            user_turn_source: UserTurnSource::Existing(base.authorization.id),
+            choice: DecisionChoice::Alternative {
+                alternative_key: "a".to_owned(),
+            },
+            user_rationale: Some("local rationale".to_owned()),
+            applicability: ApplicabilityScope::default(),
+            assumptions: vec![],
+            revisit_triggers: vec![],
+        },
+    )?;
+    let choose_comparison =
+        choose_incoming.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    let choose_resolution = MergeResolution {
+        conflict_set_identity: choose_comparison.conflict_set_identity.clone(),
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ChooseIncoming,
+    };
+    let chosen = choose_incoming.merge_bundle(
+        operation(52),
+        Some(&base_bundle),
+        &incoming_bundle,
+        None,
+        Some(choose_resolution.clone()),
+    )?;
+    assert_eq!(chosen.value.status, BundleMergeStatus::Resolved);
+    assert_eq!(
+        choose_incoming
+            .get_current_decision(base.project.id, base.decision.question_id)?
+            .decision
+            .choice,
+        DecisionChoice::Alternative {
+            alternative_key: "b".to_owned()
+        }
+    );
+    assert!(
+        choose_incoming
+            .merge_bundle(
+                operation(52),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                Some(choose_resolution),
+            )?
+            .replayed
+    );
+    let changed_resolution = MergeResolution {
+        conflict_set_identity: choose_comparison.conflict_set_identity,
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ChooseLocal,
+    };
+    assert_eq!(
+        choose_incoming
+            .merge_bundle(
+                operation(52),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                Some(changed_resolution),
+            )
+            .err()
+            .ok_or("changed merge resolution replay accepted")?
+            .kind(),
+        ErrorKind::DomainConflict
+    );
+
+    let explicit_path = root.path().join("explicit.sqlite3");
+    let mut explicit = clone_from(&explicit_path, &base_bundle, &[31], 60)?;
+    explicit.supersede_decision(
+        operation(61),
+        base.project.id,
+        DecisionSupersessionDraft {
+            expected_project_revision: 1,
+            previous_decision_id: base.decision.id,
+            user_turn_source: UserTurnSource::Existing(base.authorization.id),
+            choice: DecisionChoice::Alternative {
+                alternative_key: "a".to_owned(),
+            },
+            user_rationale: Some("local rationale".to_owned()),
+            applicability: ApplicabilityScope::default(),
+            assumptions: vec![],
+            revisit_triggers: vec![],
+        },
+    )?;
+    let explicit_comparison =
+        explicit.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    let explicit_resolution = MergeResolution {
+        conflict_set_identity: explicit_comparison.conflict_set_identity,
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ExplicitMerged {
+            bundle_path: incoming_bundle.clone(),
+        },
+    };
+    let explicit_result = explicit.merge_bundle(
+        operation(62),
+        Some(&base_bundle),
+        &incoming_bundle,
+        None,
+        Some(explicit_resolution),
+    )?;
+    assert_eq!(explicit_result.value.status, BundleMergeStatus::Resolved);
+
+    let interrupted_path = root.path().join("interrupted.sqlite3");
+    let mut interrupted = clone_from(&interrupted_path, &base_bundle, &[31], 70)?;
+    let local_decision = interrupted
+        .supersede_decision(
+            operation(71),
+            base.project.id,
+            DecisionSupersessionDraft {
+                expected_project_revision: 1,
+                previous_decision_id: base.decision.id,
+                user_turn_source: UserTurnSource::Existing(base.authorization.id),
+                choice: DecisionChoice::Alternative {
+                    alternative_key: "a".to_owned(),
+                },
+                user_rationale: Some("local rationale".to_owned()),
+                applicability: ApplicabilityScope::default(),
+                assumptions: vec![],
+                revisit_triggers: vec![],
+            },
+        )?
+        .value;
+    let interrupted_comparison =
+        interrupted.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    drop(interrupted);
+    let connection = Connection::open(&interrupted_path)?;
+    connection.execute_batch(
+        "CREATE TRIGGER interrupt_merge BEFORE INSERT ON decisions
+         BEGIN SELECT RAISE(ABORT, 'interrupted merge'); END;",
+    )?;
+    drop(connection);
+    let mut interrupted = store(&interrupted_path, &[])?;
+    let interrupted_resolution = MergeResolution {
+        conflict_set_identity: interrupted_comparison.conflict_set_identity,
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ChooseIncoming,
+    };
+    assert_eq!(
+        interrupted
+            .merge_bundle(
+                operation(72),
+                Some(&base_bundle),
+                &incoming_bundle,
+                None,
+                Some(interrupted_resolution),
+            )
+            .err()
+            .ok_or("interrupted merge succeeded")?
+            .kind(),
+        ErrorKind::TransactionFailure
+    );
+    assert_eq!(
+        interrupted
+            .get_current_decision(base.project.id, base.decision.question_id)?
+            .decision
+            .id,
+        local_decision.id
+    );
+    Ok(())
+}
+
+#[test]
+fn delete_modify_binding_and_unavailable_base_are_never_automatic(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let clone_path = root.path().join("clone");
+    fs::create_dir(&clone_path)?;
+    let mut origin = store(&root.path().join("origin.sqlite3"), &[1, 2, 3, 4, 5, 6, 7])?;
+    let base = create_base(&mut origin)?;
+    let base_bundle = root.path().join("base.json");
+    origin.export_bundle(base.project.id, &base_bundle)?;
+    let mut local = clone_from(&root.path().join("local.sqlite3"), &base_bundle, &[31], 20)?;
+    local.bind_clone(
+        operation(22),
+        base.project.id,
+        None,
+        &clone_path,
+        Availability::Available,
+    )?;
+    local.forget_context_item(
+        operation(23),
+        base.project.id,
+        base.item.id,
+        base.authorization.id,
+    )?;
+    let mut incoming = clone_from(&root.path().join("incoming.sqlite3"), &base_bundle, &[], 30)?;
+    incoming.correct_context_item(
+        operation(31),
+        base.project.id,
+        base.item.id,
+        ContextItemCorrectionDraft {
+            expected_revision: 1,
+            corrected_statement: "base  fact".to_owned(),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: base.authorization.id,
+        },
+    )?;
+    let incoming_bundle = root.path().join("incoming.json");
+    incoming.export_bundle(base.project.id, &incoming_bundle)?;
+    let binding = SourceBindingCandidate {
+        repository_identity: "incoming-repository".to_owned(),
+        source_basis: vec![base.repository.id],
+    };
+    let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, Some(binding))?;
+    for class in [
+        BundleConflictClass::DeleteModifyConflict,
+        BundleConflictClass::SourceBindingConflict,
+    ] {
+        assert!(comparison
+            .conflicts
+            .iter()
+            .any(|value| value.class == class && !value.automatic_resolution_allowed));
+    }
+    let unavailable = local.compare_bundle(None, &incoming_bundle, None)?;
+    assert!(unavailable.conflicts.iter().any(|value| value.class
+        == BundleConflictClass::CommonBaseUnavailable
+        && !value.automatic_resolution_allowed));
+    Ok(())
+}
+
+#[test]
+fn one_sided_correction_is_bounded_automatic_but_question_state_is_user_owned(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut origin = store(&root.path().join("origin.sqlite3"), &[1, 2, 3, 4, 5, 6])?;
+    let base = create_base(&mut origin)?;
+    let base_bundle = root.path().join("base.json");
+    origin.export_bundle(base.project.id, &base_bundle)?;
+    let mut local = clone_from(&root.path().join("local.sqlite3"), &base_bundle, &[], 20)?;
+    let mut incoming = clone_from(&root.path().join("incoming.sqlite3"), &base_bundle, &[], 30)?;
+    incoming.correct_context_item(
+        operation(31),
+        base.project.id,
+        base.item.id,
+        ContextItemCorrectionDraft {
+            expected_revision: 1,
+            corrected_statement: "base  fact".to_owned(),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: base.authorization.id,
+        },
+    )?;
+    let corrected_bundle = root.path().join("corrected.json");
+    incoming.export_bundle(base.project.id, &corrected_bundle)?;
+    let correction = local.compare_bundle(Some(&base_bundle), &corrected_bundle, None)?;
+    assert!(!correction.requires_user_resolution());
+    assert!(correction.conflicts.iter().any(|value| {
+        value.class == BundleConflictClass::SameRecordRevision && value.automatic_resolution_allowed
+    }));
+    local.merge_bundle(
+        operation(32),
+        Some(&base_bundle),
+        &corrected_bundle,
+        None,
+        None,
+    )?;
+    assert_eq!(
+        local
+            .get_context_item(base.project.id, base.item.id)?
+            .statement,
+        "base  fact"
+    );
+
+    let mut question_origin = store(
+        &root.path().join("question-origin.sqlite3"),
+        &[71, 72, 73, 74],
+    )?;
+    let project = question_origin
+        .create_project(operation(70), "Question divergence")?
+        .value;
+    let source = question_origin
+        .record_source(operation(71), project.id, user_turn("question-source"))?
+        .value;
+    let question = question_origin
+        .create_question(
+            operation(72),
+            project.id,
+            QuestionDraft {
+                expected_project_revision: 1,
+                prompt_basis: "Resolve later?".to_owned(),
+                source_basis: vec![source.id],
+                dependencies: vec![],
+                alternatives: vec![QuestionAlternative {
+                    key: "later".to_owned(),
+                    label: "Later".to_owned(),
+                    consequence: "Resolve later".to_owned(),
+                }],
+                recommendation: AgentRecommendation {
+                    alternative_key: None,
+                    rationale: "No recommendation".to_owned(),
+                    source_basis: vec![source.id],
+                },
+                trade_offs: vec![],
+                uncertainty: vec!["Needs judgment".to_owned()],
+                material_scope: vec!["question".to_owned()],
+            },
+        )?
+        .value;
+    let question_base = root.path().join("question-base.json");
+    question_origin.export_bundle(project.id, &question_base)?;
+    let mut question_local = clone_from(
+        &root.path().join("question-local.sqlite3"),
+        &question_base,
+        &[],
+        73,
+    )?;
+    question_local.record_question_response(
+        operation(74),
+        project.id,
+        QuestionResponseDraft {
+            expected_project_revision: 1,
+            question_id: question.id,
+            question_revision: 1,
+            user_turn_source: UserTurnSource::Existing(source.id),
+            displayed_alternative_keys: vec!["later".to_owned()],
+            displayed_recommendation_key: None,
+            response: ExplicitQuestionResponse::Terminal {
+                outcome: volicord_context::QuestionTerminalOutcome::Deferred,
+            },
+            applicability: ApplicabilityScope::default(),
+            assumptions: vec![],
+            revisit_triggers: vec![],
+        },
+    )?;
+    let mut question_incoming = clone_from(
+        &root.path().join("question-incoming.sqlite3"),
+        &question_base,
+        &[],
+        75,
+    )?;
+    question_incoming.record_question_response(
+        operation(76),
+        project.id,
+        QuestionResponseDraft {
+            expected_project_revision: 1,
+            question_id: question.id,
+            question_revision: 1,
+            user_turn_source: UserTurnSource::Existing(source.id),
+            displayed_alternative_keys: vec!["later".to_owned()],
+            displayed_recommendation_key: None,
+            response: ExplicitQuestionResponse::Terminal {
+                outcome: volicord_context::QuestionTerminalOutcome::OutOfScope,
+            },
+            applicability: ApplicabilityScope::default(),
+            assumptions: vec![],
+            revisit_triggers: vec![],
+        },
+    )?;
+    let question_bundle = root.path().join("question-incoming.json");
+    question_incoming.export_bundle(project.id, &question_bundle)?;
+    let question_comparison =
+        question_local.compare_bundle(Some(&question_base), &question_bundle, None)?;
+    assert!(question_comparison.conflicts.iter().any(|value| {
+        value.class == BundleConflictClass::SameRecordRevision
+            && !value.automatic_resolution_allowed
+            && value
+                .user_judgment_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("Question"))
+    }));
+    Ok(())
+}

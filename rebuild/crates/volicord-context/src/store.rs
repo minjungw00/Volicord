@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
-const REQUIRED_TABLES: [&str; 25] = [
+const REQUIRED_TABLES: [&str; 27] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -54,6 +54,8 @@ const REQUIRED_TABLES: [&str; 25] = [
     "review_due",
     "tombstones",
     "managed_bundle_paths",
+    "bundle_lineage",
+    "merge_events",
 ];
 
 /// One synchronous connection to an explicit Canonical Context store path.
@@ -4417,6 +4419,31 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  absolute_path TEXT NOT NULL CHECK(length(absolute_path) > 0),
                  PRIMARY KEY(project_id, absolute_path),
                  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE bundle_lineage(
+                 project_id BLOB PRIMARY KEY NOT NULL CHECK(length(project_id) = 16),
+                 common_base_basis TEXT NOT NULL CHECK(length(common_base_basis) = 64),
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+             ) WITHOUT ROWID;
+             CREATE TABLE merge_events(
+                 operation_id BLOB PRIMARY KEY NOT NULL CHECK(length(operation_id) = 16),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 conflict_set_id TEXT NOT NULL CHECK(length(conflict_set_id) = 64),
+                 conflict_revision INTEGER NOT NULL CHECK(conflict_revision >= 1),
+                 common_base_basis TEXT,
+                 local_history_basis TEXT NOT NULL CHECK(length(local_history_basis) = 64),
+                 incoming_history_basis TEXT NOT NULL CHECK(length(incoming_history_basis) = 64),
+                 result_history_basis TEXT NOT NULL CHECK(length(result_history_basis) = 64),
+                 resolution_kind TEXT NOT NULL CHECK(resolution_kind IN (
+                     'automatic','already_present','unresolved','choose_local','choose_incoming','explicit_merged','context_branch'
+                 )),
+                 resolution_source_id BLOB CHECK(resolution_source_id IS NULL OR length(resolution_source_id) = 16),
+                 conflict_classes BLOB NOT NULL,
+                 affected_identities BLOB NOT NULL,
+                 branch_history_basis TEXT,
+                 committed_at INTEGER NOT NULL,
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, resolution_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
              ) WITHOUT ROWID;
              CREATE TABLE checkpoints(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),

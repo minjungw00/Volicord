@@ -449,7 +449,7 @@ fn corruption_and_newer_version_fail_before_any_mutation() -> Result<(), Box<dyn
     let text = String::from_utf8(original)?;
     fs::write(
         &newer,
-        text.replacen("\"format_version\":1", "\"format_version\":2", 1),
+        text.replacen("\"format_version\":2", "\"format_version\":3", 1),
     )?;
     assert_eq!(
         destination

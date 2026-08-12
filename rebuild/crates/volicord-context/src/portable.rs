@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const BUNDLE_KIND: &str = "volicord-context-bundle";
-pub const BUNDLE_FORMAT_VERSION: u32 = 1;
+pub const BUNDLE_FORMAT_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleExport {
@@ -42,49 +42,49 @@ struct Envelope {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-struct Payload {
-    lineage: Lineage,
-    project_id: String,
-    tables: Vec<PortableTable>,
+pub(crate) struct Payload {
+    pub(crate) lineage: Lineage,
+    pub(crate) project_id: String,
+    pub(crate) tables: Vec<PortableTable>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-struct Lineage {
-    common_base_basis: String,
-    history_basis: String,
+pub(crate) struct Lineage {
+    pub(crate) common_base_basis: String,
+    pub(crate) history_basis: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-struct SemanticState {
-    project_id: String,
-    tables: Vec<PortableTable>,
+pub(crate) struct SemanticState {
+    pub(crate) project_id: String,
+    pub(crate) tables: Vec<PortableTable>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-struct PortableTable {
-    columns: Vec<String>,
-    name: String,
-    rows: Vec<Vec<PortableValue>>,
+pub(crate) struct PortableTable {
+    pub(crate) columns: Vec<String>,
+    pub(crate) name: String,
+    pub(crate) rows: Vec<Vec<PortableValue>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
-enum PortableValue {
+pub(crate) enum PortableValue {
     Null,
     Integer(i64),
     Text(String),
     Bytes(String),
 }
 
-struct TableSpec {
-    name: &'static str,
-    columns: &'static [&'static str],
-    primary_key: &'static [usize],
-    project_column: usize,
-    order_by: &'static str,
+pub(crate) struct TableSpec {
+    pub(crate) name: &'static str,
+    pub(crate) columns: &'static [&'static str],
+    pub(crate) primary_key: &'static [usize],
+    pub(crate) project_column: usize,
+    pub(crate) order_by: &'static str,
 }
 
-const TABLES: &[TableSpec] = &[
+pub(crate) const TABLES: &[TableSpec] = &[
     TableSpec {
         name: "projects",
         columns: &["id", "display_name", "revision", "created_at", "updated_at"],
@@ -399,6 +399,28 @@ const TABLES: &[TableSpec] = &[
         project_column: 0,
         order_by: "record_kind, record_id",
     },
+    TableSpec {
+        name: "merge_events",
+        columns: &[
+            "operation_id",
+            "project_id",
+            "conflict_set_id",
+            "conflict_revision",
+            "common_base_basis",
+            "local_history_basis",
+            "incoming_history_basis",
+            "result_history_basis",
+            "resolution_kind",
+            "resolution_source_id",
+            "conflict_classes",
+            "affected_identities",
+            "branch_history_basis",
+            "committed_at",
+        ],
+        primary_key: &[0],
+        project_column: 1,
+        order_by: "operation_id",
+    },
 ];
 
 impl Store {
@@ -410,6 +432,10 @@ impl Store {
         let path = validate_final_path(path.as_ref())?;
         let (bytes, checksum, history_basis) = bundle_bytes(self, project_id)?;
         publish_atomic(&path, &bytes)?;
+        self.connection.execute(
+            "INSERT OR IGNORE INTO bundle_lineage(project_id, common_base_basis) VALUES (?1, ?2)",
+            params![project_id.as_bytes().as_slice(), history_basis],
+        ).map_err(storage_write)?;
         self.connection.execute(
             "INSERT OR IGNORE INTO managed_bundle_paths(project_id, absolute_path) VALUES (?1, ?2)",
             params![project_id.as_bytes().as_slice(), path_text(&path)?],
@@ -509,6 +535,10 @@ impl Store {
         for (spec, row) in missing {
             insert_row(&transaction, spec, row)?;
         }
+        transaction.execute(
+            "INSERT OR IGNORE INTO bundle_lineage(project_id, common_base_basis) VALUES (?1, ?2)",
+            params![project_id.as_bytes().as_slice(), history_basis],
+        ).map_err(storage_write)?;
         let now = clock.now()?;
         transaction.execute(
             "INSERT INTO operations(operation_id, project_id, operation_kind, input_basis, outcome, result_kind, result_id, result_revision, committed_at)
@@ -551,13 +581,13 @@ pub(crate) fn refresh_managed_bundles(store: &Store, project_id: ProjectId) -> R
     Ok(())
 }
 
-struct ValidatedBundle {
-    payload: Payload,
-    project_id: ProjectId,
-    checksum: String,
+pub(crate) struct ValidatedBundle {
+    pub(crate) payload: Payload,
+    pub(crate) project_id: ProjectId,
+    pub(crate) checksum: String,
 }
 
-fn validate_bundle(bytes: &[u8]) -> Result<ValidatedBundle, Error> {
+pub(crate) fn validate_bundle(bytes: &[u8]) -> Result<ValidatedBundle, Error> {
     if !bytes.ends_with(b"\n") || bytes.contains(&b'\r') {
         return Err(Error::new(
             ErrorKind::CorruptState,
@@ -597,8 +627,10 @@ fn validate_bundle(bytes: &[u8]) -> Result<ValidatedBundle, Error> {
         tables: envelope.payload.tables.clone(),
     };
     let state_bytes = serde_json::to_vec(&state).map_err(json_error)?;
+    let common_base = &envelope.payload.lineage.common_base_basis;
     if sha256_hex(&state_bytes) != envelope.payload.lineage.history_basis
-        || envelope.payload.lineage.common_base_basis != envelope.payload.lineage.history_basis
+        || common_base.len() != 64
+        || !common_base.bytes().all(|value| value.is_ascii_hexdigit())
     {
         return Err(Error::new(
             ErrorKind::CorruptState,
@@ -612,7 +644,10 @@ fn validate_bundle(bytes: &[u8]) -> Result<ValidatedBundle, Error> {
     })
 }
 
-fn bundle_bytes(store: &Store, project_id: ProjectId) -> Result<(Vec<u8>, String, String), Error> {
+pub(crate) fn bundle_bytes(
+    store: &Store,
+    project_id: ProjectId,
+) -> Result<(Vec<u8>, String, String), Error> {
     let exists: bool = store
         .connection
         .query_row(
@@ -635,11 +670,21 @@ fn bundle_bytes(store: &Store, project_id: ProjectId) -> Result<(Vec<u8>, String
     };
     let state_bytes = serde_json::to_vec(&state).map_err(json_error)?;
     let history_basis = sha256_hex(&state_bytes);
+    let common_base_basis = store
+        .connection
+        .query_row(
+            "SELECT common_base_basis FROM bundle_lineage WHERE project_id = ?1",
+            [project_id.as_bytes().as_slice()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(storage_read)?
+        .unwrap_or_else(|| history_basis.clone());
     let payload = Payload {
         project_id: project_text,
         lineage: Lineage {
             history_basis: history_basis.clone(),
-            common_base_basis: history_basis.clone(),
+            common_base_basis,
         },
         tables,
     };
@@ -656,7 +701,7 @@ fn bundle_bytes(store: &Store, project_id: ProjectId) -> Result<(Vec<u8>, String
     Ok((bytes, checksum, history_basis))
 }
 
-fn export_table(
+pub(crate) fn export_table(
     connection: &rusqlite::Connection,
     spec: &TableSpec,
     project_id: ProjectId,
@@ -696,7 +741,7 @@ fn export_table(
     })
 }
 
-fn validate_tables(payload: &Payload, project_id: ProjectId) -> Result<(), Error> {
+pub(crate) fn validate_tables(payload: &Payload, project_id: ProjectId) -> Result<(), Error> {
     if payload.tables.len() != TABLES.len() {
         return Err(Error::new(
             ErrorKind::CorruptState,
@@ -868,7 +913,7 @@ fn compare_row(
     })
 }
 
-fn insert_row(
+pub(crate) fn insert_row(
     transaction: &rusqlite::Transaction<'_>,
     spec: &TableSpec,
     row: &[PortableValue],
@@ -899,7 +944,7 @@ fn value_from_sql(value: ValueRef<'_>) -> PortableValue {
     }
 }
 
-fn value_to_sql(value: &PortableValue) -> Result<Value, Error> {
+pub(crate) fn value_to_sql(value: &PortableValue) -> Result<Value, Error> {
     Ok(match value {
         PortableValue::Null => Value::Null,
         PortableValue::Integer(value) => Value::Integer(*value),
@@ -908,7 +953,7 @@ fn value_to_sql(value: &PortableValue) -> Result<Value, Error> {
     })
 }
 
-fn value_bytes(value: &PortableValue) -> Result<Vec<u8>, Error> {
+pub(crate) fn value_bytes(value: &PortableValue) -> Result<Vec<u8>, Error> {
     match value {
         PortableValue::Bytes(value) => hex_decode(value),
         _ => Err(Error::new(
@@ -918,7 +963,7 @@ fn value_bytes(value: &PortableValue) -> Result<Vec<u8>, Error> {
     }
 }
 
-fn value_text(value: &PortableValue) -> Result<&str, Error> {
+pub(crate) fn value_text(value: &PortableValue) -> Result<&str, Error> {
     match value {
         PortableValue::Text(value) => Ok(value),
         _ => Err(Error::new(
@@ -928,7 +973,7 @@ fn value_text(value: &PortableValue) -> Result<&str, Error> {
     }
 }
 
-fn value_key(value: &PortableValue) -> String {
+pub(crate) fn value_key(value: &PortableValue) -> String {
     match value {
         PortableValue::Null => "n".to_owned(),
         PortableValue::Integer(value) => format!("i:{value}"),
@@ -1105,7 +1150,7 @@ fn hex_digit(value: u8) -> Result<u8, Error> {
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     hex_encode(&sha256(bytes))
 }
 
@@ -1228,6 +1273,6 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(BUNDLE_KIND, "volicord-context-bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 1);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 2);
     }
 }
