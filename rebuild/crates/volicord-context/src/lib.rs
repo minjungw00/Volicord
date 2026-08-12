@@ -12,12 +12,15 @@ mod time;
 
 pub use error::{Error, ErrorKind};
 pub use identity::{
-    DeterministicIdGenerator, IdGenerator, LocalBindingId, OperationId, ProjectId, SourceId,
-    SystemIdGenerator,
+    DecisionId, DeterministicIdGenerator, IdGenerator, LocalBindingId, OperationId, ProjectId,
+    QuestionId, SourceId, SystemIdGenerator,
 };
 pub use model::{
-    Availability, CommandOutcome, CommandTermination, LocalBinding, OperationResult, Principal,
-    PrincipalKind, Project, Source, SourceDraft, SourcePayload, SourceRelation, SourceRelationKind,
+    AgentRecommendation, ApplicabilityScope, Availability, CommandOutcome, CommandTermination,
+    Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding, OperationResult, Principal,
+    PrincipalKind, Project, Question, QuestionAlternative, QuestionDependency, QuestionDraft,
+    QuestionResponseDraft, QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source,
+    SourceDraft, SourcePayload, SourceRelation, SourceRelationKind, UserTurnSource,
 };
 pub use store::{Store, SCHEMA_KIND, SCHEMA_VERSION};
 pub use time::{Clock, FixedClock, SystemClock, TimestampMicros};

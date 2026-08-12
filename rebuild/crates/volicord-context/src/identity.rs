@@ -45,6 +45,8 @@ opaque_id!(ProjectId);
 opaque_id!(SourceId);
 opaque_id!(OperationId);
 opaque_id!(LocalBindingId);
+opaque_id!(QuestionId);
+opaque_id!(DecisionId);
 
 /// Generates opaque 128-bit identity material.
 pub trait IdGenerator: Send {
@@ -95,7 +97,10 @@ impl IdGenerator for DeterministicIdGenerator {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeterministicIdGenerator, IdGenerator, OperationId, ProjectId, SourceId};
+    use super::{
+        DecisionId, DeterministicIdGenerator, IdGenerator, OperationId, ProjectId, QuestionId,
+        SourceId,
+    };
     use std::any::TypeId;
 
     #[test]
@@ -103,6 +108,7 @@ mod tests {
         assert_ne!(TypeId::of::<ProjectId>(), TypeId::of::<SourceId>());
         assert_ne!(TypeId::of::<ProjectId>(), TypeId::of::<OperationId>());
         assert_ne!(TypeId::of::<SourceId>(), TypeId::of::<OperationId>());
+        assert_ne!(TypeId::of::<QuestionId>(), TypeId::of::<DecisionId>());
     }
 
     #[test]

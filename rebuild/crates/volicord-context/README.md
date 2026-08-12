@@ -3,7 +3,8 @@
 This crate is the synchronous Canonical Context Kernel. Its current production
 scope is deliberately narrow: an explicit-path SQLite store can create and
 reopen stable Projects, maintain local clone bindings, record typed Sources and
-provenance, and persist explicit Source relations. This file records concrete
+provenance, persist explicit Source relations, and durably record Questions and
+atomic explicit user Decisions. This file records concrete
 Phase 4 implementation choices; the product and architecture meaning remains
 owned by `rebuild/docs/design/`.
 
@@ -21,7 +22,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 1 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 2 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -41,6 +42,15 @@ owned by `rebuild/docs/design/`.
   same operation and input replays its immutable prior result; different input
   conflicts. Preconditions produce typed stale-basis errors. The kernel does
   not retry a canonical write under another identity.
+- Question identity is independent of its prompt basis. Revision-one Question
+  content is immutable and includes exact Source/dependency basis, displayed
+  alternatives, agent recommendation, trade-offs, uncertainty, material scope,
+  and one of the accepted terminal outcomes.
+- A Question response operation accepts only an already explicit alternative,
+  delegation, or non-Decision terminal outcome. It atomically creates or
+  validates a current-host user-turn Source, records the exact revision link,
+  creates a Decision when required, transitions the Question, and records the
+  operation outcome. Recommendation and user choice remain separate fields.
 - Source payloads cover repository snapshots and commits, files, symbols,
   bounded command outcomes, current-host user turns, URLs, and adopted
   artifacts. They preserve typed actor and optional observer provenance, but

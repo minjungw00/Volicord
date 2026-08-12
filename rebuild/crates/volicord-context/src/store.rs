@@ -1,10 +1,15 @@
 use crate::identity::{IdGenerator, SystemIdGenerator};
 use crate::model::{
-    Availability, CommandOutcome, CommandTermination, LocalBinding, OperationResult, Principal,
-    PrincipalKind, Project, Source, SourceDraft, SourcePayload, SourceRelation, SourceRelationKind,
+    AgentRecommendation, ApplicabilityScope, Availability, CommandOutcome, CommandTermination,
+    Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding, OperationResult, Principal,
+    PrincipalKind, Project, Question, QuestionAlternative, QuestionDependency, QuestionDraft,
+    QuestionResponseDraft, QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source,
+    SourceDraft, SourcePayload, SourceRelation, SourceRelationKind, UserTurnSource,
 };
 use crate::time::{Clock, SystemClock, TimestampMicros};
-use crate::{Error, ErrorKind, LocalBindingId, OperationId, ProjectId, SourceId};
+use crate::{
+    DecisionId, Error, ErrorKind, LocalBindingId, OperationId, ProjectId, QuestionId, SourceId,
+};
 use rusqlite::{
     params, Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
 };
@@ -13,9 +18,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
-const REQUIRED_TABLES: [&str; 8] = [
+const REQUIRED_TABLES: [&str; 12] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -24,6 +29,10 @@ const REQUIRED_TABLES: [&str; 8] = [
     "sources",
     "source_relations",
     "operations",
+    "questions",
+    "question_revisions",
+    "question_response_sources",
+    "decisions",
 ];
 
 /// One synchronous connection to an explicit Canonical Context store path.
@@ -611,6 +620,1126 @@ impl Store {
             to_source_id,
         )
     }
+
+    pub fn create_question(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        draft: QuestionDraft,
+    ) -> Result<OperationResult<Question>, Error> {
+        validate_question_draft(&draft)?;
+        let encoded = EncodedQuestion::from_draft(&draft)?;
+        let basis = question_basis(project_id, &draft, &encoded);
+        let (connection, ids, clock) = (&mut self.connection, &mut self.ids, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "create_question", &basis)?;
+            let question = load_question(
+                &transaction,
+                project_id,
+                QuestionId::from_slice(&operation.result_id)?,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value: question,
+                replayed: true,
+            });
+        }
+
+        let project = load_project(&transaction, project_id)?;
+        ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        for source_id in draft
+            .source_basis
+            .iter()
+            .chain(draft.recommendation.source_basis.iter())
+        {
+            ensure_source_project(&transaction, *source_id, project_id)?;
+        }
+        for dependency in &draft.dependencies {
+            let dependency_question =
+                load_question(&transaction, project_id, dependency.question_id)?;
+            if let Some(required_revision) = dependency.required_revision {
+                ensure_question_revision_exists(
+                    &transaction,
+                    dependency.question_id,
+                    required_revision,
+                )?;
+                if required_revision > dependency_question.revision {
+                    return Err(Error::new(
+                        ErrorKind::StaleBasis,
+                        "Question dependency revision is not current or historical",
+                    ));
+                }
+            }
+        }
+
+        let question_id = QuestionId::from_bytes(ids.next_id()?);
+        let now = clock.now()?;
+        transaction
+            .execute(
+                "INSERT INTO questions(
+                     id, project_id, revision, terminal_outcome, created_at, updated_at
+                 ) VALUES (?1, ?2, 1, NULL, ?3, ?3)",
+                params![
+                    question_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    now.as_unix_micros(),
+                ],
+            )
+            .map_err(|error| insert_identity_error(error, "Question identity already exists"))?;
+        insert_question_revision(&transaction, question_id, project_id, &draft, &encoded, now)?;
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "create_question",
+            &basis,
+            "question",
+            question_id.as_bytes(),
+            1,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: Question {
+                id: question_id,
+                project_id,
+                revision: 1,
+                prompt_basis: draft.prompt_basis,
+                source_basis: draft.source_basis,
+                dependencies: draft.dependencies,
+                alternatives: draft.alternatives,
+                recommendation: draft.recommendation,
+                trade_offs: draft.trade_offs,
+                uncertainty: draft.uncertainty,
+                material_scope: draft.material_scope,
+                state: QuestionState::Open,
+                created_at: now,
+                updated_at: now,
+            },
+            replayed: false,
+        })
+    }
+
+    pub fn get_question(
+        &self,
+        project_id: ProjectId,
+        question_id: QuestionId,
+    ) -> Result<Question, Error> {
+        load_question(&self.connection, project_id, question_id)
+    }
+
+    pub fn record_question_response(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        draft: QuestionResponseDraft,
+    ) -> Result<OperationResult<QuestionResponseResult>, Error> {
+        validate_response_draft(&draft)?;
+        let basis = response_basis(project_id, &draft)?;
+        let (connection, ids, clock) = (&mut self.connection, &mut self.ids, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "record_question_response", &basis)?;
+            let value = load_question_response(
+                &transaction,
+                project_id,
+                QuestionId::from_slice(&operation.result_id)?,
+                operation.result_revision,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value,
+                replayed: true,
+            });
+        }
+
+        let project = load_project(&transaction, project_id)?;
+        ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        let question = load_question(&transaction, project_id, draft.question_id)?;
+        ensure_revision(draft.question_revision, question.revision, "Question")?;
+        if question.state != QuestionState::Open {
+            return Err(Error::new(
+                ErrorKind::DomainConflict,
+                "Question is already terminal",
+            ));
+        }
+        let current_alternative_keys: Vec<String> = question
+            .alternatives
+            .iter()
+            .map(|alternative| alternative.key.clone())
+            .collect();
+        if draft.displayed_alternative_keys != current_alternative_keys
+            || draft.displayed_recommendation_key != question.recommendation.alternative_key
+        {
+            return Err(Error::new(
+                ErrorKind::StaleBasis,
+                "displayed alternatives or recommendation do not match the Question revision",
+            ));
+        }
+        let (outcome, choice, rationale) = interpret_explicit_response(&question, &draft.response)?;
+
+        let now = clock.now()?;
+        let user_turn_source = match &draft.user_turn_source {
+            UserTurnSource::Existing(source_id) => {
+                let source = load_source(&transaction, *source_id)?;
+                ensure_user_turn_source(&source, project_id)?;
+                source
+            }
+            UserTurnSource::Create(source_draft) => {
+                ensure_revision(
+                    source_draft.expected_project_revision,
+                    project.revision,
+                    "Project",
+                )?;
+                validate_source_draft(source_draft)?;
+                ensure_user_turn_draft(source_draft)?;
+                let source_id = SourceId::from_bytes(ids.next_id()?);
+                insert_source(&transaction, source_id, project_id, source_draft, now)?;
+                Source {
+                    id: source_id,
+                    project_id,
+                    payload: source_draft.payload.clone(),
+                    actor: source_draft.actor.clone(),
+                    observer: source_draft.observer.clone(),
+                    availability: source_draft.availability,
+                    recorded_at: now,
+                }
+            }
+        };
+        transaction
+            .execute(
+                "INSERT INTO question_response_sources(
+                     project_id, question_id, question_revision, source_id, recorded_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    project_id.as_bytes().as_slice(),
+                    draft.question_id.as_bytes().as_slice(),
+                    revision_i64(draft.question_revision)?,
+                    user_turn_source.id.as_bytes().as_slice(),
+                    now.as_unix_micros(),
+                ],
+            )
+            .map_err(write_error)?;
+
+        let decision = if let Some(choice) = choice {
+            let decision_id = DecisionId::from_bytes(ids.next_id()?);
+            let (choice_kind, choice_value) = match &choice {
+                DecisionChoice::Alternative { alternative_key } => {
+                    ("alternative", alternative_key.as_str())
+                }
+                DecisionChoice::Delegation { delegate_to } => ("delegation", delegate_to.as_str()),
+            };
+            transaction
+                .execute(
+                    "INSERT INTO decisions(
+                         id, project_id, question_id, question_revision, user_turn_source_id,
+                         choice_kind, choice_value, user_rationale, displayed_alternatives,
+                         recommendation_key, recommendation_rationale, recommendation_sources,
+                         applicability_paths, applicability_components, applicability_work_contexts,
+                         assumptions, revisit_triggers, recorded_at
+                     ) VALUES (
+                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                         ?13, ?14, ?15, ?16, ?17, ?18
+                     )",
+                    params![
+                        decision_id.as_bytes().as_slice(),
+                        project_id.as_bytes().as_slice(),
+                        draft.question_id.as_bytes().as_slice(),
+                        revision_i64(draft.question_revision)?,
+                        user_turn_source.id.as_bytes().as_slice(),
+                        choice_kind,
+                        choice_value,
+                        rationale,
+                        encode_alternatives(&question.alternatives),
+                        question.recommendation.alternative_key,
+                        question.recommendation.rationale,
+                        encode_source_ids(&question.recommendation.source_basis),
+                        encode_strings(&draft.applicability.paths),
+                        encode_strings(&draft.applicability.components),
+                        encode_strings(&draft.applicability.work_contexts),
+                        encode_strings(&draft.assumptions),
+                        encode_strings(&draft.revisit_triggers),
+                        now.as_unix_micros(),
+                    ],
+                )
+                .map_err(|error| {
+                    insert_identity_error(error, "Decision identity already exists")
+                })?;
+            Some(Decision {
+                id: decision_id,
+                project_id,
+                question_id: draft.question_id,
+                question_revision: draft.question_revision,
+                user_turn_source_id: user_turn_source.id,
+                choice,
+                user_rationale: rationale.map(str::to_owned),
+                displayed_alternatives: question.alternatives.clone(),
+                displayed_recommendation: question.recommendation.clone(),
+                applicability: draft.applicability.clone(),
+                assumptions: draft.assumptions.clone(),
+                revisit_triggers: draft.revisit_triggers.clone(),
+                recorded_at: now,
+            })
+        } else {
+            None
+        };
+        transaction
+            .execute(
+                "UPDATE questions SET terminal_outcome = ?3, updated_at = ?4
+                 WHERE id = ?1 AND project_id = ?2 AND revision = ?5 AND terminal_outcome IS NULL",
+                params![
+                    draft.question_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    outcome.as_str(),
+                    now.as_unix_micros(),
+                    revision_i64(draft.question_revision)?,
+                ],
+            )
+            .map_err(write_error)
+            .and_then(|count| ensure_single_updated(count, "Question changed concurrently"))?;
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "record_question_response",
+            &basis,
+            "question_response",
+            draft.question_id.as_bytes(),
+            draft.question_revision,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+
+        let mut terminal_question = question;
+        terminal_question.state = QuestionState::Terminal(outcome);
+        terminal_question.updated_at = now;
+        Ok(OperationResult {
+            value: QuestionResponseResult {
+                question: terminal_question,
+                user_turn_source,
+                decision,
+            },
+            replayed: false,
+        })
+    }
+
+    pub fn get_decision(
+        &self,
+        project_id: ProjectId,
+        decision_id: DecisionId,
+    ) -> Result<Decision, Error> {
+        load_decision(&self.connection, project_id, decision_id)
+    }
+}
+
+struct EncodedQuestion {
+    source_basis: Vec<u8>,
+    dependencies: Vec<u8>,
+    alternatives: Vec<u8>,
+    recommendation_sources: Vec<u8>,
+    trade_offs: Vec<u8>,
+    uncertainty: Vec<u8>,
+    material_scope: Vec<u8>,
+}
+
+impl EncodedQuestion {
+    fn from_draft(draft: &QuestionDraft) -> Result<Self, Error> {
+        Ok(Self {
+            source_basis: encode_source_ids(&draft.source_basis),
+            dependencies: encode_dependencies(&draft.dependencies),
+            alternatives: encode_alternatives(&draft.alternatives),
+            recommendation_sources: encode_source_ids(&draft.recommendation.source_basis),
+            trade_offs: encode_strings(&draft.trade_offs),
+            uncertainty: encode_strings(&draft.uncertainty),
+            material_scope: encode_strings(&draft.material_scope),
+        })
+    }
+}
+
+fn validate_question_draft(draft: &QuestionDraft) -> Result<(), Error> {
+    validate_nonempty("Question prompt basis", &draft.prompt_basis)?;
+    validate_nonempty(
+        "Question recommendation rationale",
+        &draft.recommendation.rationale,
+    )?;
+    if draft.source_basis.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Question requires a Source basis",
+        ));
+    }
+    if draft.recommendation.source_basis.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Question recommendation requires a Source basis",
+        ));
+    }
+    if draft.alternatives.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Question requires at least one explicit alternative",
+        ));
+    }
+    if draft.material_scope.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Question requires a material scope",
+        ));
+    }
+    let mut keys = BTreeSet::new();
+    for alternative in &draft.alternatives {
+        validate_nonempty("Question alternative key", &alternative.key)?;
+        validate_nonempty("Question alternative label", &alternative.label)?;
+        validate_nonempty("Question alternative consequence", &alternative.consequence)?;
+        if !keys.insert(alternative.key.as_str()) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Question alternative keys must be unique",
+            ));
+        }
+    }
+    if let Some(key) = &draft.recommendation.alternative_key {
+        if !keys.contains(key.as_str()) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Question recommendation must name a displayed alternative",
+            ));
+        }
+    }
+    validate_string_list("Question trade-off", &draft.trade_offs)?;
+    validate_string_list("Question uncertainty", &draft.uncertainty)?;
+    validate_string_list("Question material scope", &draft.material_scope)?;
+    let mut dependencies = BTreeSet::new();
+    for dependency in &draft.dependencies {
+        if !dependencies.insert((dependency.question_id, dependency.required_revision)) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Question dependencies must be unique",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_response_draft(draft: &QuestionResponseDraft) -> Result<(), Error> {
+    validate_string_list(
+        "displayed Question alternative key",
+        &draft.displayed_alternative_keys,
+    )?;
+    validate_string_list("Decision applicability path", &draft.applicability.paths)?;
+    validate_string_list(
+        "Decision applicability component",
+        &draft.applicability.components,
+    )?;
+    validate_string_list(
+        "Decision applicability work context",
+        &draft.applicability.work_contexts,
+    )?;
+    validate_string_list("Decision assumption", &draft.assumptions)?;
+    validate_string_list("Decision revisit trigger", &draft.revisit_triggers)?;
+    match &draft.response {
+        ExplicitQuestionResponse::Choice {
+            alternative_key,
+            user_rationale,
+        } => {
+            validate_nonempty("explicit alternative key", alternative_key)?;
+            validate_optional_nonempty("user rationale", user_rationale.as_deref())?;
+        }
+        ExplicitQuestionResponse::Delegation {
+            delegate_to,
+            user_rationale,
+        } => {
+            validate_nonempty("delegation target", delegate_to)?;
+            validate_optional_nonempty("user rationale", user_rationale.as_deref())?;
+        }
+        ExplicitQuestionResponse::Terminal { outcome } => {
+            if matches!(
+                outcome,
+                QuestionTerminalOutcome::Answered | QuestionTerminalOutcome::Delegated
+            ) {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "answered and delegated outcomes require an explicit choice or delegation",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_optional_nonempty(label: &str, value: Option<&str>) -> Result<(), Error> {
+    if let Some(value) = value {
+        validate_nonempty(label, value)?;
+    }
+    Ok(())
+}
+
+fn validate_string_list(label: &str, values: &[String]) -> Result<(), Error> {
+    for value in values {
+        validate_nonempty(label, value)?;
+    }
+    Ok(())
+}
+
+fn question_basis(
+    project_id: ProjectId,
+    draft: &QuestionDraft,
+    encoded: &EncodedQuestion,
+) -> Vec<u8> {
+    Basis::new("create_question")
+        .bytes(project_id.as_bytes())
+        .number(draft.expected_project_revision)
+        .string(&draft.prompt_basis)
+        .bytes(&encoded.source_basis)
+        .bytes(&encoded.dependencies)
+        .bytes(&encoded.alternatives)
+        .optional_string(draft.recommendation.alternative_key.as_deref())
+        .string(&draft.recommendation.rationale)
+        .bytes(&encoded.recommendation_sources)
+        .bytes(&encoded.trade_offs)
+        .bytes(&encoded.uncertainty)
+        .bytes(&encoded.material_scope)
+        .finish()
+}
+
+fn response_basis(project_id: ProjectId, draft: &QuestionResponseDraft) -> Result<Vec<u8>, Error> {
+    let mut basis = Basis::new("record_question_response")
+        .bytes(project_id.as_bytes())
+        .number(draft.expected_project_revision)
+        .bytes(draft.question_id.as_bytes())
+        .number(draft.question_revision);
+    basis = match &draft.user_turn_source {
+        UserTurnSource::Existing(source_id) => basis.string("existing").bytes(source_id.as_bytes()),
+        UserTurnSource::Create(source_draft) => {
+            validate_source_draft(source_draft)?;
+            let encoded = EncodedSource::from_payload(&source_draft.payload);
+            basis
+                .string("create")
+                .bytes(&source_basis(project_id, source_draft, &encoded))
+        }
+    };
+    basis = basis
+        .bytes(&encode_strings(&draft.displayed_alternative_keys))
+        .optional_string(draft.displayed_recommendation_key.as_deref());
+    basis = match &draft.response {
+        ExplicitQuestionResponse::Choice {
+            alternative_key,
+            user_rationale,
+        } => basis
+            .string("choice")
+            .string(alternative_key)
+            .optional_string(user_rationale.as_deref()),
+        ExplicitQuestionResponse::Delegation {
+            delegate_to,
+            user_rationale,
+        } => basis
+            .string("delegation")
+            .string(delegate_to)
+            .optional_string(user_rationale.as_deref()),
+        ExplicitQuestionResponse::Terminal { outcome } => {
+            basis.string("terminal").string(outcome.as_str())
+        }
+    };
+    Ok(basis
+        .bytes(&encode_strings(&draft.applicability.paths))
+        .bytes(&encode_strings(&draft.applicability.components))
+        .bytes(&encode_strings(&draft.applicability.work_contexts))
+        .bytes(&encode_strings(&draft.assumptions))
+        .bytes(&encode_strings(&draft.revisit_triggers))
+        .finish())
+}
+
+fn insert_question_revision(
+    transaction: &Transaction<'_>,
+    question_id: QuestionId,
+    project_id: ProjectId,
+    draft: &QuestionDraft,
+    encoded: &EncodedQuestion,
+    now: TimestampMicros,
+) -> Result<(), Error> {
+    transaction
+        .execute(
+            "INSERT INTO question_revisions(
+                 question_id, revision, project_id, prompt_basis, source_basis, dependencies,
+                 alternatives, recommendation_key, recommendation_rationale,
+                 recommendation_sources, trade_offs, uncertainty, material_scope, recorded_at
+             ) VALUES (?1, 1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                question_id.as_bytes().as_slice(),
+                project_id.as_bytes().as_slice(),
+                draft.prompt_basis,
+                encoded.source_basis,
+                encoded.dependencies,
+                encoded.alternatives,
+                draft.recommendation.alternative_key,
+                draft.recommendation.rationale,
+                encoded.recommendation_sources,
+                encoded.trade_offs,
+                encoded.uncertainty,
+                encoded.material_scope,
+                now.as_unix_micros(),
+            ],
+        )
+        .map_err(write_error)?;
+    Ok(())
+}
+
+fn load_question(
+    connection: &Connection,
+    project_id: ProjectId,
+    question_id: QuestionId,
+) -> Result<Question, Error> {
+    let current = connection
+        .query_row(
+            "SELECT project_id, revision, terminal_outcome, created_at, updated_at
+             FROM questions WHERE id = ?1",
+            [question_id.as_bytes().as_slice()],
+            |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(read_error)?
+        .ok_or_else(|| Error::new(ErrorKind::NotFound, "Question was not found"))?;
+    let owner = ProjectId::from_slice(&current.0)?;
+    if owner != project_id {
+        return Err(Error::new(
+            ErrorKind::WrongProject,
+            "Question belongs to a different Project",
+        ));
+    }
+    let revision = stored_revision(current.1)?;
+    let row = connection
+        .query_row(
+            "SELECT prompt_basis, source_basis, dependencies, alternatives,
+                    recommendation_key, recommendation_rationale, recommendation_sources,
+                    trade_offs, uncertainty, material_scope
+             FROM question_revisions WHERE question_id = ?1 AND revision = ?2",
+            params![question_id.as_bytes().as_slice(), revision_i64(revision)?],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    row.get::<_, Vec<u8>>(2)?,
+                    row.get::<_, Vec<u8>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Vec<u8>>(6)?,
+                    row.get::<_, Vec<u8>>(7)?,
+                    row.get::<_, Vec<u8>>(8)?,
+                    row.get::<_, Vec<u8>>(9)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(read_error)?
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::RepairRequired,
+                "Question current revision is missing",
+            )
+        })?;
+    let state = match current.2 {
+        None => QuestionState::Open,
+        Some(value) => {
+            QuestionState::Terminal(QuestionTerminalOutcome::parse(&value).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "stored Question terminal outcome is invalid",
+                )
+            })?)
+        }
+    };
+    Ok(Question {
+        id: question_id,
+        project_id,
+        revision,
+        prompt_basis: row.0,
+        source_basis: decode_source_ids(&row.1)?,
+        dependencies: decode_dependencies(&row.2)?,
+        alternatives: decode_alternatives(&row.3)?,
+        recommendation: AgentRecommendation {
+            alternative_key: row.4,
+            rationale: row.5,
+            source_basis: decode_source_ids(&row.6)?,
+        },
+        trade_offs: decode_strings(&row.7)?,
+        uncertainty: decode_strings(&row.8)?,
+        material_scope: decode_strings(&row.9)?,
+        state,
+        created_at: TimestampMicros::from_unix_micros(current.3),
+        updated_at: TimestampMicros::from_unix_micros(current.4),
+    })
+}
+
+fn ensure_question_revision_exists(
+    connection: &Connection,
+    question_id: QuestionId,
+    revision: u64,
+) -> Result<(), Error> {
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM question_revisions WHERE question_id = ?1 AND revision = ?2",
+            params![question_id.as_bytes().as_slice(), revision_i64(revision)?],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(read_error)?
+        .is_some();
+    if !exists {
+        return Err(Error::new(
+            ErrorKind::StaleBasis,
+            "Question revision does not exist",
+        ));
+    }
+    Ok(())
+}
+
+fn interpret_explicit_response<'a>(
+    question: &Question,
+    response: &'a ExplicitQuestionResponse,
+) -> Result<
+    (
+        QuestionTerminalOutcome,
+        Option<DecisionChoice>,
+        Option<&'a str>,
+    ),
+    Error,
+> {
+    match response {
+        ExplicitQuestionResponse::Choice {
+            alternative_key,
+            user_rationale,
+        } => {
+            if !question
+                .alternatives
+                .iter()
+                .any(|alternative| alternative.key == *alternative_key)
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "explicit choice does not name one displayed alternative",
+                ));
+            }
+            Ok((
+                QuestionTerminalOutcome::Answered,
+                Some(DecisionChoice::Alternative {
+                    alternative_key: alternative_key.clone(),
+                }),
+                user_rationale.as_deref(),
+            ))
+        }
+        ExplicitQuestionResponse::Delegation {
+            delegate_to,
+            user_rationale,
+        } => Ok((
+            QuestionTerminalOutcome::Delegated,
+            Some(DecisionChoice::Delegation {
+                delegate_to: delegate_to.clone(),
+            }),
+            user_rationale.as_deref(),
+        )),
+        ExplicitQuestionResponse::Terminal { outcome } => Ok((*outcome, None, None)),
+    }
+}
+
+fn ensure_user_turn_draft(draft: &SourceDraft) -> Result<(), Error> {
+    if draft.actor.kind != PrincipalKind::User
+        || !matches!(draft.payload, SourcePayload::CurrentHostUserTurn { .. })
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Question response requires a current-host user-turn Source authored by the user",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_user_turn_source(source: &Source, project_id: ProjectId) -> Result<(), Error> {
+    if source.project_id != project_id {
+        return Err(Error::new(
+            ErrorKind::WrongProject,
+            "Question response Source belongs to a different Project",
+        ));
+    }
+    if source.actor.kind != PrincipalKind::User
+        || !matches!(source.payload, SourcePayload::CurrentHostUserTurn { .. })
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Question response requires a current-host user-turn Source authored by the user",
+        ));
+    }
+    Ok(())
+}
+
+fn insert_source(
+    transaction: &Transaction<'_>,
+    source_id: SourceId,
+    project_id: ProjectId,
+    draft: &SourceDraft,
+    now: TimestampMicros,
+) -> Result<(), Error> {
+    let encoded = EncodedSource::from_payload(&draft.payload);
+    transaction
+        .execute(
+            "INSERT INTO sources(
+                 id, project_id, revision, source_kind, locator, snapshot_basis,
+                 detail_one, detail_two, exit_code, termination, actor_kind,
+                 actor_identity, observer_kind, observer_identity, availability, recorded_at
+             ) VALUES (
+                 ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+             )",
+            params![
+                source_id.as_bytes().as_slice(),
+                project_id.as_bytes().as_slice(),
+                encoded.kind,
+                encoded.locator,
+                encoded.snapshot_basis,
+                encoded.detail_one,
+                encoded.detail_two,
+                encoded.exit_code,
+                encoded.termination,
+                draft.actor.kind.as_str(),
+                draft.actor.identity,
+                draft.observer.as_ref().map(|value| value.kind.as_str()),
+                draft.observer.as_ref().map(|value| value.identity.as_str()),
+                draft.availability.as_str(),
+                now.as_unix_micros(),
+            ],
+        )
+        .map_err(|error| insert_identity_error(error, "Source identity already exists"))?;
+    Ok(())
+}
+
+fn load_question_response(
+    connection: &Connection,
+    project_id: ProjectId,
+    question_id: QuestionId,
+    question_revision: u64,
+) -> Result<QuestionResponseResult, Error> {
+    let source_bytes: Vec<u8> = connection
+        .query_row(
+            "SELECT source_id FROM question_response_sources
+             WHERE project_id = ?1 AND question_id = ?2 AND question_revision = ?3",
+            params![
+                project_id.as_bytes().as_slice(),
+                question_id.as_bytes().as_slice(),
+                revision_i64(question_revision)?,
+            ],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(read_error)?
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::RepairRequired,
+                "committed Question response has no Source linkage",
+            )
+        })?;
+    let user_turn_source = load_source(connection, SourceId::from_slice(&source_bytes)?)?;
+    let decision_id: Option<Vec<u8>> = connection
+        .query_row(
+            "SELECT id FROM decisions WHERE question_id = ?1 AND question_revision = ?2",
+            params![
+                question_id.as_bytes().as_slice(),
+                revision_i64(question_revision)?
+            ],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(read_error)?;
+    let decision = decision_id
+        .map(|bytes| load_decision(connection, project_id, DecisionId::from_slice(&bytes)?))
+        .transpose()?;
+    Ok(QuestionResponseResult {
+        question: load_question(connection, project_id, question_id)?,
+        user_turn_source,
+        decision,
+    })
+}
+
+fn load_decision(
+    connection: &Connection,
+    project_id: ProjectId,
+    decision_id: DecisionId,
+) -> Result<Decision, Error> {
+    type DecisionRow = (
+        Vec<u8>,
+        Vec<u8>,
+        i64,
+        Vec<u8>,
+        String,
+        String,
+        Option<String>,
+        Vec<u8>,
+        Option<String>,
+        String,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        i64,
+    );
+    let row: DecisionRow = connection
+        .query_row(
+            "SELECT project_id, question_id, question_revision, user_turn_source_id,
+                    choice_kind, choice_value, user_rationale, displayed_alternatives,
+                    recommendation_key, recommendation_rationale, recommendation_sources,
+                    applicability_paths, applicability_components, applicability_work_contexts,
+                    assumptions, revisit_triggers, recorded_at
+             FROM decisions WHERE id = ?1",
+            [decision_id.as_bytes().as_slice()],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                    row.get(12)?,
+                    row.get(13)?,
+                    row.get(14)?,
+                    row.get(15)?,
+                    row.get(16)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(read_error)?
+        .ok_or_else(|| Error::new(ErrorKind::NotFound, "Decision was not found"))?;
+    let owner = ProjectId::from_slice(&row.0)?;
+    if owner != project_id {
+        return Err(Error::new(
+            ErrorKind::WrongProject,
+            "Decision belongs to a different Project",
+        ));
+    }
+    let choice = match row.4.as_str() {
+        "alternative" => DecisionChoice::Alternative {
+            alternative_key: row.5,
+        },
+        "delegation" => DecisionChoice::Delegation { delegate_to: row.5 },
+        _ => {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "stored Decision choice kind is invalid",
+            ));
+        }
+    };
+    Ok(Decision {
+        id: decision_id,
+        project_id,
+        question_id: QuestionId::from_slice(&row.1)?,
+        question_revision: stored_revision(row.2)?,
+        user_turn_source_id: SourceId::from_slice(&row.3)?,
+        choice,
+        user_rationale: row.6,
+        displayed_alternatives: decode_alternatives(&row.7)?,
+        displayed_recommendation: AgentRecommendation {
+            alternative_key: row.8,
+            rationale: row.9,
+            source_basis: decode_source_ids(&row.10)?,
+        },
+        applicability: ApplicabilityScope {
+            paths: decode_strings(&row.11)?,
+            components: decode_strings(&row.12)?,
+            work_contexts: decode_strings(&row.13)?,
+        },
+        assumptions: decode_strings(&row.14)?,
+        revisit_triggers: decode_strings(&row.15)?,
+        recorded_at: TimestampMicros::from_unix_micros(row.16),
+    })
+}
+
+fn encode_strings(values: &[String]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_u64(&mut bytes, values.len() as u64);
+    for value in values {
+        push_bytes(&mut bytes, value.as_bytes());
+    }
+    bytes
+}
+
+fn decode_strings(bytes: &[u8]) -> Result<Vec<String>, Error> {
+    let mut cursor = BlobCursor::new(bytes);
+    let count = cursor.count()?;
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        let value = std::str::from_utf8(cursor.bytes()?).map_err(|_| malformed_blob())?;
+        values.push(value.to_owned());
+    }
+    cursor.finish()?;
+    Ok(values)
+}
+
+fn encode_source_ids(values: &[SourceId]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_u64(&mut bytes, values.len() as u64);
+    for value in values {
+        bytes.extend_from_slice(value.as_bytes());
+    }
+    bytes
+}
+
+fn decode_source_ids(bytes: &[u8]) -> Result<Vec<SourceId>, Error> {
+    let mut cursor = BlobCursor::new(bytes);
+    let count = cursor.count()?;
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        values.push(SourceId::from_slice(cursor.fixed(16)?)?);
+    }
+    cursor.finish()?;
+    Ok(values)
+}
+
+fn encode_dependencies(values: &[QuestionDependency]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_u64(&mut bytes, values.len() as u64);
+    for value in values {
+        bytes.extend_from_slice(value.question_id.as_bytes());
+        match value.required_revision {
+            Some(revision) => {
+                bytes.push(1);
+                push_u64(&mut bytes, revision);
+            }
+            None => bytes.push(0),
+        }
+    }
+    bytes
+}
+
+fn decode_dependencies(bytes: &[u8]) -> Result<Vec<QuestionDependency>, Error> {
+    let mut cursor = BlobCursor::new(bytes);
+    let count = cursor.count()?;
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        let question_id = QuestionId::from_slice(cursor.fixed(16)?)?;
+        let required_revision = match cursor.byte()? {
+            0 => None,
+            1 => Some(cursor.u64()?),
+            _ => return Err(malformed_blob()),
+        };
+        values.push(QuestionDependency {
+            question_id,
+            required_revision,
+        });
+    }
+    cursor.finish()?;
+    Ok(values)
+}
+
+fn encode_alternatives(values: &[QuestionAlternative]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_u64(&mut bytes, values.len() as u64);
+    for value in values {
+        push_bytes(&mut bytes, value.key.as_bytes());
+        push_bytes(&mut bytes, value.label.as_bytes());
+        push_bytes(&mut bytes, value.consequence.as_bytes());
+    }
+    bytes
+}
+
+fn decode_alternatives(bytes: &[u8]) -> Result<Vec<QuestionAlternative>, Error> {
+    let mut cursor = BlobCursor::new(bytes);
+    let count = cursor.count()?;
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        let key = std::str::from_utf8(cursor.bytes()?)
+            .map_err(|_| malformed_blob())?
+            .to_owned();
+        let label = std::str::from_utf8(cursor.bytes()?)
+            .map_err(|_| malformed_blob())?
+            .to_owned();
+        let consequence = std::str::from_utf8(cursor.bytes()?)
+            .map_err(|_| malformed_blob())?
+            .to_owned();
+        values.push(QuestionAlternative {
+            key,
+            label,
+            consequence,
+        });
+    }
+    cursor.finish()?;
+    Ok(values)
+}
+
+fn push_u64(bytes: &mut Vec<u8>, value: u64) {
+    bytes.extend_from_slice(&value.to_be_bytes());
+}
+
+fn push_bytes(bytes: &mut Vec<u8>, value: &[u8]) {
+    push_u64(bytes, value.len() as u64);
+    bytes.extend_from_slice(value);
+}
+
+struct BlobCursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> BlobCursor<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn count(&mut self) -> Result<usize, Error> {
+        usize::try_from(self.u64()?).map_err(|_| malformed_blob())
+    }
+
+    fn u64(&mut self) -> Result<u64, Error> {
+        let bytes: [u8; 8] = self.fixed(8)?.try_into().map_err(|_| malformed_blob())?;
+        Ok(u64::from_be_bytes(bytes))
+    }
+
+    fn byte(&mut self) -> Result<u8, Error> {
+        Ok(self.fixed(1)?[0])
+    }
+
+    fn bytes(&mut self) -> Result<&'a [u8], Error> {
+        let length = self.count()?;
+        self.fixed(length)
+    }
+
+    fn fixed(&mut self, length: usize) -> Result<&'a [u8], Error> {
+        let end = self.offset.checked_add(length).ok_or_else(malformed_blob)?;
+        let value = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or_else(malformed_blob)?;
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn finish(self) -> Result<(), Error> {
+        if self.offset != self.bytes.len() {
+            return Err(malformed_blob());
+        }
+        Ok(())
+    }
+}
+
+fn malformed_blob() -> Error {
+    Error::new(
+        ErrorKind::CorruptState,
+        "stored canonical structured value is malformed",
+    )
 }
 
 fn initialize_schema(connection: &Connection) -> Result<(), Error> {
@@ -686,6 +1815,74 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  FOREIGN KEY(project_id, from_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, to_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
              ) WITHOUT ROWID;
+             CREATE TABLE questions(
+                 id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 revision INTEGER NOT NULL CHECK(revision >= 1),
+                 terminal_outcome TEXT CHECK(terminal_outcome IS NULL OR terminal_outcome IN (
+                     'answered','delegated','resolved_by_research','requires_prototype',
+                     'deferred','out_of_scope','superseded'
+                 )),
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL,
+                 UNIQUE(project_id, id),
+                 UNIQUE(id, revision),
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+             );
+             CREATE TABLE question_revisions(
+                 question_id BLOB NOT NULL CHECK(length(question_id) = 16),
+                 revision INTEGER NOT NULL CHECK(revision >= 1),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 prompt_basis TEXT NOT NULL CHECK(length(prompt_basis) > 0),
+                 source_basis BLOB NOT NULL,
+                 dependencies BLOB NOT NULL,
+                 alternatives BLOB NOT NULL,
+                 recommendation_key TEXT,
+                 recommendation_rationale TEXT NOT NULL CHECK(length(recommendation_rationale) > 0),
+                 recommendation_sources BLOB NOT NULL,
+                 trade_offs BLOB NOT NULL,
+                 uncertainty BLOB NOT NULL,
+                 material_scope BLOB NOT NULL,
+                 recorded_at INTEGER NOT NULL,
+                 PRIMARY KEY(question_id, revision),
+                 FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE question_response_sources(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 question_id BLOB NOT NULL CHECK(length(question_id) = 16),
+                 question_revision INTEGER NOT NULL CHECK(question_revision >= 1),
+                 source_id BLOB NOT NULL CHECK(length(source_id) = 16),
+                 recorded_at INTEGER NOT NULL,
+                 PRIMARY KEY(project_id, question_id, question_revision),
+                 FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE decisions(
+                 id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 question_id BLOB NOT NULL CHECK(length(question_id) = 16),
+                 question_revision INTEGER NOT NULL CHECK(question_revision >= 1),
+                 user_turn_source_id BLOB NOT NULL CHECK(length(user_turn_source_id) = 16),
+                 choice_kind TEXT NOT NULL CHECK(choice_kind IN ('alternative','delegation')),
+                 choice_value TEXT NOT NULL CHECK(length(choice_value) > 0),
+                 user_rationale TEXT,
+                 displayed_alternatives BLOB NOT NULL,
+                 recommendation_key TEXT,
+                 recommendation_rationale TEXT NOT NULL,
+                 recommendation_sources BLOB NOT NULL,
+                 applicability_paths BLOB NOT NULL,
+                 applicability_components BLOB NOT NULL,
+                 applicability_work_contexts BLOB NOT NULL,
+                 assumptions BLOB NOT NULL,
+                 revisit_triggers BLOB NOT NULL,
+                 recorded_at INTEGER NOT NULL,
+                 UNIQUE(project_id, id),
+                 UNIQUE(question_id, question_revision),
+                 FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, user_turn_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             );
              CREATE TABLE operations(
                  operation_id BLOB PRIMARY KEY NOT NULL CHECK(length(operation_id) = 16),
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
@@ -919,6 +2116,8 @@ fn ensure_replay_input(
         "bind_clone" => "local_binding",
         "record_source" => "source",
         "relate_sources" => "source_relation",
+        "create_question" => "question",
+        "record_question_response" => "question_response",
         _ => {
             return Err(Error::new(
                 ErrorKind::RepairRequired,
@@ -1592,8 +2791,8 @@ fn commit_error(error: rusqlite::Error) -> Error {
 }
 
 fn insert_identity_error(error: rusqlite::Error, message: &str) -> Error {
-    match sqlite_code(&error) {
-        Some(rusqlite::ErrorCode::ConstraintViolation) => {
+    match &error {
+        rusqlite::Error::SqliteFailure(inner, _) if matches!(inner.extended_code, 1555 | 2067) => {
             Error::with_source(ErrorKind::AlreadyExists, message, error)
         }
         _ => write_error(error),

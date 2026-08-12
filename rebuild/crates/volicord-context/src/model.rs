@@ -1,4 +1,4 @@
-use crate::{LocalBindingId, ProjectId, SourceId, TimestampMicros};
+use crate::{DecisionId, LocalBindingId, ProjectId, QuestionId, SourceId, TimestampMicros};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -233,4 +233,171 @@ pub struct SourceRelation {
 pub struct OperationResult<T> {
     pub value: T,
     pub replayed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionDependency {
+    pub question_id: QuestionId,
+    pub required_revision: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionAlternative {
+    pub key: String,
+    pub label: String,
+    pub consequence: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentRecommendation {
+    pub alternative_key: Option<String>,
+    pub rationale: String,
+    pub source_basis: Vec<SourceId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionDraft {
+    pub expected_project_revision: u64,
+    pub prompt_basis: String,
+    pub source_basis: Vec<SourceId>,
+    pub dependencies: Vec<QuestionDependency>,
+    pub alternatives: Vec<QuestionAlternative>,
+    pub recommendation: AgentRecommendation,
+    pub trade_offs: Vec<String>,
+    pub uncertainty: Vec<String>,
+    pub material_scope: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QuestionTerminalOutcome {
+    Answered,
+    Delegated,
+    ResolvedByResearch,
+    RequiresPrototype,
+    Deferred,
+    OutOfScope,
+    Superseded,
+}
+
+impl QuestionTerminalOutcome {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Answered => "answered",
+            Self::Delegated => "delegated",
+            Self::ResolvedByResearch => "resolved_by_research",
+            Self::RequiresPrototype => "requires_prototype",
+            Self::Deferred => "deferred",
+            Self::OutOfScope => "out_of_scope",
+            Self::Superseded => "superseded",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "answered" => Some(Self::Answered),
+            "delegated" => Some(Self::Delegated),
+            "resolved_by_research" => Some(Self::ResolvedByResearch),
+            "requires_prototype" => Some(Self::RequiresPrototype),
+            "deferred" => Some(Self::Deferred),
+            "out_of_scope" => Some(Self::OutOfScope),
+            "superseded" => Some(Self::Superseded),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QuestionState {
+    Open,
+    Terminal(QuestionTerminalOutcome),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Question {
+    pub id: QuestionId,
+    pub project_id: ProjectId,
+    pub revision: u64,
+    pub prompt_basis: String,
+    pub source_basis: Vec<SourceId>,
+    pub dependencies: Vec<QuestionDependency>,
+    pub alternatives: Vec<QuestionAlternative>,
+    pub recommendation: AgentRecommendation,
+    pub trade_offs: Vec<String>,
+    pub uncertainty: Vec<String>,
+    pub material_scope: Vec<String>,
+    pub state: QuestionState,
+    pub created_at: TimestampMicros,
+    pub updated_at: TimestampMicros,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ApplicabilityScope {
+    pub paths: Vec<String>,
+    pub components: Vec<String>,
+    pub work_contexts: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DecisionChoice {
+    Alternative { alternative_key: String },
+    Delegation { delegate_to: String },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Decision {
+    pub id: DecisionId,
+    pub project_id: ProjectId,
+    pub question_id: QuestionId,
+    pub question_revision: u64,
+    pub user_turn_source_id: SourceId,
+    pub choice: DecisionChoice,
+    pub user_rationale: Option<String>,
+    pub displayed_alternatives: Vec<QuestionAlternative>,
+    pub displayed_recommendation: AgentRecommendation,
+    pub applicability: ApplicabilityScope,
+    pub assumptions: Vec<String>,
+    pub revisit_triggers: Vec<String>,
+    pub recorded_at: TimestampMicros,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UserTurnSource {
+    Existing(SourceId),
+    Create(SourceDraft),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExplicitQuestionResponse {
+    Choice {
+        alternative_key: String,
+        user_rationale: Option<String>,
+    },
+    Delegation {
+        delegate_to: String,
+        user_rationale: Option<String>,
+    },
+    Terminal {
+        outcome: QuestionTerminalOutcome,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionResponseDraft {
+    pub expected_project_revision: u64,
+    pub question_id: QuestionId,
+    pub question_revision: u64,
+    pub user_turn_source: UserTurnSource,
+    pub displayed_alternative_keys: Vec<String>,
+    pub displayed_recommendation_key: Option<String>,
+    pub response: ExplicitQuestionResponse,
+    pub applicability: ApplicabilityScope,
+    pub assumptions: Vec<String>,
+    pub revisit_triggers: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionResponseResult {
+    pub question: Question,
+    pub user_turn_source: Source,
+    pub decision: Option<Decision>,
 }
